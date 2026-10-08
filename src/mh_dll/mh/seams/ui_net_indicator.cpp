@@ -80,8 +80,7 @@
 // primitive, including its sibling llm_gfx_draw_text_rgb, does layout->mark->draw, so a changing
 // number here (ping/cmd/stall digits, every sample) left the previous digits' glyphs stuck on the
 // map forever once the tile they sat on stopped being marked dirty. Switched to llm_gfx_draw_text_rgb
-// (mh_calls.gen.h; it takes r/g/b, so g_color -- stored as RGB565 to match this file's own
-// [hud] net_indicator_color ini format -- is expanded per draw). That fixes the CURRENT line's own
+// (mh_calls.gen.h; it takes r/g/b, so g_color -- stored as RGB565 -- is expanded per draw). That fixes the CURRENT line's own
 // glyphs, which is what the game's internal mark covers -- but not a SHORTER line than last frame's
 // (the trailing tail of a wider previous number is outside this frame's own mark). Rather than track
 // per-line widths, MH_NetIndicator_OnPresent additionally stamps a FIXED worst-case rect (g_x, g_y,
@@ -114,6 +113,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
@@ -123,6 +123,7 @@
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "addr/mh_calls.gen.h"         // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
 #include "state/region_runtime.h"      // SB-HOSTFREE: a movable region is read where it IS
 #include "include/mh_tile_dirty.h"     // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the `hotkey` verb's chord (mp:GX1)
@@ -280,17 +281,15 @@ int live_peer_slot(int nth) {
 }
 
 // ---- knobs (mh_net.ini `[hud]`) -----------------------------------------------------------------
-bool     g_enabled     = false;       // [hud] net_indicator      -- armed at all
-bool     g_visible     = true;        // ...flipped by the hotkey; the indicator is ON but hidden
-bool     g_xy_override = false;       // [hud] net_indicator_xy IS SET -- honor it verbatim instead of L1d geometry
-int      g_x           = GEOM_MARGIN; // effective draw position: the override value, or the L1d-computed one
-int      g_y           = GEOM_MARGIN;
-int      g_font        = 0; // [hud] net_indicator_font  -- 0 = FONTY08, the in-game HUD face
-uint16_t g_color       = 0xffffu;
-bool     g_log_on      = true; // [hud] net_indicator_log
-int      g_key_vk      = 'N';  // [hud] net_indicator_key
-bool     g_key_ctrl = true, g_key_alt = true, g_key_shift = false;
-bool     g_key_prev = false;
+bool               g_enabled  = false;       // [hud] net_indicator      -- armed at all
+bool               g_visible  = true;        // ...flipped by the hotkey; the indicator is ON but hidden
+int                g_x        = GEOM_MARGIN; // effective draw position: the L1d-computed one
+int                g_y        = GEOM_MARGIN;
+constexpr int      g_font     = 0;       // game font slot 0 = FONTY08, the in-game HUD face
+constexpr uint16_t g_color    = 0xffffu; // RGB565 white
+int                g_key_vk   = 'N';     // [hud] net_indicator_key
+bool               g_key_ctrl = true, g_key_alt = true, g_key_shift = false;
+bool               g_key_prev = false;
 
 // ---- mp:GX1: the ground-tile damage-map stamp -----------------------------------------------------
 //
@@ -303,12 +302,7 @@ bool     g_key_prev = false;
 // the geometry anchor is placed against, so nothing here can draw past g_x + reserved_width()).
 constexpr int NETIND_MAX_LINES = 5;
 bool          g_prev_stamped   = false; // a rect below is valid and awaiting a final release stamp
-// [hud] net_indicator_stamp (default 1). THE PLANTED NEGATIVE ARM for mp:GX1's rig row, not a player
-// knob: 0 restores the pre-fix path -- this file's three damage-map stamps skipped AND the text drawn
-// through the non-stamping wrapper (draw_line) -- so `gx1_netind_nostamp` can show the row's checker
-// going RED on a build where the fix is absent (the run must tell the two apart).
-bool g_stamp  = true;
-int  g_prev_x = 0, g_prev_y = 0, g_prev_w = 0, g_prev_h = 0;
+int           g_prev_x = 0, g_prev_y = 0, g_prev_w = 0, g_prev_h = 0;
 
 // ---- counters + rate limits ---------------------------------------------------------------------
 long g_frames     = 0;
@@ -381,20 +375,13 @@ void peer_name(int idx, char *out, int cap) {
     wsprintfA(out, "PLAYER %d", idx < 0 ? 0 : idx); // mh-str-ok: ASCII name
 }
 
-// mp:GX1: g_color is RGB565 (this file's own ini convention, "ffff" not "ffffff" -- see Install);
+// mp:GX1: g_color is RGB565;
 // llm_gfx_draw_text_rgb wants r/g/b bytes, so expand each channel by bit replication (the usual
 // lossless-looking 565->888 widen: top bits repeated into the newly-opened low bits).
 void draw_line(int y, const wchar_t *text) {
     wchar_t w[96];
     lstrcpynW(w, text, 96);
     if (!w[0]) return;
-    if (!g_stamp) {
-        // mp:GX1 PLANTED NEGATIVE ARM ([hud] net_indicator_stamp=0): the PRE-FIX draw -- the one text
-        // wrapper that skips the damage-map stamp. draw_text_rgb marks the tiles it draws on, so
-        // knobbing out only our explicit stamps still left the bug fixed (measured Wave 2).
-        mh::call::llm_gfx_draw_text_blend_clipped(g_x, y, (uint16_t *)w, (int16_t)g_color);
-        return;
-    }
     const unsigned r5 = (g_color >> 11) & 0x1fu;
     const unsigned g6 = (g_color >> 5) & 0x3fu;
     const unsigned b5 = g_color & 0x1fu;
@@ -414,18 +401,6 @@ int parse_int(const char *s) {
     }
     for (; *s >= '0' && *s <= '9'; ++s) v = v * 10 + (*s - '0');
     return v * sign;
-}
-
-unsigned parse_hex(const char *s) {
-    unsigned v = 0;
-    for (; *s; ++s) {
-        const char c = *s;
-        if (c >= '0' && c <= '9') v = v * 16u + (unsigned)(c - '0');
-        else if (c >= 'a' && c <= 'f') v = v * 16u + (unsigned)(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F') v = v * 16u + (unsigned)(c - 'A' + 10);
-        else break;
-    }
-    return v;
 }
 
 // `Ctrl+Alt+N`, `Shift+F9`, `N`, or empty/`none` for no hotkey. Deliberately a SMALL grammar: a
@@ -477,7 +452,6 @@ bool hotkey_edge() {
 }
 
 void ind_log(const char *fmt, ...) {
-    if (!g_log_on) return;
     char    line[288];
     va_list ap;
     va_start(ap, fmt);
@@ -501,42 +475,16 @@ bool in_live_match() {
 
 extern "C" int MH_NetIndicator_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
     // DEFAULT ON, with no ini at all. This is a player-facing readout for a mode that cannot be
     // entered by accident -- you are in a network game -- and a connection indicator nobody turns on
     // is a connection indicator nobody has when the connection goes wrong.
-    g_enabled = GetPrivateProfileIntA("hud", "net_indicator", 1, ini) != 0;
+    g_enabled = mh_ini_get_int("hud", "net_indicator", 1, ini) != 0;
     if (!g_enabled) return 0;
 
     char buf[96];
-    // L1d: EMPTY default, not "8,44" -- the key's PRESENCE is what makes it an explicit override
-    // (Keep `[hud] net_indicator_xy` as an explicit override). Absent, the position is computed by
-    // geometry every drawn frame instead (see reserved_width()/ADDR_VIEW_W above); present, it wins
-    // verbatim, exactly as before.
-    mh::config::read_ini_string("hud", "net_indicator_xy", "", buf, sizeof(buf), ini); // TL-HARN4
-    g_xy_override = buf[0] != 0;
-    if (g_xy_override) {
-        char *comma = buf;
-        while (*comma && *comma != ',') ++comma;
-        if (*comma) {
-            *comma = 0;
-            g_y    = parse_int(comma + 1);
-        }
-        g_x = parse_int(buf);
-    }
-    g_font = GetPrivateProfileIntA("hud", "net_indicator_font", 0, ini);
-    if (g_font < 0 || g_font > 6) g_font = 0;
-    mh::config::read_ini_string("hud", "net_indicator_color", "ffff", buf, sizeof(buf), ini); // TL-HARN4
-    g_color  = (uint16_t)parse_hex(buf);
-    g_log_on = GetPrivateProfileIntA("hud", "net_indicator_log", 1, ini) != 0;
-    g_stamp  = GetPrivateProfileIntA("hud", "net_indicator_stamp", 1, ini) != 0;                  // mp:GX1 negative arm
     mh::config::read_ini_string("hud", "net_indicator_key", "Ctrl+Alt+N", buf, sizeof(buf), ini); // TL-HARN4
     parse_key(buf);
     g_visible          = true;
@@ -568,7 +516,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         // release whatever tiles the last drawn frame covered so the ground pass (if this mode has
         // one) repaints them instead of showing our stale glyphs into a screen we no longer touch.
         if (g_prev_stamped) {
-            if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+            mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
             g_prev_stamped = false;
         }
         return;
@@ -627,7 +575,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         const int32_t h = mh::call::llm_gfx_font_get_line_height();
         if (h > 0 && h < 64) line_h = (int)h;
         ++g_frames;
-        if (!g_xy_override) {
+        {
             // L1d: from the LIVE screen size every drawn frame (resolution can change at runtime --
             // gfx_overlay.cpp's ADDR_W/H comment documents the same re-read-per-frame posture for
             // these globals), not baked in once at install.
@@ -641,17 +589,17 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         // every drawn frame, not just on a rect CHANGE -- npeer/show_stall vary frame to frame and a
         // narrower rect this frame must still cover last frame's wider one, which is exactly what a
         // fixed superset already does without tracking a delta.
-        if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_x, g_y, reserved_width(), NETIND_MAX_LINES * line_h);
+        mh::gfx::mark_ground_tiles_dirty(g_x, g_y, reserved_width(), NETIND_MAX_LINES * line_h);
         g_prev_x = g_x, g_prev_y = g_y, g_prev_w = reserved_width(), g_prev_h = NETIND_MAX_LINES * line_h;
         g_prev_stamped = true;
     } else if (g_prev_stamped) {
         // Hidden (hotkey) or the font is not yet ready: nothing will draw this frame, so this is the
         // last chance to release what the previous drawn frame covered.
-        if (g_stamp) mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
+        mh::gfx::mark_ground_tiles_dirty(g_prev_x, g_prev_y, g_prev_w, g_prev_h);
         g_prev_stamped = false;
     }
 
-    const bool sample = g_log_on && (long)(GetTickCount() - g_next_sample_tick) >= 0;
+    const bool sample = (long)(GetTickCount() - g_next_sample_tick) >= 0;
     if (sample) g_next_sample_tick = GetTickCount() + SAMPLE_PERIOD_MS;
 
     int y = g_y;

@@ -387,10 +387,9 @@ struct timekeeper_state {
     // ---- 2. the sync-wait machine ----
     int32_t *sync_wait_active;             // _G_LLM_NET_SYNC_WAIT_ACTIVE
     int32_t *sync_retry_countdown;         // _G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN, reloaded to 60
-    int32_t *resync_trigger_count;         // _G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT -- the ORIGINAL
-                                           // never touches it here; only the C3 resync_trigger_reset
-                                           // fix does, in the recovery branch. Present so that fix can
-                                           // live in our body instead of in a byte splice.
+    int32_t *resync_trigger_count;         // _G_LLM_NET_LOCKSTEP_RESYNC_TRIGGER_COUNT -- time_tick
+                                           // never touches it here (the retired resync_trigger_reset
+                                           // fix used to, in the recovery branch).
     double         *sync_wait_elapsed;     // _G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED, reloaded to 1.0
     double         *peer_timeout_elapsed;  // _G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_ELAPSED, -1.0 = DISARMED
     const double   *peer_timeout_secs;     // _G_LLM_NET_LOCKSTEP_PEER_TIMEOUT_SECS (.rdata 5.0)
@@ -517,34 +516,6 @@ struct reimpl_fixes {
     // (SENT); only the RECV site is inside a body we promote.
     bool resync_trigger_gate = false;
 
-    // [net] resync_trigger_reset -- also zero RESYNC_TRIGGER_COUNT in time_tick's RECOVERY branch, so
-    // it counts CONSECUTIVE stalls instead of cumulative ones. A genuinely stuck peer never reaches
-    // recovery, so its count still climbs and a real resync still fires. Was the 10-byte call-splice at
-    // 0x0043f2a5. NOTE that is ONE of the two stand_down() sites -- the "not parked, we have room"
-    // recovery path, identifiable because it is the only one that also disarms the peer timeout.
-    // Applying it at both sites would change behaviour the byte patch never touched.
-    bool resync_trigger_reset = false;
-
-    // [net] resync_order_horizon -- MP D14: raise the CTL_RESYNC_BEGIN synthetic order's exec_time to
-    // LOCKSTEP_HORIZON, so the resync-begin order lands on the SAME lockstep step on every peer
-    // instead of being released the instant each peer's own dispatch happens to drain it. The
-    // original passes the literal 2.0, which is permanently in the past, and both the wire copy and
-    // the local order record bypass llm_strat_order_schedule -- the one function that would otherwise
-    // apply exactly this clamp to a replicated order.
-    //
-    // WAS the 8-byte prologue trampoline at 0x0049d8ef (install_resync_order_horizon). NOT a
-    // retirement and NOT a scope decision: the detour is STILL THERE and still arms on an unpromoted
-    // run. This flag exists because promotion DISPLACED it and nothing said so for six weeks --
-    // D17, and the reason C9 exists.
-    //
-    // SAFE TO DIFFER BETWEEN PEERS, and that is not the usual hand-wave: the clamped value is what
-    // goes ON THE WIRE, and the receiving peer takes the double off the wire rather than recomputing
-    // it. So a single resync is consistent across peers whichever end has the fix; only the LEADER's
-    // build decides whether that resync is clamped. It is still forced off with the other migrated
-    // fixes for the asymmetric oracle, because "consistent between peers" is not "identical to the
-    // original", which is what that run compares.
-    bool resync_order_horizon = false;
-
     // [net] rig_fixed_step_loop -- RIG KNOB, NOT A GAMEPLAY FIX, and the odd one out in this
     // struct: every other field restores behaviour a retired byte patch used to carry, while this one
     // deliberately makes the sim run a branch the game would not have taken. It forces sim_tick's
@@ -610,9 +581,8 @@ struct reimpl_fixes {
     // Born reimpl-only (the corruption exists in the original too -- the dead `cursor = len` store at
     // 0x0049c335 is the author's own aborted handling of it). Since mp:U19i an UNPROMOTED run carries
     // the same fix as a byte patch (mh/seams/gone_peer_guard.h, splice at 0x0049c330), so
-    // configuration (1) has it too; this member is the promoted body's half. The ini default is 1, like
-    // resync_order_horizon's, while the initialiser here stays the faithful-stock value a pure caller
-    // or a lockstest fixture gets.
+    // configuration (1) has it too; this member is the promoted body's half. The ini default is 1, while
+    // the initialiser here stays the faithful-stock value a pure caller or a lockstest fixture gets.
     bool gone_peer_frame_guard = false;
 
     // [net] diplo_order_dedup_fix -- MP U45: release_due's same-unit/same-owner supersede rule must not

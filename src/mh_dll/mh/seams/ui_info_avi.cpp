@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -258,7 +259,7 @@ extern "C" int MH_InfoAvi_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
     int st = (g_tick_guarded ? 1 : 0) | (g_fail_spliced ? 2 : 0);
     if (st) return st;
-    g_fallback_on = GetPrivateProfileIntA("net", "info_avi_fallback", 1, g_ini) != 0;
+    g_fallback_on = mh_ini_get_int("net", "info_avi_fallback", 1, g_ini) != 0;
     mh::config::read_ini_string("net", "info_avi_test_absent", "", g_test_absent, sizeof(g_test_absent),
                                 g_ini);
 

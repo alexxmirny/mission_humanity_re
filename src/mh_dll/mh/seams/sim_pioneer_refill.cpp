@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -77,7 +78,7 @@ extern "C" int MH_Relanding_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
     if (g_armed) return 1;
     const uintptr_t site = mh::addr::pioneer_refill_cmp_site;
-    if (GetPrivateProfileIntA("net", "pioneer_refill_fix", 1, g_ini) == 0) {
+    if (mh_ini_get_int("net", "pioneer_refill_fix", 1, g_ini) == 0) {
         seam_log("; D37a: pioneer re-landing refill KEPT ([net] pioneer_refill_fix=0): every non-owner peer re-credits a "
                  "human's starting stock on a re-landing -- the reproduction arm\n");
         return 0;

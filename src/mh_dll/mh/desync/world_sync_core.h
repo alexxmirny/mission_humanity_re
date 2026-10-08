@@ -28,14 +28,15 @@ using namespace mh::desync::v2; // ws_abort_reason enumerators, WS_SRC_SLOTS, T_
 
 inline constexpr int MAX_PEERS = 8; // player slots
 
-// ---- configuration (the [desync] ini keys; defaults are the design's) -------------------------------
+// ---- configuration (fixed since ini-cut 2026-10-06: the only [desync] key is `action`; the rest are the
+// design's values, overridable only by a selftest that fills the struct) ----------------------------
 struct config {
     int action              = 0;      // [desync] action: 1 = resync. Default stays 0 (report-only).
-    int confirm_steps       = 50;     // resync_confirm_steps: consecutive mismatching steps before acting (1 s)
-    int roster_quiet_steps  = 250;    // resync_roster_quiet_steps: no roster change this long before the incident
+    int confirm_steps       = 50;     // consecutive mismatching steps before acting (1 s)
+    int roster_quiet_steps  = 250;    // no roster change this long before the incident
     int resync_max          = 3;      // resyncs per match, per peer
-    int timeout_ms          = 180000; // resync_timeout_ms: BEGIN -> DONE deadline
-    int ff_steps            = 20;     // resync_ff_steps: catch-up cap per frame
+    int timeout_ms          = 180000; // BEGIN -> DONE deadline
+    int ff_steps            = 20;     // catch-up cap per frame
     int cooldown_steps      = 500;    // COOLDOWN length
     int capture_retry_every = 25;     // steps between capture attempts (-8 hashed-slice-missing is early-match)
     int capture_retry_max   = 20;     // attempts before ABORT(CAPTURE)

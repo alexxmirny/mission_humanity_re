@@ -112,7 +112,6 @@ sim_step_ms=10
 rx_spin=0
 horizon_heartbeat_ms=50
 defang_overlay=0
-log_gamemode=0
 game_speed_pct=0
 eager_advertise=1
 hires_clock=1
@@ -138,7 +137,7 @@ TRACE_BLOCK = "\n[trace]\ntemporal=1\n"
 # (mode-8 frames) and the mechanism it watched were NOP'd by the same knob, which is how a barrier
 # storm firing once every 2 s in the field read as "0 mode-8 frames" on a green suite for two
 # months (dead-ends G274). Pass `--defang 1` only to reproduce that blindness deliberately.
-# resync_wait_fix stays on so a defang-off run does not perma-hang.
+# (the resync-wait fix is unconditional, so a defang-off run does not perma-hang.)
 DEFANG_OVERLAY = 0
 # Extra [net] lines (';'-separated k=v), e.g. the per-group overlay knobs "defang_xui=1;defang_tt_wait=2".
 EXTRA_NET = ""
@@ -496,7 +495,7 @@ def _refuse_net_fragment(text, path, flag):
     make_ini always builds [net] itself from NET_BLOCK/--net-extra/--net-extra-client, so a
     fragment's own [net] can only ever become a shadowed second section -- dead-ends G69/G181. The
     general fragment refused this since 2026-08-27; the host/client ones did not, until this closed
-    the gap (tools/uiscripts/ini/u28_off.ini is an existing fragment that would have hit it).
+    the gap (the since-retired u28_off.ini was a fragment that would have hit it).
     """
     for ln in text.splitlines():
         if ln.split(";", 1)[0].strip().lower() == "[net]":
@@ -656,7 +655,7 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
 
       1. defaults    -- NET_BLOCK, with DEFANG_OVERLAY baked in as [net] defang_overlay's default and
                         (if SHIP_PACING) the three PINNED_PACING keys unset so the DLL's own shipping
-                        default applies; plus TRACE_BLOCK, [capture] every=0, and the [uitest]
+                        default applies; plus TRACE_BLOCK and the [uitest]
                         identity block (enable/script/dump_screens/timeout_frames/lane).
       2. net_extra   -- --net-extra, [net] only.
       3. client_net_extra -- --net-extra-client, CLIENT PEER ONLY: overrides #2 on the client
@@ -692,6 +691,13 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     ident = ident or {}
     L = IniLayers()
 
+    # ---- 0. the rig's dev unlock (dist RL2, plan D10) -------------------------------------------
+    # The shipped mh.dll IGNORES every dev key in an ini that does not say `[dev] unlock=1` (and moves
+    # the FIXED keys -- transport, hub_migration, cheat_gate, taskbar_guard, ... -- back to their ship
+    # values). Everything this function composes is a dev key, so every rig ini carries the unlock: the
+    # rig then tests the exact shipped BINARY. A later --extra-ini fragment MAY set `unlock=0` (a ship-gate negative arm).
+    L.add("dev", "unlock", "1")
+
     # ---- 1. defaults ------------------------------------------------------------------------------
     for section, lines in ini_split_sections(NET_BLOCK):
         for ln in lines:
@@ -704,7 +710,6 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
             L.unset("net", ln.split("=", 1)[0].strip())
     for section, lines in ini_split_sections(TRACE_BLOCK):
         L.add_lines(section, lines)
-    L.add("capture", "every", "0")
     L.add("uitest", "enable", "1")
     L.add("uitest", "script", script_name)
     L.add("uitest", "dump_screens", "0")
@@ -897,7 +902,7 @@ def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None, only=None
 
 
 def local_existing_runs(host_dir):
-    return set(glob.glob(os.path.join(host_dir, "logs", "*")))
+    return set([_d for _d in glob.glob(os.path.join(host_dir, "logs", "*")) if os.path.isdir(_d)])
 
 
 RIG_KEY = "4d48746573746b657900000000000000000000000000000000000000deadbeef\n; rig key (tools/ui_test.py)\n"
@@ -1081,7 +1086,7 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
     game_args = (LAUNCH_ARGS.split() if LAUNCH_ARGS else []) + ["--skip-intro"]
     # -PassThru so we learn the PID. Killing by IMAGE NAME would take down every other lane on this
     # machine, which is exactly what per-test lanes and concurrent runs must not do.
-    before = set(glob.glob(os.path.join(host_dir, "logs", "*")))
+    before = set([_d for _d in glob.glob(os.path.join(host_dir, "logs", "*")) if os.path.isdir(_d)])
     with boot_lock(host_dir):
         # fork F4H: refuse a launch that the single-instance guard would kill silently.
         conflict = make_lane.lane_conflict(host_dir)
@@ -1202,7 +1207,14 @@ def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
         if run is None:
             new = [
                 d
-                for d in set(glob.glob(os.path.join(host_dir, "logs", "*"))) - before
+                for d in set(
+                    [
+                        _d
+                        for _d in glob.glob(os.path.join(host_dir, "logs", "*"))
+                        if os.path.isdir(_d)
+                    ]
+                )
+                - before
                 if os.path.isdir(d)
             ]
             # SES1: the PROCESS directory -- mh_frametime.log's boot rows are written there, long
@@ -1245,7 +1257,9 @@ def local_new_run(host_dir, before, deadline):
     directory -- so a session directory winning the mtime sort here would strand the runner on an
     empty log and every multi-peer scenario would time out rather than run."""
     while time.time() < deadline:
-        now = set(glob.glob(os.path.join(host_dir, "logs", "*")))
+        now = set(
+            [_d for _d in glob.glob(os.path.join(host_dir, "logs", "*")) if os.path.isdir(_d)]
+        )
         new = [d for d in now - before if os.path.isdir(d)]
         menu = [d for d in new if "_menu_" in os.path.basename(d)]
         if menu or new:
@@ -2649,6 +2663,11 @@ def parse_shim_triggers(raw):
                 # mp:U65: "after_prev" = never in the same pump as (or before) the PREVIOUS trigger in the
                 # list -- the U64 heal's `blackhole off` must not share a poll with the cut it undoes.
                 "after_prev": bool(t.get("after_prev")),
+                # TL-P9W-TRIGGER: "fast" = poll this trigger every 0.25 s instead of on the 3 s grid
+                # (the multi-peer wait loop). Opt-in because other rows' committed baselines were
+                # captured with the 3 s lateness baked in (txdeath_ingame's dialog frame drifts with
+                # sim time: a fast cut shifted it 4.5%).
+                "fast": bool(t.get("fast")),
             }
         )
     return out
@@ -2673,7 +2692,9 @@ def _local_peer_file_texts(run, fname):
     logs = os.path.dirname(os.path.abspath(run).rstrip("\\/"))
     base = os.path.basename(os.path.abspath(run).rstrip("\\/"))
     out = []
-    for d in sorted(os.listdir(logs), key=_rundir.sort_key):
+    for d in sorted(
+        (n for n in os.listdir(logs) if os.path.isdir(os.path.join(logs, n))), key=_rundir.sort_key
+    ):
         if _rundir.sort_key(d) < _rundir.sort_key(base):
             continue
         fp = os.path.join(logs, d, fname)
@@ -3827,13 +3848,12 @@ def ini_compose_selftest():
     # ---- THE PLANTED SHADOWED OVERRIDE. Before this rewrite, make_ini's --extra-ini-host/-client
     # tail was CONCATENATED after the ini it had already built (`ini += "\n" + tail`), so a fragment
     # naming a section make_ini itself already emits became a shadowed, dead SECOND section --
-    # dead-ends G69/G181/G266/G267's exact shape (tools/uiscripts/ini/u28_off.ini, a real committed
-    # fragment, is written in it). IniLayers cannot produce that shape any more, so reconstruct it
+    # dead-ends G69/G181/G266/G267's exact shape. IniLayers cannot produce that shape any more, so reconstruct it
     # directly and confirm the reader model make_ini's round-trip assert uses would have refused it
     # -- i.e. that the assert is a real net, not a no-op.
-    planted = "[net]\nstart_slots=1\n\n[net]\nstart_slots=0\n"  # a later dup section: dead text
+    planted = "[net]\nlockstep_step_ms=30\n\n[net]\nlockstep_step_ms=0\n"  # a later dup section: dead text
     requested_value = "0"  # what the shadowed (second) [net] fragment asked for
-    got = ini_effective(planted, "net", "start_slots")
+    got = ini_effective(planted, "net", "lockstep_step_ms")
     check(
         "a planted shadowed override (the pre-fix concatenation shape) is CAUGHT, not silently 1",
         got != requested_value,
@@ -3844,7 +3864,7 @@ def ini_compose_selftest():
     # itself was already refused).
     raised = False
     try:
-        _refuse_net_fragment("[net]\nstart_slots=0\n", "planted.ini", "--extra-ini-host")
+        _refuse_net_fragment("[net]\nlockstep_step_ms=0\n", "planted.ini", "--extra-ini-host")
     except SystemExit:
         raised = True
     check("--extra-ini-host carrying [net] is REFUSED before it can shadow anything", raised)
@@ -4464,8 +4484,8 @@ def main():
         with open(path, "r", encoding="utf-8") as fh:
             EXTRA_INI_HOST = fh.read()
         # TL-SUITE-INIMERGE: this refusal used to exist only for the general --extra-ini above, not
-        # for its host/client twins -- so a [net] section here (tools/uiscripts/ini/u28_off.ini is a
-        # real, if unregistered, example) was silently shadowed by the base [net] block and caught
+        # for its host/client twins -- so a [net] section here (the since-retired u28_off.ini was an
+        # unregistered example) was silently shadowed by the base [net] block and caught
         # only downstream, if at all, by make_ini's own round-trip assert with a far less specific
         # message. Same refusal, same reason, one channel closer to the mistake.
         _refuse_net_fragment(EXTRA_INI_HOST, args.extra_ini_host, "--extra-ini-host")
@@ -4799,7 +4819,19 @@ def main():
         shim_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
         trig_t0 = time.time()
         while pending and time.time() < deadline:
-            time.sleep(3)
+            # TL-P9W-TRIGGER cadence: a trigger marked `fast` must land within a fraction of a second
+            # of its evidence line, not up to a full 3 s poll later -- resync_receiver_deadline_proof
+            # cuts the link on the client's `barrier BEGIN`, and a retail barrier lasts only ~2 s, so a 3 s
+            # grid cut it AFTER the RESUME had already crossed (the barrier then ended normally and the
+            # receiver deadline had nothing to catch). Everything else keeps the 3 s cadence.
+            if any(t["fast"] and not t["fired"] for t in shim_triggers):
+                _slept = 0.0
+                while _slept < 3.0:
+                    time.sleep(0.25)
+                    _slept += 0.25
+                    pump_shim_triggers(shim, shim_triggers, peers, trig_t0)
+            else:
+                time.sleep(3)
             if len(peers) > 1:
                 pump_signals(args, peers, delivered)
             for p in peers:

@@ -67,19 +67,12 @@ struct spine_key {
 inline constexpr spine_key SPINE_ONLY_KEYS[] = {
     {"boot_snapshot", "mh::state::boot::blob_size/capture"},
     {"world_capture", "mh::state::world::capture/capture_capacity"},
-    {"snap_bench", "mh::state::world::capture/capture_capacity"},
     {"snapshot_at", "mh::state::world::capture/capture_capacity"},
     {"snapshot_import", "libmh_import_world + world::lockstep_hash"},
-    {"world_import_at", "libmh_import_world + boot::reset_session_latch_for_test"},
-    {"save_at", "mh::save::promotion_active/verify_active/last_save_path"},
-    {"savegame_at", "mh::save::container_promotion_active"},
     {"loadgame_at", "mh::save::container_load_promotion_active"},
     {"load_at", "mh::save::promotion_active"},
     {"tact_synth", "mh::tact::unit_enqueue_command/group_issue_order"},
     {"tact_journal", "mh::tact::unit_enqueue_command/group_issue_order (the replay injector)"},
-    {"skip_pace_hook", "mh::sim::set_time_resync_pace_disabled"},
-    {"rng_trace", "mh::sim::rng_trace_window"},
-    {"skip_input_update", "mh::sim::set_lt_frame_input_override"},
     {"pin_menu_clock", "mh::hosthook::install_export_ok (the MH_EXPORT_REPLACE install)"},
 };
 inline constexpr int SPINE_ONLY_KEY_COUNT = (int)(sizeof(SPINE_ONLY_KEYS) / sizeof(SPINE_ONLY_KEYS[0]));

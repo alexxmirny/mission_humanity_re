@@ -30,7 +30,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <stddef.h> // offsetof (mp:D36)
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
+#include <stddef.h>      // offsetof (mp:D36)
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
@@ -39,6 +40,7 @@
 #include "include/mh_net_export.h"   // MH_Net_PeerCount / MH_Net_IsStarted (F-gate peer wait)
 #include "include/mh_seam_export.h"  // MH_Seam_StartTransport (bring the transport up at the menu)
 #include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
+#include "include/mh_config_dir.h"   // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"     // LOG1: async log sink
 #include "include/lobby_session.h"   // llm_net_session_entry (retail lobby session-list record)
 #include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
@@ -358,79 +360,15 @@ const unsigned char MP_PLAYER_COLOR[8] = {3, 1, 4, 2, 5, 6, 7, 0};
 // the SECTION is now the caller's business. net_ini_int keeps its name and its [net] default, so no
 // existing call site changes.
 int ini_int(const char *section, const char *key, int def) {
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *slash = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
-    wsprintfA(ini, "%smh_net.ini", exe);
-    return GetPrivateProfileIntA(section, key, def, ini);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
+    return mh_ini_get_int(section, key, def, ini);
 }
 int net_ini_int(const char *key, int def) { return ini_int("net", key, def); }
 
-// U29 negative arm: net_seams owns the menu-slide take-over but has no ini reader of its own (it is
-// configured through the g_a struct at init), so the one knob it needs is published from here.
-// [net] u29_slide_dir=0 makes mh_intro_wait_take_over ignore the slide DIRECTION again -- the pre-fix
-// behaviour that pinned the lobby on-screen during its own slide-OUT. Cached: the take-over runs in a
-// render path and the ini is a file read.
-extern "C" int MH_Cfg_U29SlideDir(void) {
-    static int v = -1;
-    if (v < 0) v = net_ini_int("u29_slide_dir", 1);
-    return v;
-}
-
-// U3b's MISSING NEGATIVE CONTROL. [net] u3b_park=0 disables mh_intro_wait_take_over outright, so the
-// retail blocking slide loop runs on every caller including the lobby dispatch. The fix shipped
-// 2026-07-28 with no way to turn it off, which is why its stated cause ("on the client the game
-// ms-clock does not advance inside that loop") went thirteen months without ever being tested: the
-// fix works by removing a blocking call from the dispatch's critical path, and that works whether the
-// loop hung, replayed, or merely took its 400 ms -- so success never discriminated between them. This
-// knob is what makes the original symptom observable again. Same caching rationale as above.
-extern "C" int MH_Cfg_U3bPark(void) {
-    static int v = -1;
-    if (v < 0) v = net_ini_int("u3b_park", 1);
-    return v;
-}
-
-// [net] dedup_cancel_slide=0 restores the retail DOUBLE slide-in on Browser -> Internet server ->
-// Cancel (user-reported 2026-08-30). Its own knob rather than riding u3b_park: that one gates the
-// take-over, this suppresses one redundant retail call, and folding two fixes behind one switch is how
-// you get a control that cannot isolate either.
-extern "C" int MH_Cfg_DedupCancelSlide(void) {
-    static int v = -1;
-    if (v < 0) v = net_ini_int("dedup_cancel_slide", 1);
-    return v;
-}
-
-// [net] slide_diag=1 logs EVERY menu-slide entry -- both loops, parked or not -- with the caller, the
-// active list, the widget being animated and whether that widget is even a child of the active list.
-// That last column is the point: a slide whose widget the current screen does not draw presents for
-// 400 ms with nothing moving and no cursor (the loops bypass llm_ui_frame_tick, which is what draws
-// it), which is what a "freeze" looks like from the outside. Off by default; diagnostic only.
-extern "C" int MH_Cfg_SlideDiag(void) {
-    static int v = -1;
-    if (v < 0) v = net_ini_int("slide_diag", 0);
-    return v;
-}
-
-// [net] dedup_dead_slide=0 restores the ~400 ms motionless, cursorless slide on the Create-game click
-// (user-reported 2026-08-30 as a freeze). Separate knob again: this one suppresses a slide that draws
-// NOTHING, which is a different claim from dedup_cancel_slide's "this screen is slid in twice", and
-// each wants to be falsifiable on its own.
-extern "C" int MH_Cfg_DedupDeadSlide(void) {
-    static int v = -1;
-    if (v < 0) v = net_ini_int("dedup_dead_slide", 1);
-    return v;
-}
 void net_ini_str(const char *key, const char *def, char *out, int cap) {
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *slash = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini);                                   // RL3: <config dir>mh_net.ini
     mh::config::read_ini_string("net", key, def, out, cap, ini); // TL-HARN4
 }
 // N = total players (clamped 2..8, the lobby-slot cap).
@@ -1287,11 +1225,9 @@ void          mp_lobby_entry_tick(bool is_host) {
     // the other direction. So require the lobby to actually BE the screen we are entering from.
     // MANUAL CLIENT ONLY: the manual host enters through the Start button (on_begin_map_load) and
     // force-entry has no menu screen at all, so gating either would break a working path.
-    // [net] u29_screen_gate=0 removes THIS gate only, leaving the teardown in place -- which is what
-    // isolates the two. With both on, (b) is closed twice over; with the teardown off and this on, the
-    // gate is what refuses (and says so); with both off, the injected Start force-enters from the
-    // browser, i.e. the 2026-08-28 hazard reproduced on demand.
-    if (!is_host && g_verb == VERB_NONE && g_manual_mp && net_ini_int("u29_screen_gate", 1) && *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST != mh::addr::lobby_widget_origin) {
+    // With the lobby teardown below, (b) is closed twice over: the teardown clears the stale state and
+    // this gate refuses (and says so) if it ever were not.
+    if (!is_host && g_verb == VERB_NONE && g_manual_mp && *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST != mh::addr::lobby_widget_origin) {
         if ((++g_entry_hb % 60) == 0)
             lg("; U29: entry gates are satisfied but the LOBBY IS NOT THE ACTIVE SCREEN (list=%08X) "
                                  "-- refusing begin_map_load (stale lobby state after a host-left)",
@@ -1533,10 +1469,7 @@ void on_menu_tick() {
         {
             static int was_lobby = 0;
             const int  is_lobby  = (*(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == mh::addr::lobby_widget_origin);
-            // [net] u29_teardown=0 restores the pre-fix behaviour (the model survives the lobby),
-            // so the negative arm is reachable from an ini instead of by reverting code -- same
-            // reasoning and same shape as U28's [net] start_slots.
-            if (was_lobby && !is_lobby && net_ini_int("u29_teardown", 1)) {
+            if (was_lobby && !is_lobby) {
                 memset((void *)ADDR_LOBBY_SLOTS, 0, SLOT_STRIDE * 8);
                 MH_MP_ResetMapReceived();
                 MH_Seam_ClearStartReceived();
@@ -1577,9 +1510,7 @@ void on_menu_tick() {
         // genuine modal (a dialog over the browser) is untouched.
         {
             unsigned wl = *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST;
-            // [net] u29_reroot=0 leaves the browser parented to the dead lobby -- i.e. the phantom,
-            // reachable from an ini so the render fix's negative arm needs no code edit.
-            if (net_ini_int("u29_reroot", 1) && (wl == mh::addr::browser_widget_array_ptr || wl == mh::addr::local_browser_widget_origin) && *(unsigned *)(wl + 0x14) == mh::addr::lobby_widget_origin) {
+            if ((wl == mh::addr::browser_widget_array_ptr || wl == mh::addr::local_browser_widget_origin) && *(unsigned *)(wl + 0x14) == mh::addr::lobby_widget_origin) {
                 *(unsigned *)(wl + 0x14)                               = 0;  // root screen: no backdrop
                 *(unsigned char *)mh::addr::_G_LLM_UI_MENU_SAVED_STATE = 10; // draw THIS list, not a parent
                 call_watcall1(mh::addr::llm_ui_widget_list_center, (void *)wl);
@@ -1708,66 +1639,9 @@ int intro_audio_thread_alive() {
     return alive;
 }
 
-// `[debug] u21_repro=N` -- the U21 REPRODUCTION arms, off by default; diagnostic only, never set in
-// a shipped ini. Both restore the pre-fix frame-2 teardown.
-//   1 = OBSERVE: read the audio format block's wFormatTag and the cbSize word behind it (a
-//       PCMWAVEFORMAT is 16 bytes, so DirectSound's cbSize read at +16 lands on whatever the heap put
-//       there) before the teardown, and the tag again after the teardown has utils_free'd the block.
-//       The crash needs a non-PCM tag; this shows what the free itself writes there.
-//   2 = FORCE: right after frame 1 has started the audio thread, suspend it, overwrite ONLY the tag
-//       with 0x0020 -- the word utils_free leaves there, per REPRO=1 -- and resume it -- the state a free landing before
-//       CreateSoundBuffer's format read produces. If the mechanism is right this turns the ~1% crash
-//       into a reliable one at dsound.dll+0x1f3a3 with EBX=0xA013 (18 + that cbSize), and the crash
-//       marker's stack sidecar names the audio thread and its CreateSoundBuffer call.
-constexpr uintptr_t ADDR_AVI_FMT_PTR = 0x006446d7u; // _G_LLM_AVI_PLAYER_CTX.fmt_header (audio WAVEFORMAT*)
-
-int g_u21_repro = -1; // [debug] u21_repro, read once
-
-int u21_repro() {
-    if (g_u21_repro < 0) g_u21_repro = ini_int("debug", "u21_repro", 0);
-    return g_u21_repro;
-}
-
-// Runs AFTER the original llm_intro_frame (intro_detour_repro only). Frame 1 is the one that starts
-// the audio thread, so this is the earliest point the thread id and the format pointer both exist.
-bool g_u21_forced = false;
-void on_intro_post() {
-    if (u21_repro() != 2 || g_u21_forced) return;
-    uint8_t    *fmt = *(uint8_t *volatile *)ADDR_AVI_FMT_PTR;
-    const DWORD tid = *(volatile const DWORD *)(ADDR_BOOT_TASK + 0xc);
-    if (fmt == nullptr || tid == 0) return;
-    g_u21_forced              = true;
-    HANDLE              h     = OpenThread(THREAD_SUSPEND_RESUME, FALSE, tid);
-    const DWORD         prev  = h ? SuspendThread(h) : (DWORD)-1;
-    const unsigned      tag   = *(volatile uint16_t *)fmt;
-    const unsigned      cb    = *(volatile uint16_t *)(fmt + 16);
-    const unsigned long dsb   = *(volatile const unsigned long *)ADDR_AVI_DSBUF;
-    *(volatile uint16_t *)fmt = 0x0020u; // wFormatTag: the value utils_free leaves there (REPRO=1)
-    if (h) {
-        ResumeThread(h);
-        CloseHandle(h);
-    }
-    lg("; --skip-intro: U21 REPRO=2 -- audio thread %lu %s, format %08lX tag %04X -> 0020, cbSize word "
-       "behind it %04X, dsbuf %s",
-       (unsigned long)tid, prev == (DWORD)-1 ? "NOT suspended" : "suspended", (unsigned long)(uintptr_t)fmt,
-       tag, cb, dsb ? "ALREADY made (too late)" : "not yet made");
-}
-
 void on_intro_tick() {
     if (!g_skip_intro || g_intro_done) return;
     if (*(const uint8_t *)ADDR_INTRO_GATE == 0) return; // first frame: let init + movie-open run
-    if (u21_repro() != 0) {
-        uint8_t       *fmt = *(uint8_t *volatile *)ADDR_AVI_FMT_PTR;
-        const unsigned tag = fmt ? (unsigned)*(volatile uint16_t *)fmt : 0u;
-        const unsigned cb  = fmt ? (unsigned)*(volatile uint16_t *)(fmt + 16) : 0u;
-        ((void (*)(void))ADDR_MOVIE_TEARDOWN)(); // the pre-fix frame-2 teardown
-        *(void **)ADDR_ASYNC_CB = nullptr;
-        g_intro_done            = true;
-        lg("; --skip-intro: U21 REPRO=%d -- frame-2 teardown; format %08lX tag %04X cbSize-word %04X "
-           "before the free, tag %04X after it",
-           u21_repro(), (unsigned long)(uintptr_t)fmt, tag, cb, fmt ? (unsigned)*(volatile uint16_t *)fmt : 0u);
-        return;
-    }
     const DWORD now = GetTickCount();
     if (g_intro_wait_t0 == 0) g_intro_wait_t0 = now ? now : 1;
     const unsigned      waited = (unsigned)(now - g_intro_wait_t0);
@@ -1812,25 +1686,6 @@ __declspec(naked) void intro_detour() {
         popfd
         popad
         jmp  dword ptr [g_intro_tramp] // stolen prologue + jmp back to llm_intro_frame+8
-    }
-}
-
-// U21 repro=2 only: run the original llm_intro_frame as a SUBROUTINE so on_intro_post sees what frame 1
-// just did. The normal hook above stays a plain run-before; this shape is installed only on request.
-__declspec(naked) void intro_detour_repro() {
-    __asm {
-        pushad
-        pushfd
-        call on_intro_tick
-        popfd
-        popad
-        call dword ptr [g_intro_tramp] // the original, returning here
-        pushad
-        pushfd
-        call on_intro_post
-        popfd
-        popad
-        ret
     }
 }
 
@@ -1951,22 +1806,11 @@ void on_begin_map_load() {
     // player's last click may not take effect, but the two peers still agree, which is the difference
     // between a UX annoyance and a step-1 desync). The bytes are exactly what build_players_detour
     // will restore on this side, so both peers build from one array.
-    // [net] start_slots=0 sends the LEGACY BARE SIGNAL instead. This exists so U28's negative arm is
-    // reproducible from an ini rather than by reverting code: with it off, each peer builds from its
-    // own array again -- the pre-U28 configuration -- and the race_inflight scenario must DESYNC. A
-    // fix whose absence cannot be demonstrated is not a proven fix. Default 1; never ship 0.
-    const int send_slots = net_ini_int("start_slots", 1);
-    MH_Net_SendStart(send_slots ? (const unsigned char *)ADDR_LOBBY_SLOTS : nullptr,
-                     send_slots ? SLOT_STRIDE * 8 : 0);
+    MH_Net_SendStart((const unsigned char *)ADDR_LOBBY_SLOTS, SLOT_STRIDE * 8);
     g_entry_started = true;
-    if (send_slots)
-        lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with %d B "
-           "of authoritative slots (occ=%d)",
-           SLOT_STRIDE * 8, occ);
-    else
-        lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with NO "
-           "slot payload ([net] start_slots=0 -- the PRE-U28 configuration, peers may desync) (occ=%d)",
-           occ);
+    lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with %d B "
+       "of authoritative slots (occ=%d)",
+       SLOT_STRIDE * 8, occ);
 }
 
 // Run-before detour on llm_lobby_begin_map_load (steal 8-byte prologue, jmp back to +8).
@@ -2046,8 +1890,7 @@ extern "C" int MH_Launch_Init(void) {
         // U30: the prologue branch is gone -- the primitive distinguishes a wrong build from a taken
         // entry, which this site could not.
         bool sok = install_trampoline(ADDR_INTRO_FRAME,
-                                      u21_repro() == 2 ? (void *)intro_detour_repro : (void *)intro_detour,
-                                      &g_intro_tramp, 8,
+                                      (void *)intro_detour, &g_intro_tramp, 8,
                                       entry_claim::exclusive, "the --skip-intro LOGO.AVI hook");
         lg(sok ? "; --skip-intro armed (hooked llm_intro_frame; LOGO.AVI will end early)"
                : "; --skip-intro NOT armed (see the [interlock] line for the reason)");

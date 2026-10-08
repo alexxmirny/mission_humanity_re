@@ -14,11 +14,13 @@
 // accumulation -- which is what keeps every already-blessed ASCII baseline bit-identical.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstdint>
 
 #include "include/mh_fontguard_export.h"
 #include "include/mh_run_context.h" // MH_RunDir / mh_run_path
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_calls.gen.h"      // mh::call::llm_gfx_font_select / llm_gfx_draw_text_blend_clipped
 #include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -57,8 +59,7 @@ constexpr unsigned CHARMAP_SHARED_ENTRIES = 65536u;
 // on STOCK retail fonts the guard still has something real to draw.
 constexpr unsigned FALLBACK_CODEPOINTS[] = {0xFFFDu, 0x00A4u, 0x003Fu};
 
-bool g_guard_on = true; // [fonts] glyph_guard
-bool g_armed    = false;
+bool g_armed = false;
 
 // probe (`[fonts] probe_text`) -- see the header for why a probe is the only way F2 can show a
 // non-ASCII glyph on a frame before mp:F3 lands.
@@ -122,10 +123,9 @@ void layout_text_guarded(uint16_t *text) {
     for (const uint16_t *p = text; *p; ++p) {
         const unsigned u  = *p;
         const bool     ob = (u >= limit);
-        // THE BOUNDS CLAMP IS UNCONDITIONAL, and `[fonts] glyph_guard=0` does NOT restore it. An
-        // A/B switch that re-enables a wild read is not an observation mode, it is a way to crash
-        // the rig on purpose; out of range reads as "unmapped", which is what every in-bounds
-        // unmapped code unit already did. What the flag turns off is the SUBSTITUTION below.
+        // THE BOUNDS CLAMP IS UNCONDITIONAL: out of range reads as "unmapped", which is what every
+        // in-bounds unmapped code unit already did (the retired `glyph_guard=0` observe-only switch
+        // never restored the wild read either).
         int ix = ob ? 0 : charmap[u];
         // ORDINAL 0 IS THE SPACE, NOT AN ERROR -- and the first version of this file got that
         // wrong, substituted '?' for every space, and the rendered frame said so (the probe read
@@ -148,13 +148,11 @@ void layout_text_guarded(uint16_t *text) {
         const bool control = (u <= 0x20u) || (u >= 0x7Fu && u <= 0x9Fu);
         if (ix == 0 && !control) {
             if (ob) ++g_oob;
-            if (g_guard_on) {
-                ix = fallback_ordinal(charmap, limit);
-                if (ix == 0) { // no substitute in this font: fall back to retail's blank cell
-                    ++g_drop;
-                } else {
-                    ++g_subst;
-                }
+            ix = fallback_ordinal(charmap, limit);
+            if (ix == 0) { // no substitute in this font: fall back to retail's blank cell
+                ++g_drop;
+            } else {
+                ++g_subst;
             }
         }
         uint8_t *g = glyphs[ix];
@@ -264,20 +262,11 @@ extern "C" int MH_FontGuard_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
     if (g_armed) return 1;
 
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
-
-    // Default ON with no ini (ship semantics): the guard is a strict bug fix -- the code unit it
-    // rejects had no glyph to draw under any reading of the data.
-    g_guard_on = GetPrivateProfileIntA("fonts", "glyph_guard", 1, ini) != 0;
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
     char buf[512];
-    GetPrivateProfileStringA("fonts", "probe_text", "", buf, sizeof(buf), ini);
+    mh_ini_get_str("fonts", "probe_text", "", buf, sizeof(buf), ini);
     // A TRAILING `; comment` IS PART OF THE VALUE to GetPrivateProfileString. Until 2026-09-20 the
     // example ini's own line was `probe_text=   ; TEST AFFORDANCE, empty = off ...`, so a STOCK ini
     // -- the ship zip's, verbatim -- drew that comment on every present. Same trim as `[net] relay`
@@ -329,7 +318,7 @@ extern "C" int MH_FontGuard_Install(void) {
         }
         g_probe_x = parse_int(buf);
     }
-    g_probe_slot = GetPrivateProfileIntA("fonts", "probe_font", 4, ini);                // 4 = PFMENU2, the menu face
+    g_probe_slot = mh_ini_get_int("fonts", "probe_font", 4, ini);                       // 4 = PFMENU2, the menu face
     mh::config::read_ini_string("fonts", "probe_color", "ffff", buf, sizeof(buf), ini); // TL-HARN4
     g_probe_color = (uint16_t)parse_hex(buf);
 
@@ -341,8 +330,7 @@ extern "C" int MH_FontGuard_Install(void) {
         return 0;
     }
     g_armed = true;
-    fg_log("; [fonts] glyph guard armed (%s) -- layout 0x%08x, charmap extents slot0=%u shared=%u%s",
-           g_guard_on ? "substitute ON" : "OBSERVE-ONLY, [fonts] glyph_guard=0",
+    fg_log("; [fonts] glyph guard armed (substitute ON) -- layout 0x%08x, charmap extents slot0=%u shared=%u%s",
            (unsigned)ADDR_LAYOUT_TEXT, CHARMAP_SLOT0_ENTRIES, CHARMAP_SHARED_ENTRIES,
            g_probe[0] ? "; probe armed" : "");
     if (g_probe[0])

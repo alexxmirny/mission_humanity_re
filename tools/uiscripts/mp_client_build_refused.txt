@@ -1,0 +1,52 @@
+# RL11 CLIENT walk: JOIN a host whose RELEASE VERSION differs from ours, and be TOLD to update.
+#
+# Same path as mp_client_join_refused.txt (NETWORK GAME -> name -> Internet server -> Connect -> Games
+# available -> Join game). The registry row (net_extra_client) sets the TEST-ONLY
+# `[net] test_build_version=0.0.1`, so this peer's JOIN states a release the host does not run. The host
+# refuses it by name (RefusedBuild), the JOIN_REFUSED announce bounces the joiner to the browser, and the
+# status line reads "Host runs <host>, you run 0.0.1: update". The host stays in its lobby.
+#
+# WHAT IS ASSERTED. The browser is the screen we settle on (the lobby is not), with the notice on it;
+# the exact host version is the build's own stamp, so the text is matched on its fixed lead-in. The
+# post_check (check_codepage_adopt.py --expect build) reads both logs.
+
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" (the direct-IP path)
+present Internet server
+settled Internet server
+clickl Internet server
+
+# 4. IP-join window -> Connect (discovers the host)
+present Server address
+settled Connect
+clickl Connect
+
+# 5. "Games available": the host session is listed -> Join it
+sessions 1
+settled Join game
+clickl Join game
+
+# 6. THE BOUNCE. The retail join path enters the lobby; the host's refusal arrives within one RTT
+# and the client leaves it again. Gate on the DESTINATION (the browser with Join game back on
+# screen) and on the notice text, which is the only thing that distinguishes "refused" from a
+# plain Cancel (mp_client_join.txt step 7 asserts the negative of exactly this line).
+absent Network players
+onscreen Join game
+present Host runs
+# AND WAIT FOR THE BROWSER TO RENDER ITS RESULT -- the same gate as mp_client_join's c7 and
+# mp_client_linkdeath's c3: `onscreen Join game` is true before the rescan relabels the title from
+# "Searching for games..." to "Games available", and the first cut of this capture landed mid-slide
+# with the notice clipped by a panel still moving. The count + the rendered title pin the frame.
+sessions 1
+present Games available
+capture c6_build_refused_browser
+log CLIENT: JOIN refused for a different build -> back on the browser, notice says update
+end

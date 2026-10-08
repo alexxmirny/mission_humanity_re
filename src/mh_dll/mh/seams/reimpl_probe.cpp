@@ -59,6 +59,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include <cstdint>
 #include <cstdio>
@@ -188,9 +189,9 @@ void st0_sweep_one(int pc, int *disagree) {
 }
 
 void st0_goldens_probe() {
-    if (GetPrivateProfileIntA("harness", "st0_goldens", 0, g_ini)) {
+    if (mh_ini_get_int("harness", "st0_goldens", 0, g_ini)) {
         char dir[MAX_PATH];
-        mh::config::detail::exe_dir(dir);
+        mh::config::detail::config_dir(dir);
         char what[512];
         wsprintfA(what, "%s sets `[harness] st0_goldens`, and fork F4E moved that key.", g_ini);
         mh::config::detail::refuse(
@@ -201,7 +202,7 @@ void st0_goldens_probe() {
             "ignored because the only other symptom would be tools/gen_st0_goldens.py finding no "
             "`[st0] SWEEP END` line in a log whose author believed the sweep had run.");
     }
-    if (!GetPrivateProfileIntA("st0", "goldens", 0, g_ini)) return;
+    if (!mh_ini_get_int("st0", "goldens", 0, g_ini)) return;
     char b[200];
     int  disagree = 0;
     // BOTH PRECISION SETTINGS, because FSIN/FCOS round their RESULT to the live control word. The

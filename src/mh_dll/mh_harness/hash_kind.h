@@ -201,7 +201,8 @@ inline unsigned long tenths_us(uint64_t ticks, uint64_t qpf, uint32_t n) {
 
 // `; [harness] HASH COST kind=2 steps=N mean_us=X.Y max_us=X.Y total_ms=T[ | shadow kind=1 steps=..
 // mean_us=.. max_us=..][ | inc changed_bytes/step=.. rehashed_blocks/step=.. verify=V bad=B]`
-// `shadow` = the other kind computed beside the primary only to time it (`hash_cost_both=1`).
+// `shadow` = the other kind computed beside the primary only to time it (the harness no longer
+// passes one -- the `hash_cost_both` key was retired 2026-10-06; format_cost_line keeps the argument).
 struct inc_totals {
     uint64_t changed_bytes = 0, rehashed_blocks = 0;
     uint32_t steps = 0, verifies = 0, verify_bad = 0;

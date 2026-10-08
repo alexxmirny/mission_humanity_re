@@ -1,0 +1,86 @@
+{
+  "_comment": "HAND-WRITTEN companion of settings_schema.json (which tools/gen_ini_registry.py generates). Same row shape; rows with store=launcher live in launcher.toml (field). `overrides` is keyed section.key (or launcher.<field>) and adds what the generated file cannot say: group/page for the Diagnostics page, control, min/max, provider, hidden, mirror. String keys are setting.<label>[.hint|.opt.<value>] in src/i18n/*.toml. Contract: tmp/wave_v020/UI_design.md section 2 (dist RL13).",
+  "schema_version": 1,
+  "subtabs": [
+    {
+      "id": "updates",
+      "label": "subtab.updates"
+    }
+  ],
+  "settings": [
+    {
+      "store": "launcher",
+      "field": "relay_mode",
+      "type": "enum",
+      "default": "auto",
+      "label": "launcher.relay_mode",
+      "subtab": "multiplayer",
+      "options": ["auto", "off", "custom"],
+      "control": "relay",
+      "companion": "launcher.relay_custom",
+      "before": "net.force_relay",
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "store": "launcher",
+      "field": "relay_custom",
+      "type": "string",
+      "default": "",
+      "label": "launcher.relay_custom",
+      "subtab": "multiplayer",
+      "options": [],
+      "hidden": true,
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "store": "launcher",
+      "field": "channel",
+      "type": "enum",
+      "default": "stable",
+      "label": "launcher.channel",
+      "subtab": "updates",
+      "options": ["stable", "latest"],
+      "before": "log.keep_sessions",
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "store": "launcher",
+      "field": "discord",
+      "type": "bool",
+      "default": 1,
+      "label": "launcher.discord",
+      "subtab": "updates",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    }
+  ],
+  "overrides": {
+    "net.relay": {
+      "hidden": true
+    },
+    "net.port": {
+      "min": 1024,
+      "max": 65535
+    },
+    "lang.pack": {
+      "provider": "lang_packs",
+      "mirror": "ui_lang"
+    },
+    "video.backend": {
+      "group": "compat",
+      "page": "diagnostics"
+    },
+    "input.backend": {
+      "group": "compat",
+      "page": "diagnostics"
+    }
+  }
+}

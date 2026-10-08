@@ -13,11 +13,13 @@
 // never actually been measured, on either machine. That is what the publish lines below are for.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstdint>
 
 #include "include/mh_keyrepeat_export.h"
 #include "include/mh_run_context.h" // MH_RunDir
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "hook/detour.h"            // install_trampoline + WATCOM_PROLOGUE
@@ -165,16 +167,11 @@ __declspec(naked) void modal_pump_detour() {
 extern "C" int MH_KeyRepeat_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
 
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
     // Default ON with no ini (ship semantics). 0 = observe-only: bursts are still logged, so a
     // machine that reproduces can measure the bug and then A/B the fix.
-    g_enabled = GetPrivateProfileIntA("ui", "key_repeat_fix", 1, ini) != 0;
+    g_enabled = mh_ini_get_int("ui", "key_repeat_fix", 1, ini) != 0;
 
     // U30: one call, not a byte compare and then a call. "wrong build or already hooked" was this
     // site guessing between two causes it could not distinguish; the primitive knows which, says so,

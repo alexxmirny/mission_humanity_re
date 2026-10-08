@@ -2310,7 +2310,6 @@ void test_tx_ctrl_broadcast_resync_state() {
     {
         tx5::fixture               f;
         mh::lockstep::reimpl_fixes fx;
-        fx.resync_order_horizon = true;
         tx_ctrl::g_log.reset();
         // 2.0 is the literal the original passes (`PUSH 0x40000000 / PUSH 0x0` @0x0049da0b) and is
         // permanently in the past, which is the whole defect.
@@ -2322,9 +2321,9 @@ void test_tx_ctrl_broadcast_resync_state() {
         // is released the instant each peer arrives -- a race the leader's local mirror always wins.
         // The value must now be one step PAST it. If this reads `f.horizon` again, D24 has regressed.
         const double barrier = f.horizon + f.step_size; // max(horizon, clock) is the horizon here
-        check("D24 wiring: with the fix ON, the WIRE payload clears the barrier by one step",
+        check("D24 wiring: the WIRE payload clears the barrier by one step",
               got == barrier);
-        check("D24 wiring: with the fix ON, the LOCAL order carries the same clamped value",
+        check("D24 wiring: the LOCAL order carries the same clamped value",
               tx_ctrl::g_log.enqueued.size() == 1 && tx_ctrl::g_log.enqueued[0].exec_time == barrier);
         // The pre-D24 value stated separately, so a reviewer can see WHICH way this moved and a
         // silent revert cannot pass by being "some clamped number".
@@ -2341,7 +2340,6 @@ void test_tx_ctrl_broadcast_resync_state() {
         // because release_due fires on equality.
         tx5::fixture               f;
         mh::lockstep::reimpl_fixes fx;
-        fx.resync_order_horizon = true;
         tx_ctrl::g_log.reset();
         mh::lockstep::detail::lockstep_broadcast_resync_state(f.st(), tx_ctrl::recording_calls(), fx, 2.0);
         double got = 0.0;
@@ -2358,25 +2356,11 @@ void test_tx_ctrl_broadcast_resync_state() {
         f.game_clock = 12.0;
         f.step_size  = 0.5;
         mh::lockstep::reimpl_fixes fx;
-        fx.resync_order_horizon = true;
         tx_ctrl::g_log.reset();
         mh::lockstep::detail::lockstep_broadcast_resync_state(f.st(), tx_ctrl::recording_calls(), fx, 2.0);
         double got = 0.0;
         std::memcpy(&got, tx_ctrl::g_sent.data() + 2, sizeof(double));
         check("D24: a clock ahead of the horizon becomes the floor, not the horizon", got == 12.5);
-    }
-    {
-        // OFF is the faithful original, and it has to stay that way or the asymmetric oracle compares
-        // ours-with-fix against original-without-fix and waves real divergence through.
-        tx5::fixture f;
-        tx_ctrl::g_log.reset();
-        mh::lockstep::detail::lockstep_broadcast_resync_state(f.st(), tx_ctrl::recording_calls(),
-                                                              mh::lockstep::reimpl_fixes{}, 2.0);
-        double got = 0.0;
-        std::memcpy(&got, tx_ctrl::g_sent.data() + 2, sizeof(double));
-        check("D17: fix OFF passes 2.0 through unclamped (the stock behaviour)", got == 2.0);
-        check("D17: fix OFF leaves the local order at 2.0 too",
-              tx_ctrl::g_log.enqueued.size() == 1 && tx_ctrl::g_log.enqueued[0].exec_time == 2.0);
     }
     {
         // ON must not RETARD an exec_time that is already ahead of the barrier -- the clamp raises,
@@ -2389,7 +2373,6 @@ void test_tx_ctrl_broadcast_resync_state() {
         f.game_clock = 1.4;
         f.step_size  = 0.25;
         mh::lockstep::reimpl_fixes fx;
-        fx.resync_order_horizon = true;
         tx_ctrl::g_log.reset();
         mh::lockstep::detail::lockstep_broadcast_resync_state(f.st(), tx_ctrl::recording_calls(), fx, 2.0);
         double got = 0.0;
@@ -3725,9 +3708,9 @@ struct tk_world {
     int32_t mode = mh::lockstep::SESSION_MP_LOCKSTEP;
 
     int32_t wait_active = 0, retry = 60, nag = 0, ls_count = 4, lobby_count = 4, local_idx = 999;
-    // RESYNC_TRIGGER_COUNT. The ORIGINAL time_tick never touches it -- only C3's migrated
-    // resync_trigger_reset does, in the recovery branch. Seeded non-zero so "was it zeroed?" is a real
-    // question rather than one a zero-initialised field would answer by accident.
+    // RESYNC_TRIGGER_COUNT. time_tick never touches it (the retired `resync_trigger_reset` knob used
+    // to zero it in the recovery branch). Seeded non-zero so "was it zeroed?" is a real question
+    // rather than one a zero-initialised field would answer by accident.
     int32_t  trigger_count = 77;
     double   wait_elapsed = 1.0, timeout_elapsed = -1.0, timeout_secs = 5.0;
     uint8_t  flags             = 0;
@@ -4109,9 +4092,8 @@ void test_tk_parked_machine() {
         check("D: a firing pacer decrements the countdown", v.retry == 57);
     }
 
-    // ---- C3: the four fixes migrated out of byte patches inside llm_strat_time_tick. Each is tested
-    // in BOTH states, because "off" is a claim too -- it asserts our body still reproduces the
-    // ORIGINAL, which is the entire basis of the asymmetric oracle.
+    // ---- C3: the recovery branch and the other episode exits never touch the resync trigger count
+    // (the `resync_trigger_reset` knob that used to zero it at one of them is retired).
     {
         // The RECOVERY branch: parked -> not parked with the sync-wait armed. This is the `over < 0`
         // path, the one the 0x0043f2a5 splice sat in, identifiable because it alone disarms the peer
@@ -4124,29 +4106,16 @@ void test_tk_parked_machine() {
             w.timeout_elapsed = 4.0; // armed, so the disarm below is observable
         };
 
-        { // resync_trigger_reset OFF = stock: the original never touches the counter here.
+        { // the original never touches the counter here.
             g_tk.reset();
             tk_world w;
             recover(w);
             w.tick(100.001);
-            check("C3 reset OFF: the trigger count is untouched (stock)", w.trigger_count == 77);
-            check("C3 reset OFF: recovery still happened", w.wait_active == 0 && w.timeout_elapsed < 0);
-        }
-        { // ON: zeroed, so the counter measures CONSECUTIVE stalls rather than cumulative ones.
-            g_tk.reset();
-            tk_world                   w;
-            mh::lockstep::reimpl_fixes fx;
-            fx.resync_trigger_reset = true;
-            recover(w);
-            w.tick(100.001, fx);
-            check("C3 reset ON: the trigger count is zeroed on recovery", w.trigger_count == 0);
-            check("C3 reset ON: and recovery is otherwise unchanged",
-                  w.wait_active == 0 && w.timeout_elapsed < 0);
+            check("C3 recovery: the trigger count is untouched (stock)", w.trigger_count == 77);
+            check("C3 recovery: recovery still happened", w.wait_active == 0 && w.timeout_elapsed < 0);
         }
         // The OTHER stand_down site -- "un-stalled while parked" (timekeeper.cpp's `else if
-        // (*s.sync_wait_active == 1)` inside the parked branch). The byte splice was at ONE address,
-        // so the reset must NOT fire here; applying it at both sites would change behaviour the patch
-        // never touched.
+        // (*s.sync_wait_active == 1)` inside the parked branch). It does not touch the counter either.
         //
         // HOW THE PATH IS REACHED, since a previous attempt did not reach it and the check would then
         // have passed vacuously: GAME_TIME_DELTA is RECOMPUTED at the top of time_tick, so seeding it
@@ -4180,40 +4149,26 @@ void test_tk_parked_machine() {
             check("C3 other-site: the clamp took the overshoot off the delta", near_eq(w.delta, 0.5));
             check("C3 other-site: stock leaves the trigger count alone", w.trigger_count == 77);
         }
-        { // ON: the reset is scoped to the recovery exit, so this site must STILL not zero it
-            g_tk.reset();
-            tk_world                   w;
-            mh::lockstep::reimpl_fixes fx;
-            fx.resync_trigger_reset = true;
-            unstall_while_parked(w);
-            w.tick(101.0, fx);
-            check("C3 other-site: reached the same exit with the fix ON",
-                  w.wait_active == 0 && w.timeout_elapsed > 0.0);
-            check("C3 reset ON: does NOT fire at the other stand_down site", w.trigger_count == 77);
-        }
-        // ... nor at the THIRD episode-exit: NOTE (8)'s inline reload. Same three stores as
-        // stand_down, written out rather than called, so it is easy to treat as "another stand_down"
-        // and reset there too -- which is again broader than the byte patch. Setup is the "a
-        // non-negative overlay reply forces the reset" case below; `retry == 60` is what proves the
-        // reload really ran, so the trigger-count assertion is not vacuous.
+        // ... nor at the THIRD episode-exit: NOTE (8)'s inline reload (same three stores as
+        // stand_down, written out rather than called). Setup is the "a non-negative overlay reply
+        // forces the reset" case below; `retry == 60` is what proves the reload really ran, so the
+        // trigger-count assertion is not vacuous.
         {
             g_tk.reset();
-            tk_world                   w;
-            mh::lockstep::reimpl_fixes fx;
-            fx.resync_trigger_reset = true;
-            w.last                  = 100.0;
-            w.total                 = 100.0;
-            w.committed             = 100.0;
-            w.wait_active           = 1;
-            w.retry                 = 56;
-            w.wait_elapsed          = 6.0;
-            w.local_idx             = 999;
-            g_tk.overlay_reply      = 0;
-            g_tk.match_side         = 102;
-            g_tk.leader_answer      = 0;
-            w.tick(100.001, fx);
+            tk_world w;
+            w.last             = 100.0;
+            w.total            = 100.0;
+            w.committed        = 100.0;
+            w.wait_active      = 1;
+            w.retry            = 56;
+            w.wait_elapsed     = 6.0;
+            w.local_idx        = 999;
+            g_tk.overlay_reply = 0;
+            g_tk.match_side    = 102;
+            g_tk.leader_answer = 0;
+            w.tick(100.001);
             check("C3 third-exit: NOTE (8)'s reload really ran", w.retry == 60);
-            check("C3 reset ON: does NOT fire at NOTE (8)'s reload either", w.trigger_count == 77);
+            check("C3 third-exit: the trigger count is untouched", w.trigger_count == 77);
         }
         { // C8-e: `defang_dismiss` is GONE, so the two-flag-state case above it went too. What is
             // kept is the STOCK half -- the one assertion that still describes shipped behaviour --

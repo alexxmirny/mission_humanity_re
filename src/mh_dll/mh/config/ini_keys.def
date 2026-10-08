@@ -1,0 +1,400 @@
+// mh/config/ini_keys.def -- THE REGISTRY of every key mh.dll (and the modules it hosts) reads from
+// mh_net.ini. One row per key. RL1 (v0.2.0 plan workstream A, decisions D9/D10/D15).
+//
+// X-MACRO FILE. Include it with MH_INI_KEY defined, then #undef it:
+//
+//     #define MH_INI_KEY(sec, key, type, dflt, cls, label, subtab, options, flags) ...
+//     #include "mh/config/ini_keys.def"
+//     #undef MH_INI_KEY
+//
+// The consumer declares the bare enumerators the rows use (prefixed, so they cannot collide with
+// <windows.h>'s INT/BOOL): T_INT T_BOOL T_STRING T_ENUM T_HOTKEY; C_USER C_DEV C_FIXED; S_NONE
+// S_DISPLAY S_LANGUAGE S_MULTIPLAYER S_DIAGNOSTICS S_UPDATES; and the flag bits F_NONE=0 F_EXPERIMENTAL
+// F_RESTART F_PENDING (rows OR them: `F_EXPERIMENTAL|F_RESTART`). Every other column is a string literal.
+// tools/gen_ini_registry.py parses this file (it reads no C++ semantics, only these rows), so keep
+// a row on ONE line and keep the nine columns in this order:
+//
+//   sec      the [section]                           key      the key name
+//   type     T_INT | T_BOOL (0/1) | T_STRING | T_ENUM (options lists the values) | T_HOTKEY
+//   dflt     the value used when the key is absent, as text. For a `fixed` row it is the SHIP value the
+//            shipped build hardcodes (RL2), which for [pause] key (0 = disabled) is NOT the code default.
+//   cls      C_USER  a player setting; the launcher shows it (src/launcher/settings_schema.json).
+//            C_DEV   a developer/rig knob: ignored with a log line in the shipped build unless
+//                    `[dev] unlock=1` (D10). The default class: a new key is dev until someone decides.
+//            C_FIXED hardcoded to its ship value in the shipped build (D15); an ini value is ignored
+//                    (logged once as FIXED) unless `[dev] unlock=1` -- the rig's fix-off negatives.
+//            Enforced at run time by mh_common/include/mh_ini_gate.h (RL2), which includes THIS file
+//            to build its table. `[dev] unlock` and `[log] level` are always read whatever their class.
+//   label    launcher label id (user rows only; the string table lives with the launcher, RL13)
+//   subtab   S_DISPLAY | S_LANGUAGE | S_MULTIPLAYER | S_DIAGNOSTICS | S_UPDATES (user rows only)
+//   options  T_ENUM: the allowed values joined by `|`, in display order. T_INT: suggested choices.
+//   flags    F_EXPERIMENTAL  shown with an "experimental" pill
+//            F_RESTART       takes effect only on the next game start
+//            F_PENDING       registered ahead of its reader: gen_ini_registry.py --check does not
+//                            demand a read in the code yet (no row carries it now: RL6/RL2 landed the readers)
+//
+// The user-class set is the approved settings table of docs/v020-release-plan.md section E and nothing
+// else; `gen_ini_registry.py --check` fails when a key is read in src/mh_dll without a row here, when a
+// row is never read, and when mh_net.example.ini names a key that is not registered.
+//
+// NOT a registry row: names built at run time. [debug] page.<name>.items (gfx_overlay), the
+// RETIRED_KNOBS probes (net_lockstep) and the retired-section probes (config.h) are not settings.
+// Dev notes: [input] codepage is DERIVED from [lang] pack by the launcher/runtime, so it is `dev`, not
+// a player setting. [video] backend also accepts own|null (dev); the player sees system|d3d11|gdi.
+
+// ---- PLAYER SETTINGS (class C_USER), in the launcher's display order (plan section E) ----
+MH_INI_KEY("video", "window", T_ENUM, "windowed", C_USER, "video.window", S_DISPLAY, "borderless|windowed", F_NONE)
+MH_INI_KEY("video", "scale", T_ENUM, "fit", C_USER, "video.scale", S_DISPLAY, "fit|integer", F_NONE)
+MH_INI_KEY("video", "filter", T_ENUM, "point", C_USER, "video.filter", S_DISPLAY, "area|sharp|linear|point", F_NONE)
+MH_INI_KEY("video", "vsync", T_BOOL, "0", C_USER, "video.vsync", S_DISPLAY, "", F_NONE)
+MH_INI_KEY("video", "fps_limit", T_INT, "60", C_USER, "video.fps_limit", S_DISPLAY, "60|0", F_NONE)
+MH_INI_KEY("video", "mouse_clip", T_BOOL, "1", C_USER, "video.mouse_clip", S_DISPLAY, "", F_NONE)
+MH_INI_KEY("video", "picker", T_BOOL, "0", C_USER, "video.picker", S_DISPLAY, "", F_EXPERIMENTAL|F_RESTART)
+MH_INI_KEY("lang", "pack", T_STRING, "", C_USER, "lang.pack", S_LANGUAGE, "", F_RESTART)
+MH_INI_KEY("net", "relay", T_STRING, "", C_USER, "net.relay", S_MULTIPLAYER, "", F_NONE)
+MH_INI_KEY("net", "force_relay", T_BOOL, "0", C_USER, "net.force_relay", S_MULTIPLAYER, "", F_NONE)
+MH_INI_KEY("hud", "net_indicator", T_BOOL, "1", C_USER, "hud.net_indicator", S_MULTIPLAYER, "", F_NONE)
+MH_INI_KEY("hud", "net_indicator_key", T_HOTKEY, "Ctrl+Alt+N", C_USER, "hud.net_indicator_key", S_MULTIPLAYER, "", F_NONE)
+MH_INI_KEY("net", "port", T_INT, "6501", C_USER, "net.port", S_MULTIPLAYER, "", F_RESTART)
+MH_INI_KEY("log", "level", T_ENUM, "normal", C_USER, "log.level", S_DIAGNOSTICS, "quiet|normal|debug", F_NONE)
+MH_INI_KEY("video", "backend", T_ENUM, "system", C_USER, "video.backend", S_DIAGNOSTICS, "system|d3d11|gdi", F_RESTART)
+MH_INI_KEY("input", "backend", T_ENUM, "system", C_USER, "input.backend", S_DIAGNOSTICS, "system|own", F_RESTART)
+MH_INI_KEY("log", "keep_sessions", T_INT, "20", C_USER, "log.keep_sessions", S_UPDATES, "20|50|0", F_NONE)
+MH_INI_KEY("log", "keep_days", T_INT, "0", C_USER, "log.keep_days", S_UPDATES, "", F_NONE)
+
+// ---- [config] (dev / fixed) ----
+MH_INI_KEY("config", "mode", T_STRING, "brokered", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [net] (dev / fixed) ----
+MH_INI_KEY("net", "ally_damage_no_hostility", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "bootstrap", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "build_probe_free", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "cancel_task_order", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "d36_clear_residue", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "d45_restore_boot", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "mp_players", T_INT, "2", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "player_id", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "data_timeout_ms", T_INT, "15000", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "defang_overlay", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "defang_xui", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "desync_icon_gate", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "diplo_order_dedup_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "diplo_row_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "eager_advertise", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "enable", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "frame_watchdog_inject_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "frame_watchdog_ms", T_INT, "1000", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "frametime_log", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "game_speed_pct", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "gone_peer_frame_guard", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "graceful_leave", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "hires_clock", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "hold_start", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "horizon_heartbeat_ms", T_INT, "50", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "host", T_STRING, "127.0.0.1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "host_assign", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "hub_migration", T_BOOL, "1", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "icon_count", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "info_avi_fallback", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "info_avi_test_absent", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "info_guard_test_entry", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "info_guard_test_row", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_log", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_max_ms", T_INT, "400", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_min_ms", T_INT, "30", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_relay_path", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_step_eps_ms", T_STRING, "0.01", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "lockstep_step_ms", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "log", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "log_max_mb", T_INT, "64", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "map_test_advert_hold_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "map_test_pretend", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "map_transfer", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "mesh_test_delay_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "module", T_STRING, "auto", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "mp_map", T_STRING, "TUTORIAL.MP", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "netcrit_ui_pure", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "overlay_dialog_guard", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "peers", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "ping_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "pioneer_refill_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "player_left_pin_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "qpc_clock", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "resync_count_init", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "resync_trigger_gate", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "rig_fixed_step_loop", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "role", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "rx_spin", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "rx_timeout_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "sim_step_ms", T_STRING, "20", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "sp_clock_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "spectate_after_defeat", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "spectate_mask", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "storage_panel_purge_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "team_relations_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "transport", T_STRING, "udp", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "undock_reentry_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [video] (dev / fixed) ----
+MH_INI_KEY("video", "fps_cap", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "height", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "imgui", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "imgui_key", T_HOTKEY, "F11", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "imgui_open_at_start", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "modes", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "no_present", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "no_window", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "no_window_hide", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "size_mode", T_INT, "-1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "taskbar_guard", T_BOOL, "1", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("video", "width", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [input] (dev / fixed) ----
+MH_INI_KEY("input", "chat_legacy_codepage", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "cheat_gate", T_BOOL, "1", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "codepage", T_STRING, "acp", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "key_trace", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "mouse_absolute", T_INT, "0", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "mouse_accel", T_INT, "0", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "mouse_div", T_INT, "0", C_FIXED, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "mouse_trace", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "scroll_keyup_rescue", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("input", "test_join_name", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "test_build_version", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [lang] (dev / fixed) ----
+MH_INI_KEY("lang", "test_drop_string", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [dev] (dev / fixed) ----
+MH_INI_KEY("dev", "unlock", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [ui] (dev / fixed) ----
+MH_INI_KEY("ui", "key_repeat_fix", T_BOOL, "1", C_FIXED, "", S_NONE, "", F_NONE)
+
+// ---- [pause] (dev / fixed) ----
+MH_INI_KEY("pause", "key", T_INT, "0", C_FIXED, "", S_NONE, "", F_NONE)
+
+// ---- [uitest] (dev / fixed) ----
+MH_INI_KEY("uitest", "dump_screens", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "enable", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "lane", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "script", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "settle_ms", T_INT, "120", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "timeout_frames", T_INT, "1500", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("uitest", "type_stall_ms", T_INT, "15000", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [debug] (dev / fixed) ----
+MH_INI_KEY("debug", "anchor", T_STRING, "tl", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "box", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "color", T_STRING, "ffffff", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "crash_after_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "modes", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "next_page_key", T_HOTKEY, "Ctrl+Alt+PgDn", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "overlay", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "pages", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "prev_page_key", T_HOTKEY, "Ctrl+Alt+PgUp", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "rect", T_STRING, "8,8", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("debug", "toggle_key", T_HOTKEY, "Ctrl+Alt+D", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [trace] (dev / fixed) ----
+MH_INI_KEY("trace", "funcs", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("trace", "temporal", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("trace", "temporal_sp", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [fonts] (dev / fixed) ----
+MH_INI_KEY("fonts", "probe_color", T_STRING, "ffff", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("fonts", "probe_font", T_INT, "4", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("fonts", "probe_text", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("fonts", "probe_xy", T_STRING, "16,16", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [desync] (dev / fixed) ----
+MH_INI_KEY("desync", "action", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "dirty_probe", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "enabled", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "every", T_INT, "50", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "per_step", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "snapshot", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "state_record", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "state_ring", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "verbose", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [patch] (dev / fixed) ----
+MH_INI_KEY("patch", "dump", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("patch", "dump_exit", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("patch", "inmem", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("patch", "manifest", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [compat] (dev / fixed) ----
+MH_INI_KEY("compat", "devchange_probe_ms", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [tombstone] (dev / fixed) ----
+MH_INI_KEY("tombstone", "arm_dead", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tombstone", "enable", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tombstone", "force_arm_domain", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [save] (dev / fixed) ----
+MH_INI_KEY("save", "container_load_member_poke", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("save", "container_load_verify_poke", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("save", "container_verify_poke", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("save", "load_verify_poke", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("save", "verify", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("save", "verify_poke", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [st0] (dev / fixed) ----
+MH_INI_KEY("st0", "goldens", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [bisect] (dev / fixed) ----
+MH_INI_KEY("bisect", "lockstep_seams", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [tactical] (dev / fixed) ----
+MH_INI_KEY("tactical", "commando", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tactical", "hp_pct", T_INT, "100", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tactical", "squad", T_INT, "8", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tactical", "system", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tactical", "target_building", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("tactical", "target_owner", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+
+// ---- [harness] (dev / fixed) ----
+MH_INI_KEY("harness", "ai_probe_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "aistate_probe_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "all_ai", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "all_ai_observer", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "boot_snapshot", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "clock_record", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "close_on_stop", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_force_kill_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_kill2_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_phase_timeout", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_probe_every", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_spectator_probe_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_victim", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "conq_victim2", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "d38_bldg_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "d38_dock_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "d38_kill_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "d38_player", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "domain_hash_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "enable", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "exit_on_stop", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "exit_process_at_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "exit_process_mode", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "fixed_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "gameover_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "gameover_stop", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hash_kind", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hit_ally_a", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hit_ally_v", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hit_enemy_a", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hit_enemy_v", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hit_probe_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_a1", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_a2", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_b1", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_b2", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_every", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_issue", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "hostile_probe_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "land_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "load_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "loadgame_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "loadgame_name", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "mask_ctrl_group", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "mask_planets_gfx", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "mask_soldier_anim", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "match_segment", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "order_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "order_mode", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_clock_base_s", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_clock_dt_us", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_fpu", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_menu_clock", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_rand", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_strat_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pin_wallclock", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "profile_hz", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rand_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rdump_hi", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rdump_lo", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rdump_rid", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "region_hash_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "region_poke_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "region_poke_min", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "region_poke_off", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "region_poke_only", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_dump_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_dump_step2", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_order_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_order_other", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_order_side", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relation_order_value", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relocate_corrupt", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relocate_poison", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "relocate_state", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_ai_off", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_dispatch_inject", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_drop_net_issue", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_isolate_input", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_seat", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_session_mode", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "replay_suppress_enqueue", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rng_perturb_slot", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "rng_perturb_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "seed_mode", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "seed_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "skip_intro_avi", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "snapshot_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "snapshot_hold", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "snapshot_import", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "snapshot_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "snapshot_to", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "st0_goldens", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "stop_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "strat_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "synth_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "synth_every", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "synth_move", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "synth_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_detail_hi", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_detail_lo", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_exit_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_field_hi", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_field_lo", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_gate_hi", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_gate_lo", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_hash_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_journal", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_journal_rec", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_journal_verify", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_poke_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_poke_idx", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_poke_off", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_stop_step", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_direct", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_every", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_stop", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_synth_units", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tact_unit_hash", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tj_ps_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tj_trace", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "tj_trace_from", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "u49_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "u49_gap", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "u49_player", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "u49_settle", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "u49_tail", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "ui_journal", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "ui_journal_rec", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "verdict_snap_every", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "verdict_snap_from", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "verdict_snap_max", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "vision_order_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "vision_order_other", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "vision_order_side", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "vision_order_value", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "world_capture", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)

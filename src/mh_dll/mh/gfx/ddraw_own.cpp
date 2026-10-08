@@ -63,6 +63,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <ddraw.h>
 #include <tlhelp32.h>
 #include <stdint.h>
@@ -1819,11 +1820,11 @@ bool install_owned_ddraw(const char *ini) {
     if (!filter_known) gfx_log("; [gfx] [video] filter=%s not recognised (point | linear | sharp | area) -- using point", s);
     mh::config::read_ini_string("video", "scale", "fit", s, sizeof(s), ini);
     g_cfg.integer_scale = lstrcmpiA(s, "integer") == 0;
-    g_cfg.vsync         = GetPrivateProfileIntA("video", "vsync", 0, ini) != 0;
-    g_fps_limit         = (int)GetPrivateProfileIntA("video", "fps_limit", 60, ini);
-    g_no_window         = GetPrivateProfileIntA("video", "no_window", 0, ini) != 0;
-    g_mouse_clip        = GetPrivateProfileIntA("video", "mouse_clip", 1, ini) != 0;
-    g_taskbar_guard     = GetPrivateProfileIntA("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8
+    g_cfg.vsync         = mh_ini_get_int("video", "vsync", 0, ini) != 0;
+    g_fps_limit         = (int)mh_ini_get_int("video", "fps_limit", 60, ini);
+    g_no_window         = mh_ini_get_int("video", "no_window", 0, ini) != 0;
+    g_mouse_clip        = mh_ini_get_int("video", "mouse_clip", 1, ini) != 0;
+    g_taskbar_guard     = mh_ini_get_int("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)&install_owned_ddraw, &g_self);
 

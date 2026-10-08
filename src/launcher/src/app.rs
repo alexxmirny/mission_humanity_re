@@ -27,6 +27,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::crash::{self, Marker};
+use crate::discord;
 use crate::elevate;
 use crate::install;
 use crate::launch::{self, Finished};
@@ -34,7 +35,7 @@ use crate::log;
 use crate::paths::{self, Layout};
 use crate::relay::{self, Relay};
 use crate::report;
-use crate::update::{self, Applied, Manifest, Offer, Readiness, SelfUpdate};
+use crate::update::{self, Applied, Offer, Readiness, Releases, SelfUpdate};
 use crate::upload::{self, Outbox, Prepared};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -106,7 +107,7 @@ impl UpdateAction {
 /// down afterwards -- the new installed version, the marker decision -- and a run that reported only
 /// prose would leave that to be re-derived from a sentence.
 enum Outcome {
-    Checked(Box<Manifest>),
+    Checked(Box<Releases>),
     Applied(Box<Applied>),
     SelfUpdated(SelfUpdate),
     /// dist LA8: `MakeReady` found the chosen configuration already installed.
@@ -200,6 +201,8 @@ pub struct App {
     status_line: String,
     status_is_error: bool,
     session: Option<launch::Session>,
+    /// dist RL20: the Discord presence worker, alive exactly as long as `session`.
+    presence: Option<discord::Handle>,
     last_run: Option<Finished>,
     description: String,
     startup: Startup,
@@ -314,6 +317,7 @@ impl App {
             status_line: String::new(),
             status_is_error: false,
             session: None,
+            presence: None,
             last_run: None,
             // `--description` seeds the box rather than bypassing it: the scripted path and the
             // typed path then meet at exactly the same value, which is what makes the "an empty
@@ -377,6 +381,17 @@ impl App {
         match update::load_accepted(&self.layout) {
             Some(m) => {
                 self.relay_from = m.version.clone();
+                // dist RL8: a pick the channel does not offer falls back to `net` (and says so
+                // in the log); written back so Play's readiness check and the picker agree with
+                // the install `make_ready` will do, instead of looping on a tag nobody can supply.
+                let chosen = self.config.chosen_tag.trim().to_string();
+                if !chosen.is_empty() && !m.game.contains_key(&chosen) {
+                    if let Ok(t) = update::resolve_tag(&m, &chosen) {
+                        self.tag_pick = t.clone();
+                        self.config.chosen_tag = t;
+                        self.persist();
+                    }
+                }
                 self.relay = m.relay;
             }
             None => {
@@ -658,6 +673,12 @@ impl App {
         match launch::start(&dir, Some(&log_root), &env) {
             Ok(s) => {
                 let pid = s.pid();
+                self.presence = discord::start(
+                    &self.config.discord_client_id,
+                    self.config.discord,
+                    log_root.join(discord::PRESENCE_FILE),
+                    pid,
+                );
                 self.session = Some(s);
                 self.last_run = None;
                 self.view = View::Launch;
@@ -731,6 +752,7 @@ impl App {
                 // launch gets this line rather than only a crashed one.
                 let game_dir = session.exe.parent().map(Path::to_path_buf);
                 self.session = None;
+                self.presence = None;
                 self.channel = None;
                 if let Some(dir) = game_dir.as_deref() {
                     // dist LA13: the breadcrumb is INSIDE the launcher-owned root now.
@@ -754,6 +776,7 @@ impl App {
             }
             Err(e) => {
                 self.session = None;
+                self.presence = None;
                 self.channel = None;
                 self.say(format!("lost track of the game process: {e}"), true);
                 self.startup.exit_after_launch
@@ -992,8 +1015,13 @@ impl App {
             _ => String::new(),
         };
         let from_play = action == UpdateAction::MakeReady || pressed_on == Some(View::Launch);
+        // dist RL8: which channel is followed, and which one the game on disk came from (a
+        // difference is an explicit switch, the only thing that lets an OLDER game install).
+        let channel = self.config.channel().to_string();
+        let installed_channel = self.config.installed_channel.trim().to_string();
         log::line(format!(
-            "update: {} from {base} (installed {installed:?}, configuration {tag})",
+            "update: {} from {base} (installed {installed:?}, configuration {tag}, channel \
+             {channel}, installed from {installed_channel:?})",
             action.describe()
         ));
         if action != UpdateAction::AutoCheck {
@@ -1011,9 +1039,12 @@ impl App {
                 }
             };
             let result = (|| -> Result<Outcome, String> {
+                let env = update::Env::release(&channel, &installed_channel);
                 if action == UpdateAction::MakeReady {
                     let dir = game_dir.expect("checked above");
-                    return match update::make_ready(&layout, &fetch, &base, &dir, &tag, &report)? {
+                    return match update::make_ready(
+                        &layout, &fetch, &base, &dir, &tag, &env, &report,
+                    )? {
                         Some(applied) => Ok(Outcome::Applied(Box::new(applied))),
                         None => Ok(Outcome::Ready),
                     };
@@ -1028,16 +1059,30 @@ impl App {
                 } else {
                     ""
                 };
-                let manifest = update::check(&fetch, &base, gate, Some(&layout))?;
+                let manifest = update::check(&fetch, &base, &env, gate, Some(&layout))?;
+                // dist RL8: a pick the channel does not offer is `net` from here on, and "what is
+                // installed" is read for THAT configuration.
+                let (tag, installed) = if action == UpdateAction::Check {
+                    (tag.clone(), installed.clone())
+                } else {
+                    let t = update::resolve_tag(&manifest.game, &tag)?;
+                    let i = game_dir
+                        .as_deref()
+                        .map(|d| update::installed_version_of(d, &t))
+                        .unwrap_or_default();
+                    (t, i)
+                };
                 match action {
                     UpdateAction::Check => Ok(Outcome::Checked(Box::new(manifest))),
                     UpdateAction::AutoCheck => {
-                        Ok(Outcome::Offered(update::offer_for(&manifest, &installed)))
+                        let mut offer = update::offer_for(&manifest, &installed, &env);
+                        offer.age_days = manifest.age_days(chrono::Utc::now());
+                        Ok(Outcome::Offered(offer))
                     }
                     UpdateAction::Apply => {
                         let dir = game_dir.expect("checked above");
                         match update::apply_if_needed(
-                            &layout, &fetch, &manifest, &tag, &dir, &base, &report,
+                            &layout, &fetch, &manifest, &tag, &dir, &base, &env, &report,
                         )? {
                             Some(applied) => Ok(Outcome::Applied(Box::new(applied))),
                             None => Ok(Outcome::UpToDate),
@@ -1061,7 +1106,7 @@ impl App {
                         }
                         let dir = game_dir.expect("checked above");
                         match update::apply_if_needed(
-                            &layout, &fetch, &manifest, &tag, &dir, &base, &report,
+                            &layout, &fetch, &manifest, &tag, &dir, &base, &env, &report,
                         )? {
                             Some(applied) => Ok(Outcome::Applied(Box::new(applied))),
                             None => Ok(Outcome::UpToDate),
@@ -1145,17 +1190,20 @@ impl App {
         match result {
             Ok(Outcome::Checked(m)) => {
                 let mut line = format!(
-                    "version {} is available (issued {}, launcher {})",
-                    m.version, m.issued_at, m.launcher.version
+                    "version {} is available on {} (issued {}, launcher {})",
+                    m.game.version, m.game.channel, m.game.issued_at, m.launcher.version
                 );
-                if !m.notes_url.is_empty() {
-                    line.push_str(&format!(" -- notes: {}", m.notes_url));
+                if !m.game.notes_url.is_empty() {
+                    line.push_str(&format!(" -- notes: {}", m.game.notes_url));
                 }
                 self.update_say(line, false);
             }
             Ok(Outcome::Applied(a)) => {
                 self.config.installed_version = a.version.clone();
                 self.config.installed_tag = a.tag.clone();
+                // dist RL8: the install ends a channel switch -- the game on disk now came from
+                // the channel it was fetched from.
+                self.config.installed_channel = a.channel.clone();
                 self.persist();
                 self.picker_open = false;
                 if let Some(o) = self.offer.as_mut() {
@@ -1173,6 +1221,13 @@ impl App {
             }
             Ok(Outcome::Ready) => self.update_say("already installed", false),
             Ok(Outcome::UpToDate) => {
+                // dist RL8: a channel switch whose game is the very version already installed
+                // installs nothing -- but it is over, or a later rollback of the channel would
+                // still read as "switching" and be allowed to install an older game.
+                if self.config.switch_in_progress() {
+                    self.config.installed_channel = self.config.channel().to_string();
+                    self.persist();
+                }
                 self.offer = Some(Offer::default());
                 self.update_say(
                     "up to date -- the launcher and the game are both current",
@@ -1181,9 +1236,16 @@ impl App {
             }
             Ok(Outcome::Offered(offer)) => {
                 log::line(format!(
-                    "update: start-up check -- {}",
-                    offer.line().unwrap_or_else(|| "up to date".to_string())
+                    "update: start-up check -- {}{}",
+                    offer.line().unwrap_or_else(|| "up to date".to_string()),
+                    offer
+                        .age_days
+                        .map(|d| format!(" (manifest issued {d} days ago)"))
+                        .unwrap_or_default()
                 ));
+                if let Some(b) = &offer.blocked {
+                    self.update_say(b.clone(), true);
+                }
                 self.offer = Some(offer);
             }
             Ok(Outcome::SelfUpdated(SelfUpdate::NotNeeded(msg))) => self.update_say(msg, false),
@@ -1238,6 +1300,41 @@ impl App {
         self.config.chosen_tag = tag.to_string();
         self.persist();
         log::line(format!("play: configuration {tag} picked"));
+    }
+
+    /// dist RL8: follow release channel `ch` (`stable` or `latest`) from now on -- the Settings
+    /// page's hook (RL9/RL14 wire the control; nothing in the window calls this yet).
+    ///
+    /// Remembers the choice at once and installs NOTHING itself. What makes the next game install a
+    /// *switch* -- the one case that may install an OLDER version -- is the difference between this
+    /// and `installed_channel` (the channel the game on disk came from, which is left alone), so
+    /// the check this kicks off offers the other channel's game even when it is older, and the
+    /// Update button installs it. A refused name changes nothing and is said on the update line.
+    #[allow(dead_code)]
+    pub fn switch_channel(&mut self, ch: &str) {
+        let changed = match self.config.set_channel(ch) {
+            Ok(changed) => changed,
+            Err(e) => {
+                self.update_say(e, true);
+                return;
+            }
+        };
+        if !changed {
+            return;
+        }
+        self.persist();
+        log::line(format!(
+            "update: channel {} chosen (the game on disk came from {:?}; switching: {})",
+            self.config.channel(),
+            self.config.installed_channel,
+            self.config.switch_in_progress()
+        ));
+        // What was offered was offered by the OTHER channel's manifests.
+        self.offer = None;
+        self.refresh_relay();
+        if self.job.is_none() {
+            self.start_update(UpdateAction::AutoCheck);
+        }
     }
 
     fn update_say(&mut self, msg: impl Into<String>, is_error: bool) {
@@ -1536,10 +1633,11 @@ impl App {
         });
         ui.label(
             egui::RichText::new(format!(
-                "{MANIFEST}, signed with minisign and checked against the key built into this \
-                 launcher. Nothing is unpacked before its SHA-256 matches what that signature \
-                 covers, and the previous version stays on disk until the new one has run once.",
-                MANIFEST = update::MANIFEST_NAME
+                "Channel {channel}: launcher.json and game.json, signed with minisign and \
+                 checked against the key built into this launcher. Nothing is unpacked before \
+                 its SHA-256 matches what that signature covers, and the previous version stays \
+                 on disk until the new one has run once.",
+                channel = self.config.channel()
             ))
             .weak()
             .small(),
@@ -1565,6 +1663,16 @@ impl App {
             } else {
                 ui.label(&self.update_line);
             }
+        }
+
+        // dist RL8: the freeze mitigation that replaced the 30-day STALE refusal -- say how old
+        // the manifest the offer came from is, so a pinned file is visible to a player.
+        if let Some(days) = self.offer.as_ref().and_then(|o| o.age_days) {
+            ui.label(
+                egui::RichText::new(format!("manifest issued {days} days ago"))
+                    .weak()
+                    .small(),
+            );
         }
 
         let kept = update::version_dirs(&self.layout);

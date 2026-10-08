@@ -7,8 +7,8 @@
 // before calling this) and the back buffer is still locked, so _G_LLM_FRAMEBUFFER is a valid RGB565 image.
 // On a trigger we copy it out to a 24-bit BMP; tools/bmp_to_png.py converts for viewing.
 //
-// Trigger (prototype): F12 (rising edge) grabs one frame; [capture] frames=N in mh_net.ini auto-grabs the
-// first N presented frames (headless). Read-only w.r.t. game state; determinism-neutral.
+// Trigger: F12 (rising edge) grabs one frame; the UI-script `capture` op grabs a named one
+// (MH_Capture_Shot). Read-only w.r.t. game state; determinism-neutral.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -32,12 +32,8 @@ constexpr uintptr_t ADDR_PITCH = mh::addr::_G_LLM_FB_PITCH;    // bytes/row
 constexpr uintptr_t ADDR_W     = mh::addr::WindowWidth;
 constexpr uintptr_t ADDR_H     = mh::addr::WindowHeight;
 
-int           g_seq        = 0;
-int           g_burst      = 0; // [capture] frames=N countdown (auto-grab the first N frames)
-int           g_every      = 0; // [capture] every=K -- grab 1 frame per K presented (0 = off)
-long          g_framecount = 0;
-bool          g_prev_f12   = false; // F12 rising-edge latch
-constexpr int CAP_MAX      = 60;    // hard cap on auto-captured files (runaway guard)
+int  g_seq      = 0;
+bool g_prev_f12 = false; // F12 rising-edge latch
 
 char g_clog[MAX_PATH];
 // SES1: PROCESS-scoped. capture_*.bmp and this log are the RIG's channel -- tools/ui_test.py
@@ -134,12 +130,6 @@ extern "C" void MH_Capture_OnPresent(void) {
     bool f12  = (GetAsyncKeyState(VK_F12) & 0x8000) != 0;
     if (f12 && !g_prev_f12) fire = true; // rising edge -> one grab
     g_prev_f12 = f12;
-    if (g_burst > 0) {
-        fire = true;
-        --g_burst;
-    }
-    if (g_every > 0 && (g_framecount % g_every) == 0 && g_seq < CAP_MAX) fire = true;
-    ++g_framecount;
     if (fire) capture_frame(nullptr);
 }
 
@@ -149,16 +139,6 @@ extern "C" void MH_Capture_Shot(const char *name) { capture_frame(name); }
 
 extern "C" int MH_Capture_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
-    g_burst = GetPrivateProfileIntA("capture", "frames", 0, ini); // N>0 -> auto-grab first N frames
-    g_every = GetPrivateProfileIntA("capture", "every", 0, ini);  // K>0 -> grab 1 frame per K presented
-    cap_log("; capture enabled (F12=grab, [capture] frames=%d every=%d) -- via the lockstep present hook",
-            g_burst, g_every);
+    cap_log("; capture enabled (F12=grab) -- via the lockstep present hook");
     return 1;
 }

@@ -297,7 +297,7 @@ local-immediately and on arrival, never scheduled; what makes it safe is that a 
 `PEER_HORIZON` freezes, `llm_net_lockstep_commit_horizon` (`0x49c189`) mins over it, and
 `llm_strat_time_tick` clamps the sim clock to the result — so every peer is *parked at the dead peer's
 last horizon* when the leader-gated drop fires, with a receiver-side fail-stop on horizon mismatch.
-The coupling is therefore latent in retail. **Our injected `graceful_drop` default removes that
+The coupling is therefore latent in retail. **Our injected `graceful_drop` fast-drop (always on) removes that
 precondition** by firing the same function on transport-death instead of while parked (MP D5). This is
 why RI-LOCKSTEP must turn peer-drop into an ordered order rather than a direct write: the current
 safety is emergent and easy to break from outside.

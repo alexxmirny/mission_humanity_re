@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h> // memcpy (tev_ms)
 #include <stdlib.h> // strtoul ([trace] funcs= parse)
@@ -76,12 +77,12 @@ int           g_tev_flushed         = 0;     // events written to file since the
 bool          g_tev_overflow        = false; // buffer filled between drains -> events WERE dropped
 bool          g_tev_overflow_logged = false; // one-shot marker so truncation is never silent again
 bool          g_tev_hdr_done        = false; // LOG1: the column header is in the CURRENT file (was: handle open)
-// File-size cap ([trace] temporal_max_mb). At the cap the log ROTATES to mh_temporal.prev.log rather
+// File-size cap (64 MB; the `[trace] temporal_max_mb` knob is retired). At the cap the log ROTATES to mh_temporal.prev.log rather
 // than stopping: for a post-mortem it is the tail (what happened just before the freeze/desync) that
 // matters, and rotation bounds disk at 2x the cap however long the session runs.
-long long g_tev_bytes     = 0;     // bytes written to the CURRENT file
-long long g_tev_max_bytes = 0;     // 0 = uncapped (temporal_configure sets it)
-bool      g_temporal_sp   = false; // [trace] temporal_sp -- also record outside SESSION_MODE 3
+long long g_tev_bytes     = 0;                  // bytes written to the CURRENT file
+long long g_tev_max_bytes = 64LL * 1024 * 1024; // the cap in bytes
+bool      g_temporal_sp   = false;              // [trace] temporal_sp -- also record outside SESSION_MODE 3
 
 inline long tev_ms(uintptr_t a) {
     double d;
@@ -285,68 +286,6 @@ __declspec(naked) void savegame_err_detour() {
     }
 }
 
-// GAME_MODE transition logger (diagnostic): a DR0 hardware write-breakpoint on _G_LLM_GAME_MODE +
-// a vectored exception handler that logs the writing instruction (EIP) + new value + clock every time
-// the game changes the frame mode. Finds the pump-path mode-flip that enters the 2 s freeze without
-// reading the 774-line dispatch. Observe-only -> determinism-safe. Gated by mh_net.ini log_gamemode.
-int   g_gm_log   = 0;     // 1 = arm the GAME_MODE write logger
-bool  g_gm_armed = false; // LOG1: was an open handle; the sink owns the file now
-char  g_gm_path[MAX_PATH];
-PVOID g_gm_veh = nullptr;
-
-// Vectored handler for the DR0 write-breakpoint on _G_LLM_GAME_MODE. A data breakpoint traps AFTER the
-// store, so *ADDR_GAME_MODE already holds the new value and ContextRecord->Eip is the instruction just
-// PAST the writer (look up Eip-<insn> in Ghidra). Logs only while SESSION_MODE==3 (the live lockstep sim)
-// to skip boot/menu churn. Must not throw; keeps other exceptions flowing (CONTINUE_SEARCH).
-LONG CALLBACK gamemode_veh(EXCEPTION_POINTERS *ep) {
-    if (ep->ExceptionRecord->ExceptionCode != (DWORD)EXCEPTION_SINGLE_STEP) return EXCEPTION_CONTINUE_SEARCH;
-    CONTEXT *c = ep->ContextRecord;
-    if ((c->Dr6 & 0x1) == 0) return EXCEPTION_CONTINUE_SEARCH; // not our DR0 hit
-    c->Dr6 = 0;                                                // acknowledge
-    if (g_gm_armed && *(volatile uint8_t *)ADDR_SESSION_MODE == 3) {
-        char line[128];
-        int  n = wsprintfA(line, "%lu mode=%d eip=%08X clk_ms=%ld\n",
-                           GetTickCount(), (int)*(volatile uint8_t *)ADDR_GAME_MODE,
-                           (unsigned)c->Eip, ms_of(ADDR_GAME_CLOCK));
-        mh_logq_write(g_gm_path, line, n); // LOG1: enqueue only -- this runs in a vectored handler
-    }
-    return EXCEPTION_CONTINUE_EXECUTION;
-}
-
-// Arm the logger from a helper thread: register the VEH, then suspend the main (frame) thread and set
-// DR0 = &_G_LLM_GAME_MODE with DR7 = slot-0 1-byte write breakpoint (0x00010001). Runs off the main
-// thread so we can SetThreadContext on it. One-shot.
-DWORD WINAPI gamemode_arm_thread(LPVOID) {
-    if (g_gm_path[0] == '\0') {
-        seam_log("; gamemode logger: cannot open log\n");
-        return 0;
-    }
-    const char *hdr = "# wall_ms mode eip clk_ms  (writer instr is just BEFORE eip)\n";
-    mh_logq_puts(g_gm_path, hdr);
-    g_gm_armed = true;
-    g_gm_veh   = AddVectoredExceptionHandler(1, gamemode_veh);
-    HANDLE th  = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, g_main_tid);
-    if (!th) {
-        seam_log("; gamemode logger FAILED (OpenThread)\n");
-        return 0;
-    }
-    SuspendThread(th);
-    CONTEXT c;
-    memset(&c, 0, sizeof(c));
-    c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-    if (GetThreadContext(th, &c)) {
-        c.Dr0          = ADDR_GAME_MODE;
-        c.Dr6          = 0;
-        c.Dr7          = 0x00010001; // L0 enable (bit0) + slot0 R/W=01 write, LEN=00 1 byte (bit16)
-        c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        SetThreadContext(th, &c);
-    }
-    ResumeThread(th);
-    CloseHandle(th);
-    seam_log("; gamemode logger armed (DR0 write-bp on _G_LLM_GAME_MODE -> mh_gamemode.log)\n");
-    return 0;
-}
-
 } // namespace
 
 // ==== temporal trace (public: called from the present/time_tick detours + harness sim_step) =======
@@ -357,12 +296,13 @@ void temporal_capture(int id) {
     // SESSION_MODE 2 it armed, logged `present hook armed: ... temporal=1`, wrote its header and then
     // emitted nothing -- so an empty trace and a quiet one looked identical, and a single-player
     // investigation could not use the one instrument built for exactly that question. [trace]
-    // temporal_sp=1 opens it to SP; default 0, so no archived run's behaviour changes.
+    // temporal_sp=1 opens it to SP (the debug zip sets it, tools/release_package.py DEBUG_KEYS);
+    // default 0, so no archived run's behaviour changes.
     // Expect only 4 of the 8 event ids in SP: PRESENT, TIMETICK, SIMTICK, SIMSTEP. FRAME/PUMP/COMMIT/
     // SENDEXT come from install_trace_hooks ([trace] funcs=) or are lockstep-only by construction, so a
     // zero there is "not applicable", not a finding.
-    // VOLUME: SP lanes reach several thousand strategic fps, so this is ~400 KB/s -- set
-    // temporal_max_mb explicitly for a long run or it rotates and leaves only the tail.
+    // VOLUME: SP lanes reach several thousand strategic fps, so this is ~400 KB/s, and the 64 MB cap
+    // rotates and leaves only the tail.
     if (*(const uint8_t *)ADDR_SESSION_MODE != 3 && !g_temporal_sp) return;
     if (GetCurrentThreadId() != g_main_tid) return; // main-thread only -> no lock needed
     if (g_tev_n >= TEV_MAX) {
@@ -464,14 +404,12 @@ int temporal_configure() {
     // on: the staging buffer is drained + recycled on every present, so run LENGTH is not a limit
     // (only a >TEV_MAX burst between two presents drops events, and that is logged). What IS
     // unbounded is the FILE -- ~40 KB/s, i.e. >100 MB/hour -- so the writer rotates at
-    // temporal_max_mb (below) and a session can never fill a disk.
-    int temporal  = GetPrivateProfileIntA("trace", "temporal", SHIP_TEMPORAL_LEVEL, g_ini);
-    g_temporal_sp = GetPrivateProfileIntA("trace", "temporal_sp", 0, g_ini) != 0;
+    // the 64 MB cap (g_tev_max_bytes) and a session can never fill a disk.
+    int temporal  = mh_ini_get_int("trace", "temporal", SHIP_TEMPORAL_LEVEL, g_ini);
+    g_temporal_sp = mh_ini_get_int("trace", "temporal_sp", 0, g_ini) != 0;
     // Report it, because "armed" and "recording" were indistinguishable before: with the mode gate
     // shut, the trace logged `temporal=1`, created the file and wrote its header, and emitted nothing.
     if (temporal && g_temporal_sp) seam_log("; [trace] temporal_sp=1 -- recording OUTSIDE SESSION_MODE 3\n");
-    // SES2: same MB->bytes derivation (and the same "0 = uncapped") as mh_net.log's [net] log_max_mb.
-    g_tev_max_bytes = mh_log_cap_bytes(g_ini, "trace", "temporal_max_mb", 64);
     if (temporal) {
         QueryPerformanceFrequency(&g_qpc_freq);
         // The path itself is (re)composed by temporal_flush's mh_run_path -- SES1 made it per session.
@@ -675,32 +613,6 @@ void install_exit_witness() {
                           "A silent ExitProcess in this run would leave no trace");
 }
 
-// GAME_MODE DR0 logger config: read the ini gate + build the mh_gamemode.log path (from MH_Seam_Init;
-// g_main_tid is captured there). The arming itself is lazy -- see gm_logger_lazy_arm below.
-void gm_logger_configure() {
-    g_gm_log = GetPrivateProfileIntA("net", "log_gamemode", 0, g_ini);
-    if (g_gm_log) {
-        // SES1: PROCESS-scoped, and this is the one stream where that is a safety call rather than a
-        // classification. Its writer is a VECTORED EXCEPTION HANDLER on a DR0 data breakpoint -- it
-        // runs inside the trap, on the frame thread, with a handle opened once at arm. Swapping that
-        // handle at a session boundary would put a CreateFile/CloseHandle pair inside an exception
-        // path for a debug knob that ships OFF (`[net] log_gamemode=0`). The lines carry clk_ms, and
-        // the session's own logs carry the same clock, so correlating across the two costs nothing.
-        unsigned long gen = 0;
-        mh_proc_path(g_gm_path, MAX_PATH, "%smh_gamemode.log", &gen);
-    }
-}
-
-// Arm from a helper thread (needs to SetThreadContext on the main thread). Called from net_seams'
-// lazy_start (off loader-lock). One-shot; no-op unless [net] log_gamemode=1 and the tid is captured.
-void gm_logger_lazy_arm() {
-    static bool gm_armed = false;
-    if (g_gm_log && g_main_tid && !gm_armed) {
-        gm_armed = true;
-        CloseHandle(CreateThread(nullptr, 0, gamemode_arm_thread, nullptr, 0, nullptr));
-    }
-}
-
 // ==== function-entry tracer (public: install from MH_Seam_Init, dump from the lobby dispatch) ======
 // Parse [trace] funcs=0xVA,0xVA,... and install a run-before hook on each (up to 16). PROLOGUE-guarded.
 void install_trace_hooks() {
@@ -711,7 +623,7 @@ void install_trace_hooks() {
     // a `funcs=0x401000;0x402000` list rather than clean a comment off it. The documented (example
     // ini) form is comma-separated, but the parser already tolerates `;` as an equivalent separator
     // and this is the one key in the audited roster where that is deliberate, not an oversight.
-    GetPrivateProfileStringA("trace", "funcs", "", list, sizeof(list), g_ini);
+    mh_ini_get_str("trace", "funcs", "", list, sizeof(list), g_ini);
     if (!list[0]) return;
     trace_log("; ==== function-entry trace armed ====\n"); // composes g_trace_path (SES1: per session)
     char *ctx = nullptr;
@@ -813,7 +725,7 @@ extern "C" void MH_Seam_TraceDump(const char *when) {
 // into a mapped image right after a CALL encoding) are listed too, as module+offset. A second sample is
 // taken at 3x the threshold; a "frozen main thread ended" line closes the freeze.
 //
-// FOCUS. [net] focus_log=1 (default) hangs a WH_CALLWNDPROC hook on the main thread and logs
+// FOCUS. The focus tap (always on; the `focus_log` knob is retired) hangs a WH_CALLWNDPROC hook on the main thread and logs
 // WM_ACTIVATE / WM_ACTIVATEAPP / minimise-restore (WM_SIZE type changes, WM_SYSCOMMAND, WM_SHOWWINDOW) /
 // WM_SETFOCUS / WM_KILLFOCUS as the window proc receives them -- independent of any frame being drawn
 // and of the video backend (the backend's own subclass only exists for the owned d3d11 path).
@@ -826,7 +738,6 @@ volatile DWORD g_wd_beat_tick = 0; // GetTickCount of the last completed present
 volatile LONG  g_wd_beat_n    = 0;
 int            g_wd_ms        = 0;
 int            g_wd_inject_ms = 0;
-int            g_wd_focus     = 1;
 bool           g_wd_started   = false;
 HHOOK          g_wd_hook      = nullptr;
 HWND           g_wd_hwnd      = nullptr;
@@ -1035,7 +946,7 @@ DWORD WINAPI wd_thread(LPVOID) {
         seam_log("; [freeze] frame watchdog NOT armed (OpenThread on the main thread failed)\n");
         return 0;
     }
-    if (g_wd_focus) {
+    {
         // A thread hook whose proc lives in a DLL needs that DLL's module handle.
         HMODULE self = nullptr;
         GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -1129,10 +1040,8 @@ void frame_watchdog_beat() {
 // From lazy_start (off the loader lock), after the transport is up.
 void frame_watchdog_start() {
     if (g_wd_started || !g_main_tid) return;
-    g_wd_ms        = GetPrivateProfileIntA("net", "frame_watchdog_ms", SHIP_FRAME_WATCHDOG_MS, g_ini);
-    g_wd_inject_ms = GetPrivateProfileIntA("net", "frame_watchdog_inject_ms", 0, g_ini);
-    g_wd_focus     = GetPrivateProfileIntA("net", "focus_log", 1, g_ini);
-    if (g_wd_ms <= 0 && !g_wd_focus) return;
+    g_wd_ms        = mh_ini_get_int("net", "frame_watchdog_ms", SHIP_FRAME_WATCHDOG_MS, g_ini);
+    g_wd_inject_ms = mh_ini_get_int("net", "frame_watchdog_inject_ms", 0, g_ini);
     g_wd_beat_tick = GetTickCount();
     g_wd_started   = true;
     HANDLE t       = CreateThread(nullptr, 0, wd_thread, nullptr, 0, nullptr);

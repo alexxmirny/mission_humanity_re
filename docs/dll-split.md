@@ -799,10 +799,9 @@ correct answer"). So:
   **guarded** (it has an honest spine-free answer: `rng_trace_set_step`, the order-count ledger note,
   the step-1 inbound census — which keeps check_arm_order's end-marker prefix and says `n/a, no
   libmh` —, the clause-6 rebind yield — `set_armed` would trap, and there are no rebind rows to
-  yield —, `pin_strat_seed`'s libmh seed push, `replay_suppress_enqueue`'s libmh sink gate, rdump's
-  RNGD/NOTE flush, a UI journal's order records) or its `[harness]` key is **refused by name**
+  yield —, `pin_strat_seed`'s libmh seed push, `replay_suppress_enqueue`'s libmh sink gate, a UI journal's order records) or its `[harness]` key is **refused by name**
   (`mh_harness/config1.h` `SPINE_ONLY_KEYS`: the boot/world snapshot, save/load, tactical
-  synth/journal, `skip_pace_hook`, `rng_trace`, `skip_input_update` and `pin_menu_clock` keys) — in
+  synth/journal and `pin_menu_clock` keys; the `skip_pace_hook`, `rng_trace` and `skip_input_update` keys were retired 2026-10-06) — in
   mh_harness.log, OutputDebugString and stderr, and the key is switched off while the hash keeps
   running. Not `mh_harness_refused.log`: that file's existence means "not instrumented".
 * **the refusal above survives, narrowed**: with no libmh.dll AND an mh.dll that does not export the

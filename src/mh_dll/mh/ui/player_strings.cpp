@@ -227,6 +227,25 @@ void strings_load(const char *exe_dir, const char *id, const char *drop_key) {
 }
 
 int tr_refusal_reason(const char *ascii, wchar_t *out, int cap, bool *matched) {
+    // RL11: "build <host>/<yours>" -- two release versions (ASCII, no '/'), shown as the REFUSE_BUILD row.
+    // Parsed by hand: localize()'s matcher knows %u only.
+    if (ascii && out && cap > 0 && strncmp(ascii, "build ", 6) == 0) {
+        const char *slash = strchr(ascii + 6, '/');
+        if (slash && slash > ascii + 6 && slash[1]) {
+            wchar_t host[24], you[24];
+            int     n = 0;
+            for (const char *p = ascii + 6; p < slash && n < 23; ++p) host[n++] = (wchar_t)(unsigned char)*p;
+            host[n] = 0;
+            n       = 0;
+            for (const char *p = slash + 1; *p && n < 23; ++p) you[n++] = (wchar_t)(unsigned char)*p;
+            you[n] = 0;
+            wchar_t buf[1100];
+            wsprintfW(buf, tr(Str::REFUSE_BUILD), host, you);
+            lstrcpynW(out, buf, cap);
+            if (matched) *matched = true;
+            return lstrlenW(out);
+        }
+    }
     static const Str ids[] = {Str::REFUSE_OLD_CLIENT_CP, Str::REFUSE_OLD_HOST_CP, Str::REFUSE_CODEPAGE,
                               Str::REFUSE_NEWER_PROTOCOL, Str::REFUSE_OLDER_PROTOCOL, Str::REFUSE_MALFORMED,
                               Str::REFUSE_NO_MATCH_ID, Str::REFUSE_NEWER_THAN_HOST, Str::REFUSE_NOT_OUR_LOBBY,

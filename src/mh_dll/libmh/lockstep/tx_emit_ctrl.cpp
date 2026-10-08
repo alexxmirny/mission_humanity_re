@@ -178,15 +178,16 @@ void lockstep_broadcast_resync_state(const emit_state &es, const ctrl_emit_calls
     // either consumer -- and that is the entire point of doing it at this function rather than at its
     // two tails: the exec_time is used TWICE below (the CTL_RESYNC_BEGIN wire payload and the local
     // mirror order), and clamping one without the other would put the peers further apart than the
-    // bug does. OFF is the faithful original, which passes the caller's literal 2.0 straight through.
+    // bug does. (The original passes the caller's literal 2.0 straight through; the `resync_order_horizon`
+    // knob that used to switch this clamp off is retired -- it is unconditional.)
     //
     // D24 changed WHAT it clamps to, not where. The bare horizon is the barrier the peers are already
     // sitting at, so an order stamped there is a race the local mirror always wins; the barrier is one
     // step past it. The argument, including why reordering force_resync is not the fix, is at
     // mh::fix::resync_order_barrier (fix/resync_clamp.h).
-    if (fx.resync_order_horizon)
-        exec_time = detail::resync_order_exec_time(
-            exec_time, detail::resync_order_barrier(*es.horizon, *es.game_clock, *es.step_size));
+    (void)fx;
+    exec_time = detail::resync_order_exec_time(
+        exec_time, detail::resync_order_barrier(*es.horizon, *es.game_clock, *es.step_size));
 
     mh::net::packet_buffer pb = es.packet;
     mh::net::ctrl_record   rec{};

@@ -11,8 +11,8 @@
 # without the fix. The indicator sits in the top-right corner, away from the start-position fog.
 #
 # THE ASSERTION IS THE post_check (tools/check_overlay_residue.py): n1_shown has the indicator's
-# colour inside its rect, n2_hidden has none. The planted arm (gx1_netind_nostamp, [hud]
-# net_indicator_stamp=0) must go RED on the same frames.
+# colour inside its rect, n2_hidden has none. (The planted no-stamp arm was retired
+# with its [hud] net_indicator_stamp knob.)
 #
 # Pair with mp_client_gx1_netind.txt.
 

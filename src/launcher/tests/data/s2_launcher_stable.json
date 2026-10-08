@@ -1,0 +1,10 @@
+{
+  "schema": 2,
+  "kind": "launcher",
+  "channel": "stable",
+  "version": "0.1.5",
+  "issued_at": "2026-09-25T00:00:00Z",
+  "url": "http://127.0.0.1:8099/mh_launcher-0.1.5.exe",
+  "sha256": "f34a907cd8db4aea5634e082e3e42df18b8f0cfd298584125c28d94aec2917e6",
+  "size": 1234
+}

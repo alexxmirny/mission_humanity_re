@@ -38,6 +38,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -45,6 +46,7 @@
 #include "include/mh_net_export.h"     // MH_Net_LocalPlayerId (sim.power's per-player index)
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown (the `hotkey` verb's chord, 2026-09-20)
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -869,21 +871,16 @@ extern "C" void MH_Overlay_OnPresent(void) {
 
 extern "C" int MH_Overlay_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
     char probe[8];
     if (GetPrivateProfileSectionA("debug", probe, sizeof(probe), ini) == 0) return 0; // no section -> no overlay
     g_installed = true;
     QueryPerformanceFrequency(&g_qpc_freq); // perf family; 0 freq simply disables perf.* sampling
 
-    g_visible = GetPrivateProfileIntA("debug", "overlay", 0, ini) != 0;
-    g_box     = GetPrivateProfileIntA("debug", "box", 1, ini) != 0;
+    g_visible = mh_ini_get_int("debug", "overlay", 0, ini) != 0;
+    g_box     = mh_ini_get_int("debug", "box", 1, ini) != 0;
 
     char buf[128];
     mh::config::read_ini_string("debug", "modes", "", buf, sizeof(buf), ini); // TL-HARN4

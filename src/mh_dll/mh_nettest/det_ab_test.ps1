@@ -30,6 +30,14 @@ $seed = Join-Path $Dir 'mh_harness_seed.bin'
 $exe  = Join-Path $Dir 'mh.launch.exe'
 $gargs = @('--load', $Save, '--skip-intro')
 
+# RL2: every key in the [harness] block is a dev key, and the shipped mh.dll ignores dev keys (logging
+# `IGNORED dev key ...`) unless the ini carries `[dev] unlock=1`. This install's hand-made ini predates
+# the gate, so add the unlock once, at the top, if it is not there.
+if (-not (Select-String -Path $ini -Pattern '^\s*unlock\s*=\s*1' -Quiet)) {
+    $body = Get-Content $ini
+    (@('[dev]', 'unlock=1', '') + $body) | Set-Content $ini -Encoding ASCII
+}
+
 function RunPass([int]$mode, [string]$tag) {
     (Get-Content $ini) -replace '^seed_mode=.*', "seed_mode=$mode" -replace '^stop_step=.*', "stop_step=$STOP" |
         Set-Content $ini -Encoding ASCII

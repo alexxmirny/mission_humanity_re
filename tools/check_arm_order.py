@@ -174,6 +174,15 @@ BULK_RES = [
     # needs to be readable. Its presence is gated where it can be: tools/release_package.py reads
     # the stamp back out of the built DLLs' VERSIONINFO and refuses a mislabelled package.
     re.compile(r"^;\s*\[build\]\s+mh\s"),
+    # dist RL2/RL6: the ini ship gate's start banner (mh_common/include/mh_ini_gate.h), written right after
+    # build_paths(): `; DEV UNLOCKED ([dev] unlock=1): ...` (every rig run, never a ship run) and
+    # `; [log] level=<lvl> effective: ...`, plus the per-key `; IGNORED dev key [s] k=v` / `; FIXED [s] k
+    # (...)` lines a ship-ini run logs. Folded out, not baselined: whether they appear depends on the ini
+    # (rig vs ship), which is configuration, not arm order -- and a baseline recorded on a rig lane must
+    # not red on a ship run or the reverse.
+    re.compile(r"^;\s*DEV UNLOCKED\b"),
+    re.compile(r"^;\s*\[log\]\s+level="),
+    re.compile(r"^;\s*(IGNORED dev key|FIXED)\s+\["),
 ]
 
 

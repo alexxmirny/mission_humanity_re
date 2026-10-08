@@ -833,7 +833,7 @@ def run_lane(name, dump_out):
     # be configured a certain way and is not has not been configured, whatever the writer intended.
     ini = os.path.join(LANE, "mh_net.ini")
     text = (
-        "[config]\nmode=original\n\n[net]\nenable=0\n\n[patch]\ninmem=1\nmanifest=%s\ndump=%s\ndump_exit=1\n"
+        "[dev]\nunlock=1\n\n[config]\nmode=original\n\n[net]\nenable=0\n\n[patch]\ninmem=1\nmanifest=%s\ndump=%s\ndump_exit=1\n"
         % (
             name,
             dump_out.replace("/", "\\"),

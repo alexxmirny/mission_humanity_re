@@ -15,6 +15,11 @@
 # more is claimed. Publishing is therefore a decision a human makes by pushing a tag, not something
 # a green pipeline earns on its own.
 #
+# SCHEMA 2 / TAG SPLIT (RL8, v0.2.0). `v*` publishes the GAME: the zips, and the signed
+# channels/latest/game.json on Pages. The launcher is a separate `launcher-v*` tag with its own
+# workflow (launcher-release.yml, channels/latest/launcher.json); promotion to `stable` is
+# promote.yml. A joint release is two tags, launcher first. docs/release.md sections 6-7.
+#
 # THE TAG CONVENTION, which this file depends on rather than merely documents:
 #
 #   * `vMAJOR.MINOR.PATCH` or `vMAJOR.MINOR.PATCH-rcN` (also -beta, -alpha). The leading `v` is
@@ -286,11 +291,10 @@ jobs:
     # workflow artifact -- that is the dry run, and it publishes nothing.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-2022
-    # 15 minutes for the game-zips publish itself, plus dist LA3's manifest steps: up to 20 minutes
-    # polling for launcher-release.yml's exe (see this job's own comment on that step) plus a couple
-    # of minutes to sign and upload. See launcher-release.yml's header for why the two workflows
-    # poll for each other instead of a tighter dependency.
-    timeout-minutes: 40
+    # 15 minutes for the game-zips publish, plus the RL8 game.json steps (a Pages fetch for the
+    # min_launcher guard, sign, verify, upload). Since the tag split it no longer waits for a
+    # launcher exe: a launcher is its own `launcher-v*` tag (launcher-release.yml).
+    timeout-minutes: 25
     permissions:
       # THE ONLY WRITE SCOPE IN THIS FILE, on the job that does nothing but call `gh` (create/upload
       # the release) and `python tools/gen_update_manifest.py` (sign the manifest -- pure stdlib, no
@@ -364,34 +368,27 @@ jobs:
           Write-Host "published $tag"
 
       # ---------------------------------------------------------------------------------------
-      # dist LA3: the manifest .github/workflows/launcher-release.yml's launcher reads at update
-      # time. Lives HERE, not in launcher-release.yml, because this job already holds the one thing
-      # the manifest cannot be built without -- the game zips' SHA256SUMS, freshly re-verified by
-      # `dist/` above -- and dist LA3's own tracker row says so verbatim ("the manifest generation
-      # step added to release.yml"). See launcher-release.yml's header for the ordering problem this
-      # creates (that workflow finishes in minutes, this job's own build-and-gate takes 30-45) and
-      # why each file polls for the ONE thing it is missing rather than the two being made to
-      # depend on each other more tightly than that.
+      # RL8 (schema 2): the GAME manifest. Since v0.2.0 the launcher and the game are separate
+      # signed files per channel (docs/release.md section 6), and a `v*` tag publishes ONLY the game
+      # half: channels/latest/game.json (+ .minisig). There is no root manifest.json any more -- the
+      # root file is the frozen schema-1 bridge for rc7.1 launchers (bridge-resign.yml, RL10). The
+      # launcher half comes from a `launcher-v*` tag (launcher-release.yml); a joint release is two
+      # tags, launcher first, and the min_launcher guard below is what turns "game before launcher"
+      # into a red job instead of a blocked player.
       - name: require the launcher signing secret, or fail rather than publish unsigned
         shell: pwsh
         env:
           MH_LAUNCHER_MINISIGN_KEY: ${{ secrets.MH_LAUNCHER_MINISIGN_KEY }}
         run: |
-          # THE REFUSAL IS HERE, BEFORE ANYTHING ELSE IN THIS BLOCK RUNS -- tools/gen_update_manifest.py
-          # would itself refuse an unreadable --secret-key path (Refusal, exit 2), but that refusal
-          # reads like a path typo three steps from now. Naming the actual cause -- the repository
-          # secret is unset -- here is what makes "a tag without the signing secret fails the job
-          # rather than publishing an unsigned manifest" (dist LA3's done_when) the FIRST thing a
-          # failed run says, not something read out of a stack trace.
-          # $env:MH_LAUNCHER_MINISIGN_KEY (PowerShell's own env accessor), NOT
-          # ${{ env.MH_LAUNCHER_MINISIGN_KEY }} (a GitHub Actions expression substituted into the
-          # script TEXT before pwsh ever parses it) -- a secret's content is exactly the kind of
-          # value that expression substitution is unsafe for (a stray `"` or backtick in it would
-          # corrupt the generated script rather than merely fail this check), and GitHub's own log
-          # masking is keyed on the runtime value regardless of which accessor reads it.
+          # THE REFUSAL IS HERE, BEFORE ANYTHING ELSE IN THIS BLOCK RUNS: naming the actual cause
+          # (the repository secret is unset) is what makes "a tag without the signing secret fails
+          # the job rather than publishing unsigned" the FIRST thing a failed run says.
+          # $env:MH_LAUNCHER_MINISIGN_KEY (PowerShell's own accessor), NOT a GitHub expression: that
+          # is substituted into the script TEXT before pwsh parses it, and a secret is
+          # exactly the value that substitution is unsafe for.
           if ($env:MH_LAUNCHER_MINISIGN_KEY -eq "") {
             throw "MH_LAUNCHER_MINISIGN_KEY repository secret is unset -- refusing to publish an " +
-                  "unsigned manifest.json. Generate a release keypair with " +
+                  "unsigned manifest. Generate a release keypair with " +
                   "'rsign generate --unencrypted' (src/launcher/src/update.rs PUBLIC_KEY documents " +
                   "the exact recipe), set the secret key's file content as this secret " +
                   "(Settings -> Secrets and variables -> Actions -> Secrets), and re-run."
@@ -400,124 +397,108 @@ jobs:
           Set-Content -Path tmp/launcher_minisign.key -Value $env:MH_LAUNCHER_MINISIGN_KEY -Encoding utf8
           Write-Host "signing secret present ($($env:MH_LAUNCHER_MINISIGN_KEY.Length) chars)"
 
-      - name: wait for launcher-release.yml to attach the launcher exe to this tag
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # SHORT poll, not the 70-minute one launcher-release.yml runs: by the time THIS job starts,
-          # build-and-gate has already spent 30-45 minutes, and the launcher build (a few minutes)
-          # has near-certainly finished and is itself sitting in ITS OWN poll for this release to
-          # exist -- which this job's earlier "publish" step just satisfied. 20 minutes of margin
-          # covers a slow or queued launcher-release.yml run without this job hanging indefinitely.
-          $tag = "${{ github.ref_name }}"
-          $deadline = (Get-Date).AddMinutes(20)
-          $found = $false
-          while ((Get-Date) -lt $deadline) {
-            $assets = (gh release view $tag --json assets --jq '.assets[].name') 2>$null
-            if ($LASTEXITCODE -eq 0 -and ($assets -split "`n" | Where-Object { $_ -like 'mh_launcher*.exe' })) {
-              $found = $true; break
-            }
-            Write-Host "no mh_launcher*.exe on $tag yet -- waiting (checked $(Get-Date -Format o))"
-            Start-Sleep -Seconds 20
-          }
-          if (-not $found) {
-            throw "no mh_launcher*.exe appeared on $tag within 20 minutes -- check " +
-                  "launcher-release.yml's run for this tag before re-running this job."
-          }
-          New-Item -ItemType Directory -Force dist | Out-Null
-          gh release download $tag --pattern "mh_launcher*.exe" --dir dist --clobber
-          if ($LASTEXITCODE -ne 0) { throw "gh release download exit $LASTEXITCODE" }
-          $exe = Get-ChildItem dist -Filter "mh_launcher*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "downloaded nothing matching mh_launcher*.exe" }
-          "exe_path=$($exe.FullName)" >> $env:GITHUB_ENV
-          "exe_name=$($exe.Name)"     >> $env:GITHUB_ENV
-          Write-Host "downloaded $($exe.Name) ($($exe.Length) B)"
-
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: build and sign manifest.json (dist LA2's schema, the manifest the launcher reads)
+      - name: fetch the SERVED latest launcher.json for the min_launcher guard
+        id: guard
+        shell: pwsh
+        env:
+          MH_UPDATE_BASE_URL: ${{ vars.MH_UPDATE_BASE_URL }}
+        run: |
+          # The guard (gen_update_manifest --channel-launcher) refuses a game whose min_launcher is
+          # newer than the launcher players on this channel are served: that release could not be
+          # installed by anyone. It checks the SERVED file (verified against update.rs PUBLIC_KEY by
+          # the tool), so a launcher tag that is still building does not count -- release it first.
+          # No update source (the private rehearsal repo has no Pages) = no guard, said loudly.
+          New-Item -ItemType Directory -Force tmp/served | Out-Null
+          $base = "$env:MH_UPDATE_BASE_URL".TrimEnd('/')
+          if ($base -eq "") {
+            Write-Host "::warning::MH_UPDATE_BASE_URL is unset -- the min_launcher guard is SKIPPED (rehearsal repo)"
+            "have_guard=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          foreach ($f in @("launcher.json", "launcher.json.minisig")) {
+            curl.exe -fsS -H "Cache-Control: no-cache" "$base/channels/latest/${f}?run=${{ github.run_id }}" -o "tmp/served/$f"
+            if ($LASTEXITCODE -ne 0) {
+              throw "could not fetch $base/channels/latest/$f -- no latest launcher is published yet. " +
+                    "Cut the launcher first (tag launcher-vX.Y.Z), then re-run this job."
+            }
+          }
+          "have_guard=true" >> $env:GITHUB_OUTPUT
+
+      - name: build and sign channels/latest/game.json
         shell: pwsh
         env:
           # dist LA6: THE RELAY THE LAUNCHER PROVISIONS, injected at signing time and nowhere else.
           # Both land INSIDE the signed body as `relay: {addr, key}` (tools/gen_update_manifest.py
           # reads these two names from its environment; neither is a literal in this tree --
           # lint_machine_paths refuses a public host, and machine_config.RELAY_KEY says why the key
-          # stays out). The address is a repository VARIABLE (it is an address, and every player
-          # reads it out of the published manifest anyway); the key is a repository SECRET so that
+          # stays out). The address is a repository VARIABLE; the key is a repository SECRET so that
           # GitHub masks it in this job's log -- it is public once shipped (user decision 2026-09-19:
-          # it keeps scanners off the relay, not players), but a CI log is a wider audience than a
-          # manifest fetch. BOTH UNSET -> the manifest simply has no relay field and a launcher leaves
-          # the player's mh_net.ini alone; that is a valid manifest, not a failure (the private
-          # rehearsal repo has neither). ONE of the two set -> the tool REFUSES and this step fails,
-          # because an address without its key is a relay nobody can authenticate to.
+          # it keeps scanners off the relay, not players). BOTH UNSET -> no relay field, a launcher
+          # leaves the player's mh_net.ini alone (a valid manifest). ONE of the two set -> the tool
+          # REFUSES and this step fails.
           MH_RELAY_ADDR: ${{ vars.MH_RELAY_ADDR }}
           MH_RELAY_KEY: ${{ secrets.MH_RELAY_KEY }}
         run: |
           # ASSET-BASE-URL is the RELEASE's own download URL, not the Pages URL -- Pages carries only
-          # manifest.json + its signature (see the publish-pages job below); every byte the manifest
-          # names is fetched from the release CDN, per src/launcher/src/update.rs's own module header
-          # ("WHY A SIGNED FILE ON PAGES AND NOT THE GITHUB API"). `github.repository` is an Actions
-          # expression, never a literal in this file, so lint_machine_paths has nothing to catch here.
+          # the signed JSON; every byte it names is fetched from the release CDN.
           $tag = "${{ github.ref_name }}"
           $version = "${{ needs.build-and-gate.outputs.version }}"
           $assetBase = "https://github.com/${{ github.repository }}/releases/download/$tag"
+          $guardArgs = @()
+          if ("${{ steps.guard.outputs.have_guard }}" -eq "true") {
+            $guardArgs = @("--channel-launcher", "tmp/served/launcher.json")
+          }
           python tools/gen_update_manifest.py `
+            --kind game --channel latest `
             --version $version `
             --dist dist `
             --secret-key tmp/launcher_minisign.key `
             --asset-base-url $assetBase `
-            --launcher-exe "$env:exe_path" `
-            --launcher-version $version `
-            --launcher-url "$assetBase/$env:exe_name" `
-            --notes-url "https://github.com/${{ github.repository }}/releases/tag/$tag"
+            --notes-url "https://github.com/${{ github.repository }}/releases/tag/$tag" `
+            --out pages/channels/latest @guardArgs
           if ($LASTEXITCODE -ne 0) { throw "gen_update_manifest exit $LASTEXITCODE" }
-          # THE KEY FILE IS DELETED THE MOMENT SIGNING IS DONE -- it only ever existed on this
-          # runner's disk, inside a job whose logs never print it (the earlier step prints a length,
-          # never the content), and the runner itself is destroyed at the end of the job regardless.
+          # THE KEY FILE IS DELETED THE MOMENT SIGNING IS DONE (the runner is destroyed anyway).
           Remove-Item tmp/launcher_minisign.key -Force
-          # THE MANIFEST IS PRINTED WITH ITS RELAY KEY BLANKED, not relied on being masked: GitHub
-          # masks a secret's exact bytes, and the manifest carries the key normalised to lower case
-          # (gen_update_manifest.check_relay_key), which is not the exact bytes if the secret was
-          # pasted in upper case. The address stays visible -- it is what a reviewer wants to see.
-          Get-Content dist/manifest.json | ForEach-Object {
+          # Printed with the relay key blanked: GitHub masks a secret's exact bytes, and the file
+          # carries the key normalised to lower case.
+          Get-Content pages/channels/latest/game.json | ForEach-Object {
             if ($_ -match '^(\s*"key":\s*)"[^"]*"') { $matches[1] + '"<blanked in this log>"' } else { $_ }
           } | Write-Host
 
-      - name: attach the manifest and its signature to the release
+      - name: verify the signed file against the key compiled into the launcher
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          gh release upload $tag dist/manifest.json dist/manifest.json.minisig --clobber
-          if ($LASTEXITCODE -ne 0) { throw "gh release upload exit $LASTEXITCODE" }
-          Write-Host "attached manifest.json + manifest.json.minisig to $tag"
+          # --verify with no --public-key reads update.rs PUBLIC_KEY: the key players trust, not
+          # the one that happened to sign.
+          python tools/gen_update_manifest.py --verify pages/channels/latest/game.json
+          if ($LASTEXITCODE -ne 0) { throw "the signed game.json does not verify against update.rs PUBLIC_KEY" }
 
       - uses: actions/upload-artifact@v4
         with:
           name: manifest-${{ needs.build-and-gate.outputs.version }}
-          path: |
-            dist/manifest.json
-            dist/manifest.json.minisig
+          path: pages/channels/latest/
           if-no-files-found: error
           retention-days: 14
 
   publish-pages:
-    name: publish manifest.json to the Pages branch
+    name: publish channels/latest/game.json to the Pages branch
     needs: publish
     # BRANCH MODE (dist V021, 2026-09-23; docs/release.md section 7.3). Pages serves a dedicated
-    # orphan branch (`gh-pages`) and this job COMMITS manifest.json + its .minisig to it. It replaced
-    # an actions/deploy-pages job: that action refuses a `legacy` (branch) Pages source, and branch
-    # mode is the better arrangement -- an orphan branch is rewritten by nothing, where `main` is
-    # replaced wholesale by build_public_seed.py on every publish (dead-ends G288).
+    # orphan branch (`gh-pages`) and this job COMMITS channels/latest/game.json + its .minisig to
+    # it. An orphan branch is rewritten by nothing, where `main` is replaced wholesale by
+    # build_public_seed.py on every publish (dead-ends G288).
     # GATED ON A REPOSITORY VARIABLE naming the branch: set MH_PAGES_BRANCH = gh-pages on the
     # PUBLIC repo only (Pages does not exist on a private free-plan repo); unset, the job is SKIPPED
-    # (grey, not red) and the manifest still ships as a release asset.
+    # (grey, not red).
     # ORDER: `publish` has already uploaded every asset the manifest names, so a launcher that reads
-    # this manifest the moment it is served finds its URLs live (assets first, manifest last).
+    # it the moment it is served finds its URLs live (assets first, manifest last).
+    # THREE WORKFLOWS PUSH THIS BRANCH (this one, launcher-release.yml, promote.yml, plus the weekly
+    # bridge-resign.yml) -- different files each, so the push below rebases and retries instead of
+    # taking a lock.
     if: startsWith(github.ref, 'refs/tags/v') && vars.MH_PAGES_BRANCH != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -541,16 +522,23 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch "$PAGES_BRANCH" \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
-          cp new/manifest.json new/manifest.json.minisig site/
+          mkdir -p site/channels/latest
+          cp new/game.json new/game.json.minisig site/channels/latest/
           cd site
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json manifest.json.minisig
+          git add channels/latest/game.json channels/latest/game.json.minisig
           if git diff --cached --quiet; then
-            echo "manifest on $PAGES_BRANCH is already this release's -- nothing to commit"
+            echo "game.json on $PAGES_BRANCH is already this release's -- nothing to commit"
           else
-            git commit -q -m "manifest ${{ needs.publish.outputs.version }} (${GITHUB_REF_NAME})"
-            git push -q origin "HEAD:$PAGES_BRANCH"
+            git commit -q -m "game latest ${{ needs.publish.outputs.version }} (${GITHUB_REF_NAME})"
+            pushed=0
+            for i in 1 2 3 4 5; do
+              if git push -q origin "HEAD:$PAGES_BRANCH"; then pushed=1; break; fi
+              echo "push raced another Pages publisher (try $i) -- rebasing"
+              git pull -q --rebase origin "$PAGES_BRANCH"
+            done
+            [ "$pushed" = 1 ] || { echo "could not push to $PAGES_BRANCH after 5 tries"; exit 1; }
           fi
           echo "PUSHED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
@@ -559,7 +547,7 @@ jobs:
         run: |
           set -euo pipefail
           # Request a build and wait for the one that built OUR commit, then read the site back:
-          # nothing else in the release flow fetches Pages, so a 404 or a stale manifest here is
+          # nothing else in the release flow fetches Pages, so a 404 or a stale file here is
           # invisible to a green pipeline and breaks only the players already in the field.
           gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null
           url="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url)"
@@ -572,13 +560,13 @@ jobs:
             fi
             sleep 10
           done
-          for f in manifest.json manifest.json.minisig; do
+          for f in game.json game.json.minisig; do
             ok=0
             for i in $(seq 1 30); do
-              curl -fsS -H 'Cache-Control: no-cache' "${url%/}/$f?run=${GITHUB_RUN_ID}" -o "served_$f" \
+              curl -fsS -H 'Cache-Control: no-cache' "${url%/}/channels/latest/$f?run=${GITHUB_RUN_ID}" -o "served_$f" \
                 && cmp -s "served_$f" "new/$f" && { ok=1; break; }
               sleep 10
             done
-            [ "$ok" = 1 ] || { echo "served $f != the signed one after 5 min: ${url%/}/$f"; exit 1; }
-            echo "served $f is byte-identical to the signed one"
+            [ "$ok" = 1 ] || { echo "served $f != the signed one after 5 min: ${url%/}/channels/latest/$f"; exit 1; }
+            echo "served channels/latest/$f is byte-identical to the signed one"
           done

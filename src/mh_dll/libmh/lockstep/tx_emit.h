@@ -113,7 +113,7 @@ struct emit_state {
 
     const double *horizon; // _G_LLM_STRAT_LOCKSTEP_HORIZON (0x005d5594) -- read-only, and read by
                            // NOTHING the original does in this module. It is here for the migrated
-                           // `resync_order_horizon` fix (MP D14 / D17): the clamp needs the local
+                           // resync-order clamp (MP D14 / D17): the clamp needs the local
                            // horizon at the one choke point both the wire copy and the local order
                            // record pass through. Same address as engine_state::horizon and
                            // timekeeper_state::horizon.

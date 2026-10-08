@@ -26,8 +26,9 @@
 //
 //    NEXT TO MH.DLL RATHER THAN NEXT TO THE EXE, and the distinction is deliberate even though the
 //    two directories are the same in every deployment we ship. R7: mh::config composes its INI path
-//    from the PROCESS image (GetModuleFileNameA(nullptr)) on purpose, because configuration belongs
-//    to the installation. A sibling MODULE belongs to the BUILD, so it is resolved relative to the
+//    from the config directory (include/mh_config_dir.h -- a function of the PROCESS image, the
+//    environment and the filesystem, RL3) on purpose, because configuration belongs to the
+//    installation and the player. A sibling MODULE belongs to the BUILD, so it is resolved relative to the
 //    build artefact that needs it. One rule each, neither derived from the other.
 //
 // 2. `[net] module=none` IS CHECKED BEFORE THE LOAD, NOT AFTER IT. F3F's key survives the F4 move
@@ -161,7 +162,7 @@ void                    ws2_anchor(void) { g_ws2_anchor = htons(0xF4B0); }
 bool module_declined(void) {
     char dir[MAX_PATH];
     char ini[MAX_PATH];
-    mh::config::detail::exe_dir(dir);
+    mh::config::detail::config_dir(dir);
     wsprintfA(ini, "%smh_net.ini", dir);
 
     char v[32] = {0};
@@ -197,7 +198,7 @@ bool module_declined(void) {
 // F2E's standing rule. Silently falling back to the default on `transport=udo` would produce a run
 // that reports one configuration in every log line the operator reads and plays another -- the
 // failure shape where a knob is believed and does nothing. refuse() writes mh_config_refused.log
-// beside the exe, prints to stderr and OutputDebugString, and terminates: three channels, because
+// in the config directory, prints to stderr and OutputDebugString, and terminates: three channels, because
 // this happens before any logger exists and the refusal's whole job is to be found.
 //
 // Returns the file name to bind, or nullptr on `transport=udp` meaning "the default, say nothing
@@ -209,7 +210,7 @@ bool module_declined(void) {
 const char *transport_file(void) {
     char dir[MAX_PATH];
     char ini[MAX_PATH];
-    mh::config::detail::exe_dir(dir);
+    mh::config::detail::config_dir(dir);
     wsprintfA(ini, "%smh_net.ini", dir);
 
     char v[32] = {0};

@@ -79,6 +79,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -861,7 +862,7 @@ bool arm(const char *ini) {
     static bool done = false;
     if (done) return g_armed;
     done = true;
-    if (GetPrivateProfileIntA("video", "imgui", 0, ini) == 0) return false;
+    if (mh_ini_get_int("video", "imgui", 0, ini) == 0) return false;
     char spec[32];
     mh::config::read_ini_string("video", "imgui_key", "F11", spec, sizeof(spec), ini);
     if (spec[0] && !parse_key(spec, &g_key)) {
@@ -871,7 +872,7 @@ bool arm(const char *ini) {
     }
     if (!spec[0]) lstrcpynA(spec, "F11", sizeof(spec));
     lstrcpynA(g_key_spec, spec, sizeof(g_key_spec));
-    g_open_at_start = GetPrivateProfileIntA("video", "imgui_open_at_start", 0, ini) != 0;
+    g_open_at_start = mh_ini_get_int("video", "imgui_open_at_start", 0, ini) != 0;
     g_armed         = true;
     log("; [imgui] ARMED: Dear ImGui overlay on the d3d11 presenter, toggle=%s (vk 0x%02x%s%s%s)", g_key_spec, g_key.vk,
         g_key.ctrl ? " +ctrl" : "", g_key.alt ? " +alt" : "", g_key.shift ? " +shift" : "");

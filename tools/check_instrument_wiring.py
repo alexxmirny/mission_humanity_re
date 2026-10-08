@@ -153,7 +153,6 @@ CHANNEL_OWNERS = {
     "mh_lockstep.log": ("telemetry", {"mh.dll"}),
     "mh_temporal.log": ("telemetry", {"mh.dll"}),
     "mh_trace.log": ("telemetry", {"mh.dll"}),
-    "mh_gamemode.log": ("telemetry", {"mh.dll"}),
     "mh_launch.log": ("telemetry", {"mh.dll"}),
     # mp:SES7: the per-SESSION streams split out of two process-scoped channels. mh_mtrace.log is the
     # `[input] mouse_trace` rows (mh_uidrive.log keeps a copy only under [uitest], for the rig);

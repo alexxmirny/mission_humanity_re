@@ -177,7 +177,7 @@ inline volatile LONG g_last_dlg_caller = 0;
 // lobby, the session one during a match. The cost is an integer compare; the alternative (composing
 // the path at arm time, as this stack did until SES1) writes three matches into one folder.
 //
-// The DERIVED paths (mh_lockstep / mh_frametime / mh_temporal / mh_trace / mh_gamemode) each own
+// The DERIVED paths (mh_lockstep / mh_frametime / mh_temporal / mh_trace) each own
 // their generation in the TU that writes them, and the ones holding an OPEN HANDLE act on
 // mh_run_path's return value: a rebuilt path means close the handle and let the next write reopen.
 inline unsigned long g_log_gen = 0;
@@ -195,6 +195,8 @@ void mp_session_open(const unsigned char *match_id, int slot, const char *mode, 
 void mp_session_close(const char *reason);
 // SES8: once per present (net_lockstep.cpp on_present) -- opens the single-player session.
 void mp_session_solo_tick();
+// RL15: once per present -- derive the presence state and publish presence.json if it changed.
+void mp_presence_tick();
 
 // mp:U62 (HM-M4) -- the planned handover of the transport hub (net_lockstep.cpp). mp_hub_leave is the common
 // exit of every seam where a hub's PLAYER leaves a match (the ESC-menu quit, the defeat/stats screen, the
@@ -285,8 +287,6 @@ void install_exit_witness();         // D15: run-before witness on utils_abort +
                                      // UNGATED -- every exit this binary takes on its own is silent
                                      // (_exit / ExitProcess: no WER, no game log), which is why four
                                      // hosts could die at once leaving nothing to read.
-void gm_logger_configure();          // read [net] log_gamemode + build the mh_gamemode.log path (from MH_Seam_Init)
-void gm_logger_lazy_arm();           // arm the DR0 write-bp via a helper thread (from lazy_start, off loader-lock)
 // mp:P17 -- main-thread frame watchdog + focus tap (net_diag.cpp). beat: main thread, once per present.
 // start: from lazy_start. [net] frame_watchdog_ms / focus_log / frame_watchdog_inject_ms.
 void frame_watchdog_beat();

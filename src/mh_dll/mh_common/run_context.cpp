@@ -18,15 +18,24 @@
 // A hand launch (no launcher, no variable) behaves as it always has; `net_selftest.exe runctxtest`
 // proves both arms and the fallback.
 //
+// RL3 (2026-10): "<exedir>" above is now "<config dir>" (include/mh_config_dir.h). In portable mode
+// (an `mh_net.ini` beside the exe -- every rig lane, every pre-0.2.0 install) the config dir IS the
+// exe dir, so nothing moved; with no ini there, and no MH_CONFIG_DIR, it is the per-install folder
+// under %LOCALAPPDATA%, which fixes the same UAC-virtualization hole for a HAND launch that LA13
+// closed for the launcher. MH_LOG_ROOT still beats both. The breadcrumb follows the logs root.
+//
 #include <windows.h>
+#include "include/mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include "include/mh_run_context.h"
+#include "include/mh_config_dir.h"
 #include "include/mh_session_dir.h"
 
 namespace {
 
-char          g_exe_dir[MAX_PATH]   = {0}; // "...\"
-char          g_logs_root[MAX_PATH] = {0}; // "<exedir>logs" or MH_LOG_ROOT, NO trailing slash (LA13)
-char          g_bc_dir[MAX_PATH]    = {0}; // where mh_run.txt goes: g_exe_dir, or MH_LOG_ROOT + "\"
+char          g_exe_dir[MAX_PATH]   = {0}; // "...\" -- the INSTALLATION directory (MH_ExeDir)
+char          g_cfg_dir[MAX_PATH]   = {0}; // "...\" -- the CONFIG directory (RL3): ini, key, logs fallback
+char          g_logs_root[MAX_PATH] = {0}; // "<cfgdir>logs" or MH_LOG_ROOT, NO trailing slash (LA13)
+char          g_bc_dir[MAX_PATH]    = {0}; // where mh_run.txt goes: g_cfg_dir, or MH_LOG_ROOT + "\"
 char          g_proc_dir[MAX_PATH]  = {0}; // "...\logs\<dirstamp>_menu_<role>\"  -- the process directory
 char          g_run_dir[MAX_PATH]   = {0}; // the CURRENT directory: g_proc_dir, or the open session's
 char          g_role[16]            = {0};
@@ -52,11 +61,8 @@ bool contains_ci(const char *hay, const char *needle) {
 }
 
 void compute_exe_dir() {
-    GetModuleFileNameA(nullptr, g_exe_dir, MAX_PATH);
-    char *slash = g_exe_dir;
-    for (char *p = g_exe_dir; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0'; // keep trailing backslash
+    lstrcpynA(g_exe_dir, mh::cfgdir::exe_dir(), MAX_PATH);    // keeps the trailing backslash
+    lstrcpynA(g_cfg_dir, mh::cfgdir::config_dir(), MAX_PATH); // RL3: created, trailing backslash
 }
 
 // Role: cmdline verb first (authoritative per peer), then mh_net.ini [net] role, else "solo".
@@ -67,8 +73,8 @@ const char *detect_role() {
         if (contains_ci(cl, "--mp-join")) return "client";
     }
     char ini[MAX_PATH], role[32] = {0};
-    wsprintfA(ini, "%smh_net.ini", g_exe_dir);
-    GetPrivateProfileStringA("net", "role", "", role, sizeof(role), ini);
+    mh::cfgdir::ini_path(ini);
+    mh_ini_get_str("net", "role", "", role, sizeof(role), ini);
     if (role[0] == 'h' || role[0] == 'H') return "host";
     if (role[0] == 'c' || role[0] == 'C') return "client";
     return "solo";
@@ -109,8 +115,9 @@ bool safe_join(char *dst, int cap, const char *base, const char *leaf) {
 // follows when nothing else says where the logs went, and SES1 keeps its meaning by rewriting it on
 // every switch rather than only at boot: "the newest directory" is what it always claimed to be.
 //
-// It goes beside the exe -- or, under MH_LOG_ROOT (LA13), INTO that root: beside the exe it would be
-// virtualized away with everything else, and the launcher that set the root is the reader.
+// It goes in the config dir (RL3; beside the exe in portable mode) -- or, under MH_LOG_ROOT (LA13),
+// INTO that root: beside the exe it would be virtualized away with everything else, and the
+// launcher that set the root is the reader.
 void write_breadcrumb() {
     char bc[MAX_PATH];
     if (!safe_join(bc, sizeof(bc), g_bc_dir, "mh_run.txt")) return;
@@ -123,7 +130,7 @@ void write_breadcrumb() {
     CloseHandle(h);
 }
 
-// Create "<exedir>logs\<name>\" and write it (with the trailing backslash) into dst.
+// Create "<logs root>\<name>\" and write it (with the trailing backslash) into dst.
 //
 // Returns false only when even the BARE "logs\" root could not be made (e.g. permission denied) --
 // the caller then keeps whatever it had, the fallback that has always guaranteed logs are never
@@ -161,15 +168,16 @@ bool make_dir(const char *name, char *dst) {
 }
 
 // Decide g_logs_root + g_bc_dir (LA13). MH_LOG_ROOT wins when it is set, non-empty, fits, and can
-// be created (or already exists); otherwise -- and always with no variable -- "<exedir>logs". A root
-// the launcher named but this process cannot create has nowhere to say so, so the fallback is the
-// same one a hand launch gets and the breadcrumb goes back beside the exe, which is at least where
-// a human looks. Returns false only when even "<exedir>logs" does not fit MAX_PATH.
+// be created (or already exists); otherwise -- and always with no variable -- "<cfgdir>logs" (RL3:
+// `<exe>\logs` in portable mode, `<config dir>\logs` otherwise). A root the launcher named but this
+// process cannot create has nowhere to say so, so the fallback is the same one a hand launch gets
+// and the breadcrumb goes back into the config dir, which is at least where a human looks. Returns
+// false only when even "<cfgdir>logs" does not fit MAX_PATH.
 bool resolve_logs_root() {
     char  env[MAX_PATH];
     DWORD n = GetEnvironmentVariableA("MH_LOG_ROOT", env, MAX_PATH);
     if (n > 0 && n < MAX_PATH) {
-        // Strip trailing separators so the root composes like "<exedir>logs" does (no slash).
+        // Strip trailing separators so the root composes like "<cfgdir>logs" does (no slash).
         while (n > 1 && (env[n - 1] == '\\' || env[n - 1] == '/')) env[--n] = '\0';
         // One level is made here; the parent chain (...\MissionHumanity\logs\) is the launcher's
         // own state directory, which it created before starting us.
@@ -179,10 +187,10 @@ bool resolve_logs_root() {
             lstrcpynA(g_logs_root, env, MAX_PATH); // g_bc_dir is now "<root>\"
             return true;
         }
-        // else: fall through to the exe dir -- the honest breadcrumb there says where logs went.
+        // else: fall through to the config dir -- the honest breadcrumb there says where logs went.
     }
-    if (!safe_join(g_logs_root, sizeof(g_logs_root), g_exe_dir, "logs")) return false;
-    lstrcpynA(g_bc_dir, g_exe_dir, MAX_PATH);
+    if (!safe_join(g_logs_root, sizeof(g_logs_root), g_cfg_dir, "logs")) return false;
+    lstrcpynA(g_bc_dir, g_cfg_dir, MAX_PATH);
     return true;
 }
 
@@ -191,7 +199,7 @@ void do_init() {
     lstrcpynA(g_role, detect_role(), sizeof(g_role));
     if (!resolve_logs_root()) {
         g_logs_root[0] = '\0';
-        lstrcpynA(g_bc_dir, g_exe_dir, MAX_PATH);
+        lstrcpynA(g_bc_dir, g_cfg_dir, MAX_PATH);
     }
 
     char stamp[MH_SESSION_DIRSTAMP_CAP];
@@ -200,7 +208,7 @@ void do_init() {
     mh_session_dir_name(name, sizeof(name), stamp, nullptr, nullptr, g_role); // nil id -> "<stamp>_menu_<role>"
 
     if (!make_dir(name, g_proc_dir)) {
-        lstrcpynA(g_proc_dir, g_exe_dir, MAX_PATH); // fallback: never lose logs
+        lstrcpynA(g_proc_dir, g_cfg_dir, MAX_PATH); // fallback: never lose logs
     }
     lstrcpynA(g_run_dir, g_proc_dir, MAX_PATH);
     // ALWAYS write the breadcrumb, even in the exe-dir fallback above: a STALE one left over from an
@@ -329,4 +337,41 @@ extern "C" const char *MH_ProcessDirLeaf(void) {
     for (int i = 0; i < len; ++i) leaf[i] = g_proc_dir[start + i];
     leaf[len] = '\0';
     return leaf;
+}
+
+// ---- RL5: log retention ----------------------------------------------------------------------------
+// Rules and the pure decision: include/mh_log_prune.h. Started once from the first present (off the
+// loader lock); the scan and the deletes run on a worker thread, never on the game thread.
+#include "include/mh_log_prune.h"
+
+namespace {
+struct prune_args {
+    char root[MAX_PATH];
+    char keep[MH_PRUNE_NAME_CAP];
+    char ini[MAX_PATH];
+};
+
+DWORD WINAPI prune_thread(LPVOID p) {
+    prune_args *a             = (prune_args *)p;
+    const int   keep_sessions = (int)GetPrivateProfileIntA("log", "keep_sessions", MH_PRUNE_DEFAULT_KEEP_SESSIONS, a->ini);
+    const int   keep_days     = (int)GetPrivateProfileIntA("log", "keep_days", 0, a->ini);
+    mh_prune_run(a->root, a->keep, keep_sessions, keep_days, nullptr);
+    HeapFree(GetProcessHeap(), 0, a);
+    return 0;
+}
+} // namespace
+
+extern "C" void MH_LogPrune_Start(void) {
+    static volatile LONG started = 0;
+    if (InterlockedExchange(&started, 1) != 0) return;
+    ensure_init();
+    if (g_logs_root[0] == '\0') return;
+    prune_args *a = (prune_args *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(prune_args));
+    if (a == nullptr) return;
+    lstrcpynA(a->root, g_logs_root, MAX_PATH);
+    mh::cfgdir::ini_path(a->ini);
+    lstrcpynA(a->keep, MH_ProcessDirLeaf(), sizeof(a->keep)); // this run's own folder: never pruned
+    HANDLE t = CreateThread(nullptr, 0, prune_thread, a, 0, nullptr);
+    if (t != nullptr) CloseHandle(t);
+    else HeapFree(GetProcessHeap(), 0, a);
 }

@@ -1581,16 +1581,16 @@ int run_bindtest() {
         for (int i = 0; i < SPINE_ONLY_KEY_COUNT; ++i)
             for (int j = i + 1; j < SPINE_ONLY_KEY_COUNT; ++j)
                 if (strcmp(SPINE_ONLY_KEYS[i].key, SPINE_ONLY_KEYS[j].key) == 0) ++dup;
-        ck(dup == 0 && find_spine_key("rng_trace") && find_spine_key("world_capture") &&
-               find_spine_key("pin_menu_clock") && !find_spine_key("rng_trac"),
+        ck(dup == 0 && find_spine_key("snapshot_at") && find_spine_key("world_capture") &&
+               find_spine_key("pin_menu_clock") && !find_spine_key("snapshot_a"),
            "D29: the spine-only key table is unique and exact-match");
         ck(!find_spine_key("region_hash_step") && !find_spine_key("stop_step") &&
                !find_spine_key("region_poke_at") && !find_spine_key("pin_wallclock") &&
                !find_spine_key("rdump_lo") && !find_spine_key("pin_strat_seed"),
            "D29: no HASHING or poke key is spine-only -- configuration (1) keeps the whole oracle "
            "and its go-red arm");
-        format_key_refusal(b, sizeof(b), *find_spine_key("rng_trace"));
-        ck(strstr(b, "`rng_trace` REFUSED") != nullptr && strstr(b, "rng_trace_window") != nullptr,
+        format_key_refusal(b, sizeof(b), *find_spine_key("snapshot_at"));
+        ck(strstr(b, "`snapshot_at` REFUSED") != nullptr && strstr(b, "world::capture") != nullptr,
            "D29: a key refusal names the key AND the spine row it needs");
 
         // (j) the manifest fingerprint: the compile-time constant equals an independent runtime

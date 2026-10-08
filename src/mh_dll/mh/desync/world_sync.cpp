@@ -528,24 +528,13 @@ bool m_step(uint32_t next_step) {
 void set_hooks(const hooks &h) { g_h = h; }
 
 void configure(const char *ini_path, int action, uint64_t fp2, void (*log)(const char *fmt, ...)) {
+    (void)ini_path; // every tuning value is fixed; `action` is the only [desync] key world sync reads
     g_log        = log;
     g_fp2        = fp2;
     g_cfg        = ws::config{};
     g_cfg.action = action;
     g_on         = (action == 1);
     if (!g_on) return;
-    g_cfg.confirm_steps = GetPrivateProfileIntA("desync", "resync_confirm_steps", g_cfg.confirm_steps, ini_path);
-    g_cfg.roster_quiet_steps =
-        GetPrivateProfileIntA("desync", "resync_roster_quiet_steps", g_cfg.roster_quiet_steps, ini_path);
-    g_cfg.resync_max = GetPrivateProfileIntA("desync", "resync_max", g_cfg.resync_max, ini_path);
-    g_cfg.timeout_ms = GetPrivateProfileIntA("desync", "resync_timeout_ms", g_cfg.timeout_ms, ini_path);
-    g_cfg.ff_steps   = GetPrivateProfileIntA("desync", "resync_ff_steps", g_cfg.ff_steps, ini_path);
-    if (g_cfg.confirm_steps < 1) g_cfg.confirm_steps = 1;
-    if (g_cfg.roster_quiet_steps < 0) g_cfg.roster_quiet_steps = 0;
-    if (g_cfg.resync_max < 0) g_cfg.resync_max = 0;
-    if (g_cfg.timeout_ms < 1000) g_cfg.timeout_ms = 1000;
-    if (g_cfg.ff_steps < 1) g_cfg.ff_steps = 1;
-    if (g_cfg.ff_steps > 200) g_cfg.ff_steps = 200;
     WSAY("; [worldsync] ARMED (action=1): confirm=%d steps, roster_quiet=%d steps, max=%d per peer, timeout=%d ms, "
          "ff=%d steps/frame, cooldown=%d steps; only the HOST acts; wire=desync v2 types 6..9 + channel C\n",
          g_cfg.confirm_steps, g_cfg.roster_quiet_steps, g_cfg.resync_max, g_cfg.timeout_ms, g_cfg.ff_steps,

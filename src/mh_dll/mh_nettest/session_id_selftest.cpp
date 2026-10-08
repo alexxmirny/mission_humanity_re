@@ -357,17 +357,17 @@ int run_sessionidtest() {
 
         unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
         size_t        n = join_request_encode(jr, buf);
-        check("the JOIN declares format 5", buf[0] == 5);
-        check("JOIN_REQUEST_FORMAT is 5", JOIN_REQUEST_FORMAT == 5);
+        check("the JOIN declares format 6", buf[0] == 6);
+        check("JOIN_REQUEST_FORMAT is 6", JOIN_REQUEST_FORMAT == 6);
         check("the JOIN is id + codepage + map hash longer than v2",
-              n == 1 + 4 + 8 + 7 + UUID7_BYTES + 2 + MAP_HASH_BYTES);
+              n == 1 + 4 + 8 + 7 + UUID7_BYTES + 2 + MAP_HASH_BYTES + 1); // + the (empty) build's length byte
 
         JoinRequest back;
-        check("a v5 JOIN decodes", join_request_decode(buf, n, back));
+        check("a v6 JOIN decodes", join_request_decode(buf, n, back));
         check("the echoed match_id survives", memcmp(back.match_id, ID, UUID7_BYTES) == 0);
         check("the joiner's codepage survives", back.codepage == 1250);
         check("the player name still survives", strcmp(back.player_name, "Ripley") == 0);
-        check("decode reports the format it read", back.format == 5);
+        check("decode reports the format it read", back.format == 6);
 
         // X2's field, and the identical rule the codepage above is asserted under, one field along:
         // the two-argument form declares NOTHING, which is not the same as declaring the advert's
@@ -451,7 +451,7 @@ int run_sessionidtest() {
             check("a v3 (pre-F3) JOIN is refused on protocol", v == JoinAdmit::RefusedOldProtocol);
             check("the v3 refusal still yields the lobby-id for the log",
                   got.tag == mine.tag && strcmp(got.name, mine.name) == 0);
-            check("JOIN_REQUEST_MIN_FORMAT is 5", JOIN_REQUEST_MIN_FORMAT == 5);
+            check("JOIN_REQUEST_MIN_FORMAT is 6", JOIN_REQUEST_MIN_FORMAT == 6);
         }
 
         // (ii-c) F3's OWN NEGATIVE CASE: a current client, our lobby, DIFFERENT pinned codepage.
@@ -557,6 +557,60 @@ int run_sessionidtest() {
         }
     }
 
+    // ---- RL11 -- THE BUILD CHECK: a joiner on a different RELEASE is refused, by name --------------
+    {
+        printf("--- RL11: the build check ---\n");
+        const unsigned char ID[UUID7_BYTES] = {0x01, 0xa0, 0xaf, 0x3c, 0xea, 0x00, 0x70, 0xa1,
+                                               0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9};
+        SessionInfo         mine            = make_session("MH Host", 0x5150u, ID, 1251);
+        strcpy(mine.build, "0.2.1");
+        auto try_join = [&](const char *joiner_build, JoinRequest &got) {
+            JoinRequest jr = join_request_for(mine, 1251, nullptr, joiner_build);
+            memcpy(jr.player_name, "Ripley", 7);
+            unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
+            size_t        n = join_request_encode(jr, buf);
+            return join_admit(buf, n, mine, got);
+        };
+        JoinRequest got;
+        check("the same release is ADMITTED", try_join("0.2.1", got) == JoinAdmit::Admit);
+        check("the admitted request carries the joiner's build", strcmp(got.build, "0.2.1") == 0);
+        check("a different release is REFUSED on build", try_join("0.2.0", got) == JoinAdmit::RefusedBuild);
+        check("a joiner stating no build is REFUSED on build", try_join(nullptr, got) == JoinAdmit::RefusedBuild);
+        check("a release that merely extends ours is refused too (exact equality)",
+              try_join("0.2.1-rc1", got) == JoinAdmit::RefusedBuild);
+        check("the build refusal names itself",
+              strcmp(join_admit_reason(JoinAdmit::RefusedBuild), "build (release version) mismatch") == 0);
+        check("the widest build (15 chars) survives the codec",
+              try_join("0.2.1-rc1.abcdef", got) == JoinAdmit::RefusedBuild && strlen(got.build) <= BUILD_MAX);
+        // Codepage is still checked first: a wrong-codepage AND wrong-build peer is the old-client case.
+        {
+            JoinRequest   jr = join_request_for(mine, 1250, nullptr, "0.2.0");
+            unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
+            size_t        n = join_request_encode(jr, buf);
+            check("codepage outranks build", join_admit(buf, n, mine, got) == JoinAdmit::RefusedCodepage);
+        }
+        // A host with no build claim (empty) accepts any build -- the codepage rule's direction.
+        mine.build[0] = 0;
+        check("a host with no build claim admits any joiner", try_join("9.9.9", got) == JoinAdmit::Admit);
+        strcpy(mine.build, "0.2.1");
+        // The text: host's first, then the joiner's; ASCII, within ANNOUNCE_TEXT_CAP.
+        JoinRequest theirs = join_request_for(mine, 1251, nullptr, "0.2.0");
+        char        reason[ANNOUNCE_TEXT_CAP];
+        join_refusal_text(JoinAdmit::RefusedBuild, mine, theirs, reason, sizeof(reason));
+        check("the build refusal text names BOTH releases, host first", strcmp(reason, "build 0.2.1/0.2.0") == 0);
+        // A v5 JOIN (what a pre-RL11 client sends) is refused as an old protocol, never mis-parsed.
+        {
+            JoinRequest   jr = join_request_for(mine, 1251, nullptr, "0.2.1");
+            unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
+            size_t        n = join_request_encode(jr, buf);
+            buf[0]          = 5; // a v5 client's format byte...
+            JoinRequest v5;      // ...and its shorter frame (no build field)
+            JoinAdmit   v = join_admit(buf, n - 1, mine, v5);
+            check("a v5 (pre-RL11) JOIN is refused on protocol", v == JoinAdmit::RefusedOldProtocol);
+            check("the v5 refusal still yields the lobby-id for the log", v5.tag == mine.tag);
+        }
+    }
+
     // ---- mp:F3c -- THE REFUSAL REACHES THE JOINER: the REFUSED announce and its text --------------
     // Until F3c a refused JOIN was a host log line and nothing else; the joiner sat in a lobby that
     // showed it seated. The reply rides FLAG_ANNOUNCE as a third kind, addressed by player id, with
@@ -582,11 +636,11 @@ int run_sessionidtest() {
         theirs.format = 3;
         join_refusal_text(JoinAdmit::RefusedOldProtocol, mine, theirs, reason, sizeof(reason));
         check("the old-protocol text names the format seen and the minimum",
-              strcmp(reason, "protocol 3 < 5") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
+              strcmp(reason, "protocol 3 < 6") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
         theirs.format = 250;
         join_refusal_text(JoinAdmit::RefusedNewerProtocol, mine, theirs, reason, sizeof(reason));
         check("the newer-protocol text names the format seen and the maximum",
-              strcmp(reason, "protocol 250 > 5") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
+              strcmp(reason, "protocol 250 > 6") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
         join_refusal_text(JoinAdmit::RefusedWrongLobby, mine, theirs, reason, sizeof(reason));
         check("the wrong-lobby text is the admit reason itself, within budget",
               strcmp(reason, "not our lobby") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
@@ -979,6 +1033,11 @@ int run_sessionidtest() {
         check("an unknown reason is shown as received", !matched && wcscmp(w, L"something new") == 0);
         tr_refusal_reason("old client cp 12x", w, 128, &matched);
         check("a near miss is not a match (the number must end the line)", !matched);
+        tr_refusal_reason("build 0.2.1/0.2.0", w, 128, &matched);
+        check("the build reason is shown as \"Host runs X, you run Y: update\"",
+              matched && wcscmp(w, L"Host runs 0.2.1, you run 0.2.0: update") == 0);
+        tr_refusal_reason("build 0.2.1/", w, 128, &matched);
+        check("a build reason without a joiner version is not a match", !matched);
         tr_relay_line("Relay outdated (protocol 0 < 1)", w, 128, &matched);
         check("the relay module's line is the relay row", matched && wcscmp(w, L"Relay outdated (protocol 0 < 1)") == 0);
     }

@@ -253,15 +253,10 @@ def resync_lines(run_dir):
             continue
         m = FIRED_RE.search(ln)
         if m:
-            # THE WATCH INFERS A FIRE FROM THE COUNTER DROPPING, and the other writer that can
-            # lower it is `resync_trigger_reset` zeroing RESYNC_TRIGGER_COUNT in time_tick's
-            # recovery branch. CORRECTED 2026-09-23 (mp:P9C): the comment here used to say that
-            # knob was "a byte patch carried in every configuration, default ON". It is NOT --
-            # net_lockstep.cpp reads it with a default of 0 (`GetPrivateProfileIntA("net",
-            # "resync_trigger_reset", 0, g_ini)`, "default OFF pending validation"), its carrier is
-            # installed only when the knob is set, and its libmh body ships in libmh.dll, which
-            # configuration (1) omits. So in every arm this checker runs, a drop is a FIRE unless
-            # something else is proven.
+            # THE WATCH INFERS A FIRE FROM THE COUNTER DROPPING. The one other writer that used to
+            # lower it, the `resync_trigger_reset` knob (zeroing RESYNC_TRIGGER_COUNT in time_tick's
+            # recovery branch, default OFF), is retired -- so in every arm this checker runs, a drop
+            # is a FIRE unless something else is proven.
             t = tuple(int(x) for x in m.groups())
             # The sampler reads the count ONCE PER FRAME while the counter is advanced by ARRIVING
             # KEEPALIVES, so the sample before a fire is whatever the last frame happened to catch:
@@ -387,7 +382,7 @@ def watch_summary(ev):
         return "; ".join(parts)
     if ev["resets"]:
         parts.append(
-            "%d recovery reset(s) (resync_trigger_reset zeroing a sub-threshold count: %s)"
+            "%d recovery reset(s) (a sub-threshold count zeroed outside a fire: %s)"
             % (
                 len(ev["resets"]),
                 ",".join(str(x[1]) for x in ev["resets"][:8])

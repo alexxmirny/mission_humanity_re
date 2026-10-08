@@ -1394,7 +1394,6 @@ inline constexpr int verified_range_count = 953;
 // fix survives promotion; the arming report reads it so a suppressed patch can name the live
 // carrier rather than merely announcing that it suppressed itself.
 inline constexpr mh::hook::patch_decl registered_patches[] = {
-    {"resync_trigger_reset",       0x0043f2a5u, "llm_strat_time_tick", "migrated:resync_trigger_reset"},
     {"resync_wait_fix",            0x0049c044u, "llm_net_lockstep_sync_delay_stub", "migrated:lockstep"},
     {"icon_count",                 0x0043f0fcu, "llm_strat_time_tick", "none:diagnostic"},
     {"defang_xui",                 0x004c85e8u, "llm_net_lockstep_extend_ui_enter", nullptr},
@@ -1422,6 +1421,15 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"resync_receiver_deadline",   0x004a0423u, "llm_frame_dispatch", nullptr},
     {"gone_peer_frame_guard",      0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
     {"undock_reentry_fix",         0x00466cb6u, "llm_strat_order_queue_dispatch", "migrated:undock_reentry_fix"},
+    {"diplo_order_dedup_fix",      0x0046667bu, "llm_strat_order_release_due", "migrated:diplo_order_dedup_fix"},
+    {"overlay_dialog_guard",       0x0043f072u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x0043f286u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x0043f2e1u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x004982c3u, "llm_strat_player_presence_lost", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x0049833fu, "llm_strat_player_presence_lost", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x004c7faeu, "llm_net_lockstep_sync_overlay_show", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x004c8620u, "llm_net_mp_leave_reset_game_mode", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",       0x0043f18du, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
     {"team_seed",                  0x00454504u, "llm_strat_session_begin_multi", "migrated:team_relations_fix"},
     {"team_lock",                  0x004698d2u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
     {"team_vision_human",          0x00469909u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
@@ -1437,6 +1445,6 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"lang_pack_mh_ex",            0x004c3dbau, "llm_boot_progress_draw", nullptr},
     {"lang_pack_msgs",             0x004cb6bcu, "ReadMsgsDat", nullptr},
 };
-inline constexpr int registered_patch_count = 42;
+inline constexpr int registered_patch_count = 50;
 
 } // namespace mh::addr

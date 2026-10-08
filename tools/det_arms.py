@@ -1135,8 +1135,8 @@ def det_standard_selftest():
         #       vocabulary from the DLL; a writer still emitting it would go on producing a file the
         #       DLL ignores, and an ignored rollback arm is a promoted arm wearing the control's
         #       name -- exactly the C8-f failure sp_arm_report was built to catch, one layer earlier.
-        #   (b) it is READABLE where it lands: merged into a lane ini that already has [net],
-        #       [capture] and [uitest] blocks, `mode` must still be what GetPrivateProfile* returns.
+        #   (b) it is READABLE where it lands: merged into a lane ini that already has [net]
+        #       and [uitest] blocks, `mode` must still be what GetPrivateProfile* returns.
         #       A second `[config]` section would be present and unreachable -- the trap the first
         #       four rules above cover for [promote]/[video]/[harness], here for the key that now
         #       decides the whole configuration.
@@ -1157,7 +1157,7 @@ def det_standard_selftest():
             not _bad_sec,
         )
         _lane = _u.ini_merge_fragment(
-            "[net]\nport=6501\ngame_speed_pct=0\n\n[capture]\nevery=0\n\n[uitest]\nenable=1\n", _txt
+            "[net]\nport=6501\ngame_speed_pct=0\n\n[uitest]\nenable=1\n", _txt
         )
         check(
             "...and survives the lane merge READABLE (no shadowed second [config] block)",
@@ -1470,9 +1470,9 @@ def det_standard_selftest():
 # host's authoritative 8-slot array so every peer builds Players[] from ONE copy. With two peers that
 # is only ever exercised at slot 1, and "does it cover slot 1, or every occupied human slot?" is the
 # question a 2-peer run is structurally unable to answer. Here BOTH clients poke their OWN slot to
-# Alien locally with no 0x0c push, so at Start the host still has Human for both -- and the negative
-# arm (`[net] start_slots=0`, the legacy bare signal) brings p3_ai_gates, the THIRD peer's own region,
-# into the divergence.
+# Alien locally with no 0x0c push, so at Start the host still has Human for both -- and the retired negative
+# arm (`[net] start_slots=0`, the legacy bare signal) used to bring p3_ai_gates, the THIRD peer's own
+# region, into the divergence.
 #
 # TOPOLOGY: host on vms[0], client1 on vms[1], client2 as a LOCAL LANE on this box. No third machine.
 # Three requirements, each of which fails silently if you omit it (all three cost a run on 2026-08-29):

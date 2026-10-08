@@ -86,6 +86,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #define DIRECTINPUT_VERSION 0x0500
 #include <dinput.h>
 #include <stdint.h>
@@ -854,8 +855,8 @@ bool install_owned_dinput(const char *ini) {
     if (done) return g_active;
     done = true;
 
-    g_trace_m = GetPrivateProfileIntA("input", "mouse_trace", 0, ini) != 0;
-    g_trace_k = GetPrivateProfileIntA("input", "key_trace", 0, ini) != 0;
+    g_trace_m = mh_ini_get_int("input", "mouse_trace", 0, ini) != 0;
+    g_trace_k = mh_ini_get_int("input", "key_trace", 0, ini) != 0;
     char v[32];
     mh::config::read_ini_string("input", "backend", "system", v, sizeof(v), ini);
     bool own = false;

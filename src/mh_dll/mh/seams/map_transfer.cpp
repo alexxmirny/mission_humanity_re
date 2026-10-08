@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -215,7 +216,7 @@ int  g_enabled   = -1; // [net] map_transfer, resolved once
 bool g_installed = false;
 
 int enabled() {
-    if (g_enabled < 0) g_enabled = (int)GetPrivateProfileIntA("net", "map_transfer", 1, g_ini);
+    if (g_enabled < 0) g_enabled = (int)mh_ini_get_int("net", "map_transfer", 1, g_ini);
     return g_enabled;
 }
 
@@ -1459,8 +1460,7 @@ bool client_take_rejoin() {
 // the JOIN, the host refuses Start by name until the peer holds its bytes, and the download is stored
 // under a content-addressed name, never over the player's file (rule 1). The retail rename was the
 // opposite of rule 1. Armed only when the map transfer is (`[net] map_transfer`); with it off the
-// retail body runs untouched. `[net] map_entry_check=retail` leaves it unarmed on purpose -- the
-// repro knob for the rig's red arm.
+// retail body runs untouched.
 // =================================================================================================
 
 namespace {
@@ -1512,19 +1512,12 @@ MH_EXPORT_REPLACE(llm_cfg_map_verify_version, entry_check_replacement)
 void install() {
     if (g_installed || !enabled()) return;
     g_installed = true;
-    {
-        char v[32];
-        mh::config::read_ini_string("net", "map_entry_check", "defer", v, sizeof(v), g_ini);
-        if (lstrcmpiA(v, "retail") == 0)
-            mlog("; [map] entry check retail -- the lobby-entry map read raises retail's error box "
-                 "([net] map_entry_check=retail, the mp:X2e repro knob)\n");
-        else if (!mh_export_install_llm_cfg_map_verify_version())
-            mlog("; [map] entry check NOT armed -- a joiner without the map gets retail's error box "
-                 "at lobby entry and its download stalls (mp:X2e)\n");
-        else
-            mlog("; [map] entry check armed -- a map missing or different at lobby entry is left to "
-                 "the transfer (mp:X2e)\n");
-    }
+    if (!mh_export_install_llm_cfg_map_verify_version())
+        mlog("; [map] entry check NOT armed -- a joiner without the map gets retail's error box "
+             "at lobby entry and its download stalls (mp:X2e)\n");
+    else
+        mlog("; [map] entry check armed -- a map missing or different at lobby entry is left to "
+             "the transfer (mp:X2e)\n");
     // The replacement is armed even on a peer that never joins anything: `g_redir_on` is what
     // decides whether it does anything, and arming once at MH_Core_Arm keeps the install out of the
     // lobby's frame path. install_export_ok checks the entry bytes and logs its own refusal.

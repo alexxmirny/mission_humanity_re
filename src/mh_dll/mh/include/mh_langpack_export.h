@@ -44,6 +44,11 @@ extern "C" int MH_LangPack_Install(void);
 // The armed pack id ("ru"), or "" when the stock mh_ex is in use.
 extern "C" const char *MH_LangPack_Id(void);
 
+// RL17: the 8-bit codepage the armed pack declares in `lang\<id>\pack.ini` (`[pack] codepage=1251`),
+// or 0 when no pack is armed / the file or key is absent. ui_chat_input.cpp uses it as the input
+// codepage when `[input] codepage` is not pinned in mh_net.ini (an explicit setting always wins).
+extern "C" unsigned MH_LangPack_Codepage(void);
+
 // mods:LANG2. Does the mh_ex that WILL be loaded (the pack's, or the stock one) carry a real
 // 7-button main-menu background? 1 = yes (MENUBCK2 differs from MENUBCK1), 0 = no (MENUBCK2 is
 // a byte copy of the 6-button MENUBCK1, as in the retail RU pack, or is absent), -1 = could not

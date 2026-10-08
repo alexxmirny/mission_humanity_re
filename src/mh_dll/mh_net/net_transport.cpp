@@ -51,6 +51,7 @@
 #include "include/mh_net_queue_policy.h" // D24: WHICH inbound frame a full queue may destroy
 #include "include/mh_net_watchdog.h"     // D16: the watchdog's timing decisions, as pure testable fns
 #include "include/mh_run_context.h"      // mh_log_stamp ONLY -- see module_run_dir() below
+#include "include/mh_config_dir.h"       // RL3: the config dir mh_key.txt lives in
 #include "include/mh_log_sink.h"         // LOG1: the async log sink client (header-only)
 #include "mh_net_proto/net_crypto.h"     // handshake + record encryption (portable, shared with the relay)
 #include "mh_net_proto/net_wire.h"       // portable wire framing shared with the relay (S0)
@@ -208,19 +209,16 @@ char g_log_path[MAX_PATH];
 // and mh_net.dll's outbound edge is otherwise EMPTY, which is what makes its import table trivially
 // checkable against the subset rule.
 //
-// THE FALLBACK IS THE EXE DIRECTORY, and it is not a nicety: net_selftest.exe compiles this TU
-// directly and has no mh.dll to hand it anything, so an un-set run dir must still produce a usable
-// log next to the test binary. That is also the pre-2026-08 behaviour of this log, so the fallback
-// is a return to a known-good shape rather than an invention.
+// THE FALLBACK IS THE CONFIG DIRECTORY (RL3; the exe directory in portable mode, which is what it
+// was before), and it is not a nicety: net_selftest.exe compiles this TU directly and has no mh.dll
+// to hand it anything, so an un-set run dir must still produce a usable log next to the test
+// binary (the selftest pins MH_CONFIG_DIR to its own directory). That is also the pre-2026-08
+// behaviour of this log, so the fallback is a return to a known-good shape rather than an invention.
 char g_run_dir[MAX_PATH] = {0};
 
 const char *module_run_dir(void) {
     if (g_run_dir[0] != '\0') return g_run_dir;
-    GetModuleFileNameA(nullptr, g_run_dir, MAX_PATH);
-    char *slash = g_run_dir;
-    for (char *p = g_run_dir; *p != '\0'; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
+    lstrcpynA(g_run_dir, mh::cfgdir::config_dir(), MAX_PATH);
     return g_run_dir;
 }
 
@@ -1375,15 +1373,10 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     // broken key file is deliberate -- the alternative (fall back to open) would silently take a
     // host that believes it is protected and publish it.
     {
-        char exe[MAX_PATH];
-        GetModuleFileNameA(nullptr, exe, MAX_PATH);
-        char *slash = exe;
-        for (char *p = exe; *p; ++p)
-            if (*p == '\\' || *p == '/') slash = p;
-        slash[1]                         = '\0';
+        // RL3: mh_key.txt lives in the CONFIG directory (portable: beside the exe, as before).
         char key_hex[MH_KEY_HEX_LEN + 1] = {0};
         int  generated                   = 0;
-        int  st                          = MH_Key_Load(exe, g_psk, key_hex, &generated);
+        int  st                          = MH_Key_Load(mh::cfgdir::config_dir(), g_psk, key_hex, &generated);
         if (st == MH_KEY_INVALID) {
             logf("net: mh_key.txt is unreadable/corrupt -- REFUSING to start the transport. Fix or delete it "
                  "(delete = a fresh key is generated; the single word 'open' = no protection).");
@@ -1782,13 +1775,13 @@ extern "C" int MH_Net_HubLeave(int timeout_ms) {
 extern "C" void MH_Net_HubStatus(MH_NetHubStatus *out) {
     if (!out) return;
     memset(out, 0, sizeof(*out));
-    out->size     = (unsigned)sizeof(MH_NetHubStatus);
+    out->size      = (unsigned)sizeof(MH_NetHubStatus);
     out->supported = 0;
-    out->role     = -1;
-    out->hub_id   = -1;
-    out->local_id = -1;
-    out->old_hub  = -1;
-    out->new_hub  = -1;
+    out->role      = -1;
+    out->hub_id    = -1;
+    out->local_id  = -1;
+    out->old_hub   = -1;
+    out->new_hub   = -1;
 }
 extern "C" int MH_Net_Rehome(const MH_NetRehomeSpec *spec) {
     (void)spec;

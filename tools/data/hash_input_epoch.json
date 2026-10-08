@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "05f73bca4132814b77448bfac4a96abac98b4277a9cab31f1fe3db5fc82ce87e"
+   "sha256": "9086775837f38568fc337aae4a9cdee3c19c4a20cece04416e8c973e9ebed482"
   },
   {
    "id": "harness_hash_kind_step",
@@ -183,6 +183,15 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "mp:U62: the harness graceful-exit path calls MH_Seam_LeaveForExit before ExitProcess; no byte fed to the hash changes"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-07",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "ini-cut lane B: harness key removal (rng_trace/hash_cost_both/rdump window arms); hashed bytes for an unchanged world unchanged"
   }
  ]
 }

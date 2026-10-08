@@ -59,6 +59,7 @@
 #include "../mh_net_udp/udp_ping_cadence.h" // mp:P15 -- the warm-up cadence, udpstatstest (o)
 #include "../mh/seams/adaptive_window.h"    // mp:P15 wave 7 -- first-window start + post-spin starved, (p)
 #include "mh_net_export.h"
+#include "mh_ini_gate.h" // RL2: the ship gate -- main() pins it open for the suites
 #include "mh_seam_export.h"
 #include "selftest_dispatch.h"                // F5I: the suite table mechanism, shared with libmh_test
 #include "hostapi_selftest_support.h"         // LIB-ABI: the selftest host table bound in main()
@@ -3725,6 +3726,35 @@ int main(int argc, char **argv) {
     if (strcmp(mode, "--list-suites") == 0) return selftest_list_suites(SUITE_TABLE, SUITE_COUNT);
 
     const suite_args a = selftest_args(argc, argv);
+
+    // RL3: THIS EXE IS A "PORTABLE" HOST BY DEFINITION. The product resolves its config directory
+    // (mh_net.ini, mh_key.txt, the logs fallback, mh_run.txt) to %LOCALAPPDATA%\MissionHumanity\games
+    // <hash> when no `mh_net.ini` sits beside the exe -- and a selftest staging directory has none, so
+    // without this pin every suite that touches the run context or a transport would drop logs and a
+    // key into the TESTER's profile, one new hash folder per staging directory. Pinned to the exe's
+    // own directory (unless the caller already chose one), the suites see exactly what they saw
+    // before RL3. `runctxtest` exercises the other two arms through the pure resolver and children;
+    // its `--cfgchild` hand-launch child must see the product's own resolution, so it is not pinned.
+    {
+        char       probe[4];
+        const bool unpinned_child = argc > 3 && strcmp(mode, "runctxtest") == 0 && strcmp(argv[2], "--cfgchild") == 0;
+        if (!unpinned_child && GetEnvironmentVariableA("MH_CONFIG_DIR", probe, sizeof(probe)) == 0) {
+            char exe_dir[MAX_PATH];
+            GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
+            char *slash = exe_dir;
+            for (char *p = exe_dir; *p; ++p)
+                if (*p == '\\' || *p == '/') slash = p;
+            slash[1] = '\0';
+            SetEnvironmentVariableA("MH_CONFIG_DIR", exe_dir);
+        }
+    }
+
+    // RL2: THE SHIP GATE (mh_ini_gate.h) IS PINNED OPEN FOR EVERY SUITE. The product ignores dev keys
+    // in an ini that does not carry `[dev] unlock=1`; the suites write their own fixture inis full of
+    // dev keys ([desync] every, [net] lockstep_*, [patch] inmem, ...) and test the readers under them,
+    // exactly as the rig lanes do with their unlock. Forced unlocked at the NORMAL level here; the
+    // `inireadtest` gate arms flip it to the real, ini-driven behaviour (force mode 0) and back.
+    mh_ini_gate_test_force(1, 1);
 
     // LIB-REBIND R11: net_selftest is a host too, and it arms NOTHING -- the offline oracle drives
     // module bodies through their recording stubs, not through the rebind. Arming an empty set is

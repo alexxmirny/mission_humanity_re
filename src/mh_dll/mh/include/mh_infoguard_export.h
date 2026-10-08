@@ -34,7 +34,7 @@
 //      refusal). One `; [info] guard: entity info open REFUSED kind=.. id=.. reason=.. key=".." caller=..`
 //      line names the caller's return address and the panels' scroll/count state.
 //
-// KNOBS. [net] info_guard (default 1; 0 = no hook, the reproduction arm; not under [config]
+// KNOBS. always on (not under [config]
 // mode=original). RIG-ONLY: info_guard_test_entry=N corrupts the N-th call that reaches the entry (to
 // the blank UNIT 0), info_guard_test_row=N pushes the N-th storage request 40 rows past the list.
 // Both are 0 (off) in every shipped ini. Best-effort: a hook or patch that is refused is logged.

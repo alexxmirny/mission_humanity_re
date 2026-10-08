@@ -7,9 +7,10 @@
 //!
 //! ```text
 //! %LOCALAPPDATA%\MissionHumanity\
-//!     launcher.toml          the game directory, and what is installed there
+//!     launcher.toml          the game directory, what is installed there, the release channel
 //!     versions\<ver>\        one unzipped release set per version (dist LA2 swaps between them)
-//!     accepted\              the last accepted manifest.json + .minisig (dist LA6 reads its relay)
+//!     accepted\<ch>\<kind>.json(.minisig)   the last accepted channel manifests: the relay source
+//!                            (dist LA6) and the REPLAY floor (dist RL8)
 //!     logs\launcher.log      this program's own log
 //! ```
 //!
@@ -114,18 +115,26 @@ impl Layout {
         self.logs().join(game_dir_hash(game_dir))
     }
 
-    /// `accepted\` -- the last manifest that passed every gate, kept WITH its signature so a
-    /// later launch can re-verify it and read its relay (dist LA6, `update::load_accepted`).
+    /// `accepted\` -- the last manifests that passed every gate, kept WITH their signatures so a
+    /// later launch can re-verify them: for the relay (dist LA6, `update::load_accepted`) and, since
+    /// dist RL8, as the REPLAY floor a newly fetched manifest must not be older than.
     pub fn accepted_dir(&self) -> PathBuf {
         self.root.join("accepted")
     }
 
-    pub fn accepted_manifest(&self) -> PathBuf {
-        self.accepted_dir().join(crate::update::MANIFEST_NAME)
+    /// `accepted\<channel>\<kind>.json` -- one slot per channel and per kind (`launcher`, `game`),
+    /// because the REPLAY floor is per channel+kind: switching channel must not inherit the other
+    /// channel's date.
+    pub fn accepted_manifest(&self, channel: &str, kind: &str) -> PathBuf {
+        self.accepted_dir()
+            .join(channel)
+            .join(format!("{kind}.json"))
     }
 
-    pub fn accepted_signature(&self) -> PathBuf {
-        self.accepted_dir().join(crate::update::SIGNATURE_NAME)
+    pub fn accepted_signature(&self, channel: &str, kind: &str) -> PathBuf {
+        self.accepted_dir()
+            .join(channel)
+            .join(format!("{kind}.json.minisig"))
     }
 }
 
@@ -133,6 +142,12 @@ impl Layout {
 /// SHA-256 of the path, lower-cased and with trailing separators trimmed, so `C:\Games\MH` and
 /// `c:\games\mh\` (the same folder to Windows) hash the same. A hash rather than a sanitised path
 /// because the path can be longer than a directory name may be (dist LA10 was a ~230-char install).
+///
+/// dist RL3: `mh.dll` computes THE SAME hash in C++ (`mh::cfgdir::game_dir_hash16`,
+/// `src/mh_dll/mh_common/include/mh_config_dir.h`) to find its per-install config folder, so this
+/// rule is a cross-language contract: UTF-8 bytes of the path, ASCII-only lower-casing, trailing
+/// `\` and `/` trimmed, SHA-256, first 8 bytes as hex. The `game_dir_hash_shared_vectors` test
+/// below and `net_selftest.exe runctxtest` assert the same strings.
 pub fn game_dir_hash(game_dir: &Path) -> String {
     use sha2::{Digest, Sha256};
     let text = game_dir
@@ -346,6 +361,45 @@ mod tests {
         let l = Layout::rooted("state");
         let root = l.game_log_root(Path::new(r"C:\Games\Mission Humanity"));
         assert_eq!(root, Path::new("state").join("logs").join(&a));
+    }
+
+    /// dist RL3: SHARED TEST VECTORS with the game side. `mh.dll`'s path resolver
+    /// (`src/mh_dll/mh_common/include/mh_config_dir.h`, `mh::cfgdir::game_dir_hash16`) names the
+    /// per-install config folder `%LOCALAPPDATA%\MissionHumanity\games\<hash16>\` with this same
+    /// function, computed in C++ from the exe's own path. The two implementations must agree on
+    /// every string, or a launcher-written file and the game that should read it live in
+    /// different folders and nothing says so. `net_selftest.exe runctxtest` asserts the
+    /// IDENTICAL table (`kVectors` in mh_nettest/run_context_selftest.cpp); change both together.
+    ///
+    /// Only ASCII is case-folded (`to_ascii_lowercase`), so the Cyrillic and accented rows pin the
+    /// "UTF-8 bytes, non-ASCII untouched" half of the rule the C++ side has to mirror.
+    #[test]
+    fn game_dir_hash_shared_vectors() {
+        let vectors: &[(&str, &str)] = &[
+            (r"C:\Games\Mission Humanity", "a28ebc0acf5d4635"),
+            (r"c:\games\mission humanity\", "a28ebc0acf5d4635"),
+            (
+                r"C:\Program Files (x86)\Mission Humanity",
+                "74afbc828fb7580a",
+            ),
+            (
+                "D:\\\u{418}\u{433}\u{440}\u{44b}\\Mission Humanity\\",
+                "d5c79400d9f5c14a",
+            ),
+            (
+                "D:\\\u{418}\u{433}\u{440}\u{44b}\\MISSION humanity",
+                "d5c79400d9f5c14a",
+            ),
+            (r"C:\", "826c0d7d3c42f5c5"),
+            ("C:/Games/MH//", "5bb58c0657eced3f"),
+            (r"\\server\share\MH", "55845b4645068bc3"),
+            ("C:\\Games\\Caf\u{e9}\\MH", "1eb55528359e1719"),
+            // non-ASCII upper case is NOT folded: this must differ from the row above
+            ("C:\\Games\\CAF\u{c9}\\MH", "137c4033bad61292"),
+        ];
+        for (path, want) in vectors {
+            assert_eq!(game_dir_hash(Path::new(path)), *want, "{path}");
+        }
     }
 
     #[test]

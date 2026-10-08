@@ -439,7 +439,7 @@ wall-clock pinned, differing in nothing but three `[promote]` fragments:
 
 ```
 python tools/ui_test.py sp_det.txt --harness --steps 600 --headless \
-    --harness-extra "save_at=300;save_count=1;savegame_at=400;loadgame_at=500;loadgame_name=uitest;pin_wallclock=1" \
+    --harness-extra "loadgame_at=500;loadgame_name=uitest;pin_wallclock=1" \
     [--extra-ini <a fragment setting [promote] save / container / container_load = 1>]
 ```
 

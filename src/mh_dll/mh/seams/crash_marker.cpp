@@ -42,6 +42,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include <intrin.h> // __readfsdword -- write_stack()
 #include <string.h> // memcpy -- write_context()'s two raw-struct copies
@@ -49,6 +50,7 @@
 #include "include/mh_crash_export.h"
 #include "mh_crash_marker.h" // MH_CrashFacts, the text format, the env + event contract
 #include "mh_run_context.h"  // MH_RunDir_SessionMatchId / MH_RunDir_UtcStamp (mh_common)
+#include "mh_config_dir.h"   // RL3: the config dir -- ini + default logs root, no init order
 #include "mh_version.h"      // MH_VERSION_FULL -- the build stamp in the marker
 
 // mp:LOG1 -- the async log sink's synchronous, bounded crash drain (mh_common/mh_log_sink.cpp).
@@ -324,36 +326,32 @@ DWORD WINAPI crash_after_thread(LPVOID param) {
 extern "C" int MH_CrashMarker_Init(void) {
     if (g_veh != nullptr) return 1; // idempotent; DllMain calls it once but say so anyway
 
-    // The exe directory, composed the way mh/seams/net_lockstep.cpp's ensure_key_once does -- from
-    // the module file name, not from MH_ExeDir(). That is deliberate: this runs FIRST in DllMain,
+    // The config directory (RL3), composed from the module file name + environment + filesystem
+    // (mh_config_dir.h) -- NOT from MH_ExeDir(). That is deliberate: this runs FIRST in DllMain,
     // ahead of everything, and MH_ExeDir()'s first caller is also what initialises the run context
     // (role detection, the log directory). Moving that initialisation earlier than it has ever
     // happened, in the one function whose job is to be installed before anything can go wrong, is a
-    // change to boot ordering wearing a convenience's clothes.
-    char exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *slash = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
-
+    // change to boot ordering wearing a convenience's clothes. The resolver has no init to order.
     char ini[MAX_PATH];
-    wsprintfA(ini, "%smh_net.ini", exe);
+    mh::cfgdir::ini_path(ini);
 
     // WHERE THE MARKER GOES. The launcher names it (it has to: it is the reader, and it must not
     // have to guess a path built from a pid it would then have to match). With no launcher the
-    // default is `<exedir>\logs\mh_crash_<pid>.marker` -- under `logs\` because that is the
+    // default is `<config dir>\logs\mh_crash_<pid>.marker` -- under `logs\` because that is the
     // directory this project already treats as its output tree, and per-pid because the rig runs
     // several lanes whose exes all have the same name. dist LA13: a process started with
     // MH_LOG_ROOT (the launcher-owned logs root, see mh_common/run_context.cpp) and no marker path
     // puts the default under THAT root instead -- beside the exe it would be UAC-virtualized away
-    // under Program Files, exactly the hole the root exists to close. Same root run_context uses,
-    // resolved here independently (same reason MH_ExeDir() is not called: boot ordering).
+    // under Program Files, exactly the hole the root exists to close. RL3 closes it for a hand
+    // launch too: with no `mh_net.ini` beside the exe the config dir is under %LOCALAPPDATA%, and
+    // `<config dir>logs` is the same fallback run_context.cpp uses (in portable mode, `<exe>\logs`).
+    // Same root run_context uses, resolved here independently (same reason MH_ExeDir() is not
+    // called: boot ordering).
     if (GetEnvironmentVariableA(MH_CRASH_ENV_MARKER, g_marker, MAX_PATH) == 0) {
         char  logs[MAX_PATH];
         DWORD n = GetEnvironmentVariableA("MH_LOG_ROOT", logs, MAX_PATH);
         if (n == 0 || n >= MAX_PATH) {
-            wsprintfA(logs, "%slogs", exe);
+            wsprintfA(logs, "%slogs", mh::cfgdir::config_dir());
         } else {
             while (n > 1 && (logs[n - 1] == '\\' || logs[n - 1] == '/')) logs[--n] = '\0';
         }
@@ -392,7 +390,7 @@ extern "C" int MH_CrashMarker_Init(void) {
     g_veh = AddVectoredExceptionHandler(0 /* First = FALSE: append */, crash_veh);
     if (g_veh == nullptr) return 0;
 
-    const int crash_after_ms = GetPrivateProfileIntA("debug", "crash_after_ms", 0, ini);
+    const int crash_after_ms = mh_ini_get_int("debug", "crash_after_ms", 0, ini);
     if (crash_after_ms > 0) {
         // CreateThread from DllMain is safe as long as nothing WAITS on the new thread here, which
         // nothing does -- the same pattern mh/seams/net_seams.cpp's marker_scan_thread already uses

@@ -7,8 +7,9 @@
 //! is **Play**: the signed manifest may name a relay, and the launcher writes it into the
 //! game's `mh_net.ini` + `mh_key.txt` on install, on update and before every launch (`relay.rs`).
 //!
-//! THE ONLY NETWORK CODE IS `update.rs`, and it talks to two things: the manifest's base URL and the
-//! absolute asset URLs that manifest carries, once its signature has verified against the key
+//! THE ONLY NETWORK CODE IS `update.rs`, and it talks to two things: the update base URL (the two
+//! schema-2 channel manifests under `channels/<channel>/`, dist RL8) and the absolute asset URLs
+//! those manifests carry, once their signature has verified against the key
 //! compiled into this binary. Never `api.github.com` -- see that module's header for the
 //! measurement behind the rule.
 //!
@@ -25,9 +26,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod cfgdir;
 mod config;
 mod crash;
+mod discord;
 mod elevate;
+mod i18n;
 mod install;
 mod launch;
 mod log;
@@ -35,9 +39,12 @@ mod machine;
 mod paths;
 mod relay;
 mod report;
+mod settings;
+mod theme;
 mod update;
 mod upload;
 mod version;
+mod widgets;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -63,14 +70,17 @@ usage: mh_launcher [options]
   --size <W>x<H>        initial window size in points (default 1280x720)
   --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\\MissionHumanity
 
-  --check-update        fetch the signed manifest, verify it, and say what it offers
+  --check-update        fetch the channel's signed manifests (launcher.json + game.json under
+                        channels/<channel>/, the channel being launcher.toml's `channel`:
+                        stable or latest), verify them, and say what they offer
   --update              the above, then download and install the game when the manifest is
-                        newer than what is installed (or the chosen configuration is missing)
+                        newer than what is installed (or the chosen configuration is missing, or
+                        the channel was just switched)
   --self-update         the above, but for the launcher executable itself
                         BOTH FLAGS TOGETHER = the Update button: the launcher first, then the
                         game in the replacement launcher, in the same run (dist LA11/LA12)
   --exit-after-update   close the launcher once the startup update work has finished
-  --update-url <url>    fetch the manifest from here instead, and remember it
+  --update-url <url>    fetch the manifests from this site instead, and remember it
   --verify-binary       print this build's version and exit 0 -- the health gate a NEW launcher
                         must pass before it is allowed to replace a running one
   --step <what>         perform ONE install step into the game directory and exit, no window:
@@ -396,11 +406,17 @@ fn main() {
             log::line(format!("config: {e}"));
         }
     }
+    // dist RL8: a `channel` value that is not a channel name follows stable -- say so once.
+    if let Some(note) = cfg.channel_note() {
+        log::line(format!("config: {note}"));
+    }
     log::line(format!(
-        "config: game_dir={:?} installed={:?} ({:?}) updates from {}",
+        "config: game_dir={:?} installed={:?} ({:?}, from channel {:?}) channel={} updates from {}",
         cfg.game_dir,
         cfg.installed_version,
         cfg.installed_tag,
+        cfg.installed_channel,
+        cfg.channel(),
         cfg.update_base_url_or_default()
     ));
     // dist LA13: which token this launcher runs with, on every start. An elevated launcher is the

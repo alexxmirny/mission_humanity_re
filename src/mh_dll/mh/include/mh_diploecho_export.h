@@ -24,9 +24,7 @@
 //
 // THE FIX. patch_bytes_guarded over the 22 expect bytes -> 22 NOPs, so the only writer of the cell is
 // the order handler every peer runs at commit. Cost: a dialog reopened before the commit shows the OLD
-// value and re-issues the same order (idempotent). Off with `[net] diplo_echo_nop=0` -- the negative
-// arm the u39_diplomacy_echo scenario runs, which must still name `players`.
-//
+// value and re-issues the same order (idempotent).//
 #pragma once
 
 #ifdef __cplusplus

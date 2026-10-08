@@ -209,9 +209,8 @@ USING_NS_RE = re.compile(r"^\s*using\s+namespace\b", re.M)
 #   * install_overlay_patches() is UNCONDITIONAL inside lockstep_install_core, but its
 #     set_icon_counters() line is behind `mh::config::ours_run()` since F3D (R3), and so is the whole
 #     reimpl_fixes handoff block (R2).
-#   * install_resync_order_horizon() is gated on `[net] resync_order_horizon`, DEFAULT 1 -- a net
-#     tuning knob, not the selector. Its DISPLACED branch, which is the only thing in it that names a
-#     closure symbol, is additionally dominated by mh::hook::promoted_owner_of(), false under (1).
+#   * install_resync_order_horizon() is UNCONDITIONAL (its `[net] resync_order_horizon` knob is
+#     retired); its DISPLACED branch no longer names a closure symbol, so it carries no ruling.
 #   * `[net] fix_audit` and fix_audit_tick() are GONE (F3D / R5).
 # ---------------------------------------------------------------------------------------------
 RULINGS = {
@@ -275,11 +274,11 @@ RULINGS = {
     "mh::lockstep::fixes": dict(
         bucket=2,
         scope="lockstep",
-        guard="if (mh::config::ours_run()) around the whole R2 block; the other site is inside "
-        "install_resync_order_horizon's DISPLACED branch, dominated by promoted_owner_of()",
+        guard="if (mh::config::ours_run()) around the whole R2 block",
         exec1=False,
-        note="R2 fix-config handoff. Both call sites are now unreachable under mode=original: the "
-        "second one needs a PROMOTED broadcast_resync_state, which config (1) does not have.",
+        note="R2 fix-config handoff. The call site is unreachable under mode=original. (A second site, "
+        "in install_resync_order_horizon's DISPLACED branch, went with the retired "
+        "`resync_order_horizon` knob.)",
     ),
     "mh::lockstep::set_fixes": dict(
         bucket=2,

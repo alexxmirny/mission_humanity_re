@@ -27,6 +27,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include "state/host_api.h"
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h"
@@ -1637,8 +1638,8 @@ bool verify_active() { return g_installed && g_verify_mode != 0; }
 
 int install_promotion(const char *ini_path, int default_on) {
     if (default_on == 0) return 0;
-    g_verify_mode = GetPrivateProfileIntA("save", "verify", 0, ini_path);
-    g_verify_poke = (uint32_t)GetPrivateProfileIntA("save", "verify_poke", 0, ini_path);
+    g_verify_mode = mh_ini_get_int("save", "verify", 0, ini_path);
+    g_verify_poke = (uint32_t)mh_ini_get_int("save", "verify_poke", 0, ini_path);
 
 #ifdef MH_LIBMH_BUILD
     // LIB-REF-SPLIT: the verify arm is a HOSTED oracle (see install_with_trampoline's standalone
@@ -1677,8 +1678,8 @@ int install_load_promotion(const char *ini_path, int default_on) {
     if (default_on == 0) return 0;
     // Deliberately the SAME verify mode as the save side: a run is either verifying or it is not, and
     // two independent verify levels would produce configurations nobody has a name for.
-    if (g_verify_mode == 0) g_verify_mode = GetPrivateProfileIntA("save", "verify", 0, ini_path);
-    g_load_poke = (uint32_t)GetPrivateProfileIntA("save", "load_verify_poke", 0, ini_path);
+    if (g_verify_mode == 0) g_verify_mode = mh_ini_get_int("save", "verify", 0, ini_path);
+    g_load_poke = (uint32_t)mh_ini_get_int("save", "load_verify_poke", 0, ini_path);
 
 #ifdef MH_LIBMH_BUILD
     // LIB-REF-SPLIT: the verify arm is a HOSTED oracle (see install_with_trampoline's standalone
@@ -1721,8 +1722,8 @@ bool container_promotion_active() { return g_container_installed; }
 
 int install_container_promotion(const char *ini_path, int default_on) {
     if (default_on == 0) return 0;
-    if (g_verify_mode == 0) g_verify_mode = GetPrivateProfileIntA("save", "verify", 0, ini_path);
-    g_container_poke = (uint32_t)GetPrivateProfileIntA("save", "container_verify_poke", 0, ini_path);
+    if (g_verify_mode == 0) g_verify_mode = mh_ini_get_int("save", "verify", 0, ini_path);
+    g_container_poke = (uint32_t)mh_ini_get_int("save", "container_verify_poke", 0, ini_path);
 
 #ifdef MH_LIBMH_BUILD
     // LIB-REF-SPLIT: the verify arm is a HOSTED oracle (see install_with_trampoline's standalone
@@ -1758,11 +1759,11 @@ bool container_load_promotion_active() { return g_container_load_installed; }
 
 int install_container_load_promotion(const char *ini_path, int default_on) {
     if (default_on == 0) return 0;
-    if (g_verify_mode == 0) g_verify_mode = GetPrivateProfileIntA("save", "verify", 0, ini_path);
+    if (g_verify_mode == 0) g_verify_mode = mh_ini_get_int("save", "verify", 0, ini_path);
     g_container_load_poke =
-        (uint32_t)GetPrivateProfileIntA("save", "container_load_verify_poke", 0, ini_path);
+        (uint32_t)mh_ini_get_int("save", "container_load_verify_poke", 0, ini_path);
     g_container_load_member_poke =
-        (uint32_t)GetPrivateProfileIntA("save", "container_load_member_poke", 0, ini_path);
+        (uint32_t)mh_ini_get_int("save", "container_load_member_poke", 0, ini_path);
 
 #ifdef MH_LIBMH_BUILD
     // LIB-REF-SPLIT: the verify arm is a HOSTED oracle (see install_with_trampoline's standalone

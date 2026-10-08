@@ -11,6 +11,7 @@
 
 #include "include/mh_langpack_export.h"
 #include "include/mh_run_context.h" // mh_run_path
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "config/ini_read.h"        // read_ini_string -- strips a trailing `;comment`
 #include "hook/patch.h"             // patch_bytes_guarded
@@ -42,6 +43,7 @@ char g_id[17]          = {0}; // the armed pack id, "" = stock
 char g_mh_ex[MAX_PATH] = {0}; // what rsr_TryReadRsrFile gets instead of "mh_ex"
 char g_msgs[MAX_PATH]  = {0}; // what utils_open_file gets instead of "Msgs.dat"
 bool g_done            = false;
+UINT g_pack_cp         = 0;  // RL17: lang\<id>\pack.ini [pack] codepage, 0 = none
 int  g_art7            = -2; // MH_LangPack_MenuHas7ButtonArt cache; -2 = not probed yet
 
 char          g_log[MAX_PATH];
@@ -183,8 +185,8 @@ extern "C" int MH_LangPack_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only: both operands are EN VAs
 
     char dir[MAX_PATH], ini[MAX_PATH];
-    exe_dir(dir, MAX_PATH);
-    wsprintfA(ini, "%smh_net.ini", dir);
+    exe_dir(dir, MAX_PATH);    // the lang\ packs belong to the INSTALLATION: they stay beside the exe
+    mh::cfgdir::ini_path(ini); // RL3: the ini is the player's -- <config dir>mh_net.ini
 
     char id[64];
     mh::config::read_ini_string("lang", "pack", "", id, sizeof(id), ini);
@@ -237,6 +239,14 @@ extern "C" int MH_LangPack_Install(void) {
     }
     lstrcpynA(g_id, id, sizeof(g_id));
 
+    // RL17: the pack's own codepage (pack.ini), applied by ui_chat_input when [input] is unpinned.
+    char pini[MAX_PATH];
+    wsprintfA(pini, "%s\\%s", pack_dir, "pack.ini");
+    if (file_exists(pini)) {
+        const UINT cp = GetPrivateProfileIntA("pack", "codepage", 0, pini);
+        if (cp > 0 && cp < 65000u && IsValidCodePage(cp)) g_pack_cp = cp;
+    }
+
     const char *msgs_state = "absent -- the stock Msgs.dat path is kept";
     if (file_exists(msgs)) {
         if (rel)
@@ -248,10 +258,12 @@ extern "C" int MH_LangPack_Install(void) {
                          ? "redirected"
                          : "NOT redirected (operand bytes differ) -- the stock path is kept";
     }
-    lp_log("; [lang] pack=%s armed: mh_ex -> %s (%s path); Msgs.dat %s", g_id, g_mh_ex,
-           rel ? "relative" : "absolute", msgs_state);
+    lp_log("; [lang] pack=%s armed: mh_ex -> %s (%s path); Msgs.dat %s; pack codepage %u", g_id, g_mh_ex,
+           rel ? "relative" : "absolute", msgs_state, g_pack_cp);
     return 1;
 }
+
+extern "C" unsigned MH_LangPack_Codepage(void) { return g_pack_cp; }
 
 extern "C" int MH_LangPack_MenuHas7ButtonArt(void) {
     if (g_art7 != -2) return g_art7;

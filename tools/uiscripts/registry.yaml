@@ -255,24 +255,6 @@ tests:
     desc: 'U39+D28+D25 in one match: host ticks allied in the diplomacy dialog, cancels the mother''s
       repair through the status dialog''s &Yes, then clicks the Academy build icon; client idles --
       each segment''s hash window must stay IDENTICAL'
-  # region_hash_step=1 required: the divergence window is only ~4 steps wide, so a 50-step
-  # cadence would miss it entirely (mp:U39).
-  - name: u39_diplomacy_echo
-    budget_s: 80  # gate diet: max measured (gate 59s, n2 52s, n6 55s) x 1.3
-    kind: multi
-    no_hash_why: 'negative arm: the local echo diverges by design (check_u39_echo reads the mismatch)'
-    host: mp_host_diplomacy.txt
-    clients: [mp_client_idle.txt]
-    # tooling:TL-SUITE-FOLD-ML: was match_launch; re-anchored to host_clicks (see u39_diplomacy).
-    share_lanes: host_clicks
-    net_extra: diplo_echo_nop=0
-    extra_ini: tools/uiscripts/ini/video_1024.ini
-    harness_extra: region_hash_step=1;synth_move=0
-    timeout: 420  # the match runs to gameclock 30000+; 200 s overran under the gate's load
-    post_check: [tools/check_u39_echo.py]
-    post_check_peers: true
-    desc: 'U39 negative arm: retail echo kept -- `players` must still differ for a bounded window and
-      heal'
   # mp:U45: relation AND control mode changed in ONE diplomacy Apply. Ship arm: both orders (0xf4, 0xf5)
   # reach every peer's queue; the negative arm below reproduces retail's dedup (0xf4 dropped).
   - name: u45_diplo_control
@@ -305,6 +287,38 @@ tests:
     post_check_peers: true
     desc: 'U45 negative arm: `[net] diplo_order_dedup_fix=0` (retail dedup) -- only 0xf5 survives on every
       peer, the relation order is dropped'
+  # mp:U74 (U45 half): the same two arms under `[config] mode=original` -- retail release_due under mh.dll's
+  # net layer, the fix carried by the byte-splice at 0x0046667b (install_diplo_order_dedup_fix).
+  - name: u45_diplo_control_original
+    budget_s: 76
+    budget_evidence: "measured 58 s on the local rig 2026-10-07 (one run) x 1.3"
+    kind: multi
+    host: mp_host_diplomacy_both.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: host_clicks
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, fixed]]
+    post_check_peers: true
+    desc: 'U45/U74 under [config] mode=original: host ticks allied + control in ONE diplomacy Apply -- both
+      0xf4 and 0xf5 reach every peer through the RETAIL release_due (byte-splice), hashes stay IDENTICAL'
+  - name: u45_diplo_dedup_original
+    tier: release  # negative arm: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 67
+    budget_evidence: "measured 51 s on the local rig 2026-10-07 (one run) x 1.3"
+    kind: multi
+    host: mp_host_diplomacy_retail.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: host_clicks
+    net_extra: diplo_order_dedup_fix=0
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
+    harness_extra: order_mode=1;synth_move=0
+    timeout: 420
+    post_check: [[tools/check_u45_diplo.py, --expect, retail]]
+    post_check_peers: true
+    desc: 'U45/U74 negative arm under [config] mode=original: `diplo_order_dedup_fix=0` -- no splice, retail
+      dedup, only 0xf5 survives on every peer'
   # mp:U46: the diplomacy Apply's row walk when a LEFT player's row precedes a human's (3 peers: the
   # slot-1 quitter leaves, the host ticks the slot-2 survivor). The lobby compacts humans ahead of AIs,
   # so [host, AI, human] cannot be seated -- a departure is how a dead row ends up first.
@@ -358,6 +372,7 @@ tests:
   # Reproduction arm: [net] cancel_task_order=0 IS the repro knob (this seam has no
   # mode=original fork); hash diverges at the click and never heals.
   - name: d28_canceltask_local
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 85  # gate diet: max measured (gate 65s, n2 63s, n6 64s) x 1.3
     kind: multi
     no_hash_why: 'negative arm: the local cancel diverges by design (check_cancel_task --expect diverge)'
@@ -396,6 +411,7 @@ tests:
   # Reproduction arm: [net] build_probe_free=0 IS the repro knob (the retail pay + re-grant); the
   # hash diverges in p0_ai_econ at the click and never heals -- the rc3 match's symptom.
   - name: d35_buildclick_c1_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 65
     budget_evidence: "standalone 50 s (2026-09-26) x 1.3 = 65"
     kind: multi
@@ -437,6 +453,7 @@ tests:
   # Reproduction arm: [net] pioneer_refill_fix=0 IS the repro knob (the retail per-peer compare); the
   # client refills the host's pioneer at the re-landing and the hash never heals -- the rc4 symptom.
   - name: d37a_relanding_c1_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 145
     budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
     long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
@@ -475,26 +492,6 @@ tests:
     post_check_session: true
     desc: 'D37a: configuration (2) (promoted libmh body) host lifts its pioneer off empty and re-lands
       -- no refill on either peer, IDENTICAL'
-  # Its reproduction arm: [config] mode=original -- nothing promoted and the seam KEPT, i.e. the
-  # retail body on both peers (the configuration-(2) spelling of "unfixed").
-  - name: d37a_relanding_c2_original
-    budget_s: 145
-    budget_evidence: "measured 107-110 s (2026-09-27, the four D37a rows two at a time) x 1.3 = 145"
-    long_why: "a whole land -> lift off -> fly -> re-land cycle: the match runs to gameclock 80000 (~8200 lockstep steps), 107-110 s measured"
-    kind: multi
-    no_hash_why: 'negative arm: the retail refill diverges by design (check_pioneer_refill --expect diverge)'
-    host: mp_host_pioneer_relanding.txt
-    clients: [mp_client_idle.txt]
-    share_lanes: d35_buildclick_c1
-    net_extra: transport=udp
-    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
-    harness_extra: region_hash_step=50;synth_move=0
-    timeout: 480
-    post_check: [tools/check_pioneer_refill.py, --expect, diverge]
-    post_check_peers: true
-    post_check_session: true
-    desc: 'D37a negative arm, configuration (2) spelling: `[config] mode=original` (retail body, seam
-      KEPT) -- the client refills the host''s re-landed pioneer and the watch says DESYNC'
   # mp:D37: the rc4 Nortus shape -- the host SELECTS its own network building while the sim's
   # connectivity flags are stale; the HUD network panel's per-frame llm_strat_bldg_is_network_critical
   # re-floods built_flags bit 0 over the host's buildings row on that peer alone. The walk places two
@@ -521,6 +518,7 @@ tests:
   # Reproduction arm: [net] netcrit_ui_pure=0 keeps the retail call; `buildings` diverges at the
   # first sample after R2 is selected and never heals -- the rc4 Nortus symptom.
   - name: d37_relay_chain_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 145
     budget_evidence: "standalone 109-112 s (2026-09-27, rig otherwise idle) x 1.3 = 145"
     long_why: "the walk waits to game 45000 for the landing (a far start was still airborne at 20000), then an R1 build (~22 s game) and a dismantle window before the trigger"
@@ -563,6 +561,7 @@ tests:
   # Reproduction arm: [net] storage_panel_purge_fix=0 keeps the retail call; the host's panel purges
   # the dead soldier at the kill step and `unit_storage` differs until the sim's own purge.
   - name: d38_storage_purge_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 95
     budget_evidence: "standalone 72-74 s (2026-09-27, both arms side by side) x 1.3 = 95"
     kind: multi
@@ -647,6 +646,7 @@ tests:
   # Reproduction arm: [net] d36_clear_residue=0 IS the repro knob (the rc4 build's entry prep); the
   # host enters match 2 with match 1's landing grant and the watch says DESYNC at step 50.
   - name: d36_rematch_seed_retail
+    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     budget_s: 95
     budget_evidence: "standalone 72 s (2026-09-26) x 1.3 = 95"
     kind: multi
@@ -951,6 +951,7 @@ tests:
     # fallback bound (its own never-firing is itself a finding).
     shim_triggers:
     - cmd: blackhole on
+      fast: true  # poll every 0.25 s: the barrier lasts ~2 s, a 3 s poll cuts after its RESUME
       when:
       - [c1, mh_net.log, '\[resync\] barrier #\d+ BEGIN']
     shim_timeline: tools/uiscripts/shim/p9w_deadline_repro.txt
@@ -1379,6 +1380,21 @@ tests:
     tol: 0.0
     desc: 'MP-LANG: a pre-MP-LANG (8-bit chat) client is refused AND told -- bounced to the browser,
       notice names the reason'
+  - name: build_refused
+    budget_s: 60  # measured 41 s (solo, rig lease) x 1.3, rounded up; the 61 s first run included a cold boot lock
+    net_extra: transport=tcp
+    kind: multi
+    no_hash_why: 'lobby-only: no match starts, so no sim step is hashed'
+    host: mp_host_lobby.txt
+    clients: [mp_client_build_refused.txt]
+    # RL11: the client's JOIN states a forged release version ([net] test_build_version, TEST ONLY); the real-build
+    # host refuses it by name and the joiner reads "Host runs X, you run 0.0.1: update". The host stays in its lobby.
+    net_extra_client: test_build_version=0.0.1
+    post_check: [tools/check_codepage_adopt.py, --expect, build]
+    post_check_peers: true
+    tol: 0.0
+    desc: 'RL11: a peer on a different release is refused AND told -- bounced to the browser, notice says
+      "Host runs X, you run Y: update"'
   - name: codepage_refused_ru
     budget_s: 30  # seeded from codepage_refused (measured 18-20 s), same host script
     net_extra: transport=tcp
@@ -1813,22 +1829,6 @@ tests:
     post_check: *gx1_netind_check
     desc: 'mp:GX1: hiding the net indicator in a live match leaves no glyph behind (the release stamp
       repaints the ground under it)'
-  - name: gx1_netind_nostamp
-    budget_s: 60  # gate diet: max measured (gate 43s, n2 44s, n6 45s) x 1.3
-    kind: multi
-    no_hash_why: 'expect_red reproduction (mp:GX1); its XFAIL would absorb a hash red'
-    host: mp_host_gx1_netind.txt
-    clients: [mp_client_gx1_netind.txt]
-    share_lanes: pause_mp_gate
-    # Planted negative arm, kept red on purpose: net_indicator_stamp=0 must leave the residue visible
-    # so the checker fails.
-    expect_red: mp:GX1
-    net_extra: transport=tcp
-    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/gx1_nostamp.ini]
-    tol: 1.0
-    timeout: 300
-    post_check: *gx1_netind_check
-    desc: 'mp:GX1 NEGATIVE: the same probe with the indicator''s stamps knobbed off must show the residue'
   - name: pause_mp_gate
     budget_s: 40  # gate diet: max measured (gate 29s, n2 28s, n6 29s) x 1.3
     # transport=tcp pinned: [net] transport now defaults to udp; keeps this row's TCP coverage
@@ -1958,24 +1958,6 @@ tests:
     post_check_peers: true
     post_check: [tools/check_freeze_watchdog.py, --expect-inject, '1500']
     desc: 'P17: a 1500 ms main-thread freeze (injected Sleep) is caught by the frame watchdog -- the stack in mh_net.log names frame_watchdog_inject_sleep, and a freeze-ended line follows'
-  - name: freeze_watchdog_off
-    tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
-    budget_s: 52
-    budget_evidence: "measured 2026-10-01 (lane P17): 39 s wall x1.3 = 51, rounded up"
-    kind: multi
-    no_hash_why: 'expect_red reproduction (mp:P17); its XFAIL would absorb a hash red'
-    host: mp_host_p17_freeze.txt
-    clients: [mp_client_p17.txt]
-    # Planted negative arm, kept red on purpose: frame_watchdog_ms=0 is the pre-P17 silence -- no capture exists.
-    expect_red: mp:P17
-    net_extra: 'transport=udp;frame_watchdog_ms=0;frame_watchdog_inject_ms=1500'
-    extra_ini: [tools/uiscripts/ini/video_640.ini]
-    tol: 1.0
-    timeout: 400
-    post_check_session: true
-    post_check_peers: true
-    post_check: [tools/check_freeze_watchdog.py, --expect-inject, '1500']
-    desc: 'P17 NEGATIVE: the same injected freeze with [net] frame_watchdog_ms=0 leaves no stack (the check must go red)'
   - name: alttab_d3d11
     tier: release  # gate-cost valve (2026-10-01): skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
     # mp:P17 (c). The retail system-DirectDraw arm is NOT registered: the rig lane never presents under
@@ -2107,6 +2089,124 @@ tests:
       - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
     timeout: 120
     desc: 'U44 NEGATIVE: `[net] overlay_dialog_guard=0` (retail rule) -- the short stall closes the dialog, so the frame differs from the fixed baseline'
+  # mp:U74 (U44 half): the retail carrier of overlay_dialog_guard -- odg:: call-site splices in net_lockstep.cpp.
+  # Same walk and the SAME baselines as dialog_stall (the observable behaviour is the contract), run on the
+  # retail bodies: `[config] mode=original` (libmh.dll bound but nothing promoted) and configuration (1)
+  # (libmh.dll omitted -- what the -net.zip players run). Both are release tier: the brokered dialog_stall above
+  # stays the per-session row, and the carrier's lint/selftest half rides the light gate.
+  - name: dialog_stall_original
+    tier: release
+    budget_s: 146
+    budget_evidence: "measured 109 s on the local rig 2026-10-07 (dialog_stall under rollback_original.ini) x 1.3 = 142, rounded up to the brokered row's 146"
+    long_why: "same walk as dialog_stall: lobby + landing + three forced stalls whose durations are the thing under test"
+    kind: multi
+    no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_dialog_stall.txt
+    clients: [mp_client_dialog_stall.txt]
+    share_lanes: shim_udp
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
+    tol: 0.03
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/dialog_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    timeout: 400
+    desc: 'U74/U44: dialog_stall on the retail bodies ([config] mode=original) -- the odg:: call-site splices keep the dialog through a short stall and stash/restore it around the kick modal'
+  - name: dialog_stall_c1_retail
+    tier: release
+    budget_s: 146
+    budget_evidence: "seeded from dialog_stall_original (same walk, libmh.dll omitted)"
+    long_why: "same walk as dialog_stall: lobby + landing + three forced stalls whose durations are the thing under test"
+    kind: multi
+    no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_dialog_stall.txt
+    clients: [mp_client_dialog_stall.txt]
+    share_lanes: shim_udp
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    tol: 0.03
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/dialog_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    timeout: 400
+    desc: 'U74/U44: dialog_stall in configuration (1) (no libmh.dll) -- the same splices, the same frames'
+  - name: dialog_stall_off_original
+    tier: release
+    budget_s: 70
+    budget_evidence: "seeded from dialog_stall_off (same short-stall walk, retail bodies)"
+    kind: multi
+    # Planted negative arm, kept red on purpose: overlay_dialog_guard=0 leaves the retail dismiss unspliced.
+    expect_red: mp:U44
+    no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
+    host: mp_host_dialog_stall_off.txt
+    clients: [mp_client_dialog_stall.txt]
+    share_lanes: shim_udp
+    net_extra: transport=udp;overlay_dialog_guard=0
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/rollback_original.ini]
+    tol: 0.03
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/dialog_stall.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: short end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    timeout: 120
+    desc: 'U74/U44 NEGATIVE: `[net] overlay_dialog_guard=0` on the retail bodies (mode=original) -- the short stall closes the dialog, so the frame differs from the fixed baseline'
   - name: type_ascii
     # gate diet: max measured (gate 11s, n2 5s, n6 9s) x 1.3 = 15, FLOORED at 30 (BUDGET_FLOOR_S)
     budget_s: 30
@@ -2164,6 +2264,19 @@ tests:
     tol: 0.0
     desc: 'LANG1-3: EN exe + the per-machine RU pack -- Russian 7-button menu, every hotspot on its painted
       label, built NETWORK GAME hover art, merged-font probe (SKIPS by name without a pack)'
+  - name: lang_pl
+    budget_s: 30  # seeded from lang_ru (~10 s solo) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: lang_pl.txt
+    # RL18: the Polish pack (built from the Extermination install). Baselines are composed art awaiting the
+    # user's sign-off -- re-baseline only with it.
+    extra_ini: tools/uiscripts/ini/lang_pl.ini
+    # requires runs before provisioning; no full PL pack SKIPS by name, not fail/abort.
+    requires: !ref lang_pack_pl_precondition
+    lane_src: !ref LANG_PACK_GAME
+    tol: 0.0
+    desc: 'RL18: EN exe + the per-machine PL pack (from Extermination) -- Polish 7-button menu, every hotspot on
+      its painted label, derived hover art, network button reaches the name screen (SKIPS by name without a pack)'
   - name: lang_ru_noart
     budget_s: 30  # measured 4-6 s (solo + beside lang_ru/chat_glyphs) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
     kind: solo
@@ -2389,7 +2502,7 @@ tests:
       both peers enter the match'
   # mp:X2e: map_absent with the file REALLY absent to the client's game opens (pretend=absent), so
   # retail's lobby-entry map check (llm_cfg_map_verify_version) misses -- the rc4 field freeze.
-  # Unfixed ([net] map_entry_check=retail): the 'can't create map file' box tears the lobby down.
+  # Unfixed (retail's entry check): the 'can't create map file' box tears the lobby down.
   - name: map_absent_entry
     budget_s: 62
     budget_evidence: "measured 27s / 30s alone, 48s in a 5-row map run at 2 lanes (2026-09-26); 48 x 1.3 = 62"

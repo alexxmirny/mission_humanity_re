@@ -82,8 +82,6 @@ const lt_frame_calls &live_lt_frame_calls();
 // Called by the seams installer (net_lockstep.cpp) before promotion: the two hooks are TU-local
 // to net_lockstep.cpp / harness.cpp and reach this unit as pointers, so no seams header is
 // included here (the layering rule).
-// EXPERIMENT KNOB (default off) -- replace the frame's input WALL. See the .cpp.
-void set_lt_frame_input_override(void (*input_update)());
 
 void set_lt_frame_instrument_hooks(void (*pace_time_tick)(), void (*harness_sim_tick)());
 

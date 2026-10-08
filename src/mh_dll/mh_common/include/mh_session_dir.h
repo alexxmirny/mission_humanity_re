@@ -27,6 +27,9 @@
 #ifndef MH_SESSION_DIR_H
 #define MH_SESSION_DIR_H
 
+#define MH_SESSION_MAX_PLAYERS     8
+#define MH_SESSION_PLAYER_NAME_CAP 64 /* UTF-8 bytes + NUL */
+
 /* "YYYYMMDDTHHMMSSZ" + NUL -- the compact UTC stamp of the RECORD fields (session.json `began` /
  * `ended`, the SESSION_BEGIN/END lines). UTC, not local time: a session directory is the unit a bug
  * report ships, and two peers in different time zones must sort into one order. (The LINE stamps
@@ -330,7 +333,26 @@ struct MH_SessionRecord {
     long icon_calls;
     long icon_shown;
     char process_dir[MH_SESSION_DIRNAME_CAP]; // the menu directory this session hangs off
+    // RL15 (match list for the launcher's report flow). Human player names in slot order (UTF-8),
+    // the AI-slot count, and how the match ended. `outcome` is "running" from the open until the
+    // close writes finished | quit | desync. It is never "crash" in the file: a process that dies
+    // leaves "running" behind, and the LAUNCHER infers crash from that (process gone, outcome still
+    // "running", usually with a crash marker) -- the crashing process cannot be trusted to rewrite it.
+    int  player_count;
+    char players[MH_SESSION_MAX_PLAYERS][MH_SESSION_PLAYER_NAME_CAP];
+    int  ai_count;
+    char outcome[MH_SESSION_TEXT_CAP];
 };
+
+// RL15: the session close `reason` (gameover|leave|host_left|link_lost|timeout|quit|rolled) plus
+// "did the desync watch fire during this match" -> the outcome word. A desync wins over everything
+// (the match's result is not trustworthy); gameover is a played-out match; every other way out is
+// the player (or the link) leaving, i.e. quit.
+inline const char *mh_session_outcome(const char *reason, bool desync_fired) {
+    if (desync_fired) return "desync";
+    if (reason != nullptr && reason[0] == 'g' && reason[1] == 'a') return "finished"; // "gameover"
+    return "quit";
+}
 
 inline void mh_session_record_clear(MH_SessionRecord *r) {
     char *p = (char *)r;
@@ -456,6 +478,17 @@ inline int mh_session_json(const MH_SessionRecord *r, char *dst, int cap) {
     at = mh_sd_put_int(dst, cap, at, r->icon_shown);
     at = mh_sd_put(dst, cap, at, ",\n  \"process_dir\": \"");
     at = mh_sd_put_json(dst, cap, at, r->process_dir);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"players\": [");
+    for (int i = 0; i < r->player_count && i < MH_SESSION_MAX_PLAYERS; ++i) {
+        if (i > 0) at = mh_sd_put(dst, cap, at, ", ");
+        at = mh_sd_put(dst, cap, at, "\"");
+        at = mh_sd_put_json(dst, cap, at, r->players[i]);
+        at = mh_sd_put(dst, cap, at, "\"");
+    }
+    at = mh_sd_put(dst, cap, at, "],\n  \"ai_count\": ");
+    at = mh_sd_put_int(dst, cap, at, r->ai_count);
+    at = mh_sd_put(dst, cap, at, ",\n  \"outcome\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->outcome);
     at = mh_sd_put(dst, cap, at, "\"\n}\n");
     return at;
 }

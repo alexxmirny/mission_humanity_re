@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -314,17 +315,12 @@ extern "C" int MH_InfoGuard_Install(void) {
     const int st = (g_entry_armed ? 1 : 0) | (g_consume_armed ? 2 : 0);
     if (st) return st;
     char m[400];
-    if (GetPrivateProfileIntA("net", "info_guard", 1, g_ini) == 0) {
-        seam_log("; [info] guard KEPT ([net] info_guard=0): retail's \"Cannot find info text\" modal stays reachable "
-                 "-- the reproduction arm (mp:U73)\n");
-        return 0;
-    }
     if (mh::config::mode() == mh::config::mode_t::original) {
         seam_log("; [info] guard KEPT ([config] mode=original) (mp:U73)\n");
         return 0;
     }
-    g_test_entry_n = (int)GetPrivateProfileIntA("net", "info_guard_test_entry", 0, g_ini);
-    g_test_row_n   = (int)GetPrivateProfileIntA("net", "info_guard_test_row", 0, g_ini);
+    g_test_entry_n = (int)mh_ini_get_int("net", "info_guard_test_entry", 0, g_ini);
+    g_test_row_n   = (int)mh_ini_get_int("net", "info_guard_test_row", 0, g_ini);
 
     g_entry_armed = mh::hook::install_trampoline(ADDR_INFO_OPEN, (void *)info_open_thunk, &g_tramp, 8,
                                                  mh::hook::entry_claim::exclusive,

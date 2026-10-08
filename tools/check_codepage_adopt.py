@@ -53,6 +53,8 @@ REFUSE_HOST_NEEDLE = "REFUSED (input codepage mismatch; ours "
 SENT_NEEDLE = "; F3c: sent JOIN_REFUSED to player "
 REFUSE_CLIENT_NEEDLE = "; F3c: JOIN REFUSED by the host: "
 CLOSE_NEEDLE = "reason=join_refused"
+BUILD_CLIENT_NEEDLE = "; RL11 TEST: advertising forged build '0.0.1'"
+BUILD_HOST_NEEDLE = "REFUSED (build (release version) mismatch; ours "
 
 
 def collect_logs(target):
@@ -119,6 +121,22 @@ def verdict(expect, host_text, client_text):
         ]
         need(bool(admitted), "host ADMITTED the JOIN under the normalized name 'Kie'")
         need(REFUSE_HOST_NEEDLE not in host_text, "host never refused on codepage")
+    elif expect == "build":
+        # RL11: the joiner forged [net] test_build_version=0.0.1; the host (real build) refuses it by
+        # name, DELIVERS the refusal, and never admits. The host stays in its lobby (no SESSION_END).
+        need(
+            BUILD_CLIENT_NEEDLE in client_text,
+            "client advertised the forged build (%r)" % BUILD_CLIENT_NEEDLE,
+        )
+        need(BUILD_HOST_NEEDLE in host_text, "host refused on build (%r)" % BUILD_HOST_NEEDLE)
+        need(REFUSE_HOST_NEEDLE not in host_text, "host did not refuse on codepage")
+        need(SENT_NEEDLE in host_text, "host sent JOIN_REFUSED (%r)" % SENT_NEEDLE)
+        need(ADMIT_NEEDLE not in host_text, "host never ADMITTED")
+        need(
+            "JOIN REFUSED by the host: build " in client_text,
+            "client's refusal text is the build form (screen: 'Host runs X, you run Y: update')",
+        )
+        need(CLOSE_NEEDLE in client_text, "client's session closed with reason=join_refused")
     else:
         need(REFUSE_HOST_NEEDLE in host_text, "host refused on codepage (%r)" % REFUSE_HOST_NEEDLE)
         need(
@@ -232,6 +250,33 @@ def selftest():
         False,
     )
     case("forged: client never forged", "forged", good_host_forged, "", False)
+    good_host_build = (
+        "; S4 JOIN from 1 'client' for 'uitest#1' -> REFUSED (build (release version) mismatch; ours 0.2.0, theirs 0.0.1)\n"
+        "; F3c: sent JOIN_REFUSED to player 1: build 0.2.0/0.0.1\n"
+    )
+    good_client_build = (
+        "; RL11 TEST: advertising forged build '0.0.1' (test_build_version)\n"
+        "; F3c: JOIN REFUSED by the host: build 0.2.0/0.0.1 -> leaving\n"
+        "; SESSION_END match_id=x reason=join_refused\n"
+    )
+    case("build: both good", "build", good_host_build, good_client_build, True)
+    case(
+        "build: host admitted", "build", good_host_build + "-> ADMITTED\n", good_client_build, False
+    )
+    case(
+        "build: client never forged",
+        "build",
+        good_host_build,
+        good_client_build.splitlines()[1],
+        False,
+    )
+    case(
+        "build: client not told",
+        "build",
+        good_host_build.splitlines()[0] + "\n",
+        good_client_build,
+        False,
+    )
     print("check_codepage_adopt --selftest: %s" % ("PASS" if not fails else "%d FAIL" % fails))
     return 1 if fails else 0
 
@@ -240,7 +285,7 @@ def main(argv):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--expect", choices=("agree", "refused", "forged"), default="agree")
+    ap.add_argument("--expect", choices=("agree", "refused", "forged", "build"), default="agree")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("dirs", nargs="*", help="<host run dir> <client run dir>")
     a = ap.parse_args(argv)

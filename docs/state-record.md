@@ -79,7 +79,7 @@ Semantics:
 
 ## The mh.dll writer (mp:D40)
 
-`[desync] state_record=1` (and `state_keyframe_every`, default 3000) in `mh_net.ini`. One file per
+`[desync] state_record=1` in `mh_net.ini` (keyframes every 3000 steps, fixed). One file per
 match, opened at the match's first step in the match folder: `mh_match_state.bin`, or
 `mh_match_state_<n>.bin` when that folder already holds one. It is closed at the session's end,
 and steps after that ("Continue game") are not recorded. `mh_net.log` carries:
@@ -104,7 +104,7 @@ same bytes inside a gzip member**, `mh_match_state.bin.gz` (`mh_match_state_<n>.
   header and trailer; no optional header fields, mtime 0). The sim and render threads never wait for
   it, and neither does `match_end`'s bounded wait, which covers only the raw writer. Library: miniz
   3.0.2 (MIT, `src/mh_dll/include/miniz/`, compiled by `desync/state_miniz.c`; see `THIRD_PARTY.md`).
-  `[desync] state_compress=0` skips it and keeps the raw file. A recording that STOPPED early (writer
+  It is always on (the `state_compress` key was retired 2026-10-06). A recording that STOPPED early (writer
   fell behind, allocation failed) is a valid prefix and is compressed the same way; one whose write
   failed is left raw.
 - **The order of events is the safety rule.** raw -> `<raw>.gz.tmp` -> **verify** (re-inflate the temp

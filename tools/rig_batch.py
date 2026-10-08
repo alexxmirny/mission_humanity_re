@@ -22,7 +22,7 @@ passing ones. A run where the mechanism did not fire is NOT a pass; it is no dat
 
 USAGE
     python tools/rig_batch.py --out tmp/l1p/d14 --runs 4 --steps 3000 \
-        --arm off:resync_order_horizon=0 --arm on:resync_order_horizon=1
+        --arm off:resync_trigger_gate=0 --arm on:resync_trigger_gate=1
 
     # a link-condition arm, and a run that only prints its plan
     python tools/rig_batch.py --out tmp/x --runs 2 --shim-delay 100 --arm base: --dry-run

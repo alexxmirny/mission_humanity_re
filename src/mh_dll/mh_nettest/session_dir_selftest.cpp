@@ -26,6 +26,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <windows.h>
+#include <string>
+
+#include "mh_log_prune.h"
+#include "mh_presence.h"
 #include "mh_session_dir.h"
 #include "seams/session_close_plan.h" // TL-HARN-CLEANCLOSE -- section 6
 
@@ -100,6 +105,243 @@ void                         fk_stop() { tr('S'); }
 const mh::session_close::ops FK = {fk_active, fk_net, fk_resets, fk_record,
                                    fk_end_dir, fk_tail, fk_rollups, fk_stop};
 void                         trace_reset() { g_trace[0] = '\0'; }
+
+} // namespace
+
+namespace {
+
+// ---- section 7 (dist RL15): session.json players / ai_count / outcome, and presence.json -----------
+
+std::string read_all(const char *path) {
+    std::string out;
+    FILE       *f = fopen(path, "rb");
+    if (!f) return out;
+    char   buf[1024];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
+    fclose(f);
+    return out;
+}
+
+std::string temp_dir(const char *leaf) {
+    char t[MAX_PATH];
+    GetTempPathA(MAX_PATH, t);
+    std::string d = std::string(t) + leaf + "_" + std::to_string(GetCurrentProcessId());
+    CreateDirectoryA(d.c_str(), nullptr);
+    return d;
+}
+
+void section_rl15() {
+    // outcome words
+    check("outcome: gameover -> finished", strcmp(mh_session_outcome("gameover", false), "finished") == 0);
+    check("outcome: quit/leave/timeout/host_left -> quit",
+          strcmp(mh_session_outcome("quit", false), "quit") == 0 && strcmp(mh_session_outcome("leave", false), "quit") == 0 &&
+              strcmp(mh_session_outcome("timeout", false), "quit") == 0 &&
+              strcmp(mh_session_outcome("host_left", false), "quit") == 0);
+    check("outcome: a desync wins over gameover and quit",
+          strcmp(mh_session_outcome("gameover", true), "desync") == 0 && strcmp(mh_session_outcome("quit", true), "desync") == 0);
+    check("outcome: no reason -> quit", strcmp(mh_session_outcome(nullptr, false), "quit") == 0);
+
+    // session.json: new fields at the open, and rewritten at the close; old fields kept
+    MH_SessionRecord r;
+    fill(&r, ID_A, 1, "host");
+    r.player_count = 2;
+    mh_sd_copy(r.players[0], MH_SESSION_PLAYER_NAME_CAP, "Alice");
+    mh_sd_copy(r.players[1], MH_SESSION_PLAYER_NAME_CAP, "B\"ob");
+    r.ai_count = 1;
+    mh_sd_copy(r.outcome, MH_SESSION_TEXT_CAP, "running");
+    char js[4096];
+    mh_session_json(&r, js, sizeof(js));
+    check("session.json: players in slot order, escaped", has(js, "\"players\": [\"Alice\", \"B\\\"ob\"]"));
+    check("session.json: ai_count", has(js, "\"ai_count\": 1"));
+    check("session.json: outcome running at the open", has(js, "\"outcome\": \"running\""));
+    check("session.json: existing fields kept", has(js, "\"match_id\": \"") && has(js, "\"process_dir\": \"") && has(js, "\"roster\""));
+    mh_sd_copy(r.outcome, MH_SESSION_TEXT_CAP, mh_session_outcome("gameover", false));
+    mh_session_json(&r, js, sizeof(js));
+    check("session.json: outcome finished after the close", has(js, "\"outcome\": \"finished\""));
+    r.player_count = 0;
+    mh_session_json(&r, js, sizeof(js));
+    check("session.json: no players -> empty array", has(js, "\"players\": []"));
+
+    // presence.json formatting
+    MH_Presence p;
+    mh_presence_clear(&p);
+    char pj[1024];
+    mh_presence_json(&p, 1234, 1760000100, pj, sizeof(pj));
+    check("presence: menu with nulls", has(pj, "\"schema\":1,\"pid\":1234,\"state\":\"menu\",\"mode\":null,\"map\":null") &&
+                                           has(pj, "\"players\":null") && has(pj, "\"started_unix\":null") &&
+                                           has(pj, "\"updated_unix\":1760000100"));
+    MH_Presence q = p;
+    mh_sd_copy(q.state, sizeof(q.state), "lobby");
+    mh_sd_copy(q.mode, sizeof(q.mode), "network");
+    mh_sd_copy(q.map, sizeof(q.map), "Dunes");
+    q.players     = 2;
+    q.max_players = 4;
+    mh_presence_json(&q, 1234, 1760000100, pj, sizeof(pj));
+    check("presence: lobby n/max", has(pj, "\"state\":\"lobby\"") && has(pj, "\"map\":\"Dunes\"") && has(pj, "\"players\":2,\"max_players\":4"));
+    check("presence: same / different", mh_presence_same(p, p) && !mh_presence_same(p, q));
+
+    // the writer: transitions rewrite; an identical state does not; the planet switch rewrites
+    std::string dir  = temp_dir("mh_pres");
+    std::string path = dir + "\\presence.json";
+    DeleteFileA(path.c_str());
+    check("presence writer: menu queued", mh_presence_publish(p, path.c_str()));
+    check("presence writer: flush", mh_presence_flush(5000));
+    std::string t1 = read_all(path.c_str());
+    char        pidtxt[40];
+    wsprintfA(pidtxt, "\"pid\":%lu", GetCurrentProcessId());
+    check("presence writer: file holds the menu state and OUR pid", has(t1.c_str(), "\"state\":\"menu\"") && has(t1.c_str(), pidtxt));
+    check("presence writer: identical state is not rewritten", !mh_presence_publish(p, path.c_str()));
+    MH_Presence c = p;
+    mh_sd_copy(c.state, sizeof(c.state), "campaign");
+    mh_sd_copy(c.mode, sizeof(c.mode), "campaign");
+    mh_sd_copy(c.system, sizeof(c.system), "Sol");
+    mh_sd_copy(c.planet, sizeof(c.planet), "Mars");
+    c.started_unix = 1760000000;
+    check("presence writer: campaign queued", mh_presence_publish(c, path.c_str()));
+    mh_presence_flush(5000);
+    std::string t2 = read_all(path.c_str());
+    check("presence writer: campaign file names system and planet", has(t2.c_str(), "\"planet\":\"Mars\"") && has(t2.c_str(), "\"system\":\"Sol\""));
+    mh_sd_copy(c.planet, sizeof(c.planet), "Venus");
+    check("presence writer: a planet switch is a change", mh_presence_publish(c, path.c_str()));
+    mh_presence_flush(5000);
+    std::string t3 = read_all(path.c_str());
+    check("presence writer: file rewritten with the new planet", has(t3.c_str(), "\"planet\":\"Venus\"") && !has(t3.c_str(), "Mars"));
+    std::string tmp = path + ".tmp";
+    check("presence writer: no temp file left behind", GetFileAttributesA(tmp.c_str()) == INVALID_FILE_ATTRIBUTES);
+    DeleteFileA(path.c_str());
+    RemoveDirectoryA(dir.c_str());
+}
+
+// ---- section 8 (dist RL5): log retention --------------------------------------------------------
+
+void mk_folder(const std::string &root, const char *name, unsigned long long created) {
+    std::string d = root + "\\" + name;
+    CreateDirectoryA(d.c_str(), nullptr);
+    std::string f  = d + "\\mh_net.log";
+    FILE       *fp = fopen(f.c_str(), "wb");
+    if (fp) {
+        fputs("x\n", fp);
+        fclose(fp);
+    }
+    HANDLE h = CreateFileA(d.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h != INVALID_HANDLE_VALUE) {
+        FILETIME ft;
+        ft.dwLowDateTime  = (DWORD)(created & 0xffffffffu);
+        ft.dwHighDateTime = (DWORD)(created >> 32);
+        SetFileTime(h, &ft, nullptr, nullptr);
+        CloseHandle(h);
+    }
+}
+
+bool exists_dir(const std::string &root, const char *name) {
+    return GetFileAttributesA((root + "\\" + name).c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+void write_marker(const std::string &root, const char *leaf, const char *match_hex) {
+    FILE *f = fopen((root + "\\" + leaf).c_str(), "wb");
+    if (!f) return;
+    fprintf(f, "mh_crash=1\ncode=0xc0000005\npid=4242\nmatch_id=%s\n", match_hex);
+    fclose(f);
+}
+
+void seed_30(const std::string &root, unsigned long long now, char names[30][96]) {
+    const unsigned long long DAY = 864000000000ull;
+    for (int i = 0; i < 30; ++i) {
+        wsprintfA(names[i], "2026-09-%02dT10-00-00Z_%08x_map_host", i + 1, 0x1000 + i);
+        mk_folder(root, names[i], now - (unsigned long long)(30 - i) * DAY); // i=29 is the newest (1 day old)
+    }
+}
+
+unsigned long long now_ft() {
+    FILETIME f;
+    GetSystemTimeAsFileTime(&f);
+    return ((unsigned long long)f.dwHighDateTime << 32) | f.dwLowDateTime;
+}
+
+int count_present(const std::string &root, char names[30][96]) {
+    int n = 0;
+    for (int i = 0; i < 30; ++i)
+        if (exists_dir(root, names[i])) ++n;
+    return n;
+}
+
+void section_rl5() {
+    // the pure decision
+    {
+        MH_PruneEntry e[5] = {};
+        for (int i = 0; i < 5; ++i) {
+            wsprintfA(e[i].name, "2026-09-0%dT00-00-00Z_x_y_z", i + 1);
+            e[i].created = 1000ull + (unsigned long long)i;
+        }
+        const int del = mh_prune_select(e, 5, 2, 0, 5000);
+        check("prune select: keep 2 of 5 -> the 3 oldest go", del == 3 && e[0].del && e[1].del && e[2].del && !e[3].del && !e[4].del);
+        e[0].protect = true;
+        mh_prune_select(e, 5, 2, 0, 5000);
+        check("prune select: a protected folder is kept and not counted against N", !e[0].del && e[3].del == false && e[1].del && e[2].del);
+        check("prune select: both rules off prunes nothing", mh_prune_select(e, 5, 0, 0, 5000) == 0);
+        check("prune names: ours vs foreign",
+              mh_prune_is_ours("2026-10-08T10-00-00Z_menu_solo") && mh_prune_is_ours("20260921_101010_menu_host") &&
+                  !mh_prune_is_ours("crash") && !mh_prune_is_ours("reports") && !mh_prune_is_ours("2026-nounderscore"));
+    }
+    // on disk: 30 seeded, default 20, crash-marked unreported kept
+    {
+        std::string              root = temp_dir("mh_prune");
+        char                     names[30][96];
+        const unsigned long long now = now_ft();
+        seed_30(root, now, names);
+        mk_folder(root, "2026-10-01T09-00-00Z_menu_host", now - 40ull * 864000000000ull); // an old process folder
+        mk_folder(root, "2026-10-08T09-00-00Z_menu_host", now);                           // "this run"
+        mk_folder(root, "reports", now - 99ull * 864000000000ull);                        // foreign: untouched
+        // names[0] and names[1] are the two OLDEST. 0: crash marker, unreported. 1: reported.
+        write_marker(root, "mh_crash_111.marker", "00000000000000000000000000001000");
+        write_marker(root, "mh_crash_222.marker", "00000000000000000000000000001001");
+        FILE *rep = fopen((root + "\\mh_crash_222.marker.reported").c_str(), "wb");
+        if (rep) fclose(rep);
+        int scanned = 0;
+        int removed = mh_prune_run(root.c_str(), "2026-10-08T09-00-00Z_menu_host", 20, 0, &scanned);
+        check("prune: 30 seeded + default 20 -> 20 plus the unreported crash folder remain", count_present(root, names) == 21);
+        check("prune: the unreported crash-marked folder survives", exists_dir(root, names[0]));
+        check("prune: a REPORTED crash folder is prunable", !exists_dir(root, names[1]));
+        check("prune: the 20 newest all survive", [&] {
+            for (int i = 10; i < 30; ++i)
+                if (!exists_dir(root, names[i])) return false;
+            return true;
+        }());
+        check("prune: this run's process folder and foreign folders are untouched",
+              exists_dir(root, "2026-10-08T09-00-00Z_menu_host") && exists_dir(root, "reports"));
+        check("prune: removed count is right (9 sessions; process folders are ranked apart from sessions)",
+              removed == 9 && scanned == 32);
+        check("prune: process folders are ranked separately and survive N=20", exists_dir(root, "2026-10-01T09-00-00Z_menu_host"));
+        // a reported crash becomes prunable
+        rep = fopen((root + "\\mh_crash_111.marker.reported").c_str(), "wb");
+        if (rep) fclose(rep);
+        mh_prune_run(root.c_str(), "2026-10-08T09-00-00Z_menu_host", 20, 0, nullptr);
+        check("prune: once reported, the formerly protected folder is pruned", !exists_dir(root, names[0]) && count_present(root, names) == 20);
+        // a changed N is honoured
+        mh_prune_run(root.c_str(), "2026-10-08T09-00-00Z_menu_host", 5, 0, nullptr);
+        check("prune: keep_sessions=5 is honoured", count_present(root, names) == 5);
+        mh_prune_run(root.c_str(), "2026-10-08T09-00-00Z_menu_host", 0, 0, nullptr);
+        check("prune: both rules off keeps everything", count_present(root, names) == 5);
+        // remove the temp tree
+        for (int i = 0; i < 30; ++i) mh_prune_detail::remove_tree((root + "\\" + names[i]).c_str(), 0);
+        mh_prune_detail::remove_tree((root + "\\2026-10-08T09-00-00Z_menu_host").c_str(), 0);
+        mh_prune_detail::remove_tree((root + "\\2026-10-01T09-00-00Z_menu_host").c_str(), 0);
+        mh_prune_detail::remove_tree((root + "\\reports").c_str(), 0);
+        mh_prune_detail::remove_tree(root.c_str(), 0);
+    }
+    // keep_days
+    {
+        std::string root = temp_dir("mh_prune_days");
+        char        names[30][96];
+        seed_30(root, now_ft(), names);
+        mh_prune_run(root.c_str(), "", 0, 6, nullptr); // ages 1..30 days (+ms); keep <= 6 days old
+        check("prune: keep_days=6 keeps exactly the 5 youngest (ages 1-5 d)", count_present(root, names) == 5 && exists_dir(root, names[25]) && !exists_dir(root, names[24]));
+        for (int i = 0; i < 30; ++i) mh_prune_detail::remove_tree((root + "\\" + names[i]).c_str(), 0);
+        mh_prune_detail::remove_tree(root.c_str(), 0);
+    }
+}
 
 } // namespace
 
@@ -523,6 +765,9 @@ int run_sessiondirtest() {
                   strcmp(stop_result_name(stop_result::nothing), "nothing") == 0 &&
                   strcmp(stop_result_name(stop_result::repeated), "repeated") == 0);
     }
+
+    section_rl15();
+    section_rl5();
 
     printf("  %d checks, %d failures\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

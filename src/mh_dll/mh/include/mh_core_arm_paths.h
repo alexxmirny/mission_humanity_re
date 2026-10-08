@@ -31,7 +31,7 @@ extern "C" {
 typedef struct MH_CoreArmPaths {
     unsigned    size;          /* sizeof(MH_CoreArmPaths) as MH.DLL was compiled                  */
     const char *exe_dir;       /* "...\\" -- the exe's directory, trailing separator kept          */
-    const char *ini_path;      /* "<exedir>mh_net.ini" -- the one config INPUT                     */
+    const char *ini_path;      /* "<config dir>mh_net.ini" -- the one config INPUT (RL3)           */
     const char *log_path;      /* "<rundir>mh_harness.log"                                        */
     const char *seed_in;       /* "<exedir>mh_harness_seed.bin"  (inject)                         */
     const char *seed_out;      /* "<rundir>mh_harness_seed.bin"  (dump)                           */

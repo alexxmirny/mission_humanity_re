@@ -4,8 +4,7 @@
 # llm_mp_netsetup_ip_field_cancel (0x004bd805) calls llm_lobby_show_intro_wait(0) and then, at the very
 # next instruction, llm_mp_local_browser_setup -- which ends with its OWN show_intro_wait(0). Two 400 ms
 # slide-ins back to back. The fix suppresses the first by return address; the PROOF that it fired is the
-# seam log line `; slide: suppressed the redundant ip-cancel slide-in`, and the full slide trace is
-# available with [net] slide_diag=1.
+# seam log line `; slide: suppressed the redundant ip-cancel slide-in`.
 #
 # What THIS script is for is the other half: that suppressing a slide did not break the navigation it
 # was part of. That is the regression a return-address suppression can plausibly cause -- wrong site,

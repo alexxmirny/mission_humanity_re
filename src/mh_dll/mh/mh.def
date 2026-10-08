@@ -27,13 +27,10 @@ EXPORTS
     ?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z
     ?promoted_owner_of@hook@mh@@YAPBDI@Z
     ?register_callback@hook@mh@@YA_NW4point@12@P6AXXZ@Z
-    ?save_planet_now@save@mh@@YAIHI@Z
-    ?savegame_now@save@mh@@YAIPAD@Z
     MH_Core_ArmPaths
     MH_Core_TrapsAtOpen
     MH_Lockstep_HorizonHold
     MH_Lockstep_StepPin
-    MH_Net_Send
     MH_Net_SnapshotPoll
     MH_Net_SnapshotSend
     MH_Net_SnapshotStatus

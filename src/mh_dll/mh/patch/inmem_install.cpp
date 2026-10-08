@@ -10,6 +10,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include <cstring>
 
@@ -87,7 +88,7 @@ const mh::patch::inmem_manifest *select(const char *ini_path) {
 // launches the lane and WAITS for a dump; a refusal that left the process booting would spend the
 // runner's whole timeout to report a fact the log already had.
 void maybe_exit(const char *ini_path) {
-    if (!GetPrivateProfileIntA("patch", "dump_exit", 0, ini_path)) return;
+    if (!mh_ini_get_int("patch", "dump_exit", 0, ini_path)) return;
     // The headless parity run: the only thing this process was started for is the state of its
     // own image one instruction after the apply. Leaving it to boot would mean a window, a rig
     // lease and a kill, for evidence that is already on disk.
@@ -100,7 +101,7 @@ void maybe_exit(const char *ini_path) {
 extern "C" const char *MH_InMemPatch_Refusal(void) { return g_refusal; }
 
 extern "C" int MH_InMemPatch_Install(const char *ini_path) {
-    if (!ini_path || !GetPrivateProfileIntA("patch", "inmem", 0, ini_path)) return 0;
+    if (!ini_path || !mh_ini_get_int("patch", "inmem", 0, ini_path)) return 0;
 
     mh::patch::set_logger(&seam_log);
     const mh::patch::inmem_manifest *sel = select(ini_path);

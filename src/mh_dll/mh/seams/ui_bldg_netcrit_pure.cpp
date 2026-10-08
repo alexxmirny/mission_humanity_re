@@ -4,6 +4,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -83,7 +84,7 @@ extern "C" int MH_NetCrit_Install(void) {
     if (!mh::en_build_ok()) return 0;
     if (g_armed) return 1;
     const uintptr_t site = mh::addr::netcrit_ui_call_site;
-    if (GetPrivateProfileIntA("net", "netcrit_ui_pure", 1, g_ini) == 0) {
+    if (mh_ini_get_int("net", "netcrit_ui_pure", 1, g_ini) == 0) {
         seam_log("; D37: network-panel probe KEPT ([net] netcrit_ui_pure=0): selecting a network building "
                  "recomputes this peer's power network -- the reproduction arm\n");
         return 0;

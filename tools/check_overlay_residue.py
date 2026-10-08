@@ -27,8 +27,8 @@ COLOUR MATCH, NOT A BRIGHTNESS THRESHOLD (learned the hard way, 2026-09-22: the 
 checker used a plain luminance ("ink") test, the same idea tools/ui_test.py's diff_capture(only=
 {"mode":"ink"}) already uses for text drawn in a colour the GAME picks per run. That is the right
 call there -- masks a colour a diff cannot know ahead of time. It is the WRONG call here: this
-checker knows the exact colour it is looking for (the seam's own `[debug] color=` / `[hud]
-net_indicator_color=`, always drawn at full un-halved brightness -- only the darkened BACKGROUND
+checker knows the exact colour it is looking for (the seam's own `[debug] color=` / the
+net indicator's fixed white, always drawn at full un-halved brightness -- only the darkened BACKGROUND
 behind the text is halved by dim_rect), and a live in-game capture's ground terrain is its own kind
 of bright (measured: strategic ground art peaks around RGB(90,97,99), comfortably over a luminance
 threshold that would pass on a black menu background). A luminance-only version of this checker

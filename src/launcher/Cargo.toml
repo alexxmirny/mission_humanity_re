@@ -169,3 +169,9 @@ windows-sys = { version = "0.61.2", features = [
 # reader, asserting the streams a debugger needs are there and that the module list names that
 # process. A dump that parses here is a dump `cdb -z` opens.
 minidump = "0.27.0"
+
+# dist RL12/RL13: the screenshots the user reviews (UI-layout rule). kittest drives a real egui frame
+# and `wgpu` renders it through the same D3D/WARP path the launcher itself falls back to, so a PNG of
+# the Settings page is a picture of what ships. `snapshot` writes and diffs the PNGs. Dev-only:
+# nothing of this reaches the release binary.
+egui_kittest = { version = "0.36.2", default-features = false, features = ["wgpu", "snapshot"] }

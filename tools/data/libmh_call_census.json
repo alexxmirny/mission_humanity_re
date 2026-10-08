@@ -47,9 +47,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 210,
+    "sites": 204,
     "distinct": 151,
-    "outward_sites": 151,
+    "outward_sites": 149,
     "outward_distinct": 114
    },
    "sim": {
@@ -270,9 +270,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    },
    "adjudication": null
   },
@@ -475,9 +475,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 3,
    "modules": {
-    "seams": 2
+    "seams": 3
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -814,9 +814,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    },
    "adjudication": null
   },
@@ -1054,9 +1054,9 @@
    "domain": "sim",
    "tier": "T2",
    "promoted": false,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    }
   },
   {
@@ -1065,9 +1065,9 @@
    "domain": "sim",
    "tier": "T3",
    "promoted": true,
-   "sites": 3,
+   "sites": 1,
    "modules": {
-    "seams": 3
+    "seams": 1
    }
   },
   {
@@ -1109,9 +1109,9 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    }
   },
   {
@@ -1706,9 +1706,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 3,
+   "sites": 2,
    "modules": {
-    "seams": 3
+    "seams": 2
    },
    "adjudication": null
   },

@@ -111,25 +111,27 @@ counters line says `peers=0`.
    git push origin v0.1.1-rc1
    ```
 
-2. Watch **two** workflow runs on the private repo: `release` (`build-and-gate`, `selftests-asan`,
-   `selftests-plain`, `publish`; **`publish manifest.json to GitHub Pages` is SKIPPED here by
-   design** — grey, not red) and `launcher-release` (`build-and-test`, `publish`). A red gate
-   publishes nothing: fix, then the next `-rcN`.
+2. Watch the workflow runs on the private repo. A game tag `v*` starts `release` only
+   (`build-and-gate`, `selftests-asan`, `selftests-plain`, `publish`; **`publish-pages` is SKIPPED
+   here by design** — grey, not red). The launcher is its own tag, `launcher-v*`, which starts
+   `launcher-release` (`build-and-test`, `publish`, `sign`; its `publish-pages` is skipped the same
+   way). A joint release is two tags, launcher first (section 6). A red gate publishes nothing:
+   fix, then the next `-rcN`.
 3. **Verify the artifacts, not the run** — in a scratch directory under the repo root (`tmp\rc`,
    say; `tmp/` is gitignored):
 
    ```powershell
    gh release download v0.1.1-rc1 -R <owner>/mh_re_private -D .
-   Get-FileHash *.zip, *.exe | Format-Table Hash, Path     # against SHA256SUMS, line by line
+   Get-FileHash *.zip | Format-Table Hash, Path     # against SHA256SUMS, line by line
    Expand-Archive mission_humanity_re-0.1.1-rc1-net.zip -DestinationPath net
    (Get-Item net\mh.dll).VersionInfo.FileVersion            # 0.1.1-rc1+<short sha>: the TAG, as a string
    Select-String '^transport=' net\mh_net.ini              # transport=udp
-   Set-Content pub.key (Select-String -Path ..\..\src\launcher\src\update.rs -Pattern 'PUBLIC_KEY: &str = "(.*)"').Matches[0].Groups[1].Value
-   python ..\..\tools\gen_update_manifest.py --verify manifest.json --public-key pub.key   # OK: manifest.json schema 1 version ...
+   gh run download <release run id> -R <owner>/mh_re_private -n manifest-0.1.1-rc1 -D manifest
+   python ..\..\tools\gen_update_manifest.py --verify manifest\game.json   # key = update.rs PUBLIC_KEY
    ```
 
-   and in `manifest.json` the `relay` object holds `addr` and `key`, and every asset's hash and
-   size equals the file and `SHA256SUMS`. In the `publish` job's log the manifest is printed with
+   and in `game.json` the `relay` object holds `addr` and `key`, and the `net` entry's hash and
+   size equal the zip and `SHA256SUMS`. In the `publish` job's log the manifest is printed with
    `"key": "<blanked in this log>"` — the key never appears in a log. `launcher-release`'s log
    ends with `exe says: mh_launcher 0.1.1-rc1 ok`.
 4. A superseded rc's release and tag may be deleted (`gh release delete`, then
@@ -161,13 +163,13 @@ drift gate to run before it when in doubt. Read the sha it pushed: `git -C tmp\p
    git -C tmp\pub push origin v0.1.1
    ```
 
-2. Watch `release` and `launcher-release` on the public repo; this time the job
-   **`publish manifest.json to GitHub Pages` must be green** (0.1's tag rule is what lets it run).
+2. Watch `release` (and `launcher-release` for a `launcher-v*` tag) on the public repo; this time
+   each `publish-pages` job **must be green** (0.1's tag rule is what lets it run).
 3. Then:
 
    ```powershell
-   curl.exe -s https://<owner>.github.io/mission_humanity_re/manifest.json        # the new version, with "relay"
-   curl.exe -sI https://<owner>.github.io/mission_humanity_re/manifest.json.minisig | Select-Object -First 1   # HTTP/1.1 200 OK
+   curl.exe -s https://<owner>.github.io/mission_humanity_re/channels/latest/game.json   # the new version, with "relay"
+   curl.exe -sI https://<owner>.github.io/mission_humanity_re/channels/latest/game.json.minisig | Select-Object -First 1   # HTTP/1.1 200 OK
    ```
 
    and the same artifact checks as 0.4.3 against `gh release download v0.1.1 -R
@@ -388,14 +390,32 @@ pushing a tag is.
 
 ## 6. The launcher release
 
-**Same tag, two workflows, one release.** [`.github/workflows/launcher-release.yml`](../.github/workflows/launcher-release.yml)
-builds and tests the Rust launcher (`src/launcher`) and attaches `mh_launcher.exe` (unversioned since v0.1.1; the version is inside the binary) to the
-tag's GitHub Release; [`release.yml`](../.github/workflows/release.yml)'s `publish` job — the same
-job that creates the release with the three game zips — also signs and attaches
-[`manifest.json`](#the-manifest) and publishes it to GitHub Pages. The two workflows are not `needs:`
-of each other (GitHub Actions cannot express that across files); each polls the GitHub Release for
-the ONE thing it is missing from the other. Both files' headers carry the full rationale — read
-`launcher-release.yml`'s "THE ORDERING PROBLEM" section before changing either.
+**Two tags, two workflows, two signed files per channel (RL8, v0.2.0).** The game and the launcher
+release independently:
+
+| tag | workflow | publishes |
+| --- | --- | --- |
+| `vX.Y.Z[-rcN]` | [`release.yml`](../.github/workflows/release.yml) | the three game zips + `SHA256SUMS` on the tag's Release, and the signed `channels/latest/game.json` on Pages |
+| `launcher-vX.Y.Z[-rcN]` | [`launcher-release.yml`](../.github/workflows/launcher-release.yml) | `mh_launcher.exe` on the tag's own Release (unversioned file name; the version is inside, `--verify-binary`), and the signed `channels/latest/launcher.json` on Pages |
+| manual | [`promote.yml`](../.github/workflows/promote.yml) | `channels/stable/{game,launcher}.json`: the same artifact, re-signed (section 7.4) |
+| weekly + manual | [`bridge-resign.yml`](../.github/workflows/bridge-resign.yml) | the frozen schema-1 `manifest.json` at the old URL (section 7.5) |
+
+A `launcher-v*` tag does not match `release.yml`'s `v*` filter, so the two never fire on one push.
+Nothing polls anything any more. **A joint release is two tags, launcher first**: `release.yml`
+fetches the SERVED `channels/latest/launcher.json` and `gen_update_manifest.py --channel-launcher`
+refuses a game whose `min_launcher` (default: the `MIN_LAUNCHER` constant in the tool — bump it in
+the commit that makes the game need a newer launcher) is newer than that launcher. Both tags are
+annotated and the tag message is the release notes.
+
+**Layout on Pages** (`gh-pages`, the base URL unchanged): `channels/{latest,stable}/{launcher,game}.json`
+each with a `.minisig`, plus the root `manifest.json` bridge. `kind` and `channel` are INSIDE the
+signed body, so a stable file served at the latest URL is refused by the launcher; the
+launcher's own `channel` setting (`launcher.toml`) picks which pair it follows (`latest` is the
+rolling tag build; `stable` is what `promote.yml` has blessed). Schemas: `launcher.json` =
+`{schema:2, kind, channel, version, issued_at, url, sha256, size, notes_url?}`; `game.json` =
+`{schema:2, kind, channel, version, issued_at, min_launcher, game:{net:{url, sha256, size}},
+relay?, notes_url?}`. There is no 30-day STALE check on schema 2; `issued_at` only has to move
+forward (REPLAY floor per channel and kind), which is why every re-sign sets it to now.
 
 **The launcher build.** `RUSTFLAGS=-C target-feature=+crt-static` statically links the MSVC CRT, so
 the shipped exe imports no `VCRUNTIME140.dll`/`api-ms-win-crt-*.dll` — a per-user install with no
@@ -409,9 +429,12 @@ a `workflow_dispatch` dry run is exempt, the same way a dry-run `release.yml` ru
 
 ### The manifest
 
-`tools/gen_update_manifest.py` builds and minisign-signs `manifest.json` (dist LA2's schema) from
-`dist/`'s `SHA256SUMS` (already there from `tools/release_package.py`) plus the launcher exe
-`launcher-release.yml` attached to the same release. It is pure Python standard library — no
+`tools/gen_update_manifest.py` builds and minisign-signs the schema-2 files. `--kind game` reads
+`dist/`'s `SHA256SUMS` (already there from `tools/release_package.py`) and names the `net` zip;
+`--kind launcher` hashes the exe. Each writes `<kind>.json` + `.minisig` into `--out`; the signature's
+trusted comment names kind and channel. `--verify FILE` with no `--public-key` checks against
+`update.rs`'s `PUBLIC_KEY` — the key players have, not the one that happened to sign. The tool also
+does `--promote` / `--bridge` / `--resign` / `--sign-file` / `--age-days` (7.4, 7.5). It is pure Python standard library — no
 `rsign2`/libsodium dependency in CI — for the reasons its own header gives (the part an attacker
 attacks is the *verifier*, `minisign-verify` inside the launcher, not this signer; a wrong signer
 only fails to publish). **The job fails outright, before touching the network, if the
@@ -450,31 +473,34 @@ trusts the key it was built with.
 
 ### Pages
 
-`manifest.json` + `manifest.json.minisig` are what the Pages site serves (the `gh-pages` branch
-also holds `.nojekyll` and a one-page `index.html`). `release.yml`'s `publish-pages` job, after
-`publish` has uploaded every asset, clones `gh-pages`, commits the two files, pushes, requests a
-Pages build (`POST …/pages/builds`), waits for the build of ITS commit, and then `curl`s both files
-back and requires them byte-identical to the signed ones — a stale or 404 manifest reds the run
-instead of breaking only the players in the field. It needs `contents: write` + `pages: write` and
-no third-party action. **One-time repo setup:** Pages source = the `gh-pages` branch and the
-variable `MH_PAGES_BRANCH` = `gh-pages`. Unset, the job is skipped — Pages does not exist on a
-private free-plan repo, so the private rehearsal leaves it unset (the release and its attached
-`manifest.json` + `.minisig` are unaffected) and only the public repo sets it.
-The earlier Actions-mode job (`actions/upload-pages-artifact` + `actions/deploy-pages`, gated on
-`MH_PAGES_PUBLISH`) was retired by dist V021: the hand-cut v0.2.0-rc2 moved Pages to branch mode,
-where `deploy-pages` cannot deploy, and the branch is the better home (G288).
+The Pages site serves `channels/<channel>/<kind>.json` + `.minisig` and the root bridge
+`manifest.json` (the `gh-pages` branch also holds `.nojekyll` and a one-page `index.html`). Each
+workflow's `publish-pages` job, after its `publish` job has uploaded every asset the file names,
+clones `gh-pages`, commits ITS OWN files, pushes (rebase + retry: four workflows share the branch,
+but never a file), requests a Pages build (`POST …/pages/builds`), waits for the build of ITS commit,
+and then `curl`s the files back and requires them byte-identical to the signed ones — a stale or
+404 manifest reds the run instead of breaking only the players in the field. It needs
+`contents: write` + `pages: write` and no third-party action. **One-time repo setup:** Pages source
+= the `gh-pages` branch and the variable `MH_PAGES_BRANCH` = `gh-pages`. Unset, the job is skipped
+— Pages does not exist on a private free-plan repo, so the private rehearsal leaves it unset (and
+`release.yml` then runs the `min_launcher` guard-less, with a warning) and only the public repo sets
+it. The earlier Actions-mode job (`actions/deploy-pages`, `MH_PAGES_PUBLISH`) was retired by dist
+V021: the hand-cut v0.2.0-rc2 moved Pages to branch mode, where `deploy-pages` cannot deploy, and
+the branch is the better home (G288).
 
 ### Verifying it worked
 
 Same order as [section 2](#2-cutting-one)'s rehearsal, plus:
 
 - `launcher-release.yml`'s `build-and-test` job is green (fmt, clippy, `cargo test`, and the
-  static-CRT import-table check) and its `publish` job attached `mh_launcher-<version>.exe`.
-- `release.yml`'s `publish` job attached `manifest.json` + `manifest.json.minisig` alongside the
-  three zips and `SHA256SUMS`.
-- The Pages URL (`https://<owner>.github.io/<repo>/manifest.json`) serves the same `manifest.json`
-  that is on the release — `certutil -hashfile` or `Get-FileHash` should agree.
-- A launcher built against the OLD `PUBLIC_KEY` refuses the new manifest (`refuse SIGNATURE` in its
+  static-CRT import-table check), its `publish` job created the `launcher-v…` Release with
+  `mh_launcher.exe`, and `sign` verified `launcher.json` against `update.rs`'s `PUBLIC_KEY`.
+- `release.yml`'s `publish` job signed `game.json` (log: `guard ok -- served latest launcher is …`
+  unless the repo has no Pages) and verified it the same way.
+- The Pages URL (`https://<owner>.github.io/<repo>/channels/latest/game.json`) serves the file the
+  run artifact (`manifest-<version>`) holds — `Get-FileHash` should agree; the job's read-back
+  already required it.
+- A launcher built against the OLD `PUBLIC_KEY` refuses the new file (`refuse SIGNATURE` in its
   log); a launcher built against the current one applies it, per dist LA2's own acceptance clauses.
 
 ## 7. Cutting a release BY HAND, when Actions cannot run
@@ -520,22 +546,34 @@ paperwork — it IS the gate, and it is the only evidence the release is good.
    dead-ends G289: `$env:X = (gh variable get ...)` FLATTENS the multi-line CA PEM into one
    space-joined line that is not a certificate, so re-join it with newlines; and confirm the bake
    landed by finding the strings in the built exe, not by trusting that cargo rebuilt.
-5. **Manifest**: `gen_update_manifest.py --secret-key <key> --dist dist --asset-base-url
-   https://github.com/<owner>/<repo>/releases/download/<tag> --launcher-exe … --launcher-version …
-   --launcher-url … --notes-url …`, with `MH_RELAY_ADDR`/`MH_RELAY_KEY` in the environment.
-   `--asset-base-url` is the RELEASE download URL, never the Pages URL.
+5. **Manifests** (schema 2, one per kind; the launcher tag and the game tag are separate, launcher first):
+
+   ```powershell
+   python tools\gen_update_manifest.py --kind launcher --channel latest --version <X.Y.Z> `
+     --launcher-exe mh_launcher.exe --launcher-url https://github.com/<owner>/<repo>/releases/download/launcher-v<X.Y.Z>/mh_launcher.exe `
+     --notes-url … --secret-key <key> --out pages\channels\latest
+   python tools\gen_update_manifest.py --kind game --channel latest --version <X.Y.Z> --dist dist `
+     --asset-base-url https://github.com/<owner>/<repo>/releases/download/v<X.Y.Z> `
+     --channel-launcher pages\served\launcher.json --notes-url … --secret-key <key> --out pages\channels\latest
+   ```
+
+   with `MH_RELAY_ADDR`/`MH_RELAY_KEY` in the environment for the game file. `--asset-base-url` is
+   the RELEASE download URL, never the Pages URL. `--channel-launcher` is the launcher.json
+   (+ `.minisig`) currently SERVED for that channel (`curl` it); the tool verifies it and refuses a
+   `--min-launcher` newer than it. Then `--verify` each output.
 6. **Publish, assets FIRST and the manifest LAST** (G288 — a live manifest whose assets do not exist
    yet points every launcher at 404s):
    a. `build_public_seed.py --follow-up … --push` — the public squash commit.
    b. `git tag -a <tag> <public main sha> -F <message file>` in that clone, and push it.
-      **The push starts `release` and `launcher-release` if Actions can run.** On `v0.2.0-rc3`
-      (2026-09-25) they did. Cancel both (`gh run cancel <id>`) before their publish jobs: those
-      jobs would replace the hand-built assets with CI builds whose hashes the manifest you
-      signed does not carry.
+      **The push starts `release` (a `v*` tag) or `launcher-release` (a `launcher-v*` tag) if Actions
+      can run.** On `v0.2.0-rc3` (2026-09-25) they did. Cancel the run (`gh run cancel <id>`)
+      before its publish jobs: they would replace the hand-built assets with CI builds whose hashes
+      the manifest you signed does not carry.
    c. `gh release create <tag> -R <owner>/<repo> [--prerelease] --notes-file <message file>` with
-      the three zips, `SHA256SUMS`, `mh_launcher.exe`, `manifest.json`, `manifest.json.minisig`.
-      This is the REST API — it works with Actions dead.
-   d. Only now put `manifest.json` + `manifest.json.minisig` on the Pages branch (7.3).
+      the three zips and `SHA256SUMS` (game tag) or `mh_launcher.exe` (launcher tag). This is the
+      REST API — it works with Actions dead.
+   d. Only now put the signed `<kind>.json` + `.minisig` on the Pages branch under
+      `channels/latest/` (7.3).
 7. **Verify as a player, not as a maintainer.** This is the step that replaces the rehearsal:
    - `curl` the SERVED manifest and check it is byte-identical to the one you signed;
    - verify its signature against the key compiled into the launcher, extracted from
@@ -551,11 +589,11 @@ Pages is in **branch** (`legacy`) mode, decided 2026-09-23 (dist V021). The mani
 committed file on a **dedicated orphan branch (`gh-pages`), never `main`**: `build_public_seed.py`
 REPLACES `main`'s tree wholesale on every publish, so a manifest committed there is deleted by the
 NEXT release — a break that arrives one release after the change that caused it. The branch holds
-only `manifest.json`, `manifest.json.minisig`, `.nojekyll` and a one-page `index.html`.
+only `channels/**`, the bridge `manifest.json` (+ `.minisig`), `.nojekyll` and a one-page `index.html`.
 
-- **With Actions**, `release.yml`'s `publish-pages` job does the commit + build + read-back (the
+- **With Actions**, each workflow's `publish-pages` job does the commit + build + read-back (the
   [Pages](#pages) section), gated on `MH_PAGES_BRANCH`.
-- **By hand**, commit the two files to `gh-pages` yourself. A push may not trigger a build by
+- **By hand**, commit the signed files to `gh-pages` yourself. A push may not trigger a build by
   itself; force one with `gh api -X POST repos/<owner>/<repo>/pages/builds` and confirm with
   `…/pages/builds/latest` that the built commit is the one you pushed.
 
@@ -567,3 +605,84 @@ deleting `gh-pages` so nothing serves a stale manifest.
 **Whichever mode, read the site back** (`curl` the manifest and its `.minisig`): nothing else in the
 release flow fetches Pages, so a 404 there is invisible to a green pipeline and breaks only the
 players already in the field.
+
+### 7.4 Promote latest to stable
+
+`latest` is what a tag publishes; `stable` is only ever a promotion. Promotion re-signs the SAME
+artifact — `sha256`, `size`, `url`, `version`, `min_launcher` and `relay` are carried over byte for
+byte; only `channel` and a fresh `issued_at` change (the tool re-parses its output and refuses
+otherwise). No rebuild, no new bytes.
+
+**With Actions:** run `promote.yml` (workflow_dispatch, input `kind` = `game` | `launcher` | `both`).
+It fetches the SERVED `channels/latest/<kind>.json`, verifies it against `update.rs`'s `PUBLIC_KEY`,
+promotes, and publishes `channels/stable/` with the usual read-back. `both` promotes the launcher
+first; the game is then guarded against the stable launcher, so a stable player is never offered a
+game their launcher cannot run (`game` alone needs a stable launcher already served). **After the
+FIRST launcher promotion, also dispatch `bridge-resign.yml`** so rc7.1 arrivals get the new
+launcher now rather than on the next weekly run (7.5).
+
+**By hand:**
+
+```powershell
+curl.exe -fsSL <base>/channels/latest/game.json -o in\game.json          # + .minisig
+python tools\gen_update_manifest.py --promote in\game.json --to stable --secret-key <key> `
+  --channel-launcher <stable launcher.json> --out out\channels\stable
+python tools\gen_update_manifest.py --verify out\channels\stable\game.json
+```
+
+Then publish `out\channels\stable\*` to `gh-pages` (7.3) and read the SERVED copy back. Order for a
+joint stable release: launcher first.
+
+### 7.5 The bridge (RL10): keep the schema-1 `manifest.json` alive for rc7.1 launchers
+
+An installed rc7.1 launcher reads `<base>/manifest.json` (schema 1) and refuses it STALE once
+`issued_at` is more than 30 days old. From v0.2.0 that file is the BRIDGE: schema 1, `version` and
+the three game entries exactly as rc7.1 shipped them (the rc7.1 game update is a no-op), a `launcher`
+entry copied from the verified `channels/stable/launcher.json` (version, url, sha256), the relay
+and notes as before. An rc7.1 launcher offers the launcher update on one click, installs it and
+restarts with `--update`; the new launcher then follows its channel's schema-2 files and never
+reads the bridge again. The new launcher must keep answering `--verify-binary` (`mh_launcher <ver>
+ok`) and accept `--update`, `--view` and `--exit-after-update` for this to work. Bridge arrivals
+default to the `stable` channel (user decision 2026-10-08).
+
+**Until the v0.2.0 launcher is promoted to stable** the bridge's launcher entry stays as is and
+only `issued_at` moves. The bridge ends at **v0.2.0 stable + 6 months**, recorded in the repository
+variable `MH_BRIDGE_UNTIL` (`YYYY-MM-DD`, set by the maintainer; unset = no end date and a
+warning).
+
+**With Actions:** `bridge-resign.yml` runs weekly (Mondays 05:17 UTC) and on dispatch. It verifies
+the served bridge against `PUBLIC_KEY`, copies the launcher entry from the served stable launcher
+when it exists, re-signs when the served bridge is ≥ 14 days old (or the stable launcher moved),
+publishes, reads the SERVED file back byte for byte, and — every run — goes red if the served bridge
+is more than 21 days old. After `MH_BRIDGE_UNTIL` every run is a green no-op; disable the workflow
+then. Two risks the schedule cannot cover: GitHub disables scheduled workflows after 60 days
+without repository activity, and Actions billing can refuse every job (the reason this section
+exists). Look at the Actions tab at least monthly while the bridge lives.
+
+**By hand** (the fallback, and what ran for the first time on 2026-10-08 with `--resign`):
+
+1. Fetch what is served: `curl -fsSL <base>/manifest.json -o in\manifest.json` and `.minisig`;
+   optionally `<base>/channels/stable/launcher.json` + `.minisig` into `in\`.
+2. Re-issue (add `--launcher-json in\launcher.json` only if the stable launcher exists):
+
+   ```powershell
+   python tools\gen_update_manifest.py --bridge --from-manifest in\manifest.json `
+     [--launcher-json in\launcher.json] --secret-key <key> --out out
+   python tools\gen_update_manifest.py --verify out\manifest.json
+   ```
+
+   The tool refuses unless the input bridge (and the launcher file) verify against `update.rs`'s
+   `PUBLIC_KEY`, the secret key is that key's pair, `issued_at` does not go backwards and the
+   launcher version does not roll back; it asserts version, game entries, relay and notes are
+   unchanged. `diff in\manifest.json out\manifest.json` shows `issued_at` (and the launcher entry).
+3. **Publish (needs the maintainer's explicit go):** commit `out\manifest.json` + `.minisig` to
+   `gh-pages` at the ROOT (7.3), force a Pages build, read the SERVED copy back and re-verify
+   (`--verify`, `--age-days`).
+
+### 7.6 Re-sign any schema-1 manifest (`--resign`)
+
+`--resign in\manifest.json --secret-key <key> --out out` sets **only** `issued_at` to now and signs
+again, with the same checks as the bridge (`--bridge` without `--launcher-json` does the same plus
+the bridge shape check). `--sign-file <file> [--trusted-comment ...] [--out sig]` signs any other
+file with the same key path (default output `<file>.minisig`). Both read only unencrypted keys (see
+the tool header).

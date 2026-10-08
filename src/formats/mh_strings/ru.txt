@@ -24,6 +24,7 @@ refuse.newer_than_host = протокол новее, чем у хоста
 refuse.not_our_lobby = чужое лобби
 refuse.cp_mismatch = разные кодировки
 refuse.unknown = неизвестно
+refuse.build = У хоста %s, у вас %s: обновитесь
 relay.outdated = Ретранслятор устарел (протокол %u < %u)
 
 # map transfer

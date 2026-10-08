@@ -31,7 +31,10 @@ REGISTRY = os.path.join(REPO, "tools", "uiscripts", "registry.yaml")
 # mapping checked against RECORDS[NAME]), and "A|B" unions. int never accepts bool; float never
 # accepts int (0 and 0.0 are different registry values).
 RECORDS = {
-    "shim_trigger": {"required": {"cmd": "str", "when": "list[list[str]]"}, "optional": {}},
+    "shim_trigger": {
+        "required": {"cmd": "str", "when": "list[list[str]]"},
+        "optional": {"fast": "bool"},
+    },
 }
 
 SCHEMA = {
@@ -418,7 +421,6 @@ HASH_PERTURB_KEYS = (
     "region_poke_at",
     "region_poke_min",
     "region_poke_only",
-    "garble_at",
 )
 # --plant-desync's knob (test_ui.py): the strategic PRNG slot, flipped once on the host.
 PLANT_STEP = 200

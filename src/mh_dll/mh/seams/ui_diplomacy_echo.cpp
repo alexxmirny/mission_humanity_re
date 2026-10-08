@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -126,12 +127,6 @@ extern "C" int MH_DiploLock_Install(void) {
 extern "C" int MH_DiploEcho_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
     if (g_applied) return 1;
-    const bool want = GetPrivateProfileIntA("net", "diplo_echo_nop", 1, g_ini) != 0;
-    if (!want) {
-        seam_log("; U39: diplomacy relation echo KEPT ([net] diplo_echo_nop=0): the clicking peer writes "
-                 "Players[PlayerSide].relation[j] ahead of the 0xf4 commit -- the reproduction arm\n");
-        return 0;
-    }
     g_applied = mh::hook::patch_bytes_guarded(mh::addr::diplo_echo_write_site, ECHO_EXPECT, ECHO_NOPS, ECHO_LEN);
     char m[240];
     // clang-format off
@@ -148,7 +143,7 @@ extern "C" int MH_DiploEcho_Install(void) {
 extern "C" int MH_DiploRows_Install(void) {
     if (!mh::en_build_ok()) return 0;
     if (g_rows_applied) return 1;
-    const bool want = GetPrivateProfileIntA("net", "diplo_row_fix", 1, g_ini) != 0;
+    const bool want = mh_ini_get_int("net", "diplo_row_fix", 1, g_ini) != 0;
     if (!want) {
         seam_log("; U46: diplomacy row walk KEPT ([net] diplo_row_fix=0): Apply advances its rows only for human slots -- the reproduction arm\n");
         return 0;

@@ -111,9 +111,5 @@ void browser_notice_arm_no_module();
 // re-clears it (see lobby_notice.cpp). Cheap when idle.
 void browser_notice_tick();
 
-// U37's third instrument ([net] slide_diag): log-on-change of the menu frame geometry, from the
-// present hook. Inert unless slide_diag is on.
-void slide_geom_watch();
-
 } // namespace ui
 } // namespace mh

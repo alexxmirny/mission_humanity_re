@@ -30,13 +30,18 @@
 // Windows ini call there.
 //
 // THE READ POINT IS "WHOEVER ASKS FIRST", AND THAT IS WHAT MAKES IT G104-SAFE. The ini path is
-// composed HERE, from the module file name, rather than taken from net_internal.h's `g_ini` --
-// because `g_ini` is filled in MH_Seam_Init, and two of this selector's consumers run BEFORE it
-// (harness.cpp's rebind-gate load and its save-walker relocation gate, both of which already compose
-// their own path for exactly this reason; see harness.cpp's note at armed_save_walkers). A selector
-// that depended on another module's init would answer "brokered" in every early caller and the
-// disagreement would be invisible in a green run -- the G104 shape. Depending on nothing but the
-// process's own image path means every call point is correct, so there is no ordering to get right.
+// composed HERE, from the config directory (include/mh_config_dir.h), rather than taken from
+// net_internal.h's `g_ini` -- because `g_ini` is filled in MH_Seam_Init, and two of this selector's
+// consumers run BEFORE it (harness.cpp's rebind-gate load and its save-walker relocation gate, both
+// of which already compose their own path for exactly this reason; see harness.cpp's note at
+// armed_save_walkers). A selector that depended on another module's init would answer "brokered" in
+// every early caller and the disagreement would be invisible in a green run -- the G104 shape.
+//
+// RL3 KEPT THAT PROPERTY WHEN THE FILE MOVED. The ini no longer has to sit beside the exe: the
+// config directory is MH_CONFIG_DIR, else the exe directory when an `mh_net.ini` is there (portable
+// mode -- the rig lanes), else `%LOCALAPPDATA%\MissionHumanity\games\<hash16>\`. All three inputs
+// are the process image path, the environment and the filesystem; none is another module's state, so
+// the resolver is correct for whoever calls first and there is still no ordering to get right.
 // The answer is cached on first use: the file is read once per process.
 //
 // ONE FILE (F2G, fork plan D12). `mh_net.ini` is now the WHOLE configuration surface: the harness's
@@ -61,7 +66,9 @@
 // MH_Seam_Init -- so it states itself through three channels that need no init (a file beside the
 // exe, OutputDebugString, stderr) and then kills the process. Terminating is the point: every
 // weaker answer leaves a process running a configuration nobody asked for, which is the class of
-// failure this whole item exists to remove.
+// failure this whole item exists to remove. The file goes in the config directory (RL3), next to the
+// ini that caused the refusal -- which is the exe directory in portable mode, i.e. where it has
+// always been for a rig lane.
 //
 #pragma once
 
@@ -71,7 +78,8 @@
 #endif
 #include <cstdio> // the refusal's console channel -- it fires before any logger exists
 #include <windows.h>
-#include "config/ini_read.h" // TL-HARN4: read_ini_string -- strips a trailing `;comment` off `[config] mode`
+#include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment` off `[config] mode`
+#include "include/mh_config_dir.h" // RL3: where mh_net.ini, the refusal log and the key live
 #endif
 
 namespace mh::config {
@@ -110,6 +118,8 @@ namespace detail {
 // DebugView sees; stderr is what a console host (net_selftest) shows. All three, because the
 // refusal's whole job is to be found -- a process that died silently is indistinguishable from one
 // that crashed, and the operator would go looking in the wrong place.
+// `dir` is where `mh_config_refused.log` goes: pass config_dir() (below) -- it has a trailing
+// backslash.
 inline void refuse(const char *dir, const char *what, const char *why) {
     // 1 KB, because `what` carries a full path (MAX_PATH) plus its sentence and the buffer has to
     // hold that alongside the fixed frame below. wsprintfA does not bound-check.
@@ -195,13 +205,17 @@ inline void refuse_retired_sections(const char *dir, const char *ini) {
 // and nothing in the log says so. That is the quiet-wrong-answer shape this whole refusal mechanism
 // exists to remove, and it is the one case where the mere EXISTENCE of a path is still the signal --
 // deliberately, because that is exactly what the old file meant.
-inline void refuse_stray_harness_ini(const char *dir) {
+//
+// `look_in` is the directory searched; `log_dir` is where the refusal is written. Both the exe
+// directory (where the old file lived) and the config directory (RL3) are searched: in portable mode
+// they are the same place and the second search is skipped.
+inline void refuse_stray_harness_ini(const char *look_in, const char *log_dir) {
     char stray[MAX_PATH];
-    wsprintfA(stray, "%smh_harness.ini", dir);
+    wsprintfA(stray, "%smh_harness.ini", look_in);
     if (GetFileAttributesA(stray) == INVALID_FILE_ATTRIBUTES) return;
     char what[512];
     wsprintfA(what, "%s still exists, and fork F2G merged that file into mh_net.ini.", stray);
-    refuse(dir, what,
+    refuse(log_dir, what,
            "The harness now reads its `[harness]` section out of mh_net.ini and arms only on an "
            "explicit `[harness] enable=1` -- presence of a file is no longer a configuration. Move "
            "the block into mh_net.ini (adding `enable=1` if you wanted it armed) and delete this "
@@ -209,23 +223,28 @@ inline void refuse_stray_harness_ini(const char *dir) {
            "and now does nothing is a run whose author believes it is instrumented.");
 }
 
-// The exe's directory, with a trailing separator. Composed from the process image path and nothing
-// else -- that is the whole of the G104 argument in this header's banner.
-inline void exe_dir(char *out) {
-    GetModuleFileNameA(nullptr, out, MAX_PATH);
-    char *slash = nullptr;
-    for (char *p = out; *p != '\0'; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    if (slash != nullptr) slash[1] = '\0';
-}
+// The exe's directory, with a trailing separator -- for what belongs to the INSTALLATION (the
+// harness's refusal log and replay inputs, retail files). Composed from the process image path and
+// nothing else.
+inline void exe_dir(char *out) { lstrcpynA(out, mh::cfgdir::exe_dir(), MAX_PATH); }
+
+// The CONFIG directory (RL3), with a trailing separator: where mh_net.ini, mh_key.txt and
+// mh_config_refused.log live. See include/mh_config_dir.h for the resolution order and the G104
+// argument (image path + environment + filesystem, nothing else).
+inline void config_dir(char *out) { lstrcpynA(out, mh::cfgdir::config_dir(), MAX_PATH); }
 
 inline mode_t resolve() {
     char dir[MAX_PATH];
     char ini[MAX_PATH];
-    exe_dir(dir);
+    config_dir(dir);
     wsprintfA(ini, "%smh_net.ini", dir);
 
-    refuse_stray_harness_ini(dir);
+    refuse_stray_harness_ini(dir, dir);
+    if (!mh::cfgdir::portable()) {
+        char exe[MAX_PATH];
+        exe_dir(exe);
+        refuse_stray_harness_ini(exe, dir);
+    }
     refuse_retired_sections(dir, ini);
 
     char v[32] = {0};

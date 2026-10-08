@@ -1,69 +1,46 @@
-# LAUNCHER RELEASE -- build the per-user launcher with a static CRT, and hand its exe to the same
-# tagged GitHub Release that .github/workflows/release.yml publishes the three game zips into.
+# LAUNCHER RELEASE -- build the per-user launcher with a static CRT, publish it as its own GitHub
+# Release, and publish the signed channels/latest/launcher.json that launchers read.
 #
-# WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` (the SAME tag convention release.yml reads --
-# see that file's header) builds `mh_launcher` for `x86_64-pc-windows-msvc` with
-# `RUSTFLAGS=-C target-feature=+crt-static` (dist LA1 finding #2: the default build imports
-# VCRUNTIME140.dll, which a per-user installer with no admin rights and no bundled redistributable
-# cannot rely on being present) and `MH_UPDATE_BASE_URL` baked in via `option_env!` (the Pages base
-# URL `manifest.json` will be published to -- see src/launcher/src/update.rs `DEFAULT_BASE_URL`),
-# runs `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test` over the workspace, verifies
-# the static-CRT claim against the built binary's own import table (no VCRUNTIME*/MSVCP*/
-# api-ms-win-crt-* DLL), and -- on a tag push only -- uploads `mh_launcher.exe` (unversioned since v0.1.1 -- the file stays the same name across releases so a player's folder never holds two; the version is inside, `--verify-binary`) to that
-# tag's GitHub Release. A `workflow_dispatch` run does everything except the upload, exactly the
-# dry-run shape release.yml uses.
+# WHAT IT DOES. A pushed tag `launcher-vMAJOR.MINOR.PATCH[-rcN]` builds `mh_launcher` for
+# `x86_64-pc-windows-msvc` with `RUSTFLAGS=-C target-feature=+crt-static` (dist LA1 finding #2: the
+# default build imports VCRUNTIME140.dll, which a per-user installer with no admin rights and no
+# bundled redistributable cannot rely on being present) and `MH_UPDATE_BASE_URL` baked in via
+# `option_env!` (the Pages base URL -- see src/launcher/src/update.rs `DEFAULT_BASE_URL`), runs
+# `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test`, verifies the static-CRT claim
+# against the built binary's own import table, checks the exe reports the tag's version, and -- on a
+# tag push only -- creates the tag's GitHub Release carrying `mh_launcher.exe` (unversioned since
+# v0.1.1: the file keeps one name so a player's folder never holds two; the version is inside,
+# `--verify-binary`). A `workflow_dispatch` run does everything except publish.
 #
-# WHY A SECOND WORKFLOW FILE RATHER THAN A THIRD JOB IN release.yml. release.yml already explains
-# ("DUPLICATION WITH ci.yml IS DELIBERATE") why the game's own build+gate is copied rather than
-# shared: the two files are read by different people at different moments, and a change made for one
-# would otherwise silently change the other's gate. The same argument holds one level up between the
-# GAME pipeline (MSBuild, C++, ~20 minutes wall) and the LAUNCHER pipeline (cargo, Rust, a few
-# minutes) -- they have no build step in common, dist LA3's own tracker row still asks for this file
-# by name, and a Rust compile failure should not have to wait behind (or be reported inside) a
-# 35-minute Windows C++ job. What genuinely IS shared -- the manifest that ties the two together --
-# lives in release.yml instead (see that file's `publish` job): it is the one place that already
-# holds the game zips' SHA256SUMS, and it is where dist LA3's tracker row says the manifest step
-# belongs ("the manifest generation step added to release.yml").
+# SCHEMA 2 / TAG SPLIT (RL8, v0.2.0; user decision 2026-10-08). Before v0.2.0 one `v*` tag built
+# both halves and release.yml signed ONE manifest.json that this workflow's exe was polled into. Now
+# the launcher and the game are separate signed files per channel and separate tags:
 #
-# THE ORDERING PROBLEM, AND HOW THIS FILE ANSWERS IT. Both workflows trigger off the SAME tag push
-# and start at the same moment, but the launcher build finishes in minutes while the game's
-# build+gate+package takes tens of minutes -- so by the time release.yml's `publish` job is ready to
-# read this file's exe, that exe usually does not exist as a release asset yet. Two designs were
-# considered:
+#   launcher-v*  -> THIS file: the exe + channels/latest/launcher.json (+ .minisig)
+#   v*           -> release.yml: the game zips + channels/latest/game.json
+#   promote.yml  -> copies a latest file to channels/stable/ (re-signed, same artifacts)
 #
-#   (a) CROSS-WORKFLOW ARTIFACT DOWNLOAD (release.yml pulls this workflow's `actions/upload-artifact`
-#       output by run id). Avoids any waiting here, but it moves the coordination problem into
-#       release.yml instead of solving it -- release.yml would have to locate the matching run
-#       (`gh run list --workflow=launcher-release.yml --commit <sha>`), and MIGHT be reading a run
-#       that has not started, is still building, or does not exist for this commit at all if this
-#       file's trigger conditions ever drift from release.yml's.
-#   (b) THIS FILE WAITS FOR THE RELEASE, THEN PUBLISHES ITS OWN ASSET (chosen). The dependency is
-#       stated where it is easiest to reason about: THIS job knows it is racing release.yml, so IT
-#       polls `gh release view <tag>` until the release exists (bounded at this job's own
-#       `timeout-minutes`, which is set comfortably above release.yml's 35-minute build-and-gate (+ its parallel selftests job)
-#       budget) and then uploads directly with `gh release upload`. release.yml's own new step
-#       (see its `publish` job) mirrors this with a short poll of its own for the launcher asset,
-#       so the two files do not have to agree on a shared clock -- each waits for the ONE thing it
-#       is missing and then proceeds. This is also what dist LA3's tracker row asks for verbatim:
-#       "`gh release upload` under `contents: write`" IN THIS FILE, not a passive artifact.
+# A joint release is two tags, LAUNCHER FIRST: release.yml's min_launcher guard refuses a game
+# whose min_launcher is newer than the launcher currently served. A `launcher-v*` tag does not match
+# release.yml's `v*` filter (a glob anchors at the start), so the two never fire on one push.
 #
-# NO THIRD-PARTY RELEASE ACTION, for the same reason release.yml gives: `gh` is preinstalled on the
-# runner and `GH_TOKEN` is the job's own token, so the one step in this file that can write to a
-# release runs code from the runner image and from here, and from nowhere else.
+# FOUR JOBS, and the split is the permission boundary: `build-and-test` (contents: read) compiles
+# and tests; `publish` (contents: write) only creates the Release; `sign` (contents: read, but the
+# only job that sees MH_LAUNCHER_MINISIGN_KEY) builds and signs launcher.json; `publish-pages`
+# (contents + pages: write) commits it to the Pages branch and reads it back. There is no
+# cross-workflow polling any more -- nothing here waits for release.yml.
 #
-# THE TAG CONVENTION is release.yml's, not repeated here beyond what this file needs: a lightweight
-# tag or a missing MhVersion-shaped name is release.yml's problem to refuse (it does, loudly, before
-# `publish` runs) -- this file only strips the leading `v` the same way, for the version string that
-# reaches Cargo (`CARGO_PKG_VERSION` is `0.0.0` from the workspace default; the SHIPPED file name and
-# the manifest's `launcher.version` come from this workflow's own `stamp` step instead, exactly the
-# way release.yml stamps MhVersion into the C++ side rather than trusting a source-controlled number).
+# NO THIRD-PARTY RELEASE ACTION: `gh` is preinstalled on the runner and `GH_TOKEN` is the job's own
+# token, so the steps that can write run code from the runner image and from this repository only.
+#
+# THE TAG IS ANNOTATED and its MESSAGE IS THE RELEASE NOTES, exactly as release.yml requires.
 
 name: launcher-release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'launcher-v*'
   workflow_dispatch:
 
 permissions:
@@ -130,6 +107,7 @@ jobs:
     outputs:
       version: ${{ steps.stamp.outputs.version }}
       exe_name: ${{ steps.stamp.outputs.exe_name }}
+      tag: ${{ steps.stamp.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
 
@@ -155,16 +133,16 @@ jobs:
         id: stamp
         shell: pwsh
         run: |
-          # THE ONE PLACE THE LAUNCHER'S OWN VERSION IS DECIDED, mirroring release.yml's `stamp` step
+          # THE ONE PLACE THE LAUNCHER'S OWN VERSION IS DECIDED (the tag minus `launcher-v`), mirroring release.yml's `stamp` step
           # for the game: the workspace Cargo.toml pins version = "0.0.0" (dist LA2's own comment: "the
           # launcher's real version will be the one the release manifest advertises"), so a tag push is
           # what actually names a release, never a source-controlled number.
           $ref = "${{ github.ref }}"
           if ($ref.StartsWith("refs/tags/")) {
             $tag = $ref.Substring("refs/tags/".Length)
-            $version = $tag -replace '^v', ''
+            $version = $tag -replace '^launcher-v', ''
             if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
-              throw "tag '$tag' is not vMAJOR.MINOR.PATCH[-suffix]; see release.yml's header"
+              throw "tag '$tag' is not launcher-vMAJOR.MINOR.PATCH[-suffix]; see this file's header"
             }
           } else {
             $tag = ""
@@ -176,7 +154,7 @@ jobs:
           Write-Host "tag='$tag' version=$version"
 
       - name: a tag release needs MH_UPDATE_BASE_URL, or the shipped exe has no update source
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/launcher-v')
         shell: pwsh
         run: |
           # NOT a build failure the compiler would catch: option_env!() with no value compiles to an
@@ -298,61 +276,179 @@ jobs:
           retention-days: 14
 
   publish:
-    name: publish the launcher exe to the tag's GitHub Release
+    name: create the launcher's GitHub Release
     needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-2022
-    # Generous on purpose -- see this file's header, "THE ORDERING PROBLEM". release.yml's own
-    # build-and-gate job is timeout-minutes: 45 and its publish job 40 (the selftests run as two parallel
-    # jobs); 95 covers the two in series plus margin rather than racing them exactly (v0.1.0-rc1 measured
-    # the old 35 + 70 as too tight, 2026-09-18).
-    timeout-minutes: 95
+    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
-      # THE ONLY WRITE SCOPE IN THIS FILE, on the job that does nothing but poll and call `gh`.
+      # THE ONLY GITHUB-RELEASE WRITE SCOPE IN THIS FILE, on the job that does nothing but call `gh`.
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          # The release BODY is the annotated tag's message, so this job needs the tag OBJECT.
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           name: launcher-${{ needs.build-and-test.outputs.version }}
           path: dist
 
-      - name: wait for release.yml to create this tag's Release, then upload the launcher exe
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # THIS JOB HAS NO CHECKOUT (it needs only the artifact), so `gh` has no git remote to infer
-          # the repository from and every `gh release ...` call below fails before it reaches the
-          # network. v0.1.0-rc2 (2026-09-18) sat in this poll for the whole window with the Release
-          # already published; the exe was attached by hand from the run artifact. GH_REPO is how
-          # gh takes the repository without a checkout.
-          GH_REPO: ${{ github.repository }}
+      - name: create the Release with the exe
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          $exe = "dist\${{ needs.build-and-test.outputs.exe_name }}"
-          if (-not (Test-Path $exe)) { throw "no $exe in the downloaded artifact" }
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          exe="dist/${{ needs.build-and-test.outputs.exe_name }}"
+          test -f "$exe" || { echo "no $exe in the downloaded artifact"; exit 1; }
+          git fetch --tags --force --quiet
+          # LIGHTWEIGHT TAGS ARE REFUSED (release.yml explains why `cat-file -t` is the reliable test).
+          type="$(git cat-file -t "$tag")"
+          if [ "$type" != "tag" ]; then
+            echo "$tag is a LIGHTWEIGHT tag ($type). The release body is the annotated tag's message: re-cut it with 'git tag -a $tag -m ...'"
+            exit 1
+          fi
+          git tag -l --format='%(contents)' "$tag" > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "$tag has an EMPTY annotated message, and the message IS the release notes."
+            exit 1
+          fi
+          pre=()
+          ver="${tag#launcher-v}"
+          case "$ver" in *-*) pre=(--prerelease) ;; esac   # a `-` after the version = prerelease
+          gh release create "$tag" "$exe" --title "$tag" --notes-file release-notes.md --verify-tag "${pre[@]}"
+          echo "published $exe to $tag"
 
-          # POLL, DO NOT RACE. release.yml's `publish` job needs its own ~20 minute build-and-gate and the parallel selftests job
-          # to finish first (this file's header explains why the two workflows are not made to
-          # depend on each other any more tightly than this). 5-minute-old failures are logged, not
-          # thrown, because "the release does not exist YET" and "the release will never exist" look
-          # identical from here until the deadline -- `timeout-minutes: 95` above is the actual
-          # refusal.
-          $deadline = (Get-Date).AddMinutes(90)
-          $found = $false
-          while ((Get-Date) -lt $deadline) {
-            & gh release view $tag --json name | Out-Null
-            if ($LASTEXITCODE -eq 0) { $found = $true; break }
-            Write-Host "release.yml has not published $tag yet -- waiting (checked $(Get-Date -Format o))"
-            Start-Sleep -Seconds 30
-          }
-          if (-not $found) {
-            throw "$tag never appeared as a GitHub Release within 90 minutes -- either release.yml " +
-                  "failed its own gate (nothing to attach the launcher to) or it is still running " +
-                  "past its own 45 + 40 minute budgets. Check the release workflow's run before re-running " +
-                  "this one; re-running this job alone will not create the release."
-          }
+  sign:
+    name: build and sign channels/latest/launcher.json
+    needs: [build-and-test, publish]
+    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    # ITS OWN JOB, ubuntu and pure Python: the only job here that sees the signing secret, with
+    # contents: read -- it can sign and upload an artifact and nothing else.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
 
-          Write-Host "uploading $exe to $tag"
-          & gh release upload $tag $exe --clobber
-          if ($LASTEXITCODE -ne 0) { throw "gh release upload exit $LASTEXITCODE" }
-          Write-Host "published $exe to $tag"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ needs.build-and-test.outputs.version }}
+          path: dist
+
+      - name: build, sign and verify launcher.json
+        shell: bash
+        env:
+          MH_LAUNCHER_MINISIGN_KEY: ${{ secrets.MH_LAUNCHER_MINISIGN_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MH_LAUNCHER_MINISIGN_KEY}" ]; then
+            echo "MH_LAUNCHER_MINISIGN_KEY repository secret is unset -- refusing to publish an unsigned manifest (see release.yml / docs/release.md section 6)"
+            exit 1
+          fi
+          key="${RUNNER_TEMP}/launcher_minisign.key"
+          printf '%s\n' "${MH_LAUNCHER_MINISIGN_KEY}" > "$key"
+          tag="${GITHUB_REF_NAME}"
+          version="${{ needs.build-and-test.outputs.version }}"
+          exe="dist/${{ needs.build-and-test.outputs.exe_name }}"
+          python tools/gen_update_manifest.py \
+            --kind launcher --channel latest \
+            --version "$version" \
+            --launcher-exe "$exe" \
+            --launcher-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${{ needs.build-and-test.outputs.exe_name }}" \
+            --notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}" \
+            --secret-key "$key" \
+            --out pages/channels/latest
+          rm -f "$key"
+          # the key players trust (update.rs PUBLIC_KEY), not the one that happened to sign
+          python tools/gen_update_manifest.py --verify pages/channels/latest/launcher.json
+          cat pages/channels/latest/launcher.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-manifest-${{ needs.build-and-test.outputs.version }}
+          path: pages/channels/latest/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-pages:
+    name: publish channels/latest/launcher.json to the Pages branch
+    needs: [build-and-test, sign]
+    # Same arrangement as release.yml's publish-pages (branch mode, gated on MH_PAGES_BRANCH, assets
+    # first and the manifest last -- `publish` has already created the Release the file names). The
+    # branch is shared with release.yml, promote.yml and bridge-resign.yml; they write different
+    # files, so the push rebases and retries.
+    if: startsWith(github.ref, 'refs/tags/launcher-v') && vars.MH_PAGES_BRANCH != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+    env:
+      PAGES_BRANCH: ${{ vars.MH_PAGES_BRANCH }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-manifest-${{ needs.build-and-test.outputs.version }}
+          path: new
+
+      - name: commit the manifest to the Pages branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$PAGES_BRANCH" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          mkdir -p site/channels/latest
+          cp new/launcher.json new/launcher.json.minisig site/channels/latest/
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add channels/latest/launcher.json channels/latest/launcher.json.minisig
+          if git diff --cached --quiet; then
+            echo "launcher.json on $PAGES_BRANCH is already this release's -- nothing to commit"
+          else
+            git commit -q -m "launcher latest ${{ needs.build-and-test.outputs.version }} (${GITHUB_REF_NAME})"
+            pushed=0
+            for i in 1 2 3 4 5; do
+              if git push -q origin "HEAD:$PAGES_BRANCH"; then pushed=1; break; fi
+              echo "push raced another Pages publisher (try $i) -- rebasing"
+              git pull -q --rebase origin "$PAGES_BRANCH"
+            done
+            [ "$pushed" = 1 ] || { echo "could not push to $PAGES_BRANCH after 5 tries"; exit 1; }
+          fi
+          echo "PUSHED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: build Pages and read the served manifest back
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null
+          url="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url)"
+          for i in $(seq 1 60); do
+            read -r status commit < <(gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" \
+              --jq '"\(.status) \(.commit)"')
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "built" ]; then break; fi
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "errored" ]; then
+              echo "Pages build of $PUSHED_SHA errored"; exit 1
+            fi
+            sleep 10
+          done
+          for f in launcher.json launcher.json.minisig; do
+            ok=0
+            for i in $(seq 1 30); do
+              curl -fsS -H 'Cache-Control: no-cache' "${url%/}/channels/latest/$f?run=${GITHUB_RUN_ID}" -o "served_$f" \
+                && cmp -s "served_$f" "new/$f" && { ok=1; break; }
+              sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "served $f != the signed one after 5 min: ${url%/}/channels/latest/$f"; exit 1; }
+            echo "served channels/latest/$f is byte-identical to the signed one"
+          done

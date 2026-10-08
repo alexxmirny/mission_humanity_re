@@ -432,7 +432,9 @@ def link_or_copy(src, dst, is_dir):
 def write_ini(dst, lane, port, headless, extra, backend=None, fps_limit=None, input_backend=None):
     """The lane's own mh_net.ini. Deliberately minimal: this is a lane's identity, not a test config
     -- a runner appends whatever else the scenario needs."""
-    lines = ["[net]", "enable=1"]
+    # RL2: the rig's unlock. The shipped DLL ignores every dev key (and moves the FIXED ones back to their
+    # ship values) unless the ini says `[dev] unlock=1`; a lane's keys are all dev, so every lane carries it.
+    lines = ["[dev]", "unlock=1", "", "[net]", "enable=1"]
     if port:
         lines.append("port=%d" % port)
     # `lane` MOVED INTO [uitest] at fork F2G -- it had its own one-key [test] section, which the

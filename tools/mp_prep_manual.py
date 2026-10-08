@@ -37,9 +37,10 @@ import mp_run  # reuse ssh / scp / build_focus / DLL
 # every step without ever stopping the game (exit_on_stop=0, huge stop_step) so a manual run STILL leaves a
 # determinism trail in the logs -- purely a bonus; delete it for a pure play session.
 NET = (
+    "[dev]\nunlock=1\n\n"  # RL2: the rig's dev unlock (mh_ini_gate.h)
     "[net]\nhost=%s\nport=6501\nhost_assign=1\nlog=1\n"
     "lockstep_step_ms=30\nlockstep_step_eps_ms=0.01\nsim_step_ms=10\nrx_spin=0\n"
-    "horizon_heartbeat_ms=50\ndefang_overlay=1\nlog_gamemode=0\ngame_speed_pct=0\n"
+    "horizon_heartbeat_ms=50\ndefang_overlay=1\ngame_speed_pct=0\n"
     "eager_advertise=1\nhires_clock=1\nqpc_clock=1\nlockstep_log=1\nbootstrap=1\n"
 )
 # `enable=1` is the arm (fork F2G): the block rides inside mh_net.ini now and the harness no

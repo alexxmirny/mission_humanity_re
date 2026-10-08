@@ -13,13 +13,13 @@
 //      directory (MH_NetModule_Init) rather than composing one. Same rule, same fallback to the exe
 //      directory, and the same file name -- mh_net.log -- as mh_net.dll, because which transport a
 //      run used is a fact INSIDE the log, not a second log to go looking for.
-//   3. THE ONE KNOB THAT IS THIS MODULE'S ALONE, `[net] udp_redundancy`. It is not in MH_NetConfig
-//      and will not be: that struct is the mh.dll <-> module ABI, the TCP module must stay
-//      byte-for-byte the build it was, and an ABI field meaningful to one transport would have to be
-//      understood by both. So it is read here, from mh_net.ini beside the EXE -- the same place and
-//      by the same composition mh_net/net_transport.cpp already uses to find mh_key.txt. That is not
-//      a second reader of one config block (the F2 defect): NOTHING else in the process reads this
-//      key, and this module reads no key anything else reads.
+//   3. THE KNOBS THAT ARE THIS MODULE'S ALONE (`[net] hub_migration`, `force_relay`, ...). They are
+//      not in MH_NetConfig and will not be: that struct is the mh.dll <-> module ABI, the TCP module
+//      must stay byte-for-byte the build it was, and an ABI field meaningful to one transport would
+//      have to be understood by both. So they are read here, from mh_net.ini beside the EXE -- the
+//      same place and by the same composition mh_net/net_transport.cpp already uses to find
+//      mh_key.txt. That is not a second reader of one config block (the F2 defect): NOTHING else in
+//      the process reads these keys, and this module reads no key anything else reads.
 //
 // WHY THIS TU IS NOT IN net_selftest.exe. It defines all 26 MH_Net_* symbols, and net_selftest.exe
 // already compiles mh_net/net_transport.cpp, which defines the same 26. The suite tests the
@@ -31,6 +31,7 @@
 #endif
 #include <winsock2.h>
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -41,6 +42,7 @@
 #include "mh_net_key.h"
 #include "mh_net_module.h"
 #include "mh_run_context.h"            // mh_log_stamp ONLY -- the stamp format shared with the seams
+#include "mh_config_dir.h"             // RL3: the config dir mh_net.ini + mh_key.txt live in
 #include "mh_log_sink.h"               // LOG1: the async log sink client (header-only)
 #include "mh_net_proto/net_wire.h"     // the control-frame flags the six handlers fan out on
 #include "mh_net_proto/session_info.h" // the match_id the relay's log is keyed by (SES0 / mp:R1)
@@ -63,25 +65,14 @@ bool g_log_on = false;
 char g_log_path[MAX_PATH];
 char g_run_dir[MAX_PATH] = {0};
 
-// The run directory, handed in rather than asked for (fork F4B ruling Q1). The fallback is the EXE
-// directory and it is not a nicety: net_selftest.exe links no mh.dll and has nothing to hand this
-// module, so an un-set run dir must still produce a usable log beside the test binary.
+// The run directory, handed in rather than asked for (fork F4B ruling Q1). The fallback is the CONFIG
+// directory (RL3; the exe directory in portable mode) and it is not a nicety: net_selftest.exe links
+// no mh.dll and has nothing to hand this module, so an un-set run dir must still produce a usable
+// log beside the test binary (the selftest pins MH_CONFIG_DIR to its own directory).
 const char *module_run_dir(void) {
     if (g_run_dir[0] != '\0') return g_run_dir;
-    GetModuleFileNameA(nullptr, g_run_dir, MAX_PATH);
-    char *slash = g_run_dir;
-    for (char *p = g_run_dir; *p != '\0'; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
+    lstrcpynA(g_run_dir, mh::cfgdir::config_dir(), MAX_PATH);
     return g_run_dir;
-}
-
-void exe_dir(char *out) {
-    GetModuleFileNameA(nullptr, out, MAX_PATH);
-    char *slash = out;
-    for (char *p = out; *p != '\0'; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
 }
 
 // One line into mh_net.log, with the same local wall-clock stamp every other writer to that file
@@ -99,6 +90,19 @@ void log_line(void * /*ctx*/, const char *s) {
     }
     // mp:LOG1: enqueued to the process-wide async sink (header-only client; mh.dll owns the writer).
     mh_logq_write(g_log_path, line, n);
+}
+
+// RL2: the ini gate's IGNORED / FIXED lines for the keys THIS module reads (hub_migration,
+// mesh_test_delay_ms, force_relay) land in the same mh_net.log as the "net: ..." lines. The gate hands
+// over an mh.dll-style "; text\n" line; this drops the "; " and the newline (log_line adds its own).
+void ini_gate_log(const char *s) {
+    char b[300];
+    if (s[0] == ';' && s[1] == ' ') s += 2;
+    lstrcpynA(b, "net: ", sizeof(b));
+    lstrcpynA(b + 5, s, (int)sizeof(b) - 5);
+    int n = lstrlenA(b);
+    while (n > 0 && (b[n - 1] == '\n' || b[n - 1] == '\r')) b[--n] = '\0';
+    log_line(nullptr, b);
 }
 
 // mp:R1. The relay's structured log is keyed by match_id (plan D8), and the transport ABI has no
@@ -153,8 +157,8 @@ int relay_path_class(void * /*ctx*/, const sockaddr_in &a) { return mh::udprelay
 // mp:U61 (HM-M3) -- the two things the endpoint's mesh cannot know and this file can: this peer's own round
 // trip to the relay (a relayed match's election ranks candidates by it), and a fresh relay room code for a
 // pre-minted successor room. Same shape as the two edges above: the endpoint is handed a function, never a relay.
-int      mesh_leg_rtt_dms(void * /*ctx*/) { return mh::udprelay::leg_rtt_dms(); }
-int      mesh_leg_age_ms(void * /*ctx*/) { return mh::udprelay::leg_age_ms(); } // mp:U63
+int      mesh_leg_rtt_dms(void      */*ctx*/) { return mh::udprelay::leg_rtt_dms(); }
+int      mesh_leg_age_ms(void      */*ctx*/) { return mh::udprelay::leg_age_ms(); } // mp:U63
 uint32_t mesh_mint_room(void * /*ctx*/) { return mh::udprelay::mint_host_room(); }
 // mp:U62 (HM-M4) -- the handover's third crossing: the relay tunnel's role switch. The endpoint asks, this file
 // (the one that knows both layers exist) answers. role 0 = this peer becomes the room's host, 1 = it moves to
@@ -228,8 +232,11 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     g_log_on = (cfg->log != 0);
     if (g_log_on) wsprintfA(g_log_path, "%smh_net.log", module_run_dir());
 
+    // RL3: both mh_key.txt and mh_net.ini are read from the CONFIG directory -- the same one mh.dll
+    // resolved (all modules compute it from the same three inputs: image path, environment,
+    // filesystem), beside the exe in portable mode.
     char dir[MAX_PATH];
-    exe_dir(dir);
+    lstrcpynA(dir, mh::cfgdir::config_dir(), MAX_PATH);
 
     // Link security: mh_key.txt decides it, once, for the whole session -- and FAILING CLOSED on a
     // broken key file is deliberate. The alternative (fall back to open) would silently take a host
@@ -272,37 +279,31 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     memset(&c, 0, sizeof(c));
     c.net       = *cfg;
     c.bind_port = 0;
-    // `[net] udp_redundancy` -- K, the number of recent segments every datagram repeats. Default 3
-    // (T0's INPUT_K_DEFAULT); the endpoint clamps it into [1, 4], the ceiling being the MTU rather
-    // than T0's K of 8 (four 255-byte entries plus the header and tag already fill a 1200-byte
-    // datagram).
+    // K, the number of recent segments every datagram repeats: T0's INPUT_K_DEFAULT (3); the endpoint
+    // clamps it into [1, 4], the ceiling being the MTU rather than T0's K of 8 (four 255-byte entries
+    // plus the header and tag already fill a 1200-byte datagram). The `udp_redundancy` knob is retired.
     char ini[MAX_PATH];
     wsprintfA(ini, "%smh_net.ini", dir);
-    c.redundancy = GetPrivateProfileIntA("net", "udp_redundancy", mh::netudp::K_DEFAULT, ini);
-    // mp:T2 -- the channel-C MEASUREMENT knob, off by default and off in every shipped run. Non-zero
-    // makes the HOST push that many mebibytes of a synthetic blob over channel C once a peer's
-    // desync sample reports the configured sim step, so that "a bulk transfer in progress does not
-    // delay lockstep traffic on channel A" is measurable on the rig against a run without one. Read
-    // here for the same reason `udp_redundancy` is: MH_NetConfig is the mh.dll <-> module ABI, and
-    // the TCP module must stay byte-for-byte the build it was.
+    mh_ini_attach_logger(ini_gate_log, nullptr); // RL2: gate lines for this module's keys; no banner (mh.dll writes it)
+    c.redundancy = mh::netudp::K_DEFAULT;
     // mp:U62 -- `[net] hub_migration` (shipped default 1). 0 is the NEGATIVE arm: this peer neither hands the hub
     // over when its player leaves nor follows a HUB_LEAVING it receives, so a host that goes takes the match
     // with it exactly as U55 measured (survivors stall, the link watchdog fires, outcome 8 after ~58 s).
-    // Module-only, read here for the reason `udp_redundancy` is: MH_NetConfig is the mh.dll <-> module ABI.
-    c.no_hub_migration   = GetPrivateProfileIntA("net", "hub_migration", 1, ini) == 0;
-    // mp:U63 -- `[net] failover_budget_ms` (0 = the module default, 20 s): the bound on a whole crash failover.
-    c.failover_budget_ms = GetPrivateProfileIntA("net", "failover_budget_ms", 0, ini);
+    // Module-only, read here because MH_NetConfig is the mh.dll <-> module ABI.
+    c.no_hub_migration = mh_ini_get_int("net", "hub_migration", 1, ini) == 0;
+    // c.failover_budget_ms stays 0 (the module default, 20 s: the bound on a whole crash failover);
+    // only the mesh selftest sets it. The `failover_budget_ms` knob is retired.
     // mp:U64 -- TEST ONLY: hold this peer's mesh probe/echo datagrams N ms (a slow client<->client path on the rig).
     // mp:U69 -- honoured only with `[harness] enable=1` (the rig always has it); a player's ini cannot rig the election.
     {
         bool       ignored = false;
-        const bool armed   = GetPrivateProfileIntA("harness", "enable", 0, ini) != 0;
+        const bool armed   = mh_ini_get_int("harness", "enable", 0, ini) != 0;
         c.mesh_test_delay_ms =
-            mh::netudp::mesh_test_delay_gate(GetPrivateProfileIntA("net", "mesh_test_delay_ms", 0, ini), armed, &ignored);
+            mh::netudp::mesh_test_delay_gate(mh_ini_get_int("net", "mesh_test_delay_ms", 0, ini), armed, &ignored);
         if (ignored) log_line(nullptr, "net: [net] mesh_test_delay_ms is a test key and needs [harness] enable=1: test key ignored");
     }
-    c.bulk_selftest_mb   = GetPrivateProfileIntA("net", "bulk_selftest_mb", 0, ini);
-    c.bulk_selftest_step = GetPrivateProfileIntA("net", "bulk_selftest_step", 100, ini);
+    // c.bulk_selftest_mb / bulk_selftest_step stay 0 (channel-C measurement off, default step): only
+    // the hosted selftests set them. Their `[net]` knobs are retired.
 
     // ---- mp:R1/R7a, the RELAY -------------------------------------------------------------------
     // `[net] relay=<host:port>` puts the Rust relay in the path: the tunnel is a separate object --
@@ -320,7 +321,8 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     // when the ini still carries `relay=`. The trailing-`;`-comment trim that used to live here moved
     // to mh.dll (net_seams.cpp lazy_start) with the ini read; a relayed `cfg->relay_addr` arrives
     // already clean. What STAYS a module ini read is `force_relay` (a relayed-path knob, below) and
-    // the `relay_room` retirement notice (mp:R1e) -- neither is the dial read R7a removed.
+    // nothing else -- the dial read R7a removed is gone, and the `relay_room` retirement notice (mp:R1e)
+    // moved to mh.dll's RETIRED_KNOBS list.
     const char *const relay_addr = cfg->relay_addr;
     // mp:R1d -- the endpoint's datagram ceiling drops by what the leg wraps around it. Set BEFORE
     // g_ep.start below reads the config, and left at 0 for a direct link, which keeps that wire
@@ -378,34 +380,14 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
             // case where mh.dll already knows there is nothing to dial.
             c.browse_only = (rc.room == mh::udprelay::DIRECTORY_ROOM);
         }
-        // mp:R1e CLAUSE 2 -- `relay_room` IS READ AND IGNORED, and the notice is the point.
-        // R1 gave the knob a default of `[net] port` because two peers who agree on a port agree
-        // on a room; R2 made the LOBBY mint the room (a client re-dials the room the directory
-        // named) and R6 finished the job for the host, which retired the reason the knob existed.
-        // What is left is a footgun with the shape a silent override always has: a stale
-        // `relay_room=` in somebody's ini out-votes the lobby the player just clicked, and the
-        // symptom is `no_host` in a file nobody re-reads. So the value is read ONLY to say it is
-        // being ignored -- deleting the read would leave the operator with an ini key that does
-        // nothing and no line anywhere admitting it. The room the notice names is the one this
-        // peer really uses: a host's minted code, a client's directory pick or pre-directory guess.
-        const int pinned_room = GetPrivateProfileIntA("net", "relay_room", -1, ini);
-        if (pinned_room >= 0 && (uint32_t)pinned_room != rc.room) {
-            char b[240];
-            wsprintfA(b,
-                      "net: udp relay -- [net] relay_room=%d is IGNORED (mp:R1e); the room comes "
-                      "from the lobby now (a host's is minted, mp:R6), and this peer is using "
-                      "room %u. Remove the key.",
-                      pinned_room, (unsigned)rc.room);
-            log_line(nullptr, b);
-        }
         rc.role      = cfg->role;
         rc.game_port = (unsigned short)cfg->port;
         // mp:R3 -- `[net] force_relay=1` pins this peer to the relayed path: no candidates are
         // published, no probes are sent, and an inbound probe is answered (so the far end is not
         // left diagnosing a network that drops probes) but never promotes. Read here for the same
-        // reason `udp_redundancy` and `relay` are: MH_NetConfig is the mh.dll <-> module ABI and
+        // reason `relay` is: MH_NetConfig is the mh.dll <-> module ABI and
         // the TCP module, which has no relay and no punch, must stay the build it was.
-        rc.force_relay = GetPrivateProfileIntA("net", "force_relay", 0, ini);
+        rc.force_relay = mh_ini_get_int("net", "force_relay", 0, ini);
 
         // A tunnel already up belongs to the PREVIOUS lobby (a peer that re-hosts, or the U40
         // restart path). Restart it rather than leaving a leg registered as the thing this peer no
@@ -444,12 +426,12 @@ extern "C" int MH_Net_InitEx(const MH_NetConfig *cfg) {
     g_ep.set_path_class(relay_path_class, nullptr);
     {
         mh::netudp::Endpoint::MeshHooks hk;
-        hk.leg_rtt_dms = mesh_leg_rtt_dms;
-        hk.mint_room   = mesh_mint_room;
-        hk.ctx         = nullptr;
+        hk.leg_rtt_dms   = mesh_leg_rtt_dms;
+        hk.mint_room     = mesh_mint_room;
+        hk.ctx           = nullptr;
         hk.tunnel_rehome = mesh_tunnel_rehome; // mp:U62
         hk.leg_age_ms    = mesh_leg_age_ms;    // mp:U63
-        g_ep.set_mesh_hooks(hk); // mp:U61 -- answers -1 / a code only when a relay tunnel is running
+        g_ep.set_mesh_hooks(hk);               // mp:U61 -- answers -1 / a code only when a relay tunnel is running
     }
     const bool ok = g_ep.start(c, psk, secure); // restarts a started endpoint; it logs the relink
     // The refusal case, and the ONLY reason this is not a bare assignment: the endpoint could not
@@ -517,29 +499,29 @@ extern "C" void MH_Net_HubStatus(MH_NetHubStatus *out) {
     if (!g_started) return;
     mh::netudp::Endpoint::HubStatus s;
     g_ep.hub_status(s);
-    out->enabled        = s.enabled ? 1 : 0;
-    out->role           = s.role;
-    out->hub_id         = s.hub_id;
-    out->local_id       = s.local_id;
-    out->epoch          = s.epoch;
-    out->rank_n         = s.rank_n;
+    out->enabled  = s.enabled ? 1 : 0;
+    out->role     = s.role;
+    out->hub_id   = s.hub_id;
+    out->local_id = s.local_id;
+    out->epoch    = s.epoch;
+    out->rank_n   = s.rank_n;
     for (int i = 0; i < 8; ++i) out->rank[i] = s.rank[i];
-    out->survivors      = s.survivors;
-    out->leave_state    = s.leave_state;
-    out->rehomed        = s.rehomed ? 1 : 0;
-    out->reconciling    = s.reconciling ? 1 : 0;
-    out->reconcile_done = s.reconcile_done ? 1 : 0;
-    out->unrecoverable  = s.unrecoverable ? 1 : 0;
-    out->aborted        = s.aborted ? 1 : 0;
-    out->changes        = (int)s.changes;
-    out->old_hub        = s.old_hub;
-    out->new_hub        = s.new_hub;
-    out->change_epoch   = s.change_epoch;
-    out->clients        = s.clients;
-    out->leaving_rx     = (int)s.leaving_rx;
-    out->acks_tx        = (int)s.acks_tx;
-    out->acks_rx        = (int)s.acks_rx;
-    out->retargets      = (int)s.retargets;
+    out->survivors       = s.survivors;
+    out->leave_state     = s.leave_state;
+    out->rehomed         = s.rehomed ? 1 : 0;
+    out->reconciling     = s.reconciling ? 1 : 0;
+    out->reconcile_done  = s.reconcile_done ? 1 : 0;
+    out->unrecoverable   = s.unrecoverable ? 1 : 0;
+    out->aborted         = s.aborted ? 1 : 0;
+    out->changes         = (int)s.changes;
+    out->old_hub         = s.old_hub;
+    out->new_hub         = s.new_hub;
+    out->change_epoch    = s.change_epoch;
+    out->clients         = s.clients;
+    out->leaving_rx      = (int)s.leaving_rx;
+    out->acks_tx         = (int)s.acks_tx;
+    out->acks_rx         = (int)s.acks_rx;
+    out->retargets       = (int)s.retargets;
     out->failover        = s.failover;
     out->failover_active = s.failover_active ? 1 : 0;
     out->failover_ms     = s.failover_ms;
@@ -562,8 +544,8 @@ extern "C" int MH_Net_Rehome(const MH_NetRehomeSpec *spec) {
     if (!g_started || spec == nullptr || spec->size < sizeof(MH_NetRehomeSpec)) return 0;
     mh::netudp::Endpoint::RehomeEx x;
     memset(&x, 0, sizeof(x));
-    x.as_hub         = spec->as_hub != 0;
-    x.roster_mask    = spec->roster_mask;
+    x.as_hub      = spec->as_hub != 0;
+    x.roster_mask = spec->roster_mask;
     lstrcpynA(x.host, spec->host, (int)sizeof(x.host));
     x.port           = spec->port;
     x.relay_room     = spec->relay_room;

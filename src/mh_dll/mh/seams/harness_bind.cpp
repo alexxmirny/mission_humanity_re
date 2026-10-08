@@ -38,6 +38,7 @@
 // stray ini key into a dead game for no evidence gained.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include "include/mh_module_bind.h"
 #include "include/mh_harness_module.h"
@@ -79,14 +80,14 @@ void mod_log(const char *s) {
 }
 
 // `[harness] enable` read straight from the ini, composed the way mh::config composes its own: from
-// the PROCESS image, because configuration belongs to the installation. It is asked HERE, before
-// build_paths() has run, which is why this does not use g_ini_path.
+// the config directory (RL3: image path + environment + filesystem, no module's init). It is asked
+// HERE, before build_paths() has run, which is why this does not use g_ini_path.
 bool harness_configured() {
     char dir[MAX_PATH];
     char ini[MAX_PATH];
-    mh::config::detail::exe_dir(dir);
+    mh::config::detail::config_dir(dir);
     wsprintfA(ini, "%smh_net.ini", dir);
-    return GetPrivateProfileIntA("harness", "enable", 0, ini) != 0;
+    return mh_ini_get_int("harness", "enable", 0, ini) != 0;
 }
 
 // THE LOUD REFUSAL -- all three channels mh::config::detail::refuse uses, and deliberately NOT its

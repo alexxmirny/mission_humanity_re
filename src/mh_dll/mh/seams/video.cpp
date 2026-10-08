@@ -39,10 +39,12 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 
 #include "include/mh_video_export.h"
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -970,11 +972,7 @@ bool install_hud_chrome() {
 // LoadLibrary under the loader lock is a documented deadlock, and the newer per-monitor-v2 entry
 // point does not exist on older Windows. Per-monitor-v2 is preferred when present, since it also
 // keeps the window correct across a monitor change; SetProcessDPIAware is the universal fallback.
-void apply_dpi_awareness(const char *ini) {
-    if (!GetPrivateProfileIntA("video", "dpi_aware", 1, ini)) {
-        vid_log("; [video] dpi_aware=0 -- leaving DPI virtualisation to Windows (needs the HIGHDPIAWARE shim)");
-        return;
-    }
+void apply_dpi_awareness() {
     HMODULE u32 = GetModuleHandleA("user32.dll");
     if (!u32) return; // cannot happen for this game (it imports user32), but never assume
     typedef BOOL(WINAPI * PFN_SetCtx)(void *);
@@ -995,13 +993,7 @@ void apply_dpi_awareness(const char *ini) {
 // than from the CWD -- that is what lets several install folders on one machine each carry their own
 // configuration (parallel test lanes).
 static void video_ini_path(char *ini) {
-    char exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 }
 
 // ---- headless: cut the presentation, keep the frame ----------------------------------------------
@@ -1031,7 +1023,7 @@ static void video_ini_path(char *ini) {
 // (tools/mp_pacing_report.py, the adaptive lookahead controller). Same rule as parallel lanes:
 // The parallel-lane notes.
 static void apply_no_present(const char *ini) {
-    if (!GetPrivateProfileIntA("video", "no_present", 0, ini)) return;
+    if (!mh_ini_get_int("video", "no_present", 0, ini)) return;
 
     auto *site = reinterpret_cast<uint8_t *>(mh::addr::gfx_present_blit_site);
     // Expected-bytes guard, as everywhere else in this DLL: E8 9E 3B 0B 00 = CALL rel32 -> 0x004da014.
@@ -1247,7 +1239,7 @@ static void apply_fps_cap(const char *ini) {
     // F2G: the key moved out of its own one-key `[pacing]` section into `[video]`, beside the
     // `no_present=1` it already requires -- the two are one decision, split across two sections
     // only by history. A `[pacing]` section is REFUSED from mh::config now.
-    const int cap = GetPrivateProfileIntA("video", "fps_cap", 0, ini);
+    const int cap = mh_ini_get_int("video", "fps_cap", 0, ini);
     if (cap <= 0) return;
     if (!arm_present_stub()) {
         vid_log("; [video] fps_cap=%d NOT armed -- needs [video] no_present=1 (a visible run "
@@ -1438,7 +1430,7 @@ void *exe_iat_replace(const char *dll_name, const char *fn_name, void *repl) {
 // which only knows about the first. Claiming this entry twice is not possible (entry_claim::exclusive)
 // and was the reason the harness could not simply install its own.
 static void install_movie_tick(const char *ini) {
-    const bool want_keeper  = GetPrivateProfileIntA("video", "no_window", 0, ini) != 0;
+    const bool want_keeper  = mh_ini_get_int("video", "no_window", 0, ini) != 0;
     const bool want_harness = MH_Harness_WantsMovieTick() != 0;
     if (!want_keeper && !want_harness) return;
     const bool ok = mh::hook::install_trampoline(mh::addr::llm_ui_menu_async_tick, (void *)avi_tick_detour,
@@ -1449,10 +1441,10 @@ static void install_movie_tick(const char *ini) {
 }
 
 static void apply_no_window(const char *ini) {
-    if (!GetPrivateProfileIntA("video", "no_window", 0, ini)) return;
+    if (!mh_ini_get_int("video", "no_window", 0, ini)) return;
     g_no_window_armed = 1;
     // Off by default -- see g_hide_window: hiding costs 8x wall clock because WM_PAINT drives frames.
-    g_hide_window = GetPrivateProfileIntA("video", "no_window_hide", 0, ini);
+    g_hide_window = mh_ini_get_int("video", "no_window_hide", 0, ini);
 
     struct patch {
         uintptr_t   va;
@@ -1569,7 +1561,7 @@ extern "C" void MH_Video_ApplyProcessAttrs(void) {
     if (!mh::en_build_ok()) return; // EN-only
     char ini[MAX_PATH];
     video_ini_path(ini);
-    apply_dpi_awareness(ini);             // before any window exists (we are inside DllMain)
+    apply_dpi_awareness();                // before any window exists (we are inside DllMain)
     mh::gfx::install_owned_ddraw(ini);    // PT-GFX1: [video] backend (default system = untouched)
     mh::input::install_owned_dinput(ini); // PT-INPUT1: [input] backend (default system = untouched)
     apply_no_present(ini);                // headless: cut the blit, keep the composed frame
@@ -1587,12 +1579,12 @@ extern "C" int MH_Video_Install(void) {
     MH_Video_ApplyProcessAttrs(); // idempotent -- normally already done before the [net] gate
 
     char nearby[128];
-    g_size_mode = GetPrivateProfileIntA("video", "size_mode", -1, ini);
+    g_size_mode = mh_ini_get_int("video", "size_mode", -1, ini);
 
     // A custom size takes over mode 2 and implies it: [video] width/height is the "or higher" half of
     // D13. Both must be given; everything below is validated BEFORE anything is written.
-    int cw = GetPrivateProfileIntA("video", "width", 0, ini);
-    int ch = GetPrivateProfileIntA("video", "height", 0, ini);
+    int cw = mh_ini_get_int("video", "width", 0, ini);
+    int ch = mh_ini_get_int("video", "height", 0, ini);
     if (cw > 0 || ch > 0) {
         int h_render = ch & ~31; // the render height must be a whole number of 32px tiles
         int tiles    = (cw / 32) * (h_render / 32);
@@ -1608,12 +1600,11 @@ extern "C" int MH_Video_Install(void) {
         } else if (cw == 640 || cw == 800 || cw == 1024) {
             vid_log("; [video] custom res IGNORED -- %d is a stock width; use size_mode instead", cw);
         } else if (!mh::gfx::owned_ddraw_active() && // owned ddraw: no real mode switch, any size works
-                   !mode_is_available(cw, h_render, nearby, sizeof(nearby)) &&
-                   GetPrivateProfileIntA("video", "unverified", 0, ini) == 0) {
+                   !mode_is_available(cw, h_render, nearby, sizeof(nearby))) {
             // The display cannot present this exact size -- arming would hand dgVoodoo a mode it
             // refuses, which ends in its modal + an exit rather than anything diagnosable.
             vid_log("; [video] custom res REFUSED -- %dx%d is not an available display mode on this "
-                    "machine.%s%s  (Set [video] unverified=1 to arm anyway.)",
+                    "machine.%s%s",
                     cw, h_render, nearby[0] ? "  Available at this width: " : "", nearby);
             if (h_render != ch)
                 vid_log("; [video]   note: height %d was snapped down to %d for the 32px tile grid -- the "
@@ -1641,7 +1632,7 @@ extern "C" int MH_Video_Install(void) {
     // D13b -- the options-menu PICKER. Independent of [video] width/height: it needs the same engine
     // plumbing (guard, relocated arrays, mode-2 immediates), so if a custom size did not already arm
     // them, arm them here for the largest entry in the list.
-    if (GetPrivateProfileIntA("video", "picker", 0, ini)) {
+    if (mh_ini_get_int("video", "picker", 0, ini)) {
         build_mode_list(ini);
         if (g_nmodes <= 3) {
             vid_log("; [video] picker NOT armed -- only %d usable modes found, no more than the stock 3", g_nmodes);

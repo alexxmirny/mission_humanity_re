@@ -1397,7 +1397,7 @@ void Endpoint::hub_status(HubStatus &o) {
 //   5. QUORUM.   Plan Q1: only a strict majority of the seated human peers of that epoch plays on (mesh::quorum_ok).
 //                Direct match: judged at corroboration + 1.5 s from the survivors this peer can hear; every match:
 //                judged again by the new hub when its roster has re-dialled (or after FO_QUORUM_MS). A minority ends.
-//   6. BOUND.    The whole failover is bounded (`[net] failover_budget_ms`, 20 s): past it a true partition ends
+//   6. BOUND.    The whole failover is bounded (failover_budget_ms, 20 s): past it a true partition ends
 //                through U55's own path. The game suspends its silence timers while `failover_active` (SUSPECT/ELECT).
 //
 // WHAT IT DOES NOT DO: the dead hub is not removed from any ROSTER here. The new hub latches it dead (m_dead_peer,

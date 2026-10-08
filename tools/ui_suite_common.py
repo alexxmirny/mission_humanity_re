@@ -190,6 +190,29 @@ def lang_pack_precondition(args):
     return True, ""
 
 
+def lang_pack_pl_precondition(args):
+    """(ok, reason) for lang_pl (RL18): a local lane and a readable PL pack at <LANG_PACK_GAME>/lang/pl with
+    the built 7-button art, a clean mh_strings.txt and codepage 1250 (`python src/formats/langpack.py build
+    --lang pl`, which needs the Extermination, DE and FR installs)."""
+    if not args.local:
+        return (
+            False,
+            "needs --local -- the language pack lives in this machine's polygon, not on a VM",
+        )
+    d = os.path.join(LANG_PACK_GAME, "lang", "pl")
+    try:
+        st = _import_langpack().pack_status(d)
+    except (ImportError, OSError) as exc:
+        return False, "cannot read the language pack at %s (%s)" % (d, exc)
+    if not (st["ok"] and st["art7"] and st["strings"] and st["codepage"] == 1250):
+        why = st["reason"] or "no built 7-button art, no clean mh_strings.txt or not codepage 1250"
+        return False, (
+            "no full PL language pack at %s (%s) -- build one with `python src/formats/langpack.py "
+            "build --lang pl`" % (d, why)
+        )
+    return True, ""
+
+
 def lang_pack_noart_precondition(args):
     """(ok, reason) for lang_ru_noart (mods:LANG2's fallback): a local lane and a readable RU pack at
     <LANG_PACK_GAME>/lang/ru_noart that has merged fonts and does NOT have the built 7-button art --
@@ -282,6 +305,7 @@ _REGISTRY = ui_registry.load(
         "FONT_MERGE_DIR": FONT_MERGE_DIR,
         "lang_pack_precondition": lang_pack_precondition,
         "lang_pack_noart_precondition": lang_pack_noart_precondition,
+        "lang_pack_pl_precondition": lang_pack_pl_precondition,
         "lang_pack_strings_precondition": lang_pack_strings_precondition,
         "chat_utf8_precondition": chat_utf8_precondition,
         "LANG_PACK_GAME": LANG_PACK_GAME,
@@ -309,7 +333,10 @@ def sp_newest_run(lane_dir):
     # only ever has one shape of folder -- but this is also used to read a lane that DID, and there
     # the harness outputs (which is what every caller here wants) are in the process directory, while
     # a newer session directory would win a plain mtime sort.
-    runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*")), key=os.path.getmtime)
+    runs = sorted(
+        [_d for _d in glob.glob(os.path.join(lane_dir, "logs", "*")) if os.path.isdir(_d)],
+        key=os.path.getmtime,
+    )
     menu = [d for d in runs if "_menu_" in os.path.basename(d)]
     return (menu or runs)[-1] if runs else None
 
@@ -326,7 +353,10 @@ def sp_newest_session_run(lane_dir):
     exposed to this gap; check_cancel_task.py's `; D28: ... routed as order` line is written well
     after Start, into the session dir alone. Prefer a NON-`_menu_` dir (the newest one), falling
     back to sp_newest_run's normal resolution when none exists (a solo/menu-only lane)."""
-    runs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*")), key=os.path.getmtime)
+    runs = sorted(
+        [_d for _d in glob.glob(os.path.join(lane_dir, "logs", "*")) if os.path.isdir(_d)],
+        key=os.path.getmtime,
+    )
     session = [d for d in runs if "_menu_" not in os.path.basename(d)]
     return session[-1] if session else sp_newest_run(lane_dir)
 

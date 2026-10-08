@@ -47,6 +47,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate for the [net] log_max_mb read below
 
 #ifdef __cplusplus
 
@@ -123,7 +124,7 @@ inline bool mh_log_rotate_open_handle(HANDLE *h, const char *path, long long cap
 // A value of 0 disables the cap; the result is clamped so a silly-large ini value cannot overflow.
 inline long long mh_log_cap_bytes(const char *ini, const char *section, const char *key, int default_mb) {
     int mb = default_mb;
-    if (ini != nullptr && ini[0] != '\0') mb = (int)GetPrivateProfileIntA(section, key, default_mb, ini);
+    if (ini != nullptr && ini[0] != '\0') mb = (int)mh_ini_get_int(section, key, default_mb, ini);
     if (mb <= 0) return 0;                  // explicit "off"
     if (mb > 1024 * 1024) mb = 1024 * 1024; // 1 TB; keeps the multiply inside long long by a mile
     return (long long)mb * 1024 * 1024;

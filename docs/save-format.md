@@ -749,7 +749,7 @@ to the original's**, and the comparator has been watched refusing.
 There is **no UI route**: every registered harness scenario enters via NETWORK GAME, and the MP
 ESC-menu widget arrays (`_MP_LOCKSTEP` `0x65345f`, `_MP_OTHER` `0x65347b`) carry DIPLOMACY in the slot
 where the SP array (`0x653493`) carries the save/load widgets `0x6513a3`/`0x6513e7`. `[harness] save_at
-/ save_every / save_count` calls the root directly instead — the same call `game_SaveGame` makes,
+/ save_every / save_count` (retired 2026-10-06) called the root directly instead — the same call `game_SaveGame` makes,
 from real mid-match state. `[harness] load_at` reads it back through the **original**
 `LoadPlanetFromDisk` (promoted save → `rc=1`, vanilla save → `rc=1`, no file at all → `rc=0`).
 
@@ -792,8 +792,8 @@ side needs no excusal machinery.
 ### The period-2 invariant, measured
 
 Every load pushes each region node onto the HEAD of the list while the saver walks from that head, so
-a save/load/save cycle reverses the record order. From an interleaved run (`[harness] save_keep`
-archives each save, since the per-planet path is fixed):
+a save/load/save cycle reverses the record order. From an interleaved run (the retired `[harness] save_keep`
+archived each save, since the per-planet path is fixed):
 
 ```
 save1 == save3 (same order)  True     save2 == reversed(save1)  True

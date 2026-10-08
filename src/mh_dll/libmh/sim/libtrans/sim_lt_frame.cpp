@@ -43,18 +43,6 @@ const lt_frame_calls &live_lt_frame_calls() {
     return c;
 }
 
-// EXPERIMENT KNOB, default OFF and never set by shipping code. The frame's first call is the WALL --
-// mh::host().apply_frame_input, which hosted is the ORIGINAL llm_strat_input_update @0x00441b88 and
-// standalone is an empty function (libref_host binds `{}` AND sets input_update = noop). That makes
-// it the one structural difference left on the order path between the two arms of the LIB-REF
-// replay, and the only honest way to ask whether it MATTERS is to remove it from the hosted arm and
-// see whether the recorded trajectory still reproduces. Hence a setter rather than an #ifdef: the
-// experiment has to run in a real, shipping-configured process.
-void set_lt_frame_input_override(void (*input_update)()) {
-    lt_frame_calls &c = const_cast<lt_frame_calls &>(live_lt_frame_calls());
-    if (input_update) c.input_update = input_update;
-}
-
 void set_lt_frame_instrument_hooks(void (*pace_time_tick)(), void (*harness_sim_tick)()) {
     lt_frame_calls &c = const_cast<lt_frame_calls &>(live_lt_frame_calls());
     if (pace_time_tick) c.pace_time_tick = pace_time_tick;

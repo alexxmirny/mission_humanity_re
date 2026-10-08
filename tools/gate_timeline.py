@@ -270,7 +270,11 @@ def main():
     gate = None if args.newest else gate_window()
 
     rows = []
-    for d in glob.glob(os.path.join(make_lane.LANE_ROOT, "*", "logs", "*")):
+    for d in [
+        _d
+        for _d in glob.glob(os.path.join(make_lane.LANE_ROOT, "*", "logs", "*"))
+        if os.path.isdir(_d)
+    ]:
         if not _rundir.parse(d):
             continue
         s = net_span(d)

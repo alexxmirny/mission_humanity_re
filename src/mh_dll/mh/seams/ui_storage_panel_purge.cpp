@@ -4,6 +4,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -94,7 +95,7 @@ extern "C" int MH_StoragePurge_Install(void) {
     if (!mh::en_build_ok()) return 0;
     if (g_armed) return 1;
     const uintptr_t site = mh::addr::storage_panel_purge_call_site;
-    if (GetPrivateProfileIntA("net", "storage_panel_purge_fix", 1, g_ini) == 0) {
+    if (mh_ini_get_int("net", "storage_panel_purge_fix", 1, g_ini) == 0) {
         seam_log("; D38: storage-panel purge KEPT ([net] storage_panel_purge_fix=0): the selecting peer purges "
                  "dead docked units ahead of the sim -- the reproduction arm\n");
         return 0;

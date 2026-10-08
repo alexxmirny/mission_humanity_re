@@ -8,7 +8,7 @@
     "mh_net.log": "the CORE-ARM log (fork ruling Q9) despite the name: 51 of the 74 brokered arm steps come from mh.dll, 23 from libmh.dll, 0 from mh_net.dll -- whose `net: ` lines all land after the arm window. Per SESSION. Capped + rotated at [net] log_max_mb since mp:SES2.",
     "mh_lockstep.log": "per-frame lockstep pacing columns. Per SESSION. `#`-header + whitespace fields.",
     "mh_frametime.log": "per-PRESENT qpc_us + game mode -- what the player FEELS. Per SESSION.",
-    "mh_temporal.log": "the per-EVENT temporal trace ([trace] temporal=1). Per SESSION; rotates at [trace] temporal_max_mb.",
+    "mh_temporal.log": "the per-EVENT temporal trace ([trace] temporal=1). Per SESSION; rotates at 64 MB.",
     "mh_harness.log": "the determinism/replay instrument's channel, held open and buffered by mh_harness.dll. Per PROCESS -- mh.dll composes the path once and the harness copies the string at init. Since mp:SES7 each MATCH also gets its own slice of it -- see mh_match_harness.log.",
     "mh_match_harness.log": "mp:SES7: the harness's per-MATCH mirror of mh_harness.log -- every line written while a session is open, plus a `; [match] segment OPEN/CLOSE` header stating the step mapping. Per SESSION, composed inside mh_harness.dll from MH_RunDir(); not size-capped (each match file is written whole; the report packager budgets the compressed zip). Its siblings mh_match_orders.bin / mh_match_clock.bin / mh_match_seed.bin are the replay inputs on the match's own step axis. No tool parses it yet (mp_analyze reads mh_harness.log by exact name).",
     "mh_uidrive.log": "the UI-automation channel the rig polls. Per PROCESS, necessarily: the runner discovers ONE directory at launch. Since mp:SES7 it carries `[mtrace]` rows ONLY when [uitest] enable=1 (check_cam_trace reads them here, interleaved with the script's LOG markers).",
@@ -889,7 +889,7 @@
       ],
       "since": "mp:U19b (2026-09-22)",
       "status": "live",
-      "note": "The quitter's own line, written by graceful_leave_park just BEFORE llm_net_player_remove: verdict PARKED = every other ALIVE&&HUMAN slot advertised a constant >= P for PARK_STABLE_MS (they are parked on the frozen horizon H_d, so the flip lands at the same sim clock everywhere); VALVE-UNPARKED = graceful_leave_park_ms ran out; UNWAITED = graceful_leave_park=0; SESSION-ENDED / NO-SURVIVORS = nothing left to wait for. Same MENU run directory as net.graceful_leave_broadcast (mp_session_close ran first)."
+      "note": "The quitter's own line, written by graceful_leave_park just BEFORE llm_net_player_remove: verdict PARKED = every other ALIVE&&HUMAN slot advertised a constant >= P for PARK_STABLE_MS (they are parked on the frozen horizon H_d, so the flip lands at the same sim clock everywhere); VALVE-UNPARKED = the 1500 ms safety valve ran out; SESSION-ENDED / NO-SURVIVORS = nothing left to wait for. Same MENU run directory as net.graceful_leave_broadcast (mp_session_close ran first)."
     },
     {
       "id": "net.graceful_leave_disabled",
@@ -1170,7 +1170,7 @@
       ],
       "since": "2026-07-25",
       "status": "live",
-      "note": "NOT A LINE FORMAT BUT A FILE ONE, registered because tools glob it: at [trace] temporal_max_mb the stream rotates to mh_temporal.prev.log. Since mp:SES2 mh_net.log rotates the same way, through the same derivation in mh_common/include/mh_log_rotate.h."
+      "note": "NOT A LINE FORMAT BUT A FILE ONE, registered because tools glob it: at the 64 MB cap the stream rotates to mh_temporal.prev.log. Since mp:SES2 mh_net.log rotates the same way, through the same derivation in mh_common/include/mh_log_rotate.h."
     },
     {
       "id": "uidrive.script_complete",
@@ -1436,7 +1436,7 @@
       ],
       "since": "LIB-REF-REC (registered TL-GATE-D25FX, 2026-09-20)",
       "status": "live",
-      "note": "The RAW REGION DUMP: [harness] rdump_rid=<hash column>;rdump_lo=<step>;rdump_hi=<step> dumps that region's bytes at the SAME sample point as the `R` line, 64 bytes per row, `rid` = the hash column (-1 for an rdump_addr window, -2 for an rdump_regid registry region). counts-guard reads the order_queue_count slice off it; abc_region_diff diffs a whole region between two arms to name the bytes a `state` mismatch is about. Was parsed unregistered until 2026-09-20 -- arm B only discovers the `; [tag]` class."
+      "note": "The RAW REGION DUMP: [harness] rdump_rid=<hash column>;rdump_lo=<step>;rdump_hi=<step> dumps that region's bytes at the SAME sample point as the `R` line, 64 bytes per row, `rid` = the hash column (the rdump_addr / rdump_regid address and registry windows, which wrote rid -1 / -2, were retired 2026-10-06). counts-guard reads the order_queue_count slice off it; abc_region_diff diffs a whole region between two arms to name the bytes a `state` mismatch is about. Was parsed unregistered until 2026-09-20 -- arm B only discovers the `; [tag]` class."
     },
     {
       "id": "harness.hash_fingerprint",
@@ -2493,8 +2493,7 @@
       ],
       "needles": [
         "; [monotone] HOLD",
-        "; [monotone] RELEASE",
-        "; [monotone] OFF"
+        "; [monotone] RELEASE"
       ],
       "fields": [
         "target_ms",
@@ -2506,7 +2505,7 @@
       "parsers": [],
       "since": "mp:D30 (2026-09-24)",
       "status": "live",
-      "note": "The monotone pin (mh::netstats::monotone_step) holding STEP_SIZE above the adaptive controller's target because a larger horizon is already on the wire: HOLD when it starts, RELEASE when the clock has caught up and STEP_SIZE is back on the target (`holds` = pins spent holding so far this process). Every controller SHRINK should produce one HOLD/RELEASE pair; a HOLD with no RELEASE for seconds means something keeps stamping at the held value (the per-step re-pin MH_Lockstep_StepPin is not running). `OFF` is printed once at arm time when `[net] horizon_monotone=0` -- the pre-D30 control arm, never a shipped setting."
+      "note": "The monotone pin (mh::netstats::monotone_step) holding STEP_SIZE above the adaptive controller's target because a larger horizon is already on the wire: HOLD when it starts, RELEASE when the clock has caught up and STEP_SIZE is back on the target (`holds` = pins spent holding so far this process). Every controller SHRINK should produce one HOLD/RELEASE pair; a HOLD with no RELEASE for seconds means something keeps stamping at the held value (the per-step re-pin MH_Lockstep_StepPin is not running). (The pre-D30 `OFF` control arm and its `[net] horizon_monotone` knob are retired.)"
     },
     {
       "id": "net.udp_counters",
@@ -2937,75 +2936,6 @@
       "note": "Progress, every `[harness] snapshot_log` steps and only while a transfer is actually in flight (state != IDLE). A 30-60 s transfer is otherwise silent, and a silent minute is indistinguishable from a stalled one."
     },
     {
-      "id": "harness.snap_bench",
-      "stream": "mh_harness.log",
-      "emitter": "src/mh_dll/mh_harness/harness.cpp",
-      "emit": "; SNAP BENCH step=",
-      "tags": [],
-      "needles": [
-        "; SNAP BENCH"
-      ],
-      "fields": [
-        "step",
-        "n",
-        "ok",
-        "fail",
-        "bytes",
-        "min_us",
-        "median_us",
-        "max_us"
-      ],
-      "parsers": [],
-      "since": "mp:X6",
-      "status": "live",
-      "note": "`[harness] snap_bench=N` -- N calls to `w::capture()` into ONE already-allocated buffer, no disk I/O and no HeapAlloc inside the timed loop, min/median/max in whole microseconds (wsprintfA has no %f). Separates the RAM-only capture cost from world_snapshot_capture's disk-inclusive figure (X4). No parser reads it yet; it is read by a person, same footing as net.snapshot_send_armed below."
-    },
-    {
-      "id": "harness.world_import_at_rep",
-      "stream": "mh_harness.log",
-      "emitter": "src/mh_dll/mh_harness/harness.cpp",
-      "emit": "; WORLD IMPORT AT step=",
-      "tags": [],
-      "needles": [
-        "; WORLD IMPORT AT "
-      ],
-      "fields": [
-        "step",
-        "rep",
-        "bytes",
-        "blobstep",
-        "us"
-      ],
-      "parsers": [],
-      "since": "mp:X7",
-      "status": "live",
-      "note": "`[harness] world_import_at=N` -- one row per repeat (>= `world_import_n`, default 3) of re-importing g_world_out IN-PROCESS via libmh_import_world, QPC-timed. The REFUSED variant (rc!=WORLD_OK) shares the prefix on purpose, same reason harness.snapshot_send documents. Followed by one `; WORLD IMPORT AT BENCH` summary row (min/median/max) and, on the last successful rep, the EXISTING SNAPIMP row + `; SNAPSHOT IMPORT HASHES` line (reused verbatim from snapshot_poll_now -- see harness.snapshot_import_row / harness.snapshot_import_hashes) as the determinism witness."
-    },
-    {
-      "id": "harness.world_import_at_bench",
-      "stream": "mh_harness.log",
-      "emitter": "src/mh_dll/mh_harness/harness.cpp",
-      "emit": "; WORLD IMPORT AT BENCH step=",
-      "tags": [],
-      "needles": [
-        "; WORLD IMPORT AT BENCH"
-      ],
-      "fields": [
-        "step",
-        "n",
-        "ok",
-        "fail",
-        "bytes",
-        "min_us",
-        "median_us",
-        "max_us"
-      ],
-      "parsers": [],
-      "since": "mp:X7",
-      "status": "live",
-      "note": "The X7 summary row over the `; WORLD IMPORT AT step=... rep=...` rows above -- the number mp-restoration memo section 3.3's 'restore charged at the save's cost' assumption gets replaced by, once a rig run has produced one."
-    },
-    {
       "id": "net.snapshot_send_armed",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
@@ -3386,23 +3316,6 @@
       "since": "mp:D24",
       "status": "live",
       "note": "The APPROACH to the cap, reported in 32-slot bands. This is the half of the instrument that can REFUTE an overflow hypothesis: a run whose backlog never leaves the low tens cannot have shed anything, and saying so needs no rare red run. Registered at U41 -- it has been emitted, unregistered, since D24."
-    },
-    {
-      "id": "net.relay_room_ignored",
-      "stream": "mh_net.log",
-      "emitter": "src/mh_dll/mh_net_udp/udp_transport.cpp",
-      "emit": "is IGNORED (mp:R1e)",
-      "tags": [],
-      "needles": [
-        "is IGNORED (mp:R1e)"
-      ],
-      "fields": [
-        "room"
-      ],
-      "parsers": [],
-      "since": "mp:R1e",
-      "status": "live",
-      "note": "The RETIREMENT NOTICE for `[net] relay_room`. R1 gave the knob a default of `[net] port`; R2 made the lobby mint the room, and what was left was a stale ini value silently out-voting the lobby the player just clicked -- diagnosable only as `no_host` in a log nobody re-reads. The key is now read ONLY so this line can say it is being ignored; deleting the read would have left an operator with a key that does nothing and no line anywhere admitting it. Once per transport init, and only when the key is present AND disagrees with the room actually used."
     },
     {
       "id": "seam.r6_join_resent",
@@ -3977,8 +3890,7 @@
         "map"
       ],
       "needles": [
-        "; \\[map\\] entry check (.+?): (not readable here|checksum differs)",
-        "; \\[map\\] entry check retail "
+        "; \\[map\\] entry check (.+?): (not readable here|checksum differs)"
       ],
       "fields": [
         "map",
@@ -3989,7 +3901,7 @@
       ],
       "since": "mp:X2e",
       "status": "live",
-      "note": "THE LOBBY-ENTRY MAP CHECK. Retail's llm_cfg_map_verify_version (EN 0x004be0bc, called by the client's join handler right after the lobby opens) re-reads the joined map and, when it is missing or its checksum differs, raises the shared error box with text 0x30f ('can't create map file') -- which tears the lobby down and stops the per-lobby-frame tick that drains channel C, so a >4-chunk download freezes and the host drops the link (rc4 field report). mh.dll replaces it while the map transfer is armed: `armed` once per process, then one `<map>: not readable here|checksum differs` line per deferral, and no box, teardown or rename. `retail` is the repro knob ([net] map_entry_check=retail) leaving the original body in place."
+      "note": "THE LOBBY-ENTRY MAP CHECK. Retail's llm_cfg_map_verify_version (EN 0x004be0bc, called by the client's join handler right after the lobby opens) re-reads the joined map and, when it is missing or its checksum differs, raises the shared error box with text 0x30f ('can't create map file') -- which tears the lobby down and stops the per-lobby-frame tick that drains channel C, so a >4-chunk download freezes and the host drops the link (rc4 field report). mh.dll replaces it while the map transfer is armed: `armed` once per process, then one `<map>: not readable here|checksum differs` line per deferral, and no box, teardown or rename."
     },
     {
       "id": "lobby.tick_stalled",
@@ -4077,7 +3989,7 @@
       ],
       "since": "mp:U73",
       "status": "live",
-      "note": "THE ENTITY-INFO GUARD's arm line, once per process: whether the trampoline on llm_ui_entity_info_screen_open (EN 0x004cad31) is installed, whether the storage panel's info-request consume (0x00417902) is spliced, and which rig-only knobs ([net] info_guard_test_entry / info_guard_test_row) are armed. `NOT guarded` is a refused install (see the [interlock] line) or changed bytes; the reproduction arm ([net] info_guard=0 / [config] mode=original) logs a `; [info] guard KEPT` line instead of this one."
+      "note": "THE ENTITY-INFO GUARD's arm line, once per process: whether the trampoline on llm_ui_entity_info_screen_open (EN 0x004cad31) is installed, whether the storage panel's info-request consume (0x00417902) is spliced, and which rig-only knobs ([net] info_guard_test_entry / info_guard_test_row) are armed. `NOT guarded` is a refused install (see the [interlock] line) or changed bytes; [config] mode=original logs a `; [info] guard KEPT` line instead of this one."
     },
     {
       "id": "info.guard_refused",
@@ -4658,7 +4570,7 @@
       ],
       "since": "mp:P9W",
       "status": "live",
-      "note": "`[net] resync_receiver_deadline=1` (default ON): a NON-leader still RESYNC_IN_PROGRESS after max(2002, data_timeout_ms) ms of this DLL's own GetTickCount() clock with no RESUME -- the leader is presumed dead. Written once per episode, immediately before the receiver runs the leader's own exit sequence (minus the RESUME broadcast) and removes `side_id` (the leader, found the same way llm_net_lockstep_is_local_leader_peer elects one) through llm_net_player_remove. Never on the leader itself (its own 2002 ms deadline inside llm_wait_screen_frame exits first and needs no line here -- see net.resync_barrier_end)."
+      "note": "Always on (the `[net] resync_receiver_deadline` knob is retired): a NON-leader still RESYNC_IN_PROGRESS after max(2002, data_timeout_ms) ms of this DLL's own GetTickCount() clock with no RESUME -- the leader is presumed dead. Written once per episode, immediately before the receiver runs the leader's own exit sequence (minus the RESUME broadcast) and removes `side_id` (the leader, found the same way llm_net_lockstep_is_local_leader_peer elects one) through llm_net_player_remove. Never on the leader itself (its own 2002 ms deadline inside llm_wait_screen_frame exits first and needs no line here -- see net.resync_barrier_end)."
     },
     {
       "id": "net.resync_gate_install",
@@ -4716,12 +4628,10 @@
       "fields": [
         "site"
       ],
-      "parsers": [
-        "tools/check_u39_echo.py:net_log_lines"
-      ],
+      "parsers": [],
       "since": "mp:U39",
       "status": "live",
-      "note": "Boot-time banner, one of three: `NOPed at <site>` (the ship arm), `KEPT ([net] diplo_echo_nop=0)` (the u39_diplomacy_echo reproduction arm -- check_u39_echo.py clause 2 requires it), `NOT patched at <site>` (expect bytes differ or the parent is promoted; retail echo kept)."
+      "note": "Boot-time banner, one of two: `NOPed at <site>` (the ship arm), `NOT patched at <site>` (expect bytes differ or the parent is promoted; retail echo kept)."
     },
     {
       "id": "net.ch1_refused",

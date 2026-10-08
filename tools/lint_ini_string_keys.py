@@ -56,8 +56,10 @@ DEFAULT_SRC = os.path.join(REPO, "src", "mh_dll")
 # (the gate would stop protecting exactly the keys the durable fix just made safe) unless the
 # wrapper is matched too. `read_ini_string` alone also matches the one call site that invokes it
 # unqualified from inside the `mh::config` namespace itself (config/config.h's `[config] mode`).
+# `mh_ini_get_str` (dist RL2, mh_common/include/mh_ini_gate.h) is the same raw string read with the ship gate in
+# front of it: the sites that called GetPrivateProfileStringA directly now call it.
 READER_RE = re.compile(
-    r'(?:GetPrivateProfileStringA|(?:mh::config::)?read_ini_string)'
+    r'(?:GetPrivateProfileStringA|mh_ini_get_str|(?:mh::config::)?read_ini_string)'
     r'\s*\(\s*"([A-Za-z_0-9]+)"\s*,\s*"([A-Za-z_0-9.]+)"'
 )
 SOURCE_EXT = (".cpp", ".c", ".h")

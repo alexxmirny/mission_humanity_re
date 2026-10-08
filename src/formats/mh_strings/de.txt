@@ -1,0 +1,63 @@
+# mh_strings.txt for the German language pack (RL17) -- mh.dll's own player-visible text.
+#
+# Our own translation, not retail data: src/formats/langpack.py copies it into lang/<id>/ beside the
+# pack it builds. One `key = text` per line, UTF-8; keys and the printf shape of every text (the
+# %s %d %u %lu conversions, in order) must match src/mh_dll/mh/ui/player_strings.def, or mh.dll
+# shows that key's English. tools/lint_player_strings.py and `langpack.py --selftest` check both.
+# Plain "-" throughout (the menu fonts' em dash is not guaranteed).
+
+# lobby / browser status line
+lobby.no_module = Kein Netzwerkmodul. Mehrspieler ist nicht verfügbar.
+lobby.link_lost = Verbindung zum Host verloren.
+lobby.host_left = Der Host hat das Spiel verlassen.
+lobby.refused = Abgelehnt: %s
+
+# join refusal reasons (composed by the host in English, shown here in German)
+refuse.old_client_cp = alter Client cp %u
+refuse.old_host_cp = alter Host cp %u
+refuse.codepage = Codepage %u/%u
+refuse.newer_protocol = Protokoll %u > %u
+refuse.older_protocol = Protokoll %u < %u
+refuse.malformed = ungültige Beitrittsanfrage
+refuse.no_match_id = altes Protokoll (keine match_id)
+refuse.newer_than_host = Protokoll neuer als beim Host
+refuse.not_our_lobby = nicht unsere Lobby
+refuse.cp_mismatch = Eingabe-Codepage passt nicht
+refuse.unknown = unbekannt
+refuse.build = Host hat %s, du hast %s: bitte aktualisieren
+relay.outdated = Relay veraltet (Protokoll %u < %u)
+
+# map transfer
+map.cannot_send = %s hat eine andere Kopie von %s - über diese Verbindung können keine Karten gesendet werden, der Start wird verweigert.
+map.sending = Karte wird an %s gesendet - der Start wartet auf den Empfang.
+map.downloading = Karte wird vom Host geladen (%u%%)...
+map.waiting = Warte auf die Karte vom Host...
+map.mismatch = Die Karte vom Host passt nicht zur Ankündigung.
+
+# in-match messages
+desync.alert = ASYNCHRON ERKANNT (Schritt %lu) - das Spiel ist nicht mehr synchron
+cheat.single_player = Cheats gibt es nur im Einzelspielermodus
+hub.migrated = %s ist gegangen; %s ist jetzt Host
+hub.lost = Verbindung zu %s verloren; %s ist jetzt Host
+spectate.defeated = Besiegt - Zuschauermodus
+spectate.continue = Weiter zuschauen
+spectate.exit = Spiel verlassen
+
+# connection indicator
+netind.ping = PING
+netind.ms = %d ms
+netind.na = k. A.
+netind.cmd = BEFEHL %d ms
+netind.waiting = WARTE AUF %s
+
+# main menu (the no-art fallback button; drawn upper-cased)
+menu.network_game = Netzwerkspiel
+
+# lobby TEAM spinner + MODE selector (mp:U51)
+lobby.team_none = -
+lobby.team_1 = T1
+lobby.team_2 = T2
+lobby.team_3 = T3
+lobby.team_4 = T4
+lobby.mode_ffa = Modus: Jeder gegen jeden
+lobby.mode_team = Modus: Teams

@@ -10,8 +10,8 @@
 #
 # WITH the fix the client adopts the host's array and the peers agree (and the client LOGS the
 # disagreement it just lost, which is the other half of U28).
-# WITHOUT it -- host ini `[net] start_slots=0` -- each peer builds from its own array and this same
-# scenario DESYNCS at step 1. That is U28's negative arm; see tools/uiscripts/ini/u28_off.ini.
+# WITHOUT it (the legacy bare FLAG_START, a retired `[net] start_slots=0` negative arm) each peer
+# builds from its own array and this same scenario DESYNCS at step 1.
 #
 # Pair with mp_host_inflight.txt. Runner: tools/test_ui.py race_inflight
 

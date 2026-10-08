@@ -774,7 +774,7 @@ relocated makes the run diverge and the report NAMES that region — a green run
 gone red is not a pass."* The instinct is right and the mutation is wrong, which only became
 visible by running it.
 
-**Measured.** A 3000-step soak with `relocate_pin=_G_LLM_STRAT_ORDER_QUEUE` reported
+**Measured.** A 3000-step soak with `relocate_pin=_G_LLM_STRAT_ORDER_QUEUE` (key retired 2026-10-06) reported
 `golden MATCHED over 3000 compared steps`. The pin applied correctly — the log line shows
 `379 region(s) relocated` instead of 380, `12 strat` hashed slices instead of 13, and names the
 pinned region — so this is not a mutation that failed to arm. It is a mutation that cannot diverge,
@@ -795,7 +795,7 @@ alone is enough.
 garbage, and the run must diverge naming that region. That is the property the acceptance actually
 wants — *the determinism hash is reading the relocated bytes* — stated as something that can fail.
 
-`relocate_pin` is kept, and kept honest: the log now calls it `pinned to stock (no-op arm)` rather
+`relocate_pin` was kept for a while, and kept honest (the key itself was retired 2026-10-06; `host_bind`'s `pin_stock` option remains for the selftests): the log now calls it `pinned to stock (no-op arm)` rather
 than `MUTATION, expect divergence`. It is still worth having, because "one region answered at stock
 while 379 move, and the run is unchanged" is a real property — it says a partially-relocated
 arrangement is coherent. It is simply not evidence that the gate can go red.
@@ -815,7 +815,7 @@ Three 3000-step all-AI soaks against one golden recorded on the stock bind
 | --- | --- | --- |
 | golden | — | recorded, 3000 steps |
 | **the claim** | `relocate_state=1` | **`golden MATCHED over 3000 compared steps`** — 380 regions, 316 676 B, 13 strat + 6 tact hashed slices on relocated bytes |
-| the no-op arm | `relocate_state=1;relocate_pin=…` | matched (see D7.4 — this is not a mutation) |
+| the no-op arm | `relocate_state=1;relocate_pin=…` *(retired key)* | matched (see D7.4 — this is not a mutation) |
 | **the mutation** | `relocate_state=1;relocate_corrupt=_G_LLM_STRAT_FRAME_TIME_RING` | **`DIVERGED from golden at step 1, region(s): frame_ring, fps_estimate`** |
 
 The interlock worked on its first live run and said so:

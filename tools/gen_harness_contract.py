@@ -157,9 +157,10 @@ SPINE_ANCHORS = [
         "mh::ai::island_move() rebases, which is libmh's",
     ),
     (
-        "?rng_trace_count@sim@mh@@YAHXZ",
-        "the RNG trace the harness reports -- pure instrumentation, and the clearest example of a row "
-        "with no honest zero answer",
+        "?capture@world@state@mh@@YAHPAXIPAIABUcapture_params@123@@Z",
+        "the world-state capture the harness's snapshot verbs call -- pure instrumentation, and the "
+        "clearest example of a row with no honest zero answer (re-picked 2026-10-06 when the RNG-trace "
+        "rows were retired with the `rng_trace` key)",
     ),
 ]
 
@@ -1125,7 +1126,9 @@ def selftest():
     expect("a fallback row that is not a spine row", d, "is not a SPINE row")
 
     d = copy.deepcopy(base)
-    d["config1_fallback"] = d["config1_fallback"] + ["?rng_trace_count@sim@mh@@YAHXZ"]
+    d["config1_fallback"] = d["config1_fallback"] + [
+        "?capture@world@state@mh@@YAHPAXIPAIABUcapture_params@123@@Z"
+    ]
     expect("an extra fallback row (no spine-free answer)", d, "configuration (1) fallback list")
 
     rendered = render_all(base)

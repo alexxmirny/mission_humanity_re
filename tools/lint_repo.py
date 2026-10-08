@@ -1056,6 +1056,21 @@ def declare_checks(args):
         "ini string-key lint -- a planted same-line comment (live and commented-out) goes RED",
         [sys.executable, os.path.join(REPO, "tools", "lint_ini_string_keys.py"), "--selftest"],
     )
+    # RL1 (v0.2.0 plan workstream A, decisions D9/D10). THE INI KEY REGISTRY. Every key mh.dll reads
+    # from mh_net.ini has exactly one row in src/mh_dll/mh/config/ini_keys.def (class user / dev /
+    # fixed); an unregistered read, a never-read row, an example-ini key outside the registry or a
+    # stale src/launcher/settings_schema.json goes red. The ship gate (RL2) and the launcher's
+    # declarative settings (RL13) consume the same rows.
+    check(
+        "ini: every key mh.dll reads is in the registry, the example ini and the launcher "
+        "schema agree with it (gen_ini_registry)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_ini_registry.py"), "--check"],
+    )
+    check(
+        "ini registry lint -- a planted unregistered key / stale schema goes RED "
+        "(gen_ini_registry --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_ini_registry.py"), "--selftest"],
+    )
     # ---- dist RP3: the report drain (BEGIN) -------------------------------------------------
     # RP3's drain tool pulls report directories off the VPS collector (dist:RP2) over a
     # `restrict,command="rrsync -ro ..."` SSH key. The selftest is OFFLINE -- it rsyncs local
@@ -1378,14 +1393,6 @@ def declare_checks(args):
     check(
         "mp:GS2 data-timeout post-check -- the negative cases still fire (check_data_timeout --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_data_timeout.py"), "--selftest"],
-    )
-    # mp:U39. The negative-arm post_check (tools/test_ui.py's u39_diplomacy_echo entry) runs only
-    # with the rig; its negatives -- no divergence at all, a real desync instead of the 4-step echo
-    # window, the wrong region, the arm that NOPed after all, a divergence that never heals -- are
-    # gated here off planted harness logs.
-    check(
-        "mp:U39 diplomacy-echo negative arm -- the negative cases still fire (check_u39_echo --selftest)",
-        [sys.executable, os.path.join(REPO, "tools", "check_u39_echo.py"), "--selftest"],
     )
     check(
         "mp:U45 diplomacy dedup -- the negative cases still fire (check_u45_diplo --selftest)",

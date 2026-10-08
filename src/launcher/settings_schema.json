@@ -1,0 +1,273 @@
+{
+  "_generated": "tools/gen_ini_registry.py from src/mh_dll/mh/config/ini_keys.def -- do not hand-edit",
+  "schema_version": 1,
+  "subtabs": [
+    {
+      "id": "display",
+      "label": "subtab.display"
+    },
+    {
+      "id": "language",
+      "label": "subtab.language"
+    },
+    {
+      "id": "multiplayer",
+      "label": "subtab.multiplayer"
+    },
+    {
+      "id": "diagnostics",
+      "label": "subtab.diagnostics"
+    },
+    {
+      "id": "updates",
+      "label": "subtab.updates"
+    }
+  ],
+  "settings": [
+    {
+      "section": "video",
+      "key": "window",
+      "type": "enum",
+      "default": "windowed",
+      "label": "video.window",
+      "subtab": "display",
+      "options": [
+        "borderless",
+        "windowed"
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "scale",
+      "type": "enum",
+      "default": "fit",
+      "label": "video.scale",
+      "subtab": "display",
+      "options": [
+        "fit",
+        "integer"
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "filter",
+      "type": "enum",
+      "default": "point",
+      "label": "video.filter",
+      "subtab": "display",
+      "options": [
+        "area",
+        "sharp",
+        "linear",
+        "point"
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "vsync",
+      "type": "bool",
+      "default": 0,
+      "label": "video.vsync",
+      "subtab": "display",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "fps_limit",
+      "type": "int",
+      "default": 60,
+      "label": "video.fps_limit",
+      "subtab": "display",
+      "options": [
+        60,
+        0
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "mouse_clip",
+      "type": "bool",
+      "default": 1,
+      "label": "video.mouse_clip",
+      "subtab": "display",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "picker",
+      "type": "bool",
+      "default": 0,
+      "label": "video.picker",
+      "subtab": "display",
+      "options": [],
+      "experimental": true,
+      "restart": true,
+      "pending": false
+    },
+    {
+      "section": "lang",
+      "key": "pack",
+      "type": "string",
+      "default": "",
+      "label": "lang.pack",
+      "subtab": "language",
+      "options": [],
+      "experimental": false,
+      "restart": true,
+      "pending": false
+    },
+    {
+      "section": "net",
+      "key": "relay",
+      "type": "string",
+      "default": "",
+      "label": "net.relay",
+      "subtab": "multiplayer",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "net",
+      "key": "force_relay",
+      "type": "bool",
+      "default": 0,
+      "label": "net.force_relay",
+      "subtab": "multiplayer",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "hud",
+      "key": "net_indicator",
+      "type": "bool",
+      "default": 1,
+      "label": "hud.net_indicator",
+      "subtab": "multiplayer",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "hud",
+      "key": "net_indicator_key",
+      "type": "hotkey",
+      "default": "Ctrl+Alt+N",
+      "label": "hud.net_indicator_key",
+      "subtab": "multiplayer",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "net",
+      "key": "port",
+      "type": "int",
+      "default": 6501,
+      "label": "net.port",
+      "subtab": "multiplayer",
+      "options": [],
+      "experimental": false,
+      "restart": true,
+      "pending": false
+    },
+    {
+      "section": "log",
+      "key": "level",
+      "type": "enum",
+      "default": "normal",
+      "label": "log.level",
+      "subtab": "diagnostics",
+      "options": [
+        "quiet",
+        "normal",
+        "debug"
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "video",
+      "key": "backend",
+      "type": "enum",
+      "default": "system",
+      "label": "video.backend",
+      "subtab": "diagnostics",
+      "options": [
+        "system",
+        "d3d11",
+        "gdi"
+      ],
+      "experimental": false,
+      "restart": true,
+      "pending": false
+    },
+    {
+      "section": "input",
+      "key": "backend",
+      "type": "enum",
+      "default": "system",
+      "label": "input.backend",
+      "subtab": "diagnostics",
+      "options": [
+        "system",
+        "own"
+      ],
+      "experimental": false,
+      "restart": true,
+      "pending": false
+    },
+    {
+      "section": "log",
+      "key": "keep_sessions",
+      "type": "int",
+      "default": 20,
+      "label": "log.keep_sessions",
+      "subtab": "updates",
+      "options": [
+        20,
+        50,
+        0
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    },
+    {
+      "section": "log",
+      "key": "keep_days",
+      "type": "int",
+      "default": 0,
+      "label": "log.keep_days",
+      "subtab": "updates",
+      "options": [],
+      "experimental": false,
+      "restart": false,
+      "pending": false
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema": 2,
+  "kind": "game",
+  "channel": "latest",
+  "version": "0.3.1",
+  "issued_at": "2026-10-03T00:00:00Z",
+  "min_launcher": "0.2.0",
+  "game": {
+    "net": {
+      "url": "http://evil.example/mission_humanity_re-0.3.1-net.zip",
+      "sha256": "a0fb8bb01112bb21f74d9e3d40236c3f9d16571af0cc5db802a08b149d8c0d6e",
+      "size": 414
+    }
+  }
+}

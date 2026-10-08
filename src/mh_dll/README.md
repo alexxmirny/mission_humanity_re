@@ -244,6 +244,34 @@ built, split by the ARM the suite's subject needs, not by file name:
    multi-line `__asm` continuation macros need `// clang-format off` guards (bare comment only —
    trailing text on the directive line disables it).
 
+## The ini ship gate and the log level (dist RL2 + RL6, v0.2.0)
+
+Every `mh_net.ini` read in `mh.dll`, `mh_net_udp.dll` and `libmh.dll` goes through ONE gate,
+`mh_common/include/mh_ini_gate.h` (`mh_ini_get_int` / `mh_ini_get_str`; `mh::config::read_ini_string`,
+`ini_int`, `net_ini_*` and `mh_log_cap_bytes` call it). Its table is `mh/config/ini_keys.def`, the same
+file the launcher schema is generated from:
+
+| class (`ini_keys.def`) | without `[dev] unlock=1` | with it |
+| --- | --- | --- |
+| `C_USER` (player setting) | honoured | honoured |
+| `C_DEV` (and any key NOT in the registry) | ignored; the code default is used; if the ini carries the key, ONE line `IGNORED dev key [s] k=v` per key in `mh_net.log` | honoured |
+| `C_FIXED` (transport, hub_migration, cheat_gate, taskbar_guard, key_repeat_fix, mouse_*, `[pause] key`) | forced to the SHIP value in the `.def`; `FIXED [s] k (ini value v ignored; ship value x)` once if the ini tried | honoured like a dev key (the rig's fix-off negatives need this) |
+
+`[dev] unlock` and `[log] level` are always read. The start banner logs `DEV UNLOCKED` when the unlock is
+set, and the effective level set on one line (`; [log] level=debug effective: net.sp_clock_log=1 ...`).
+**Every rig / test ini carries `[dev] unlock=1`** (`tools/make_lane.py`, `ui_test.make_ini`, `ui_abc.py`,
+`tact_test.py`, `mp_run.py`, `mp_prep_manual.py`, `check_inmem_patch_parity.py`); the shipped / example ini
+carries `unlock=0`. A new ini WRITER must add it, or its dev keys are silently ignored (the log says so).
+The selftest executables pin the gate open (`mh_ini_gate_test_force(1, 1)` in `main()`); the real behaviour
+is asserted by `net_selftest.exe inireadtest`.
+
+`[log] level = quiet | normal | debug` (a player key) supplies DEFAULTS for the observer keys in the
+header's level table: `debug` = `net.sp_clock_log`, `trace.temporal_sp`, `desync.verbose`,
+`input.mouse_trace`, `desync.state_record` (the former `release_package.py` DEBUG_KEYS); `quiet` =
+`net.lockstep_log=0` + `net.frametime_log=0` (desync detection — `enabled`, `per_step`, `state_ring` — is
+in no table, so it stays on); `normal` = today's behaviour. An explicit per-key value wins only under the
+unlock. `release_package.py --selftest` cross-checks its list against the C++ table.
+
 ## Adding a new seam (recipe)
 
 1. Name the target in Ghidra; add `{ghidra_symbol, kind}` to `tools/data/dll_addr_manifest.json`;

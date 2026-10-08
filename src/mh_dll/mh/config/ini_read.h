@@ -36,6 +36,8 @@
 #endif
 #include <windows.h>
 
+#include "mh_ini_gate.h" // RL2: mh_ini_get_str -- the ship gate every ini read goes through
+
 namespace mh::config {
 
 // Strip a trailing same-line `;comment` (and the whitespace immediately before it) from `s` IN
@@ -52,7 +54,7 @@ inline bool strip_ini_comment(char *s) {
     return false;
 }
 
-// GetPrivateProfileStringA, with a trailing same-line `;comment` stripped from the STRING it
+// GetPrivateProfileStringA (via the RL2 ship gate, mh_ini_get_str), with a trailing same-line `;comment` stripped from the STRING it
 // returns (see strip_ini_comment above). Drop-in replacement for the raw API at a STRING read
 // site -- same signature, same return value (the length actually written, post-strip).
 //
@@ -65,7 +67,7 @@ inline bool strip_ini_comment(char *s) {
 // funcs` already does for an unrelated reason -- `;` is one of ITS key's own valid separators).
 inline DWORD read_ini_string(const char *section, const char *key, const char *def, char *out,
                              DWORD out_cap, const char *ini) {
-    DWORD n = GetPrivateProfileStringA(section, key, def, out, out_cap, ini);
+    DWORD n = mh_ini_get_str(section, key, def, out, out_cap, ini); // RL2: dev keys gated, see mh_ini_gate.h
     if (strip_ini_comment(out)) n = (DWORD)lstrlenA(out);
     return n;
 }

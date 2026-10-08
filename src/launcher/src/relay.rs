@@ -486,7 +486,7 @@ mod tests {
         module=auto\r\n\
         enable=1                  ; 0 = skip\r\n\
         transport=tcp\r\n\
-        ; udp_redundancy=3        ; UDP only\r\n\
+        ; hub_migration=1        ; UDP only\r\n\
         ; relay=HOST:PORT         ; UDP only: the RELAY\r\n\
         ;     A host with this set registers\r\n\
         \r\n\

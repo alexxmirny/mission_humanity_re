@@ -6,6 +6,7 @@
 // assume it.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -189,7 +190,7 @@ __declspec(naked) void history_detour() {
 extern "C" int MH_CheatGate_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
     if (g_armed) return 1;
-    g_gate_on = GetPrivateProfileIntA("input", "cheat_gate", 1, g_ini) != 0;
+    g_gate_on = mh_ini_get_int("input", "cheat_gate", 1, g_ini) != 0;
 
     if (install_trampoline(ADDR_HISTORY, (void *)history_detour, &g_tramp, STOLEN, mh::hook::entry_claim::exclusive,
                            "the CH1 network-game cheat gate"))

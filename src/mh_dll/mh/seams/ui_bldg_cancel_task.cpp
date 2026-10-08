@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -82,7 +83,7 @@ __declspec(naked) void cancel_task_thunk() {
 extern "C" int MH_CancelTask_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only, like every seam that names an EN VA
     if (g_spliced) return 1;
-    g_by_order           = GetPrivateProfileIntA("net", "cancel_task_order", 1, g_ini) != 0;
+    g_by_order           = mh_ini_get_int("net", "cancel_task_order", 1, g_ini) != 0;
     const uintptr_t site = mh::addr::canceltask_finish_call_site;
     if (mh::hook::promoted_owner_of(site)) {
         seam_log("; D28: cancel-task splice DISPLACED: the building dialog callback is promoted this run -- our "

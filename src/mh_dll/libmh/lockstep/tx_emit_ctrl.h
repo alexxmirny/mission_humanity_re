@@ -274,9 +274,9 @@ void send_lockstep_step_size(const emit_state &es, const ctrl_emit_calls &calls,
 // dword read is exactly `(uint32_t)param0`) is the identical construction rx_dispatch.cpp's own
 // CTL_RESYNC_BEGIN comment documents for the receive side; reproduced here as the equivalent plain
 // assignment rather than the literal read-back, for the same reason that comment gives.
-// Takes `fx` because it carries a migrated fix (MP D14 / D17's resync_order_horizon) -- same shape
-// as resync_trigger_tick's, and the reason is the same: a fix that is a PARAMETER can be driven both
-// ways by lockstest, where a global could not.
+// Takes `fx` for signature symmetry with resync_trigger_tick; the MP D14 / D17 / D24 exec_time clamp
+// it used to carry as `fx.resync_order_horizon` is now unconditional (the knob is retired), so
+// `fx` is currently unread.
 void lockstep_broadcast_resync_state(const emit_state &es, const ctrl_emit_calls &calls,
                                      const reimpl_fixes &fx, double exec_time);
 

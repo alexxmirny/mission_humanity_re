@@ -24,6 +24,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -59,7 +60,8 @@
 #include "ui/lobby_ping.h"                  // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
 #include "ui/player_strings.h"              // mods:LANG4: mh.dll's own text, loaded with the pack
 #include "mh_net_proto/session_info.h"      // F3c: the REFUSED announce kind + its decoder
-#include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (config inputs)
+#include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (installation files)
+#include "include/mh_config_dir.h"          // RL3: <config dir>mh_net.ini
 #include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
 #include "include/mh_log_sink.h"            // LOG1: the async log sink every log line goes through
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
@@ -843,15 +845,9 @@ void install_desync_watch() {
 }
 
 void build_paths() {
-    char exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *slash = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
-    wsprintfA(g_ini, "%smh_net.ini", exe); // config INPUT stays next to the exe
+    mh::cfgdir::ini_path(g_ini); // config INPUT: <config dir>mh_net.ini (RL3)
     // log OUTPUT -> the CURRENT run folder. Seeded here so the arm-time derivations below
-    // (mh_lockstep / mh_frametime / mh_temporal / mh_trace / mh_gamemode all take their directory
+    // (mh_lockstep / mh_frametime / mh_temporal / mh_trace all take their directory
     // from g_log) have something to derive from; seam_paths_tick keeps it current thereafter.
     seam_paths_tick();
 }
@@ -898,13 +894,13 @@ void lazy_start() {
             seam_log(b);
         }
     }
-    cfg.port        = GetPrivateProfileIntA("net", "port", 6501, g_ini);
-    cfg.peers       = GetPrivateProfileIntA("net", "peers", 1, g_ini);
-    cfg.log         = GetPrivateProfileIntA("net", "log", 1, g_ini);
-    cfg.host_assign = GetPrivateProfileIntA("net", "host_assign", 0, g_ini); // N1: host auto-assigns joiner ids
+    cfg.port        = mh_ini_get_int("net", "port", 6501, g_ini);
+    cfg.peers       = mh_ini_get_int("net", "peers", 1, g_ini);
+    cfg.log         = mh_ini_get_int("net", "log", 1, g_ini);
+    cfg.host_assign = mh_ini_get_int("net", "host_assign", 0, g_ini); // N1: host auto-assigns joiner ids
     // R-live link watchdog: 0 = the transport's shipping defaults (ping 1 s / drop after 10 s silent).
-    cfg.ping_ms       = GetPrivateProfileIntA("net", "ping_ms", 0, g_ini);
-    cfg.rx_timeout_ms = GetPrivateProfileIntA("net", "rx_timeout_ms", 0, g_ini);
+    cfg.ping_ms       = mh_ini_get_int("net", "ping_ms", 0, g_ini);
+    cfg.rx_timeout_ms = mh_ini_get_int("net", "rx_timeout_ms", 0, g_ini);
     // U15b (2026-07-23): the hand-clicked N-player path REQUIRES host-assign. A manual joiner has no way to
     // declare a distinct player_id -- every client defaults to id 1 (mp_client_slot()) -- so with the declared-
     // id mode (host_assign=0) a 2nd joiner (carol) collides onto the 1st (bob): same id -> slot_find_or_alloc
@@ -950,9 +946,6 @@ void lazy_start() {
     // threads) -- net_lockstep.cpp owns the thread + its [net] horizon_heartbeat_ms gate.
     lockstep_transport_started();
     frame_watchdog_start(); // mp:P17: main-thread freeze watchdog + focus tap (net_diag.cpp)
-
-    // GAME_MODE write logger (diagnostic, net_diag.cpp): lazy-arm from a helper thread.
-    gm_logger_lazy_arm();
 }
 
 
@@ -1156,7 +1149,7 @@ __declspec(naked) void build_players_detour() {
 // Install the bootstrap: synth-discovery + host-role detours, no-op the connect/advertise stubs, guard
 // the scrollbar. All prologue-guarded (a mismatch leaves that site untouched). ini [net] bootstrap=1.
 void install_mp_bootstrap() {
-    if (!GetPrivateProfileIntA("net", "bootstrap", 1, g_ini)) {
+    if (!mh_ini_get_int("net", "bootstrap", 1, g_ini)) {
         seam_log("; MP bootstrap disabled (ini)\n");
         return;
     }
@@ -1289,88 +1282,6 @@ void                    host_send_map(void) {
     msg[0] = MAP_MSG_TYPE;
     memcpy(msg + 1, (const void *)ADDR_CUR_MAP, MAP_DATA1_SIZE);
     MH_Net_Send(MH_NET_BROADCAST, msg, 1 + MAP_DATA1_SIZE);
-}
-
-// --- Generic memory-marker finder (U1c: locate the in-game IP-entry field's buffer) -------------------
-// The user types a DISTINCTIVE marker string into the target text field in-game; this background thread
-// scans the process's committed memory for it (ASCII + UTF-16LE) and logs the VA(s). Then we xref that
-// buffer in Ghidra to find the owning widget/screen code. ini [menu] findstr=<marker>. Read-only; runs
-// regardless of game state. Use a marker unlikely to occur elsewhere (e.g. "QZ9.8Q7.6Q5.4").
-char g_findstr[80] = {0};
-void log_marker_hit(uintptr_t va, const char *kind, const unsigned char *p) {
-    char b[160], hex[3 * 24 + 1];
-    int  n = 0;
-    for (int i = 0; i < 24; ++i) n += wsprintfA(hex + n, "%02x ", p[i]);
-    wsprintfA(b, "; FINDSTR hit @0x%08x (%s)  ctx: %s\n", (unsigned)va, kind, hex);
-    seam_log(b);
-}
-DWORD WINAPI marker_scan_thread(LPVOID) {
-    const int ml = lstrlenA(g_findstr);
-    if (ml < 3) return 0; // too short -> too many false hits
-    wchar_t   wmark[80];
-    int       wl = MultiByteToWideChar(CP_ACP, 0, g_findstr, ml, wmark, 80); // no NUL
-    uintptr_t seen[128];
-    int       nseen = 0;
-    {
-        char b[128];
-        wsprintfA(b, "; FINDSTR scanner armed: marker=\"%s\" (ascii %d, wide %d)\n", g_findstr, ml, wl);
-        seam_log(b);
-    }
-    for (;;) {
-        Sleep(750);
-        MEMORY_BASIC_INFORMATION mbi;
-        for (uintptr_t a = 0x00400000; a < 0x01100000;) {
-            if (!VirtualQuery((void *)a, &mbi, sizeof(mbi))) {
-                a += 0x1000;
-                continue;
-            }
-            uintptr_t base = (uintptr_t)mbi.BaseAddress, sz = mbi.RegionSize;
-            uintptr_t next     = base + sz;
-            DWORD     rp       = mbi.Protect & 0xff;
-            bool      readable = mbi.State == MEM_COMMIT && !(mbi.Protect & PAGE_GUARD) &&
-                            (rp == PAGE_READONLY || rp == PAGE_READWRITE || rp == PAGE_WRITECOPY ||
-                             rp == PAGE_EXECUTE_READ || rp == PAGE_EXECUTE_READWRITE || rp == PAGE_EXECUTE_WRITECOPY);
-            if (readable && sz > 0 && sz < 0x2000000) {
-                const unsigned char *p = (const unsigned char *)base;
-                for (uintptr_t i = 0; i + (uintptr_t)ml <= sz; ++i) {
-                    if (p[i] == (unsigned char)g_findstr[0] && memcmp(p + i, g_findstr, ml) == 0) {
-                        uintptr_t va  = base + i;
-                        bool      dup = false;
-                        for (int k = 0; k < nseen; ++k)
-                            if (seen[k] == va) {
-                                dup = true;
-                                break;
-                            }
-                        if (!dup) {
-                            if (nseen < 128) seen[nseen++] = va;
-                            log_marker_hit(va, "ascii", p + i);
-                        }
-                    }
-                }
-                if (wl > 0)
-                    for (uintptr_t i = 0; i + (uintptr_t)wl * 2 <= sz; ++i) {
-                        if (memcmp(p + i, wmark, (size_t)wl * 2) == 0) {
-                            uintptr_t va  = base + i;
-                            bool      dup = false;
-                            for (int k = 0; k < nseen; ++k)
-                                if (seen[k] == va) {
-                                    dup = true;
-                                    break;
-                                }
-                            if (!dup) {
-                                if (nseen < 128) seen[nseen++] = va;
-                                log_marker_hit(va, "wide", p + i);
-                            }
-                        }
-                    }
-            }
-            a = next > base ? next : a + 0x1000;
-        }
-    }
-}
-void install_marker_scan() {
-    mh::config::read_ini_string("menu", "findstr", "", g_findstr, sizeof(g_findstr), g_ini); // TL-HARN4
-    if (g_findstr[0]) CreateThread(nullptr, 0, marker_scan_thread, nullptr, 0, nullptr);
 }
 
 } // namespace
@@ -1991,7 +1902,7 @@ extern "C" int MH_Seam_HoldStart(void) { return g_hold_start; }
 // section is REFUSED from mh::config now, so a stale fragment cannot silently put two lanes on
 // one mutex -- which presents as a launch that never happens, not as a wrong value.
 static void apply_test_lane(void) {
-    const int lane = GetPrivateProfileIntA("uitest", "lane", 0, g_ini);
+    const int lane = mh_ini_get_int("uitest", "lane", 0, g_ini);
     if (lane <= 0) return;
     if (lane > 999) { // tools/lane_alloc.py LANE_MAX: three digits is all the 7-char name holds
         char e[128];
@@ -2104,7 +2015,7 @@ static void MH_Net_Arm(void) {
     // only worked as a gate because the hosted pool needed the DLL to stay out of the way, and the
     // pool now detects itself (MH_Pool_Needed, mh.c).
     if (GetFileAttributesA(g_ini) != INVALID_FILE_ATTRIBUTES &&
-        !GetPrivateProfileIntA("net", "enable", 1, g_ini)) {
+        !mh_ini_get_int("net", "enable", 1, g_ini)) {
         seam_log("; MP transport NOT armed: [net] enable=0 -- the core arm is unaffected (F3B: this "
                  "key now skips the nine net steps, not the DLL)\n");
         return;
@@ -2134,7 +2045,7 @@ static void MH_Net_Arm(void) {
     g_armed  = ok1 && ok2 && ok3 && ok4;
     seam_log(g_armed ? "; ==== MP transport seams armed (lobby send/recv + in-game lockstep send/recv hooked) ====\n"
                      : "; MP seams FAILED to install (VirtualProtect?)\n");
-    g_hold_start = GetPrivateProfileIntA("net", "hold_start", 0, g_ini); // S3 dev gate (no host auto-enter)
+    g_hold_start = mh_ini_get_int("net", "hold_start", 0, g_ini); // S3 dev gate (no host auto-enter)
 
     // The five recv-thread control-frame handler binds. They used to sit near the END of the old
     // body, between install_marker_scan and install_desync_watch, and they are here now because they
@@ -2208,11 +2119,9 @@ static int MH_Core_Arm(void) {
     }
     seam_log("; build=EN (EN-only DLL; probe ok)\n");
 
-    // GAME_MODE write logger (diagnostic, net_diag.cpp). Capture the main/frame thread id HERE
-    // (DllMain runs on it for a static import) so the arm thread can set its debug registers;
-    // config + lazy arming live in net_diag (gm_logger_configure / gm_logger_lazy_arm).
+    // Capture the main/frame thread id HERE (DllMain runs on it for a static import) -- the frame
+    // watchdog and the temporal trace key off it.
     g_main_tid = GetCurrentThreadId();
-    gm_logger_configure();
 
     // P0-EXPORT proof: replace a game function with a C++ body through the generated entry thunk.
     // Self-gating -- it checks itself against the original before patching and arms nothing on a
@@ -2302,20 +2211,16 @@ static int MH_Core_Arm(void) {
         seam_log(m);
     }
     {
-        // U21: the WM_DEVICECHANGE NULL-lParam crash. ON by default -- it is a strict bug fix (a
+        // U21: the WM_DEVICECHANGE NULL-lParam crash. Always on -- it is a strict bug fix (a
         // message with no header describes no volume, so the original had nothing to do with it
         // anyway), and the crash it prevents kills the process silently on a box with WER off.
-        // The probe is the reproduction: [compat] devchange_probe_ms > 0 posts ONE malformed
-        // broadcast to our own window that many ms after init, which with devchange_guard=0
-        // reproduces the crash on demand. See U21.
-        const int guard = GetPrivateProfileIntA("compat", "devchange_guard", 1, g_ini);
-        const int probe = GetPrivateProfileIntA("compat", "devchange_probe_ms", 0, g_ini);
-        const int st    = MH_Standalone_InstallDevChangeGuard(guard, probe);
+        // The probe: [compat] devchange_probe_ms > 0 posts ONE malformed broadcast to our own
+        // window that many ms after init, to prove the guard holds. See U21.
+        const int probe = mh_ini_get_int("compat", "devchange_probe_ms", 0, g_ini);
+        const int st    = MH_Standalone_InstallDevChangeGuard(1, probe);
         char      m[200];
         wsprintfA(m, "; compat: WM_DEVICECHANGE NULL-lParam guard=%s%s\n",
-                  (st & MH_STANDALONE_DEVCHANGE) ? "armed"
-                                                 : (guard ? "NOT armed (unexpected prologue)"
-                                                          : "off ([compat] devchange_guard=0)"),
+                  (st & MH_STANDALONE_DEVCHANGE) ? "armed" : "NOT armed (unexpected prologue)",
                   probe ? " -- probe armed, one malformed broadcast is coming" : "");
         seam_log(m);
     }
@@ -2337,7 +2242,6 @@ static int MH_Core_Arm(void) {
     MH_Overlay_Install();      // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)
     MH_Capture_Install();      // UI capture harness: hook present-flip -> F12/[capture] frame dump (best-effort)
     MH_UIDrive_Install();      // UI automation harness (Phase 2): [uitest] click-driver via the mouse ring (best-effort)
-    install_marker_scan();     // U1c diag: [menu] findstr=<marker> -> locate the in-game IP-entry buffer
     // (the five MH_Net_Set*Handler binds stood here until F3B; they are net steps and moved into
     //  MH_Net_Arm above -- see the note there for why the move is order-free and log-invisible.)
     install_desync_watch(); // D21: runtime desync detector -- [desync] ini section,
@@ -2360,7 +2264,7 @@ static int MH_Core_Arm(void) {
     // discipline, because an unarmed tombstone claim is the U30 shape all over again.
     {
         mh::hook::tomb_options topt{};
-        topt.arm_promoted = GetPrivateProfileIntA("tombstone", "enable", SHIP_TOMBSTONE, g_ini) != 0;
+        topt.arm_promoted = mh_ini_get_int("tombstone", "enable", SHIP_TOMBSTONE, g_ini) != 0;
         // arm_dead is OPT-IN (default 0), NOT part of the ship default -- MEASURED 2026-09-01: a
         // migration ledger's `dead` row means "unreached within THAT domain's measured closure", not
         // "never executes in any mode". llm_strat_ai_build_target_list is `dead` in the AI ledger and
@@ -2369,14 +2273,9 @@ static int MH_Core_Arm(void) {
         // promoted-body remainder (entry is provably JMP'd away); the dead-claim is a DELIBERATE audit
         // run via `[tombstone] arm_dead=1`, which is where you want it to fire so you can investigate.
         topt.arm_dead =
-            topt.arm_promoted && GetPrivateProfileIntA("tombstone", "arm_dead", 0, g_ini) != 0;
-        static char tomb_force[512];
-        mh::config::read_ini_string("tombstone", "force_arm", "", tomb_force, sizeof(tomb_force), // TL-HARN4
-                                    g_ini);
-        topt.force_arm = tomb_force[0] ? tomb_force : nullptr;
-        // The same negative arm addressed BY DOMAIN ("sim,tact"). The by-name key above cannot
-        // express a whole-domain sweep: its list is parsed through a bounded buffer and one domain's
-        // names run to kilobytes, so a hand-written sweep would truncate and report itself armed.
+            topt.arm_promoted && mh_ini_get_int("tombstone", "arm_dead", 0, g_ini) != 0;
+        // The negative arm, addressed BY DOMAIN ("sim,tact"): a whole-domain sweep of names would run
+        // to kilobytes of ini, so the arm is by domain only.
         // ROOTS-LIVE needs the per-domain form because its acceptance test is per-domain -- a
         // domain that armed nothing is a failure there, and a global total cannot say which domain
         // that was.

@@ -52,6 +52,7 @@
 #include "desync/desync_watch.h"
 
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include <cstdarg>
 #include <cstdio>
@@ -124,8 +125,6 @@ struct Config {
     // un-instrumented user sessions -- the 2026-09-01 ai_econ desync cost a session of inference
     // that one file would have answered. Set 0 to keep the detector log-only.
     int snapshot = 1;
-    // How many dumps one match may write on this peer before it stops.
-    int snapshot_max = 3;
     // MEASUREMENT ONLY (desync_watch.h "the dirty-block probe"): every step, diff the raw manifest
     // against a shadow copy and report how much changed, per region and per block grain, plus what
     // the diff itself costs. Writes mh_dirty_probe.csv (one row per step) and a rollup at match end.
@@ -135,29 +134,33 @@ struct Config {
     // mh_match_state.bin in the match folder (desync/state_recorder.h, docs/state-record.md). OFF in
     // the ship `net` ini; ON in the net-debug / brokered-debug ones (tools/release_package.py).
     int state_record = 0;
-    // Steps between keyframes in that file (the first recorded step is always one).
-    int state_keyframe_every = 3000;
-    // mp:D46: gzip the finished file on a background thread (desync/state_compress.h); 0 keeps the raw file.
-    int state_compress = 1;
-    // mp:D41: the ship ring (desync/state_ring.h) -- the last state_ring_s seconds of state in RAM,
-    // dumped with state_ring_tail_s more to mh_desync_state.bin at the first mismatch. ON by default;
-    // off by itself when state_record=1 (that file already holds the run-up).
+    // mp:D41: the ship ring (desync/state_ring.h) -- the last 30 seconds of state in RAM, dumped with
+    // 10 more to mh_desync_state.bin at the first mismatch (6144 KB cap on step chunks). ON by default
+    // (`state_ring=0` turns it off); off by itself when state_record=1 (that file already holds the run-up).
     mh::desync::state_ring::settings ring;
     // mp:D44: compare EVERY sim step on the shared incremental tracker's hashes (WIRE_VERSION 2) and
     // localise a divergence live. 0 = the v1 behaviour exactly: an FNV walk every `every` steps, v1
     // frames only, and a received v2 frame is dropped as a bad frame (what an older build does --
     // which also makes this the rig's stand-in for an old peer).
     int per_step = 1;
-    // Steps per TICK frame. 5 = 10 frames/s at 50 steps/s; every step is still compared and named
-    // exactly -- the batch only delays when the peer hears about it (~100 ms).
-    int tick_batch = 5;
-    // Incidents per match that get the live localisation exchange (REGIONS -> GROUPS -> BLOCKS ->
-    // BYTES). A later one still gets its `*** DESYNC` line, with first_region=-1.
-    int localise_max = 4;
-    // The undo journal the localisation rebuilds the first bad step from (76 B per changed 64-byte
-    // block; ~75 blocks per step measured, so 2048 KB reaches back ~370 steps, ~7 s).
-    int loc_history_kb = 2048;
 };
+
+// ---- fixed tuning (ini-cut 2026-10-06) ------------------------------------------------------------
+// These were [desync] keys nobody ever set; each is the value the key defaulted to.
+// How many snapshot dumps one match may write on this peer before it stops.
+constexpr int SNAPSHOT_MAX = 3;
+// Steps between keyframes in the state recording (the first recorded step is always one).
+constexpr int STATE_KEYFRAME_EVERY = 3000;
+// Steps per TICK frame. 5 = 10 frames/s at 50 steps/s; every step is still compared and named
+// exactly -- the batch only delays when the peer hears about it (~100 ms).
+constexpr int TICK_BATCH = 5;
+// Incidents per match that get the live localisation exchange (REGIONS -> GROUPS -> BLOCKS ->
+// BYTES). A later one still gets its `*** DESYNC` line, with first_region=-1.
+constexpr int LOCALISE_MAX = 4;
+// The undo journal the localisation rebuilds the first bad step from (76 B per changed 64-byte
+// block; ~75 blocks per step measured, so 2048 KB reaches back ~370 steps, ~7 s).
+constexpr int LOC_HISTORY_KB = 2048;
+static_assert(TICK_BATCH >= 1 && TICK_BATCH <= v2::TICK_MAX_STEPS, "TICK_BATCH outside the wire's tick range");
 
 Config g_cfg;
 
@@ -492,7 +495,7 @@ void do_snapshot(uint32_t step) {
 // depend on sampling_now()'s session checks -- a peer whose transport just dropped still owes its
 // half of the evidence.
 void snapshot_tick() {
-    if (!g_snap_armed || g_snaps_done >= g_cfg.snapshot_max) return;
+    if (!g_snap_armed || g_snaps_done >= SNAPSHOT_MAX) return;
     if (!snapshot_due(g_step, g_cfg.every)) return;
     ++g_snaps_done;
     do_snapshot(g_step);
@@ -531,7 +534,7 @@ void on_first_mismatch_detected(uint32_t step, int sender, int first_region) {
             (unsigned long)step, first_region,
             (first_region >= 0 && first_region < N) ? mh::state::HASH_REGIONS[first_region].name
                                                     : "(pending: live localisation)",
-            g_cfg.snapshot_max, (unsigned long)snapshot_grid(g_cfg.every));
+            SNAPSHOT_MAX, (unsigned long)snapshot_grid(g_cfg.every));
     }
 }
 
@@ -722,7 +725,7 @@ void emit_status_line() {
                     "per-step %.0f us mean, %.0f us max over %ld step(s) (tracker update + journal + compare, "
                     "HASH_KIND %lu); v2 wire %.0f B/s sent at 50 steps/s, %d step(s) per TICK%s",
                     mean, (double)g2_max_ticks * f, (long)g2_steps, (unsigned long)mh::state::inc::HASH_KIND, bps,
-                    g_cfg.tick_batch, g_legacy_on ? "; FALLBACK walk on for a v1 peer" : "");
+                    TICK_BATCH, g_legacy_on ? "; FALLBACK walk on for a v1 peer" : "");
     } else if (g_hash_samples && g_qpc_freq) {
         const double us          = (double)g_hash_ticks * 1000000.0 / (double)g_qpc_freq / (double)g_hash_samples;
         const double per_step_us = us / (double)(g_cfg.every > 0 ? g_cfg.every : 1);
@@ -1154,30 +1157,15 @@ void axis_tick() {
 void set_logger(void (*fn)(const char *)) { g_log = fn; }
 
 int install(const char *ini_path) {
-    g_cfg.enabled      = GetPrivateProfileIntA("desync", "enabled", g_cfg.enabled, ini_path);
-    g_cfg.every        = GetPrivateProfileIntA("desync", "every", g_cfg.every, ini_path);
-    g_cfg.action       = GetPrivateProfileIntA("desync", "action", g_cfg.action, ini_path);
-    g_cfg.verbose      = GetPrivateProfileIntA("desync", "verbose", g_cfg.verbose, ini_path);
-    g_cfg.snapshot     = GetPrivateProfileIntA("desync", "snapshot", g_cfg.snapshot, ini_path);
-    g_cfg.snapshot_max = GetPrivateProfileIntA("desync", "snapshot_max", g_cfg.snapshot_max, ini_path);
-    g_cfg.dirty_probe  = GetPrivateProfileIntA("desync", "dirty_probe", g_cfg.dirty_probe, ini_path);
-    g_cfg.state_record = GetPrivateProfileIntA("desync", "state_record", g_cfg.state_record, ini_path);
-    g_cfg.state_keyframe_every =
-        GetPrivateProfileIntA("desync", "state_keyframe_every", g_cfg.state_keyframe_every, ini_path);
-    g_cfg.state_compress = GetPrivateProfileIntA("desync", "state_compress", g_cfg.state_compress, ini_path);
-    g_cfg.ring.enabled   = GetPrivateProfileIntA("desync", "state_ring", g_cfg.ring.enabled, ini_path);
-    g_cfg.ring.seconds   = GetPrivateProfileIntA("desync", "state_ring_s", g_cfg.ring.seconds, ini_path);
-    g_cfg.ring.tail_s    = GetPrivateProfileIntA("desync", "state_ring_tail_s", g_cfg.ring.tail_s, ini_path);
-    g_cfg.ring.max_kb    = GetPrivateProfileIntA("desync", "state_ring_max_kb", g_cfg.ring.max_kb, ini_path);
-    g_cfg.per_step       = GetPrivateProfileIntA("desync", "per_step", g_cfg.per_step, ini_path);
-    g_cfg.tick_batch     = GetPrivateProfileIntA("desync", "tick_batch", g_cfg.tick_batch, ini_path);
-    g_cfg.localise_max   = GetPrivateProfileIntA("desync", "localise_max", g_cfg.localise_max, ini_path);
-    g_cfg.loc_history_kb = GetPrivateProfileIntA("desync", "loc_history_kb", g_cfg.loc_history_kb, ini_path);
-    if (g_cfg.tick_batch < 1) g_cfg.tick_batch = 1;
-    if (g_cfg.tick_batch > v2::TICK_MAX_STEPS) g_cfg.tick_batch = v2::TICK_MAX_STEPS;
-    if (g_cfg.localise_max < 0) g_cfg.localise_max = 0;
-    if (g_cfg.loc_history_kb < 64) g_cfg.loc_history_kb = 64;
-    if (g_cfg.loc_history_kb > 65536) g_cfg.loc_history_kb = 65536;
+    g_cfg.enabled      = mh_ini_get_int("desync", "enabled", g_cfg.enabled, ini_path);
+    g_cfg.every        = mh_ini_get_int("desync", "every", g_cfg.every, ini_path);
+    g_cfg.action       = mh_ini_get_int("desync", "action", g_cfg.action, ini_path);
+    g_cfg.verbose      = mh_ini_get_int("desync", "verbose", g_cfg.verbose, ini_path);
+    g_cfg.snapshot     = mh_ini_get_int("desync", "snapshot", g_cfg.snapshot, ini_path);
+    g_cfg.dirty_probe  = mh_ini_get_int("desync", "dirty_probe", g_cfg.dirty_probe, ini_path);
+    g_cfg.state_record = mh_ini_get_int("desync", "state_record", g_cfg.state_record, ini_path);
+    g_cfg.ring.enabled = mh_ini_get_int("desync", "state_ring", g_cfg.ring.enabled, ini_path);
+    g_cfg.per_step     = mh_ini_get_int("desync", "per_step", g_cfg.per_step, ini_path);
 
     if (!g_cfg.enabled) {
         say("; [desync] NOT armed: [desync] enabled=0%s\n",
@@ -1259,7 +1247,7 @@ int install(const char *ini_path) {
     say("; [desync] ARMED: every=%d steps, %d regions (%d excluded from the verdict), manifest "
         "fp=%08X%08X, %d wire bytes/sample, action=%d, snapshot=%d (max %d), per_step=%d\n",
         g_cfg.every, N, n_excluded, (unsigned)(g_manifest_fp >> 32), (unsigned)g_manifest_fp,
-        wire_size(N), g_cfg.action, g_cfg.snapshot, g_cfg.snapshot_max, g_cfg.per_step);
+        wire_size(N), g_cfg.action, g_cfg.snapshot, SNAPSHOT_MAX, g_cfg.per_step);
     // mp:X3c: action=1 is the world resync (mh/desync/world_sync.cpp); any other non-zero value is unknown
     // and behaves as 0. world_sync logs its own ARMED line for action=1; action=0 says nothing.
     if (g_cfg.action != 0 && g_cfg.action != 1)
@@ -1274,8 +1262,8 @@ int install(const char *ini_path) {
         dirty_probe_arm();
         if (g_dp_on) mh::desync::state_hub::add_listener(&g_dp_listener);
     }
-    mh::desync::recorder::set_compress(g_cfg.state_compress != 0);
-    if (mh::desync::recorder::configure(g_cfg.state_record, g_cfg.state_keyframe_every, g_manifest_fp, &say)) {
+    mh::desync::recorder::set_compress(true);
+    if (mh::desync::recorder::configure(g_cfg.state_record, STATE_KEYFRAME_EVERY, g_manifest_fp, &say)) {
         if (mh::desync::state_hub::enable("the state recorder (mp:D40, mh_match_state.bin)", &say))
             mh::desync::state_hub::add_listener(mh::desync::recorder::listener());
     }
@@ -1290,20 +1278,20 @@ int install(const char *ini_path) {
         say("; [desync] PER-STEP not armed: no network module in this build -- nothing to compare against\n");
     } else if (g_cfg.per_step &&
                mh::desync::state_hub::enable("per-step desync detection (mp:D44, WIRE_VERSION 2)", &say)) {
-        const size_t jb = (size_t)g_cfg.loc_history_kb * 1024u;
+        const size_t jb = (size_t)LOC_HISTORY_KB * 1024u;
         g_jr_mem        = VirtualAlloc(nullptr, jb, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (g_jr_mem) g_jr.attach(g_jr_mem, jb);
         mh::desync::state_hub::set_journal(&g_jtap);
         mh::desync::state_hub::add_listener(&g_v2_listener);
         g_tick.clear(N);
-        g_loc.reset(g_cfg.localise_max);
+        g_loc.reset(LOCALISE_MAX);
         g_v2_armed = true;
         say("; [desync] PER-STEP ARMED (WIRE_VERSION 2): every sim step compared on the shared tracker's "
             "HASH_KIND %lu hashes, %d step(s) per TICK frame (%d B), live localisation for up to %d "
             "incident(s) per match from a %d KB undo journal (%lu block entries%s); a v1 peer is compared "
             "on the FNV walk every %d steps (FALLBACK)\n",
-            (unsigned long)mh::state::inc::HASH_KIND, g_cfg.tick_batch, v2::tick_size(g_cfg.tick_batch),
-            g_cfg.localise_max, g_cfg.loc_history_kb, (unsigned long)g_jr.cap,
+            (unsigned long)mh::state::inc::HASH_KIND, TICK_BATCH, v2::tick_size(TICK_BATCH),
+            LOCALISE_MAX, LOC_HISTORY_KB, (unsigned long)g_jr.cap,
             g_jr_mem ? "" : ": ALLOCATION FAILED, region level only", g_cfg.every);
     }
     if (!mh::desync::state_hub::allocated())
@@ -1394,7 +1382,7 @@ void session_reset() {
     }
     // mp:D44: a new match's peers announce their wire versions afresh.
     g_tick.clear(N);
-    g_loc.reset(g_cfg.localise_max);
+    g_loc.reset(LOCALISE_MAX);
     for (int i = 0; i < VPEERS; ++i) {
         InterlockedExchange(&g_peer_v1[i], 0);
         InterlockedExchange(&g_peer_v2[i], 0);
@@ -1704,9 +1692,9 @@ void on_tick_verdict(const v2::tick_verdict &v) {
                     pend_resolve(v.sender, v.step, g_regions_seen[si].first, g_regions_seen[si].nd, nullptr);
                 if (g_pend[si].on && g_pend[si].step == v.step && !(g_loc.active() && g_loc.step() == v.step))
                     pend_resolve(v.sender, v.step, -1, 0,
-                                 g_loc.incidents() >= g_cfg.localise_max ? "not localised: localise_max reached"
-                                                                         : "not localised: an earlier incident "
-                                                                           "is still being localised");
+                                 g_loc.incidents() >= LOCALISE_MAX ? "not localised: localise_max reached"
+                                                                   : "not localised: an earlier incident "
+                                                                     "is still being localised");
             } else if (should_log_rollup(g2_mismatches)) {
                 say("; [desync] *** DESYNC continues: %d mismatching step(s), latest step=%lu peer=%d (incident from "
                     "step %lu)\n",
@@ -1843,7 +1831,7 @@ void tick_add(uint64_t state) {
     if (g_batch_n > 0 && g_batch_first + (uint32_t)g_batch_n != g_step) tick_flush(); // a gap: new batch
     if (g_batch_n == 0) g_batch_first = g_step;
     g_batch[g_batch_n++] = state;
-    if (g_batch_n >= g_cfg.tick_batch) tick_flush();
+    if (g_batch_n >= TICK_BATCH) tick_flush();
 }
 
 // Every known peer speaks v1 only: nothing would read a TICK, so the tracker is not needed for us.
@@ -1983,7 +1971,7 @@ void rewind_for_world_sync(uint32_t capture_step, uint64_t digest_prev) {
         if (g_tick.mine[i].step >= capture_step) g_tick.mine[i].step = 0;
     g_tick.newest = g_step;
     g_batch_n     = 0; // an unsent batch carries hashes of the replaced world
-    g_loc.reset(g_cfg.localise_max);
+    g_loc.reset(LOCALISE_MAX);
     for (int i = 0; i < VPEERS; ++i) g_pend[i].on = false;
     mh::desync::state_ring::session_start();
     if (mh::desync::recorder::enabled()) {

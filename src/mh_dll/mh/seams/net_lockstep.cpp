@@ -17,6 +17,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h> // atof (ini fractional-ms parse)
@@ -38,6 +39,7 @@
 #include "include/mh_log_sink.h"       // LOG1: the async log sink (frametime + lockstep logs)
 #include "include/mh_module_bind.h"    // MH_Libmh_OnPresent -- F4D's spine-crossing report
 #include "config/config.h"             // F2A: the D11 selector behind the frame pair's promotion default
+#include "include/mh_config_dir.h"     // RL3: the config dir mh_key.txt lives in
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "addr/mh_addrs.gen.h"         // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_calls.gen.h"         // mh::call::llm_net_lockstep_count_active_players (mp:P9 resync_count_init)
@@ -299,9 +301,7 @@ DWORD         g_last_ls_tick = 0; // GetTickCount() when SESSION_MODE was last 3
 // catches up and ends deterministically. Determinism-safe (advertisement only).
 constexpr DWORD HB_ENDGAME_GRACE_MS = 3000;
 int             g_defang            = 0; // 1 = suppress the in-game SYNCHRONIZING overlay (perf-decouple step 2)
-int             g_overlay_gate      = 0; // 1 = redirect the wait-overlay call through the SYNC_RETRY_COUNTDOWN gate (root-cause fix; owns the wait-overlay site instead of the defang NOP)
-int             g_resync_wait_fix   = 1; // 1 (default) = neuter sync_delay_stub's uninit return -> kills the resync busy-wait garbage-spin hang (defang dep #2, the REAL root cause; net_resync_wait_fix)
-// Fine-grained per-group overlay-patch knobs (default from defang_overlay/overlay_gate, each overridable
+// Fine-grained per-group overlay-patch knobs (default from defang_overlay, each overridable
 // via [net] defang_tt_wait / defang_tt_sync / defang_xui / defang_dismiss). For isolating WHICH patch kills
 // the freeze while keeping the "Player not responding" kick modal (tt_sync) live. See install_overlay_patches.
 
@@ -312,9 +312,10 @@ int             g_resync_wait_fix   = 1; // 1 (default) = neuter sync_delay_stub
 // is actually drawn (they differ only when the gate is armed, which is exactly the gate's value made
 // visible). Written by the naked thunk, so plain longs at a fixed address, not statics-in-a-function.
 // Diagnostic only: a counter in our DLL is invisible to the sim, so this cannot perturb determinism.
-long g_icon_calls = 0, g_icon_shown = 0;
-long g_icon_gate  = 0; // mirrors defang_tt_wait==2 for the thunk (asm cannot read a C++ bool cheaply)
-int  g_icon_count = 1; // [net] icon_count -- install the counting thunk even when nothing is gated
+long      g_icon_calls = 0, g_icon_shown = 0;
+uintptr_t g_wait_target = 0x004c7dc0; // where wait_overlay_gate_thunk forwards: retail wait_player_overlay_show, or odg::wait_thunk (mp:U44 retail carrier)
+long      g_icon_gate   = 0;          // mirrors defang_tt_wait==2 for the thunk (asm cannot read a C++ bool cheaply)
+int       g_icon_count  = 1;          // [net] icon_count -- install the counting thunk even when nothing is gated
 
 // U20 (2026-08-30): THE SAME TWO COUNTERS, FED FROM THE PROMOTED BODY. The thunk above can only
 // count while llm_strat_time_tick runs the ORIGINAL, and promotion has been the ship default since
@@ -325,24 +326,17 @@ int  g_icon_count = 1; // [net] icon_count -- install the counting thunk even wh
 // cannot double-count.
 void icon_note_wanted() { ++g_icon_calls; }
 void icon_note_shown() { ++g_icon_shown; }
-int  g_overlay_dialog_guard  = 1; // [net] overlay_dialog_guard -- MP U44; reimpl-only, default ON
+int  g_overlay_dialog_guard  = 1; // [net] overlay_dialog_guard -- MP U44; twin + retail call-site splices, default ON
 int  g_desync_icon_gate      = 0; // [net] desync_icon_gate -- MP U20; reimpl-only, see reimpl_fixes
 int  g_gone_peer_frame_guard = 1; // [net] gone_peer_frame_guard -- MP U19e/U19i; body + byte patch, DEFAULT ON
 int  g_undock_reentry_fix    = 1; // [net] undock_reentry_fix -- MP U49; body + byte patch, DEFAULT ON, sim-affecting
+int  g_diplo_order_dedup_fix = 1; // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
 int  g_defang_xui            = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
-int  g_resync_trigger_reset =
-    0; // 1 = zero RESYNC_TRIGGER_COUNT on horizon recovery (spurious-resync ROOT fix, option b; see install_resync_trigger_reset)
-int g_resync_trigger_gate =
+int  g_resync_trigger_gate =
     0; // 1 = gate both RESYNC_TRIGGER_COUNT increments on SYNC_RETRY_COUNTDOWN<0x38 (option c; count only genuine silence)
 int g_resync_count_init =
-    1; // 1 (default) = recompute ACTIVE_PLAYER_COUNT at match start so the resync threshold is players*100, not 0 (mp:P9 root fix; see resync_count_init_tick)
-int g_resync_order_horizon =
-    1;               // 1 (default) = clamp the CTL_RESYNC_BEGIN synthetic order's exec_time to LOCKSTEP_HORIZON (MP D14; see install_resync_order_horizon)
+    1;               // 1 (default) = recompute ACTIVE_PLAYER_COUNT at match start so the resync threshold is players*100, not 0 (mp:P9 root fix; see resync_count_init_tick)
 int g_eager_adv = 0; // 1 = advertise+commit the post-step horizon in the present hook (perf-decouple diagnostic: proved committed is never the binding constraint; determinism-safe, no rate effect)
-int g_resync_receiver_deadline =
-    1; // 1 (default) = mp:P9W: a non-leader forces itself out of the mode-8 wait screen after max(2002,
-       // data_timeout_ms) ms with no RESUME, then removes the (presumed-dead) leader -- see
-       // resync_receiver_deadline_hook / install_resync_receiver_deadline
 
 // Game-over leave-lockstep. Detours the common outcome dialog (0x004c6c4f) to downgrade SESSION_MODE
 // 3->2 on entry, so a peer showing its result is never still in lockstep waiting for someone who left.
@@ -374,7 +368,6 @@ int g_resync_receiver_deadline =
 // a promoted dispatch changes -- but do not re-tell the freeze story, and know that arming it changed
 // no behaviour. (The trade this used to be weighed against -- the effects gate that wanted the same
 // entry -- is gone: fork F2F deleted the gates, so the entry is uncontested.)
-int g_sync_gameover = 0; // 1 = install the game-over leave-lockstep detour
 // U17 (a) clean in-game leave: when THIS peer quits a running lockstep game (ESC->Quit->Yes ->
 // llm_game_return_to_main_menu_cb), broadcast our own removal BEFORE the teardown so survivors drop us
 // in-order.
@@ -398,19 +391,17 @@ void *g_go_tramp = nullptr;
 // U17 (b) fast HARD-drop: when a client's transport connection dies (kill/disconnect), the host's recv
 // thread latches its id (MH_Net_TakeDeadPeer); on the next frame on_time_tick (main thread) broadcasts an
 // immediate in-order removal instead of waiting out the ~60-count silence timeout. Host-only by construction
-// (a client's host-conn latches -1). Default ON.
-int g_graceful_drop = 1;
+// (a client's host-conn latches -1). Always on (the `graceful_drop` knob is retired).
 // D5: the transport-dead peer latched but NOT yet removed -- held until the sim clock has
 // reached the committed horizon (retail's parked precondition). -1 = nothing pending.
 int g_pending_dead      = -1;
 int g_pending_dead_wait = 0;
 int g_pending_dead_max  = 600; // frames (~10 s at 60 fps) before the safety valve fires anyway
-// mp:U19b -- the quitter's HALF of the parked precondition. [net] graceful_leave_park (default ON):
+// mp:U19b -- the quitter's HALF of the parked precondition. graceful_leave_park (always on):
 // before the self-removal, freeze OUR advertised horizon at H_d and wait (inside the quit callback,
-// bounded by graceful_leave_park_ms) until every survivor has parked on it, so all of them apply the
+// bounded by LEAVE_PARK_MS) until every survivor has parked on it, so all of them apply the
 // roster flip at the same sim clock -- the D5 rule, seen from the departing peer. See on_quit_to_menu.
-int           g_leave_park      = 1;
-int           g_leave_park_ms   = 1500; // safety valve: send the removal anyway after this long
+constexpr int LEAVE_PARK_MS     = 1500; // safety valve: send the removal anyway after this long
 volatile LONG g_leave_frozen    = 0;    // 1 = no more horizon adverts from this peer (heartbeat + eager)
 double        g_leave_frozen_hd = 0.0;  // mp:U19h -- the H_d that freeze advertised; the value every
                                         // survivor must hold when the removal record arrives
@@ -438,11 +429,9 @@ void          ws_mirror_upkeep();
 // heartbeat under g_hb_cs and by the eager hook on the main thread. 0 = no pin this match yet.
 alignas(8) double g_eff_step = 0.0;
 long g_d30_holds             = 0; // frames on which the pin held STEP_SIZE above the target (diag)
-// [net] horizon_monotone (default 1). 0 = the pre-D30 behaviour -- STEP_SIZE takes the controller's
-// target as-is and the eager hook / heartbeat compute clock + target with no floor. It exists ONLY as
-// the control arm G295 demands for a lockstep change: the rig must be able to show the late orders
-// and the desync come back with it off.
-int              g_monotone    = 1;
+// The monotone pin is always on (the `horizon_monotone` knob is retired). The pre-D30 behaviour --
+// STEP_SIZE takes the controller's target as-is and the eager hook / heartbeat compute clock + target
+// with no floor -- was only ever the control arm G295 demanded for a lockstep change.
 bool             g_d30_holding = false;
 CRITICAL_SECTION g_hb_cs; // serialises the heartbeat's write+send against the freeze
 bool             g_hb_cs_ready = false;
@@ -517,12 +506,6 @@ void ensure_key_once() {
     static bool done = false;
     if (done) return;
     done = true;
-    char exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *slash = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';
     unsigned char key[MH_KEY_LEN];
     char          hex[MH_KEY_HEX_LEN + 1] = {0};
     int           generated               = 0;
@@ -532,7 +515,8 @@ void ensure_key_once() {
     // transport has no session to key, and printing first-run key instructions for a multiplayer
     // that cannot start would be advice about a thing that is not there. No guard is needed here
     // because the surface already carries it (mh_net_module.h).
-    int st = MH_Key_Load(exe, key, hex, &generated);
+    // RL3: the key lives in the CONFIG directory (portable: beside the exe; else user storage).
+    int st = MH_Key_Load(mh::cfgdir::config_dir(), key, hex, &generated);
     if (st == MH_KEY_SECURE && generated) {
         char b[220];
         wsprintfA(b, "; mh_key.txt generated -- send this file (or the line below) to the players joining you:\n;   %s\n", hex);
@@ -562,13 +546,14 @@ void on_present() {
     MH_Libmh_OnPresent();          // F4D's standing arm: report the spine-boundary crossing counters
     ensure_key_once();             // first frame: make sure the host has a key it can share
     mp_session_solo_tick();        // SES8: a single-player match opens its own session directory
+    mp_presence_tick();            // RL15: presence.json on a state change (file I/O on a worker thread)
+    MH_LogPrune_Start();           // RL5: once -- prune old log folders off the game thread
     MH_MP_DrainRelayNotice();      // mp:R4a: a relay-level notice the UDP module queued -> arm it (main thread)
     mp_lobby_stall_watch();        // mp:X2h: has a modal stopped the lobby-tick drain? (see net_seams.cpp)
     spectator_tick();              // mp:U54/U71: the transport's spectator mask + a spectator that Exit-ed ends its session
     hub_leave_poll();              // mp:U62: a defeated hub that stayed has reached the main menu -> hand the hub over
     fo_match_tick();               // mp:U63: tell the transport whether a match is running (arms the crash failover)
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
-    mh::ui::slide_geom_watch();    // U37 diag ([net] slide_diag): log any change to the menu frame geometry
     MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture
     MH_NetIndicator_OnPresent();   // mp:L1: the player-visible net indicator, through the GAME font path
     MH_Overlay_OnPresent();        // debug overlay: paint BEFORE capture reads, so captured frames include it
@@ -614,7 +599,7 @@ void on_present() {
         if (g_hz_max_seen > floor_h) floor_h = g_hz_max_seen;
         if (!hz_stale(clock, g_hz_hb_sent) && g_hz_hb_sent > floor_h) floor_h = g_hz_hb_sent;
         double horizon = g_ws_mirror ? ws_mirror_horizon(floor_h)
-                                     : (g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step);
+                                     : mh::netstats::monotone_horizon(clock, step, floor_h);
         memcpy((void *)ADDR_LOCAL_HORIZON, &horizon, sizeof(double)); // keep OUR requested horizon fresh
         // mp:T4 -- send only when this write CHANGED the horizon. This block runs once per present,
         // and an uncapped frame rate (1100-3500 fps measured on the rig) otherwise puts one segment
@@ -918,7 +903,7 @@ void lat_us_col(char *b, bool have, int us) {
 // (mh::netstats::AD_LATE_MIN_SAMPLES to decide at all, AD_FAST_MIN_SAMPLES to decide EARLY) are what
 // stop the emptied window from producing a confident number off three samples.
 //
-// Only while the controller is running: with `lockstep_adaptive=0` nothing consumes the samples, and
+// Only while the controller is running: with the controller off (a pinned lockstep_step_ms) nothing consumes the samples, and
 // the log columns are then a rolling 256-sample view, which is the more useful thing for a pinned
 // run being measured rather than tuned.
 void lateness_snapshot();
@@ -1539,7 +1524,7 @@ static_assert(AD_FAST_MIN_SAMPLES == mh::netstats::AD_FIRST_GROW_MIN_SAMPLES, "o
 constexpr DWORD  AD_WARMUP_MS      = 1500;
 constexpr DWORD  AD_MAX_SAMPLE_MS  = 250; // clamp one frame's contribution (an alt-tab is not starvation)
 constexpr double AD_SIM_FLOOR_MULT = 3.0; // never shrink below this many sim sub-steps of horizon
-int              g_adaptive        = 0;   // [net] lockstep_adaptive
+int              g_adaptive        = 0;   // the adaptive lookahead controller (SHIP_ADAPTIVE unless lockstep_step_ms pins it)
 double           g_ls_min          = 0.030;
 double           g_ls_max          = 0.400; // U35 2026-09-02: 200 saddled on real internet links (the icon storm); LAN settles ~100 and never nears it
 double           g_step_eps_ms     = 0.01;  // shared with the fixed-pin path (anti-alias nudge)
@@ -1611,7 +1596,7 @@ double off_grid_ms(double ms) {
 // arithmetic, and why it is what it is, is mh_net_udp/relay_path.h; this function only gathers its
 // inputs: the transport's rows and the host's published per-client SRTT (lobby_ping_published_srtt).
 // `[net] lockstep_relay_path=0` restores the pre-P16 lookup bit for bit (the negative arm).
-int g_relay_path = 1; // [net] lockstep_relay_path -- mp:P16; read in MH_Lockstep_Init next to lockstep_adaptive
+int g_relay_path = 1; // [net] lockstep_relay_path -- mp:P16; read in MH_Lockstep_Init next to the adaptive controller setup
 
 // mp:P16 -- the host's published SRTT table as the controller reads it. During a match the host
 // republishes at ~1 Hz, so anything older than this is a host that stopped (or an old build that
@@ -2123,7 +2108,7 @@ void resync_count_init_tick() {
 // once its own deadline expires has no OTHER live peer to diverge from. A 3+-peer extension would
 // need the same latch shape graceful_drop uses; out of scope for this fix.
 //
-// [net] resync_receiver_deadline, default ON.
+// Always on (the `resync_receiver_deadline` knob is retired).
 constexpr int STATUS_ALIVE = 0x2;
 constexpr int STATUS_HUMAN = 0x4;
 
@@ -2146,8 +2131,7 @@ int recv_deadline_leader_side_id() {
 }
 
 void resync_receiver_deadline_hook() {
-    mh::call::llm_wait_screen_frame(); // the original body -- leader exit + every peer's dispatch, unchanged
-    if (!g_resync_receiver_deadline) return;
+    mh::call::llm_wait_screen_frame();              // the original body -- leader exit + every peer's dispatch, unchanged
     if (*(const int *)rt_in_progress_base() == 0) { // RESUME already landed (or we were never in one) -- reset
         g_recv_in_barrier = false;
         return;
@@ -2201,11 +2185,9 @@ void install_resync_receiver_deadline() {
     const bool ok = patch_bytes_guarded(ADDR_WAIT_SCREEN_CALL_SITE, WAIT_SCREEN_CALL_EXPECT, repl, 5);
     if (!ok)
         seam_log("; resync_receiver_deadline NOT armed (unexpected bytes at the wait-screen call site)\n");
-    else if (g_resync_receiver_deadline)
+    else
         seam_log("; resync_receiver_deadline armed: a non-leader leaves the mode-8 wait screen after "
                  "max(2002, data_timeout_ms) ms with no RESUME\n");
-    else
-        seam_log("; resync_receiver_deadline spliced but INERT ([net] resync_receiver_deadline=0)\n");
 }
 
 // mp:GS2 -- game-level peer-data timeout. Called from on_time_tick right after lateness_tick(), so
@@ -2523,7 +2505,7 @@ void monotone_pin() {
     memcpy(&clk, (const void *)ADDR_GAME_CLOCK, sizeof(double));
     const bool   ls  = *(const uint8_t *)ADDR_SESSION_MODE == 3;
     const double m   = ls ? horizon_sent_max(clk) : 0.0;
-    const double eff = g_monotone ? mh::netstats::monotone_step(g_lockstep_step, clk, m) : g_lockstep_step;
+    const double eff = mh::netstats::monotone_step(g_lockstep_step, clk, m);
     if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
     g_eff_step = eff;
     if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
@@ -2679,7 +2661,7 @@ namespace {
 // PINNED step before the handover starts -- by U19b's park step for a quit, by the pinned elimination
 // (presence_lost at the elimination step, U56) for a defeat. The handover moves the transport and nothing else.
 constexpr uintptr_t ADDR_UI_IN_MAIN_MENU = 0x00603f70u; // _G_LLM_UI_IN_MAIN_MENU: 1 on entering the main menu, 0 on entering gameplay
-int                 g_hub_leave_ms       = 2500;        // [net] hub_leave_timeout_ms: the wait for every survivor's acknowledgement
+constexpr int       HUB_LEAVE_MS         = 2500;        // the wait for every survivor's acknowledgement
 bool                g_hub_watching       = false;       // a defeated hub that stays: leaving later must still hand over
 long                g_hub_changes_seen   = 0;           // MH_NetHubStatus::changes already shown
 
@@ -2837,7 +2819,7 @@ void on_time_tick() {
     if (g_rx_spin && *(const uint8_t *)ADDR_SESSION_MODE == 3) rx_spin_until_horizon();     // (b) Step 2: drain RX off-frame during a stall
     if (*(const uint8_t *)ADDR_SESSION_MODE == 3) lateness_post_spin_tick();                // mp:P15 -- a spin that funded the step ends the episode
     if (*(const uint8_t *)ADDR_SESSION_MODE == 3) adaptive_post_spin_tick();                // mp:P15 -- starved AFTER the spin
-    if (g_graceful_drop && *(const uint8_t *)ADDR_SESSION_MODE == 3) {
+    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) {
         // U17 (b) fast hard-drop: a client's transport died -> broadcast removal. Guards: dead>=0
         // excludes a client's host-conn (-1) so this is host-only (client-death only); the roster
         // check skips a side already removed by another path.
@@ -3021,7 +3003,7 @@ uint8_t           g_go_outcome          = 0;    // the real `outcome` byte, capt
                                                 // AL before pushad; read by both on_gameover_pre/_post
 
 // Run-before the game-over/outcome dialog: leave lockstep so the LOSER shows its result immediately
-// (see the block comment at g_sync_gameover). SESSION_MODE is a dword; 3 = lockstep, 2 = MP-local.
+// (see the U30 block comment above g_graceful_leave). SESSION_MODE is a dword; 3 = lockstep, 2 = MP-local.
 // The downgrade is idempotent, which is why the shape below can run it unconditionally: SESSION is
 // 3 or it is not. Ordering is unchanged from before U19d: this still runs BEFORE the original body.
 // mp:U54 -- the SPECTATOR'S DEFEAT DIALOG. Retail's outcome-4 (defeat) dialog of a lockstep match has ONE visible button: the
@@ -3147,9 +3129,9 @@ __declspec(naked) void gameover_detour() {
 //      count_active_players() > 1 -> commit_horizon (we leave the min), a peer lighter, the match goes
 //      on -- applied at the same sim clock on every survivor, which is what keeps them hash-identical
 //      from the drop step on.
-// BOUNDED: [net] graceful_leave_park_ms (default 1500) is the safety valve; past it the record goes
-// out anyway -- still with the honest H_d, so the AGREE arm is still taken and only the parking is
-// unproven -- and the log line says so. [net] graceful_leave_park=0 skips the wait, keeps the stamp.
+// BOUNDED: LEAVE_PARK_MS (1500) is the safety valve; past it the record goes out anyway -- still
+// with the honest H_d, so the AGREE arm is still taken and only the parking is unproven -- and the
+// log line says so.
 constexpr DWORD PARK_STABLE_MS = 130; // > 2 heartbeat periods: a walking survivor re-advertises within one
 
 void graceful_leave_park(int side) {
@@ -3195,9 +3177,9 @@ void graceful_leave_park(int side) {
         since[i] = t0;
         if (i != me && slot_is_active_human(i)) ++survivors;
     }
-    const char *verdict = g_leave_park ? "VALVE-UNPARKED" : "UNWAITED";
+    const char *verdict = "VALVE-UNPARKED";
     DWORD       waited  = 0;
-    while (g_leave_park) {
+    for (;;) {
         mh::call::llm_net_lockstep_dispatch(); // drain RX: PEER_HORIZON[] + commit, exactly the pump's call
         const DWORD now = GetTickCount();
         waited          = now - t0;
@@ -3226,7 +3208,7 @@ void graceful_leave_park(int side) {
             verdict = "PARKED";
             break;
         }
-        if (waited > (DWORD)g_leave_park_ms) break; // VALVE-UNPARKED
+        if (waited > (DWORD)LEAVE_PARK_MS) break; // VALVE-UNPARKED
         Sleep(2);
     }
 
@@ -3426,7 +3408,7 @@ DWORD WINAPI horizon_heartbeat_thread(LPVOID) {
             if (a == b && a > floor_h) floor_h = a;
         }
         double horizon = g_ws_mirror ? ws_mirror_horizon(floor_h)
-                                     : (g_monotone ? mh::netstats::monotone_horizon(clock, step, floor_h) : clock + step);
+                                     : mh::netstats::monotone_horizon(clock, step, floor_h);
         if (horizon > g_hz_hb_sent) g_hz_hb_sent = horizon; // sole writer: this thread, under g_hb_cs
         // Keep OUR requested horizon fresh too, so a stalled local render doesn't cap our own COMMITTED
         // = min(HORIZON, peers) (recomputed on the recv thread) -- this decouples our sim as well, not
@@ -3473,7 +3455,7 @@ __declspec(naked) void wait_overlay_gate_thunk() {
         jge  suppressed // countdown >= 0x38 => routine at-horizon wait -> skip
     forward:
         inc  dword ptr [g_icon_shown] // ...and one was actually drawn
-        push 0x004c7dc0 // tail-jump to the real wait_player_overlay_show (EAX = player_idx arg preserved)
+        push dword ptr [g_wait_target] // tail-jump to wait_player_overlay_show (0x004c7dc0, or mp:U44's carrier) -- EAX = player_idx preserved
         ret
     suppressed:
         ret // return past the call site
@@ -3483,8 +3465,7 @@ void install_overlay_gate() {
     // Its target is inside llm_strat_time_tick, promotable since C4 -- so "displaced" is a THIRD outcome
     // here and must not be reported as a byte MISMATCH. Without this the log said "unexpected bytes at
     // wait-overlay call site" on every promoted run, which reads as "the DLL is running against the
-    // wrong mh.exe build" -- a much scarier and entirely false diagnosis. Same guard, same reason, as
-    // install_resync_trigger_reset.
+    // wrong mh.exe build" -- a much scarier and entirely false diagnosis.
     //
     // WHAT IT USED TO COST, AND NO LONGER DOES (U20, 2026-08-30). This branch used to end
     // "...the P4 icon counters are UNAVAILABLE in this run, not zero", because the thunk WAS the only
@@ -3528,7 +3509,7 @@ void install_overlay_gate() {
 // Safe: the stub never returned a meaningful value (the sync-wait was always broken; retail never reached
 // it), the resync's REAL recovery work (rebaseline timestamp, re-advertise, broadcast, time_resync_and_tick)
 // still runs -- only the broken garbage-length spin is neutralized; the '<0' error gate in
-// session_begin_multi (0x0045450e) sees a non-error 0. Default ON (correctness fix); knob for A/B.
+// session_begin_multi (0x0045450e) sees a non-error 0. Always on (the `resync_wait_fix` knob is retired).
 constexpr uintptr_t ADDR_RESYNC_STUB_RET  = 0x0049c044;         // llm_net_lockstep_sync_delay_stub: the `mov eax,[ebp-0x28]` return
 const uint8_t       RESYNC_STUB_EXPECT[3] = {0x8B, 0x45, 0xD8}; // mov eax,[ebp-0x28]  (returns uninitialized stack)
 const uint8_t       RESYNC_STUB_PATCH[3]  = {0x31, 0xC0, 0x90}; // xor eax,eax; nop    (return 0 -> instant wait)
@@ -3538,18 +3519,15 @@ void                install_resync_wait_fix() {
     // because the C1 interlock SUPPRESSED the write -- not because the bytes were wrong. Without this
     // branch the log would read "NOT armed (unexpected bytes -- already patched?)", which is false in
     // both of its clauses and points a reader at a byte-level investigation that has nothing to find.
-    // Same shape and same reason as install_resync_trigger_reset below.
+    // Same shape and same reason as install_overlay_gate above.
     //
     // WHAT CARRIES THE FIX THEN: our body returns 0 UNCONDITIONALLY (resync.h argues why reproducing
-    // the original's uninitialised-stack read is not an option -- it is the hang). So under promotion
-    // this knob has no off switch: `[net] resync_wait_fix=0` does NOT restore stock behaviour, and the
-    // line below says so rather than letting an A/B run silently compare a config against itself.
-    // The rollback arm for that experiment is `[promote] lockstep=0`, which is the diagnostic
-    // configuration the seam-class taxonomy §4c R2 reserves for exactly this.
+    // the original's uninitialised-stack read is not an option -- it is the hang). The rollback arm
+    // for an A/B experiment is `[promote] lockstep=0`, which is the diagnostic configuration the
+    // seam-class taxonomy §4c R2 reserves for exactly this.
     if (mh::hook::promoted_owner_of(ADDR_RESYNC_STUB_RET)) {
         seam_log("; resync-wait fix DISPLACED: sync_delay_stub is promoted, and our body carries the fix "
-                                               "UNCONDITIONALLY (returns 0). [net] resync_wait_fix=0 cannot switch it off in this run -- "
-                                               "use [promote] lockstep=0 to get the original back.\n");
+                                               "UNCONDITIONALLY (returns 0). Use [promote] lockstep=0 to get the original back.\n");
         return;
     }
     bool ok = patch_bytes_guarded(ADDR_RESYNC_STUB_RET, RESYNC_STUB_EXPECT, RESYNC_STUB_PATCH, 3);
@@ -3557,33 +3535,6 @@ void                install_resync_wait_fix() {
                                : "; resync-wait fix NOT armed (unexpected bytes at sync_delay_stub return -- already patched?)\n");
 }
 
-// Spurious-resync ROOT fix (option b, 2026-07-24 delegated dig). `RESYNC_TRIGGER_COUNT` (0x00e58791) is a
-// cumulative leader-local stall-nag counter: ++ per type-3 ACK sent/received, reset ONLY in force_resync +
-// at match start -- but NOT on horizon recovery, unlike its per-episode siblings (SYNC_WAIT_ACTIVE,
-// SYNC_RETRY_COUNTDOWN, SYNC_WAIT_ELAPSED, PEER_TIMEOUT_ELAPSED, all reset in time_tick's recovery branch
-// @0x43f2a5). At a tight lookahead "at-horizon" is the STEADY state, so stall-nags stream as normal play and
-// the cumulative counter ratchets to ACTIVE_PLAYERS*100 -> force_resync force-fires a SPURIOUS mode-8 resync
-// (~2 s freeze) ~every 2.6 s. FIX: also zero the counter in the recovery branch, so it counts CONSECUTIVE
-// (not cumulative) stalls -- a genuinely stuck peer never reaches recovery, so its count still climbs and a
-// REAL resync still fires. Determinism-safe: the counter is leader-local scratch gating only WHEN the leader
-// emits its (already-synchronized) resync broadcast -- it feeds no per-peer sim computation. This is the
-// root-cause complement to defang_xui (which suppresses the mode-8 modal); with this on, resyncs become rare
-// so the modal only shows on genuine desync. Mechanism: call-splice the first recovery store
-// `mov [SYNC_WAIT_ACTIVE],0` (@0x43f2a5, 10 bytes) with CALL rel32 + 5 NOP -> a thunk that REPLAYS that store
-// AND zeroes RESYNC_TRIGGER_COUNT, then returns (both absolute-mem stores, no rel-target recompute).
-constexpr uintptr_t    ADDR_RESYNC_RECOVERY_SPLICE = 0x0043f2a5;
-const uint8_t          RESYNC_RECOVERY_EXPECT[10]  = {0xC7, 0x05, 0xA9, 0x87, 0xE5, 0x00, 0x00, 0x00, 0x00, 0x00};
-__declspec(naked) void resync_trigger_reset_thunk() {
-    __asm {
-        push eax // preserve (EAX is reloaded fresh at 0x43f2fb, but be safe); MOV/PUSH/POP leave flags intact
-        mov  eax, 0x00e587a9
-        mov  dword ptr [eax], 0 // displaced store: SYNC_WAIT_ACTIVE = 0 (what we spliced out)
-        mov  eax, 0x00e58791
-        mov  dword ptr [eax], 0 // NEW: RESYNC_TRIGGER_COUNT = 0 on recovery
-        pop  eax
-        ret // return to 0x43f2af (the next recovery store)
-    }
-}
 // ==================================================================================================
 // C8 (ii): REFUSE LOUDLY when a knob's only carrier is gone.
 //
@@ -3615,24 +3566,6 @@ void refuse_uncarried_fix(const char *knob, uintptr_t site, const char *owner) {
     seam_log(b);
 }
 
-void install_resync_trigger_reset() {
-    uint8_t repl[10];
-    repl[0]     = 0xE8; // CALL rel32 -> thunk
-    int32_t rel = (int32_t)((uintptr_t)&resync_trigger_reset_thunk - (ADDR_RESYNC_RECOVERY_SPLICE + 5));
-    memcpy(repl + 1, &rel, sizeof(rel));
-    for (int k = 5; k < 10; k++) repl[k] = 0x90; // NOP-pad the remainder of the displaced 10-byte store
-    // Its target is inside llm_strat_time_tick, promotable since C4 -- so "displaced" is a third
-    // outcome here and must not be reported as a byte MISMATCH.
-    if (mh::hook::promoted_owner_of(ADDR_RESYNC_RECOVERY_SPLICE)) {
-        seam_log("; resync-trigger reset DISPLACED: time_tick is promoted, so this fix must come from "
-                 "our body (see the [interlock] line naming its carrier)\n");
-        return;
-    }
-    bool ok = patch_bytes_guarded(ADDR_RESYNC_RECOVERY_SPLICE, RESYNC_RECOVERY_EXPECT, repl, 10);
-    seam_log(ok ? "; resync-trigger reset armed: RESYNC_TRIGGER_COUNT zeroed on recovery (spurious-resync root fix)\n"
-                : "; resync-trigger reset NOT armed (unexpected bytes at recovery-branch splice @0x43f2a5)\n");
-}
-
 // mp:P9 (2026-09-22) -- `resync_trigger_gate`'s BYTE-PATCH CARRIERS, RE-INSTATED. C8-e retired both
 // (2026-07-29) on the strength of the promoted body carrying the fix, and every rig run since has
 // been configuration (2), where it does. The players' drop-in (`-net.zip`, ruling Q10) is
@@ -3640,7 +3573,7 @@ void install_resync_trigger_reset() {
 // DOES NOT HAVE THAT FIX" into all 15 field processes of 2026-09-20 while the mode-8 barrier fired
 // every ~2 s (the mp:P8 measurement, 2026-09-22). So the fix comes back as a patch for exactly the
 // runs the body cannot reach: unpromoted owner -> the splice; promoted owner -> DISPLACED, the body
-// carries it (C1's interlock; the same shape `resync_trigger_reset` above has kept all along).
+// carries it (C1's interlock).
 // Mechanism unchanged from the 2026-07 patch: both leader-only `inc dword [RESYNC_TRIGGER_COUNT]`
 // sites (SENT @0x49d8cb in llm_net_send_lockstep_keepalive, RECEIVED @0x49c508 in
 // llm_net_lockstep_dispatch) become CALL rel32 + NOP into a thunk that replays the INC only while
@@ -4323,7 +4256,6 @@ void install_spectate() {
 // are put back exactly. Nothing between the two reads them for the sim -- the render pass is single-threaded with the sim
 // step (the frame is time_tick -> sim_tick -> render) -- so the hash never sees the override. The first reveals self-check
 // it: a checksum of the whole plane before the override and after the restore is logged, and must be equal.
-int                 g_spectate_view = 1; // [net] spectate_view (default 1; render-only, not sim-affecting)
 void               *g_sv_tramp      = nullptr;
 bool                g_sv_active     = false;
 int                 g_sv_checks     = 0;
@@ -4339,7 +4271,7 @@ uint32_t sv_checksum(const uint8_t *base) {
 }
 void spec_view_pre() {
     g_sv_active = false;
-    if (!g_spectate_view || !local_is_spectator()) return;
+    if (!local_is_spectator()) return;
     uint8_t *base = mh::state::ptr<uint8_t>(mh::state::RID_TILE_OBJECTS);
     if (!base) return;
     if (g_sv_checks < 4) g_sv_sum_before = sv_checksum(base);
@@ -4390,7 +4322,7 @@ __declspec(naked) void spec_view_detour() {
 // clang-format on
 void install_spectate_view() {
     if (install_trampoline(ADDR_RENDER_VIEW, (void *)spec_view_detour, &g_sv_tramp, 8, mh::hook::entry_claim::exclusive,
-                           "the spectator's whole-map view ([net] spectate_view)"))
+                           "the spectator's whole-map view"))
         seam_log("; U54 view: llm_strat_render_view wrapped -- a spectator sees the whole map (a draw-time override of the two fog bytes per tile, restored after the draw)\n");
     else
         seam_log("; U54 view: NOT armed (render_view entry unavailable) -- see the [interlock] line\n");
@@ -4462,6 +4394,298 @@ void spectator_tick() {
     }
 }
 
+
+// mp:U45 -- `diplo_order_dedup_fix`'s BYTE-PATCH CARRIER (same shape as undock_reentry_fix above).
+// llm_strat_order_release_due matches a due PENDING record against every QUEUE record with the same
+// unit_index + owner_and_kind and (param0 or order_code differing); then the higher order_code wins at
+// equal exec_time. One diplomacy Apply issues 0xf4 (relation) and 0xf5 (control mode) with unit 0, the
+// issuer as owner, at one exec_time, so 0xf5 superseded 0xf4 on every peer. The twin
+// (order_queue.cpp, g_admin_dedup_exempt) `continue`s when BOTH codes are 0xf4/0xf5.
+//
+// The splice is the 7 bytes at 0x0046667b (`MOV [EBP-0x34],0` -- the first instruction of the supersede
+// test), whose ONLY predecessor is `JMP 0x0046667b` @0x00466674 (identity matched, params/codes
+// differ). The stub reads the queue record's (index [EBP-0x30]) and the pending record's (index
+// [EBP-0x24]) order_code; both in {0xf4,0xf5} -> jump to the loop's `continue` at 0x00466704 (matched
+// stays as it was, exactly the twin), else run the displaced MOV and rejoin at 0x00466682. EAX/EDX are
+// dead at both entries (0x00466682 reloads them); flags are dead (the next insn is IMUL).
+constexpr uintptr_t ADDR_DIPLO_DEDUP_SITE = 0x0046667b;
+const uint8_t       DIPLO_DEDUP_EXPECT[7] = {0xC7, 0x45, 0xCC, 0x00, 0x00, 0x00, 0x00};
+
+// clang-format off
+__declspec(naked) void diplo_dedup_stub() {
+    __asm {
+        imul  edx, dword ptr [ebp - 0x30], 0x44
+        movzx edx, word ptr [edx + 0x00bb4ede]  // queue[q].order_code
+        sub   edx, 0xf4
+        cmp   edx, 1
+        ja    normal                            // not 0xf4/0xf5
+        imul  eax, dword ptr [ebp - 0x24], 0x44
+        movzx eax, word ptr [eax + 0x00bb9e8e]  // pending[p].order_code
+        sub   eax, 0xf4
+        cmp   eax, 1
+        ja    normal
+        mov   eax, 0x00466704                   // both diplomacy admin orders: independent, never superseded
+        jmp   eax
+    normal:
+        mov   dword ptr [ebp - 0x34], 0         // the displaced instruction
+        mov   eax, 0x00466682
+        jmp   eax
+    }
+}
+// clang-format on
+
+// mp:U44 -- `overlay_dialog_guard`'s RETAIL CARRIER (configuration (1) / `[config] mode=original`).
+// The libmh twin (lockstep/overlay_hoist.cpp + host_event_sink.cpp) wraps every call of the stall overlay's
+// callees with latch / hoist so that (1) lockstep only dismisses a screen it armed, (2) a kick modal that
+// arms over an open building dialog stashes that dialog's UI state and gives it back on dismiss, and (3) the
+// viewport is dirtied when a mode-3 screen is dismissed. Under the original bodies nothing runs that code,
+// so the retail llm_net_lockstep_overlay_dismiss (0x004c7d1c) still forces mode 2 over a mode-3 dialog (and
+// leaves _G_LLM_UI_ACTIVE_DIALOG pointing at it) and llm_net_lockstep_sync_overlay_show (0x004c7eea) hijacks
+// the screen while the dialog's input route is still live.
+//
+// THE SPLICE IS PER CALL SITE, NOT PER ENTRY. The twin reaches the retail entries too (through the host
+// callbacks), so an entry detour would run both ledgers. Each retail call site is rewritten
+// `call X` -> `call odg::*_thunk` and is DISPLACED when promoted_owner_of(site) says libmh's body owns it:
+//   dismiss x7: time_tick 0x0043f072/0x0043f286/0x0043f2e1, presence_lost 0x004982c3/0x0049833f,
+//               sync_overlay_show's consume path 0x004c7fae (never executed under the twin -- its emit
+//               only fires on a frame where the answer is -1), mp_leave 0x004c8620 (only when libmh does
+//               not run at all: the twin's mp_leave hoist sits AFTER the host callback that contains it)
+//   show    x1: time_tick 0x0043f18d
+//   wait    x1: 0x0043f0fc, already owned by wait_overlay_gate_thunk (icon_count); its forward target
+//               g_wait_target is pointed at odg::wait_thunk.
+// The helpers below are the twin's overlay_hoist.cpp over raw VAs (mh::addr), same ledger, same order.
+namespace odg {
+
+struct ledger {
+    bool    ours       = false; // the icon / kick modal is lockstep's own, armed and not yet dismissed
+    bool    latch_ours = false;
+    uint8_t latch_mode = 0;
+    struct {
+        bool     valid = false;
+        uint32_t list = 0, dialog = 0, cb = 0, cb_a = 0, cb_b = 0, flags = 0;
+        uint8_t  menu_state = 0;
+    } stash;
+};
+ledger   g;
+unsigned g_n_dismiss = 0, g_n_show = 0, g_n_wait = 0; // diagnostics
+
+constexpr uintptr_t       ADDR_CB_A = mh::addr::menu_oneshot_cb; // _G_LLM_UI_MENU_ASYNC_CALLBACK_A
+inline volatile uint8_t  &mode() { return *(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE; }
+inline volatile uint32_t &u32(uintptr_t a) { return *(volatile uint32_t *)a; }
+inline bool               slot_free() {
+    const uint32_t list = u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST);
+    return list == 0 || list == mh::addr::_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD;
+}
+
+// bit0 = GAME_MODE != 4 (the callee's guard), bit1 = the screen was mode 3 (viewport dirty after).
+unsigned __cdecl pre_dismiss() {
+    ++g_n_dismiss;
+    g.latch_mode = mode();
+    g.latch_ours = g.ours;
+    return (mode() != 4 ? 1u : 0u) | (mode() == 3 ? 2u : 0u);
+}
+
+void __cdecl post_dismiss(unsigned flags) {
+    if (flags & 2) mh::call::llm_map_cam_mark_viewport_dirty(); // twin: host_event_sink, right after the original
+    if (!(flags & 1)) return;
+    if (!g.latch_ours) { // not lockstep's screen: the original forced mode 2/3 over it -- put the mode back
+        mode() = g.latch_mode;
+        return;
+    }
+    const uint32_t list       = u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST);
+    const bool     free_after = list == 0 || list == mh::addr::_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD ||
+                            list == mh::addr::_G_LLM_UI_WGT_LIST_LOCKSTEP_SYNC;
+    mode() = free_after ? 2 : 3;
+    g.ours = false;
+    if (g.stash.valid) { // give the player's dialog back exactly as the modal found it
+        const auto &st                                      = g.stash;
+        u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST)           = st.list;
+        u32(mh::addr::_G_LLM_UI_ACTIVE_DIALOG)              = st.dialog;
+        u32(mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK)        = st.cb;
+        u32(ADDR_CB_A)                                      = st.cb_a;
+        u32(mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK_B)      = st.cb_b;
+        u32(mh::addr::_G_LLM_DLG_STATE_FLAGS)               = st.flags;
+        *(volatile uint8_t *)mh::addr::_G_LLM_UI_MENU_STATE = st.menu_state;
+        mode()                                              = 3;
+        g.stash.valid                                       = false;
+    }
+}
+
+// Before sync_overlay_show: armed = slot free && mode != 4 (its own arming guard). A foreign screen is mode 3
+// with a free list lockstep did not arm -- a dialog: stash its UI state, null ACTIVE_DIALOG.
+void __cdecl pre_show() {
+    ++g_n_show;
+    const bool armed = slot_free() && mode() != 4;
+    if (!armed) return;
+    if (mode() == 3 && !g.ours && !g.stash.valid) {
+        auto &st                               = g.stash;
+        st.list                                = u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST);
+        st.dialog                              = u32(mh::addr::_G_LLM_UI_ACTIVE_DIALOG);
+        st.cb                                  = u32(mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK);
+        st.cb_a                                = u32(ADDR_CB_A);
+        st.cb_b                                = u32(mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK_B);
+        st.flags                               = u32(mh::addr::_G_LLM_DLG_STATE_FLAGS);
+        st.menu_state                          = *(volatile uint8_t *)mh::addr::_G_LLM_UI_MENU_STATE;
+        st.valid                               = true;
+        u32(mh::addr::_G_LLM_UI_ACTIVE_DIALOG) = 0;
+    }
+    g.ours = true;
+}
+
+// Before wait_player_overlay_show: its arming guard is slot free && mode == 2.
+unsigned __cdecl pre_wait() {
+    ++g_n_wait;
+    return (slot_free() && mode() == 2) ? 1u : 0u;
+}
+void __cdecl post_wait(unsigned armed) {
+    if (armed) {
+        mode() = 3;
+        g.ours = true;
+    }
+    // The dialog's own frame function is still on the stack on the frame the modal armed and re-publishes
+    // ACTIVE_DIALOG after we nulled it; this runs on every parked frame, so the stash stays authoritative.
+    if (g.stash.valid) u32(mh::addr::_G_LLM_UI_ACTIVE_DIALOG) = 0;
+}
+
+// clang-format off
+// The three splice targets. All preserve EBX/ESI/EDI (the C++ helpers do too) and return the callee's EAX.
+__declspec(naked) void dismiss_thunk() {
+    __asm {
+        push  ebx
+        push  esi
+        push  edi
+        call  pre_dismiss
+        mov   esi, eax
+        mov   eax, 0x004c7d1c        // retail llm_net_lockstep_overlay_dismiss
+        call  eax
+        mov   ebx, eax
+        push  esi
+        call  post_dismiss
+        add   esp, 4
+        mov   eax, ebx
+        pop   edi
+        pop   esi
+        pop   ebx
+        ret
+    }
+}
+__declspec(naked) void show_thunk() {
+    __asm {
+        push  ebx
+        push  esi
+        push  edi
+        call  pre_show
+        mov   eax, 0x004c7eea        // retail llm_net_lockstep_sync_overlay_show
+        call  eax
+        pop   edi
+        pop   esi
+        pop   ebx
+        ret
+    }
+}
+__declspec(naked) void wait_thunk() { // EAX = player_idx (watcall)
+    __asm {
+        push  ebx
+        push  esi
+        push  edi
+        mov   edi, eax               // pidx
+        call  pre_wait
+        mov   esi, eax               // armed
+        mov   eax, edi
+        mov   edx, 0x004c7dc0        // retail llm_net_lockstep_wait_player_overlay_show
+        call  edx
+        mov   ebx, eax
+        push  esi
+        call  post_wait
+        add   esp, 4
+        mov   eax, ebx
+        pop   edi
+        pop   esi
+        pop   ebx
+        ret
+    }
+}
+// clang-format on
+
+} // namespace odg
+
+void install_diplo_order_dedup_fix() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_DIPLO_DEDUP_SITE)) {
+        what = "DISPLACED by promotion -- the promoted release_due's own exemption carries it";
+    } else {
+        uint8_t       repl[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)&diplo_dedup_stub - (ADDR_DIPLO_DEDUP_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_DIPLO_DEDUP_SITE, DIPLO_DEDUP_EXPECT, repl, 7)) {
+            what = "PATCHED -- 0xf4/0xf5 never supersede each other at 0046667B";
+        } else {
+            what = "MISMATCHED";
+            refuse_uncarried_fix("diplo_order_dedup_fix", ADDR_DIPLO_DEDUP_SITE, "llm_strat_order_release_due");
+        }
+    }
+    char b[200];
+    wsprintfA(b, "; diplo order dedup fix: %s (MP U45)\n", what);
+    seam_log(b);
+}
+
+struct odg_site {
+    uintptr_t site;
+    uint8_t   expect[5];
+    void (*thunk)();
+    const char *owner;
+    bool        ours_skip; // leave it to the twin whenever libmh runs at all
+};
+const odg_site ODG_SITES[] = {
+    {0x0043f072, {0xE8, 0xA5, 0x8C, 0x08, 0x00}, odg::dismiss_thunk, "llm_strat_time_tick", false},
+    {0x0043f286, {0xE8, 0x91, 0x8A, 0x08, 0x00}, odg::dismiss_thunk, "llm_strat_time_tick", false},
+    {0x0043f2e1, {0xE8, 0x36, 0x8A, 0x08, 0x00}, odg::dismiss_thunk, "llm_strat_time_tick", false},
+    {0x004982c3, {0xE8, 0x54, 0xFA, 0x02, 0x00}, odg::dismiss_thunk, "llm_strat_player_presence_lost", false},
+    {0x0049833f, {0xE8, 0xD8, 0xF9, 0x02, 0x00}, odg::dismiss_thunk, "llm_strat_player_presence_lost", false},
+    {0x004c7fae, {0xE8, 0x69, 0xFD, 0xFF, 0xFF}, odg::dismiss_thunk, "llm_net_lockstep_sync_overlay_show", false},
+    {0x004c8620, {0xE8, 0xF7, 0xF6, 0xFF, 0xFF}, odg::dismiss_thunk, "llm_net_mp_leave_reset_game_mode", true},
+    {0x0043f18d, {0xE8, 0x58, 0x8D, 0x08, 0x00}, odg::show_thunk, "llm_strat_time_tick", false},
+};
+constexpr uintptr_t ADDR_ODG_DISMISS_TT1 = 0x0043f072, ADDR_ODG_DISMISS_TT2 = 0x0043f286,
+                    ADDR_ODG_DISMISS_TT3 = 0x0043f2e1, ADDR_ODG_DISMISS_PL1 = 0x004982c3,
+                    ADDR_ODG_DISMISS_PL2 = 0x0049833f, ADDR_ODG_DISMISS_SOS = 0x004c7fae,
+                    ADDR_ODG_DISMISS_MPL = 0x004c8620, ADDR_ODG_SHOW_TT = 0x0043f18d;
+
+void install_overlay_dialog_guard() {
+    int patched = 0, displaced = 0, mismatched = 0;
+    g_wait_target = (uintptr_t)&odg::wait_thunk; // the icon thunk's forward (site 0x0043f0fc), see install_overlay_gate
+    for (const odg_site &s : ODG_SITES) {
+        if (mh::hook::promoted_owner_of(s.site) || (s.ours_skip && MH_LibmhModule_IsBound() && mh::config::ours_run())) {
+            ++displaced;
+            continue;
+        }
+        uint8_t       repl[5] = {0xE8, 0, 0, 0, 0};
+        const int32_t rel     = (int32_t)((uintptr_t)s.thunk - (s.site + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        bool ok = false;
+        // one literal expression per site: lint_dll_patches keys the manifest on (file, expr)
+        switch (s.site) {
+            case ADDR_ODG_DISMISS_TT1: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_TT1, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_TT2: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_TT2, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_TT3: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_TT3, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_PL1: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_PL1, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_PL2: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_PL2, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_SOS: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_SOS, s.expect, repl, 5); break;
+            case ADDR_ODG_DISMISS_MPL: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_MPL, s.expect, repl, 5); break;
+            case ADDR_ODG_SHOW_TT: ok = patch_bytes_guarded(ADDR_ODG_SHOW_TT, s.expect, repl, 5); break;
+        }
+        if (ok) {
+            ++patched;
+        } else {
+            ++mismatched;
+            refuse_uncarried_fix("overlay_dialog_guard", s.site, s.owner);
+        }
+    }
+    char b[220];
+    wsprintfA(b, "; overlay dialog guard (retail carrier): %d site(s) PATCHED, %d DISPLACED (libmh owns them), %d MISMATCHED; wait site via the icon thunk (MP U44)\n",
+              patched, displaced, mismatched);
+    seam_log(b);
+}
 
 // Spurious-resync fix, part c (increment GATE) -- complement to the recovery-reset above. Both leader-only
 // RESYNC_TRIGGER_COUNT increment sites -- SENT nag @0x49d8cb (send_lockstep_ack) and RECEIVED nag @0x49c508
@@ -4548,14 +4772,14 @@ void install_resync_order_horizon() {
     // U30 retired the `*(uint32_t *)ADDR == PROLOGUE &&` that used to open this `if`. It is the site
     // D17 patched by hand -- and the hand patch is gone too (below), because the primitive now owns
     // the whole adjudication and this file's OTHER four install sites, 450 lines down, never got the
-    // bespoke treatment. Fixing one site at a time is what let sync_gameover ship dead.
+    // bespoke treatment. Fixing one site at a time is what let the game-over detour ship dead.
     if (install_trampoline(ADDR_BROADCAST_RESYNC_STATE, (void *)broadcast_resync_state_detour,
                            &g_brs_tramp, 8, mh::hook::entry_claim::exclusive,
                            "the resync-order horizon detour (MP D14)"))
         seam_log("; resync-order horizon armed: CTL_RESYNC_BEGIN exec_time clamped to LOCKSTEP_HORIZON (MP D14)\n");
     //
     // SINCE D17 THE PROMOTED CASE IS NO LONGER A LOSS, so it must not read like one. Our body carries
-    // the same clamp behind the same [net] key (reimpl_fixes::resync_order_horizon), so this says
+    // the same clamp (unconditionally since the `resync_order_horizon` knob was retired), so this says
     // CARRIED -- the resync-wait fix's phrasing, for the same situation. THIS BRANCH IS THE ONE THING
     // U30 KEPT here, and it is kept for a reason the generic path cannot cover: the primitive can say
     // that a promotion displaced the detour, but only this site knows the fix survived the
@@ -4563,15 +4787,10 @@ void install_resync_order_horizon() {
     // filed it in the summary; this only adds the good news.
     else if (mh::hook::promoted_owner_of(ADDR_BROADCAST_RESYNC_STATE)) {
         char b[288];
-        wsprintfA(b,
-                  "; resync-order horizon DISPLACED: broadcast_resync_state is promoted, and our body "
-                  "CARRIES the clamp behind the same [net] resync_order_horizon key (=%d this run). MP "
-                  "D14 is live here; use [promote] lockstep=0 for the original.\n",
-                  // Read back the FIX STRUCT, not the ini global it was built from. The two can only
-                  // disagree if set_fixes ran before the ini did, and that is exactly the class of
-                  // wiring failure D17 was -- a knob that reads right while nothing consumes it. This
-                  // way the arming line is evidence about the thing that actually gates the clamp.
-                  (int)mh::lockstep::fixes().resync_order_horizon);
+        lstrcpyA(b,
+                 "; resync-order horizon DISPLACED: broadcast_resync_state is promoted, and our body "
+                 "CARRIES the clamp unconditionally. MP D14 is live here; use [promote] lockstep=0 for the "
+                 "original.\n");
         seam_log(b);
     } else
         seam_log("; resync-order horizon NOT armed -- see the [interlock] line above for which of the "
@@ -4602,7 +4821,9 @@ void install_overlay_patches() {
     // READS this and still carries its gate branch -- deleting hand-written asm is a separate risk
     // and does not belong in the same change as a knob retirement, so the branch is left dead.
     g_icon_gate = 0;
-    if (g_icon_count) install_overlay_gate(); // the thunk owns the wait-overlay call site
+    // mp:U44: the retail overlay_dialog_guard needs the stall icon's arming seen (the thunk's forward target), so the
+    // pass-through thunk is installed for it too even with icon_count=0 (it only counts, which cannot perturb anything).
+    if (g_icon_count || g_overlay_dialog_guard) install_overlay_gate(); // the thunk owns the wait-overlay call site
     // U20: and the OTHER carrier of the same two counters -- our promoted body, which is what
     // actually runs on the ship default. Wired under the same [net] icon_count knob so "count the
     // de-sync icon" means one thing whichever implementation is live, and unwired (null sinks) when
@@ -4711,7 +4932,7 @@ extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_ca
 //
 // Called when this peer's player has LEFT a match. A hub with two or more other humans still playing hands the
 // transport to the elected successor (the module blocks until every survivor acknowledged, ~1 round trip, or
-// [net] hub_leave_timeout_ms); everyone else returns at once. `why` is only for the log.
+// HUB_LEAVE_MS); everyone else returns at once. `why` is only for the log.
 void mp_hub_leave(const char *why) {
     if (!net_hub_now()) return;
     const bool mid_match = *(const uint8_t *)ADDR_SESSION_MODE == 3 || g_hub_watching;
@@ -4725,7 +4946,7 @@ void mp_hub_leave(const char *why) {
         return;
     }
     const DWORD     t0 = GetTickCount();
-    const int       r  = MH_Net_HubLeave(g_hub_leave_ms);
+    const int       r  = MH_Net_HubLeave(HUB_LEAVE_MS);
     MH_NetHubStatus st;
     MH_Net_HubStatus(&st);
     wsprintfA(b, "; U62 hub-leave (%s): %s after %lu ms (epoch %u, %d other human(s) alive, acks %d, re-issues %d)\n", why,
@@ -4775,7 +4996,7 @@ void lockstep_install_core() {
     // DECLARE the time_tick promotion before anything patches bytes (C1 x C4). The rebind itself has to
     // happen at the END of this function, because it needs the pacing trampoline that this function
     // installs last -- but the four byte patches aimed INSIDE time_tick's body (defang_tt_wait,
-    // defang_tt_sync, defang_dismiss, resync_trigger_reset) are written well before that. Registering
+    // defang_tt_sync, defang_dismiss) are written well before that. Registering
     // the promotion only at rebind time would therefore let all four land in a body that is about to be
     // JMP'd away: the C1 bug, reintroduced by C4's own mechanism. Measured, not theorised -- the first
     // promoted run after the rebind landed reported "1 registered fix(es) displaced" when the true
@@ -4792,8 +5013,7 @@ void lockstep_install_core() {
     // integer-only -- see the sub-ms step sweep.)
     // SHIP DEFAULTS (2026-07-25). Read with an EMPTY sentinel default so "absent" is distinguishable
     // from "explicitly set": an absent key takes the shipping value AND leaves the adaptive controller
-    // free to move it, while any explicit lockstep_step_ms is an operator PIN (adaptive off unless
-    // lockstep_adaptive=1 is also explicit). That is what keeps every existing rig -- mp_run.py and
+    // free to move it, while any explicit lockstep_step_ms is an operator PIN (adaptive off). That is what keeps every existing rig -- mp_run.py and
     // test_ui.py both write explicit values -- behaving exactly as before this change.
     char step_buf[32];
     // TL-HARN4: this reads as a STRING (not GetPrivateProfileIntA) only for the atof fractional
@@ -4815,23 +5035,22 @@ void lockstep_install_core() {
     // TL-HARN4 (see step_buf's note above -- atof-parsed, so this was already safe either way).
     mh::config::read_ini_string("net", "lockstep_step_eps_ms", "0.01", eps_buf, sizeof(eps_buf), g_ini);
     double step_eps_ms = atof(eps_buf);
-    int    ls_log      = GetPrivateProfileIntA("net", "lockstep_log", SHIP_LOG_LEVEL, g_ini);
+    int    ls_log      = mh_ini_get_int("net", "lockstep_log", SHIP_LOG_LEVEL, g_ini);
     if (step_ms > 0.0) g_lockstep_step = (step_ms + step_eps_ms) / 1000.0;
     // Adaptive lookahead (P1). ON by default, but only when lockstep_step_ms was NOT given: an
     // explicit value is an operator pin (every rig ini sets one, so every existing gate keeps its
-    // fixed lookahead). lockstep_adaptive=1 in the ini overrides that and adapts from the pin as the
-    // starting point.
+    // fixed lookahead).
     g_step_eps_ms = step_eps_ms;
-    g_adaptive    = GetPrivateProfileIntA("net", "lockstep_adaptive", step_explicit ? 0 : SHIP_ADAPTIVE, g_ini);
+    g_adaptive    = step_explicit ? 0 : SHIP_ADAPTIVE;
     g_ad_seed_ok  = !step_explicit; // mp:P14: only the SHIPPED start is a guess worth replacing
     // mp:P16: 3+-peer star -- size the lookahead for the relayed client->host->client path (default ON;
     // 0 = the pre-P16 host-link-only lookup, the negative arm). Needs a host that publishes in-match.
-    g_relay_path = GetPrivateProfileIntA("net", "lockstep_relay_path", 1, g_ini);
+    g_relay_path = mh_ini_get_int("net", "lockstep_relay_path", 1, g_ini);
     // NOTE the effective floor is max(this, 3 x sim_step) -- see AD_SIM_FLOOR_MULT. Lowering this
     // knob alone will NOT take the lookahead under 3 sub-steps; that guard is what a frozen client
     // cost us.
-    g_ls_min = GetPrivateProfileIntA("net", "lockstep_min_ms", 30, g_ini) / 1000.0;
-    g_ls_max = GetPrivateProfileIntA("net", "lockstep_max_ms", 400, g_ini) / 1000.0;
+    g_ls_min = mh_ini_get_int("net", "lockstep_min_ms", 30, g_ini) / 1000.0;
+    g_ls_max = mh_ini_get_int("net", "lockstep_max_ms", 400, g_ini) / 1000.0;
     if (g_ls_min < 0.010) g_ls_min = 0.010; // below ~1 clock quantum the sim cannot make progress
     if (g_ls_max < g_ls_min) g_ls_max = g_ls_min;
     // Strategic sim sub-step interval (movement-smoothness experiment). Independent of the lockstep
@@ -4844,14 +5063,10 @@ void lockstep_install_core() {
     if (sim_step_ms > 0.0) g_sim_step = sim_step_ms / 1000.0;
     // Off-frame RX drain (adaptive lookahead (b) Step 2). Runs in on_time_tick; needs the
     // time_tick hook (armed below). Both peers can set it independently. Off by default.
-    g_rx_spin  = GetPrivateProfileIntA("net", "rx_spin", SHIP_RX_SPIN, g_ini) != 0;
-    g_monotone = GetPrivateProfileIntA("net", "horizon_monotone", 1, g_ini) != 0; // mp:D30 (G297)
-    if (!g_monotone)
-        seam_log("; [monotone] OFF ([net] horizon_monotone=0) -- the pre-D30 control arm: a lookahead "
-                 "shrink LOWERS the advertised horizon\n");
+    g_rx_spin = mh_ini_get_int("net", "rx_spin", SHIP_RX_SPIN, g_ini) != 0;
     // Experimental game-speed pin (percent; 100 = normal, 200 = 2x). Both peers must set the SAME value
     // (deterministic). Pinned every frame via the time_tick hook below (installed if this is set).
-    int gs_pct = GetPrivateProfileIntA("net", "game_speed_pct", 0, g_ini);
+    int gs_pct = mh_ini_get_int("net", "game_speed_pct", 0, g_ini);
     if (gs_pct > 0) g_game_speed = (double)gs_pct / 100.0;
     // ANNOUNCE THE EFFECTIVE SPEED, ALWAYS -- including when the knob was absent (AI0, 2026-08-01).
     // Two things make this worth a line rather than a comment. (1) game_speed_pct changes how much
@@ -4868,71 +5083,63 @@ void lockstep_install_core() {
                   gs_pct > 0 ? "pinned via [net] game_speed_pct" : "game_speed_pct absent -> unpinned");
         seam_log(b);
     }
-    g_sync_gameover  = GetPrivateProfileIntA("net", "sync_gameover", 1, g_ini);  // default ON (endgame fix)
-    g_graceful_leave = GetPrivateProfileIntA("net", "graceful_leave", 1, g_ini); // U17 (a) clean-quit self-removal; default ON since U19 (B2 does NOT catch a quit-to-menu -- see g_graceful_leave)
-    g_graceful_drop  = GetPrivateProfileIntA("net", "graceful_drop", 1, g_ini);  // U17 (b) fast hard-drop on transport-death; default ON
+    g_graceful_leave = mh_ini_get_int("net", "graceful_leave", 1, g_ini); // U17 (a) clean-quit self-removal; default ON since U19 (B2 does NOT catch a quit-to-menu -- see g_graceful_leave)
     // mp:U19b: the quitter freezes its horizon and waits for the survivors to park on it before the
     // self-removal (see graceful_leave_park); the CS serialises that freeze against the heartbeat.
-    g_leave_park    = GetPrivateProfileIntA("net", "graceful_leave_park", 1, g_ini);
-    g_leave_park_ms = GetPrivateProfileIntA("net", "graceful_leave_park_ms", 1500, g_ini);
-    g_hub_leave_ms  = GetPrivateProfileIntA("net", "hub_leave_timeout_ms", 2500, g_ini); // mp:U62: the handover's wait for every acknowledgement
     if (!g_hb_cs_ready) {
         InitializeCriticalSection(&g_hb_cs); // DllMain-safe (kernel32 only, no loader re-entry)
         g_hb_cs_ready = true;
     }
     // mp:GS2: game-level peer-data timeout -- drop a peer whose horizon has not moved in this many ms
     // (data-silent, not merely link-silent). <= 0 disables. Default justified beside SHIP_DATA_TIMEOUT_MS.
-    g_data_timeout_ms = GetPrivateProfileIntA("net", "data_timeout_ms", SHIP_DATA_TIMEOUT_MS, g_ini);
+    g_data_timeout_ms = mh_ini_get_int("net", "data_timeout_ms", SHIP_DATA_TIMEOUT_MS, g_ini);
     // Horizon heartbeat cadence (perf-decouple): >0 arms a thread that advertises the lockstep horizon
     // on real time, independent of render frames. Read here (DllMain, no thread); the thread starts in
     // lazy_start (off loader-lock). A good value is roughly lockstep_step_ms/4 .. /6 (e.g. 50 for 300).
-    g_hb_ms = GetPrivateProfileIntA("net", "horizon_heartbeat_ms", SHIP_HEARTBEAT_MS, g_ini);
+    g_hb_ms = mh_ini_get_int("net", "horizon_heartbeat_ms", SHIP_HEARTBEAT_MS, g_ini);
 
     // Overlay de-fang (perf-decouple step 2): byte-patch out the in-game SYNCHRONIZING modal so a
     // horizon-wait costs ~1 frame not ~2 s. Byte-patch (VirtualProtect) -> loader-lock safe, like the
     // seam installs. Pairs with the heartbeat to make a tight lookahead actually playable.
-    g_defang       = GetPrivateProfileIntA("net", "defang_overlay", 0, g_ini);
-    g_overlay_gate = GetPrivateProfileIntA("net", "overlay_gate", 0, g_ini); // gate the wait-overlay call (tt_wait=2)
-    g_icon_count   = GetPrivateProfileIntA("net", "icon_count", 1, g_ini);   // P4: count de-sync icon shows (default ON, diagnostic-only)
+    g_defang     = mh_ini_get_int("net", "defang_overlay", 0, g_ini);
+    g_icon_count = mh_ini_get_int("net", "icon_count", 1, g_ini); // P4: count de-sync icon shows (default ON, diagnostic-only)
     // REPURPOSED 2026-07-24 (proven in-game): defang_overlay=1 now means the FREEZE FIX ONLY -- NOP the
     // extend_ui_enter mode-8 path (`xui`), the DOMINANT freeze (a routine lockstep-extend order fires
     // ~3x/sec and pins the game clock ~2 s each -> 0.13x sim rate; determinism-clean to NOP). The mode-3
     // overlays stay LIVE by default so the de-sync corner ICON (tt_wait) and the "Player not responding"
     // kick MODAL (tt_sync) still show on genuine stalls (display-only, don't pin the clock, det-safe). Each
     // group is individually overridable; set defang_tt_sync=1 to restore the old suppress-the-modal behavior.
-    g_defang_xui               = GetPrivateProfileIntA("net", "defang_xui", g_defang, g_ini);        // freeze fix (=defang_overlay)
-    g_resync_wait_fix          = GetPrivateProfileIntA("net", "resync_wait_fix", 1, g_ini);          // defang dep #2 REAL fix (kills the resync busy-wait garbage-spin hang); default ON
-    g_resync_trigger_reset     = GetPrivateProfileIntA("net", "resync_trigger_reset", 0, g_ini);     // spurious-resync ROOT fix (option b); default OFF pending validation
-    g_resync_trigger_gate      = GetPrivateProfileIntA("net", "resync_trigger_gate", 1, g_ini);      // spurious-resync ROOT fix (option c); DEFAULT ON -- validated 2026-07-25 (0.98x/0 resyncs, det-clean, drop path preserved). Supersedes defang_xui as the freeze fix.
-    g_resync_count_init        = GetPrivateProfileIntA("net", "resync_count_init", 1, g_ini);        // mp:P9 ROOT fix: ACTIVE_PLAYER_COUNT recomputed at match start so the threshold is players*100, not 0; DEFAULT ON (see resync_count_init_tick)
-    g_resync_receiver_deadline = GetPrivateProfileIntA("net", "resync_receiver_deadline", 1, g_ini); // mp:P9W: a non-leader forces itself out of a leaderless barrier after max(2002, data_timeout_ms) ms; DEFAULT ON (see resync_receiver_deadline_hook)
+    g_defang_xui          = mh_ini_get_int("net", "defang_xui", g_defang, g_ini);   // freeze fix (=defang_overlay)
+    g_resync_trigger_gate = mh_ini_get_int("net", "resync_trigger_gate", 1, g_ini); // spurious-resync ROOT fix (option c); DEFAULT ON -- validated 2026-07-25 (0.98x/0 resyncs, det-clean, drop path preserved). Supersedes defang_xui as the freeze fix.
+    g_resync_count_init   = mh_ini_get_int("net", "resync_count_init", 1, g_ini);   // mp:P9 ROOT fix: ACTIVE_PLAYER_COUNT recomputed at match start so the threshold is players*100, not 0; DEFAULT ON (see resync_count_init_tick)
     // MP U20. DEFAULT OFF pending the measurement it exists to be judged by: the icon storm's
     // proximate cause is the adaptive controller saddling its ceiling and probing down (2026-08-29),
     // and suppressing an icon that a correctly-sized lookahead already stops firing would be hiding a
     // signal for nothing. Reimpl-ONLY -- there is no byte patch, so an unpromoted run cannot carry
     // it; the arming line below says so rather than letting a run believe it is gated.
-    g_desync_icon_gate = GetPrivateProfileIntA("net", "desync_icon_gate", 0, g_ini);
+    g_desync_icon_gate = mh_ini_get_int("net", "desync_icon_gate", 0, g_ini);
     // MP U44. DEFAULT ON: the stall overlay no longer closes an open mode-3 dialog (sell/building) on
     // dismiss and no longer lets the kick modal share the screen with it. 0 = the retail rule.
-    g_overlay_dialog_guard = GetPrivateProfileIntA("net", "overlay_dialog_guard", 1, g_ini);
-    g_resync_order_horizon = GetPrivateProfileIntA("net", "resync_order_horizon", 1, g_ini); // MP D14: schedule the resync-begin synthetic order at the horizon like every other replicated order; DEFAULT ON
+    g_overlay_dialog_guard = mh_ini_get_int("net", "overlay_dialog_guard", 1, g_ini);
     // MP U19e. DEFAULT ON: without it the leader's re-broadcast of a peer drop overwrites the very
     // datagram it is dispatching (one shared _G_LLM_NET_SEND_BUF for TX and RX), and the parse walks
     // into the payload and raises outcome 7 on a clean quit. Carried by the promoted body AND (mp:U19i) a byte patch.
-    g_gone_peer_frame_guard = GetPrivateProfileIntA("net", "gone_peer_frame_guard", 1, g_ini);
+    g_gone_peer_frame_guard = mh_ini_get_int("net", "gone_peer_frame_guard", 1, g_ini);
     // MP U49. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): an undock order for a unit
     // that is not PARKED is dropped at apply time. Carried by the promoted dispatcher AND a byte patch.
-    g_undock_reentry_fix = GetPrivateProfileIntA("net", "undock_reentry_fix", 1, g_ini);
+    g_undock_reentry_fix = mh_ini_get_int("net", "undock_reentry_fix", 1, g_ini);
+    // MP U45. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): 0xf4/0xf5 orders never supersede
+    // each other in release_due. Carried by the promoted body AND a byte patch.
+    g_diplo_order_dedup_fix = mh_ini_get_int("net", "diplo_order_dedup_fix", 1, g_ini);
     // MP U52. DEFAULT ON, SIM-AFFECTING: lobby teams -> relations at match start (+ Team mode victory/lock), and an ally
     // damaging an object does not flip the victim hostile. Both carried by the twins AND by byte patches.
-    g_team_relations_fix       = GetPrivateProfileIntA("net", "team_relations_fix", 1, g_ini);
-    g_ally_damage_no_hostility = GetPrivateProfileIntA("net", "ally_damage_no_hostility", 1, g_ini);
+    g_team_relations_fix       = mh_ini_get_int("net", "team_relations_fix", 1, g_ini);
+    g_ally_damage_no_hostility = mh_ini_get_int("net", "ally_damage_no_hostility", 1, g_ini);
     // MP U56/U66. DEFAULT ON, SIM-AFFECTING: an eliminated human's flag flip is made by the sim at the elimination step.
-    g_player_left_pin_fix = GetPrivateProfileIntA("net", "player_left_pin_fix", 1, g_ini);
+    g_player_left_pin_fix = mh_ini_get_int("net", "player_left_pin_fix", 1, g_ini);
     // MP U54. DEFAULT ON, SIM-AFFECTING: a defeated human stays in the match as a spectator. Needs the pinned flip.
-    g_spectate_after_defeat = GetPrivateProfileIntA("net", "spectate_after_defeat", 1, g_ini) != 0 && g_player_left_pin_fix != 0;
-    g_spectate_mask         = GetPrivateProfileIntA("net", "spectate_mask", 1, g_ini) != 0; // test knob: 0 = the spectator bit is never exported
-    g_spectate_view         = GetPrivateProfileIntA("net", "spectate_view", 1, g_ini) != 0; // render-only: the spectator sees the whole map
+    g_spectate_after_defeat = mh_ini_get_int("net", "spectate_after_defeat", 1, g_ini) != 0 && g_player_left_pin_fix != 0;
+    g_spectate_mask         = mh_ini_get_int("net", "spectate_mask", 1, g_ini) != 0; // test knob: 0 = the spectator bit is never exported
     // C8-e: the three retired `defang_*` knobs. A SCOPE DECISION, not a retirement -- the capability
     // is gone, so there is no carrier to point at and refuse_uncarried_fix would be the wrong message
     // (it says "the fix moved and you are not running the thing that carries it"; here there is no
@@ -4959,7 +5166,42 @@ void lockstep_install_core() {
     static const char *const kDefangWhy =
         "C8-e -- the three time_tick defangs were dropped as a scope decision; resync_trigger_gate "
         "supersedes them as the root-cause fix";
+    static const char *const kIniCutWhy =
+        "ini-cut wave 2026-10-06 -- the key was only ever read at its default (or never read), so "
+        "the default is now unconditional and the knob is gone";
     static const retired_knob RETIRED_KNOBS[] = {
+        {"overlay_gate", kIniCutWhy},
+        {"resync_trigger_reset", kIniCutWhy},
+        {"relay_room", "mp:R1e -- the relay room is minted by the lobby, never configured"},
+        {"bulk_selftest_mb", kIniCutWhy},
+        {"bulk_selftest_step", kIniCutWhy},
+        {"log_gamemode", kIniCutWhy},
+        {"graceful_drop", kIniCutWhy},
+        {"graceful_leave_park", kIniCutWhy},
+        {"graceful_leave_park_ms", kIniCutWhy},
+        {"sync_gameover", kIniCutWhy},
+        {"resync_receiver_deadline", kIniCutWhy},
+        {"horizon_monotone", kIniCutWhy},
+        {"lockstep_adaptive", kIniCutWhy},
+        {"spectate_view", kIniCutWhy},
+        {"focus_log", kIniCutWhy},
+        {"failover_budget_ms", kIniCutWhy},
+        {"hub_leave_timeout_ms", kIniCutWhy},
+        {"udp_redundancy", kIniCutWhy},
+        {"resync_order_horizon", kIniCutWhy},
+        {"resync_wait_fix", kIniCutWhy},
+        {"u3b_park", kIniCutWhy},
+        {"u29_slide_dir", kIniCutWhy},
+        {"u29_reroot", kIniCutWhy},
+        {"u29_teardown", kIniCutWhy},
+        {"u29_screen_gate", kIniCutWhy},
+        {"dedup_cancel_slide", kIniCutWhy},
+        {"dedup_dead_slide", kIniCutWhy},
+        {"slide_diag", kIniCutWhy},
+        {"map_entry_check", kIniCutWhy},
+        {"start_slots", kIniCutWhy},
+        {"diplo_echo_nop", kIniCutWhy},
+        {"info_guard", kIniCutWhy},
         {"defang_tt_wait", kDefangWhy},
         {"defang_tt_sync", kDefangWhy},
         {"defang_dismiss", kDefangWhy},
@@ -4979,8 +5221,7 @@ void lockstep_install_core() {
         }
     }
     install_overlay_patches(); // self-gates: each group applied per its knob (incl. the gate for tt_wait==2)
-    if (g_resync_wait_fix) install_resync_wait_fix();
-    if (g_resync_trigger_reset) install_resync_trigger_reset();
+    install_resync_wait_fix();
     // C8 (ii): refuse_uncarried_fix is DEFINED above but deliberately NOT CALLED yet. It gets wired
     // per patch, in C8.3, AS EACH `if (knob) install_x();` LINE IS REPLACED BY IT -- which is the
     // only place it can be correct. Wiring it here alongside a still-present install_x() would make
@@ -5009,7 +5250,6 @@ void lockstep_install_core() {
     if (mh::config::ours_run()) {
         mh::lockstep::reimpl_fixes fx = mh::lockstep::fixes();
         fx.resync_trigger_gate        = g_resync_trigger_gate != 0;
-        fx.resync_trigger_reset       = g_resync_trigger_reset != 0;
         // RIG-ONLY. Default 0; it forces sim_tick's mode-3 fixed-step loop in single-player so the SP
         // oracle integrates like MP. It only takes effect on a run that also promotes sim_tick
         // ([promote] sim_tick=1) -- the original body still branches on the mode -- so the arming line
@@ -5024,13 +5264,12 @@ void lockstep_install_core() {
         // below is what caught it, by NOT printing. F2G merged the files, so that read would now
         // resolve; the key stays in [net] because this is a NET knob and because [harness] keys are
         // inert unless `[harness] enable=1` armed the instrument, which this one must not require.
-        fx.rig_fixed_step_loop = GetPrivateProfileIntA("net", "rig_fixed_step_loop", 0, g_ini) != 0;
+        fx.rig_fixed_step_loop = mh_ini_get_int("net", "rig_fixed_step_loop", 0, g_ini) != 0;
         // D17: the same knob the trampoline used, so it means ONE thing whichever implementation is
         // live -- which is the third property reimpl_fixes is documented to have. Note the ini
         // DEFAULT here is 1, unlike its `= false` initialiser in the struct: the initialiser is the
         // faithful-stock value a pure caller or a lockstest fixture gets, while the shipped run has
         // had this fix on since D14, and restoring that is the point of carrying it.
-        fx.resync_order_horizon = g_resync_order_horizon != 0;
         // U20. Unlike every other field here, this knob has NO byte-patch carrier -- `defang_tt_wait`
         // was its nearest ancestor and C8-e dropped it, leaving wait_overlay_gate_thunk as a pure
         // counter with `g_icon_gate` hardcoded 0. So an UNPROMOTED run with this set has no gate at
@@ -5042,14 +5281,14 @@ void lockstep_install_core() {
         fx.gone_peer_frame_guard = g_gone_peer_frame_guard != 0;
         // U45. SIM-AFFECTING (order release dedup), so every peer must carry the same value: the shipped
         // default is 1 and no one sets it in a real ini, same contract as sim_step_ms.
-        fx.diplo_order_dedup_fix = GetPrivateProfileIntA("net", "diplo_order_dedup_fix", 1, g_ini) != 0;
+        fx.diplo_order_dedup_fix = g_diplo_order_dedup_fix != 0;
         seam_log(fx.diplo_order_dedup_fix
                      ? "; U45: diplo_order_dedup_fix=1 -- release_due keeps 0xf4 and 0xf5 from superseding each other\n"
                      : "; U45: diplo_order_dedup_fix=0 -- retail dedup: a relation + control change in one Apply loses the relation order (the reproduction arm)\n");
         fx.undock_reentry_fix = g_undock_reentry_fix != 0; // U49, see install_undock_reentry_fix
         // U56. SIM-AFFECTING (the elimination flag flip moves from CTL_PLAYER_LEFT's receive time into
         // presence_lost), so every peer must carry the same value: shipped default 1, same contract as U45.
-        fx.player_left_pin_fix = GetPrivateProfileIntA("net", "player_left_pin_fix", 1, g_ini) != 0;
+        fx.player_left_pin_fix = mh_ini_get_int("net", "player_left_pin_fix", 1, g_ini) != 0;
         seam_log(fx.player_left_pin_fix
                      ? "; U56: player_left_pin_fix=1 -- an eliminated human's HUMAN/DEFEATED/GONE flip is made by the sim at the elimination step, not at CTL_PLAYER_LEFT receipt\n"
                      : "; U56: player_left_pin_fix=0 -- retail: CTL_PLAYER_LEFT flips the flags at receive time (survivors can disagree on the step; the reproduction arm)\n");
@@ -5110,17 +5349,18 @@ void lockstep_install_core() {
     // installer again -- it refuses per site itself, for a site that is neither patched nor promoted.
     if (g_resync_trigger_gate) install_resync_trigger_gate();
     if (g_gone_peer_frame_guard) install_gone_peer_frame_guard(); // mp:U19i -- same three outcomes
+    if (g_diplo_order_dedup_fix) install_diplo_order_dedup_fix(); // mp:U45 -- same three outcomes
     if (g_undock_reentry_fix) install_undock_reentry_fix();       // mp:U49 -- same three outcomes
+    if (g_overlay_dialog_guard) install_overlay_dialog_guard();   // mp:U44 -- retail carrier; per-site DISPLACED under promotion
     else seam_log("; undock re-entry fix OFF ([net] undock_reentry_fix=0, MP U49): retail dispatch -- a second undock applied to a unit already walking out wedges it in EXIT_WAIT (the reproduction arm)\n");
-    if (g_player_left_pin_fix) install_player_left_pin_fix();                // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
-    if (g_spectate_after_defeat) install_spectate();                         // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)
-    if (g_spectate_after_defeat && g_spectate_view) install_spectate_view(); // mp:U54 -- the spectator's whole-map view (render-only)
-    if (g_team_relations_fix) install_team_relations_fix();                  // mp:U52 -- seed + lock (retail carriers; displaced by promotion)
-    if (g_ally_damage_no_hostility) install_ally_damage_no_hostility();      // mp:U52 -- hostility guard
-    if (g_resync_order_horizon) install_resync_order_horizon();
+    if (g_player_left_pin_fix) install_player_left_pin_fix();           // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
+    if (g_spectate_after_defeat) install_spectate();                    // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)
+    if (g_spectate_after_defeat) install_spectate_view();               // mp:U54 -- the spectator's whole-map view (render-only)
+    if (g_team_relations_fix) install_team_relations_fix();             // mp:U52 -- seed + lock (retail carriers; displaced by promotion)
+    if (g_ally_damage_no_hostility) install_ally_damage_no_hostility(); // mp:U52 -- hostility guard
+    install_resync_order_horizon();
     // mp:P9W: spliced UNCONDITIONALLY (like install_overlay_patches above) -- the thunk always runs
-    // the original llm_wait_screen_frame first and self-gates its own extra work on
-    // g_resync_receiver_deadline, so an operator flipping the knob off/on needs no re-arm.
+    // the original llm_wait_screen_frame first.
     install_resync_receiver_deadline();
 
     // Hi-res game clock (perf-decouple). The strategic sim clock (time::GetCurrentTime
@@ -5131,21 +5371,20 @@ void lockstep_install_core() {
     // GetTickCount updates at ~1 ms -> the quantum (and thus the per-step discard) shrinks ~16x -> the sim
     // approaches 1.0x at step=100, with NO input-latency cost and NO sim change (wall-clock resolution only ->
     // determinism-safe). Gated by mh_net.ini [net] hires_clock. (Process exit restores the period.)
-    if (GetPrivateProfileIntA("net", "hires_clock", SHIP_HIRES_CLOCK, g_ini)) {
+    if (mh_ini_get_int("net", "hires_clock", SHIP_HIRES_CLOCK, g_ini)) {
         timeBeginPeriod(1);
         seam_log("; hires_clock: timeBeginPeriod(1) armed (finer Sleep/scheduler; does NOT affect GetTickCount)\n");
     }
     // Hi-res game clock via QPC (the real timer-quantum fix; see install_qpc_clock). Redirects the game's
     // GetTickCount (IAT slot 0x01070414) to a QPC-derived ms count so TOTAL climbs in ~1 ms steps.
-    if (GetPrivateProfileIntA("net", "qpc_clock", SHIP_QPC_CLOCK, g_ini)) install_qpc_clock();
+    if (mh_ini_get_int("net", "qpc_clock", SHIP_QPC_CLOCK, g_ini)) install_qpc_clock();
 
-    int sp_log = GetPrivateProfileIntA("net", "sp_clock_log", 0, g_ini); // SP clock cross-check (log every frame)
-    if (ls_log || sp_log) {                                              // the path itself is composed per write (SES1: per session) in ls_log_tick
+    int sp_log = mh_ini_get_int("net", "sp_clock_log", 0, g_ini); // SP clock cross-check (log every frame)
+    if (ls_log || sp_log) {                                       // the path itself is composed per write (SES1: per session) in ls_log_tick
         g_ls_log    = ls_log != 0;
         g_ls_log_sp = sp_log != 0;
     }
-    if (g_lockstep_step > 0.0 || g_ls_log || g_ls_log_sp || g_game_speed > 0.0 || g_sim_step > 0.0 ||
-        g_rx_spin || g_graceful_drop || g_adaptive) { // graceful_drop + adaptive need on_time_tick every frame
+    { // graceful_drop (always on since its knob was retired) needs on_time_tick every frame
         // entry_claim::rebind (C9): time_tick IS promoted in the default closure, and this detour
         // holding its entry is C4's protocol -- the promotion rebinds our fall-through rather than
         // writing the entry itself. An exclusive claim would be refused here. The Watcom-prologue
@@ -5265,10 +5504,10 @@ void install_sim_tick_promotion() {
 // Present hook (llm_gfx_present_flip, post-sim_tick): drives the Phase-3 frame-time log (frametime_log)
 // and/or the eager horizon advertisement (eager_advertise, perf-decouple) and/or the per-EVENT temporal
 // trace drain ([trace] temporal=1, net_diag.cpp). Install the shared hook once if any is requested.
-// Then the game-over leave-lockstep detour (gated by sync_gameover, read in lockstep_install_core).
+// Then the game-over leave-lockstep detour (always installed).
 void lockstep_install_present_gameover() {
-    int ft_log    = GetPrivateProfileIntA("net", "frametime_log", SHIP_LOG_LEVEL, g_ini);
-    int eager_adv = GetPrivateProfileIntA("net", "eager_advertise", SHIP_EAGER_ADV, g_ini);
+    int ft_log    = mh_ini_get_int("net", "frametime_log", SHIP_LOG_LEVEL, g_ini);
+    int eager_adv = mh_ini_get_int("net", "eager_advertise", SHIP_EAGER_ADV, g_ini);
     // Per-EVENT temporal trace ([trace] temporal=1). Needs the present hook too (TEV_PRESENT + the flush);
     // net_diag owns the recorder -- temporal_configure() reads the flag + inits QPF and the log path.
     int temporal = temporal_configure();
@@ -5324,18 +5563,16 @@ void lockstep_install_present_gameover() {
     // deleted the gates altogether, so the own detour is the only host again -- the pre-U33 shape,
     // reached deliberately this time. The outcome argument is invisible to the naked thunk (logged
     // as 0); nothing else about the fix changes.
-    if (g_sync_gameover) {
-        const bool go_armed = install_trampoline(
-            ADDR_GAMEOVER_DLG, (void *)gameover_detour, &g_go_tramp, 8,
-            mh::hook::entry_claim::exclusive,
-            "the game-over leave-lockstep fix ([net] sync_gameover)");
-        if (go_armed)
-            seam_log("; game-over leave-lockstep armed (own detour): loser -> SESSION "
-                     "3->2 at the outcome dialog\n");
-        else
-            seam_log("; game-over leave-lockstep NOT armed -- see the [interlock] line for "
-                     "the reason\n");
-    }
+    const bool go_armed = install_trampoline(
+        ADDR_GAMEOVER_DLG, (void *)gameover_detour, &g_go_tramp, 8,
+        mh::hook::entry_claim::exclusive,
+        "the game-over leave-lockstep fix");
+    if (go_armed)
+        seam_log("; game-over leave-lockstep armed (own detour): loser -> SESSION "
+                 "3->2 at the outcome dialog\n");
+    else
+        seam_log("; game-over leave-lockstep NOT armed -- see the [interlock] line for "
+                 "the reason\n");
 
     // Quit-to-main-menu: hook llm_game_return_to_main_menu_cb entry (55 89 E5 68 prologue).
     //

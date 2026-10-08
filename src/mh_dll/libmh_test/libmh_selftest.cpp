@@ -37,6 +37,7 @@
 // there is no documented convenience to distinguish it from.
 //
 #include "selftest_dispatch.h" // F5I: the suite table mechanism, shared with mh_nettest
+#include "mh_ini_gate.h"       // RL2: the ini ship gate -- main() pins it open for the suites
 
 #include "hostapi_selftest_support.h" // the GENERATED selftest host tables (both), bound in main()
 #include "../libmh/state/host_api.h"  // LIB-ABI: libmh_set_host_api + the unbound walks
@@ -162,6 +163,10 @@ int main(int argc, char **argv) {
     // version skew below exits 3, and the assertion would read that as "the exe lists nothing".
     const char *mode = (argc > 1) ? argv[1] : "";
     if (strcmp(mode, "--list-suites") == 0) return selftest_list_suites(SUITE_TABLE, SUITE_COUNT);
+
+    // RL2: the ini ship gate (mh_ini_gate.h, reached through libmh's save_live / turn_engine reads) is
+    // pinned OPEN, as net_selftest.cpp pins it: suites write fixture inis full of dev keys.
+    mh_ini_gate_test_force(1, 1);
 
     // ---- the standalone host's binding sequence, libref_host/main.cpp's, step by step -----------
     //

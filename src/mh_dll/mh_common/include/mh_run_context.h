@@ -3,7 +3,7 @@
 //
 // Phase 0a of the MP instrumentation work: instead of every module overwriting a fixed log name
 // next to the exe (mh_harness.log / mh_net.log / mh_lockstep.log / mh_launch.log) each run, all
-// LOG output is routed into a per-run folder "<exedir>\logs\<YYYYMMDD_HHMMSS>_<role>\" so history
+// LOG output is routed into a per-run folder "<cfgdir>\logs\<YYYYMMDD_HHMMSS>_<role>\" so history
 // is kept and a host<->client pair is unambiguous to tools/mp_analyze.py.
 //
 // The run-id + role are computed ONCE (first caller wins) and shared across every module, so the
@@ -23,9 +23,12 @@
 // mh_session_dir.h for the naming, the rollover rules and the SESSION_BEGIN/END record.
 //
 // IMPORTANT: only *.log OUTPUTS move. The config input (mh_net.ini -- ONE file since fork F2G,
-// [harness] included) and the harness
-// seed blob stay at the exe dir -- use MH_ExeDir() for those. If the logs folder can't be created,
-// MH_RunDir() falls back to the exe dir so logs never silently vanish.
+// [harness] included) is found through include/mh_config_dir.h (RL3): MH_CONFIG_DIR, else the exe
+// dir in portable mode, else %LOCALAPPDATA%\MissionHumanity\games\<hash16>\. "<cfgdir>" in this
+// header IS that directory -- so a hand launch with no ini logs under the user profile, and a rig
+// lane (portable) logs under "<exedir>\logs" exactly as before. The harness seed blob and replay
+// inputs stay at the exe dir -- use MH_ExeDir() for those. If the logs folder can't be created,
+// MH_RunDir() falls back to the config dir so logs never silently vanish.
 //
 #ifndef MH_RUN_CONTEXT_H
 #define MH_RUN_CONTEXT_H
@@ -37,8 +40,8 @@ extern "C" {
 // THE CURRENT output directory (created; trailing backslash). Until SES1 this was one folder per
 // PROCESS; it is now one folder per SESSION, and the process folder only while no match is open:
 //
-//     "<exedir>\logs\<UTC>_menu_<role>\"             -- before any session, and after one closes
-//     "<exedir>\logs\<UTC>_<mid8>_<map>_<mode>\"      -- while a match is open
+//     "<cfgdir>\logs\<UTC>_menu_<role>\"             -- before any session, and after one closes
+//     "<cfgdir>\logs\<UTC>_<mid8>_<map>_<mode>\"      -- while a match is open
 //
 // <UTC> is "YYYY-MM-DDTHH-MM-SSZ" (SES8; colons are illegal in a path). <mode> is the MATCH's:
 // host/client (lobby), campaign/tutorial/skirmish/tactical (single-player). <role> is the BOOT role.
@@ -56,7 +59,8 @@ const char *MH_RunDir(void);
 // mh_overlay.log). Everything else follows MH_RunDir().
 const char *MH_ProcessDir(void);
 
-// "<exedir>\" (trailing backslash). For config/seed inputs that live next to the exe.
+// "<exedir>\" (trailing backslash). The INSTALLATION directory: lang\ packs, harness replay inputs,
+// UI scripts. NOT where mh_net.ini / mh_key.txt / logs live -- that is the config dir (mh_config_dir.h).
 const char *MH_ExeDir(void);
 
 // "host" / "client" / "solo" -- the role this process detected at boot (cmdline verb, then ini).
@@ -79,6 +83,10 @@ int         MH_RunDir_SessionActive(void);
 const char *MH_RunDir_SessionMatchId(void);         // "" when no session is open
 const char *MH_ProcessDirLeaf(void);                // "<dirstamp>_menu_<role>" -- recorded in session.json
 int         MH_RunDir_UtcStamp(char *dst, int cap); // "YYYYMMDDTHHMMSSZ"; cap >= MH_SESSION_STAMP_CAP
+
+// RL5: prune old session/process folders under the logs root (keep_sessions / keep_days from
+// `[log]`), on a worker thread. Idempotent; call once from the first present. See mh_log_prune.h.
+void MH_LogPrune_Start(void);
 
 // Write "[HH:MM:SS.mmm] " (local wall clock) into dst; returns the length written. dst needs >= 16 B.
 //

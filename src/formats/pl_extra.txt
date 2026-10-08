@@ -1,0 +1,48 @@
+# pl_extra.txt -- the Polish strings WE wrote for the pl language pack (RL18). Not retail data.
+#
+# src/formats/langpack_pl.py builds lang\pl from the Extermination install (retail text, CP1250) and
+# fills what Extermination does not have, or has in a shape Mission: Humanity cannot use, from this
+# file. Everything below is our own wording and is committed; everything retail is not.
+#
+# Format: `[section]` headers, then `key = value` lines. A value wrapped in "double quotes" keeps
+# its leading/trailing spaces (the quotes are dropped). `\n` stays a literal backslash-n: it is the
+# game's line-break escape, not a newline in this file. UTF-8, `#` comments.
+#
+# [initlang]  TEXT entries of Mission: Humanity's initlang that Extermination lacks (21 keys: the
+#             alien "_a" variants, the unit suffixes, five newer messages) plus the two whose
+#             Extermination text lacks the %s the MH code hands them (K_MENU_MsgMove,
+#             K_MENU_MovingControl), reworded so the printf shape equals MH English's exactly.
+#             The alien "_a" buildings use the pack's own building names (kopalnie, elektrownie,
+#             kolonii: Extermination names the alien buildings Kopalnia / Elektrownia / Kolonia), the
+#             alien colonists are "trutnie" (drones), as in MH English.
+# [info]      info\INFO.TXT blocks MH has and Extermination does not (1 block: obcy_pr\OU_99.INF, a
+#             placeholder in English too: "Do not translate. Additional description, not use in.").
+
+[initlang]
+K_BRAK_MATKI_NA_PLANECIE_a = brak matki na planecie
+K_BRAK_KIEROWCOW_a = brak trutni do obsługi pojazdów
+K_BRAK_MIEJSC_W_TAB_ZOLNIERZY_a = Masz już max ilość wojowników
+K_CONS_QUARTERQUANT_a = "  ilość kolonii"
+K_CONS_PEOPLE_a = "  trutnie"
+K_CONS_MINEQUANT_a = "  kopalnie"
+K_CONS_RELAYQUANT_a = "  przekaźniki"
+K_CONS_POWERQUANT_a = "  elektrownie"
+K_CONS_TOWERQUANT_a = "  wieżyczki"
+K_CONS_BUILDING_PEOPLE_a = "  Trutnie "
+K_MENU_People_a = Trutnie
+K_MENU_MaxPeople_a = Max. liczba mieszkańców:
+K_MENU_Speed_Unit = km/h
+K_MENU_FlightSpeed_Unit = km/s
+K_MENU_Sight_Unit = m
+K_MENU_Time_Unit = s
+K_MSG_TooFewWorkersDetected = W budynku pracuje mniej robotników niż potrzeba
+K_NIE_MOZE_BYC_TRANSPORTOWANY_MAX = jednostka nie nadaje się do transportu - max
+K_ERROR_FILE_NAME = błędna nazwa pliku
+K_ZASOBY_NISZCZEJA = zasoby się marnują, brak miejsca
+K_MENU_GameStatus = Aktualny stan gry
+# reworded: the retail Polish has no %s
+K_MENU_MsgMove = Czy na pewno przenieść\nkontrolę na %s ?
+K_MENU_MovingControl = Przenoszenie kontroli na %s
+
+[info]
+obcy_pr\OU_99.INF = Nie tłumaczyć. Dodatkowy opis, nieużywany.

@@ -48,8 +48,13 @@ builds twice and compares.
 
 USAGE
   python src/formats/langpack.py --selftest
-  python src/formats/langpack.py build [--ru <RU install|zip>] [--en <EN install|zip>]
-                                       [--game <dir>] [--id ru] [--no-art]
+  python src/formats/langpack.py build [--lang <ru|fr|de|it|pl>] [--src <install dir|zip>] [--ru <RU install|zip>]
+                                       [--en <EN install|zip>] [--game <dir>] [--id <lang>] [--no-art]
+      (--lang defaults to the --id's language, `ru_noart` -> ru. The PACKS table below is the per-pack
+      recipe: ru = font merge + 7-button art from the RU+EN installs; fr/de/it = the retail mh_ex
+      carried over verbatim, fonts proven identical to EN, missing TEXT keys filled in English;
+      pl = RL18, from the Extermination install (src/formats/langpack_pl.py; needs the DE and FR installs
+      too, for the menu art). --src names the retail install of a fr/de/it/pl pack; --ru is the same for ru.)
       writes <game>\lang\<id>\ (default game = machine_config POLYGON). --no-art keeps the retail
       6-button menu art, which exercises mh.dll's fallback label.
   python src/formats/langpack.py check [--game <dir>] [--id ru]
@@ -80,6 +85,69 @@ TOOL = "src/formats/langpack.py"
 STRINGS_DIR = os.path.join(_HERE, "mh_strings")  # mods:LANG4: our translations of mh.dll's own text
 STRINGS_DEF = os.path.join(_REPO, "src", "mh_dll", "mh", "ui", "player_strings.def")
 FORMAT_VERSION = 1  # bump when the derivation changes, so BUILD.txt says which recipe made a pack
+
+# The per-pack table (RL17). `src` = the retail install dir under game_data/ (--src or the env var
+# MH_LANG_SRC_<ID> wins); `codepage` = the 8-bit codepage of the pack's Msgs.dat and of the text a
+# player types (written to pack.ini, which mh.dll applies when `[input] codepage` is not pinned);
+# `merge` = the RU recipe (font merge onto the EN accents + Cyrillic derivation, initlang fill);
+# `art` = compose the 7-button menu art. A pack with neither is the retail mh_ex carried over
+# verbatim (fonts proven byte-identical to EN) plus an English fill for any TEXT key it lacks.
+PACKS = {
+    "ru": {"src": "ru_rsr", "codepage": 1251, "merge": True, "art": True},
+    "fr": {"src": "fr_rsr", "codepage": 1252, "merge": False, "art": False},
+    "de": {"src": "de_rsr", "codepage": 1252, "merge": False, "art": False},
+    "it": {"src": "it_rsr", "codepage": 1252, "merge": False, "art": False},
+    # RL18: built from the Extermination install (langpack_pl.py): `ext` = a recipe of its own, not a
+    # verbatim carry-over -- EN mh_ex + Polish fonts + Extermination text/info/voices + composed menu art.
+    "pl": {"src": "ext_rsr", "codepage": 1250, "merge": False, "art": True, "ext": True},
+}
+PACK_INI = "pack.ini"
+
+
+def pack_spec(lang_id):
+    """(language, PACKS row) for a pack id (`ru_noart` -> ru)."""
+    lang = lang_id.split("_")[0]
+    if lang not in PACKS:
+        raise SystemExit(f"unknown language '{lang}' -- PACKS knows {', '.join(PACKS)}")
+    return lang, PACKS[lang]
+
+
+def _game_data_roots():
+    roots = [_REPO]
+    parts = _REPO.replace("\\", "/").split("/.claude/worktrees/")
+    if len(parts) == 2:  # a worktree: the gitignored game_data/ lives in the main tree
+        roots.append(parts[0])
+    return roots
+
+
+def resolve_pack_source(lang, explicit=None):
+    """The retail install of a non-merge pack: --src, MH_LANG_SRC_<ID>, game_data/<lang>_rsr."""
+    spec = PACKS[lang]
+    if not spec["src"]:
+        raise SystemExit(f"'{lang}' has no retail source to carry over -- it is built by its own row (RL18)")
+    for cand in (explicit, os.environ.get("MH_LANG_SRC_" + lang.upper())):
+        if cand:
+            return fnt.open_source(cand, "--src")
+    for root in _game_data_roots():
+        d = os.path.join(root, "game_data", spec["src"])
+        if os.path.isdir(d):
+            return fnt.Source(d)
+    raise SystemExit(f"no {lang.upper()} install found (game_data/{spec['src']}) -- pass --src <dir|zip>")
+
+
+def resolve_en(en=None):
+    """The EN install (non-Cyrillic mh_ex fonts): explicit, else the first candidate that qualifies."""
+    if en:
+        return fnt.open_source(en, "--en")
+    for p in fnt._candidate_sources():
+        try:
+            s = fnt.Source(p)
+            if s.font_layer("mh_ex") is not None and not _has_cyrillic(s):
+                return s
+        except (FileNotFoundError, zipfile.BadZipFile, OSError, ValueError):
+            continue
+    raise SystemExit("no EN install found -- pass --en <dir|zip>")
+
 
 # ---------------------------------------------------------------------------------- pack I/O
 NAM_ENTRY = struct.Struct("<47s5s3I")  # name, type, offset, stored size, final size (unpack.py)
@@ -131,14 +199,27 @@ def write_pack(members, out_dir, pack="mh_ex"):
 _DEC = None
 
 
+_PAYLOAD_CACHE = {}
+
+
 def payload(m):
-    """A member's decompressed bytes (the loader inflates only on the `LZW ` magic)."""
+    """A member's decompressed bytes (the loader inflates only on the `LZW ` magic). Memoised on the
+    stored bytes: the pl build and its selftest decode the same retail members (the big BACK
+    backgrounds, the Extermination voices) in several builds."""
     global _DEC
+    key = hashlib.md5(m.stored).digest()
+    hit = _PAYLOAD_CACHE.get(key)
+    if hit is not None:
+        return hit
     if _DEC is None:
         from decompress import Decompressor
 
         _DEC = Decompressor()
-    return _DEC.decompress(m.stored)
+    out = _DEC.decompress(m.stored)
+    if len(_PAYLOAD_CACHE) >= 96:
+        _PAYLOAD_CACHE.pop(next(iter(_PAYLOAD_CACHE)))
+    _PAYLOAD_CACHE[key] = out
+    return out
 
 
 def read_loose(src, name):
@@ -532,7 +613,80 @@ def _replace(members, base, blob, report, why):
     report.append(f"  {m.name:24} {len(blob):8} bytes  {why}")
 
 
+FONT_FILES = ("FONTLAY.TXT",) + tuple(fnt.PFMENU)
+
+
+def write_pack_ini(out_dir, codepage):
+    with open(os.path.join(out_dir, PACK_INI), "w", encoding="ascii", newline="\n") as f:
+        f.write(
+            f"; written by {TOOL}: the 8-bit codepage of this pack's Msgs.dat and typed text.\n"
+            "; mh.dll uses it when [input] codepage is not pinned in mh_net.ini.\n"
+            f"[pack]\ncodepage={codepage}\n"
+        )
+
+
+def build_plain(src, en_src, out_dir, lang_id, quiet=False):
+    """fr/de/it: the retail mh_ex verbatim; only initlang gains the TEXT keys it lacks (in English)."""
+    lang, spec = pack_spec(lang_id)
+    report = []
+    members = read_pack(src)
+    by_key = {m.key(): m for m in members}
+    en_by_key = {m.key(): m for m in read_pack(en_src)}
+    for base in FONT_FILES:  # the claim that lets this pack skip all font work: proven on every build
+        k = "fnt\\" + base.lower()
+        if k not in by_key or k not in en_by_key or payload(by_key[k]) != payload(en_by_key[k]):
+            raise SystemExit(f"{lang}: fnt\\{base} differs from EN -- this pack needs font work, not a verbatim carry-over")
+    il, added = build_initlang(payload(by_key["init\\initlang.cfg"]), payload(en_by_key["init\\initlang.cfg"]))
+    if added:
+        _replace(members, "initlang.cfg", il, report, "initlang: + %d TEXT entries in English: %s"
+                 % (len(added), ", ".join(added)))
+    write_pack(members, out_dir)
+    msgs = read_loose(src, "Msgs.dat")
+    if msgs is not None:
+        with open(os.path.join(out_dir, "Msgs.dat"), "wb") as f:
+            f.write(msgs)
+    write_pack_ini(out_dir, spec["codepage"])
+    lines = [
+        f"language pack built by {TOOL} (format {FORMAT_VERSION}); retail game data -- never commit",
+        f"{lang} source: {os.path.basename(src.path)}  mh_ex.rsr md5 {md5(src._read('mh_ex', '.rsr'))}",
+        f"en source: {os.path.basename(en_src.path)}  mh_ex.rsr md5 {md5(en_src._read('mh_ex', '.rsr'))}",
+        "recipe: retail mh_ex carried over (fonts byte-identical to EN; no font merge, no menu art)",
+        f"Msgs.dat: {'copied' if msgs is not None else 'absent in the source'}",
+        f"pack.ini: codepage {spec['codepage']}",
+        install_strings(lang_id, out_dir),
+    ]
+    for ext in (".nam", ".rsr"):
+        lines.append(f"mh_ex{ext} md5 {md5(open(os.path.join(out_dir, 'mh_ex' + ext), 'rb').read())}")
+    lines += [r.strip() for r in report]
+    with open(os.path.join(out_dir, "BUILD.txt"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    if not quiet:
+        for line in lines:
+            print(line)
+    return report
+
+
+def resolve_art_donors():
+    """The DE and FR retail installs the Polish menu art borrows a Z and an acute accent from."""
+    out = {}
+    for lang in ("de", "fr"):
+        try:
+            out[lang] = resolve_pack_source(lang)
+        except SystemExit as exc:
+            raise SystemExit(f"the pl menu art needs the {lang.upper()} install: {exc}") from None
+    return out
+
+
 def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru"):
+    """ru_src = the pack's own retail install (named for the RU original)."""
+    _lang, spec = pack_spec(lang_id)
+    if spec.get("ext"):
+        import langpack_pl
+
+        return langpack_pl.build_pl(sys.modules[__name__], fnt, ru_src, en_src, out_dir, quiet,
+                                    art_donors=resolve_art_donors() if art else None, lang_id=lang_id)
+    if not spec["merge"]:
+        return build_plain(ru_src, en_src, out_dir, lang_id, quiet)
     report = []
     members = read_pack(ru_src)
     en_members = read_pack(en_src)
@@ -565,12 +719,14 @@ def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru"):
     if msgs is not None:
         with open(os.path.join(out_dir, "Msgs.dat"), "wb") as f:
             f.write(msgs)
+    write_pack_ini(out_dir, spec["codepage"])
     lines = [
         f"language pack built by {TOOL} (format {FORMAT_VERSION}); retail game data -- never commit",
         f"ru source: {os.path.basename(ru_src.path)}  mh_ex.rsr md5 {md5(ru_src._read('mh_ex', '.rsr'))}",
         f"en source: {os.path.basename(en_src.path)}  mh_ex.rsr md5 {md5(en_src._read('mh_ex', '.rsr'))}",
         f"menu art: {'built (7-button)' if art else 'retail (6-button; mh.dll draws the fallback label)'}",
         f"Msgs.dat: {'copied' if msgs is not None else 'absent in the source'}",
+        f"pack.ini: codepage {spec['codepage']}",
         install_strings(lang_id, out_dir),
     ]
     for ext in (".nam", ".rsr"):
@@ -668,12 +824,29 @@ def install_strings(lang_id, out_dir):
 PROBE_CPS = (0x041F, 0x041A, 0x0141, 0xFFFD)  # lifted Cyrillic, drawn Cyrillic, drawn Polish, box
 
 
+def read_pack_codepage(pack_dir):
+    """`[pack] codepage=` of <pack_dir>/pack.ini (what mh.dll's MH_LangPack_Codepage reads); 0 = none."""
+    p = os.path.join(pack_dir, PACK_INI)
+    if not os.path.isfile(p):
+        return 0
+    in_pack = False
+    for line in open(p, encoding="ascii", errors="replace").read().splitlines():
+        line = line.split(";")[0].strip()
+        if line.startswith("["):
+            in_pack = line.lower() == "[pack]"
+        elif in_pack and line.lower().startswith("codepage"):
+            _k, _eq, v = line.partition("=")
+            return int(v.strip()) if v.strip().isdigit() else 0
+    return 0
+
+
 def pack_status(pack_dir):
     """What an installed pack carries, read from the pack itself (no marker file): a dict with
     `ok` (a readable pair), `cyrillic`/`merged` (the fonts), `art7` (MenuBck2 != MenuBck1),
     `strings` (a mh_strings.txt the LANG4 check finds clean) and `reason` (why not ok). The UI suite's
     lang preconditions read exactly this."""
-    st = {"ok": False, "merged": False, "art7": False, "cyrillic": False, "strings": False, "reason": ""}
+    st = {"ok": False, "merged": False, "art7": False, "cyrillic": False, "strings": False, "codepage": 0, "reason": ""}
+    st["codepage"] = read_pack_codepage(pack_dir)
     sp = os.path.join(pack_dir, "mh_strings.txt")
     st["strings"] = os.path.isfile(sp) and not strings_problems(sp)
     if not (os.path.isfile(os.path.join(pack_dir, "mh_ex.nam")) and os.path.isfile(os.path.join(pack_dir, "mh_ex.rsr"))):
@@ -697,10 +870,14 @@ def pack_status(pack_dir):
 
 # ---------------------------------------------------------------------------------- commands
 def cmd_build(args):
-    ru_src, en_src = resolve_sources(args.ru, args.en)
+    lang, spec = pack_spec(args.lang or args.id)
+    if spec["merge"]:
+        ru_src, en_src = resolve_sources(args.ru or args.src, args.en)
+    else:
+        ru_src, en_src = resolve_pack_source(lang, args.src), resolve_en(args.en)
     game = args.game or machine.POLYGON
     out = os.path.join(game, "lang", args.id)
-    print(f"RU source: {ru_src.path}\nEN source: {en_src.path}\nwriting  : {out}")
+    print(f"{lang.upper()} source: {ru_src.path}\nEN source: {en_src.path}\nwriting  : {out}")
     build(ru_src, en_src, out, art=not args.no_art, lang_id=args.id)
     print(f"done -- enable with `[lang] pack={args.id}` in {os.path.join(game, 'mh_net.ini')}")
     return 0
@@ -732,6 +909,162 @@ def cmd_art(args):
     return 0
 
 
+def _selftest_plain(en_arg):
+    """RL17: the verbatim carry-over packs (fr/de/it). Skips a language whose retail install is absent."""
+    fails = []
+    try:
+        en_src = resolve_en(en_arg)
+    except SystemExit as exc:
+        print(f"  SKIP fr/de/it packs: {exc}")
+        return fails
+    en_il = payload({m.key(): m for m in read_pack(en_src)}["init\\initlang.cfg"])
+    for lang, spec in PACKS.items():
+        if spec["merge"] or not spec["src"] or spec.get("ext"):
+            continue
+        try:
+            src = resolve_pack_source(lang)
+        except SystemExit as exc:
+            print(f"  SKIP {lang} pack: {exc}")
+            continue
+        tmp = tempfile.mkdtemp(prefix=f"mh_langpack_{lang}_")
+        try:
+            a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
+            build(src, en_src, a, quiet=True, lang_id=lang)
+            build(src, en_src, b, quiet=True, lang_id=lang)
+            names = sorted(os.listdir(a))
+            for n in names:
+                if open(os.path.join(a, n), "rb").read() != open(os.path.join(b, n), "rb").read():
+                    fails.append(f"{lang}: rebuild is not byte-identical: {n}")
+            orig, now = read_pack(src), {m.key(): m for m in read_pack(fnt.Source(a))}
+            if [m.key() for m in orig] != list(now):
+                fails.append(f"{lang}: member list/order differs from the retail pack's")
+            changed = [m.key() for m in orig if now[m.key()].stored != m.stored]
+            if changed not in ([], ["init\\initlang.cfg"]):
+                fails.append(f"{lang}: members other than initlang changed: {changed}")
+            gap = initlang_coverage(payload(now["init\\initlang.cfg"]), en_il)
+            if gap:
+                fails.append(f"{lang}: initlang still lacks {gap}")
+            if read_pack_codepage(a) != spec["codepage"]:
+                fails.append(f"{lang}: pack.ini codepage {read_pack_codepage(a)} != {spec['codepage']}")
+            if read_loose(src, "Msgs.dat") != open(os.path.join(a, "Msgs.dat"), "rb").read():
+                fails.append(f"{lang}: Msgs.dat is not a verbatim copy")
+            if os.path.isfile(os.path.join(STRINGS_DIR, lang + ".txt")) != ("mh_strings.txt" in names):
+                fails.append(f"{lang}: mh_strings.txt presence does not match the committed translation")
+            print(f"  OK  {lang} pack: {len(names)} files byte-identical across two builds, {len(orig)} members "
+                  f"in retail order ({len(changed)} changed), initlang complete, pack.ini codepage {spec['codepage']}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return fails
+
+
+PL_LETTERS = "ĄĆĘŁŃÓŚŹŻąćęłńóśźż"
+
+
+def _selftest_pl(en_arg):
+    """RL18: the Polish pack, built from the Extermination install. Skipped by name when the
+    Extermination, DE or FR install (the last two lend the menu art a Z and an accent) is absent."""
+    import langpack_pl as P
+
+    fails = []
+    try:
+        en_src, ext_src, donors = resolve_en(en_arg), resolve_pack_source("pl"), resolve_art_donors()
+    except SystemExit as exc:
+        print(f"  SKIP pl pack: {exc}")
+        return fails
+    spec = PACKS["pl"]
+    tmp = tempfile.mkdtemp(prefix="mh_langpack_pl_")
+    try:
+        a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
+        build(ext_src, en_src, a, quiet=True, lang_id="pl")
+        build(ext_src, en_src, b, quiet=True, lang_id="pl")
+        names = sorted(os.listdir(a))
+        for n in names:
+            if open(os.path.join(a, n), "rb").read() != open(os.path.join(b, n), "rb").read():
+                fails.append(f"pl: rebuild is not byte-identical: {n}")
+        en_members = read_pack(en_src)
+        built = {m.key(): m for m in read_pack(fnt.Source(a))}
+        if [m.key() for m in en_members] != list(built):
+            fails.append("pl: member list/order differs from the EN mh_ex")
+        changed = {m.key() for m in en_members if built[m.key()].stored != m.stored}
+        must = {"init\\initlang.cfg", "info\\info.txt", "info\\tutorial.txt", "info\\credits.txt", "fnt\\fontlay.txt",
+                "menu\\menubck1.gfx", "menu\\menubck2.gfx", "menu\\newgameh.gfx", "menu\\netgameh.gfx", "menu\\loadh.gfx",
+                "menu\\creditsh.gfx", "menu\\exith.gfx", "menu\\powroth.gfx", "menu\\txtrace.gfx", "menu\\txtwait.gfx"}
+        must |= {m.key() for m in en_members if m.key().startswith(("so\\human\\", "so\\alien\\", "menu\\back0"))}
+        must |= {"fnt\\" + n.lower() for n in fnt.PFMENU}
+        if changed != must:
+            fails.append(f"pl: changed members differ from the recipe: extra {sorted(changed - must)}, missing {sorted(must - changed)}")
+        # text: MH's key list, MH's printf shapes (build refuses otherwise), MH's info blocks
+        en_il = payload({m.key(): m for m in en_members}["init\\initlang.cfg"])
+        il = payload(built["init\\initlang.cfg"])
+        gap = initlang_coverage(il, en_il)
+        n_keys = len(_text_entries(il[2:].decode("utf-16-le")))
+        if gap or n_keys != len(_text_entries(en_il[2:].decode("utf-16-le"))):
+            fails.append(f"pl: initlang has {n_keys} keys, lacks {gap}")
+        en_info = payload({m.key(): m for m in en_members}["info\\info.txt"])[2:].decode("utf-16-le")
+        info = payload(built["info\\info.txt"])[2:].decode("utf-16-le")
+        if P.FILE_RE.findall(info) != P.FILE_RE.findall(en_info):
+            fails.append("pl: info.txt <FILE> blocks differ from MH's")
+        for key in ("init\\initlang.cfg", "info\\info.txt", "info\\tutorial.txt", "info\\credits.txt"):
+            t = payload(built[key])[2:].decode("utf-16-le")
+            if "xterminac" in t or "ksterminac" in t:
+                fails.append(f"pl: {key} still names Extermination")
+        # fonts: EN prefix intact, every Polish letter non-blank in all five
+        en_layer, layer = en_src.font_layer("mh_ex"), fnt.Source(a).font_layer("mh_ex")
+        for name in fnt.PFMENU:
+            if not fnt.verify_prefix(en_layer.fonts[name], layer.fonts[name], len(en_layer.layout)):
+                fails.append(f"pl: {name}: an EN record moved or changed")
+            for ch in PL_LETTERS:
+                g = layer.glyph(name, ord(ch))
+                if g is None or g.ink_bbox() is None:
+                    fails.append(f"pl: {name}: U+{ord(ch):04X} missing or blank")
+        # every code point the text uses is mapped (backslash is markup)
+        have = set(layer.layout)
+        for key in ("init\\initlang.cfg", "info\\info.txt", "info\\tutorial.txt", "info\\credits.txt"):
+            t = payload(built[key])[2:].decode("utf-16-le")
+            miss = sorted({c for c in t if ord(c) > 32 and c != "\\" and ord(c) not in have})
+            if miss:
+                fails.append(f"pl: {key} uses unmapped characters {miss}")
+        # voices: 36, resampled to 22000 Hz (length = source length x 22000 / source rate), not silent
+        import numpy as np
+
+        n_voices = 0
+        ext_min = {x.key(): x for x in read_pack(ext_src, "Extermin")}
+        for k, m in built.items():
+            if k.startswith(("so\\human\\", "so\\alien\\")):
+                n_voices += 1
+                pcm = np.frombuffer(payload(m), dtype=np.int8)
+                src_rate = P.voice_source_rate(k)
+                src = ext_min[k.replace("so\\human\\", "so\\m\\l\\").replace("so\\alien\\", "so\\m\\o\\")]
+                want = int(len(payload(src)) / (src_rate / P.DST_RATE))
+                if abs(len(pcm) - want) > 1 or np.abs(pcm.astype(int)).max() < 20:
+                    fails.append(f"pl: voice {k}: {len(pcm)} samples (want {want}) / silent")
+        if n_voices != 36:
+            fails.append(f"pl: {n_voices} voices, expected 36")
+        # menu art
+        en_by = {m.key(): m for m in en_members}
+        en_b2 = gfx_decode(payload(en_by["menu\\menubck2.gfx"]))
+        pl_b2 = gfx_decode(payload(built["menu\\menubck2.gfx"]))
+        if not (en_b2[:, BTN_X + BTN_W:] == pl_b2[:, BTN_X + BTN_W:]).all() or not (en_b2[:BTN_Y0] == pl_b2[:BTN_Y0]).all():
+            fails.append("pl: MenuBck2 changed a pixel outside the button column")
+        for k in (0, 3):  # INTRO and TUTORIAL are Polish words: the EN tiles stay
+            y = BTN_Y0 + BTN_DY * k
+            if not (en_b2[y:y + BTN_H] == pl_b2[y:y + BTN_H]).all():
+                fails.append(f"pl: MenuBck2 row {k} (INTRO/TUTORIAL) differs from EN")
+        for k in (1, 2, 4, 5, 6):
+            y = BTN_Y0 + BTN_DY * k
+            if (en_b2[y:y + BTN_H] == pl_b2[y:y + BTN_H]).all():
+                fails.append(f"pl: MenuBck2 row {k} still has the EN label")
+        st = pack_status(a)
+        if not (st["ok"] and st["art7"] and st["strings"]) or st["codepage"] != spec["codepage"]:
+            fails.append(f"pl: pack_status says {st}")
+        print(f"  OK  pl pack: {len(names)} files byte-identical across two builds, {len(built)} members in EN order "
+              f"({len(changed)} replaced), initlang {n_keys} keys, info {len(P.FILE_RE.findall(info))} blocks, "
+              f"{n_voices} voices at {P.DST_RATE} Hz, {len(PL_LETTERS)} Polish letters in 5 fonts, codepage {spec['codepage']}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return fails
+
+
 def cmd_selftest(args):
     fails = []
     # mh.dll's own strings (LANG4): offline, needs no retail data.
@@ -749,11 +1082,13 @@ def cmd_selftest(args):
         fails.append(f"a planted bad strings file was not caught: {planted[:3]}")
     else:
         print("  OK  a planted bad strings file (wrong shape, duplicate, unknown key) is caught")
+    fails += _selftest_plain(getattr(args, "en", None))
+    fails += _selftest_pl(getattr(args, "en", None))
     try:
         ru_src, en_src = resolve_sources(getattr(args, "ru", None), getattr(args, "en", None))
     except SystemExit as exc:
         print(f"NO RETAIL SOURCES: {exc}")
-        return 2
+        return 2 if not fails else 1
     tmp = tempfile.mkdtemp(prefix="mh_langpack_")
     try:
         a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
@@ -817,6 +1152,8 @@ def cmd_selftest(args):
             fails.append("NetGameH is still a copy of NewGameH")
         print("  OK  menu art: MenuBck2 != MenuBck1, rows 0-1 and everything right of the buttons are "
               "RU MenuBck1's own pixels, NetGameH is a new sprite")
+        if st["codepage"] != 1251:
+            fails.append(f"ru pack.ini codepage is {st['codepage']}, not 1251")
         if open(os.path.join(a, "mh_strings.txt"), "rb").read() != open(os.path.join(STRINGS_DIR, "ru.txt"), "rb").read():
             fails.append("mh_strings.txt is not the committed translation")
         if "Msgs.dat" in os.listdir(a) and read_loose(ru_src, "Msgs.dat") != open(os.path.join(a, "Msgs.dat"), "rb").read():
@@ -833,6 +1170,10 @@ def cmd_selftest(args):
 
 
 def main(argv=None):
+    try:  # BUILD.txt lines carry Cyrillic; a cp1252 console must not abort a finished build
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--selftest", action="store_true", help="build twice from the retail sources and check")
@@ -843,7 +1184,9 @@ def main(argv=None):
         p.add_argument("--en", help="EN install directory or .zip (default: search)")
         if name == "build":
             p.add_argument("--game", help="game directory to write lang/<id>/ into (default: machine.POLYGON)")
-            p.add_argument("--id", default="ru")
+            p.add_argument("--id", default=None, help="pack folder name under lang/ (default: --lang, else ru)")
+            p.add_argument("--lang", choices=sorted(PACKS), help="language recipe (default: the --id's, `ru_noart` -> ru)")
+            p.add_argument("--src", help="the pack's retail install directory or .zip (fr/de/it: default game_data/<lang>_rsr)")
             p.add_argument("--no-art", action="store_true", help="keep the retail 6-button menu art")
         if name == "art":
             p.add_argument("--out", required=True)
@@ -854,6 +1197,7 @@ def main(argv=None):
     if args.selftest or args.cmd == "selftest":
         return cmd_selftest(args)
     if args.cmd == "build":
+        args.id = args.id or args.lang or "ru"
         return cmd_build(args)
     if args.cmd == "check":
         return cmd_check(args)

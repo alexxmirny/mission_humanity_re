@@ -1,0 +1,208 @@
+# BRIDGE RE-SIGN (RL10) -- keep the schema-1 bridge manifest fresh so rc7.1 launchers reach v0.2.0.
+#
+# WHY. An rc7.1 launcher reads <base>/manifest.json (schema 1) and refuses it STALE once `issued_at`
+# is more than 30 days old. From v0.2.0 the real manifests are the per-channel schema-2 files; the
+# root manifest.json is the BRIDGE: schema 1, `version` and the three game entries exactly as
+# rc7.1 shipped them (so the rc7.1 game update is a no-op), a `launcher` entry pointing at the
+# v0.2.0 launcher, and the relay. An rc7.1 launcher offers the launcher update, installs it, and
+# restarts with --update; the new launcher then follows channels/<channel>/*.json and never reads
+# this file again. Nothing may let the bridge go stale while an rc7.1 install can still arrive.
+#
+# WHAT IT DOES (weekly cron + workflow_dispatch, ubuntu, contents + pages write):
+#   1. fetch the SERVED bridge and verify it against update.rs PUBLIC_KEY (never trust the key you
+#      hold: the key players have);
+#   2. fetch the served channels/stable/launcher.json if it EXISTS and verify it. Until the v0.2.0
+#      launcher has been promoted to stable there is nothing to copy, so the launcher entry is
+#      kept as is and only issued_at moves; once it exists the bridge's launcher entry becomes its
+#      version/url/sha256;
+#   3. re-sign when the served bridge is >= 14 days old (the launchers' window is 30; the weekly
+#      cadence gives two tries before it matters), or when the stable launcher entry differs from
+#      the bridge's (a promotion should reach rc7.1 arrivals now, not in a fortnight);
+#   4. commit manifest.json + .minisig to the Pages branch, build Pages, read it back byte for byte;
+#   5. ALWAYS read the served bridge once more and go RED if it is older than 21 days -- a job that
+#      "succeeded" without keeping the bridge fresh is the failure this file exists to prevent.
+#
+# STOPS. Repository variable MH_BRIDGE_UNTIL (YYYY-MM-DD; the plan: v0.2.0 stable + 6 months, set by
+# the maintainer) ends the job: past that date every run is a green no-op that says so. Unset = it
+# keeps running and warns. Disable the workflow in the Actions tab once it has ended.
+#
+# RISKS, stated rather than hidden: GitHub disables scheduled workflows after 60 days without repo
+# activity (the weekly run then silently stops -- a push or a manual run revives it), and Actions
+# billing can refuse every job (docs/release.md section 7). Both are why docs/release.md 7.5 carries
+# the same job as a hand routine. The first stale rc7.1 launcher is ~30 days after the last issue.
+#
+# THE SECRET: MH_LAUNCHER_MINISIGN_KEY, written to RUNNER_TEMP for the one signing step and deleted.
+
+name: bridge-resign
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resign:
+    name: re-sign the schema-1 bridge
+    if: vars.MH_PAGES_BRANCH != '' && vars.MH_UPDATE_BASE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pages: write
+    env:
+      PAGES_BRANCH: ${{ vars.MH_PAGES_BRANCH }}
+      BASE: ${{ vars.MH_UPDATE_BASE_URL }}
+      BRIDGE_UNTIL: ${{ vars.MH_BRIDGE_UNTIL }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: has the bridge ended?
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BRIDGE_UNTIL}" ]; then
+            echo "::warning::MH_BRIDGE_UNTIL is unset -- the bridge has no end date (set it to YYYY-MM-DD)"
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          elif ! [[ "${BRIDGE_UNTIL}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "MH_BRIDGE_UNTIL=${BRIDGE_UNTIL} is not YYYY-MM-DD"; exit 1
+          elif [[ "$(date -u +%F)" > "${BRIDGE_UNTIL}" ]]; then
+            echo "The bridge ended on ${BRIDGE_UNTIL} (MH_BRIDGE_UNTIL) -- nothing to do. Disable this workflow."
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bridge active until ${BRIDGE_UNTIL}"
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        if: steps.gate.outputs.active == 'true'
+
+      - uses: actions/setup-python@v6
+        if: steps.gate.outputs.active == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: fetch and verify the served bridge (+ the stable launcher, if it exists)
+        id: fetch
+        if: steps.gate.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BASE%/}"
+          mkdir -p served
+          for f in manifest.json manifest.json.minisig; do
+            curl -fsS -H 'Cache-Control: no-cache' "$base/$f?run=${GITHUB_RUN_ID}" -o "served/$f"
+          done
+          python tools/gen_update_manifest.py --verify served/manifest.json
+          age="$(python tools/gen_update_manifest.py --age-days served/manifest.json)"
+          echo "served bridge age: $age days"
+          echo "age=$age" >> "$GITHUB_OUTPUT"
+          have_stable=false
+          if curl -fsS -H 'Cache-Control: no-cache' "$base/channels/stable/launcher.json?run=${GITHUB_RUN_ID}" -o served/launcher.json \
+             && curl -fsS -H 'Cache-Control: no-cache' "$base/channels/stable/launcher.json.minisig?run=${GITHUB_RUN_ID}" -o served/launcher.json.minisig; then
+            python tools/gen_update_manifest.py --verify served/launcher.json
+            have_stable=true
+          else
+            echo "no verified channels/stable/launcher.json yet -- the launcher entry stays as is"
+            rm -f served/launcher.json served/launcher.json.minisig
+          fi
+          echo "have_stable=$have_stable" >> "$GITHUB_OUTPUT"
+          # does the stable launcher differ from the bridge's launcher entry?
+          changed=false
+          if [ "$have_stable" = true ]; then
+            a="$(python -c "import json;m=json.load(open('served/manifest.json'))['launcher'];print(m['version'],m['url'],m['sha256'])")"
+            b="$(python -c "import json;m=json.load(open('served/launcher.json'));print(m['version'],m['url'],m['sha256'])")"
+            [ "$a" = "$b" ] || changed=true
+          fi
+          echo "launcher_changed=$changed" >> "$GITHUB_OUTPUT"
+          # due: age >= 14 days, or the stable launcher moved
+          due=false
+          python -c "import sys;sys.exit(0 if float('$age') >= 14 else 1)" && due=true
+          [ "$changed" = true ] && due=true
+          echo "due=$due" >> "$GITHUB_OUTPUT"
+          echo "re-sign due: $due (launcher_changed=$changed)"
+
+      - name: re-sign the bridge
+        if: steps.gate.outputs.active == 'true' && steps.fetch.outputs.due == 'true'
+        shell: bash
+        env:
+          MH_LAUNCHER_MINISIGN_KEY: ${{ secrets.MH_LAUNCHER_MINISIGN_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${MH_LAUNCHER_MINISIGN_KEY}" ] || { echo "MH_LAUNCHER_MINISIGN_KEY repository secret is unset -- refusing to sign"; exit 1; }
+          key="${RUNNER_TEMP}/launcher_minisign.key"
+          printf '%s\n' "${MH_LAUNCHER_MINISIGN_KEY}" > "$key"
+          args=()
+          if [ "${{ steps.fetch.outputs.have_stable }}" = true ]; then args=(--launcher-json served/launcher.json); fi
+          python tools/gen_update_manifest.py --bridge --from-manifest served/manifest.json \
+            "${args[@]}" --secret-key "$key" --out new
+          rm -f "$key"
+          python tools/gen_update_manifest.py --verify new/manifest.json
+          cat new/manifest.json
+
+      - name: commit the bridge to the Pages branch
+        if: steps.gate.outputs.active == 'true' && steps.fetch.outputs.due == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$PAGES_BRANCH" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" site
+          cp new/manifest.json new/manifest.json.minisig site/
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json manifest.json.minisig
+          git commit -q -m "bridge re-sign (run ${GITHUB_RUN_ID})"
+          pushed=0
+          for i in 1 2 3 4 5; do
+            if git push -q origin "HEAD:$PAGES_BRANCH"; then pushed=1; break; fi
+            echo "push raced another Pages publisher (try $i) -- rebasing"
+            git pull -q --rebase origin "$PAGES_BRANCH"
+          done
+          [ "$pushed" = 1 ] || { echo "could not push to $PAGES_BRANCH after 5 tries"; exit 1; }
+          echo "PUSHED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: build Pages and read the served bridge back
+        if: steps.gate.outputs.active == 'true' && steps.fetch.outputs.due == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null
+          url="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url)"
+          for i in $(seq 1 60); do
+            read -r status commit < <(gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" \
+              --jq '"\(.status) \(.commit)"')
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "built" ]; then break; fi
+            if [ "$commit" = "$PUSHED_SHA" ] && [ "$status" = "errored" ]; then
+              echo "Pages build of $PUSHED_SHA errored"; exit 1
+            fi
+            sleep 10
+          done
+          for f in manifest.json manifest.json.minisig; do
+            ok=0
+            for i in $(seq 1 30); do
+              curl -fsS -H 'Cache-Control: no-cache' "${url%/}/$f?run=${GITHUB_RUN_ID}" -o "served_$f" \
+                && cmp -s "served_$f" "new/$f" && { ok=1; break; }
+              sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "served $f != the signed one after 5 min: ${url%/}/$f"; exit 1; }
+            echo "served $f is byte-identical to the signed one"
+          done
+
+      - name: the served bridge must be fresh (red if older than 21 days)
+        if: always() && steps.gate.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BASE%/}"
+          mkdir -p final
+          for f in manifest.json manifest.json.minisig; do
+            curl -fsS -H 'Cache-Control: no-cache' "$base/$f?run=${GITHUB_RUN_ID}_final" -o "final/$f"
+          done
+          python tools/gen_update_manifest.py --verify final/manifest.json
+          age="$(python tools/gen_update_manifest.py --age-days final/manifest.json)"
+          echo "served bridge age: $age days"
+          python -c "import sys;sys.exit(0 if float('$age') <= 21 else 1)" \
+            || { echo "THE SERVED BRIDGE IS $age DAYS OLD (> 21) -- rc7.1 launchers go STALE at 30. Re-sign by hand: docs/release.md 7.5"; exit 1; }

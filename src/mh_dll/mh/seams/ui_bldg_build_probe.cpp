@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdint>
 #include <cstring>
 
@@ -104,7 +105,7 @@ extern "C" int MH_BuildProbe_Install(void) {
     if (g_armed) return 1;
     const uintptr_t pay   = mh::addr::buildprobe_pay_call_site;
     const uintptr_t grant = mh::addr::buildprobe_grant_call_site;
-    if (GetPrivateProfileIntA("net", "build_probe_free", 1, g_ini) == 0) {
+    if (mh_ini_get_int("net", "build_probe_free", 1, g_ini) == 0) {
         seam_log("; D35: build-click probe KEPT ([net] build_probe_free=0): the click pays and re-grants, booking "
                  "+cost into resource_spent on this peer only -- the reproduction arm\n");
         return 0;

@@ -1,0 +1,63 @@
+# mh_strings.txt for the French language pack (RL17) -- mh.dll's own player-visible text.
+#
+# Our own translation, not retail data: src/formats/langpack.py copies it into lang/<id>/ beside the
+# pack it builds. One `key = text` per line, UTF-8; keys and the printf shape of every text (the
+# %s %d %u %lu conversions, in order) must match src/mh_dll/mh/ui/player_strings.def, or mh.dll
+# shows that key's English. tools/lint_player_strings.py and `langpack.py --selftest` check both.
+# Plain "-" throughout (the menu fonts' em dash is not guaranteed).
+
+# lobby / browser status line
+lobby.no_module = Aucun module réseau. Le multijoueur est indisponible.
+lobby.link_lost = La connexion à l'hôte a été perdue.
+lobby.host_left = L'hôte a quitté la partie.
+lobby.refused = Refusé : %s
+
+# join refusal reasons (composed by the host in English, shown here in French)
+refuse.old_client_cp = client obsolète cp %u
+refuse.old_host_cp = hôte obsolète cp %u
+refuse.codepage = page de codes %u/%u
+refuse.newer_protocol = protocole %u > %u
+refuse.older_protocol = protocole %u < %u
+refuse.malformed = requête de connexion invalide
+refuse.no_match_id = ancien protocole (sans match_id)
+refuse.newer_than_host = protocole plus récent que l'hôte
+refuse.not_our_lobby = ce n'est pas notre salon
+refuse.cp_mismatch = pages de codes différentes
+refuse.unknown = inconnu
+refuse.build = l'hôte a %s, vous avez %s : mettez à jour
+relay.outdated = Relais obsolète (protocole %u < %u)
+
+# map transfer
+map.cannot_send = %s possède une autre version de %s - cette connexion ne peut pas envoyer de cartes, le lancement est refusé.
+map.sending = Envoi de la carte à %s - le lancement attend sa réception.
+map.downloading = Téléchargement de la carte depuis l'hôte (%u%%)...
+map.waiting = En attente de la carte de l'hôte...
+map.mismatch = La carte envoyée par l'hôte ne correspond pas à l'annonce.
+
+# in-match messages
+desync.alert = DÉSYNCHRONISATION (étape %lu) - la partie n'est plus synchronisée
+cheat.single_player = les codes de triche sont réservés au mode solo
+hub.migrated = %s est parti ; %s héberge désormais
+hub.lost = connexion à %s perdue ; %s héberge désormais
+spectate.defeated = Vaincu - mode spectateur
+spectate.continue = Continuer en spectateur
+spectate.exit = Quitter la partie
+
+# connection indicator
+netind.ping = PING
+netind.ms = %d ms
+netind.na = n/d
+netind.cmd = CMD %d ms
+netind.waiting = ATTENTE DE %s
+
+# main menu (the no-art fallback button; drawn upper-cased)
+menu.network_game = Jeu en réseau
+
+# lobby TEAM spinner + MODE selector (mp:U51)
+lobby.team_none = -
+lobby.team_1 = É1
+lobby.team_2 = É2
+lobby.team_3 = É3
+lobby.team_4 = É4
+lobby.mode_ffa = Mode : mêlée
+lobby.mode_team = Mode : équipes

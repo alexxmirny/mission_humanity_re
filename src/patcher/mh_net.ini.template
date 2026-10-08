@@ -80,13 +80,6 @@ defang_overlay=1
 ; levers remain lookahead (lockstep_step_ms, trades input latency) and frame rate. See docs/mp-perf.md.
 eager_advertise=0
 
-; Endgame game-over sync (2026-07-11). The retail win/loss resolver leaves lockstep (SESSION_MODE 3->2)
-; only on the WINNER's side; the LOSER detects its defeat but stays in lockstep behind its "You lost"
-; dialog and FREEZES waiting for a peer that already left. 1 = detour the outcome dialog to downgrade
-; SESSION 3->2 on entry, so both peers leave lockstep and show their result immediately. Determinism-safe
-; (the game is already decided). Pairs with the heartbeat's post-lockstep grace. 0 = retail (loser freezes).
-sync_gameover=1
-
 ; 1 = write a per-frame lockstep timing trace to mh_lockstep.log (columns: wall_ms clock_ms total_ms
 ; local_h_ms committed_ms peer0_ms peer1_ms step_ms stall pcount tx_pkts rx_pkts since_rx_ms). Use it
 ; to diagnose freezes: a freeze shows as a big wall_ms gap between rows; compare committed_ms vs

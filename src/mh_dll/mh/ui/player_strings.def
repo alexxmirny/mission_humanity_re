@@ -32,6 +32,8 @@ MH_STR(REFUSE_NEWER_THAN_HOST, "refuse.newer_than_host", L"newer protocol than t
 MH_STR(REFUSE_NOT_OUR_LOBBY, "refuse.not_our_lobby", L"not our lobby")
 MH_STR(REFUSE_CP_MISMATCH, "refuse.cp_mismatch", L"input codepage mismatch")
 MH_STR(REFUSE_UNKNOWN, "refuse.unknown", L"unknown")
+// RL11: the host sends "build <host>/<yours>" (release versions); tr_refusal_reason parses it and fills this row.
+MH_STR(REFUSE_BUILD, "refuse.build", L"Host runs %s, you run %s: update")
 // The UDP module's relay-level notice ("Relay outdated (protocol 0 < 1)"), matched the same way.
 MH_STR(RELAY_OUTDATED, "relay.outdated", L"Relay outdated (protocol %u < %u)")
 

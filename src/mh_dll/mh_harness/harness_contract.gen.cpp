@@ -45,13 +45,10 @@ const char *const g_mh_harness_host_name[MH_HARNESS_HOST_COUNT] = {
     "?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z",
     "?promoted_owner_of@hook@mh@@YAPBDI@Z",
     "?register_callback@hook@mh@@YA_NW4point@12@P6AXXZ@Z",
-    "?save_planet_now@save@mh@@YAIHI@Z",
-    "?savegame_now@save@mh@@YAIPAD@Z",
     "MH_Core_ArmPaths",
     "MH_Core_TrapsAtOpen",
     "MH_Lockstep_HorizonHold",
     "MH_Lockstep_StepPin",
-    "MH_Net_Send",
     "MH_Net_SnapshotPoll",
     "MH_Net_SnapshotSend",
     "MH_Net_SnapshotStatus",
@@ -74,10 +71,8 @@ const char *const g_mh_harness_spine_name[MH_HARNESS_SPINE_COUNT] = {
     "?capture@world@state@mh@@YAHPAXIPAIABUcapture_params@123@@Z",
     "?capture_capacity@world@state@mh@@YAIXZ",
     "?container_load_promotion_active@save@mh@@YA_NXZ",
-    "?container_promotion_active@save@mh@@YA_NXZ",
     "?group_issue_order@tact@mh@@YAXHIIII@Z",
     "?install_export_ok@hosthook@mh@@YA_NIPAXPBD_K@Z",
-    "?last_save_path@save@mh@@YAPBDXZ",
     "?last_trap@libmh_in@mh@@YAPBDXZ",
     "?live@state@mh@@YAAAUlive_table@12@XZ",
     "?lockstep_hash@world@state@mh@@YAXIPA_K0@Z",
@@ -85,21 +80,10 @@ const char *const g_mh_harness_spine_name[MH_HARNESS_SPINE_COUNT] = {
     "?owner_table@state@mh@@YAPAUowner_slot@12@XZ",
     "?promotion_active@save@mh@@YA_NXZ",
     "?reset_session_latch_for_test@boot@state@mh@@YAXXZ",
-    "?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z",
-    "?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z",
-    "?rng_trace_count@sim@mh@@YAHXZ",
-    "?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z",
-    "?rng_trace_note_count@sim@mh@@YAHXZ",
-    "?rng_trace_overflowed@sim@mh@@YA_NXZ",
-    "?rng_trace_set_step@sim@mh@@YAXI@Z",
-    "?rng_trace_window@sim@mh@@YAXII@Z",
     "?set_armed@rebind@mh@@YA_NPBD_N@Z",
-    "?set_lt_frame_input_override@sim@mh@@YAXP6AXXZ@Z",
     "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
-    "?set_time_resync_pace_disabled@sim@mh@@YAX_N@Z",
     "?trap_count@libmh_in@mh@@YAHXZ",
     "?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z",
-    "?verify_active@save@mh@@YA_NXZ",
     "libmh_import_world",
     "libmh_set_session_seed",
 };
@@ -206,7 +190,7 @@ extern int g_mh_harness_unbound_side;
 __declspec(noreturn) void __cdecl mh_harness_unbound_trap(void);
 }
 
-// ---- the HOST rows (34) --------------------------------------------------------
+// ---- the HOST rows (31) --------------------------------------------------------
 
 // bool __cdecl mh::hook::arm_neuter(enum mh::hook::point)
 extern "C" __declspec(naked) void mh_harness_host_thunk_0(void) {
@@ -416,7 +400,7 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_12(void) {
 #pragma comment(linker, "/alternatename:?register_callback@hook@mh@@YA_NW4point@12@P6AXXZ@Z=_mh_harness_host_thunk_12")
 
 
-// unsigned int __cdecl mh::save::save_planet_now(int,unsigned int)
+// _MH_Core_ArmPaths
 extern "C" __declspec(naked) void mh_harness_host_thunk_13(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 52]
@@ -429,10 +413,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_13(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?save_planet_now@save@mh@@YAIHI@Z=_mh_harness_host_thunk_13")
+#pragma comment(linker, "/alternatename:_MH_Core_ArmPaths=_mh_harness_host_thunk_13")
 
 
-// unsigned int __cdecl mh::save::savegame_now(char *)
+// _MH_Core_TrapsAtOpen
 extern "C" __declspec(naked) void mh_harness_host_thunk_14(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 56]
@@ -445,10 +429,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_14(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?savegame_now@save@mh@@YAIPAD@Z=_mh_harness_host_thunk_14")
+#pragma comment(linker, "/alternatename:_MH_Core_TrapsAtOpen=_mh_harness_host_thunk_14")
 
 
-// _MH_Core_ArmPaths
+// _MH_Lockstep_HorizonHold
 extern "C" __declspec(naked) void mh_harness_host_thunk_15(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 60]
@@ -461,10 +445,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_15(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Core_ArmPaths=_mh_harness_host_thunk_15")
+#pragma comment(linker, "/alternatename:_MH_Lockstep_HorizonHold=_mh_harness_host_thunk_15")
 
 
-// _MH_Core_TrapsAtOpen
+// _MH_Lockstep_StepPin
 extern "C" __declspec(naked) void mh_harness_host_thunk_16(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 64]
@@ -477,10 +461,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_16(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Core_TrapsAtOpen=_mh_harness_host_thunk_16")
+#pragma comment(linker, "/alternatename:_MH_Lockstep_StepPin=_mh_harness_host_thunk_16")
 
 
-// _MH_Lockstep_HorizonHold
+// _MH_Net_SnapshotPoll
 extern "C" __declspec(naked) void mh_harness_host_thunk_17(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 68]
@@ -493,10 +477,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_17(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Lockstep_HorizonHold=_mh_harness_host_thunk_17")
+#pragma comment(linker, "/alternatename:_MH_Net_SnapshotPoll=_mh_harness_host_thunk_17")
 
 
-// _MH_Lockstep_StepPin
+// _MH_Net_SnapshotSend
 extern "C" __declspec(naked) void mh_harness_host_thunk_18(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 72]
@@ -509,10 +493,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_18(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Lockstep_StepPin=_mh_harness_host_thunk_18")
+#pragma comment(linker, "/alternatename:_MH_Net_SnapshotSend=_mh_harness_host_thunk_18")
 
 
-// _MH_Net_Send
+// _MH_Net_SnapshotStatus
 extern "C" __declspec(naked) void mh_harness_host_thunk_19(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 76]
@@ -525,10 +509,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_19(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Net_Send=_mh_harness_host_thunk_19")
+#pragma comment(linker, "/alternatename:_MH_Net_SnapshotStatus=_mh_harness_host_thunk_19")
 
 
-// _MH_Net_SnapshotPoll
+// _MH_RunDir
 extern "C" __declspec(naked) void mh_harness_host_thunk_20(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 80]
@@ -541,10 +525,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_20(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Net_SnapshotPoll=_mh_harness_host_thunk_20")
+#pragma comment(linker, "/alternatename:_MH_RunDir=_mh_harness_host_thunk_20")
 
 
-// _MH_Net_SnapshotSend
+// _MH_Seam_LeaveForExit
 extern "C" __declspec(naked) void mh_harness_host_thunk_21(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 84]
@@ -557,10 +541,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_21(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Net_SnapshotSend=_mh_harness_host_thunk_21")
+#pragma comment(linker, "/alternatename:_MH_Seam_LeaveForExit=_mh_harness_host_thunk_21")
 
 
-// _MH_Net_SnapshotStatus
+// _MH_Session_HarnessStop
 extern "C" __declspec(naked) void mh_harness_host_thunk_22(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 88]
@@ -573,10 +557,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_22(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Net_SnapshotStatus=_mh_harness_host_thunk_22")
+#pragma comment(linker, "/alternatename:_MH_Session_HarnessStop=_mh_harness_host_thunk_22")
 
 
-// _MH_RunDir
+// _MH_Temporal_Event
 extern "C" __declspec(naked) void mh_harness_host_thunk_23(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 92]
@@ -589,10 +573,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_23(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_RunDir=_mh_harness_host_thunk_23")
+#pragma comment(linker, "/alternatename:_MH_Temporal_Event=_mh_harness_host_thunk_23")
 
 
-// _MH_Seam_LeaveForExit
+// _MH_UIDrive_ActiveScreen
 extern "C" __declspec(naked) void mh_harness_host_thunk_24(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 96]
@@ -605,10 +589,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_24(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Seam_LeaveForExit=_mh_harness_host_thunk_24")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_ActiveScreen=_mh_harness_host_thunk_24")
 
 
-// _MH_Session_HarnessStop
+// _MH_UIDrive_DumpWidgets
 extern "C" __declspec(naked) void mh_harness_host_thunk_25(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 100]
@@ -621,10 +605,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_25(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Session_HarnessStop=_mh_harness_host_thunk_25")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_DumpWidgets=_mh_harness_host_thunk_25")
 
 
-// _MH_Temporal_Event
+// _MH_UIDrive_ScreenId
 extern "C" __declspec(naked) void mh_harness_host_thunk_26(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 104]
@@ -637,10 +621,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_26(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_Temporal_Event=_mh_harness_host_thunk_26")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenId=_mh_harness_host_thunk_26")
 
 
-// _MH_UIDrive_ActiveScreen
+// _MH_UIDrive_ScreenIdSettled
 extern "C" __declspec(naked) void mh_harness_host_thunk_27(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 108]
@@ -653,10 +637,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_27(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_UIDrive_ActiveScreen=_mh_harness_host_thunk_27")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenIdSettled=_mh_harness_host_thunk_27")
 
 
-// _MH_UIDrive_DumpWidgets
+// _MH_UIDrive_ScreenSettled
 extern "C" __declspec(naked) void mh_harness_host_thunk_28(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 112]
@@ -669,10 +653,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_28(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_UIDrive_DumpWidgets=_mh_harness_host_thunk_28")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenSettled=_mh_harness_host_thunk_28")
 
 
-// _MH_UIDrive_ScreenId
+// _MH_UIDrive_ScreenSig
 extern "C" __declspec(naked) void mh_harness_host_thunk_29(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 116]
@@ -685,10 +669,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_29(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenId=_mh_harness_host_thunk_29")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenSig=_mh_harness_host_thunk_29")
 
 
-// _MH_UIDrive_ScreenIdSettled
+// _MH_UIDrive_SetSettleClock
 extern "C" __declspec(naked) void mh_harness_host_thunk_30(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_host_fn + 120]
@@ -701,58 +685,10 @@ extern "C" __declspec(naked) void mh_harness_host_thunk_30(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenIdSettled=_mh_harness_host_thunk_30")
+#pragma comment(linker, "/alternatename:_MH_UIDrive_SetSettleClock=_mh_harness_host_thunk_30")
 
 
-// _MH_UIDrive_ScreenSettled
-extern "C" __declspec(naked) void mh_harness_host_thunk_31(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_host_fn + 124]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 31
-        mov dword ptr [g_mh_harness_unbound_side], 0
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenSettled=_mh_harness_host_thunk_31")
-
-
-// _MH_UIDrive_ScreenSig
-extern "C" __declspec(naked) void mh_harness_host_thunk_32(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_host_fn + 128]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 32
-        mov dword ptr [g_mh_harness_unbound_side], 0
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:_MH_UIDrive_ScreenSig=_mh_harness_host_thunk_32")
-
-
-// _MH_UIDrive_SetSettleClock
-extern "C" __declspec(naked) void mh_harness_host_thunk_33(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_host_fn + 132]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 33
-        mov dword ptr [g_mh_harness_unbound_side], 0
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:_MH_UIDrive_SetSettleClock=_mh_harness_host_thunk_33")
-
-
-// ---- the SPINE rows (33) --------------------------------------------------------
+// ---- the SPINE rows (20) --------------------------------------------------------
 
 // unsigned int __cdecl mh::state::boot::blob_size(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_0(void) {
@@ -834,7 +770,7 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_4(void) {
 #pragma comment(linker, "/alternatename:?container_load_promotion_active@save@mh@@YA_NXZ=_mh_harness_spine_thunk_4")
 
 
-// bool __cdecl mh::save::container_promotion_active(void)
+// void __cdecl mh::tact::group_issue_order(int,unsigned int,unsigned int,unsigned int,unsigned int)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_5(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 20]
@@ -847,10 +783,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_5(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?container_promotion_active@save@mh@@YA_NXZ=_mh_harness_spine_thunk_5")
+#pragma comment(linker, "/alternatename:?group_issue_order@tact@mh@@YAXHIIII@Z=_mh_harness_spine_thunk_5")
 
 
-// void __cdecl mh::tact::group_issue_order(int,unsigned int,unsigned int,unsigned int,unsigned int)
+// bool __cdecl mh::hosthook::install_export_ok(unsigned int,void *,char const *,unsigned __int64)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_6(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 24]
@@ -863,10 +799,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_6(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?group_issue_order@tact@mh@@YAXHIIII@Z=_mh_harness_spine_thunk_6")
+#pragma comment(linker, "/alternatename:?install_export_ok@hosthook@mh@@YA_NIPAXPBD_K@Z=_mh_harness_spine_thunk_6")
 
 
-// bool __cdecl mh::hosthook::install_export_ok(unsigned int,void *,char const *,unsigned __int64)
+// char const * __cdecl mh::libmh_in::last_trap(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_7(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 28]
@@ -879,10 +815,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_7(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?install_export_ok@hosthook@mh@@YA_NIPAXPBD_K@Z=_mh_harness_spine_thunk_7")
+#pragma comment(linker, "/alternatename:?last_trap@libmh_in@mh@@YAPBDXZ=_mh_harness_spine_thunk_7")
 
 
-// char const * __cdecl mh::save::last_save_path(void)
+// struct mh::state::live_table & __cdecl mh::state::live(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_8(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 32]
@@ -895,10 +831,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_8(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?last_save_path@save@mh@@YAPBDXZ=_mh_harness_spine_thunk_8")
+#pragma comment(linker, "/alternatename:?live@state@mh@@YAAAUlive_table@12@XZ=_mh_harness_spine_thunk_8")
 
 
-// char const * __cdecl mh::libmh_in::last_trap(void)
+// void __cdecl mh::state::world::lockstep_hash(unsigned int,unsigned __int64 *,unsigned __int64 *)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_9(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 36]
@@ -911,10 +847,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_9(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?last_trap@libmh_in@mh@@YAPBDXZ=_mh_harness_spine_thunk_9")
+#pragma comment(linker, "/alternatename:?lockstep_hash@world@state@mh@@YAXIPA_K0@Z=_mh_harness_spine_thunk_9")
 
 
-// struct mh::state::live_table & __cdecl mh::state::live(void)
+// int & __cdecl mh::state::owner_count(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_10(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 40]
@@ -927,10 +863,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_10(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?live@state@mh@@YAAAUlive_table@12@XZ=_mh_harness_spine_thunk_10")
+#pragma comment(linker, "/alternatename:?owner_count@state@mh@@YAAAHXZ=_mh_harness_spine_thunk_10")
 
 
-// void __cdecl mh::state::world::lockstep_hash(unsigned int,unsigned __int64 *,unsigned __int64 *)
+// struct mh::state::owner_slot * __cdecl mh::state::owner_table(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_11(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 44]
@@ -943,10 +879,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_11(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?lockstep_hash@world@state@mh@@YAXIPA_K0@Z=_mh_harness_spine_thunk_11")
+#pragma comment(linker, "/alternatename:?owner_table@state@mh@@YAPAUowner_slot@12@XZ=_mh_harness_spine_thunk_11")
 
 
-// int & __cdecl mh::state::owner_count(void)
+// bool __cdecl mh::save::promotion_active(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_12(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 48]
@@ -959,10 +895,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_12(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?owner_count@state@mh@@YAAAHXZ=_mh_harness_spine_thunk_12")
+#pragma comment(linker, "/alternatename:?promotion_active@save@mh@@YA_NXZ=_mh_harness_spine_thunk_12")
 
 
-// struct mh::state::owner_slot * __cdecl mh::state::owner_table(void)
+// void __cdecl mh::state::boot::reset_session_latch_for_test(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_13(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 52]
@@ -975,10 +911,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_13(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?owner_table@state@mh@@YAPAUowner_slot@12@XZ=_mh_harness_spine_thunk_13")
+#pragma comment(linker, "/alternatename:?reset_session_latch_for_test@boot@state@mh@@YAXXZ=_mh_harness_spine_thunk_13")
 
 
-// bool __cdecl mh::save::promotion_active(void)
+// bool __cdecl mh::rebind::set_armed(char const *,bool)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_14(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 56]
@@ -991,10 +927,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_14(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?promotion_active@save@mh@@YA_NXZ=_mh_harness_spine_thunk_14")
+#pragma comment(linker, "/alternatename:?set_armed@rebind@mh@@YA_NPBD_N@Z=_mh_harness_spine_thunk_14")
 
 
-// void __cdecl mh::state::boot::reset_session_latch_for_test(void)
+// void __cdecl mh::orders::set_suppress_enqueue(bool)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_15(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 60]
@@ -1007,10 +943,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_15(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?reset_session_latch_for_test@boot@state@mh@@YAXXZ=_mh_harness_spine_thunk_15")
+#pragma comment(linker, "/alternatename:?set_suppress_enqueue@orders@mh@@YAX_N@Z=_mh_harness_spine_thunk_15")
 
 
-// void __cdecl mh::sim::rng_trace_add_note(unsigned int,unsigned int,unsigned int,unsigned int,unsigned int,unsigned int,unsigned int)
+// int __cdecl mh::libmh_in::trap_count(void)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_16(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 64]
@@ -1023,10 +959,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_16(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z=_mh_harness_spine_thunk_16")
+#pragma comment(linker, "/alternatename:?trap_count@libmh_in@mh@@YAHXZ=_mh_harness_spine_thunk_16")
 
 
-// struct mh::sim::rng_trace_entry const & __cdecl mh::sim::rng_trace_at(int)
+// int __cdecl mh::tact::unit_enqueue_command(int,int,unsigned char,int,unsigned short,unsigned short,unsigned short)
 extern "C" __declspec(naked) void mh_harness_spine_thunk_17(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 68]
@@ -1039,10 +975,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_17(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z=_mh_harness_spine_thunk_17")
+#pragma comment(linker, "/alternatename:?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z=_mh_harness_spine_thunk_17")
 
 
-// int __cdecl mh::sim::rng_trace_count(void)
+// _libmh_import_world
 extern "C" __declspec(naked) void mh_harness_spine_thunk_18(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 72]
@@ -1055,10 +991,10 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_18(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?rng_trace_count@sim@mh@@YAHXZ=_mh_harness_spine_thunk_18")
+#pragma comment(linker, "/alternatename:_libmh_import_world=_mh_harness_spine_thunk_18")
 
 
-// struct mh::sim::rng_trace_note const & __cdecl mh::sim::rng_trace_note_at(int)
+// _libmh_set_session_seed
 extern "C" __declspec(naked) void mh_harness_spine_thunk_19(void) {
     __asm {
         mov eax, dword ptr [g_mh_harness_spine_fn + 76]
@@ -1071,213 +1007,5 @@ extern "C" __declspec(naked) void mh_harness_spine_thunk_19(void) {
         jmp mh_harness_unbound_trap
     }
 }
-#pragma comment(linker, "/alternatename:?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z=_mh_harness_spine_thunk_19")
-
-
-// int __cdecl mh::sim::rng_trace_note_count(void)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_20(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 80]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 20
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?rng_trace_note_count@sim@mh@@YAHXZ=_mh_harness_spine_thunk_20")
-
-
-// bool __cdecl mh::sim::rng_trace_overflowed(void)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_21(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 84]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 21
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?rng_trace_overflowed@sim@mh@@YA_NXZ=_mh_harness_spine_thunk_21")
-
-
-// void __cdecl mh::sim::rng_trace_set_step(unsigned int)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_22(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 88]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 22
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?rng_trace_set_step@sim@mh@@YAXI@Z=_mh_harness_spine_thunk_22")
-
-
-// void __cdecl mh::sim::rng_trace_window(unsigned int,unsigned int)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_23(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 92]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 23
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?rng_trace_window@sim@mh@@YAXII@Z=_mh_harness_spine_thunk_23")
-
-
-// bool __cdecl mh::rebind::set_armed(char const *,bool)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_24(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 96]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 24
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?set_armed@rebind@mh@@YA_NPBD_N@Z=_mh_harness_spine_thunk_24")
-
-
-// void __cdecl mh::sim::set_lt_frame_input_override(void (__cdecl*)(void))
-extern "C" __declspec(naked) void mh_harness_spine_thunk_25(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 100]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 25
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?set_lt_frame_input_override@sim@mh@@YAXP6AXXZ@Z=_mh_harness_spine_thunk_25")
-
-
-// void __cdecl mh::orders::set_suppress_enqueue(bool)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_26(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 104]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 26
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?set_suppress_enqueue@orders@mh@@YAX_N@Z=_mh_harness_spine_thunk_26")
-
-
-// void __cdecl mh::sim::set_time_resync_pace_disabled(bool)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_27(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 108]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 27
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?set_time_resync_pace_disabled@sim@mh@@YAX_N@Z=_mh_harness_spine_thunk_27")
-
-
-// int __cdecl mh::libmh_in::trap_count(void)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_28(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 112]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 28
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?trap_count@libmh_in@mh@@YAHXZ=_mh_harness_spine_thunk_28")
-
-
-// int __cdecl mh::tact::unit_enqueue_command(int,int,unsigned char,int,unsigned short,unsigned short,unsigned short)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_29(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 116]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 29
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z=_mh_harness_spine_thunk_29")
-
-
-// bool __cdecl mh::save::verify_active(void)
-extern "C" __declspec(naked) void mh_harness_spine_thunk_30(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 120]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 30
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:?verify_active@save@mh@@YA_NXZ=_mh_harness_spine_thunk_30")
-
-
-// _libmh_import_world
-extern "C" __declspec(naked) void mh_harness_spine_thunk_31(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 124]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 31
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:_libmh_import_world=_mh_harness_spine_thunk_31")
-
-
-// _libmh_set_session_seed
-extern "C" __declspec(naked) void mh_harness_spine_thunk_32(void) {
-    __asm {
-        mov eax, dword ptr [g_mh_harness_spine_fn + 128]
-        test eax, eax
-        jz absent
-        jmp eax
-    absent:
-        mov dword ptr [g_mh_harness_unbound_row], 32
-        mov dword ptr [g_mh_harness_unbound_side], 1
-        jmp mh_harness_unbound_trap
-    }
-}
-#pragma comment(linker, "/alternatename:_libmh_set_session_seed=_mh_harness_spine_thunk_32")
+#pragma comment(linker, "/alternatename:_libmh_set_session_seed=_mh_harness_spine_thunk_19")
 

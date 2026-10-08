@@ -41,8 +41,6 @@ struct time_resync_and_tick_calls {
 //
 // Default is a no-op, so a build that installs no pacing instrument behaves exactly as before, and
 // the offline oracle -- which replaces the whole struct -- is unaffected.
-// EXPERIMENT ARM (default off) -- disable the C4 pacing prelude. See the .cpp.
-void set_time_resync_pace_disabled(bool off);
 
 void set_time_resync_instrument_hooks(void (*pace_time_tick)());
 

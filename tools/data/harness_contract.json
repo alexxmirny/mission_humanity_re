@@ -167,24 +167,6 @@
    ]
   },
   {
-   "export": "?save_planet_now@save@mh@@YAIHI@Z",
-   "mangled": "?save_planet_now@save@mh@@YAIHI@Z",
-   "pretty": "unsigned int __cdecl mh::save::save_planet_now(int,unsigned int)",
-   "slot": "mh_save_save_planet_now",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?savegame_now@save@mh@@YAIPAD@Z",
-   "mangled": "?savegame_now@save@mh@@YAIPAD@Z",
-   "pretty": "unsigned int __cdecl mh::save::savegame_now(char *)",
-   "slot": "mh_save_savegame_now",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
    "export": "MH_Core_ArmPaths",
    "mangled": "_MH_Core_ArmPaths",
    "pretty": "_MH_Core_ArmPaths",
@@ -216,15 +198,6 @@
    "mangled": "_MH_Lockstep_StepPin",
    "pretty": "_MH_Lockstep_StepPin",
    "slot": "MH_Lockstep_StepPin",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "MH_Net_Send",
-   "mangled": "_MH_Net_Send",
-   "pretty": "_MH_Net_Send",
-   "slot": "MH_Net_Send",
    "used_by": [
     "harness.obj"
    ]
@@ -403,15 +376,6 @@
    ]
   },
   {
-   "export": "?container_promotion_active@save@mh@@YA_NXZ",
-   "mangled": "?container_promotion_active@save@mh@@YA_NXZ",
-   "pretty": "bool __cdecl mh::save::container_promotion_active(void)",
-   "slot": "mh_save_container_promotion_active",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
    "export": "?group_issue_order@tact@mh@@YAXHIIII@Z",
    "mangled": "?group_issue_order@tact@mh@@YAXHIIII@Z",
    "pretty": "void __cdecl mh::tact::group_issue_order(int,unsigned int,unsigned int,unsigned int,unsigned int)",
@@ -425,15 +389,6 @@
    "mangled": "?install_export_ok@hosthook@mh@@YA_NIPAXPBD_K@Z",
    "pretty": "bool __cdecl mh::hosthook::install_export_ok(unsigned int,void *,char const *,unsigned __int64)",
    "slot": "mh_hosthook_install_export_ok",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?last_save_path@save@mh@@YAPBDXZ",
-   "mangled": "?last_save_path@save@mh@@YAPBDXZ",
-   "pretty": "char const * __cdecl mh::save::last_save_path(void)",
-   "slot": "mh_save_last_save_path",
    "used_by": [
     "harness.obj"
    ]
@@ -502,78 +457,6 @@
    ]
   },
   {
-   "export": "?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z",
-   "mangled": "?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z",
-   "pretty": "void __cdecl mh::sim::rng_trace_add_note(unsigned int,unsigned int,unsigned int,unsigned int,unsigned int,unsigned int,unsigned int)",
-   "slot": "mh_sim_rng_trace_add_note",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z",
-   "mangled": "?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z",
-   "pretty": "struct mh::sim::rng_trace_entry const & __cdecl mh::sim::rng_trace_at(int)",
-   "slot": "mh_sim_rng_trace_at",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_count@sim@mh@@YAHXZ",
-   "mangled": "?rng_trace_count@sim@mh@@YAHXZ",
-   "pretty": "int __cdecl mh::sim::rng_trace_count(void)",
-   "slot": "mh_sim_rng_trace_count",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z",
-   "mangled": "?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z",
-   "pretty": "struct mh::sim::rng_trace_note const & __cdecl mh::sim::rng_trace_note_at(int)",
-   "slot": "mh_sim_rng_trace_note_at",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_note_count@sim@mh@@YAHXZ",
-   "mangled": "?rng_trace_note_count@sim@mh@@YAHXZ",
-   "pretty": "int __cdecl mh::sim::rng_trace_note_count(void)",
-   "slot": "mh_sim_rng_trace_note_count",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_overflowed@sim@mh@@YA_NXZ",
-   "mangled": "?rng_trace_overflowed@sim@mh@@YA_NXZ",
-   "pretty": "bool __cdecl mh::sim::rng_trace_overflowed(void)",
-   "slot": "mh_sim_rng_trace_overflowed",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_set_step@sim@mh@@YAXI@Z",
-   "mangled": "?rng_trace_set_step@sim@mh@@YAXI@Z",
-   "pretty": "void __cdecl mh::sim::rng_trace_set_step(unsigned int)",
-   "slot": "mh_sim_rng_trace_set_step",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?rng_trace_window@sim@mh@@YAXII@Z",
-   "mangled": "?rng_trace_window@sim@mh@@YAXII@Z",
-   "pretty": "void __cdecl mh::sim::rng_trace_window(unsigned int,unsigned int)",
-   "slot": "mh_sim_rng_trace_window",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
    "export": "?set_armed@rebind@mh@@YA_NPBD_N@Z",
    "mangled": "?set_armed@rebind@mh@@YA_NPBD_N@Z",
    "pretty": "bool __cdecl mh::rebind::set_armed(char const *,bool)",
@@ -583,28 +466,10 @@
    ]
   },
   {
-   "export": "?set_lt_frame_input_override@sim@mh@@YAXP6AXXZ@Z",
-   "mangled": "?set_lt_frame_input_override@sim@mh@@YAXP6AXXZ@Z",
-   "pretty": "void __cdecl mh::sim::set_lt_frame_input_override(void (__cdecl*)(void))",
-   "slot": "mh_sim_set_lt_frame_input_override",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
    "export": "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
    "mangled": "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
    "pretty": "void __cdecl mh::orders::set_suppress_enqueue(bool)",
    "slot": "mh_orders_set_suppress_enqueue",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?set_time_resync_pace_disabled@sim@mh@@YAX_N@Z",
-   "mangled": "?set_time_resync_pace_disabled@sim@mh@@YAX_N@Z",
-   "pretty": "void __cdecl mh::sim::set_time_resync_pace_disabled(bool)",
-   "slot": "mh_sim_set_time_resync_pace_disabled",
    "used_by": [
     "harness.obj"
    ]
@@ -623,15 +488,6 @@
    "mangled": "?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z",
    "pretty": "int __cdecl mh::tact::unit_enqueue_command(int,int,unsigned char,int,unsigned short,unsigned short,unsigned short)",
    "slot": "mh_tact_unit_enqueue_command",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?verify_active@save@mh@@YA_NXZ",
-   "mangled": "?verify_active@save@mh@@YA_NXZ",
-   "pretty": "bool __cdecl mh::save::verify_active(void)",
-   "slot": "mh_save_verify_active",
    "used_by": [
     "harness.obj"
    ]

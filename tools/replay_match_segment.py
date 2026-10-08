@@ -750,7 +750,11 @@ def run_replay(
     for frag in extra_ini:
         argv += ["--extra-ini", frag]
     before = (
-        set(os.listdir(os.path.join(lane, "logs")))
+        set(
+            _n
+            for _n in os.listdir(os.path.join(lane, "logs"))
+            if os.path.isdir(os.path.join(os.path.join(lane, "logs"), _n))
+        )
         if os.path.isdir(os.path.join(lane, "logs"))
         else set()
     )
@@ -760,7 +764,11 @@ def run_replay(
     )
     print("  $ " + " ".join(argv[1:]))
     subprocess.run(argv, cwd=REPO)
-    after = set(os.listdir(os.path.join(lane, "logs")))
+    after = set(
+        _n
+        for _n in os.listdir(os.path.join(lane, "logs"))
+        if os.path.isdir(os.path.join(os.path.join(lane, "logs"), _n))
+    )
     new = sorted(
         d for d in after - before if os.path.isfile(os.path.join(lane, "logs", d, "mh_harness.log"))
     )

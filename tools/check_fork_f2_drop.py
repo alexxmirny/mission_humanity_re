@@ -80,7 +80,9 @@ SHIP_RE = re.compile(r"\bSHIP_PROMOTE_\w*|\bSHIP_REBIND_DEFAULT\b")
 
 # 2. THE INSTALLER. A read of a retired section is the mechanism itself -- this is the assertion that
 #    would go red if any of the 57 collapsed call sites came back.
-PROFILE_RE = re.compile(r'GetPrivateProfile\w+\(\s*"(?:%s)"' % RETIRED_SECTIONS)
+PROFILE_RE = re.compile(
+    r'(?:GetPrivateProfile\w+|mh_ini_get_(?:int|str))\(\s*"(?:%s)"' % RETIRED_SECTIONS
+)
 
 # 3. A retired SECTION HEADER in a committed ini. Anchored at line start, which is what distinguishes
 #    it from the `; [promote] ...` log prefix an ini's own banner may legitimately quote.

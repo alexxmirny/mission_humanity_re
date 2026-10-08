@@ -13,6 +13,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
 
@@ -34,6 +35,7 @@
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
 #include "desync/desync_watch.h"         // mp:RM1 -- match_end(): the [desync] rollup into the match's own directory
 #include "seams/session_close_plan.h"    // TL-HARN-CLEANCLOSE -- the close's sequencing, shared with the harness stop
+#include "include/mh_presence.h"         // RL15 -- presence.json (the launcher's Discord module reads it)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -203,6 +205,30 @@ volatile LONG g_exit_cause = 0; // 0 = none, 1 = MH_MP_EXIT_HOST_LEFT, 2 = MH_MP
 // from an earlier lobby can never bounce a fresh join.
 volatile LONG g_join_refused                                         = 0;
 char          g_join_refused_reason[mh_net_proto::ANNOUNCE_TEXT_CAP] = {0};
+
+// RL11 -- THE RELEASE VERSION THIS PEER STATES. MH_VERSION_STRING ("0.2.0"), not MH_VERSION_FULL
+// ("0.2.0+abc12345"): two players on the same release must match whatever their build machines
+// stamped, and a dev build must match itself. (Two dev builds of one stamp but different commits
+// then also match; the wire generation, MH_MP_HOST_VERSION, is what guards their compatibility.)
+// `[net] test_build_version=X` (TEST ONLY, mh_net.example.ini) forges it for the build_refused UI
+// scenario; resolved once, and logged once when forged so the scenario can prove the knob was live.
+const char *mp_own_build() {
+    static char build[mh_net_proto::BUILD_MAX + 1];
+    static bool resolved = false;
+    if (!resolved) {
+        resolved                                 = true;
+        char forged[mh_net_proto::BUILD_MAX + 1] = {0};
+        mh_ini_get_str("net", "test_build_version", "", forged, (DWORD)sizeof(forged), g_ini);
+        const char *src = forged[0] ? forged : MH_VERSION_STRING;
+        lstrcpynA(build, src, (int)sizeof(build));
+        if (forged[0]) {
+            char b[96];
+            wsprintfA(b, "; RL11 TEST: advertising forged build '%s' (test_build_version)\n", build);
+            seam_log(b);
+        }
+    }
+    return build;
+}
 // mp:R6 -- a JOIN the player clicked on a RELAY-LISTED row before the link into that lobby's room
 // was up. The transport drops a ctrl frame with no peer to carry it, and R2 left that as "click
 // Join again" -- which was a rare race while a host's room was its port (the browsing dial usually
@@ -332,8 +358,8 @@ constexpr uintptr_t ADDR_MAP_PCOUNT            = ADDR_CUR_MAP + 0x08;          /
 constexpr uintptr_t ADDR_MP_LOBBY_SLOTS        = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
 constexpr int       MP_SLOT_STRIDE             = 0x39;
 constexpr int       MP_SLOT_STATUS             = 0x0b; // slot_status byte (0 = empty)
-constexpr uint16_t  MH_MP_HOST_VERSION         = 5;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability)
-constexpr uint16_t  MH_MP_HOST_VERSION_MIN_U59 = 5;    // the first host version this transport still accepts: U59's prefix + U61's mesh + U63's failover capability (a v3/v4 host's WELCOME carries capability 1/2, refused)
+constexpr uint16_t  MH_MP_HOST_VERSION         = 6;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability, 6 = RL11's release version in the JOIN)
+constexpr uint16_t  MH_MP_HOST_VERSION_MIN_U59 = 6;    // the first host version this transport still accepts: U59's prefix + U61's mesh + U63's failover capability + RL11's build-stating JOIN (a v3/v4 host's WELCOME carries capability 1/2, refused; a v5 host cannot read our v6 JOIN)
 
 // slot_status enum (llm_lobby_player_slot.slot_status, offset 0x0b): OPEN=0, HUMAN=1, AI=2, CLOSED=3.
 enum { SLOT_OPEN   = 0,
@@ -470,13 +496,56 @@ void session_roster(char *dst, int cap) {
     }
 }
 
+// RL15: the HUMAN player names in slot order (UTF-8) and the AI-slot count, for session.json. Same
+// three-way slot test as session_roster (the status bytes alone are unreliable at the open), so the
+// close re-samples it. The game's names are ANSI; session.json is read by a Rust launcher, which
+// wants valid UTF-8. A human without a known name is listed as "Player <slot+1>" -- the COUNT is
+// what the match list needs even when a name never arrived. A solo match has no lobby slots to read:
+// the local player's own name is listed.
+void utf8_from_ansi(const char *src, char *dst, int cap) {
+    dst[0] = '\0';
+    wchar_t w[MH_SESSION_PLAYER_NAME_CAP];
+    int     n = MultiByteToWideChar(CP_ACP, 0, src, -1, w, (int)(sizeof(w) / sizeof(w[0])) - 1);
+    if (n <= 0) return;
+    w[n < (int)(sizeof(w) / sizeof(w[0])) ? n : (int)(sizeof(w) / sizeof(w[0])) - 1] = L'\0';
+    if (WideCharToMultiByte(CP_UTF8, 0, w, -1, dst, cap, nullptr, nullptr) <= 0) dst[0] = '\0';
+}
+
+void session_players(MH_SessionRecord *r) {
+    const int mine  = (g_a.local_player_index != nullptr) ? *g_a.local_player_index : -1;
+    r->player_count = 0;
+    r->ai_count     = 0;
+    for (int i = 0; i < 8; ++i) {
+        unsigned char s       = *(const unsigned char *)(ADDR_MP_LOBBY_SLOTS + i * MP_SLOT_STRIDE + MP_SLOT_STATUS);
+        const char   *nm      = MH_MP_PeerName(i);
+        const bool    named   = (nm != nullptr && nm[0] != '\0');
+        const bool    is_mine = (i == mine);
+        if (s == SLOT_AI) {
+            ++r->ai_count;
+            continue;
+        }
+        if (s != SLOT_HUMAN && !named && !is_mine) continue;
+        char *dst = r->players[r->player_count++];
+        if (named) utf8_from_ansi(nm, dst, MH_SESSION_PLAYER_NAME_CAP);
+        else if (is_mine) utf8_from_ansi((const char *)mh::addr::mp_player_name, dst, MH_SESSION_PLAYER_NAME_CAP);
+        if (dst[0] == '\0') wsprintfA(dst, "Player %d", i + 1);
+    }
+    if (r->player_count == 0) { // single-player: no lobby slots -- the local player alone
+        utf8_from_ansi((const char *)mh::addr::mp_player_name, r->players[0], MH_SESSION_PLAYER_NAME_CAP);
+        if (r->players[0][0] == '\0') mh_sd_copy(r->players[0], MH_SESSION_PLAYER_NAME_CAP, "Player");
+        r->player_count = 1;
+    }
+}
+
+bool g_desync_latch = false; // RL15: the desync watch fired during THIS session (latched; cleared at open)
+
 // session.json, rewritten whole at both ends of the session. CREATE_ALWAYS rather than append: the
 // file is a SNAPSHOT of the record, and a half-open session that the process never closed still
 // leaves a readable one naming the match -- which is the case a crash report is made of.
 void session_json_write() {
     char path[MAX_PATH];
     wsprintfA(path, "%ssession.json", MH_RunDir());
-    char text[2048];
+    char text[4096];
     int  n = mh_session_json(&g_session_rec, text, (int)sizeof(text));
     // mp:LOG2: the log sink's writer does the CREATE_ALWAYS + write (create/truncate record), so the
     // game thread that opens/closes a session never touches the disk for it.
@@ -521,6 +590,9 @@ void mp_session_open(const unsigned char *match_id, int slot, const char *mode, 
     lstrcpynA(g_session_rec.map, (const char *)ADDR_MAP_NAME, MH_SESSION_TEXT_CAP);
     g_session_rec.map_hash = mh_session_hash((const void *)ADDR_CUR_MAP, mh_net_proto::MAP_HEADER_SIZE);
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
+    session_players(&g_session_rec);
+    mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP, "running"); // RL15: see mh_session_dir.h
+    g_desync_latch = false;
     MH_Seam_SessionPacing(nullptr, nullptr, nullptr, nullptr, &g_session_rec.lockstep_step_ms,
                           &g_session_rec.sim_step_ms);
     mh_sd_copy(g_session_rec.transport, MH_SESSION_TEXT_CAP, session_transport());
@@ -640,6 +712,185 @@ void mp_session_solo_tick() {
     mp_session_open(id, slot, mode, map);
 }
 
+// ---- RL15: presence.json ------------------------------------------------------------------------
+//
+// POLLED, not hooked: once per present (net_lockstep.cpp on_present, beside the SES8 poll), the
+// state is DERIVED from what the session layer and the game already know, and mh_presence_publish
+// (mh_common/include/mh_presence.h) writes only when it differs from the last one -- so the campaign
+// planet switch needs no hook of its own: G_PLANET_INDEX changing IS the switch (the game loads the
+// new planet in map_LoadPlanetFromDisk, which sets it first). A poll adds no install, so no arm-order
+// baseline moves. The file I/O is on the publisher's worker thread, never here.
+//
+// State table (presence.json schema v1, as the launcher reads it):
+//   no session open                      -> menu
+//   session mode host/client, no match frame seen yet -> lobby  (players = occupied slots, AI incl.)
+//   session mode host/client, match frame seen        -> match / network
+//   skirmish / tactical                  -> match / <mode>
+//   campaign                             -> campaign (GAME_MODE 6 inside it -> match / tactical)
+//   tutorial                             -> tutorial
+//
+// NAMES. Planet and system names are display-name ids: Planets[G_PLANET_INDEX].name (+4) and
+// System[CurrentSystem].name (+4) index the localised text table cfg_G_TEXT_PTRS (docs/structs.md
+// cfg_final_struct_Planet / System). Resolved only when the index changes. Reads are SEH-guarded:
+// the table is filled at cfg load and a bad index must degrade to "Planet N", never fault a frame.
+extern "C" const char *MH_LogsRoot(void); // run_context.cpp
+
+namespace {
+
+constexpr int      PLANET_STRIDE  = 0x427;
+constexpr int      SYSTEM_STRIDE  = 0x8c;
+constexpr uint32_t TEXT_PTR_COUNT = (0x005850a4u - 0x0058440cu) / 4u; // up to G_TEXT_BLOCK
+
+bool text_utf8(uint32_t define_index, char *dst, int cap) {
+    dst[0] = '\0';
+    if (define_index >= TEXT_PTR_COUNT) return false;
+    __try {
+        const wchar_t *w = *(const wchar_t *const *)(mh::addr::cfg_G_TEXT_PTRS + define_index * 4u);
+        if (w == nullptr) return false;
+        wchar_t tmp[MH_PRESENCE_TEXT_CAP];
+        int     n = 0;
+        while (n < (int)(sizeof(tmp) / sizeof(tmp[0])) - 1 && w[n] != 0) {
+            tmp[n] = w[n];
+            ++n;
+        }
+        tmp[n] = 0;
+        if (n == 0) return false;
+        return WideCharToMultiByte(CP_UTF8, 0, tmp, -1, dst, cap, nullptr, nullptr) > 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        dst[0] = '\0';
+        return false;
+    }
+}
+
+// "TUTORIAL.MP" / "dir\blue monday.mpm" -> "TUTORIAL" / "blue monday".
+void map_leaf(const char *map, char *dst, int cap) {
+    const char *leaf = map;
+    for (const char *p = map; *p; ++p)
+        if (*p == '\\' || *p == '/' || *p == ':') leaf = p + 1;
+    const char *end = nullptr;
+    for (const char *p = leaf; *p; ++p)
+        if (*p == '.') end = p;
+    int n = 0;
+    for (const char *p = leaf; *p && p != end && n < cap - 1; ++p) dst[n++] = *p;
+    dst[n] = '\0';
+}
+
+int  g_pres_planet = -1; // the planet/system the cached names belong to
+int  g_pres_system = -1;
+char g_pres_planet_name[MH_PRESENCE_TEXT_CAP];
+char g_pres_system_name[MH_PRESENCE_TEXT_CAP];
+bool g_pres_active     = false;
+bool g_pres_match_seen = false;
+long g_pres_started    = 0;
+
+} // namespace
+
+// Pure-ish: fills `p` from the inputs. Split from the tick so a selftest could drive it (the inputs
+// are the game bytes the tick reads).
+void mp_presence_tick() {
+    const char *root = MH_LogsRoot();
+    if (root == nullptr || root[0] == '\0') return;
+
+    const bool active = MH_RunDir_SessionActive() != 0;
+    if (active && !g_desync_latch && mh::desync::detected()) {
+        // The watch fired: record it NOW, so a match that then ends by a kill or a crash still says desync.
+        g_desync_latch = true;
+        mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP, "desync");
+        session_json_write();
+    }
+    if (active != g_pres_active) { // the session edge
+        g_pres_active     = active;
+        g_pres_match_seen = false;
+        g_pres_started    = active ? mh_presence_unix_now() : 0;
+    }
+
+    MH_Presence p;
+    mh_presence_clear(&p);
+    if (active) {
+        const char *mode   = g_session_rec.mode;
+        const int   gm     = *(const volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+        const bool  in_mtc = in_match_frame();
+        char        map[MH_PRESENCE_TEXT_CAP];
+        map_leaf((const char *)ADDR_MAP_NAME, map, sizeof(map));
+        if (mode[0] == 'c' && mode[1] == 'a') { // campaign
+            if (gm == 6) {
+                mh_sd_copy(p.state, sizeof(p.state), "match");
+                mh_sd_copy(p.mode, sizeof(p.mode), "tactical");
+                p.started_unix = g_pres_started;
+            } else {
+                const int planet = *(const volatile uint8_t *)mh::addr::G_PLANET_INDEX;
+                const int sys    = *(const volatile int32_t *)mh::addr::CurrentSystem;
+                if (planet != g_pres_planet || sys != g_pres_system) {
+                    g_pres_planet         = planet;
+                    g_pres_system         = sys;
+                    g_pres_planet_name[0] = g_pres_system_name[0] = '\0';
+                    if (planet >= 0 && planet < 32) {
+                        uint32_t id = 0;
+                        __try {
+                            id = *(const volatile uint32_t *)(mh::addr::Planets + (uintptr_t)planet * PLANET_STRIDE + 4);
+                        } __except (EXCEPTION_EXECUTE_HANDLER) {
+                            id = 0xffffffffu;
+                        }
+                        text_utf8(id, g_pres_planet_name, sizeof(g_pres_planet_name));
+                    }
+                    if (sys >= 0 && sys < 4) {
+                        uint32_t id = 0;
+                        __try {
+                            id = *(const volatile uint32_t *)(mh::addr::System + (uintptr_t)sys * SYSTEM_STRIDE + 4);
+                        } __except (EXCEPTION_EXECUTE_HANDLER) {
+                            id = 0xffffffffu;
+                        }
+                        text_utf8(id, g_pres_system_name, sizeof(g_pres_system_name));
+                    }
+                    if (g_pres_planet_name[0] == '\0') wsprintfA(g_pres_planet_name, "Planet %d", planet);
+                }
+                mh_sd_copy(p.state, sizeof(p.state), "campaign");
+                mh_sd_copy(p.mode, sizeof(p.mode), "campaign");
+                mh_sd_copy(p.system, sizeof(p.system), g_pres_system_name);
+                mh_sd_copy(p.planet, sizeof(p.planet), g_pres_planet_name);
+                p.started_unix = g_pres_started;
+            }
+        } else if (mode[0] == 't' && mode[1] == 'u') { // tutorial
+            mh_sd_copy(p.state, sizeof(p.state), "tutorial");
+            mh_sd_copy(p.mode, sizeof(p.mode), "tutorial");
+            p.started_unix = g_pres_started;
+        } else if (mode[0] == 's' || mode[0] == 't') { // skirmish | tactical
+            mh_sd_copy(p.state, sizeof(p.state), "match");
+            mh_sd_copy(p.mode, sizeof(p.mode), mode);
+            mh_sd_copy(p.map, sizeof(p.map), map);
+            p.started_unix = g_pres_started;
+        } else { // host | client: a lobby until the first match frame
+            if (in_mtc && !g_pres_match_seen) {
+                g_pres_match_seen = true;
+                g_pres_started    = mh_presence_unix_now();
+                // The lobby is full by now: refresh the record's players so a session the process
+                // never closes (a crash) still names everyone who played.
+                session_players(&g_session_rec);
+                session_json_write();
+            }
+            mh_sd_copy(p.map, sizeof(p.map), map);
+            if (g_pres_match_seen) {
+                mh_sd_copy(p.state, sizeof(p.state), "match");
+                mh_sd_copy(p.mode, sizeof(p.mode), "network");
+                p.started_unix = g_pres_started;
+            } else {
+                const int mapmax = *(const int *)ADDR_MAP_PCOUNT;
+                int       occ = 0, cap = 0;
+                mp_lobby_occ_cap(mapmax, &occ, &cap);
+                if (cap < 1) cap = mapmax < 1 ? 1 : mapmax;
+                mh_sd_copy(p.state, sizeof(p.state), "lobby");
+                mh_sd_copy(p.mode, sizeof(p.mode), "network");
+                p.players     = occ ? occ : 1;
+                p.max_players = cap;
+            }
+        }
+    }
+    char path[MAX_PATH];
+    if (lstrlenA(root) + 14 >= MAX_PATH) return;
+    wsprintfA(path, "%s\\presence.json", root);
+    mh_presence_publish(p, path);
+}
+
 // U40: the session-boundary half of the re-host fix. A session closing for a MATCH-end reason means
 // this peer's transport link has done its job -- and on 2026-09-01 it had literally died with the
 // match (both conns reset at teardown, mirrored on every peer) while nothing existed to repair it.
@@ -728,6 +979,10 @@ void close_record(const char *reason) {
     // the CLOSING sample is the one worth keeping. The BEGIN line keeps whatever was known then --
     // it is a record of what the peer could see at the open, not a promise about the match.
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
+    session_players(&g_session_rec); // RL15: complete at the close, like the roster
+    // RL15: sampled BEFORE close_rollups() -- match_end() resets the detector's counters.
+    mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP,
+               mh_session_outcome(g_session_rec.reason, g_desync_latch || mh::desync::detected()));
     MH_Seam_SessionPacing(&g_session_rec.final_clock_ms, &g_session_rec.stall_count,
                           &g_session_rec.icon_calls, &g_session_rec.icon_shown, nullptr, nullptr);
     close_rollups();
@@ -826,6 +1081,7 @@ void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
     si.tag = g_mp_tag;
     memcpy(si.match_id, g_mp_match_id, sizeof(si.match_id)); // SES0: advertise it every tick
     si.host_version = MH_MP_HOST_VERSION;
+    lstrcpynA(si.build, mp_own_build(), (int)sizeof(si.build)); // RL11: host-local, join_admit()'s comparand
     // F3: advertise the input codepage this peer has pinned, every tick, beside the identity. It is
     // resolved rather than stored: MH_ChatInput_Codepage() answers GetACP() when the seam never armed,
     // so "no [input] codepage line in the ini" and "pinned to the machine default" are the same claim
@@ -1004,7 +1260,7 @@ const char *relay_addr_cached() {
     static char addr[80] = {0};
     static int  ready    = 0;
     if (!ready) {
-        GetPrivateProfileStringA("net", "relay", "", addr, (DWORD)sizeof(addr), g_ini);
+        mh_ini_get_str("net", "relay", "", addr, (DWORD)sizeof(addr), g_ini);
         // A TRAILING `; comment` IS PART OF THE VALUE to GetPrivateProfileString, and the example ini
         // documents every key with exactly such a comment. `;` cannot occur in a host name, a numeric
         // address or a port, so cut at the first one and trim the whitespace before it -- TL-HARN4's
@@ -1031,7 +1287,7 @@ bool relay_configured() { return relay_addr_cached()[0] != '\0'; }
 // regardless of which browser or whether an IP was typed. Cached like the address.
 bool relay_force() {
     static int cached = -1;
-    if (cached < 0) cached = GetPrivateProfileIntA("net", "force_relay", 0, g_ini) != 0 ? 1 : 0;
+    if (cached < 0) cached = mh_ini_get_int("net", "force_relay", 0, g_ini) != 0 ? 1 : 0;
     return cached != 0;
 }
 
@@ -1407,7 +1663,7 @@ void mp_host_advertise_session() {
 // same content) are dropped, since processing one would end the staged race early. Relay directory
 // rows never reach here (on_session_info_recv routes them first) -- they are what the JOIN names.
 static bool advert_hold_take(int sender, const unsigned char *buf, int len) {
-    if (g_hold_ms < 0) g_hold_ms = (int)GetPrivateProfileIntA("net", "map_test_advert_hold_ms", 0, g_ini);
+    if (g_hold_ms < 0) g_hold_ms = (int)mh_ini_get_int("net", "map_test_advert_hold_ms", 0, g_ini);
     if (g_hold_ms <= 0) return false;
     const LONG st = InterlockedCompareExchange(&g_hold_state, 0, 0);
     if (st == 2) return false;
@@ -1717,6 +1973,16 @@ void on_join_recv(int sender, const unsigned char *buf, int len) {
         host_reply_refused(sender, verdict, mine, jr);
         return;
     }
+    if (verdict == mh_net_proto::JoinAdmit::RefusedBuild) {
+        // RL11: the joiner runs a different release. Named with both versions and DELIVERED (F3c) --
+        // the joiner shows "Host runs X, you run Y: update"; the host stays in its lobby.
+        wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; ours %s, theirs %s)\n",
+                  sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
+                  mine.build, jr.build[0] ? jr.build : "?");
+        seam_log(b);
+        host_reply_refused(sender, verdict, mine, jr);
+        return;
+    }
     if (verdict == mh_net_proto::JoinAdmit::RefusedOldProtocol) {
         wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; format %u < %u)\n",
                   sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
@@ -1947,7 +2213,7 @@ void on_join_connect() {
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr);
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build());
     fill_my_player_name(jr); // S6: my player name ([A-Za-z0-9], MP-LANG)
     uint8_t buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     int     n = (int)mh_net_proto::join_request_encode(jr, buf);
@@ -2000,7 +2266,7 @@ void mp_join_resend_map_report() {
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr);
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build());
     fill_my_player_name(jr);
     uint8_t   buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     const int n = (int)mh_net_proto::join_request_encode(jr, buf);

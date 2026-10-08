@@ -20,6 +20,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -36,6 +37,7 @@
 #include "gfx/ddraw_own.h"             // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
 #include "input/dinput_own.h"          // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"       // LOG1: the async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
@@ -177,22 +179,17 @@ enum { EV_MOVE  = 1,
 constexpr uint32_t WIDGET_HIDDEN   = 0x80; // llm_ui_widget.flags: skipped by list_draw
 constexpr uint32_t WIDGET_DISABLED = 0x40; // llm_ui_widget.flags: input_tick's hit-test skips it (greyed)
 // A widget the harness may target: not hidden and not disabled -- exactly what a real click can land on
-// (the game's own hit-test skips both). Lets click_label/value ignore a disabled decoy sharing a label
+// (the game's own hit-test skips both). Lets the click_label/click_value script steps ignore a disabled decoy sharing a label
 // (e.g. the lobby's disabled "Start" placeholder vs the real enabled Start action widget).
 inline bool clickable(uint32_t flags) { return (flags & (WIDGET_HIDDEN | WIDGET_DISABLED)) == 0; }
 
 uint32_t g_ts      = 0x10000; // synthetic monotonic timestamp; big gaps so poll never sees a double-click
-bool     g_prev_f7 = false, g_prev_f8 = false;
+bool     g_prev_f7 = false;
 
 // [uitest] config
-bool g_enabled        = false;
-char g_auto_label[64] = {0};
-int  g_auto_value     = -1;  // click_value target (-1 = unset); the sprite-menu identifier
-int  g_settle_frames  = 2;   // require the target present this many consecutive frames before auto-firing
-int  g_settle_ms      = 120; // [uitest] settle_ms -- how long a widget center must hold still for `settled`
-int  g_seen           = 0;
-bool g_fired          = false;
-bool g_dumped         = false; // one-shot: log the first non-empty active list (labels for authoring)
+bool g_enabled   = false;
+int  g_settle_ms = 120;   // [uitest] settle_ms -- how long a widget center must hold still for `settled`
+bool g_dumped    = false; // one-shot: log the first non-empty active list (labels for authoring)
 
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
@@ -1497,27 +1494,6 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
                    w->flags, cx, cy, hx, hy, w->hit_mask_idx, w->value, w->label ? lbl : "(none)");
     }
     ui_log(";   (%d widgets)", i);
-}
-
-static bool have_auto_target() { return g_auto_value >= 0 || g_auto_label[0]; }
-
-// Is the configured auto-target (by value, else by label) a visible widget in the active list now?
-static bool auto_target_present() {
-    mh_llm_ui_widget_list *list = active_list();
-    if (!list) return false;
-    for (mh_llm_ui_widget **wp = list->children; *wp; ++wp) {
-        if (((*wp)->flags & WIDGET_HIDDEN) != 0) continue;
-        if (g_auto_value >= 0) {
-            if ((*wp)->value == g_auto_value) return true;
-        } else if (label_matches((*wp)->label, g_auto_label)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static int fire_auto_target() {
-    return g_auto_value >= 0 ? MH_UIDrive_ClickValue(g_auto_value) : MH_UIDrive_ClickLabel(g_auto_label);
 }
 
 // ===================================================================================================
@@ -3292,8 +3268,6 @@ click_result do_action(const Step *s) {
             // U29 (b): the host's Start, arriving when the client is no longer in a lobby. Two
             // independent guards must swallow it -- the torn-down slot array (the driver never
             // reaches its entry conditions) and the screen gate (it refuses even if they are met).
-            // [net] u29_teardown=0 / u29_screen_gate=0 remove them one at a time, which is how this
-            // hook's negative arms are reached without editing code.
             ui_log("; [script] injectstart -- latching a bare FLAG_START (entry must be a no-op here)");
             MH_Seam_InjectStartReceived();
             break;
@@ -3469,19 +3443,16 @@ extern "C" void MH_UIDrive_OnPresent(void) {
     mh::input::on_present(); // PT-INPUT1: module check, [input] mouse_trace element / key_trace ring lines
     if (g_mouse_trace) trace_mouse_ring();
 
-    // Hotkeys (interactive testing): F7 = dump active list, F8 = click the configured target.
+    // Hotkey (interactive testing): F7 = dump active list.
     bool f7 = (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
     if (f7 && !g_prev_f7) MH_UIDrive_DumpWidgets();
     g_prev_f7 = f7;
-    bool f8   = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
-    if (f8 && !g_prev_f8 && have_auto_target()) fire_auto_target();
-    g_prev_f8 = f8;
 
     if (!g_enabled) return;
 
     dump_on_change(); // [uitest] dump_screens=1: log each new screen (script-authoring aid)
 
-    // Script mode ([uitest] script=FILE) takes precedence over the single-target auto-click.
+    // Script mode ([uitest] script=FILE).
     if (g_script_on) {
         const bool was_done = g_script_done;
         script_tick();
@@ -3494,7 +3465,7 @@ extern "C" void MH_UIDrive_OnPresent(void) {
     }
 
     // One-shot: log the first non-empty active list so a headless run reveals the real clickable labels
-    // (used to author click_label targets without a live keyboard).
+    // (used to author click_label script targets without a live keyboard).
     if (!g_dumped) {
         mh_llm_ui_widget_list *list = active_list();
         if (list && list->children && *list->children) {
@@ -3502,60 +3473,40 @@ extern "C" void MH_UIDrive_OnPresent(void) {
             g_dumped = true;
         }
     }
-
-    // Auto-click: fire ONCE, keyed purely on UI state (the target widget appearing), not on a frame/time
-    // offset -- with a small consecutive-frames settle so we don't click mid screen-transition.
-    if (g_fired || !have_auto_target()) return;
-    if (auto_target_present()) {
-        if (++g_seen >= g_settle_frames) {
-            if (fire_auto_target())
-                ui_log("; auto-click fired (state predicate: target present %d frames)", g_seen);
-            g_fired = true;
-        }
-    } else {
-        g_seen = 0;
-    }
 }
 
 extern "C" int MH_UIDrive_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
     // TACT-REC: the VM mouse fix. Its own [input] section, not [uitest]: it applies to an
     // INTERACTIVE run where uitest is off, and coupling it to that flag would make it unreachable
     // for the one case it exists for. All three default to 0 = untouched, so no existing run moves.
-    g_mouse_trace    = GetPrivateProfileIntA("input", "mouse_trace", 0, ini);
-    g_mouse_absolute = GetPrivateProfileIntA("input", "mouse_absolute", 0, ini);
-    g_mouse_div      = GetPrivateProfileIntA("input", "mouse_div", 0, ini);
-    g_mouse_accel    = GetPrivateProfileIntA("input", "mouse_accel", 0, ini);
+    g_mouse_trace    = mh_ini_get_int("input", "mouse_trace", 0, ini);
+    g_mouse_absolute = mh_ini_get_int("input", "mouse_absolute", 0, ini);
+    g_mouse_div      = mh_ini_get_int("input", "mouse_div", 0, ini);
+    g_mouse_accel    = mh_ini_get_int("input", "mouse_accel", 0, ini);
 
-    g_enabled = GetPrivateProfileIntA("uitest", "enable", 0, ini) != 0;
-    mh::config::read_ini_string("uitest", "click_label", "", g_auto_label, sizeof(g_auto_label), // TL-HARN4
-                                ini);
-    g_auto_value    = GetPrivateProfileIntA("uitest", "click_value", -1, ini); // sprite-menu id (-1 = unset)
-    g_settle_frames = GetPrivateProfileIntA("uitest", "settle_frames", 2, ini);
-    if (g_settle_frames < 1) g_settle_frames = 1;
+    g_enabled = mh_ini_get_int("uitest", "enable", 0, ini) != 0;
     // How long the center must hold still for `settled` (ms). A DURATION so the predicate means the
     // same thing at 60 fps and at headless rates -- see the OP_W_SETTLED comment.
-    g_settle_ms = GetPrivateProfileIntA("uitest", "settle_ms", 120, ini);
+    g_settle_ms = mh_ini_get_int("uitest", "settle_ms", 120, ini);
     if (g_settle_ms < 0) g_settle_ms = 0;
-    g_dump_screens = GetPrivateProfileIntA("uitest", "dump_screens", 0, ini) != 0;
-    g_timeout      = GetPrivateProfileIntA("uitest", "timeout_frames", 1500, ini);
+    g_dump_screens = mh_ini_get_int("uitest", "dump_screens", 0, ini) != 0;
+    g_timeout      = mh_ini_get_int("uitest", "timeout_frames", 1500, ini);
     // `type`'s stall budget, in MILLISECONDS since the last character was consumed -- see the
     // script_tick comment for why this one op is not budgeted in frames.
-    g_type_stall_ms = GetPrivateProfileIntA("uitest", "type_stall_ms", 15000, ini);
+    g_type_stall_ms = mh_ini_get_int("uitest", "type_stall_ms", 15000, ini);
 
     // Script mode: [uitest] script=<file> (relative to the exe dir). Loaded once here.
     char scriptname[64];
     mh::config::read_ini_string("uitest", "script", "", scriptname, sizeof(scriptname), ini); // TL-HARN4
     if (scriptname[0]) {
         char spath[MAX_PATH];
-        wsprintfA(spath, "%s%s", exe, scriptname); // `exe` is the dir (trailing '\') after the loop above
+        // UI scripts are rig inputs staged beside the exe (a dev affordance, like the harness replay
+        // inputs), so they resolve against the EXE directory -- not the config dir (RL3). A rig lane
+        // is portable, where the two are the same directory.
+        wsprintfA(spath, "%s%s", mh::cfgdir::exe_dir(), scriptname);
         if (load_script(spath)) {
             g_script_on = true;
             ui_log("; [script] loaded '%s' (%d steps)", scriptname, g_nstep);
@@ -3563,8 +3514,7 @@ extern "C" int MH_UIDrive_Install(void) {
             ui_log("; [script] FAILED to load '%s'", spath);
         }
     }
-    ui_log("; uidrive enabled=%d (F7=dump F8=click; [uitest] click_label='%s' click_value=%d settle_frames=%d "
-           "script='%s' dump_screens=%d timeout=%d)",
-           g_enabled, g_auto_label, g_auto_value, g_settle_frames, scriptname, g_dump_screens, g_timeout);
+    ui_log("; uidrive enabled=%d (F7=dump; script='%s' dump_screens=%d timeout=%d)", g_enabled, scriptname,
+           g_dump_screens, g_timeout);
     return 1;
 }

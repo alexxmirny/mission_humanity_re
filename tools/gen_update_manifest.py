@@ -15,8 +15,21 @@ manifest the launcher will look at. dist LA3 calls this from the release workflo
     python tools/gen_update_manifest.py --genkey --secret-key mh.key --public-key mh.pub
     python tools/gen_update_manifest.py --version 0.1.0 --dist dist --secret-key mh.key \\
         --asset-base-url https://github.com/<owner>/<repo>/releases/download/v0.1.0
-    python tools/gen_update_manifest.py --verify dist/manifest.json --public-key mh.pub
-    python tools/gen_update_manifest.py --selftest            # hermetic; a lint_repo row
+    python tools/gen_update_manifest.py --verify dist/manifest.json [--public-key mh.pub]
+    python tools/gen_update_manifest.py --sign-file FILE --secret-key mh.key [--trusted-comment T]
+    python tools/gen_update_manifest.py --resign dist/manifest.json --secret-key mh.key --out DIR
+    # schema 2 (RL8): one signed file per kind and channel, channels/<channel>/<kind>.json
+    python tools/gen_update_manifest.py --kind game --channel latest --version 0.2.0 --dist dist \\
+        --secret-key mh.key --asset-base-url https://github.com/<o>/<r>/releases/download/v0.2.0 \\
+        --out pages/channels/latest [--min-launcher 0.2.0] [--channel-launcher launcher.json]
+    python tools/gen_update_manifest.py --kind launcher --channel latest --version 0.2.0 \\
+        --launcher-exe mh_launcher.exe --launcher-url <url> --secret-key mh.key --out DIR
+    python tools/gen_update_manifest.py --promote latest/game.json --to stable --secret-key mh.key \\
+        --out DIR
+    python tools/gen_update_manifest.py --bridge --from-manifest old.json \\
+        [--launcher-json stable/launcher.json] --secret-key mh.key --out DIR   # RL10 schema-1 bridge
+    python tools/gen_update_manifest.py --age-days FILE   # verify against update.rs, print its age
+    python tools/gen_update_manifest.py --selftest          # hermetic; a lint_repo row
     MH_RELAY_ADDR=host:port MH_RELAY_KEY=<64 hex> python tools/gen_update_manifest.py ...
                                                               # dist LA6: the relay the launcher
                                                               # provisions, inside the signed body
@@ -103,6 +116,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import sys
 import tempfile
@@ -111,7 +125,14 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DIST = os.path.join(REPO, "dist")
 
-SCHEMA = 1
+SCHEMA = 1  # the bridge manifest (RL10) and everything an rc7.1 launcher reads
+SCHEMA2 = 2  # per-kind, per-channel files (RL8)
+KINDS = ("game", "launcher")
+CHANNELS = ("stable", "latest")
+# The oldest launcher a game manifest built by THIS tool may require. Bump it in the commit that
+# makes the game need a newer launcher; --channel-launcher then refuses a game release the served
+# launcher cannot run, so "game first, launcher later" is a red job rather than a blocked player.
+MIN_LAUNCHER = "0.2.0"
 MANIFEST_NAME = "manifest.json"
 SIGNATURE_NAME = "manifest.json.minisig"
 SUMS_NAME = "SHA256SUMS"
@@ -601,6 +622,413 @@ def write_manifest(out_dir, manifest, key_id, seed, say=print):
     return mpath, spath
 
 
+# --------------------------------------------------------------------------- sign-file / resign
+
+UPDATE_RS = os.path.join(REPO, "src", "launcher", "src", "update.rs")
+
+
+def launcher_public_key(update_rs=UPDATE_RS):
+    """The `PUBLIC_KEY` line compiled into the launcher, read from update.rs. The ONLY key a
+    re-sign may be checked against: the key you happen to hold is not the key players trust."""
+    with io.open(update_rs, encoding="utf-8") as fh:
+        m = re.search(r'pub const PUBLIC_KEY: &str = "([A-Za-z0-9+/=]+)";', fh.read())
+    if not m:
+        raise Refusal("no `pub const PUBLIC_KEY` found in %s" % update_rs)
+    return m.group(1)
+
+
+def _now_rfc3339():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def sign_file(path, key_id, seed, trusted_comment=None, out=None):
+    """Minisign-sign any file with the release key -> the .minisig path. Same signer and key path
+    as the manifest; the default trusted comment names the file and the time."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if trusted_comment is None:
+        trusted_comment = "mission humanity file %s, signed %s" % (
+            os.path.basename(path),
+            _now_rfc3339(),
+        )
+    sig = sign_bytes(
+        key_id, seed, data, "signature from the mission humanity release key", trusted_comment
+    )
+    out = out or path + ".minisig"
+    with io.open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(sig)
+    return out
+
+
+def resign_manifest(path, key_id, seed, pub_text, out_dir=None, issued_at=None):
+    """Re-sign a schema-1 manifest with a fresh `issued_at` and NOTHING else changed.
+
+    The input's signature must verify against `pub_text` (the launcher's compiled-in key) and the
+    secret key must be that key's pair, or the output would be refused by every launcher. Only
+    `issued_at` is set; every other field is asserted equal after the round trip.
+    -> (manifest path, signature path, old issued_at, new issued_at)."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    sig_path = path + ".minisig"
+    if not os.path.isfile(sig_path):
+        raise Refusal("no signature at %s -- refusing to re-sign an unsigned manifest" % sig_path)
+    with io.open(sig_path, encoding="utf-8") as fh:
+        verify_signature(pub_text, data, fh.read())  # raises Refusal on any mismatch
+    pub_id, pub_pk = parse_public_key(pub_text)
+    if ed25519_public_key(seed) != pub_pk or key_id != pub_id:
+        raise Refusal(
+            "the secret key is not the pair of the launcher's PUBLIC_KEY (key id %s) -- the "
+            "re-signed manifest would be refused by every launcher" % _key_id_hex(pub_id)
+        )
+    old = json.loads(data)
+    if old.get("schema") != SCHEMA:
+        raise Refusal("--resign handles schema %d only, this is %r" % (SCHEMA, old.get("schema")))
+    old_issued = old["issued_at"]
+    new_issued = issued_at or _now_rfc3339()
+    if new_issued < old_issued:
+        raise Refusal("new issued_at %s is older than the input's %s" % (new_issued, old_issued))
+    new = dict(old)  # insertion order kept: issued_at stays where it is
+    new["issued_at"] = new_issued
+    new_bytes = manifest_bytes(new)
+    trusted = "mission humanity %s, issued %s" % (new.get("version", "?"), new_issued)
+    sig = sign_bytes(
+        key_id, seed, new_bytes, "signature from the mission humanity release key", trusted
+    )
+    # What is about to be written must verify and differ from the input only in issued_at.
+    verify_signature(pub_text, new_bytes, sig)
+    back = json.loads(new_bytes)
+
+    def rest(d):
+        return {k: v for k, v in d.items() if k != "issued_at"}
+
+    if rest(back) != rest(old) or list(back) != list(old) or back["issued_at"] != new_issued:
+        raise Refusal("the re-serialised manifest differs beyond issued_at")
+    out_dir = out_dir or os.path.dirname(os.path.abspath(path))
+    os.makedirs(out_dir, exist_ok=True)
+    mpath = os.path.join(out_dir, os.path.basename(path))
+    spath = mpath + ".minisig"
+    with open(mpath, "wb") as fh:
+        fh.write(new_bytes)
+    with io.open(spath, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(sig)
+    return mpath, spath, old_issued, new_issued
+
+
+# --------------------------------------------------------------------------- schema 2 (RL8)
+#
+# docs/release.md section 7 and tmp/wave_v020/RL8_design.md carry the contract. In one paragraph: the
+# launcher and the game are separate signed files per channel (channels/<channel>/launcher.json and
+# game.json). `kind` and `channel` are INSIDE the signed body, so a stable file served at the latest
+# URL (or a game file at the launcher's) is refused by the client. `latest` is what a tag publishes;
+# `stable` is only ever produced by --promote, which re-signs the SAME artifacts (sha256/size/url
+# untouched) with a new channel and issued_at.
+
+_RFC3339Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def _ver_key(v):
+    """A sort key for `MAJOR.MINOR.PATCH[-pre]`: numeric core, a release above its own prereleases,
+    prerelease dot-parts compared numerically when both are numbers (semver; rc7.1 < rc10)."""
+    core, _, pre = str(v).partition("-")
+    try:
+        nums = tuple(int(x) for x in core.split("."))
+    except ValueError:
+        raise Refusal("%r is not a MAJOR.MINOR.PATCH[-suffix] version" % (v,))
+    parts = (
+        tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split(".")) if pre else ()
+    )
+    return (nums, 1 if not pre else 0, parts)
+
+
+def _https(url, what):
+    if not isinstance(url, str) or not url.startswith("https://") or len(url) <= 8:
+        raise Refusal("%s %r is not an https:// URL" % (what, url))
+
+
+def _digest(d, what):
+    if not isinstance(d, str) or len(d) != 64 or any(c not in "0123456789abcdef" for c in d):
+        raise Refusal("%s is not 64 lower-case hex digits" % what)
+
+
+def validate_v2(m, kind=None, channel=None):
+    """The shape the launcher's accept_v2 expects. -> m. Refuses on the first deviation."""
+    if not isinstance(m, dict) or m.get("schema") != SCHEMA2:
+        raise Refusal("not a schema-2 manifest (schema %r)" % (m.get("schema"),))
+    if m.get("kind") not in KINDS or (kind and m["kind"] != kind):
+        raise Refusal("kind is %r, expected %r" % (m.get("kind"), kind or KINDS))
+    if m.get("channel") not in CHANNELS or (channel and m["channel"] != channel):
+        raise Refusal("channel is %r, expected %r" % (m.get("channel"), channel or CHANNELS))
+    _ver_key(m.get("version", ""))
+    if not _RFC3339Z.match(str(m.get("issued_at", ""))):
+        raise Refusal("issued_at %r is not RFC 3339 UTC (…Z)" % (m.get("issued_at"),))
+    if m["kind"] == "launcher":
+        _https(m.get("url"), "launcher url")
+        _digest(m.get("sha256"), "launcher sha256")
+        if not isinstance(m.get("size"), int) or m["size"] <= 0:
+            raise Refusal("launcher size must be a positive integer")
+    else:
+        _ver_key(m.get("min_launcher", ""))
+        net = (m.get("game") or {}).get("net")
+        if not isinstance(net, dict):
+            raise Refusal("a game manifest names the `net` zip (game map = net only)")
+        _https(net.get("url"), "game url")
+        _digest(net.get("sha256"), "game sha256")
+        if not isinstance(net.get("size"), int) or net["size"] <= 0:
+            raise Refusal("game size must be a positive integer")
+        if "relay" in m:
+            relay_field(m["relay"].get("addr"), m["relay"].get("key"))
+    return m
+
+
+def v2_trusted_comment(m):
+    """Names kind + channel, so a human reading a .minisig sees what it signs. Not load-bearing:
+    the same two facts are in the signed body."""
+    return "mission humanity %s %s %s, issued %s" % (
+        m["kind"],
+        m["channel"],
+        m["version"],
+        m["issued_at"],
+    )
+
+
+def build_launcher_manifest(
+    version, launcher_exe, launcher_url, channel="latest", notes_url="", issued_at=None
+):
+    if channel not in CHANNELS:
+        raise Refusal("--channel must be one of %s" % ", ".join(CHANNELS))
+    if not launcher_exe or not os.path.isfile(launcher_exe):
+        raise Refusal("no launcher executable at %s" % launcher_exe)
+    m = {
+        "schema": SCHEMA2,
+        "kind": "launcher",
+        "channel": channel,
+        "version": version,
+        "issued_at": issued_at or _now_rfc3339(),
+        "url": launcher_url,
+        "sha256": sha256(launcher_exe),
+        "size": os.path.getsize(launcher_exe),
+    }
+    if notes_url:
+        m["notes_url"] = notes_url
+    return validate_v2(m, "launcher", channel)
+
+
+def build_game_manifest(
+    version,
+    dist_dir,
+    asset_base_url,
+    channel="latest",
+    min_launcher=None,
+    notes_url="",
+    issued_at=None,
+    relay_addr=None,
+    relay_key=None,
+):
+    """A schema-2 game manifest. The game map is `net` only (decision D1); the other two zips are
+    still published on the release, the launcher just does not offer them. The digest is re-hashed
+    off disk and checked against SHA256SUMS, as in build_manifest."""
+    if channel not in CHANNELS:
+        raise Refusal("--channel must be one of %s" % ", ".join(CHANNELS))
+    relay = relay_field(relay_addr, relay_key)
+    dist_dir = os.path.abspath(dist_dir)
+    sums = read_sums(dist_dir)
+    name = "%s-%s-net.zip" % (BASE_NAME, version)
+    path = os.path.join(dist_dir, name)
+    if not os.path.isfile(path):
+        raise Refusal("MISSING ASSET: %s is not in %s" % (name, dist_dir))
+    digest = sha256(path)
+    if name not in sums:
+        raise Refusal("%s is on disk but not named in %s" % (name, SUMS_NAME))
+    if sums[name] != digest:
+        raise Refusal(
+            "DIGEST MISMATCH: %s hashes to %s but %s says %s"
+            % (name, digest, SUMS_NAME, sums[name])
+        )
+    m = {
+        "schema": SCHEMA2,
+        "kind": "game",
+        "channel": channel,
+        "version": version,
+        "issued_at": issued_at or _now_rfc3339(),
+        "min_launcher": min_launcher or MIN_LAUNCHER,
+        "game": {
+            "net": {
+                "url": join_url(asset_base_url, name),
+                "sha256": digest,
+                "size": os.path.getsize(path),
+            }
+        },
+    }
+    if relay is not None:
+        m["relay"] = relay
+    if notes_url:
+        m["notes_url"] = notes_url
+    return validate_v2(m, "game", channel)
+
+
+def load_verified(path, pub_text):
+    """-> (bytes, parsed). The file's .minisig must sit beside it and verify against `pub_text`."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    sig_path = path + ".minisig"
+    if not os.path.isfile(sig_path):
+        raise Refusal("no signature at %s -- refusing to trust an unsigned file" % sig_path)
+    with io.open(sig_path, encoding="utf-8") as fh:
+        verify_signature(pub_text, data, fh.read())
+    return data, json.loads(data)
+
+
+def check_channel_launcher(path, min_launcher, channel, pub_text):
+    """The guard: `path` is the launcher.json SERVED for `channel`. A game manifest requiring a
+    launcher newer than that one would be a release no player on the channel can install, so it is
+    refused here, at signing time. -> the launcher version found."""
+    _data, lm = load_verified(path, pub_text)
+    validate_v2(lm, "launcher", channel)
+    if _ver_key(lm["version"]) < _ver_key(min_launcher):
+        raise Refusal(
+            "min_launcher %s is newer than the %s launcher (%s) -- release the launcher first "
+            "(tag launcher-v%s) or lower --min-launcher"
+            % (min_launcher, channel, lm["version"], min_launcher)
+        )
+    return lm["version"]
+
+
+def write_signed(out_dir, name, manifest, key_id, seed, trusted, pub_text=None, say=print):
+    """Serialise ONCE, sign those bytes, verify what is about to be written, then write. -> paths."""
+    data = manifest_bytes(manifest)
+    sig = sign_bytes(key_id, seed, data, "signature from the mission humanity release key", trusted)
+    verify_signature(pub_text or format_public_key(key_id, ed25519_public_key(seed)), data, sig)
+    os.makedirs(out_dir, exist_ok=True)
+    mpath = os.path.join(out_dir, name)
+    with open(mpath, "wb") as fh:
+        fh.write(data)
+    with io.open(mpath + ".minisig", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(sig)
+    say("  wrote      %-28s %d B (key %s)" % (name, len(data), _key_id_hex(key_id)))
+    return mpath, mpath + ".minisig"
+
+
+def _check_signing_key(key_id, seed, pub_text):
+    pub_id, pub_pk = parse_public_key(pub_text)
+    if ed25519_public_key(seed) != pub_pk or key_id != pub_id:
+        raise Refusal(
+            "the secret key is not the pair of the launcher's PUBLIC_KEY (key id %s) -- the "
+            "output would be refused by every launcher" % _key_id_hex(pub_id)
+        )
+
+
+def promote_manifest(path, to, key_id, seed, pub_text, out_dir=None, issued_at=None):
+    """latest -> stable: the same artifact, re-signed. The input must verify against the launcher's
+    PUBLIC_KEY; only `channel` and `issued_at` change, and that is asserted after the round trip
+    (sha256, size, url, version, min_launcher, relay are all carried over untouched).
+    -> (manifest path, signature path, old issued_at, new issued_at)."""
+    if to != "stable":
+        raise Refusal("--promote only promotes to `stable`, got %r" % to)
+    _check_signing_key(key_id, seed, pub_text)
+    _data, old = load_verified(path, pub_text)
+    validate_v2(old)
+    if old["channel"] != "latest":
+        raise Refusal("only a `latest` file can be promoted; this one is %r" % old["channel"])
+    new_issued = issued_at or _now_rfc3339()
+    if new_issued < old["issued_at"]:
+        raise Refusal(
+            "new issued_at %s is older than the input's %s" % (new_issued, old["issued_at"])
+        )
+    new = dict(old)
+    new["channel"] = to
+    new["issued_at"] = new_issued
+    validate_v2(new, old["kind"], to)
+
+    def rest(d):
+        return {k: v for k, v in d.items() if k not in ("channel", "issued_at")}
+
+    back = json.loads(manifest_bytes(new))
+    if rest(back) != rest(old) or list(back) != list(old):
+        raise Refusal("the promoted file differs from the input beyond channel + issued_at")
+    out_dir = out_dir or os.path.dirname(os.path.abspath(path))
+    mpath, spath = write_signed(
+        out_dir,
+        os.path.basename(path),
+        new,
+        key_id,
+        seed,
+        v2_trusted_comment(new),
+        pub_text,
+        say=lambda *_a: None,
+    )
+    return mpath, spath, old["issued_at"], new_issued
+
+
+def validate_bridge(m):
+    """The schema-1 shape an rc7.1 launcher parses (update.rs, schema 1)."""
+    if m.get("schema") != SCHEMA:
+        raise Refusal("bridge must be schema %d, got %r" % (SCHEMA, m.get("schema")))
+    if not _RFC3339Z.match(str(m.get("issued_at", ""))):
+        raise Refusal("bridge issued_at %r is not RFC 3339 UTC" % (m.get("issued_at"),))
+    lau = m.get("launcher") or {}
+    _ver_key(lau.get("version", ""))
+    _https(lau.get("url"), "bridge launcher url")
+    _digest(lau.get("sha256"), "bridge launcher sha256")
+    game = m.get("game") or {}
+    if not game:
+        raise Refusal("bridge has no game entries")
+    for tag, e in game.items():
+        _https(e.get("url"), "bridge game %s url" % tag)
+        _digest(e.get("sha256"), "bridge game %s sha256" % tag)
+        if not isinstance(e.get("size"), int) or e["size"] <= 0:
+            raise Refusal("bridge game %s size must be positive" % tag)
+    return m
+
+
+def bridge_manifest(
+    from_path, key_id, seed, pub_text, launcher_json=None, out_dir=None, issued_at=None
+):
+    """Re-issue the schema-1 bridge manifest (RL10). The base is the currently SERVED bridge (it must
+    verify against PUBLIC_KEY): its game entries (the three rc7.1 zips), relay, version and notes
+    carry over byte for byte. With `launcher_json` (a verified channels/stable/launcher.json) the
+    launcher entry becomes that file's version/url/sha256; without it the launcher entry stays as is
+    and only issued_at moves. -> (manifest path, sig path, old issued_at, new issued_at, launcher
+    version)."""
+    _check_signing_key(key_id, seed, pub_text)
+    _data, old = load_verified(from_path, pub_text)
+    validate_bridge(old)
+    new = dict(old)
+    if launcher_json:
+        _d, lm = load_verified(launcher_json, pub_text)
+        validate_v2(lm, "launcher", "stable")
+        if _ver_key(lm["version"]) < _ver_key(old["launcher"]["version"]):
+            raise Refusal(
+                "stable launcher %s is older than the bridge's %s -- refusing to roll the bridge back"
+                % (lm["version"], old["launcher"]["version"])
+            )
+        new["launcher"] = {"version": lm["version"], "url": lm["url"], "sha256": lm["sha256"]}
+    new_issued = issued_at or _now_rfc3339()
+    if new_issued < old["issued_at"]:
+        raise Refusal(
+            "new issued_at %s is older than the input's %s" % (new_issued, old["issued_at"])
+        )
+    new["issued_at"] = new_issued
+    validate_bridge(new)
+    for k in ("schema", "version", "game", "relay", "notes_url"):
+        if new.get(k) != old.get(k) or (k in old) != (k in new):
+            raise Refusal("the bridge differs from its base in %r" % k)
+    trusted = "mission humanity bridge %s, issued %s" % (new.get("version", "?"), new_issued)
+    out_dir = out_dir or os.path.dirname(os.path.abspath(from_path))
+    mpath, spath = write_signed(
+        out_dir, MANIFEST_NAME, new, key_id, seed, trusted, pub_text, say=lambda *_a: None
+    )
+    return mpath, spath, old["issued_at"], new_issued, new["launcher"]["version"]
+
+
+def age_days(path, pub_text, now=None):
+    """Verify `path` against `pub_text` and -> its issued_at age in days (float)."""
+    import calendar
+
+    _data, m = load_verified(path, pub_text)
+    t = calendar.timegm(time.strptime(m["issued_at"], "%Y-%m-%dT%H:%M:%SZ"))
+    return ((now if now is not None else time.time()) - t) / 86400.0
+
+
 # --------------------------------------------------------------------------- selftest
 
 
@@ -812,6 +1240,97 @@ def selftest():
             lambda: build_manifest("1.2.3", dist, "https://example.invalid"),
         )
 
+    # 5. --sign-file and --resign (dist RL8-B1), against the throwaway key above (never a real one).
+    with tempfile.TemporaryDirectory() as tmp:
+        f = os.path.join(tmp, "payload.bin")
+        with open(f, "wb") as fh:
+            fh.write(b"any bytes at all\x00\x01")
+        sp = sign_file(f, key_id, seed, trusted_comment="launcher latest")
+        with io.open(sp, encoding="utf-8") as fh:
+            sf_text = fh.read()
+        with open(f, "rb") as fh:
+            fbytes = fh.read()
+        expect("sign-file output verifies", verify_signature(pub_text, fbytes, sf_text))
+        expect("sign-file keeps the trusted comment", "trusted comment: launcher latest" in sf_text)
+        refuses(
+            "sign-file output vs a changed file",
+            lambda: verify_signature(pub_text, fbytes + b"x", sf_text),
+        )
+
+        base = {
+            "schema": 1,
+            "version": "1.2.3",
+            "issued_at": "2026-01-01T00:00:00Z",
+            "launcher": {"version": "1.2.3", "url": "https://e.invalid/l.exe", "sha256": "ab" * 32},
+            "game": {"net": {"url": "https://e.invalid/n.zip", "sha256": "cd" * 32, "size": 7}},
+            "relay": {"addr": "192.0.2.10:7100", "key": "ef" * 32},
+            "notes_url": "https://e.invalid/notes",
+        }
+        src = os.path.join(tmp, "in")
+        os.makedirs(src)
+        mp = os.path.join(src, MANIFEST_NAME)
+        bdata = manifest_bytes(base)
+        with open(mp, "wb") as fh:
+            fh.write(bdata)
+        with io.open(mp + ".minisig", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(sign_bytes(key_id, seed, bdata, "u", "t"))
+        outd = os.path.join(tmp, "out")
+        nm, ns, old_i, new_i = resign_manifest(
+            mp, key_id, seed, pub_text, out_dir=outd, issued_at="2026-01-20T00:00:00Z"
+        )
+        with open(nm, "rb") as fh:
+            nbytes = fh.read()
+        with io.open(ns, encoding="utf-8") as fh:
+            nsig = fh.read()
+        expect("resign output verifies", verify_signature(pub_text, nbytes, nsig))
+        got = json.loads(nbytes)
+        expect("resign sets issued_at", got["issued_at"] == "2026-01-20T00:00:00Z" != old_i)
+        expect(
+            "resign changes nothing but issued_at",
+            {k: v for k, v in got.items() if k != "issued_at"}
+            == {k: v for k, v in base.items() if k != "issued_at"},
+        )
+        expect("resign keeps field order", list(got) == list(base))
+        expect(
+            "resign is byte-identical apart from the issued_at line",
+            nbytes.replace(b"2026-01-20", b"2026-01-01") == bdata,
+        )
+        refuses(
+            "resign with an older issued_at",
+            lambda: resign_manifest(
+                mp, key_id, seed, pub_text, out_dir=outd, issued_at="2025-01-01T00:00:00Z"
+            ),
+        )
+        # tampered input: one byte of the manifest changed after signing
+        tp = os.path.join(tmp, "tampered")
+        os.makedirs(tp)
+        tm = os.path.join(tp, MANIFEST_NAME)
+        with open(tm, "wb") as fh:
+            fh.write(bdata.replace(b"1.2.3", b"1.2.4", 1))
+        with io.open(tm + ".minisig", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(sign_bytes(key_id, seed, bdata, "u", "t"))
+        refuses(
+            "resign of a tampered manifest",
+            lambda: resign_manifest(tm, key_id, seed, pub_text, out_dir=outd),
+        )
+        os.remove(tm + ".minisig")
+        refuses(
+            "resign of an unsigned manifest",
+            lambda: resign_manifest(tm, key_id, seed, pub_text, out_dir=outd),
+        )
+        refuses(
+            "resign with a key that is not the trusted key's pair",
+            lambda: resign_manifest(mp, other_id, other_seed, pub_text, out_dir=outd),
+        )
+        refuses(
+            "resign of a manifest not signed by the trusted key",
+            lambda: resign_manifest(mp, other_id, other_seed, other_pub, out_dir=outd),
+        )
+    expect("update.rs PUBLIC_KEY is readable", len(_unb64(launcher_public_key())) == 42)
+
+    # 6. Schema 2 (RL8-B2): build, guard, promote, bridge -- all against the throwaway key.
+    selftest_schema2(expect, refuses, key_id, seed, pub_text, other_id, other_seed)
+
     # An encrypted secret key is refused by name rather than mis-parsed.
     raw = bytearray(_unb64(sec_text.splitlines()[-1]))
     raw[2:4] = b"Sc"
@@ -828,6 +1347,252 @@ def selftest():
 
     print("gen_update_manifest selftest: %d check(s), %d failure(s)" % (checked[0], len(fails)))
     return 0 if not fails else 1
+
+
+def selftest_schema2(expect, refuses, key_id, seed, pub_text, other_id, other_seed):
+    quiet = {"say": lambda *_a: None}
+    with tempfile.TemporaryDirectory() as tmp:
+        dist = os.path.join(tmp, "dist")
+        os.makedirs(dist)
+        exe = os.path.join(tmp, "mh_launcher.exe")
+        with open(exe, "wb") as fh:
+            fh.write(b"MZ launcher bytes")
+        net = "%s-0.2.0-net.zip" % BASE_NAME
+        with open(os.path.join(dist, net), "wb") as fh:
+            fh.write(b"net zip bytes")
+        with io.open(os.path.join(dist, SUMS_NAME), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("%s  %s\n" % (sha256(os.path.join(dist, net)), net))
+        base = "https://example.invalid/releases/download"
+        t0 = "2026-01-01T00:00:00Z"
+        t1 = "2026-02-01T00:00:00Z"
+
+        # -- build: launcher.json and game.json are independent files
+        lm = build_launcher_manifest(
+            "0.2.0", exe, base + "/mh_launcher.exe", "latest", "https://e.invalid/n", t0
+        )
+        gm = build_game_manifest(
+            "0.2.0",
+            dist,
+            base,
+            "latest",
+            issued_at=t0,
+            relay_addr="192.0.2.10:7100",
+            relay_key="ab" * 32,
+        )
+        expect(
+            "launcher.json fields",
+            lm["kind"] == "launcher" and lm["size"] == 17 and lm["sha256"] == sha256(exe),
+        )
+        expect(
+            "game.json: net only, MIN_LAUNCHER default, relay kept",
+            list(gm["game"]) == ["net"] and gm["min_launcher"] == MIN_LAUNCHER and "relay" in gm,
+        )
+        out_l = os.path.join(tmp, "pages", "channels", "latest")
+        lp, _ = write_signed(
+            out_l, "launcher.json", lm, key_id, seed, v2_trusted_comment(lm), pub_text, **quiet
+        )
+        with open(lp, "rb") as fh:
+            launcher_before = fh.read()
+        gp, gs = write_signed(
+            out_l, "game.json", gm, key_id, seed, v2_trusted_comment(gm), pub_text, **quiet
+        )
+        with open(lp, "rb") as fh:
+            expect(
+                "building game.json leaves launcher.json untouched", fh.read() == launcher_before
+            )
+        with io.open(gs, encoding="utf-8") as fh:
+            sig_text = fh.read()
+        expect(
+            "trusted comment names kind and channel",
+            "trusted comment: mission humanity game latest 0.2.0" in sig_text,
+        )
+        refuses(
+            "a game manifest missing its net zip",
+            lambda: build_game_manifest("0.2.1", dist, base),
+        )
+        refuses(
+            "a non-https asset url",
+            lambda: build_game_manifest("0.2.0", dist, "http://example.invalid/d"),
+        )
+        refuses("an unknown channel", lambda: build_game_manifest("0.2.0", dist, base, "beta"))
+        refuses(
+            "a zero-size launcher",
+            lambda: validate_v2(dict(lm, size=0), "launcher", "latest"),
+        )
+        refuses("kind mismatch", lambda: validate_v2(gm, "launcher"))
+        refuses("channel mismatch", lambda: validate_v2(gm, "game", "stable"))
+
+        # -- the min_launcher guard against the SERVED launcher.json
+        expect(
+            "guard passes when the served launcher is new enough",
+            check_channel_launcher(lp, "0.2.0", "latest", pub_text) == "0.2.0",
+        )
+        refuses(
+            "guard refuses a min_launcher newer than the served launcher",
+            lambda: check_channel_launcher(lp, "0.3.0", "latest", pub_text),
+        )
+        refuses(
+            "guard refuses a launcher.json served for another channel",
+            lambda: check_channel_launcher(lp, "0.2.0", "stable", pub_text),
+        )
+        expect(
+            "version order: rc.7 < rc.10 < release (semver)",
+            _ver_key("0.2.0-rc.7") < _ver_key("0.2.0-rc.10") < _ver_key("0.2.0"),
+        )
+
+        # -- promote: only channel + issued_at change
+        out_s = os.path.join(tmp, "pages", "channels", "stable")
+        pm, ps, old_i, new_i = promote_manifest(
+            gp, "stable", key_id, seed, pub_text, out_dir=out_s, issued_at=t1
+        )
+        with open(pm, "rb") as fh:
+            pbytes = fh.read()
+        with io.open(ps, encoding="utf-8") as fh:
+            psig = fh.read()
+        expect("promoted file verifies", verify_signature(pub_text, pbytes, psig))
+        pj = json.loads(pbytes)
+        expect(
+            "promote sets channel=stable, issued_at",
+            pj["channel"] == "stable" and pj["issued_at"] == t1,
+        )
+        expect(
+            "promote keeps sha256/size/url/min_launcher/relay/version",
+            pj["game"] == gm["game"]
+            and pj["min_launcher"] == gm["min_launcher"]
+            and pj["relay"] == gm["relay"]
+            and pj["version"] == gm["version"],
+        )
+        expect(
+            "promote changes nothing but channel + issued_at",
+            {k: v for k, v in pj.items() if k not in ("channel", "issued_at")}
+            == {k: v for k, v in gm.items() if k not in ("channel", "issued_at")}
+            and list(pj) == list(gm),
+        )
+        expect("promote trusted comment names stable", "game stable 0.2.0" in psig)
+        sp_l = promote_manifest(lp, "stable", key_id, seed, pub_text, out_dir=out_s, issued_at=t1)[
+            0
+        ]
+        with open(sp_l, "rb") as fh:
+            sl = json.loads(fh.read())
+        expect(
+            "promoting the launcher keeps its hash and url",
+            sl["sha256"] == lm["sha256"] and sl["url"] == lm["url"] and sl["channel"] == "stable",
+        )
+        refuses(
+            "promote of an already-stable file",
+            lambda: promote_manifest(pm, "stable", key_id, seed, pub_text, out_dir=out_s),
+        )
+        refuses(
+            "promote to latest",
+            lambda: promote_manifest(gp, "latest", key_id, seed, pub_text, out_dir=out_s),
+        )
+        refuses(
+            "promote with an older issued_at",
+            lambda: promote_manifest(
+                gp,
+                "stable",
+                key_id,
+                seed,
+                pub_text,
+                out_dir=out_s,
+                issued_at="2025-01-01T00:00:00Z",
+            ),
+        )
+        refuses(
+            "promote with a key that is not the trusted key's pair",
+            lambda: promote_manifest(gp, "stable", other_id, other_seed, pub_text, out_dir=out_s),
+        )
+        with open(gp, "rb") as fh:
+            gbytes = fh.read()
+        tg = os.path.join(tmp, "tampered", "game.json")
+        os.makedirs(os.path.dirname(tg))
+        with open(tg, "wb") as fh:
+            fh.write(gbytes.replace(b"0.2.0", b"0.2.1", 1))
+        with io.open(tg + ".minisig", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(sig_text)
+        refuses(
+            "promote of a tampered file",
+            lambda: promote_manifest(tg, "stable", key_id, seed, pub_text, out_dir=out_s),
+        )
+
+        # -- the age query
+        expect(
+            "age-days reads issued_at off a verified file",
+            abs(age_days(gp, pub_text, now=1767225600 + 86400 * 14) - 14.0) < 1e-6,
+        )
+
+        # -- the schema-1 bridge
+        old_bridge = {
+            "schema": 1,
+            "version": "0.2.0-rc7.1",
+            "issued_at": t0,
+            "launcher": {"version": "0.2.0-rc7.1", "url": base + "/old.exe", "sha256": "ab" * 32},
+            "game": {
+                tag: {"url": base + "/%s.zip" % tag, "sha256": "cd" * 32, "size": 9} for tag in TAGS
+            },
+            "relay": {"addr": "192.0.2.10:7100", "key": "ef" * 32},
+            "notes_url": "https://e.invalid/rc7.1",
+        }
+        bdir = os.path.join(tmp, "bridge_in")
+        os.makedirs(bdir)
+        bp = os.path.join(bdir, MANIFEST_NAME)
+        bb = manifest_bytes(old_bridge)
+        with open(bp, "wb") as fh:
+            fh.write(bb)
+        with io.open(bp + ".minisig", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(sign_bytes(key_id, seed, bb, "u", "t"))
+        bout = os.path.join(tmp, "bridge_out")
+        # (a) refresh only: no stable launcher yet -> launcher entry unchanged
+        m1, s1, _o, n1, lv = bridge_manifest(bp, key_id, seed, pub_text, out_dir=bout, issued_at=t1)
+        with open(m1, "rb") as fh:
+            b1 = fh.read()
+        with io.open(s1, encoding="utf-8") as fh:
+            expect("bridge refresh verifies", verify_signature(pub_text, b1, fh.read()))
+        j1 = json.loads(b1)
+        expect(
+            "bridge refresh changes only issued_at",
+            j1["issued_at"] == t1
+            and {k: v for k, v in j1.items() if k != "issued_at"}
+            == {k: v for k, v in old_bridge.items() if k != "issued_at"},
+        )
+        # (b) with the stable launcher: launcher entry copied, three game entries exactly kept
+        j2m, _ = write_signed(
+            os.path.join(tmp, "stable_l"),
+            "launcher.json",
+            dict(lm, channel="stable"),
+            key_id,
+            seed,
+            "t",
+            pub_text,
+            **quiet,
+        )
+        m2, _s2, _o2, _n2, lv2 = bridge_manifest(
+            bp, key_id, seed, pub_text, launcher_json=j2m, out_dir=bout, issued_at=t1
+        )
+        with open(m2, "rb") as fh:
+            j2 = json.loads(fh.read())
+        expect("bridge parses as schema 1", validate_bridge(j2) is j2 and j2["schema"] == 1)
+        expect(
+            "bridge keeps the three rc7.1 game entries exactly",
+            sorted(j2["game"]) == sorted(TAGS) and j2["game"] == old_bridge["game"],
+        )
+        expect(
+            "bridge launcher entry = stable launcher.json version/url/sha256",
+            j2["launcher"] == {"version": "0.2.0", "url": lm["url"], "sha256": lm["sha256"]}
+            and lv2 == "0.2.0",
+        )
+        expect(
+            "bridge keeps relay and notes",
+            j2["relay"] == old_bridge["relay"] and j2["notes_url"] == old_bridge["notes_url"],
+        )
+        refuses(
+            "bridge from a channel=latest launcher.json",
+            lambda: bridge_manifest(bp, key_id, seed, pub_text, launcher_json=lp, out_dir=bout),
+        )
+        refuses(
+            "bridge refresh with the wrong key",
+            lambda: bridge_manifest(bp, other_id, other_seed, pub_text, out_dir=bout),
+        )
 
 
 def generate_key():
@@ -869,11 +1634,144 @@ def main():
     ap.add_argument("--issued-at", help="override the timestamp (tests; RFC 3339 UTC)")
     ap.add_argument("--secret-key", help="the minisign secret key file")
     ap.add_argument("--public-key", help="the minisign public key file")
+    ap.add_argument("--sign-file", metavar="FILE", help="minisign-sign FILE with --secret-key")
+    ap.add_argument("--trusted-comment", help="--sign-file: the signed trusted comment")
+    ap.add_argument(
+        "--resign",
+        metavar="MANIFEST",
+        help="re-sign a schema-1 manifest with a fresh issued_at (nothing else changes); the "
+        "input signature must verify against the PUBLIC_KEY in update.rs. --out is a directory "
+        "(default: the input's own, i.e. in place); --sign-file's --out is the .minisig path",
+    )
+    ap.add_argument("--kind", choices=KINDS, help="schema 2 (RL8): build a game or launcher file")
+    ap.add_argument(
+        "--channel", default="latest", help="schema 2: the channel stamped INTO the signed body"
+    )
+    ap.add_argument(
+        "--min-launcher",
+        default=None,
+        help="schema 2 game: oldest launcher that can run it (default: MIN_LAUNCHER = %s)"
+        % MIN_LAUNCHER,
+    )
+    ap.add_argument(
+        "--channel-launcher",
+        metavar="LAUNCHER_JSON",
+        help="guard: the launcher.json SERVED for the channel (its .minisig beside it); refuse a "
+        "game whose min_launcher is newer than it",
+    )
+    ap.add_argument("--promote", metavar="FILE", help="re-sign a latest game/launcher.json as --to")
+    ap.add_argument("--to", help="--promote: the target channel (only `stable`)")
+    ap.add_argument("--bridge", action="store_true", help="re-issue the schema-1 bridge manifest")
+    ap.add_argument("--from-manifest", metavar="FILE", help="--bridge: the currently served bridge")
+    ap.add_argument(
+        "--launcher-json",
+        metavar="FILE",
+        help="--bridge: the verified channels/stable/launcher.json whose launcher entry to copy "
+        "(absent: keep the launcher entry, refresh issued_at only)",
+    )
+    ap.add_argument(
+        "--age-days", metavar="FILE", help="verify FILE against update.rs PUBLIC_KEY, print its age"
+    )
     args = ap.parse_args()
 
     try:
         if args.selftest:
             return selftest()
+
+        if args.age_days:
+            print("%.2f" % age_days(args.age_days, launcher_public_key()))
+            return 0
+
+        if args.promote or args.bridge or args.kind:
+            if not args.secret_key:
+                raise Refusal("this mode needs --secret-key")
+            with io.open(args.secret_key, encoding="utf-8") as fh:
+                key_id, seed, _pk = parse_secret_key(fh.read())
+            pub_text = launcher_public_key()
+            if not args.out:
+                raise Refusal("this mode needs --out (a directory)")
+            if args.promote:
+                if args.channel_launcher:
+                    _d, pm = load_verified(args.promote, pub_text)
+                    if pm.get("kind") == "game":
+                        check_channel_launcher(
+                            args.channel_launcher, pm["min_launcher"], args.to or "stable", pub_text
+                        )
+                mp, sp, old_i, new_i = promote_manifest(
+                    args.promote, args.to, key_id, seed, pub_text, args.out, args.issued_at
+                )
+                print("gen_update_manifest: promoted %s: issued_at %s -> %s" % (mp, old_i, new_i))
+                return 0
+            if args.bridge:
+                if not args.from_manifest:
+                    raise Refusal("--bridge needs --from-manifest (the served bridge)")
+                mp, sp, old_i, new_i, lv = bridge_manifest(
+                    args.from_manifest,
+                    key_id,
+                    seed,
+                    pub_text,
+                    args.launcher_json,
+                    args.out,
+                    args.issued_at,
+                )
+                print(
+                    "gen_update_manifest: bridge %s: issued_at %s -> %s, launcher %s"
+                    % (mp, old_i, new_i, lv)
+                )
+                return 0
+            if not args.version:
+                raise Refusal("--version is required")
+            if args.kind == "launcher":
+                m = build_launcher_manifest(
+                    args.version,
+                    args.launcher_exe,
+                    args.launcher_url,
+                    args.channel,
+                    args.notes_url,
+                    args.issued_at,
+                )
+            else:
+                if not args.asset_base_url:
+                    raise Refusal(
+                        "--asset-base-url is required: the manifest carries absolute URLs"
+                    )
+                min_l = args.min_launcher or MIN_LAUNCHER
+                if args.channel_launcher:
+                    got = check_channel_launcher(
+                        args.channel_launcher, min_l, args.channel, pub_text
+                    )
+                    print(
+                        "gen_update_manifest: guard ok -- served %s launcher is %s"
+                        % (args.channel, got)
+                    )
+                m = build_game_manifest(
+                    args.version,
+                    args.dist,
+                    args.asset_base_url,
+                    args.channel,
+                    min_l,
+                    args.notes_url,
+                    args.issued_at,
+                    args.relay_addr,
+                    args.relay_key,
+                )
+            _check_signing_key(key_id, seed, pub_text)
+            write_signed(
+                args.out, "%s.json" % m["kind"], m, key_id, seed, v2_trusted_comment(m), pub_text
+            )
+            print(
+                "gen_update_manifest: %s.json %s %s, signed by key %s"
+                % (m["kind"], m["channel"], m["version"], _key_id_hex(key_id))
+            )
+            if m["kind"] == "game":
+                if "relay" in m:
+                    print(
+                        "gen_update_manifest: relay %s (key: %d chars, in the signed body)"
+                        % (m["relay"]["addr"], len(m["relay"]["key"]))
+                    )
+                else:
+                    print("gen_update_manifest: no relay in this manifest")
+            return 0
 
         if args.genkey:
             if not args.secret_key or not args.public_key:
@@ -894,9 +1792,39 @@ def main():
             print("    %s" % public_key_line(key_id, pk))
             return 0
 
+        if args.sign_file:
+            if not args.secret_key:
+                raise Refusal("--sign-file needs --secret-key")
+            with io.open(args.secret_key, encoding="utf-8") as fh:
+                key_id, seed, _pk = parse_secret_key(fh.read())
+            sp = sign_file(args.sign_file, key_id, seed, args.trusted_comment, args.out)
+            print(
+                "gen_update_manifest: signed %s -> %s (key %s)"
+                % (args.sign_file, sp, _key_id_hex(key_id))
+            )
+            return 0
+
+        if args.resign:
+            if not args.secret_key:
+                raise Refusal("--resign needs --secret-key")
+            with io.open(args.secret_key, encoding="utf-8") as fh:
+                key_id, seed, _pk = parse_secret_key(fh.read())
+            mp, sp, old_i, new_i = resign_manifest(
+                args.resign,
+                key_id,
+                seed,
+                launcher_public_key(),
+                out_dir=args.out,
+                issued_at=args.issued_at,
+            )
+            print("gen_update_manifest: re-signed %s: issued_at %s -> %s" % (mp, old_i, new_i))
+            print(
+                "gen_update_manifest: wrote %s + %s (verified against update.rs PUBLIC_KEY)"
+                % (mp, sp)
+            )
+            return 0
+
         if args.verify:
-            if not args.public_key:
-                raise Refusal("--verify needs --public-key")
             with open(args.verify, "rb") as fh:
                 data = fh.read()
             sig_path = args.verify + ".minisig"
@@ -904,15 +1832,20 @@ def main():
                 sig_path = os.path.join(os.path.dirname(args.verify), SIGNATURE_NAME)
             with io.open(sig_path, encoding="utf-8") as fh:
                 sig_text = fh.read()
-            with io.open(args.public_key, encoding="utf-8") as fh:
-                pub_text = fh.read()
+            if args.public_key:
+                with io.open(args.public_key, encoding="utf-8") as fh:
+                    pub_text = fh.read()
+            else:  # the key players trust, not the one you happen to hold
+                pub_text = launcher_public_key()
             verify_signature(pub_text, data, sig_text)
             m = json.loads(data)
             print(
-                "OK: %s schema %s version %s issued %s"
+                "OK: %s schema %s kind %s channel %s version %s issued %s"
                 % (
                     os.path.basename(args.verify),
                     m.get("schema"),
+                    m.get("kind", "-"),
+                    m.get("channel", "-"),
                     m.get("version"),
                     m.get("issued_at"),
                 )

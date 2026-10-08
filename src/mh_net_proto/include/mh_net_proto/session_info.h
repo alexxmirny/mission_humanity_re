@@ -12,10 +12,11 @@
 
 namespace mh_net_proto {
 
-constexpr int SESSION_NAME_MAX = 31;   // max game-name chars (excl. NUL)
-constexpr int SESSION_MAP_MAX  = 31;   // max map-name chars (excl. NUL)
-constexpr int PLAYER_NAME_MAX  = 31;   // max player-name chars (excl. NUL); matches mh.exe's 32-byte name field
-constexpr int MAP_HEADER_SIZE  = 0x17c;// mh.exe map_data_1 header size (the browser preview renders from this)
+constexpr int SESSION_NAME_MAX = 31;    // max game-name chars (excl. NUL)
+constexpr int SESSION_MAP_MAX  = 31;    // max map-name chars (excl. NUL)
+constexpr int PLAYER_NAME_MAX  = 31;    // max player-name chars (excl. NUL); matches mh.exe's 32-byte name field
+constexpr int BUILD_MAX        = 15;    // max release-version chars (excl. NUL): "0.2.1-rc1" -- RL11, see JoinRequest::build
+constexpr int MAP_HEADER_SIZE  = 0x17c; // mh.exe map_data_1 header size (the browser preview renders from this)
 
 // ---- mp:X2 -- THE MAP'S CONTENT HASH --------------------------------------------------------------
 //
@@ -58,15 +59,15 @@ constexpr std::size_t MAP_STORED_NAME_CAP = SESSION_MAP_MAX + 1 + (MAP_HASH_BYTE
 constexpr std::uint8_t SESSION_INFO_FORMAT = 5;
 
 struct SessionInfo {
-    std::uint32_t tag         = 0;   // host-generated random -> disambiguates same-named games (dedup key)
-    std::uint16_t host_version = 0;  // host build version (compat gate / display)
-    std::uint16_t protocol    = 0;   // mh.exe game protocol version
-    std::uint8_t  cur_players = 0;   // players currently in the lobby
-    std::uint8_t  max_players = 0;   // lobby capacity
-    char name[SESSION_NAME_MAX + 1] = {0};  // game name (host-typed), NUL-terminated
-    char map [SESSION_MAP_MAX  + 1] = {0};  // map name, NUL-terminated
-    bool has_map_header = false;            // true iff map_header carries the host's real 0x17c map header (v2+)
-    unsigned char map_header[MAP_HEADER_SIZE] = {0};  // full map_data_1 header -> the browser map PREVIEW (S9)
+    std::uint32_t tag                         = 0;     // host-generated random -> disambiguates same-named games (dedup key)
+    std::uint16_t host_version                = 0;     // host build version (compat gate / display)
+    std::uint16_t protocol                    = 0;     // mh.exe game protocol version
+    std::uint8_t  cur_players                 = 0;     // players currently in the lobby
+    std::uint8_t  max_players                 = 0;     // lobby capacity
+    char          name[SESSION_NAME_MAX + 1]  = {0};   // game name (host-typed), NUL-terminated
+    char          map[SESSION_MAP_MAX + 1]    = {0};   // map name, NUL-terminated
+    bool          has_map_header              = false; // true iff map_header carries the host's real 0x17c map header (v2+)
+    unsigned char map_header[MAP_HEADER_SIZE] = {0};   // full map_data_1 header -> the browser map PREVIEW (S9)
     // SES0: the MACHINE identity of this match -- minted by the host at lobby creation, re-minted on
     // host-leave/re-create (beside the tag reset), echoed by every joiner, logged by every peer. All
     // zero = "none yet / a pre-v3 advert" (uuid7_is_nil). `name`+`tag` remain the HUMAN label; this is
@@ -94,6 +95,10 @@ struct SessionInfo {
     // pre-X2 behaviour, rather than refusing to play.
     std::uint8_t  map_hash[MAP_HASH_BYTES] = {0};
     std::uint32_t map_size                 = 0; // the file's length in bytes (0 with no claim)
+    // RL11: THIS PEER'S release version ("0.2.1"), HOST-LOCAL: it is NOT on the SESSION_INFO wire
+    // (the advert's format is unchanged). The host stamps its own so join_admit() can compare it with
+    // the joiner's JoinRequest::build; empty = "no build claim" (selftest hosts), which skips the check.
+    char build[BUILD_MAX + 1] = {0};
 };
 
 // Worst-case encoded size: 11 scalar bytes + two length-prefixed strings + the fixed 0x17c map header
@@ -105,11 +110,11 @@ constexpr std::size_t SESSION_INFO_MAX_ENCODED = 11 + (1 + SESSION_NAME_MAX) +
 
 // Serialize `si` little-endian into `out` (must hold >= SESSION_INFO_MAX_ENCODED bytes). name/map are
 // length-prefixed (only the used bytes go on the wire). Returns the number of bytes written.
-std::size_t session_info_encode(const SessionInfo& si, std::uint8_t* out) noexcept;
+std::size_t session_info_encode(const SessionInfo &si, std::uint8_t *out) noexcept;
 
 // Deserialize a SESSION_INFO from `in`/`len`. Returns false on a truncated buffer, an unknown format
 // version, or an over-long string field. `out` is left well-formed (NUL-terminated) only on success.
-bool session_info_decode(const std::uint8_t* in, std::size_t len, SessionInfo& out) noexcept;
+bool session_info_decode(const std::uint8_t *in, std::size_t len, SessionInfo &out) noexcept;
 
 // ---- where a SESSION_INFO CAME FROM (mp:R2) ------------------------------------------------------
 // A transport module hands mh.dll a received SESSION_INFO through one callback,
@@ -147,10 +152,10 @@ inline std::uint32_t session_sender_relay_room(int sender) noexcept {
 // ---- lobby-id (name + tag) ----------------------------------------------------------------------
 // Two sessions denote the SAME game (lobby) iff both name AND tag match. Same name + different tag =>
 // two distinct games (the tag is what prevents a duplicate-name collision).
-bool session_same_lobby(const SessionInfo& a, const SessionInfo& b) noexcept;
+bool session_same_lobby(const SessionInfo &a, const SessionInfo &b) noexcept;
 
 // Format the lobby-id as "name#XXXXXXXX" (tag in hex) into `out` (cap bytes). Returns `out`.
-const char* lobby_id_str(const SessionInfo& si, char* out, std::size_t cap) noexcept;
+const char *lobby_id_str(const SessionInfo &si, char *out, std::size_t cap) noexcept;
 
 // ---- match_id (SES0) -----------------------------------------------------------------------------
 // THE EXACT LINE every peer writes to mh_net.log once per match, at lobby create (host) and at the
@@ -163,7 +168,7 @@ const char* lobby_id_str(const SessionInfo& si, char* out, std::size_t cap) noex
 // choice. Build it here rather than at each of the three call sites, so there is one spelling.
 // `out` needs >= SESSION_LOG_LINE_CAP bytes; the line ends with '\n'. Returns `out`.
 constexpr std::size_t SESSION_LOG_LINE_CAP = 64;
-const char* session_match_id_log_line(const std::uint8_t match_id[UUID7_BYTES], char* out, std::size_t cap) noexcept;
+const char           *session_match_id_log_line(const std::uint8_t match_id[UUID7_BYTES], char *out, std::size_t cap) noexcept;
 
 // ---- JOIN request (client -> host) --------------------------------------------------------------
 // "I want to join the lobby identified by <name + tag>, and here is my player name." Carries the
@@ -182,7 +187,7 @@ const char* session_match_id_log_line(const std::uint8_t match_id[UUID7_BYTES], 
 // request frame would be a second thing that can be lost, a second thing to retry, and a second
 // piece of state to reconcile with the join; carrying the answer in the message that already asks
 // to be admitted means a peer that joined has, by construction, already said what it holds.
-constexpr std::uint8_t JOIN_REQUEST_FORMAT = 5;
+constexpr std::uint8_t JOIN_REQUEST_FORMAT = 6;
 
 // The oldest JOIN a SES0 host admits. A v1/v2 client carries no match_id, so admitting it would seat a
 // peer whose logs can never be correlated with the host's -- the whole point of SES0. It is refused by
@@ -201,36 +206,46 @@ constexpr std::uint8_t JOIN_REQUEST_FORMAT = 5;
 // VACUOUSLY TRUE for a peer that never reported. Admitting one would mean launching a match in which
 // exactly one player may be simulating a different map, which is the failure this item exists to
 // remove. So a v4 peer is refused as an old protocol, by name, exactly as a v3 one is.
-constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = 5;
+//
+// RAISED TO 6 BY RL11 (v6: + the joiner's release version). With update channels (stable/latest) two
+// peers on different releases are likely, and the build is load-bearing for admission: the host
+// compares it and refuses a mismatch by name. A v5 client cannot state its build, so it is refused
+// as an old protocol ("protocol 5 < 6") rather than admitted on the assumption it agrees.
+constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = 6;
 
 struct JoinRequest {
-    std::uint32_t tag = 0;                          // lobby-id tag (must equal the host's SessionInfo.tag)
-    char name[SESSION_NAME_MAX + 1] = {0};          // lobby-id game name, NUL-terminated
-    char player_name[PLAYER_NAME_MAX + 1] = {0};    // the joining player's name (S6), NUL-terminated
-    std::uint8_t match_id[UUID7_BYTES] = {0};       // SES0: the advert's match_id, echoed back (nil for v1/v2)
-    std::uint16_t codepage = 0;                     // F3: the JOINER's OWN pinned codepage (0 for v1..v3)
+    std::uint32_t tag                              = 0;   // lobby-id tag (must equal the host's SessionInfo.tag)
+    char          name[SESSION_NAME_MAX + 1]       = {0}; // lobby-id game name, NUL-terminated
+    char          player_name[PLAYER_NAME_MAX + 1] = {0}; // the joining player's name (S6), NUL-terminated
+    std::uint8_t  match_id[UUID7_BYTES]            = {0}; // SES0: the advert's match_id, echoed back (nil for v1/v2)
+    std::uint16_t codepage                         = 0;   // F3: the JOINER's OWN pinned codepage (0 for v1..v3)
     // X2: the content hash this joiner ALREADY HOLDS for the advertised map, all-zero for "I hold
     // nothing that matches". It is the joiner's own measurement of its own file -- never an echo of
     // the advert, for the reason `join_request_for`'s two-argument form exists: a field echoed back
     // makes every disagreement look like agreement, which is worse than not having the field.
-    std::uint8_t  map_hash[MAP_HASH_BYTES] = {0};
-    std::uint8_t format = JOIN_REQUEST_FORMAT;      // the format byte DECODE actually read (not sent; see below)
+    std::uint8_t map_hash[MAP_HASH_BYTES] = {0};
+    // RL11 (v6): the joiner's RELEASE version (MH_VERSION_STRING, e.g. "0.2.0" -- no git sha), its own
+    // measurement, never an echo of the host's. Two players on the same release must match, and a dev
+    // build must match itself, which the release part satisfies and the sha-qualified MH_VERSION_FULL
+    // would not (two dev builds of one stamp differ in sha but share a wire generation). Empty for v1..v5.
+    char         build[BUILD_MAX + 1] = {0};
+    std::uint8_t format               = JOIN_REQUEST_FORMAT; // the format byte DECODE actually read (not sent; see below)
 };
 
 // Worst-case encoded size: format byte + tag + length-prefixed name + length-prefixed player_name +
-// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5). `format` is NOT a wire
+// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5) + the length-prefixed build (v6). `format` is NOT a wire
 // field of its own -- encode always writes JOIN_REQUEST_FORMAT, and decode reports what it read
 // there so the admit policy can act on it.
 constexpr std::size_t JOIN_REQUEST_MAX_ENCODED = 1 + 4 + (1 + SESSION_NAME_MAX) +
                                                  (1 + PLAYER_NAME_MAX) + UUID7_BYTES + 2 +
-                                                 MAP_HASH_BYTES; // 87 + 8 = 95
+                                                 MAP_HASH_BYTES + (1 + BUILD_MAX); // 87 + 8 + 16 = 111
 
 // Serialize `jr` little-endian into `out` (must hold >= JOIN_REQUEST_MAX_ENCODED bytes). Returns bytes written.
-std::size_t join_request_encode(const JoinRequest& jr, std::uint8_t* out) noexcept;
+std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexcept;
 
 // Deserialize a JOIN request from `in`/`len`. Returns false on truncation, an unknown format version,
 // or an over-long name. `out` is left well-formed (NUL-terminated) only on success.
-bool join_request_decode(const std::uint8_t* in, std::size_t len, JoinRequest& out) noexcept;
+bool join_request_decode(const std::uint8_t *in, std::size_t len, JoinRequest &out) noexcept;
 
 // Build a JOIN request naming the same lobby (name + tag) as `si`, echoing its match_id.
 //
@@ -238,18 +253,21 @@ bool join_request_decode(const std::uint8_t* in, std::size_t len, JoinRequest& o
 // every mismatch look like agreement, which is the one way this field could be worse than not having
 // it; the one-argument form therefore means "this peer declares no pin" (0) rather than "whatever the
 // host said". Callers that have a pin pass it.
-JoinRequest join_request_for(const SessionInfo& si) noexcept;
-JoinRequest join_request_for(const SessionInfo& si, std::uint16_t my_codepage) noexcept;
+JoinRequest join_request_for(const SessionInfo &si) noexcept;
+JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage) noexcept;
 // X2: ...and the three-argument form that also states which map bytes this joiner holds. `my_map_hash`
 // may be null for "I hold nothing", which encodes as the all-zero claim.
-JoinRequest join_request_for(const SessionInfo& si, std::uint16_t my_codepage,
-                             const std::uint8_t* my_map_hash) noexcept;
+JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage,
+                             const std::uint8_t *my_map_hash) noexcept;
+// RL11: ...and the four-argument form that also states this joiner's release version (null/empty = none).
+JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
+                             const char *my_build) noexcept;
 
 // True iff `jr` names the same lobby (name AND tag) as host session `si` -- the host's LOBBY test.
 // Deliberately still name+tag only: the tag is already re-minted on every lobby re-create, so adding
 // match_id here would refuse nothing the tag does not already refuse, while giving the admit path a
 // second way to fail during a normal re-join. Version policy lives in join_admit() instead.
-bool join_matches_session(const JoinRequest& jr, const SessionInfo& si) noexcept;
+bool join_matches_session(const JoinRequest &jr, const SessionInfo &si) noexcept;
 
 // ---- the host's ADMIT decision (SES0) -------------------------------------------------------------
 // One function, so the seam that logs it and the selftest that proves it are looking at the same
@@ -263,14 +281,15 @@ enum class JoinAdmit : std::uint8_t {
     RefusedNewerProtocol, // format > JOIN_REQUEST_FORMAT: a client newer than this host
     RefusedWrongLobby,    // parsed fine, but names a different name#tag
     RefusedCodepage,      // F3: parsed fine, our lobby, but the joiner pins a DIFFERENT input codepage
+    RefusedBuild,         // RL11: parsed fine, our lobby, but the joiner runs a DIFFERENT release version
 };
 
 // A short, stable, greppable reason string for the log line. Never null.
-const char* join_admit_reason(JoinAdmit a) noexcept;
+const char *join_admit_reason(JoinAdmit a) noexcept;
 
 // Decode `in`/`len` and decide. `out` is filled whenever the bytes parsed (i.e. for every verdict
 // except RefusedMalformed), so the caller can name the rejected peer's lobby-id in its log line.
-JoinAdmit join_admit(const std::uint8_t* in, std::size_t len, const SessionInfo& mine, JoinRequest& out) noexcept;
+JoinAdmit join_admit(const std::uint8_t *in, std::size_t len, const SessionInfo &mine, JoinRequest &out) noexcept;
 
 // ---- mp:F3c -- the ANNOUNCE payload, and the one kind of it that is addressed to a single peer ----
 //
@@ -299,12 +318,12 @@ JoinAdmit join_admit(const std::uint8_t* in, std::size_t len, const SessionInfo&
 // browser's status-line widget behind a "Refused: " prefix, and that widget draws ONE unwrapped line
 // ~32 characters wide (measured against U23's "Connection to the host was lost.", which fills it
 // exactly). The host's own log carries the long form; the wire carries what fits on the screen.
-constexpr std::uint8_t ANNOUNCE_LEFT    = 0; // "<name> left the game"   (U16)
-constexpr std::uint8_t ANNOUNCE_JOINED  = 1; // "<name> joined the game" (U16)
-constexpr std::uint8_t ANNOUNCE_REFUSED = 2; // F3c: "your JOIN was refused: <reason>", for player [1] only
-constexpr std::uint8_t ANNOUNCE_PING    = 3; // L1f: the host's per-slot ping summary (see below)
-constexpr std::size_t  ANNOUNCE_TEXT_CAP    = 96;                       // reason text incl. NUL
-constexpr std::size_t  ANNOUNCE_MAX_ENCODED = 2 + ANNOUNCE_TEXT_CAP;    // kind + player id + text
+constexpr std::uint8_t ANNOUNCE_LEFT        = 0;                     // "<name> left the game"   (U16)
+constexpr std::uint8_t ANNOUNCE_JOINED      = 1;                     // "<name> joined the game" (U16)
+constexpr std::uint8_t ANNOUNCE_REFUSED     = 2;                     // F3c: "your JOIN was refused: <reason>", for player [1] only
+constexpr std::uint8_t ANNOUNCE_PING        = 3;                     // L1f: the host's per-slot ping summary (see below)
+constexpr std::size_t  ANNOUNCE_TEXT_CAP    = 96;                    // reason text incl. NUL
+constexpr std::size_t  ANNOUNCE_MAX_ENCODED = 2 + ANNOUNCE_TEXT_CAP; // kind + player id + text
 
 // ---- mp:L1f -- THE HOST'S PER-SLOT PING SUMMARY ---------------------------------------------------
 //
@@ -340,12 +359,12 @@ constexpr std::size_t  ANNOUNCE_MAX_ENCODED = 2 + ANNOUNCE_TEXT_CAP;    // kind 
 // THE HOST'S OWN ROW IS NEVER IN IT: every client measures the host directly on its one connection,
 // and that measurement is the truthful one for that row (it is the client's own RTT, not a number
 // relayed through a third party). The wire carries only what the receiver cannot measure itself.
-constexpr std::size_t ANNOUNCE_PING_MAX_ENTRIES = 8;   // MH_NET_MAX_PEERS -- one per lobby slot
-constexpr std::uint16_t ANNOUNCE_PING_SRTT_CLAMP = 9999; // the lobby cell's own clamp (lobby_ping.cpp)
-constexpr std::uint8_t ANNOUNCE_PING_RELAY_DIRECT  = 0;
-constexpr std::uint8_t ANNOUNCE_PING_RELAY_RELAYED = 1;
-constexpr std::uint8_t ANNOUNCE_PING_RELAY_UNKNOWN = 2;
-constexpr std::size_t ANNOUNCE_PING_MAX_ENCODED = 2 + ANNOUNCE_PING_MAX_ENTRIES * 4; // 34
+constexpr std::size_t   ANNOUNCE_PING_MAX_ENTRIES   = 8;    // MH_NET_MAX_PEERS -- one per lobby slot
+constexpr std::uint16_t ANNOUNCE_PING_SRTT_CLAMP    = 9999; // the lobby cell's own clamp (lobby_ping.cpp)
+constexpr std::uint8_t  ANNOUNCE_PING_RELAY_DIRECT  = 0;
+constexpr std::uint8_t  ANNOUNCE_PING_RELAY_RELAYED = 1;
+constexpr std::uint8_t  ANNOUNCE_PING_RELAY_UNKNOWN = 2;
+constexpr std::size_t   ANNOUNCE_PING_MAX_ENCODED   = 2 + ANNOUNCE_PING_MAX_ENTRIES * 4; // 34
 
 struct AnnouncePingEntry {
     std::uint8_t  player_id = 0;
@@ -356,30 +375,35 @@ struct AnnouncePingEntry {
 // Encode `n` entries into `out` (>= ANNOUNCE_PING_MAX_ENCODED). `n` over the cap is truncated to it;
 // srtt over the clamp is clamped; an out-of-range relay class is written as UNKNOWN rather than
 // passed through, so a decoder never has to defend against a fourth value. Returns bytes written.
-std::size_t announce_ping_encode(const AnnouncePingEntry* in, std::size_t n, std::uint8_t* out) noexcept;
+std::size_t announce_ping_encode(const AnnouncePingEntry *in, std::size_t n, std::uint8_t *out) noexcept;
 
 // Decode one. False unless `in` is a well-formed ANNOUNCE of kind PING whose declared entry count
 // matches the bytes actually present -- a truncated summary is refused whole rather than read up to
 // where it stops, because a half-read table would paint stale numbers on the rows it did not reach.
 // `out` receives up to `cap` entries; `*out_n` is how many were written.
-bool announce_ping_decode(const std::uint8_t* in, std::size_t len, AnnouncePingEntry* out,
-                          std::size_t cap, std::size_t* out_n) noexcept;
+bool announce_ping_decode(const std::uint8_t *in, std::size_t len, AnnouncePingEntry *out,
+                          std::size_t cap, std::size_t *out_n) noexcept;
 
 // Encode a REFUSED announce for `target_player_id` into `out` (>= ANNOUNCE_MAX_ENCODED). The reason
 // is truncated to ANNOUNCE_TEXT_CAP-1 characters and always NUL-terminated. Returns bytes written.
-std::size_t announce_refused_encode(std::uint8_t target_player_id, const char* reason, std::uint8_t* out) noexcept;
+std::size_t announce_refused_encode(std::uint8_t target_player_id, const char *reason, std::uint8_t *out) noexcept;
 
 // Decode one. False unless `in` is a well-formed ANNOUNCE of kind REFUSED (kind byte, id byte, at
 // least one text byte, NUL within `len`). `reason` receives the text (cap ANNOUNCE_TEXT_CAP).
-bool announce_refused_decode(const std::uint8_t* in, std::size_t len, std::uint8_t* target_player_id,
-                             char* reason, std::size_t cap) noexcept;
+bool announce_refused_decode(const std::uint8_t *in, std::size_t len, std::uint8_t *target_player_id,
+                             char *reason, std::size_t cap) noexcept;
 
 // The refusal text the host sends, composed from the admit verdict and the two sides' facts, at
 // most JOIN_REFUSAL_TEXT_MAX characters (see above): "codepage 1252/1251" (host's first, then the
 // joiner's), "protocol 3 < 5", "not our lobby". `out` needs ANNOUNCE_TEXT_CAP bytes. Returns `out`.
+//
+// RL11: RefusedBuild's text is "build <host>/<joiner>" (host's first, like the codepage form) and is
+// the ONE reason allowed past this cap: it is never painted verbatim -- the joiner parses it and shows
+// "Host runs <X>, you run <Y>: update" from the string table (tr_refusal_reason) -- so its width is
+// bounded by ANNOUNCE_TEXT_CAP (2 x BUILD_MAX + 7), not by the status line.
 constexpr std::size_t JOIN_REFUSAL_TEXT_MAX = 20; // 32 on screen minus the 9-char "Refused: " prefix, 3 spare
-const char* join_refusal_text(JoinAdmit a, const SessionInfo& mine, const JoinRequest& theirs, char* out,
-                              std::size_t cap) noexcept;
+const char           *join_refusal_text(JoinAdmit a, const SessionInfo &mine, const JoinRequest &theirs, char *out,
+                                        std::size_t cap) noexcept;
 
 // ---- mp:X2 -- the map-identity helpers ------------------------------------------------------------
 //
@@ -397,7 +421,7 @@ bool map_hash_is_none(const std::uint8_t h[MAP_HASH_BYTES]) noexcept;
 bool map_hash_equal(const std::uint8_t a[MAP_HASH_BYTES], const std::uint8_t b[MAP_HASH_BYTES]) noexcept;
 
 // 16 lowercase hex + NUL into `out` (>= MAP_HASH_HEX_CAP). Returns `out`.
-const char* map_hash_hex(const std::uint8_t h[MAP_HASH_BYTES], char* out, std::size_t cap) noexcept;
+const char *map_hash_hex(const std::uint8_t h[MAP_HASH_BYTES], char *out, std::size_t cap) noexcept;
 
 // THE STORED NAME. "Cold War.mpm" + hash -> "Cold War.3fa2b1c94d8e7a06.mpm": the hash is inserted
 // before the LAST dot, so the extension -- which is what the game's own loader uses to decide
@@ -409,12 +433,12 @@ const char* map_hash_hex(const std::uint8_t h[MAP_HASH_BYTES], char* out, std::s
 // Returns the length written, or 0 if `cap` is too small or `base` is empty -- and 0 means DO NOT
 // WRITE A FILE, not "use the base name", because falling back to the base name is precisely the
 // overwrite this scheme exists to prevent.
-std::size_t map_stored_name(const char* base, const std::uint8_t hash[MAP_HASH_BYTES], char* out,
+std::size_t map_stored_name(const char *base, const std::uint8_t hash[MAP_HASH_BYTES], char *out,
                             std::size_t cap) noexcept;
 
 // True iff `name` is a stored name produced by map_stored_name from `base` (any hash). Used by the
 // resolver to enumerate candidates without re-deriving the layout, and by the suite to prove a
 // same-name-different-content local file is never a candidate.
-bool map_name_is_stored_form(const char* name, const char* base) noexcept;
+bool map_name_is_stored_form(const char *name, const char *base) noexcept;
 
 } // namespace mh_net_proto

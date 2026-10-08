@@ -119,10 +119,11 @@ def net_ini(args, role, host, pid, n, mapname):
     # of trusting the declared player_id -- the hand-clicked N-player path (tested via --lobby --host-assign).
     peers = (n - 1) if role == "host" else 1
     s = (
+        "[dev]\nunlock=1\n\n"  # RL2: the rig's dev unlock (mh_ini_gate.h)
         "[net]\nrole=%s\nhost=%s\nport=6501\npeers=%d\nplayer_id=%d\nmp_players=%d\nmp_map=%s\n"
         "host_assign=%d\nlog=1\n"
         "lockstep_step_ms=%s\nlockstep_step_eps_ms=%s\nsim_step_ms=%s\nrx_spin=%d\n"
-        "horizon_heartbeat_ms=%d\ndefang_overlay=%d\noverlay_gate=%d\nresync_wait_fix=%d\nlog_gamemode=%d\ngame_speed_pct=%d\n"
+        "horizon_heartbeat_ms=%d\ndefang_overlay=%d\ngame_speed_pct=%d\n"
         "eager_advertise=%d\nhires_clock=%d\nqpc_clock=%d\nlockstep_log=1\n"
         % (
             role,
@@ -138,9 +139,6 @@ def net_ini(args, role, host, pid, n, mapname):
             args.rx_spin,
             args.heartbeat_ms,
             args.defang,
-            args.overlay_gate,
-            args.resync_fix,
-            args.log_gamemode,
             args.game_speed,
             args.eager,
             args.hires,
@@ -534,29 +532,6 @@ def main():
         type=int,
         default=1,
         help="suppress the freeze overlays (mode-3 + mode-8 paths); pairs with heartbeat, on by default",
-    )
-    ap.add_argument(
-        "--overlay-gate",
-        type=int,
-        default=0,
-        help="root-cause fix: redirect the ungated wait-overlay call through a SYNC_RETRY_COUNTDOWN<0x38 "
-        "gate so the modal shows ONLY on genuine silence (not every at-horizon frame). Test with --defang 0 "
-        "to check whether the gate alone keeps lockstep alive (replaces the wait-overlay half of the defang).",
-    )
-    ap.add_argument(
-        "--resync-fix",
-        type=int,
-        default=1,
-        help="net_resync_wait_fix (DEFAULT ON): neuter llm_net_lockstep_sync_delay_stub's uninitialized-stack "
-        "return (0x49c044 8B45D8 -> 31C090 = return 0) so the resync busy-wait is instant instead of a garbage-"
-        "length spin. Fixes the known racy MP permanent-hang (mh_hang.dmp 2026-07-10 / the go-live collapse). "
-        "Set 0 to A/B the hang.",
-    )
-    ap.add_argument(
-        "--log-gamemode",
-        type=int,
-        default=0,
-        help="diagnostic: DR0 write-log of _G_LLM_GAME_MODE transitions -> mh_gamemode.log",
     )
     ap.add_argument(
         "--net-extra",

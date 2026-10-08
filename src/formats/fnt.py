@@ -591,13 +591,17 @@ def merge(en_layer, ru_layer, fonts=PFMENU, report=None):
     return merge_onto(en_layer, ru_layer, is_cyrillic, CYRILLIC_LIFT_NOTE, fonts=fonts, report=report)
 
 
-def merge_onto(base_layer, donor_layer, lift, lift_note, fonts=PFMENU, report=None):
+def merge_onto(base_layer, donor_layer, lift, lift_note, fonts=PFMENU, report=None, derive=None):
     """`base_layer` + every `donor_layer` code point `lift(cp)` accepts + the derivation table.
 
     The general form of merge(): mods:LANG3's RU language pack runs it the other way round -- the RU
     override is the BASE (so every RU string renders exactly as retail RU does) and the EN override
     donates its Latin accents. The same two guarantees hold whichever layer is the base: strictly
     additive over the base (verify_prefix), and every lift requires matching cell metrics.
+
+    `derive` (optional, cp -> bool) restricts the derivation table to the code points it accepts. The
+    Polish pack (RL18) runs on the EN fonts alone -- no Cyrillic donor -- so it derives only the Polish
+    letters and the guard's box; the Cyrillic rows would need Cyrillic base letters EN does not have.
     """
     report = report or MergeReport()
     en_layer, ru_layer = base_layer, donor_layer  # the names the original EN-base body used
@@ -653,6 +657,8 @@ def merge_onto(base_layer, donor_layer, lift, lift_note, fonts=PFMENU, report=No
     #    IE letters lifted in step 1, so derivation reads the MERGED set, not the EN one.
     merged_set = FontSet(layout, merged, lay_name=en_layer.lay_name)
     for kind, cp, base_cp, mark_pair, why in DERIVED:
+        if derive is not None and not derive(cp):
+            continue
         if cp in index:
             report.skipped.append(cp)
             continue

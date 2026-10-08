@@ -108,7 +108,6 @@ RE_START_REFUSED = re.compile(r"; \[map\] start REFUSED -- waiting for '(.+?)'")
 RE_PRETEND_ABSENT = re.compile(r"; \[map\] uitest pretend=absent ")
 RE_ABSENT_HID = re.compile(r"; \[map\] uitest absent: refused the game's open of (.+?) -- staged")
 RE_ENTRY_DEFERRED = re.compile(r"; \[map\] entry check (.+?): (not readable here|checksum differs)")
-RE_ENTRY_RETAIL = re.compile(r"; \[map\] entry check retail ")
 RE_ENTRY_DLG = re.compile(r"; DLG savegame_io_error caller=0x004be151")
 # mp:X2b -- the transport-cannot-carry refusal (TCP): the host still CLAIMS, arms nothing, and
 # refuses Start naming the peer and the map.
@@ -544,8 +543,6 @@ def check_entry_deferred(clients):
                 "%s: no `uitest absent: refused the game's open` line -- nothing ever tried to open "
                 "the map while it was absent, so the entry check was not exercised" % name
             )
-        if RE_ENTRY_RETAIL.search(t):
-            fail("%s: [net] map_entry_check=retail -- the fix was disarmed (the red arm)" % name)
         if RE_ENTRY_DLG.search(t):
             fail(
                 "%s: retail's 'can't create map file' box was raised at lobby entry (DLG caller "

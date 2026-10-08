@@ -717,7 +717,11 @@ def cmd_replay(args):
         argv += ["--net-extra", ";".join("%s=%s" % (k, v) for k, v in net.items())]
     print("  $ " + " ".join(argv[1:]))
     before = (
-        set(os.listdir(os.path.join(args.lane, "logs")))
+        set(
+            _n
+            for _n in os.listdir(os.path.join(args.lane, "logs"))
+            if os.path.isdir(os.path.join(os.path.join(args.lane, "logs"), _n))
+        )
         if os.path.isdir(os.path.join(args.lane, "logs"))
         else set()
     )
@@ -727,7 +731,11 @@ def cmd_replay(args):
             "fixture_replay replay: the run FAILED (exit %d) -- re-run, do not massage"
             % r.returncode
         )
-    after = set(os.listdir(os.path.join(args.lane, "logs")))
+    after = set(
+        _n
+        for _n in os.listdir(os.path.join(args.lane, "logs"))
+        if os.path.isdir(os.path.join(os.path.join(args.lane, "logs"), _n))
+    )
     # THE PROCESS DIRECTORY, not the session one. Since the per-SESSION log split a launch leaves
     # two new directories -- `<ts>_menu_solo` (per process: the harness log, the recording halves)
     # and `<ts>_<mid8>_<map>_<mode>` (per session: mh_net.log, session.json; SES1 spelled it

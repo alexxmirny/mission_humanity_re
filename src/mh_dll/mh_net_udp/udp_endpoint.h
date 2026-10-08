@@ -34,7 +34,7 @@
 //
 //   * the outbound byte stream is chopped into SEGMENTS of at most SEG_PAYLOAD bytes, each with a
 //     32-bit sequence number;
-//   * every datagram carries the newest segment PLUS the previous K-1 (`[net] udp_redundancy`,
+//   * every datagram carries the newest segment PLUS the previous K-1 (K_DEFAULT, was `[net] udp_redundancy`,
 //     default 3) using T0's channel-A payload, whose step numbering is implied and newest-first.
 //     One lost datagram is repaired by the next with no retransmit and no added round trip -- the
 //     trade plan D2 chose, and the reason lockstep inputs are the right traffic for it;
@@ -295,10 +295,10 @@ typedef int (*path_class_fn)(void *ctx, const sockaddr_in &a);
 // build it was, and an ABI field added for one transport would have to be understood by both.
 struct Config {
     MH_NetConfig   net;        // role / host / port / player_id / log / host_assign / ping / timeout
-    int            redundancy; // K -- `[net] udp_redundancy`, clamped into [K_MIN, K_MAX]
+    int            redundancy; // K -- K_DEFAULT, clamped into [K_MIN, K_MAX]
     unsigned short bind_port;  // 0 = ephemeral. The host binds net.port; a client takes whatever the
                                // OS gives it, except in the selftest, which pins all three.
-    // mp:T2 -- `[net] bulk_selftest_mb` / `bulk_selftest_step`. 0 MB is off. Non-zero arms a
+    // mp:T2 -- the channel-C measurement arm (selftest-set only; the `[net] bulk_selftest_mb` / `bulk_selftest_step` knobs are retired). 0 MB is off. Non-zero arms a
     // SYNTHETIC channel-C transfer of that many mebibytes, started once a peer's desync sample
     // reports a sim step at or past the second value, which is how the rig arm measures "a bulk
     // transfer does not delay channel A" without a game that knows how to ask for one.
@@ -336,7 +336,7 @@ struct Config {
     // player leaves (hub_leave() answers HL_NOTHING) nor acts on a HUB_LEAVING it receives, which reproduces
     // U55's measured 58 s outcome-8 timeline.
     bool no_hub_migration;
-    // mp:U63 (HM-M5) -- `[net] failover_budget_ms` (0 = mesh::FO_BUDGET_MS): the bound on a whole crash failover. A
+    // mp:U63 (HM-M5) -- the failover budget (0 = mesh::FO_BUDGET_MS; selftest-set only, the `[net] failover_budget_ms` knob is retired): the bound on a whole crash failover. A
     // zero-initialised Config gets the default. `[net] hub_migration=0` (no_hub_migration) switches the failover off
     // with the handover: the negative arm is U55's measured 58 s outcome-8 timeline.
     int failover_budget_ms;

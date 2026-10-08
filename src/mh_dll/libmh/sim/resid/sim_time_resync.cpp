@@ -17,11 +17,6 @@ namespace {
 // net_lockstep.cpp, so it can only arrive as a pointer). Null until then -- and null is correct for
 // any build that installs no pacing instrument.
 void (*g_pace_hook)() = nullptr;
-// EXPERIMENT ARM (harness skip_pace_hook=1), default off. Set INDEPENDENTLY of the hook pointer so
-// it cannot lose a race with the installer: net_lockstep hands the hook over during seam install and
-// the harness reads its config at a different moment, so a design that cleared g_pace_hook would be
-// order-dependent and could silently re-arm. A flag consulted at CALL time cannot.
-bool g_pace_disabled = false;
 } // namespace
 
 namespace detail {
@@ -32,17 +27,10 @@ namespace detail {
 // prelude itself, so running it here as well would run adaptive_tick() twice in one frame. The check
 // is at CALL time so it cannot disagree with the binding the next statement uses.
 void time_resync_pace_chain() {
-    if (g_pace_disabled) return;
     if (g_pace_hook && ::mh::rebind::armed(::mh::rebind::ROW_llm_strat_time_tick)) g_pace_hook();
 }
 
 } // namespace detail
-
-// EXPERIMENT ARM: make the pacing prelude a no-op for the rest of the process, which is the state
-// the standalone reference host runs in permanently (libref_host installs no pacing instrument).
-void set_time_resync_pace_disabled(bool off) {
-    g_pace_disabled = off;
-}
 
 void set_time_resync_instrument_hooks(void (*pace_time_tick)()) {
     if (pace_time_tick) g_pace_hook = pace_time_tick;

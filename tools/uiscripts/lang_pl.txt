@@ -1,0 +1,69 @@
+# RL18 -- the EN exe with the per-machine POLISH language pack (`[lang] pack=pl`, built by
+# `python src/formats/langpack.py build --lang pl` from the Extermination install): a Polish main menu
+# on the restored 7-button layout, every hotspot on its painted label, the hover sprites derived from
+# the composed labels, and the network button still landing on the player-name screen.
+#
+# THE PACK IS RETAIL GAME DATA AND IS NOT IN THE REPO. The registry row's `requires` hook
+# (ui_suite_common.lang_pack_pl_precondition) SKIPS by name when <lane_src>/lang/pl is absent or
+# unreadable -- the same opt-in tier as lang_ru.
+#
+# WHAT A GREEN MEANS:
+#   * p1_menu -- the 7 buttons in Polish art, aligned: INTRO / NOWA GRA / GRA W SIECI / TUTORIAL /
+#     WCZYTAJ GRE / AUTORZY / WYJSCIE (Polish diacritics as painted).
+#   * the seven `hovered` gates -- the cursor parked on each PAINTED label row (y = 97 + 40k + 15) hovers
+#     exactly that button's widget (hotkey values i/g/n/t/l/c/q, the same as every language).
+#   * p2..p6 -- the hover sprite of each re-lettered button over its own row.
+#   * p7_name -- clicking the network button's hotspot reaches the player-name screen.
+#
+# THE BASELINES ARE FLAGGED FOR THE USER'S EYES (the art is composed, then judged by a person): a
+# re-baseline of this row needs the same sign-off, never an automatic --update-baselines.
+
+settled value:105
+cursor 600 450
+capture p1_menu
+
+cursor 112 112
+cursor 112 112
+hovered value:105
+cursor 112 152
+cursor 112 152
+hovered value:103
+capture p2_new_hover
+cursor 112 192
+cursor 112 192
+hovered value:110
+capture p3_net_hover
+cursor 112 232
+cursor 112 232
+hovered value:116
+cursor 112 272
+cursor 112 272
+hovered value:108
+capture p4_load_hover
+cursor 112 312
+cursor 112 312
+hovered value:99
+capture p5_credits_hover
+cursor 112 352
+cursor 112 352
+hovered value:113
+capture p6_quit_hover
+
+cursor 112 192
+cursor 112 192
+hovered value:110
+click 112 192
+settled Ok
+cursor 600 450
+capture p7_name
+
+# back to the menu through the pack's own Powrot button, then TUTORIAL (value 116) up to the WELCOME
+# modal -- the tutorial script's Polish message text (Extermination's, on MH's script) and its Start
+# button. THE SIM DOES NOT TICK BEHIND THE MODAL, so the frame is static.
+clickl Powrót
+settled value:116
+clickv 116
+settled Start
+capture p8_tutorial_welcome
+log RL18: PL pack menu -- 7 aligned hotspots, derived hover art, name screen, tutorial welcome text
+end

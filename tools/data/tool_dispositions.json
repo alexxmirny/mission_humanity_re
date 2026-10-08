@@ -131,8 +131,8 @@
     },
     "check_freeze_watchdog.py": {
       "class": "keep",
-      "why": "mp:P17 -- reads the main-thread frame watchdog's [freeze] line set and the focus tap's [focus] lines out of mh_net.log: the freeze_watchdog / freeze_watchdog_off / alttab_d3d11 scenarios' cross-peer post-check, and the reader a player report's freeze is judged with",
-      "evidence": "invoked by tools/uiscripts/registry.yaml's freeze_watchdog, freeze_watchdog_off and alttab_d3d11 rows (post_check, post_check_peers, post_check_session); its own --selftest plants a log per outcome"
+      "why": "mp:P17 -- reads the main-thread frame watchdog's [freeze] line set and the focus tap's [focus] lines out of mh_net.log: the freeze_watchdog / alttab_d3d11 scenarios' cross-peer post-check, and the reader a player report's freeze is judged with",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's freeze_watchdog and alttab_d3d11 rows (post_check, post_check_peers, post_check_session); its own --selftest plants a log per outcome"
     },
     "check_cancel_task.py": {
       "class": "keep",
@@ -467,11 +467,6 @@
       "why": "mp:U19f: the txdeath_ingame UI scenario's cross-peer post_check -- an IN-GAME (not lobby-phase, not a quit) net_shim blackhole must be seen through the fast-drop route (`; U17 fast-drop`), raise on_gameover outcome=7 (NETWORK_ERROR), never through mp:U19e's garbled-stream arm, and U19d's below-quorum wording correction must NOT fire on a real transport death -- the negative arm that discriminator never had",
       "evidence": "invoked by tools/test_ui.py's txdeath_ingame TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
-    "check_u39_echo.py": {
-      "class": "keep",
-      "why": "mp:U39: the u39_diplomacy_echo UI scenario's cross-peer post_check (the NEGATIVE arm) -- with the retail relation echo kept ([net] diplo_echo_nop=0) the pair's state hash must differ for a bounded window (1..16 steps, 4 measured) with `players` among the diverging regions at the first mismatch, and re-converge by the last common step; proves u39_diplomacy is green for the right reason",
-      "evidence": "invoked by tools/test_ui.py's u39_diplomacy_echo TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
-    },
     "check_u45_diplo.py": {
       "class": "keep",
       "why": "mp:U45: the u45_diplo_control / u45_diplo_dedup_retail UI scenarios' cross-peer post_check -- reads each peer's recorded order stream (order_mode=1): with `[net] diplo_order_dedup_fix=1` a diplomacy Apply that changes relation AND control leaves BOTH 0xf4 and 0xf5 on every peer; with =0 (retail dedup) only 0xf5 survives, which proves the ship arm is green for the right reason",
@@ -678,6 +673,11 @@
       "class": "keep",
       "why": "--check guards tools/data/hostapi_callers.json against libmh/include/libmh_host_api.gen.h + libmh_tact_host_api.gen.h, two headers the public build compiles -- two 2026-09-10 slices shrank those tables without regenerating the evidence",
       "evidence": "fork F5M S4a (2026-09-16) re-triage, one rule: is this a live drift gate over a file the PUBLIC build compiles or the public tree ships? The F0 class answered a different question (does the fork still need the Ghidra pipeline) and archived gates the public tree wants."
+    },
+    "gen_ini_registry.py": {
+      "class": "keep",
+      "why": "RL1 (v0.2.0 plan A): the mh_net.ini key registry (src/mh_dll/mh/config/ini_keys.def) -- --check is the lint (every key read in src/mh_dll has a row, every row is read, the example ini names no unregistered key, the launcher schema JSON is current); --write regenerates src/launcher/settings_schema.json.",
+      "evidence": "invoked by tools/lint_repo.py"
     },
     "gen_inmem_manifest.py": {
       "class": "keep",

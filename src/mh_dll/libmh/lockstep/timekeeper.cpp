@@ -224,12 +224,6 @@ int32_t time_tick(const timekeeper_state &s, const timekeeper_calls &c, const re
             if (*s.sync_wait_active == 1) {
                 stand_down(s);
                 *s.peer_timeout_elapsed = -1.0; // NOTE (4): ONLY this path disarms the peer timeout
-                // C3, migrated `resync_trigger_reset`. THIS stand_down site and not the other one: the
-                // byte splice was at 0x0043f2a5, identifiable as this path because it is the only
-                // recovery exit that also disarms the peer timeout, and the patch's own rationale named
-                // all four per-episode siblings as reset here. Applying it at both sites would change
-                // behaviour the byte patch never touched.
-                if (fx.resync_trigger_reset) *s.resync_trigger_count = 0;
                 {
                     // LIB-ABI stage E hoist: latch the !=4 guard BEFORE (the callee reads it),
                     // store the folded dismiss rule AFTER (overlay_hoist.h's ordering law).

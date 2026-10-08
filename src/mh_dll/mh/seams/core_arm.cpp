@@ -33,6 +33,7 @@
 // instrument's configuration and are read in the instrument's image.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include "include/mh_core_arm_export.h"
 #include "include/mh_core_arm_paths.h"  // F4E: the paths the harness copies at MH_Harness_Init
@@ -90,12 +91,12 @@ void append_line_once(const char *path, const char *s) {
 #define append_line append_line_once
 
 void build_paths() {
-    GetModuleFileNameA(nullptr, g_dir, MAX_PATH); // ...\mh.exe
-    char *slash = g_dir;
-    for (char *p = g_dir; *p; ++p)
-        if (*p == '\\' || *p == '/') slash = p;
-    slash[1] = '\0';                              // keep trailing backslash
-    wsprintfA(g_ini_path, "%smh_net.ini", g_dir); // config INPUT (next to exe)
+    // g_dir is the EXE directory (the harness's replay INPUTS below are dev recordings that belong to
+    // the installation); the ini is the CONFIG directory's (RL3: mh_config_dir.h -- env override,
+    // else beside the exe in portable mode, else %LOCALAPPDATA%). A rig lane is portable, so for
+    // every lane the two are the same directory and nothing here moved.
+    lstrcpynA(g_dir, mh::cfgdir::exe_dir(), MAX_PATH); // "...\" trailing backslash kept
+    mh::cfgdir::ini_path(g_ini_path);                  // config INPUT
     // OUTPUTS all land in the per-run log folder (2026-07-25). They used to be written next to the
     // exe, which littered the game directory and -- worse -- let one run silently overwrite the
     // previous run's recording. INPUTS still resolve next to the exe: the run folder is timestamped,
@@ -139,7 +140,7 @@ void build_paths() {
 // READ FRESH FROM THE INI, NOT FROM g_cfg, and that is not redundancy: this is asked twice before
 // load_config() has run (the rebind yield below, and the arm gate itself), so g_cfg.* is still zero
 // at both call points. It is one GetPrivateProfileInt against a file the OS caches; the cost is not
-bool harness_enabled() { return GetPrivateProfileIntA("harness", "enable", 0, g_ini_path) != 0; }
+bool harness_enabled() { return mh_ini_get_int("harness", "enable", 0, g_ini_path) != 0; }
 
 // ---- the RELOCATING state bind (SB-HOSTFREE) -------------------------------------------------
 //
@@ -148,16 +149,14 @@ bool harness_enabled() { return GetPrivateProfileIntA("harness", "enable", 0, g_
 // later. Two keys:
 //
 //   [harness] relocate_state=1        move every relocatable region into a DLL-owned arena
-//   [harness] relocate_pin=<name>     ...except this one, which stays at its stock base
-//
-// The pin is the mutation the acceptance demands: with it, the run MUST diverge and the report must
-// name that region. A relocation arm that could not go red would be the same vacuous gate this item
-// was opened to close.
+//   [harness] relocate_corrupt=<name> fill that region's arena copy with 0xCD (the mutation: the run
+//                                     MUST diverge and the report must name that region -- a
+//                                     relocation arm that could not go red would be the same vacuous
+//                                     gate this item was opened to close)
 //
 // The arena is static, on ai::island_move's precedent: ~390 KB of DLL .bss, deterministic, with no
 // allocation failure to handle from inside an init hook that has no logger yet.
 alignas(16) uint8_t g_reloc_arena[mh::state::RELOCATABLE_BYTES + 16u * mh::state::RID_COUNT];
-char                         g_reloc_pin[64];
 char                         g_reloc_corrupt[64];
 mh::state::relocation_report g_reloc_report;
 bool                         g_reloc_active = false;
@@ -214,7 +213,7 @@ int bind_relocated_from_ini() {
     // relocate_state=1` can now sit in an ini that never says `enable=1`, and relocating the world
     // for a harness that will not run is a mutation with no instrument watching it.
     if (!harness_enabled()) return 0;
-    if (!GetPrivateProfileIntA("harness", "relocate_state", 0, g_ini_path)) return 0;
+    if (!mh_ini_get_int("harness", "relocate_state", 0, g_ini_path)) return 0;
     // F2B follow-up (conductor ruling, 2026-09-12). Under `[config] mode=original` nothing of ours
     // is armed, and the census's `relocatable` flag means "a translated body EXISTS", never "that
     // body is armed" -- so a relocation moves-and-poisons regions that only ORIGINAL bodies will
@@ -232,15 +231,12 @@ int bind_relocated_from_ini() {
     // itself -- so a green run in that configuration says the copy and the bind work, and says
     // NOTHING about whether anything still reads the abandoned address. It is how you separate
     // "the relocation is broken" from "something still points at .bss"; it is not the acceptance.
-    o.poison       = GetPrivateProfileIntA("harness", "relocate_poison", 1, g_ini_path) != 0;
+    o.poison       = mh_ini_get_int("harness", "relocate_poison", 1, g_ini_path) != 0;
     g_reloc_poison = o.poison;
-    mh::config::read_ini_string("harness", "relocate_pin", "", g_reloc_pin, sizeof(g_reloc_pin),
-                                g_ini_path); // TL-HARN4
-    if (g_reloc_pin[0]) o.pin_stock = g_reloc_pin;
     // `relocate_corrupt=<region>` is THE mutation -- it fills that region's ARENA copy with 0xCD,
-    // so a run with it set must DIVERGE and the report must name the region. `relocate_pin` is not
-    // a mutation and never was: measured, a pinned run matched the golden over 3000 steps, because
-    // answering at the stock base is exactly what an unrelocated run does. See host_bind.h.
+    // so a run with it set must DIVERGE and the report must name the region. (The retired
+    // `relocate_pin` was not a mutation: a pinned run matched the golden over 3000 steps, because
+    // answering at the stock base is exactly what an unrelocated run does. See host_bind.h.)
     mh::config::read_ini_string("harness", "relocate_corrupt", "", g_reloc_corrupt,
                                 sizeof(g_reloc_corrupt), g_ini_path); // TL-HARN4
     if (g_reloc_corrupt[0]) o.corrupt_arena = g_reloc_corrupt;
@@ -256,7 +252,7 @@ int bind_relocated_from_ini() {
 // to skim past the line that matters.
 void report_relocation() {
     if (!harness_enabled()) return; // F2G: same gate as the bind above, or this reports on nothing
-    if (!GetPrivateProfileIntA("harness", "relocate_state", 0, g_ini_path)) return;
+    if (!mh_ini_get_int("harness", "relocate_state", 0, g_ini_path)) return;
     char line[512];
     if (!g_reloc_active) {
         wsprintfA(line, "; [reloc] REFUSED (%s) -- the run is on the STOCK bind, so nothing it "
@@ -361,11 +357,16 @@ extern "C" void MH_Core_Arm_Early(void) {
     // unanswered registry. Report line lives beside [hostapi]'s, where the logger exists.
     //
     // SB-HOSTFREE: build_paths() MOVED UP to here, ahead of the state bind, so the ini can be
-    // consulted before we answer. It only reads GetModuleFileNameA and MH_RunDir (which
+    // consulted before we answer. It only reads the config dir (mh_config_dir.h) and MH_RunDir (which
     // self-initializes), so it depends on nothing the binds below establish -- and the alternative,
     // reading the relocation keys after the bind, would relocate AFTER the module binders that
     // resolve on first use, which is the exact G104 ordering hazard this comment block is about.
     build_paths();
+    // RL2/RL6: the ship gate's logger. build_paths() has just filled g_log, so seam_log works from here;
+    // everything the gate had to say before this point (the early [config]/[net] module reads in
+    // DllMain) is flushed now, behind the start banner: `DEV UNLOCKED` when [dev] unlock=1, and the
+    // effective [log] level set on ONE line. Silent on a ship run with a clean ini.
+    mh_ini_attach_logger(seam_log, g_ini_path);
     if (bind_relocated_from_ini() == 0) mh::state::bind_stock();
     // LIB-ABI: bind the host-callback table BEFORE anything else in the arm sequence. Module
     // code runs in EVERY config (ship defaults promote translated bodies with no ini), and its
@@ -471,7 +472,7 @@ extern "C" void MH_Core_Arm_Early(void) {
         // there -- so g_ini_path is filled before this block can run. The G104 hazard the local
         // compose avoided was never about this file: it is mh::config's, and mh::config still
         // composes its own path from the module file name for exactly that reason.
-        if (GetPrivateProfileIntA("harness", "pin_wallclock", 0, g_ini_path) != 0) {
+        if (mh_ini_get_int("harness", "pin_wallclock", 0, g_ini_path) != 0) {
             if (mh::rebind::set_armed("time_GetCurrentTime", false))
                 append_line(g_log_path,
                             "; [rebind] time_GetCurrentTime YIELDED to the wall-clock pin "

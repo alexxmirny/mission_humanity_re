@@ -6,8 +6,8 @@
 // forwarding thunk per row, attached to the real symbol by a /alternatename linker directive
 // so not one of harness.cpp's call sites changes.
 
-#define MH_HARNESS_HOST_COUNT 34
-#define MH_HARNESS_SPINE_COUNT 33
+#define MH_HARNESS_HOST_COUNT 31
+#define MH_HARNESS_SPINE_COUNT 20
 
 extern "C" {
 // The bound addresses, in slot order. A null slot is not a configuration -- the binds below
@@ -30,9 +30,9 @@ int mh_harness_bind_spine(void);
 // guarded in harness.cpp or refused by key at arm. Bound whole or not at all (config1.h).
 #define MH_HARNESS_CONFIG1_FALLBACK_COUNT 3
 static const int mh_harness_config1_fallback_slot[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {
-    10, // ?live@state@mh@@YAAAUlive_table@12@XZ
-    12, // ?owner_count@state@mh@@YAAAHXZ
-    13, // ?owner_table@state@mh@@YAPAUowner_slot@12@XZ
+    8, // ?live@state@mh@@YAAAUlive_table@12@XZ
+    10, // ?owner_count@state@mh@@YAAAHXZ
+    11, // ?owner_table@state@mh@@YAPAUowner_slot@12@XZ
 };
 static const char *const mh_harness_config1_fallback_name[MH_HARNESS_CONFIG1_FALLBACK_COUNT] = {
     "?live@state@mh@@YAAAUlive_table@12@XZ",

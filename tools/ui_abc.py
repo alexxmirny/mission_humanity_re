@@ -263,7 +263,13 @@ def ui_write_config(
         "region_poke_min=%d" % (0 if poke_at else -1),
     ]
     ident = make_lane.read_identity(lane_dir) or {}
-    lines = ["[net]", "enable=1"]
+    lines = [
+        "[dev]",
+        "unlock=1",
+        "",
+        "[net]",
+        "enable=1",
+    ]  # RL2: the rig's dev unlock (mh_ini_gate.h)
     if ident.get("port"):
         lines.append("port=%d" % ident["port"])
     # `lane` MOVED INTO [uitest] at fork F2G (its own one-key [test] section is refused now).

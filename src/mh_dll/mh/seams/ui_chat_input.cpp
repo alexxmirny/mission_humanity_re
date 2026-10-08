@@ -7,21 +7,24 @@
 // mh_net_proto/text_utf8.h, shared with libmh and the selftests.
 //
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
 #include "include/mh_chatinput_export.h"
-#include "include/mh_run_context.h" // mh_run_path
-#include "include/mh_log_sink.h"    // LOG1: async log sink
-#include "addr/mh_addrs.gen.h"      // mh::addr::_G_LLM_STRAT_CHAT_INPUT_LINE, mp_player_name, mp_game_name
-#include "addr/mh_calls.gen.h"      // mh::call::llm_input_key_dequeue / llm_ui_chat_input_char_insert
-#include "addr/mh_structs.gen.h"    // mh::game::mh_llm_input_key_event (0x38 stride) -- H7's ring walk
-#include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "hook/detour.h"            // install_jmp + install_trampoline
-#include "en_guard.h"               // EN-only build gate
-#include "mh_net_proto/text_utf8.h" // MP-LANG: the UTF-8 codec + the name alphabet
+#include "include/mh_langpack_export.h" // RL17: MH_LangPack_Codepage
+#include "include/mh_run_context.h"     // mh_run_path
+#include "include/mh_config_dir.h"      // RL3: <config dir>mh_net.ini
+#include "include/mh_log_sink.h"        // LOG1: async log sink
+#include "addr/mh_addrs.gen.h"          // mh::addr::_G_LLM_STRAT_CHAT_INPUT_LINE, mp_player_name, mp_game_name
+#include "addr/mh_calls.gen.h"          // mh::call::llm_input_key_dequeue / llm_ui_chat_input_char_insert
+#include "addr/mh_structs.gen.h"        // mh::game::mh_llm_input_key_event (0x38 stride) -- H7's ring walk
+#include "config/ini_read.h"            // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "hook/detour.h"                // install_jmp + install_trampoline
+#include "en_guard.h"                   // EN-only build gate
+#include "mh_net_proto/text_utf8.h"     // MP-LANG: the UTF-8 codec + the name alphabet
 
 #pragma comment(lib, "user32.lib") // wsprintfA / wvsprintfA / the keyboard API
 
@@ -919,20 +922,15 @@ extern "C" int MH_ChatInput_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
     if (g_armed) return 1;
 
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
     char buf[64];
     mh::config::read_ini_string("input", "codepage", "acp", buf, sizeof(buf), ini); // TL-HARN4
     // MP-LANG test emulation: behave like a pre-MP-LANG (F3c) peer on the WIRE -- 8-bit chat in the
     // local codepage, and that codepage advertised/echoed -- so the refusal a current peer gives an
     // old one can be staged on the rig. Never a player setting: it only exists to be refused.
-    g_chat_utf8 = GetPrivateProfileIntA("input", "chat_legacy_codepage", 0, ini) == 0;
+    g_chat_utf8 = mh_ini_get_int("input", "chat_legacy_codepage", 0, ini) == 0;
     // MP-LANG test emulation: the JOIN carries THESE bytes verbatim instead of the (normalized) local
     // name, so the host-side normalization of a forged name can be staged. `hex:` spells high bytes.
     {
@@ -952,8 +950,17 @@ extern "C" int MH_ChatInput_Install(void) {
             ci_log("; [input] MP-LANG TEST: test_join_name set -- the JOIN will carry a FORGED %d-byte name",
                    lstrlenA(g_test_join_name));
     }
-    bool       pinned = false;
-    const UINT want   = parse_codepage(buf, &pinned);
+    bool pinned = false;
+    UINT want   = parse_codepage(buf, &pinned);
+    if (want != 0 && !pinned) {
+        // RL17: no explicit [input] codepage -> the armed language pack's own (pack.ini), if it has one.
+        const unsigned pcp = MH_LangPack_Codepage();
+        if (pcp != 0) {
+            want   = pcp;
+            pinned = true;
+            ci_log("; [input] codepage %u taken from the language pack (pack.ini)", pcp);
+        }
+    }
     if (want == 0) {
         ci_log("; [input] codepage '%s' REFUSED (UTF-7/UTF-8 are multi-byte; the menu fields are "
                "byte-indexed -- chat is UTF-8 regardless) -- falling back to the process ACP %u",
@@ -1007,7 +1014,7 @@ extern "C" int MH_ChatInput_Install(void) {
 
     // H7 (mp:U48): default ON -- the fix is the shipped behaviour; `[input] scroll_keyup_rescue=0` is the
     // negative arm (retail: the overlay's chat pump discards an arrow key-up and the scroll latch sticks).
-    if (GetPrivateProfileIntA("input", "scroll_keyup_rescue", 1, ini) != 0) {
+    if (mh_ini_get_int("input", "scroll_keyup_rescue", 1, ini) != 0) {
         if (install_trampoline(ADDR_KEY_POP, (void *)key_pop_detour, &g_tramp_pump, 6,
                                mh::hook::entry_claim::exclusive, "the U48 arrow key-up rescue", KEY_POP_ENTRY))
             ci_log("; [input] U48 armed -- an arrow key-up a non-strategic drain pops (stall overlay / menu frame) "

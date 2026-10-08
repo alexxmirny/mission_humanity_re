@@ -115,9 +115,21 @@ ini's 0 (no file and no shadow copy -- mh_net.log says so). The selftest asserts
 WHAT IS STILL NOT IN EITHER LIST. `[debug] overlay` LEFT DEBUG_KEYS on 2026-09-20 (user ruling): the
 debug ini keeps `overlay=0`, i.e. installed-but-hidden, so the Ctrl+Alt+D toggle works and nothing
 paints over the game until asked -- proven by test_ui.py's `debug_overlay` scenario (absent on the
-first frame, present after the chord on two screens, absent after a second). `[net] log_gamemode` stays out: it
-watches a global using the DEBUG REGISTERS, which is a real intervention in the process, not a log
+first frame, present after the chord on two screens, absent after a second). The retired `[net] log_gamemode` stayed out for the same reason: it
+watched a global using the DEBUG REGISTERS, which is a real intervention in the process, not a log
 level. `[harness] fixed_step=1` (the compiled default) is exactly the thing HARNESS_KEYS turns OFF.
+
+---- SINCE dist RL2 + RL6 (v0.2.0): DEBUG IS ONE PLAYER KEY ---------------------------------------
+
+The shipped DLL ignores every dev key unless the ini says `[dev] unlock=1` (mh_ini_gate.h), so the
+former recipe -- flip five observer keys one by one -- would have produced a debug ini that did
+nothing. DEBUG_KEYS is now the single player-class key `[log] level=debug`; the DLL supplies the
+five observers (OBSERVERS_AT_DEBUG) as that level's defaults, and --selftest cross-checks the list
+against the C++ level table. The harness arms only in the zip that carries BOTH mh_harness.dll and
+libmh.dll (brokered-debug, a test build), which therefore also carries `[dev] unlock=1`. net-debug
+no longer arms it (plan D2: field desync evidence is the in-game watch's state record). RL7 removes
+the debug variants and the harness from the release altogether. The paragraphs above that describe
+the five-key recipe and the net-debug harness are the pre-RL2 history.
 
 ---- THE TWO REFUSALS ----------------------------------------------------------------------------
 
@@ -171,49 +183,37 @@ class Refusal(Exception):
 
 # --------------------------------------------------------------------------- the ini variants
 
-# (section, key, value, why). Flipped in EVERY debug ini and nowhere else. Every one of these is an
-# OBSERVER -- it writes a line somewhere and changes nothing the game does. See the module docstring
-# for the keys that were considered and left out, and why. `[debug] overlay` was here until
-# 2026-09-20: the debug ini now ships the overlay installed-but-hidden (overlay=0, the toggle works).
+# (section, key, value, why). Flipped in EVERY debug ini and nowhere else. Since dist RL6 this is ONE key:
+# `[log] level=debug`. The five observer keys the debug ini used to flip one by one (OBSERVERS_AT_DEBUG
+# below) are now supplied as DEFAULTS by that level inside mh.dll (src/mh_dll/mh_common/include/
+# mh_ini_gate.h, LEVEL table) -- and they HAD to move: since dist RL2 the shipped DLL ignores a dev key
+# written in an ini that does not carry `[dev] unlock=1`, so flipping them here would be a no-op.
 DEBUG_KEYS = (
     (
-        "net",
-        "sp_clock_log",
-        "1",
-        "log every strategic frame even in single-player, where there is no lockstep to gate on. "
-        "Without it a single-player report has no per-frame clock record at all.",
-    ),
-    (
-        "trace",
-        "temporal_sp",
-        "1",
-        "record the per-event temporal trace OUTSIDE session mode 3 as well, so a menu/lobby "
-        "problem (the half a bug report is most often about) is in mh_temporal.log.",
-    ),
-    (
-        "desync",
-        "verbose",
-        "1",
-        "log every AGREEING state comparison, not only the mismatches. A clean log is what makes "
-        "the first disagreement readable as a change rather than as the only data point.",
-    ),
-    (
-        "input",
-        "mouse_trace",
-        "1",
-        "per-present mouse ring + camera-latch telemetry into mh_mtrace.log, per match. The input "
-        "path is where 'it feels wrong' reports come from, and it is unreconstructable after the fact.",
-    ),
-    (
-        "desync",
-        "state_record",
-        "1",
-        "record the WHOLE match's state (every hash-manifest slice, keyframes + per-step changes) into "
-        "mh_match_state.bin in the match folder (mp:D40, user ruling 2026-09-27). A report then says "
-        "WHICH bytes diverged and when, not only that a hash did. Read-only on game memory; ~0.3 ms "
-        "per sim step, written by a background thread. The ship `net` ini keeps it 0.",
+        "log",
+        "level",
+        "debug",
+        "turn on the observer logs a bug report wants -- sp_clock_log, temporal_sp, desync verbose, "
+        "mouse_trace and the whole-match state record (mh_match_state.bin). All observers: they write "
+        "lines and change nothing the game does.",
     ),
 )
+
+# The (section, key, value) set `[log] level=debug` must supply -- the former DEBUG_KEYS, verbatim.
+# NOT used to write anything: --selftest cross-checks it against the C++ level table, so the two
+# statements of "what debug means" cannot drift apart. `quiet` is the other half of that check.
+OBSERVERS_AT_DEBUG = (
+    ("net", "sp_clock_log", "1"),
+    ("trace", "temporal_sp", "1"),
+    ("desync", "verbose", "1"),
+    ("input", "mouse_trace", "1"),
+    ("desync", "state_record", "1"),
+)
+OBSERVERS_AT_QUIET = (
+    ("net", "lockstep_log", "0"),
+    ("net", "frametime_log", "0"),
+)
+LEVEL_TABLE_SRC = os.path.join(REPO, "src", "mh_dll", "mh_common", "include", "mh_ini_gate.h")
 
 # (section, key, value, why). The determinism/replay INSTRUMENT, armed in the debug ini of every zip
 # that carries mh_harness.dll (user ruling 2026-09-20 for brokered-debug; mp:D29 + user decision O6,
@@ -244,11 +244,31 @@ HARNESS_KEYS = (
 )
 
 
+# (section, key, value, why). A zip that arms the harness must also lift the dev gate: every [harness]
+# key is a dev key and the shipped DLL ignores it (logging IGNORED) without `[dev] unlock=1`.
+UNLOCK_KEYS = (
+    (
+        "dev",
+        "unlock",
+        "1",
+        "the harness keys are dev keys, ignored by the shipped DLL unless the ini unlocks them. This "
+        "also honours every other dev key the reference ini lists. Only a zip that arms the harness "
+        "carries it; it is a test build, not a player one.",
+    ),
+)
+
+
 def harness_keys_for(modules):
-    """HARNESS_KEYS if this zip can ARM the harness, else (). Since mp:D29 the instrument arms in
-    BOTH configurations (spine-free without libmh.dll), so the keys follow the INSTRUMENT: a zip
-    that carries mh_harness.dll arms it (user decision O6, 2026-09-24)."""
-    return HARNESS_KEYS if "mh_harness.dll" in modules else ()
+    """The harness keys (and the unlock they need) for a zip that can ARM the instrument, else ().
+
+    Since dist RL2 the harness is a dev-gated instrument, so the zip that arms it must carry the
+    unlock -- and that is a TEST build: only the zip that carries BOTH mh_harness.dll and libmh.dll
+    (brokered-debug, the spine's test configuration). The player-facing debug zip (net-debug) no
+    longer arms it: per plan decision D2 its desync evidence is the in-game watch's state record
+    (`[log] level=debug`), and RL7 removes the instrument from the release altogether."""
+    if "mh_harness.dll" in modules and "libmh.dll" in modules:
+        return HARNESS_KEYS + UNLOCK_KEYS
+    return ()
 
 
 SHIP_HEADER = """\
@@ -271,7 +291,7 @@ SHIP_HEADER = """\
 DEBUG_HEADER = """\
 ; mh_net.ini -- DIAGNOSTIC configuration, packaged with {zipname}.
 ;
-; This file is src/mh_dll/mh_net.example.ini with {n} keys changed, and nothing else:
+; This file is src/mh_dll/mh_net.example.ini with {n} key(s) changed, and nothing else:
 ;
 {keylist}
 ;
@@ -293,9 +313,11 @@ HARNESS_NOTE_ARMED = """\
 ; The debug overlay is installed but HIDDEN: Ctrl+Alt+D shows it, Ctrl+Alt+PgUp/PgDn page it.
 ;"""
 HARNESS_NOTE_UNARMED = """\
-; Every one of them only makes the run REPORT more; none of them changes what the game does. The
-; determinism harness is NOT armed here: this zip does not carry mh_harness.dll. The debug zips
-; that do (net-debug, brokered-debug) record per-step hashes and orders.
+; Every one of them only makes the run REPORT more; none of them changes what the game does.
+; `[log] level=debug` is a player setting: it switches on the observer logs a bug report wants,
+; including the whole-match state record (mh_match_state.bin). The determinism harness is NOT armed
+; here -- it is a developer instrument, ignored by the shipped DLL unless the ini says `[dev]
+; unlock=1`, and only the brokered-debug zip (a test build) does.
 ; The debug overlay is installed but HIDDEN: Ctrl+Alt+D shows it, Ctrl+Alt+PgUp/PgDn page it.
 ;"""
 
@@ -382,16 +404,14 @@ CONFIG_TEXT = {
   mh_net.dll     the multiplayer transport over TCP (`[net] transport=tcp`, direct dial only).
                  BOTH transports ship, and mh_net.ini decides which one a run uses. Every peer
                  in a match must be set the same way.
-  mh_harness.dll the determinism/replay instrument, ARMED by this zip's ini: every sim step is
-                 hashed into mh_harness.log and every order recorded to mh_orders.bin, with the
-                 game clock NOT pinned (`fixed_step=0`). There is no libmh.dll here, so it hashes
-                 SPINE-FREE, through mh.dll's own region table -- the same per-step hash, and
-                 mh_harness.log's `configuration (1)` line says so. This is what a desync report
-                 from the build players run needs.
+  mh_harness.dll the determinism/replay instrument. It is NOT armed by this zip's ini: the
+                 shipped mh.dll ignores every developer key (the harness's `enable` included)
+                 unless the ini says `[dev] unlock=1`. A desync report from this build comes from
+                 the in-game desync watch instead -- `[log] level=debug` records the whole match's
+                 state into mh_match_state.bin.
 
   The game runs its own simulation, as above. The difference from the plain `net` zip is the ini:
-  the diagnostic logging keys are on and the harness is armed, so the run writes down enough to
-  diagnose afterwards. The debug overlay is installed but hidden -- Ctrl+Alt+D shows it.""",
+  `[log] level=debug` is set, so the run writes down enough to diagnose afterwards. The debug overlay is installed but hidden -- Ctrl+Alt+D shows it.""",
     ),
     "brokered-debug": (
         "configuration (2), brokered + the diagnostics on",
@@ -402,10 +422,12 @@ CONFIG_TEXT = {
   mh_net.dll     the multiplayer transport over TCP (`[net] transport=tcp`, direct dial only).
                  BOTH transports ship, and mh_net.ini decides which one a run uses. Every peer
                  in a match must be set the same way.
-  mh_harness.dll the determinism/replay instrument, ARMED by this zip's ini: every sim step is
-                 hashed into mh_harness.log and every order recorded to mh_orders.bin, with the
-                 game clock NOT pinned (`fixed_step=0`, the determinism gate's own setting), so
-                 the game plays as it does unarmed -- measured. This is what a desync report needs.
+  mh_harness.dll the determinism/replay instrument, ARMED by this zip's ini (which therefore
+                 carries `[dev] unlock=1` -- the shipped mh.dll ignores developer keys without
+                 it): every sim step is hashed into mh_harness.log and every order recorded to
+                 mh_orders.bin, with the game clock NOT pinned (`fixed_step=0`, the determinism
+                 gate's own setting), so the game plays as it does unarmed -- measured. This is a
+                 TEST build, not a player one.
                  The debug overlay is installed but hidden -- Ctrl+Alt+D shows it.
   libmh.dll      the re-implemented spine, HOSTED build. Its presence IS the configuration: with
                  this file beside mh.dll, whole domains are served by re-implemented C++ instead of
@@ -870,8 +892,9 @@ def selftest():
         debug = make_debug_ini(example, "x.zip", modules)
         debug_body = debug[debug_header_len("x.zip", modules) :]
         expect(
-            "%s: harness keys present IFF the zip carries mh_harness.dll (mp:D29 / O6)" % tag,
-            (len(keys) > len(DEBUG_KEYS)) == ("mh_harness.dll" in modules),
+            "%s: harness keys present IFF the zip carries mh_harness.dll AND libmh.dll (RL2)" % tag,
+            (len(keys) > len(DEBUG_KEYS))
+            == ("mh_harness.dll" in modules and "libmh.dll" in modules),
         )
         diffs = ini_diff_lines(ship_body, debug_body)
         expect(
@@ -907,7 +930,8 @@ def selftest():
             ("ARM the determinism" in debug) == bool(harness_keys_for(modules)),
         )
 
-    # mp:D40 (e): the whole-match state recording is ON in both debug zips and OFF in ship `net`.
+    # RL6: debug is ONE player key. The whole-match state recording (mp:D40 (e)) is now supplied by that
+    # level inside the DLL, so what the ini must show is [log] level, and ship must not carry the unlock.
     def ini_value(text, section, key):
         cur = None
         for line in text.split("\n"):
@@ -924,16 +948,53 @@ def selftest():
         "net (ship): [desync] state_record is absent or 0 (mp:D40 (e))",
         ini_value(ship_body, "desync", "state_record") in (None, "0"),
     )
+    expect(
+        "net (ship): [log] level is normal and [dev] unlock is 0 -- the SHIPPED ini never carries the unlock (RL2)",
+        ini_value(ship_body, "log", "level") == "normal"
+        and ini_value(ship_body, "dev", "unlock") == "0",
+    )
     debug_zips = [(t, m) for t, m, d in ZIPS if d]
     expect(
         "the debug zips are exactly net-debug and brokered-debug",
         sorted(t for t, _m in debug_zips) == ["brokered-debug", "net-debug"],
     )
     for tag, modules in debug_zips:
+        dbg = make_debug_ini(example, "x.zip", modules)
+        expect("%s: [log] level=debug (RL6)" % tag, ini_value(dbg, "log", "level") == "debug")
         expect(
-            "%s: [desync] state_record=1 (mp:D40 (e))" % tag,
-            ini_value(make_debug_ini(example, "x.zip", modules), "desync", "state_record") == "1",
+            "%s: [dev] unlock=1 IFF the harness arms (the harness keys are dev keys, RL2)" % tag,
+            (ini_value(dbg, "dev", "unlock") == "1") == bool(harness_keys_for(modules)),
         )
+    expect(
+        "net-debug does NOT arm the harness any more (plan D2); brokered-debug does, with the unlock",
+        not harness_keys_for(dict((t, m) for t, m, _d in ZIPS)["net-debug"])
+        and bool(harness_keys_for(dict((t, m) for t, m, _d in ZIPS)["brokered-debug"])),
+    )
+
+    # RL6: the DEBUG and QUIET sets exist twice -- here (documentation of the former DEBUG_KEYS) and in the
+    # C++ level table -- so each is cross-checked against the other. The C++ rows are
+    # `{"net", "sp_clock_log", <quiet>, <debug>},` (-1 = the level leaves it alone).
+    try:
+        with io.open(LEVEL_TABLE_SRC, encoding="utf-8") as fh:
+            src_txt = fh.read()
+    except OSError:
+        src_txt = ""
+    cpp_debug, cpp_quiet = set(), set()
+    for m in re.finditer(r'\{"(\w+)",\s*"(\w+)",\s*(-?\d+),\s*(-?\d+)\}', src_txt):
+        sec, key, q, d = m.group(1), m.group(2), int(m.group(3)), int(m.group(4))
+        if q >= 0:
+            cpp_quiet.add((sec, key, str(q)))
+        if d >= 0:
+            cpp_debug.add((sec, key, str(d)))
+    expect(
+        "the C++ level table's DEBUG set is exactly the former DEBUG_KEYS (%d keys)"
+        % len(OBSERVERS_AT_DEBUG),
+        cpp_debug == set(OBSERVERS_AT_DEBUG),
+    )
+    expect(
+        "the C++ level table's QUIET set is exactly lockstep_log=0 + frametime_log=0 (detection keys untouched)",
+        cpp_quiet == set(OBSERVERS_AT_QUIET),
+    )
     refuses(
         "a DEBUG key that is not in the reference ini",
         lambda: _flip(example, "net", "no_such_key_at_all", "1"),

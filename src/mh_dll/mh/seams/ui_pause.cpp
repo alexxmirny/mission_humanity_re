@@ -14,11 +14,13 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstdint>
 
 #include "include/mh_pause_export.h"
 #include "include/mh_run_context.h" // MH_RunDir
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "addr/mh_structs.gen.h"    // mh::game::mh_llm_input_key_event (0x38 stride)
@@ -137,17 +139,12 @@ __declspec(naked) void strat_input_detour() {
 extern "C" int MH_Pause_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
 
-    char ini[MAX_PATH], exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    char *s = exe;
-    for (char *p = exe; *p; ++p)
-        if (*p == '\\' || *p == '/') s = p;
-    s[1] = 0;
-    wsprintfA(ini, "%smh_net.ini", exe);
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
     // Default ON with no ini (ship semantics -- the point of the feature is that a player gets the
     // pause screen back). `key=0` unbinds it and leaves the game exactly as it shipped.
-    g_key = (uint32_t)GetPrivateProfileIntA("pause", "key", (int)DEFAULT_KEY, ini);
+    g_key = (uint32_t)mh_ini_get_int("pause", "key", (int)DEFAULT_KEY, ini);
     if (g_key > 0x7f) {
         pz_log("; pause DISARMED: [pause] key=0x%02x is outside the 7-bit scancode range", g_key);
         return 0;
