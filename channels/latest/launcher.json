@@ -3,9 +3,9 @@
   "kind": "launcher",
   "channel": "latest",
   "version": "0.2.0-rc8",
-  "issued_at": "2026-10-09T09:48:03Z",
+  "issued_at": "2026-10-09T12:35:25Z",
   "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/launcher-v0.2.0-rc8/mh_launcher.exe",
-  "sha256": "3cfe4effc90eff35454ae1bcb21b61f6eeae3a0441d52263e031281f562ce933",
-  "size": 11009536,
+  "sha256": "e7e3d3bc0b51f39af83cb8a282b433ff0c6fb62830d157329beba4a456ca9edd",
+  "size": 11011584,
   "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/launcher-v0.2.0-rc8"
 }
