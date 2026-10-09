@@ -408,6 +408,55 @@ fn start_game_with_unsaved_settings_asks_and_the_three_answers_do_what_they_say(
 }
 
 #[test]
+fn unsaved_settings_show_apply_on_every_page_and_closing_asks() {
+    i18n::set_locale(Locale::En);
+    let mut f = fixture("save_bar", true);
+    f.app.view = View::Settings;
+    f.app.auto.migrate_failed = true;
+    let ini = f.game.join("mh_net.ini");
+    let root = f.root.clone();
+    let mut h = harness(f.app);
+    h.run();
+    assert!(
+        h.query_by_label_contains("unsaved change").is_none(),
+        "clean: no save bar"
+    );
+    h.get_by_label("Windowed").click();
+    h.run();
+    // Away from Settings, the edit is still one click from saved.
+    h.state_mut().view = View::About;
+    h.run();
+    assert!(h.query_by_label_contains("1 unsaved change").is_some());
+    h.get_by_label("Apply").click();
+    h.run();
+    assert!(!h.state().model.is_dirty());
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("window=windowed"));
+    assert!(h.query_by_label_contains("unsaved change").is_none());
+
+    // Closing with an edit pending asks; Cancel keeps it, Discard drops it and closes.
+    h.state_mut().view = View::Settings;
+    h.run();
+    h.get_by_label("Borderless").click();
+    h.run();
+    h.state_mut().close_prompt = true;
+    h.run();
+    assert!(h
+        .query_by_label_contains("before closing the launcher")
+        .is_some());
+    h.get_by_label("Cancel").click();
+    h.run();
+    assert!(!h.state().close_prompt && h.state().model.is_dirty());
+    h.state_mut().close_prompt = true;
+    h.run();
+    h.get_by_label("Discard").click();
+    h.run();
+    assert!(h.state().close_confirmed && !h.state().model.is_dirty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn start_is_blocked_with_a_reason_while_busy_or_without_a_game_folder() {
     i18n::set_locale(Locale::En);
     let f = fixture("start_blocked", false);
@@ -733,6 +782,16 @@ fn review_screenshots() {
             a.ensure_model();
             a.model.set("video.window", "windowed");
             a.start_prompt = true;
+        });
+        shot("save_bar_play", true, &|a| {
+            a.ensure_model();
+            a.model.set("video.window", "windowed");
+        });
+        shot("close_prompt", true, &|a| {
+            a.view = View::Settings;
+            a.ensure_model();
+            a.model.set("video.window", "windowed");
+            a.close_prompt = true;
         });
         shot("report", true, &|a| {
             a.view = View::Report;

@@ -101,7 +101,9 @@ fn discord_value(app: &App) -> (String, Color32) {
     if !app.config.discord {
         return (tr("play.discord.off").to_string(), theme::TEXT_DIM);
     }
-    if app.config.discord_client_id.trim().is_empty() {
+    // The effective id: launcher.toml's own, else the one built in (RL20). The raw field is empty on
+    // every normal install, which made this card say "not set up" while presence worked.
+    if app.config.effective_discord_client_id().is_empty() {
         return (tr("play.discord.unconfigured").to_string(), theme::TEXT_DIM);
     }
     // While the game runs, say what is on show (the writer is `discord.rs`'s worker; this reads the

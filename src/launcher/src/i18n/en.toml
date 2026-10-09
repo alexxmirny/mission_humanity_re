@@ -50,6 +50,7 @@
 
 "modal.dirty.title" = "Unsaved settings"
 "modal.dirty.body" = "You changed settings that are not applied yet. Apply them before starting the game?"
+"modal.dirty.close_body" = "You changed settings that are not applied yet. Apply them before closing the launcher?"
 "modal.launcher_updated.title" = "Launcher updated"
 "modal.launcher_updated.body" = "Launcher {version} is installed. Restart the launcher to use it. The game itself is already up to date."
 

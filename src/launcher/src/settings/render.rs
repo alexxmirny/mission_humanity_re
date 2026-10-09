@@ -39,7 +39,9 @@ pub struct RenderState {
     pub capturing: Option<String>,
 }
 
-/// What the footer asks the page to do.
+/// What the footer asks the page to do. The launcher's pages use the shell's save bar instead; this
+/// strip stays for the engine's own harness tests.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     None,
@@ -472,6 +474,7 @@ fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
 
 /// The Apply / Revert strip under the rows. Apply is disabled while nothing changed or a value is
 /// invalid.
+#[cfg(test)]
 pub fn footer(ui: &mut Ui, model: &Model) -> Action {
     let mut action = Action::None;
     ui.horizontal(|ui| {

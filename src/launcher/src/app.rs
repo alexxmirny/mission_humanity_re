@@ -362,6 +362,10 @@ pub struct App {
     settings_note: Option<(String, bool)>,
     /// Start was pressed with unsaved settings: the Apply / Discard / Cancel prompt is up.
     start_prompt: bool,
+    /// The window was closed with unsaved settings: the same three answers, then the close.
+    close_prompt: bool,
+    /// The close prompt was answered (or nothing was unsaved): the next close goes through.
+    close_confirmed: bool,
     /// About: the licence document being read, if one is open.
     about_doc: Option<pages::about::Doc>,
     /// The crash marker file of this session's crash (`marker` is its parsed text): kept so Dismiss
@@ -741,6 +745,8 @@ impl App {
             model_for: None,
             settings_note: None,
             start_prompt: false,
+            close_prompt: false,
+            close_confirmed: false,
             about_doc: None,
             marker_path: None,
             accepted: Accepted::default(),
@@ -2049,6 +2055,15 @@ impl App {
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        // Closing the window with unsaved settings asks first (Apply / Discard / Cancel) instead of
+        // dropping the edits silently. Scripted runs never have a dirty model, so their own closes pass.
+        if ctx.input(|i| i.viewport().close_requested())
+            && self.model.is_dirty()
+            && !self.close_confirmed
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_prompt = true;
+        }
         self.tick_auto_update(&ctx); // RL9
         if self.report_job.is_some() {
             // dist LA17: the build is on a thread; keep painting so the progress line moves and the
@@ -2115,6 +2130,26 @@ impl App {
                 if self.apply_settings() {
                     self.start_prompt = false;
                     self.do_launch("Start game pressed (settings applied)");
+                }
+            }
+        }
+    }
+
+    /// The close prompt's three answers. `Apply` closes only when the save worked.
+    fn answer_close_prompt(&mut self, answer: StartAnswer, ctx: &egui::Context) {
+        match answer {
+            StartAnswer::Cancel => self.close_prompt = false,
+            StartAnswer::Discard => {
+                self.model.revert();
+                self.close_prompt = false;
+                self.close_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            StartAnswer::Apply => {
+                if self.apply_settings() {
+                    self.close_prompt = false;
+                    self.close_confirmed = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }
         }

@@ -1,6 +1,6 @@
 # RELEASE -- build the shipping set with a stamped version, gate it, and publish the ONE zip.
 #
-# WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` builds `src/mh_dll/mh.sln` with
+# WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` builds the shipped projects of `src/mh_dll` with
 # `/p:MhVersion=<tag without the v> /p:MhGitSha=<short sha>`, runs the SAME offline gate ci.yml runs
 # (selftests under ASan and plain, `--net-only`, and `lint_repo.py --ci`) ON THE STAMPED
 # BINARIES, packages them with `tools/release_package.py`, and publishes a GitHub Release carrying
@@ -71,7 +71,7 @@ env:
 
 jobs:
   build-and-gate:
-    name: build (stamped) + replay + lint + package
+    name: build (stamped, shipped set) + lint + package
     # PINNED, NOT windows-latest, for ci.yml's measured reason: `windows-latest` and `windows-2025`
     # both resolve to the VS 2026 image, which dropped the x86-host VC/Tools/Llvm/bin layout and
     # bundles LLVM 20 while this tree is formatted against clang-format 19.1.x. The vswhere
@@ -148,27 +148,29 @@ jobs:
       - name: build (stamped)
         shell: pwsh
         run: |
-          # The recipe from src/mh_dll/README.md step 1 plus the two stamp properties.
-          # `/nodeReuse:false` IS PART OF IT: with node reuse on, MSBuild's workers outlive the
-          # build holding the stdout handle, and any caller that captures output waits forever for
-          # an EOF that never arrives.
-          & "$env:MSBUILD" "$env:GITHUB_WORKSPACE\src\mh_dll\mh.sln" `
-            /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo `
-            /p:MhVersion=${{ steps.stamp.outputs.version }} /p:MhGitSha=${{ steps.stamp.outputs.sha }}
-          if ($LASTEXITCODE -ne 0) { throw "msbuild exit $LASTEXITCODE" }
+          # ONLY THE SHIPPED SET (user 2026-10-09): libmh is not shipped, so CI builds neither libmh
+          # (hosted/standalone), libref_host, the harness nor the selftest exes here. Built project by
+          # project in dependency order, not through mh.sln: the solution lists libmh_dll and
+          # mh_harness as BUILD-ORDER dependencies of mh, so /t:msvfw32_shim would pull them back in.
+          # `/nodeReuse:false` IS PART OF THE RECIPE: with node reuse on, MSBuild's workers outlive the
+          # build holding the stdout handle, and any caller that captures output waits forever.
+          $sd = "$env:GITHUB_WORKSPACE\src\mh_dll\"
+          foreach ($p in @("..\mh_net_proto\mh_net_proto.vcxproj", "mh_common\mh_common.vcxproj",
+                           "mh_net\mh_net.vcxproj", "mh_net_udp\mh_net_udp.vcxproj", "mh\mh.vcxproj",
+                           "..\mh_shim\msvfw32\msvfw32_shim.vcxproj")) {
+            & "$env:MSBUILD" "$sd$p" /p:Configuration=Release /p:Platform=Win32 "/p:SolutionDir=$sd" `
+              /m /nodeReuse:false /v:minimal /nologo `
+              /p:MhVersion=${{ steps.stamp.outputs.version }} /p:MhGitSha=${{ steps.stamp.outputs.sha }}
+            if ($LASTEXITCODE -ne 0) { throw "msbuild $p exit $LASTEXITCODE" }
+          }
 
-      - name: the eight artifacts, by name
+      - name: the shipped artifacts, by name
         shell: pwsh
         run: |
-          # One msbuild produces every module (the gate needs harness/libmh/selftests even though only the
-          # four-file `net` zip ships), and a single green build line is exactly
-          # what would hide one artifact that silently stopped being produced. Same list as ci.yml.
+          # The four files the `net` zip ships, by name: a green build line is exactly what would hide
+          # one artifact that silently stopped being produced. Same list as ci.yml.
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
-          $want = @(
-            "mh.dll", "mh_net.dll", "mh_harness.dll", "libmh.dll",
-            "standalone\libmh.dll", "standalone\libref_host.exe",
-            "net_selftest.exe", "libmh_selftest.exe"
-          )
+          $want = @("msvfw32.dll", "mh.dll", "mh_net.dll", "mh_net_udp.dll")
           $missing = @()
           foreach ($a in $want) {
             $p = Join-Path $rel $a
@@ -180,7 +182,7 @@ jobs:
       - name: the stamp reached the binaries
         shell: pwsh
         run: |
-          # The eight-artifact step above proves the files exist; this proves they are THIS release.
+          # The artifact step above proves the files exist; this proves they are THIS release.
           # It is separate so a stamping regression reads as a stamping regression rather than as a
           # packaging failure three steps later.
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"

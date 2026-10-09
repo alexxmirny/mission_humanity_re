@@ -75,7 +75,7 @@ env:
 
 jobs:
   build:
-    name: build (Release|x86) + libref replay + lint --ci
+    name: build (shipped set, Release|x86) + lint --ci
     # PINNED, NOT windows-latest. `windows-latest` AND `windows-2025` both resolve to the VS 2026
     # image since 2026-09 (measured: two red runs, `Image: windows-2025-vs2026`), and the gate FAILS
     # there: VS 2026 dropped the x86-host VC/Tools/Llvm/bin layout and bundles LLVM 20, while the
@@ -130,30 +130,33 @@ jobs:
       - name: build
         shell: pwsh
         run: |
-          # The recipe from src/mh_dll/README.md step 1, verbatim in its flags. `/nodeReuse:false` IS
-          # PART OF IT: with node reuse on, MSBuild's workers outlive the build holding the stdout
-          # handle, and any caller that captures output waits forever for an EOF that never arrives.
-          & "$env:MSBUILD" "$env:GITHUB_WORKSPACE\src\mh_dll\mh.sln" `
-            /t:Build /p:Configuration=Release /p:Platform=x86 /m /nodeReuse:false /v:minimal /nologo
-          if ($LASTEXITCODE -ne 0) { throw "msbuild exit $LASTEXITCODE" }
+          # ONLY THE SHIPPED SET (user 2026-10-09): libmh is not shipped, so CI builds neither libmh
+          # (hosted/standalone), libref_host, the harness nor the selftest exes here. Built project by
+          # project in dependency order, not through mh.sln: the solution lists libmh_dll and
+          # mh_harness as BUILD-ORDER dependencies of mh, so /t:msvfw32_shim would pull them back in.
+          # `/nodeReuse:false` IS PART OF THE RECIPE: with node reuse on, MSBuild's workers outlive the
+          # build holding the stdout handle, and any caller that captures output waits forever.
+          $sd = "$env:GITHUB_WORKSPACE\src\mh_dll\"
+          foreach ($p in @("..\mh_net_proto\mh_net_proto.vcxproj", "mh_common\mh_common.vcxproj",
+                           "mh_net\mh_net.vcxproj", "mh_net_udp\mh_net_udp.vcxproj", "mh\mh.vcxproj",
+                           "..\mh_shim\msvfw32\msvfw32_shim.vcxproj")) {
+            & "$env:MSBUILD" "$sd$p" /p:Configuration=Release /p:Platform=Win32 "/p:SolutionDir=$sd" `
+              /m /nodeReuse:false /v:minimal /nologo
+            if ($LASTEXITCODE -ne 0) { throw "msbuild $p exit $LASTEXITCODE" }
+          }
 
       - name: every build artifact, by name
         shell: pwsh
         run: |
-          # One msbuild produces all three configurations, and a single green build line is exactly
-          # what would hide one artifact that silently stopped being produced (run_gate.py says the
-          # same thing in the same words). Configurations: (1)+(2) mh.dll/mh_net.dll/mh_net_udp.dll/
-          # mh_harness.dll [+libmh.dll], (3) Release\standalone\.
+          # The shipped set only (libmh, the harness and the standalone tree are not built in CI), and
+          # a single green build line is exactly what would hide one artifact that silently stopped
+          # being produced (run_gate.py says the same thing in the same words).
           #
           # The COUNT is gone from the step's name (it said "seven" while the list held eight, and
           # mp:T1 made it nine): this list grows with the module set, and a number in a heading is a
           # number nobody re-counts. The list below is the only place worth reading.
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
-          $want = @(
-            "mh.dll", "mh_net.dll", "mh_net_udp.dll", "mh_harness.dll", "libmh.dll",
-            "standalone\libmh.dll", "standalone\libref_host.exe",
-            "net_selftest.exe", "libmh_selftest.exe"
-          )
+          $want = @("msvfw32.dll", "mh.dll", "mh_net.dll", "mh_net_udp.dll")
           $missing = @()
           foreach ($a in $want) {
             $p = Join-Path $rel $a
@@ -179,13 +182,13 @@ jobs:
         run: |
           if ("${{ inputs.selftests }}" -eq "false") {
             $msg = ":warning: **Selftests were HELD BACK for this run** (``selftests: false``). " +
-                   "This run proves the sln compiles, every artifact is produced, the standalone " +
-                   "replay passes and ``lint_repo --ci`` is green. It proves NOTHING about " +
+                   "This run proves the shipped set compiles, its four DLLs are produced " +
+                   "and ``lint_repo --ci`` is green. It proves NOTHING about " +
                    "``run_selftests.py`` -- neither the ASan half nor the plain half ran. Release " +
                    "and rc tags are unaffected: release.yml carries its own copy of the gate."
           } else {
-            $msg = ":white_check_mark: Full offline gate: build + artifacts + standalone replay + " +
-                   "lint --ci, and both selftest halves."
+            $msg = ":white_check_mark: CI gate: shipped-set build + artifacts + lint --ci, and both " +
+                   "net_selftest halves (libmh is not built in CI)."
           }
           $msg | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           Write-Host $msg

@@ -5,7 +5,7 @@ use egui::{RichText, Ui};
 
 use crate::app::App;
 use crate::i18n::{tr, trf};
-use crate::settings::render::{self, Action};
+use crate::settings::render;
 use crate::{theme, widgets};
 
 pub fn show(app: &mut App, ui: &mut Ui) {
@@ -19,8 +19,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     footer(app, ui, &ini, source, true);
 }
 
-/// Apply / Revert, the last result, and where the file is. Shared with the Diagnostics page, whose
-/// rows are settings in the same model.
+/// The last Apply's result and where the file is. Shared with the Diagnostics page, whose rows are
+/// settings in the same model. Apply / Revert themselves live in ONE place, the save bar above Start
+/// game, on every page (shell.rs; user 2026-10-09).
 pub fn footer(
     app: &mut App,
     ui: &mut Ui,
@@ -28,16 +29,6 @@ pub fn footer(
     source: crate::cfgdir::Source,
     show_path: bool,
 ) {
-    match render::footer(ui, &app.model) {
-        Action::Apply => {
-            app.apply_settings();
-        }
-        Action::Revert => {
-            app.model.revert();
-            app.settings_note = None;
-        }
-        Action::None => {}
-    }
     if let Some((note, is_err)) = app.settings_note.as_ref() {
         let color = if *is_err { theme::ALERT } else { theme::OK };
         ui.label(RichText::new(note).size(11.0).color(color));

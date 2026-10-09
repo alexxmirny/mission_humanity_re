@@ -97,7 +97,38 @@ fn menu_column(app: &mut App, ui: &mut Ui) {
         if widgets::start_button(ui, tr("button.start_game"), reason).clicked() {
             app.press_start();
         }
+        save_bar(app, ui);
     });
+}
+
+/// Unsaved settings, on every page: the count and Apply / Revert, just above Start game, so an edit
+/// is never only saveable from the bottom of the Settings page (user, 2026-10-09). Drawn inside the
+/// bottom-up layout, so the buttons go in first and the count lands above them.
+fn save_bar(app: &mut App, ui: &mut Ui) {
+    if !app.model.is_dirty() {
+        return;
+    }
+    ui.add_space(4.0);
+    let ok = !app.model.has_problems();
+    ui.horizontal(|ui| {
+        ui.add_enabled_ui(ok, |ui| {
+            if widgets::gbtn(ui, tr("btn.apply")).clicked() {
+                app.apply_settings();
+            }
+        });
+        if widgets::gbtn(ui, tr("btn.revert")).clicked() {
+            app.model.revert();
+            app.settings_note = None;
+        }
+    });
+    ui.label(
+        RichText::new(trf(
+            "settings.unsaved",
+            &[("n", &app.model.dirty_count().to_string())],
+        ))
+        .size(12.0)
+        .color(theme::HAZARD),
+    );
 }
 
 /// The status strip: what the last action said (left), what the update half said (right).
@@ -151,10 +182,26 @@ fn footer(app: &mut App, ui: &mut Ui) {
 fn modals(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     if app.start_prompt {
-        let problems = app.model.has_problems();
-        let n = app.model.dirty_count();
-        let out = widgets::modal(&ctx, "start_prompt", tr("modal.dirty.title"), |ui| {
-            ui.label(tr("modal.dirty.body"));
+        if let Some(a) = dirty_modal(app, &ctx, "start_prompt", "modal.dirty.body") {
+            app.answer_start_prompt(a);
+        }
+    } else if app.close_prompt {
+        if let Some(a) = dirty_modal(app, &ctx, "close_prompt", "modal.dirty.close_body") {
+            app.answer_close_prompt(a, &ctx);
+        }
+    }
+    pages::about::doc_modal(app, &ctx);
+    restart_modal(app, &ctx);
+}
+
+/// The unsaved-settings question (Start game, or closing the window): Apply / Discard / Cancel.
+/// Esc or the modal's own close is Cancel.
+fn dirty_modal(app: &App, ctx: &egui::Context, id: &str, body_key: &str) -> Option<StartAnswer> {
+    let problems = app.model.has_problems();
+    let n = app.model.dirty_count();
+    {
+        let out = widgets::modal(ctx, id, tr("modal.dirty.title"), |ui| {
+            ui.label(tr(body_key));
             widgets::hint(ui, &trf("settings.unsaved", &[("n", &n.to_string())]));
             if problems {
                 ui.label(
@@ -180,14 +227,14 @@ fn modals(app: &mut App, ui: &mut Ui) {
             });
             answer
         });
-        if let Some(a) = out.inner {
-            app.answer_start_prompt(a);
+        if out.inner.is_some() {
+            out.inner
         } else if out.close_requested {
-            app.answer_start_prompt(StartAnswer::Cancel);
+            Some(StartAnswer::Cancel)
+        } else {
+            None
         }
     }
-    pages::about::doc_modal(app, &ctx);
-    restart_modal(app, &ctx);
 }
 
 /// RL9: a staged launcher is waiting -- "Restart now" swaps it in and reopens this page; "Later"
