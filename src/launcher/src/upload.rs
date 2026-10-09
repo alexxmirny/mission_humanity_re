@@ -984,6 +984,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         crate::report::build(&zip_path, &input).unwrap();
         zip_path

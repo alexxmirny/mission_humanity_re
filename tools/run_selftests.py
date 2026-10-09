@@ -135,6 +135,16 @@ def assert_roster(exe):
     return True
 
 
+# --net-only (CI, user 2026-10-09): libmh is not shipped, so CI builds and runs only the HOSTED arm
+# (net_selftest.exe). The local gate keeps both exes.
+NET_ONLY = False
+NET_EXE = "net_selftest"
+
+
+def _exes():
+    return (NET_EXE,) if NET_ONLY else EXES
+
+
 def staged(asan):
     """The already-staged exes of one mode (`--no-build`), or None if any is missing.
 
@@ -144,7 +154,7 @@ def staged(asan):
     """
     label = "ASan" if asan else "plain"
     out = {}
-    for name in EXES:
+    for name in _exes():
         exe = os.path.join(ASAN_DIR if asan else PLAIN_DIR, name + ".exe")
         if not os.path.exists(exe):
             print(f"[FAIL] --no-build: no staged {label} {exe} -- build it first (--build-only)")
@@ -162,7 +172,11 @@ def build(asan):
     which is the shape every other assertion in this file exists to refuse.
     """
     label = "ASan" if asan else "plain"
-    cmd = ["cmd", "/c", BUILD_BAT] + (["--asan"] if asan else [])
+    cmd = (
+        ["cmd", "/c", BUILD_BAT]
+        + (["--asan"] if asan else [])
+        + (["--net-only"] if NET_ONLY else [])
+    )
     t0 = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
     dt = time.time() - t0
@@ -171,7 +185,7 @@ def build(asan):
         print("      " + "\n      ".join((r.stdout + r.stderr).strip().splitlines()[-20:]))
         return None
     out = {}
-    for name in EXES:
+    for name in _exes():
         exe = os.path.join(ASAN_DIR if asan else PLAIN_DIR, name + ".exe")
         if not os.path.exists(exe):
             print(f"[FAIL] build ({label}) reported success but {exe} is missing")
@@ -291,7 +305,15 @@ def main():
         "(user 2026-10-03, option A: the light gate's wall-bound loopback transport suites on a "
         "transport change -- their ASan coverage stays in the full gate). Printed, never silent.",
     )
+    ap.add_argument(
+        "--net-only",
+        action="store_true",
+        help="build and run only net_selftest.exe (the hosted arm); skip libmh_selftest.exe. CI uses it: "
+        "libmh is not shipped (user 2026-10-09). Printed, never silent.",
+    )
     args = ap.parse_args()
+    global NET_ONLY
+    NET_ONLY = args.net_only
     asan_skip = {x.strip() for x in args.asan_skip_suites.split(",") if x.strip()}
     unknown_a = sorted(asan_skip - set(SUITES))
     if unknown_a:
@@ -306,6 +328,13 @@ def main():
     if unknown:
         ap.error("--skip-suites names suites not in the roster: %s" % ", ".join(unknown))
     run_list = tuple(x for x in SUITES if x not in skip)
+    if NET_ONLY:
+        gone = [x for x in run_list if SUITE_EXE[x] != NET_EXE]
+        run_list = tuple(x for x in run_list if SUITE_EXE[x] == NET_EXE)
+        print(
+            f"[note] --net-only: NOT building/running libmh_selftest.exe ({len(gone)} suites: {', '.join(gone)})"
+        )
+        asan_skip = {x for x in asan_skip if SUITE_EXE[x] == NET_EXE}
     if skip:
         print(f"[note] --skip-suites: NOT running {', '.join(sorted(skip))} (light gate)")
     if args.build_only and args.no_build:

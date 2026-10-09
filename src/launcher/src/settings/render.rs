@@ -161,25 +161,60 @@ pub fn show_diagnostics(ui: &mut Ui, model: &mut Model, state: &mut RenderState)
     }
 }
 
-/// Draw `rows` as a two-column grid (label | control + hint).
+/// Width of the label column.
+const LABEL_W: f32 = 150.0;
+/// Space between grid columns.
+const COL_GAP: f32 = 10.0;
+
+/// The pills a row carries, as (text, colour), in the order they are drawn.
+fn badge_list(row: &Row) -> Vec<(&'static str, egui::Color32)> {
+    let mut v = Vec::new();
+    if row.experimental {
+        v.push((tr("badge.experimental"), theme::ALERT));
+    }
+    if row.restart {
+        v.push((tr("badge.restart"), theme::TEXT_DIM));
+    }
+    if row.pending {
+        v.push((tr("badge.pending"), theme::TEXT_DIM));
+    }
+    v
+}
+
+/// Draw `rows` as a grid: label | control group + reset arrow + badges, then the hint.
+///
+/// THE ARROW AND THE PILLS BELONG TO THEIR ROW, so they are drawn straight after the row's last
+/// control, in the same wrapping line, vertically centred on it. (They used to sit in a column of
+/// their own at the far right edge, detached from a narrow control and, with long Russian option
+/// groups, a line away from the control they described.) A control group that wraps takes the
+/// arrow and the pills with it: they follow the LAST control of the row.
 pub fn show_rows(ui: &mut Ui, model: &mut Model, state: &mut RenderState, rows: &[Row], id: &str) {
+    let ctrl_w = (ui.available_width() - LABEL_W - COL_GAP).max(140.0);
     Grid::new(id)
         .num_columns(2)
-        .spacing([10.0, 8.0])
-        .min_col_width(150.0)
+        .spacing([COL_GAP, 8.0])
+        .min_col_width(LABEL_W)
         .show(ui, |ui| {
             for row in rows {
                 label_cell(ui, model, row);
                 ui.vertical(|ui| {
+                    ui.set_max_width(ctrl_w);
                     ui.horizontal_wrapped(|ui| {
                         control(ui, model, state, row);
                         if model.differs_from_default(&row.id) {
+                            ui.add_space(2.0);
                             let b = Button::new(RichText::new("↺").color(theme::TEXT_DIM)).small();
                             if ui.add(b).on_hover_text(tr("settings.reset_row")).clicked() {
                                 model.reset_row(&row.id);
                             }
                         }
+                        for (text, color) in badge_list(row) {
+                            widgets::pill(ui, text, color);
+                        }
                     });
+                    if row.control == Control::Relay {
+                        relay_address(ui, model, row);
+                    }
                     if let Some(p) = problem_for_row(model, row) {
                         ui.label(
                             RichText::new(problem_text(&p))
@@ -208,7 +243,7 @@ fn problem_for_row(model: &Model, row: &Row) -> Option<Problem> {
 
 fn label_cell(ui: &mut Ui, model: &Model, row: &Row) {
     ui.vertical(|ui| {
-        ui.set_max_width(160.0);
+        ui.set_max_width(LABEL_W);
         ui.horizontal_wrapped(|ui| {
             let mut text = RichText::new(tr(&row.label_key()));
             if model.is_edited(&row.id) {
@@ -216,20 +251,6 @@ fn label_cell(ui: &mut Ui, model: &Model, row: &Row) {
             }
             ui.label(text);
         });
-        if row.experimental || row.restart || row.pending {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if row.experimental {
-                    widgets::pill(ui, tr("badge.experimental"), theme::ALERT);
-                }
-                if row.restart {
-                    widgets::pill(ui, tr("badge.restart"), theme::TEXT_DIM);
-                }
-                if row.pending {
-                    widgets::pill(ui, tr("badge.pending"), theme::TEXT_DIM);
-                }
-            });
-        }
     });
 }
 
@@ -368,21 +389,24 @@ fn relay_control(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &
         .map(|o| (o.clone(), option_label(row, o)))
         .collect();
     segmented(ui, model, row, opts);
-    let custom = super::model::canon(row, &model.value(&row.id)) == "custom";
-    if custom {
-        if let Some(comp) = row.companion.clone() {
-            ui.end_row();
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(tr("relay.address"))
-                        .size(11.0)
-                        .color(theme::TEXT_DIM),
-                );
-                text_box(ui, model, row, &comp, true);
-            });
-        }
-    }
     let _ = state;
+}
+
+/// The custom relay's `host:port` box, on a line of its own under the mode choice (only in custom
+/// mode).
+fn relay_address(ui: &mut Ui, model: &mut Model, row: &Row) {
+    let custom = super::model::canon(row, &model.value(&row.id)) == "custom";
+    let (true, Some(comp)) = (custom, row.companion.clone()) else {
+        return;
+    };
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            RichText::new(tr("relay.address"))
+                .size(11.0)
+                .color(theme::TEXT_DIM),
+        );
+        text_box(ui, model, row, &comp, true);
+    });
 }
 
 fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {

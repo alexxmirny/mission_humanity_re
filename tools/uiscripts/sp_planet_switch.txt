@@ -1,0 +1,40 @@
+# SPPLANET (dist RL15): a CAMPAIGN PLANET SWITCH must rewrite presence.json with the new planet.
+#
+# Start: sp_campaign.txt's walk (NEW GAME -> race -> landing), which always begins on Nortus (the
+# campaign's System[1] planet). The switch: ESC -> Load game
+# -> the deployed save `2-almost` (a campaign save sitting on Aman, same Nortus System), so
+# G_PLANET_INDEX changes inside ONE process and one campaign session -- the same edge the game's own
+# "Travel to <planet>?" transition crosses, and the only one mp_presence_tick() watches (it is polled,
+# not hooked). Driving the real travel needs a mothership that can depart plus the system-map HUD,
+# which has no widget list to script; that is the honest gap of this row.
+#
+# THE LOAD LIST NEEDS NO ROW CLICK. A lane has no save dir of its own, so the deployed save is the
+# ONLY entry and the dialog opens with it selected (the list is mtime-descending, first row
+# preselected). On a polygon run (not a lane) the list holds every machine save and "Load game" would
+# load the newest -- run this row through tools/test_ui.py, not tools/ui_test.py against the polygon.
+#
+# tools/check_presence.py then reads the logs root's presence.json: still `campaign`, the system and
+# planet named, and the planet NOT Nortus (the pre-switch value this script itself created).
+
+settled value:103
+clickv 103
+
+hovered value:104
+clickv 104
+
+gamemode 2
+gameclock 1000
+log SP planet switch: in-game on the New Game planet (Nortus), opening ESC -> Load game
+
+key 0x01
+settled value:108
+clickv 108
+settled Load game
+clickl Load game
+
+# the load replaces the world; the in-game list returns once it is done
+absent Load game
+gamemode 2
+log SP planet switch: save loaded, planet switched
+capture switched
+end

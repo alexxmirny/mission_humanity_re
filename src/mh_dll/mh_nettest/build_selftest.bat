@@ -76,8 +76,9 @@ for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\
 if "%VSDIR%"=="" set VSDIR=C:\Program Files\Microsoft Visual Studio\2022\Community
 set OUT=
 set ASAN=0
+set NETONLY=0
 for %%A in (%*) do (
-  if /i "%%~A"=="--asan" (set ASAN=1) else (if "!OUT!"=="" set OUT=%%~A)
+  if /i "%%~A"=="--asan" (set ASAN=1) else if /i "%%~A"=="--net-only" (set NETONLY=1) else (if "!OUT!"=="" set OUT=%%~A)
 )
 if "%ASAN%"=="1" (
   if "%OUT%"=="" set OUT=%TEMP%\mh_nettest_asan
@@ -95,11 +96,14 @@ if errorlevel 1 (
   echo BUILD FAILED ^(mh_nettest^)
   exit /b 1
 )
+rem --net-only (CI, user 2026-10-09): libmh is not shipped, so CI neither builds nor runs its selftests.
+if "%NETONLY%"=="1" goto :skip_libmh_build
 "%VSDIR%\MSBuild\Current\Bin\MSBuild.exe" "%HERE%..\libmh_test\libmh_test.vcxproj" /p:Configuration=Release /p:Platform=Win32 %EXTRA% /m /nodeReuse:false /v:minimal /nologo
 if errorlevel 1 (
   echo BUILD FAILED ^(libmh_test^)
   exit /b 1
 )
+:skip_libmh_build
 rem Each mode builds into its OWN ..\Release[_asan]\ (both vcxproj split OutDir/IntDir
 rem on EnableASAN), so the two no longer invalidate each other's objects -- an unchanged
 rem rebuild is ~1 s instead of a full 669-TU pass -- and neither can be mistaken for the other.
@@ -110,11 +114,13 @@ if errorlevel 1 (
   echo STAGING FAILED: %STAGEDIR%\net_selftest.exe
   exit /b 1
 )
+if "%NETONLY%"=="1" goto :skip_libmh_stage
 copy /y "%STAGEDIR%\libmh_selftest.exe" "%OUT%\" >nul
 if errorlevel 1 (
   echo STAGING FAILED: %STAGEDIR%\libmh_selftest.exe
   exit /b 1
 )
+:skip_libmh_stage
 
 if "%ASAN%"=="1" (
   rem Newest toolset wins: /o:n sorts ascending, so the last match is the highest version. Resolved

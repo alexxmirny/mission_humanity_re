@@ -1790,6 +1790,17 @@ void owned_set_vsync(bool on) {
     gfx_log("; [gfx] vsync -> %d (set_config, live, backend %s)", on ? 1 : 0, g_backend ? g_backend->name() : "none");
 }
 
+// True when a file named ddraw.dll (any case) sits in the directory of the running exe.
+static bool system_ddraw_wrapper_present() {
+    char  path[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return true; // cannot tell: say nothing
+    char *slash = path + n;
+    while (slash > path && slash[-1] != '\\' && slash[-1] != '/') --slash;
+    lstrcpynA(slash, "ddraw.dll", (int)(MAX_PATH - (slash - path)));
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES; // NTFS lookup is case-insensitive
+}
+
 bool install_owned_ddraw(const char *ini) {
     static bool done = false;
     if (done) return g_active;
@@ -1797,7 +1808,12 @@ bool install_owned_ddraw(const char *ini) {
 
     char v[32];
     mh::config::read_ini_string("video", "backend", "system", v, sizeof(v), ini);
-    if (lstrcmpiA(v, "system") == 0 || v[0] == 0) return false; // the default: not one byte touched
+    if (lstrcmpiA(v, "system") == 0 || v[0] == 0) {
+        // Informational only: Windows' own DirectDraw is used either way (the default: not one byte touched).
+        if (!system_ddraw_wrapper_present())
+            gfx_log("; [video] backend=system with no DirectDraw wrapper beside mh.exe -- using Windows' own DirectDraw");
+        return false;
+    }
     bool ok = false;
     g_kind  = parse_kind(v, &ok);
     if (!ok) {

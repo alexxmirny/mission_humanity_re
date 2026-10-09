@@ -340,6 +340,46 @@ void resolve_order_arm(const std::string &base) {
     check("a directory named mh_net.ini is not portable",
           run(exe_dirini, nullptr, wlocal.c_str(), r) == mh::cfgdir::SRC_USER);
 
+    // 4b. RL4: one-time adoption of a legacy exe-side key by a hand-launch player (user storage only).
+    {
+        auto put = [](const std::string &p, const char *text) {
+            FILE *f = fopen(p.c_str(), "wb");
+            if (f) {
+                fputs(text, f);
+                fclose(f);
+            }
+        };
+        auto get = [](const std::string &p) {
+            char buf[64] = {0};
+            read_file(p.c_str(), buf, sizeof(buf));
+            return std::string(buf);
+        };
+        const std::string  legacy = exe_plain + "mh_key.txt";
+        mh::cfgdir::result ru;
+        run(exe_plain, nullptr, wlocal.c_str(), ru);
+        const std::string adopted = std::string(ru.dir) + "mh_key.txt";
+        DeleteFileA(adopted.c_str());
+        DeleteFileA(legacy.c_str());
+        check("adopt: no exe-side key, nothing adopted", !mh::cfgdir::adopt_legacy_key(exe_plain.c_str(), ru));
+        put(legacy, "legacy-key");
+        check("adopt: the exe-side key is copied into user storage",
+              mh::cfgdir::adopt_legacy_key(exe_plain.c_str(), ru) && get(adopted) == "legacy-key");
+        check("adopt: a copy, not a move (the launcher's migration owns removal)", get(legacy) == "legacy-key");
+        put(adopted, "new-key");
+        check("adopt: a key already in the config dir is never overwritten",
+              !mh::cfgdir::adopt_legacy_key(exe_plain.c_str(), ru) && get(adopted) == "new-key");
+        DeleteFileA(adopted.c_str());
+        mh::cfgdir::result rp;
+        run(exe_ini, nullptr, wlocal.c_str(), rp); // portable
+        check("adopt: not for portable mode (the config dir IS the exe dir)",
+              !mh::cfgdir::adopt_legacy_key(exe_ini.c_str(), rp));
+        mh::cfgdir::result re;
+        run(exe_plain, envdir.c_str(), wlocal.c_str(), re); // explicit env override
+        check("adopt: not for an explicit MH_CONFIG_DIR", !mh::cfgdir::adopt_legacy_key(exe_plain.c_str(), re));
+        check("adopt: nothing was written by the refusals", get(adopted).empty());
+        DeleteFileA(legacy.c_str());
+    }
+
     // 5. every rule that cannot be honoured falls through to the next.
     {
         const std::string blocker = base + "\\blocker";

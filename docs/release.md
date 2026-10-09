@@ -1,6 +1,6 @@
 # Cutting a release
 
-How a version of this project reaches somebody who is not going to build it. Three drop-in zips and
+How a version of this project reaches somebody who is not going to build it. One drop-in zip and
 a `SHA256SUMS`, attached to a GitHub Release, built and gated by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) from a pushed tag.
 
@@ -125,7 +125,7 @@ counters line says `peers=0`.
    Get-FileHash *.zip | Format-Table Hash, Path     # against SHA256SUMS, line by line
    Expand-Archive mission_humanity_re-0.1.1-rc1-net.zip -DestinationPath net
    (Get-Item net\mh.dll).VersionInfo.FileVersion            # 0.1.1-rc1+<short sha>: the TAG, as a string
-   Select-String '^transport=' net\mh_net.ini              # transport=udp
+   Get-ChildItem net -Name                                  # exactly: mh.dll mh_net.dll mh_net_udp.dll msvfw32.dll (no ini)
    gh run download <release run id> -R <owner>/mh_re_private -n manifest-0.1.1-rc1 -D manifest
    python ..\..\tools\gen_update_manifest.py --verify manifest\game.json   # key = update.rs PUBLIC_KEY
    ```
@@ -214,7 +214,7 @@ git tag -a v0.1.0 -m "First public release.
 
 Multiplayer with a lockstep turn engine and an authenticated, encrypted link, over UDP through the
 project's relay (the launcher configures it; a match starts relayed and goes direct when it can)
-or over TCP by address. Three configurations; see README.txt in the zip. Download
+or over TCP by address. One drop-in zip (the launcher installs it; licences are in its About page). Download
 mh_launcher.exe, drop it next to mh.exe, run it.
 
 Known limits:
@@ -247,10 +247,8 @@ HOW TO PLAY
 
 <the Report tab: what a bug report packs and that it is sent only on consent>
 
-WHAT IS IN THE ZIPS (the launcher picks one; see README.txt inside)
+WHAT IS IN THE ZIP (one: `net`; diagnostics are `[log] level=debug` in the launcher's settings)
 - net             <one line>
-- net-debug       <one line>
-- brokered-debug  <one line>
 
 KNOWN LIMITS
 - <the same block as the rc template, one line each, current at this tag>
@@ -280,7 +278,7 @@ visible to everyone, and a tag is cheap only before it is pushed.
    rather than a tag.
 2. **Cut an annotated `-rc` tag and push it to the PRIVATE remote.** Watch the run end to end. What
    a good one looks like: `build-and-gate`, `selftests-asan` and `selftests-plain` green (three parallel jobs), then `publish` producing a **prerelease** whose
-   body is the tag message, with three zips and a `SHA256SUMS` attached.
+   body is the tag message, with one zip and a `SHA256SUMS` attached.
 3. **Check the artifacts, not the run.** Download a zip, confirm it holds what it should, and read
    the `FileVersion` of a DLL inside it (Explorer's Details tab, or `(Get-Item x.dll).VersionInfo`)
    — it must be the tag. A green pipeline that stamped the wrong thing is exactly the failure this
@@ -299,9 +297,10 @@ the next one.
 
 ## 3. How the stamp reaches the binaries
 
-[`src/mh_dll/mh_version.props`](../src/mh_dll/mh_version.props) is imported by the five modules a
-release ships — `mh`, `mh_net`, `mh_harness`, `libmh_dll` (the **hosted** `libmh.dll`) and
-`msvfw32_shim` — and by nothing else. It carries two properties:
+[`src/mh_dll/mh_version.props`](../src/mh_dll/mh_version.props) is imported by the modules the build
+stamps — `mh`, `mh_net`, `mh_net_udp`, `mh_harness`, `libmh_dll` and `msvfw32_shim` — and by nothing
+else. The release ships `mh`, `mh_net`, `mh_net_udp` and `msvfw32_shim`; the packager checks the stamp
+on exactly those four. It carries two properties:
 
 | property | default | set by |
 | --- | --- | --- |
@@ -335,43 +334,37 @@ python tools\release_package.py --version 0.1.0
 ```
 
 It reads `src\mh_dll\Release` (override with `--release-dir`) and writes `dist\` (override with
-`--out`): three zips plus `SHA256SUMS`.
+`--out`): ONE zip plus `SHA256SUMS`.
 
 | zip | contents | configuration |
 | --- | --- | --- |
-| `mission_humanity_re-<V>-net.zip` | `msvfw32.dll` `mh.dll` `mh_net.dll` `mh_net_udp.dll` `mh_net.ini` `LICENSE` `THIRD_PARTY.md` `README.txt` — `[net] transport=udp` is the default, `mh_net.dll` is the explicit `transport=tcp` | (1) all-original + restored multiplayer |
-| `mission_humanity_re-<V>-net-debug.zip` | the above **+ `mh_harness.dll`**, and an `mh_net.ini` with the diagnostic logging keys on AND the harness armed — it hashes spine-free without `libmh.dll` since mp:D29 (user decision O6, 2026-09-24) | (1), verbose, instrumented |
-| `mission_humanity_re-<V>-brokered-debug.zip` | the above **+ `libmh.dll`** (the hosted build) at the zip root, and an `mh_net.ini` that ALSO arms the harness: per-step hashes + the order record, clock not pinned | (2) brokered, instrumented |
+| `mission_humanity_re-<V>-net.zip` | `msvfw32.dll` `mh.dll` `mh_net.dll` `mh_net_udp.dll` — `[net] transport=udp` is the default, `mh_net.dll` is the explicit `transport=tcp` | (1) all-original + restored multiplayer |
 
-No selftest executable, no standalone binary, no byte of the game.
+Exactly those four files (v0.2.0, plan decision D1; the `net-debug` and `brokered-debug` zips of
+v0.1.x are gone). What is **not** in it, and why:
 
-**The ship `mh_net.ini` is [`src/mh_dll/mh_net.example.ini`](../src/mh_dll/mh_net.example.ini)
-verbatim**, with a provenance header. That file already documents every key with its real default,
-so a copy of it *is* the shipping configuration and cannot drift from it; a hand-authored minimal
-ini would be a second statement of the same defaults with nothing comparing the two. The debug
-variant is the same file with four observer keys flipped — `[net] sp_clock_log`,
-`[trace] temporal_sp`, `[desync] verbose`, `[input] mouse_trace` — plus, in every zip that carries
-`mh_harness.dll`, three `[harness]` keys: `enable=1` (every sim step hashed into `mh_harness.log`),
-`fixed_step=0` (the game clock is NOT pinned — the harness's compiled default would make the sim run
-one step per present, a different game; `0` is what `test_ui.py --determinism` runs) and
-`order_mode=1` (every dispatched order recorded to `mh_orders.bin`). User ruling 2026-09-20: the
-debug ini records orders and per-step hashes, because a bug report without them is one the desync
-tooling cannot read. The harness keys follow `mh_harness.dll` (mp:D29 + user decision O6,
-2026-09-24): until D29 they followed `libmh.dll`, because ruling Q4 refused the instrument in
-configuration (1); D29 made it arm spine-free there (the per-step hash reads only the region
-registry and owner table, which `mh.dll` answers itself), so `net-debug` now records hashes too. `[debug] overlay` left the list the
-same day: the debug ini keeps `overlay=0` — installed but hidden, Ctrl+Alt+D shows it. The tool's
-selftest asserts each debug ini differs from the ship ini in exactly its listed lines.
+- **no `mh_net.ini`** — an `mh_net.ini` beside the exe means *portable mode* (RL3), so a packaged one
+  would put every install there. The DLL runs on its code defaults; the launcher writes the player's
+  ini into the per-user config dir. Diagnostics are `[log] level=debug` in that ini.
+- **no `README.txt`, `LICENSE`, `THIRD_PARTY.md`** — the launcher embeds them (About page).
+- **no `mh_harness.dll`, no `libmh.dll`** — developer instruments. Dev lanes still get the harness from
+  `make_lane`; the hosted spine is not a shipped configuration. No selftest executable, no
+  standalone binary, no byte of the game.
 
-Three refusals, each with a named reason and a non-zero exit:
+**The tester zip is behind an explicit flag.** `python tools\release_package.py --version <V>
+--tester --out dist_tester` writes `mission_humanity_re-<V>-tester.zip` *instead of* the ship zip:
+the four modules + `mh_harness.dll` and an `mh_net.ini` that is
+[`src/mh_dll/mh_net.example.ini`](../src/mh_dll/mh_net.example.ini) with `[dev] unlock=1`, `[log]
+level=debug` and the three `[harness]` keys flipped (`enable=1`, `fixed_step=0` so the game clock is
+not pinned, `order_mode=1`). `release.yml` never passes `--tester`, and the packager selftest asserts
+the ship zip has no ini and no harness and that the tester zip differs only by its declared files
+and keys.
+
+Two refusals, each with a named reason and a non-zero exit:
 
 - **a missing artifact** — all named at once, so one rebuild fixes them all.
 - **a version the binaries do not carry** — `--allow-dev` bypasses this for a local dry run against
   an unstamped tree, and nothing else does.
-- **the wrong `libmh.dll`** — the hosted and standalone builds share a file name and cannot do each
-  other's job ([docs/dll-split.md](dll-split.md)). The candidate must export every row of the
-  generated contract `mh.dll` itself binds against; the hosted build resolves all of them and the
-  standalone one a small overlapping subset. This refusal has no bypass flag.
 
 `python tools\release_package.py --selftest` runs the rules against fake artifacts in a temp
 directory — no toolchain, no game — and is a `lint_repo.py` row.
@@ -395,7 +388,7 @@ release independently:
 
 | tag | workflow | publishes |
 | --- | --- | --- |
-| `vX.Y.Z[-rcN]` | [`release.yml`](../.github/workflows/release.yml) | the three game zips + `SHA256SUMS` on the tag's Release, and the signed `channels/latest/game.json` on Pages |
+| `vX.Y.Z[-rcN]` | [`release.yml`](../.github/workflows/release.yml) | the game zip + `SHA256SUMS` on the tag's Release, and the signed `channels/latest/game.json` on Pages |
 | `launcher-vX.Y.Z[-rcN]` | [`launcher-release.yml`](../.github/workflows/launcher-release.yml) | `mh_launcher.exe` on the tag's own Release (unversioned file name; the version is inside, `--verify-binary`), and the signed `channels/latest/launcher.json` on Pages |
 | manual | [`promote.yml`](../.github/workflows/promote.yml) | `channels/stable/{game,launcher}.json`: the same artifact, re-signed (section 7.4) |
 | weekly + manual | [`bridge-resign.yml`](../.github/workflows/bridge-resign.yml) | the frozen schema-1 `manifest.json` at the old URL (section 7.5) |
@@ -538,7 +531,7 @@ paperwork — it IS the gate, and it is the only evidence the release is good.
 
    Read `FileVersion` off every DLL afterwards; `release_package.py` refuses a mismatch, which is
    what makes the zip's name evidence.
-3. **Package**: `python tools\release_package.py --version <X.Y.Z[-rcN]>` → three zips +
+3. **Package**: `python tools\release_package.py --version <X.Y.Z[-rcN]>` → one zip +
    `SHA256SUMS` in `dist\`.
 4. **Build the launcher** with all five `option_env!` values exported — `MH_LAUNCHER_VERSION`
    (separate from the tag; unset ships `0.0.0-dev` under a release file name), `MH_UPDATE_BASE_URL`,
@@ -570,7 +563,7 @@ paperwork — it IS the gate, and it is the only evidence the release is good.
       before its publish jobs: they would replace the hand-built assets with CI builds whose hashes
       the manifest you signed does not carry.
    c. `gh release create <tag> -R <owner>/<repo> [--prerelease] --notes-file <message file>` with
-      the three zips and `SHA256SUMS` (game tag) or `mh_launcher.exe` (launcher tag). This is the
+      the zip and `SHA256SUMS` (game tag) or `mh_launcher.exe` (launcher tag). This is the
       REST API — it works with Actions dead.
    d. Only now put the signed `<kind>.json` + `.minisig` on the Pages branch under
       `channels/latest/` (7.3).

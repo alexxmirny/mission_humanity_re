@@ -41,8 +41,12 @@ pub enum StepSpec {
     Install { version: String, tag: String },
     /// Remove what the receipt lists and put retail's `mh.dll` back.
     Uninstall,
-    /// Write the accepted manifest's relay into `mh_net.ini` + `mh_key.txt`.
+    /// Write the relay `relay_mode` asks for into `mh_net.ini` + `mh_key.txt` -- in the config
+    /// directory, which is the game directory only in portable mode (dist RL4), so this step is
+    /// needed only for a portable install under Program Files.
     Provision,
+    /// dist RL4: the one-time migration of the game folder to user storage (`migrate::run`).
+    Migrate,
 }
 
 impl StepSpec {
@@ -52,6 +56,7 @@ impl StepSpec {
             StepSpec::Install { version, tag } => format!("install:{version}:{tag}"),
             StepSpec::Uninstall => "uninstall".to_string(),
             StepSpec::Provision => "provision".to_string(),
+            StepSpec::Migrate => "migrate".to_string(),
         }
     }
 
@@ -61,6 +66,9 @@ impl StepSpec {
         }
         if text == "provision" {
             return Ok(StepSpec::Provision);
+        }
+        if text == "migrate" {
+            return Ok(StepSpec::Migrate);
         }
         if let Some(rest) = text.strip_prefix("install:") {
             // The version may itself carry a `-` (0.1.1-rc1) but never a `:`; the tag is last.
@@ -74,7 +82,7 @@ impl StepSpec {
             }
         }
         Err(format!(
-            "--step wants install:<version>:<tag>, uninstall or provision, got {text:?}"
+            "--step wants install:<version>:<tag>, uninstall, provision or migrate, got {text:?}"
         ))
     }
 
@@ -83,6 +91,7 @@ impl StepSpec {
             StepSpec::Install { version, tag } => format!("install {version} ({tag})"),
             StepSpec::Uninstall => "uninstall".to_string(),
             StepSpec::Provision => "provision the relay".to_string(),
+            StepSpec::Migrate => "migrate the game folder to user storage".to_string(),
         }
     }
 }
@@ -294,7 +303,6 @@ pub fn perform_step(layout: &Layout, game_dir: &Path, step: &StepSpec, result: &
 }
 
 fn perform(layout: &Layout, game_dir: &Path, step: &StepSpec) -> Result<String, String> {
-    let relay = crate::update::load_accepted(layout).and_then(|m| m.relay);
     match step {
         StepSpec::Install { version, tag } => {
             let pkg = crate::install::PackageName {
@@ -314,13 +322,20 @@ fn perform(layout: &Layout, game_dir: &Path, step: &StepSpec) -> Result<String, 
                     layout.versions().display()
                 ));
             }
-            let report = crate::update::install_staged_set(&staged, relay.as_ref(), game_dir)?;
+            let report = crate::update::install_staged_set(&staged, game_dir)?;
             Ok(report.summary())
         }
         StepSpec::Uninstall => crate::install::uninstall(game_dir).map(|r| r.summary()),
         StepSpec::Provision => {
-            crate::relay::provision(game_dir, relay.as_ref()).map(|p| p.summary())
+            // The child re-derives the plan from launcher.toml (the layout is ours, passed as
+            // --app-dir) and the last accepted manifest, exactly as the parent would have.
+            let (cfg, _) = crate::config::Config::load(&layout.config());
+            let manifest_relay = crate::update::load_accepted(layout).and_then(|m| m.relay);
+            let plan =
+                crate::relay::plan_for(&cfg.relay_mode, &cfg.relay_custom, manifest_relay.as_ref());
+            crate::relay::provision_for_game(layout, game_dir, &plan).map(|p| p.summary())
         }
+        StepSpec::Migrate => crate::migrate::run(layout, game_dir).map(|r| r.summary()),
     }
 }
 
@@ -375,14 +390,15 @@ mod tests {
         for step in [
             StepSpec::Install {
                 version: "0.1.1-rc1".into(),
-                tag: "net-debug".into(),
+                tag: "net".into(),
             },
             StepSpec::Install {
                 version: "0.2.0".into(),
-                tag: "brokered-debug".into(),
+                tag: "net".into(),
             },
             StepSpec::Uninstall,
             StepSpec::Provision,
+            StepSpec::Migrate,
         ] {
             assert_eq!(StepSpec::parse(&step.to_arg()).unwrap(), step);
         }

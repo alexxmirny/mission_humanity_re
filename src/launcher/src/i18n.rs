@@ -302,6 +302,71 @@ mod tests {
         assert!(missing.is_empty(), "no English string for: {missing:#?}");
     }
 
+    /// RL16: "every visible string through i18n::tr". The other direction -- a key the CODE names
+    /// that no table has -- would render as a humanised fallback instead of failing anywhere, so
+    /// this reads the UI sources and checks every string literal shaped like a key.
+    #[test]
+    fn every_key_the_ui_code_names_has_an_english_string() {
+        // (`relay.` is not a family here: `relay.example.org` is a literal in a test.)
+        const FAMILIES: [&str; 19] = [
+            "menu.",
+            "page.",
+            "msg.",
+            "play.",
+            "report.",
+            "about.",
+            "diag.",
+            "btn.",
+            "start.",
+            "footer.",
+            "modal.",
+            "settings.",
+            "badge.",
+            "value.",
+            "hotkey.",
+            "combo.",
+            "problem.",
+            "action.",
+            "dialog.",
+        ];
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = vec![src.join("app.rs"), src.join("widgets.rs")];
+        for dir in ["app", "app/pages", "settings"] {
+            for e in std::fs::read_dir(src.join(dir)).unwrap().flatten() {
+                let p = e.path();
+                // The screenshot harness names files and fixtures ("report.json"), not keys.
+                if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("shots.rs") {
+                    files.push(p);
+                }
+            }
+        }
+        let en = |k: &str| tr_opt_in(Locale::En, k).is_some();
+        let mut missing = Vec::new();
+        for f in files {
+            let text = std::fs::read_to_string(&f).unwrap();
+            for lit in text.split('"').skip(1).step_by(2) {
+                let keyish = lit.contains('.')
+                    && !lit.ends_with('.')
+                    && lit.chars().all(|c| {
+                        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.'
+                    })
+                    && FAMILIES.iter().any(|p| lit.starts_with(p));
+                if keyish && !en(lit) {
+                    missing.push(format!(
+                        "{}: {lit}",
+                        f.file_name().unwrap().to_string_lossy()
+                    ));
+                }
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "keys the code names with no English string: {missing:#?}"
+        );
+    }
+
     #[test]
     fn a_missing_key_falls_back_to_english_then_to_a_readable_form() {
         // Present in both.

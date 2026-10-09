@@ -53,9 +53,14 @@
 //
 // ---- MOUSE ---------------------------------------------------------------------------------------
 //
-//   * RELATIVE packets (a physical mouse) pass through as X / Y elements with the divisor's remainder
-//     carried to the next packet (dinput_convert.h carry_step), so no motion is eaten whatever
-//     [input] mouse_div says. The game's own doubling above the threshold stays: that is its feel.
+//   * RELATIVE packets (a physical mouse) become X / Y elements. Raw Input counts are first put through the
+//     Control Panel's pointer settings (speed + "enhance pointer precision", dinput_convert.h
+//     pointer_scaler, remainder carried), because that is what SYSTEM DirectInput delivers: fed 1:1 a
+//     20000 dpi mouse moved the game cursor several times faster than retail (player report 2026-10-09).
+//     The display's DPI scale is deliberately NOT applied -- retail gets none once its mode switch has
+//     lowered the resolution. Harness packets are never scaled. The divisor's remainder is carried to
+//     the next packet (carry_step), so no motion is eaten whatever [input] mouse_div says. The game's own
+//     doubling above the threshold stays: that is its feel.
 //   * ABSOLUTE packets (MOUSE_MOVE_ABSOLUTE -- a hypervisor's pointer, RDP) are mapped to the game pixel
 //     under the pointer (virtual desktop -> screen -> client -> the owned ddraw's image rect, or the
 //     client scale when the owned ddraw is not mapping) and become a TARGET; each GetDeviceData walks
@@ -104,6 +109,7 @@
 #include "en_guard.h"               // EN-only build gate
 
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "advapi32.lib")
 
 namespace mh::input {
 
@@ -184,6 +190,12 @@ mouse_filter_fn g_mouse_filter = nullptr; // set_mouse_filter: the ImGui overlay
 // never from the elements themselves): what size are the individual elements the game divides? One line per non-empty
 // mouse poll, `X+12 Y-4 B0:80 Z+120`, plus a histogram of |dwData| over the X/Y elements every 5 s.
 
+pointer_settings g_ptr;
+pointer_scaler   g_scaler;
+DWORD            g_ptr_ms    = 0;
+bool             g_ptr_seen  = false;
+long long        g_raw_sum_x = 0, g_raw_sum_y = 0, g_out_sum_x = 0, g_out_sum_y = 0; // |counts|, for mouse_trace
+
 struct size_hist {
     long polls = 0, els = 0, xy = 0;
     long b[10] = {}; // |d| 0, 1, 2-3, 4-7, 8-15, 16-31, 32-63, 64-127, 128-255, 256+
@@ -216,6 +228,10 @@ void hist_flush(const char *src, bool force) {
     g_hist_ms = now;
     if (g_hist.els == g_hist_logged_els) return;
     g_hist_logged_els = g_hist.els;
+    if (g_raw_sum_x || g_raw_sum_y)
+        // wvsprintfA has no %lld: the sums go out as long (a session never reaches 2^31 counts).
+        in_log("; [di-ptr] raw |counts| x=%ld y=%ld -> scaled x=%ld y=%ld (speed=%d epp=%d)", (long)g_raw_sum_x,
+               (long)g_raw_sum_y, (long)g_out_sum_x, (long)g_out_sum_y, g_ptr.speed, g_ptr.epp ? 1 : 0);
     in_log("; [di-hist] src=%s polls=%ld elements=%ld xy=%ld mean|d|=%ld.%02ld per-poll=%ld.%02ld |d| buckets "
            "0:%ld 1:%ld 2-3:%ld 4-7:%ld 8-15:%ld 16-31:%ld 32-63:%ld 64-127:%ld 128-255:%ld 256+:%ld",
            src, g_hist.polls, g_hist.els, g_hist.xy, g_hist.xy ? g_hist.sum / g_hist.xy : 0,
@@ -257,6 +273,40 @@ HWND  g_hwnd      = nullptr; // the window SetCooperativeLevel named (the Raw In
 HHOOK g_msg_hook  = nullptr;
 DWORD g_hook_tid  = 0;
 bool  g_reg_mouse = false, g_reg_kbd = false;
+
+// ---- Windows pointer settings (what system DirectInput applies to a physical mouse) -------------------
+
+void read_curve(const char *name, int32_t *dst, const int32_t *fallback) {
+    BYTE  b[40];
+    DWORD n = sizeof(b);
+    if (RegGetValueA(HKEY_CURRENT_USER, "Control Panel\\Mouse", name, RRF_RT_REG_BINARY, nullptr, b, &n) == ERROR_SUCCESS && n == 40) {
+        for (int i = 0; i < 5; ++i) dst[i] = *(const int32_t *)(b + i * 8); // the 16.16 value is the low dword of each qword
+    } else {
+        for (int i = 0; i < 5; ++i) dst[i] = fallback[i];
+    }
+}
+
+// Re-read the control panel at most once a second (a player can change it while the game runs).
+void refresh_pointer_settings(DWORD now) {
+    if (g_ptr_seen && now - g_ptr_ms < 1000) return;
+    g_ptr_ms = now;
+    pointer_settings s;
+    int              speed = 10, mo[3] = {0, 0, 0};
+    if (SystemParametersInfoA(SPI_GETMOUSESPEED, 0, &speed, 0)) s.speed = speed < 1 ? 1 : speed > 20 ? 20
+                                                                                                     : speed;
+    if (SystemParametersInfoA(SPI_GETMOUSE, 0, mo, 0)) s.epp = mo[2] != 0;
+    const pointer_settings def;
+    if (s.epp) {
+        read_curve("SmoothMouseXCurve", s.in, def.in);
+        read_curve("SmoothMouseYCurve", s.out, def.out);
+    }
+    const bool changed = !g_ptr_seen || s.speed != g_ptr.speed || s.epp != g_ptr.epp;
+    g_ptr              = s;
+    g_ptr_seen         = true;
+    if (changed)
+        in_log("; [input] pointer settings: speed=%d/20 enhance_precision=%d -> raw counts are scaled like system DirectInput%s",
+               s.speed, s.epp ? 1 : 0, s.is_identity() ? " (identity: speed 10, no acceleration)" : "");
+}
 
 bool window_focused(HWND h) {
     if (g_focus_ovr >= 0) return g_focus_ovr != 0;
@@ -578,7 +628,18 @@ void on_raw_mouse(const RAWMOUSE &m, uint32_t time, bool harness) {
                 d->mq.push({mouse_raw::abs, gx, gy, time});
         }
     } else if (m.lLastX || m.lLastY) {
-        d->mq.push({mouse_raw::rel, m.lLastX, m.lLastY, time});
+        int32_t ox = m.lLastX, oy = m.lLastY;
+        if (!harness) { // injected harness motion stays 1:1: the UI rig and its baselines are in game pixels
+            refresh_pointer_settings(GetTickCount());
+            g_scaler.apply(g_ptr, m.lLastX, m.lLastY, &ox, &oy);
+            if (g_trace_m) {
+                g_raw_sum_x += m.lLastX < 0 ? -(long long)m.lLastX : m.lLastX;
+                g_raw_sum_y += m.lLastY < 0 ? -(long long)m.lLastY : m.lLastY;
+                g_out_sum_x += ox < 0 ? -(long long)ox : ox;
+                g_out_sum_y += oy < 0 ? -(long long)oy : oy;
+            }
+        }
+        if (ox || oy) d->mq.push({mouse_raw::rel, ox, oy, time});
     }
     static const struct {
         USHORT   down, up;

@@ -37,7 +37,7 @@ use crate::log;
 use crate::paths::{
     Layout, BACKUP_SUFFIX, FIRST_RUN_MARKER, GAME_EXE, INSTALL_MANIFEST, VERSION_STAGING_SUFFIX,
 };
-use crate::relay::{self, Relay};
+use crate::relay;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
@@ -45,11 +45,14 @@ use std::path::{Component, Path, PathBuf};
 /// What `tools/release_package.py` calls every zip it writes.
 const ZIP_PREFIX: &str = "mission_humanity_re-";
 
-/// The three configurations that tool packages. A zip whose tag is not one of these is not one of
-/// ours, and the version/tag split of `<version>-<tag>` cannot be guessed without the list: the
-/// version itself may carry a `-` (`0.1.0-rc1`, `0.0.0-dev`), so splitting on the first or the last
-/// hyphen is wrong in one direction or the other. Matching the KNOWN SUFFIX is what works.
-const TAGS: [&str; 3] = ["net-debug", "brokered-debug", "net"];
+/// The configurations that tool packages -- ONE since RL7 (`net`; the debug and brokered builds are
+/// no longer released). A zip whose tag is not in the list is not one of ours, and the version/tag
+/// split of `<version>-<tag>` cannot be guessed without it: the version itself may carry a `-`
+/// (`0.1.0-rc1`, `0.0.0-dev`), so splitting on the first or the last hyphen is wrong in one
+/// direction or the other. Matching the KNOWN SUFFIX is what works. (An install receipt written by
+/// an older launcher may still say `net-debug` / `brokered-debug`; that is read from the receipt,
+/// never parsed from a zip name, and Play switches such a folder to `net`.)
+const TAGS: [&str; 1] = ["net"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageName {
@@ -248,6 +251,28 @@ pub fn package_file_name(version: &str, tag: &str) -> String {
     format!("{ZIP_PREFIX}{version}-{tag}.zip")
 }
 
+/// Retries a filesystem step that Windows refuses for a moment after the files were touched. A
+/// directory removed while an antivirus or the search indexer still holds one of its fresh DLLs
+/// stays "delete pending", and a rename onto its path is `Access is denied` until the scanner lets
+/// go (the v0.2.0-rc8 rehearsal hit it switching stable -> rc7.1 over a kept version dir; the
+/// immediate manual retry worked). About 3 s in all; any other error, or the last one, is returned.
+fn with_retry<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut wait = 50u64;
+    for _ in 0..7 {
+        match op() {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(32) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(wait));
+                wait = (wait * 2).min(800);
+            }
+            r => return r,
+        }
+    }
+    op()
+}
+
 /// Unzip `zip_path` into `versions\<ver>.staging\` and RENAME it to `versions\<ver>\`.
 ///
 /// The rename is the point (dist LA2). Unpacking straight into the final directory leaves a window
@@ -264,10 +289,10 @@ pub fn stage_zip(layout: &Layout, zip_path: &Path, version: &str) -> Result<Path
     let files = extract(zip_path, &staging)?;
     let final_dir = layout.version_dir(version);
     if final_dir.exists() {
-        std::fs::remove_dir_all(&final_dir)
+        with_retry(|| std::fs::remove_dir_all(&final_dir))
             .map_err(|e| format!("cannot replace {}: {e}", final_dir.display()))?;
     }
-    std::fs::rename(&staging, &final_dir).map_err(|e| {
+    with_retry(|| std::fs::rename(&staging, &final_dir)).map_err(|e| {
         format!(
             "cannot move {} into place as {}: {e}",
             staging.display(),
@@ -286,18 +311,17 @@ pub fn stage_zip(layout: &Layout, zip_path: &Path, version: &str) -> Result<Path
 /// receipt. The half of an install that does not care where the files came from -- a zip the player
 /// chose (LA1) or a verified download (LA2).
 ///
-/// `relay` (dist LA6): the signed manifest's relay, if any. The release zip carries an `mh_net.ini`
-/// (the example ini verbatim -- `transport=udp` since 2026-09-20, so the relay edit below only
-/// changes that line when a hand-edited ini says otherwise), so the copy is where the player's ini comes from --
-/// and it is provisioned HERE, before its digest goes into the receipt, so the row records the file
-/// as the launcher actually left it and an uninstall still recognises it as its own. `None` copies
-/// the ini as shipped and writes no key file.
+/// **dist RL4: NOTHING THAT IS THE PLAYER'S IS COPIED BESIDE THE EXE.** `mh_net.ini` and `mh_key.txt`
+/// are skipped even if a zip carries them (the pre-0.2.0 zips shipped the example ini): an ini beside
+/// `mh.exe` flips mh.dll into portable mode (RL3), so the file that used to be "where the player's ini
+/// comes from" would now pin every install to the game folder. The settings live in the config
+/// directory (`cfgdir`), and the relay is provisioned there (`relay::provision_for_game`, by the
+/// caller) -- install writes neither, and the receipt lists neither.
 pub fn install_from_version_dir(
     version_dir: &Path,
     pkg: &PackageName,
     package: &str,
     game_dir: &Path,
-    relay: Option<&Relay>,
 ) -> Result<InstallReport, String> {
     if !game_dir.join(GAME_EXE).is_file() {
         return Err(format!(
@@ -317,6 +341,15 @@ pub fn install_from_version_dir(
         // The launcher's own bookkeeping is not part of the release set and must never be copied
         // into somebody's game directory.
         if name == FIRST_RUN_MARKER {
+            continue;
+        }
+        // dist RL4: the player's own files never go beside the exe (see the function doc).
+        if name.eq_ignore_ascii_case(relay::INI_NAME) || name.eq_ignore_ascii_case(relay::KEY_NAME)
+        {
+            log::line(format!(
+                "install: {name} is in the release set but is not copied -- configuration lives in \
+                 the config directory, never beside {GAME_EXE}"
+            ));
             continue;
         }
         files.push(name);
@@ -389,19 +422,6 @@ pub fn install_from_version_dir(
         }
         std::fs::copy(&src, &dst)
             .map_err(|e| format!("cannot copy {} -> {}: {e}", src.display(), dst.display()))?;
-        if file == relay::INI_NAME {
-            if let Some(r) = relay {
-                let change = relay::provision_ini_file(&dst, &r.addr)?;
-                log::line(format!(
-                    "install: {file} {} with the manifest's relay ([net] transport=udp, relay=...) \
-                     before its digest is recorded",
-                    match change {
-                        relay::Change::Unchanged => "already carried",
-                        _ => "provisioned",
-                    }
-                ));
-            }
-        }
         let digest = sha256_file(&dst)?;
         match disposition {
             DISPOSITION_REPLACED => report.replaced.push(file.clone()),
@@ -411,11 +431,6 @@ pub fn install_from_version_dir(
         rows.push(format!("{disposition}\t{digest}\t{file}"));
     }
     write_manifest(game_dir, &pkg, &name, &rows)?;
-    // The key file, and -- for a zip that somehow shipped no ini -- the ini itself. Neither goes in
-    // the receipt: mh_key.txt is a file the GAME owns (it mints one on first run when there is
-    // none), and an uninstall that deleted the key would cut the player off from every relay game
-    // they had been playing.
-    relay::provision(game_dir, relay)?;
     log::line(format!("install: {}", report.summary()));
     Ok(report)
 }
@@ -425,12 +440,7 @@ pub fn install_from_version_dir(
 /// The LA1 entry point, now expressed as the two halves LA2 also uses -- so a zip chosen in the
 /// file dialog and a zip downloaded from a signed manifest reach the game directory through exactly
 /// the same code, and a bug in the copy cannot be fixed on one path only.
-pub fn install(
-    layout: &Layout,
-    zip_path: &Path,
-    game_dir: &Path,
-    relay: Option<&Relay>,
-) -> Result<InstallReport, String> {
+pub fn install(layout: &Layout, zip_path: &Path, game_dir: &Path) -> Result<InstallReport, String> {
     if !game_dir.join(GAME_EXE).is_file() {
         return Err(format!(
             "{} is not a game directory: no {GAME_EXE} in it",
@@ -438,13 +448,7 @@ pub fn install(
         ));
     }
     let staged = stage(layout, zip_path)?;
-    install_from_version_dir(
-        &staged.version_dir,
-        &staged.pkg,
-        &staged.package,
-        game_dir,
-        relay,
-    )
+    install_from_version_dir(&staged.version_dir, &staged.pkg, &staged.package, game_dir)
 }
 
 /// The per-user half of `install` on its own (dist LA13): parse the zip's name and unpack it into
@@ -634,7 +638,7 @@ pub fn uninstall(game_dir: &Path) -> Result<UninstallReport, String> {
     Ok(report)
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub fn sha256_file(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("cannot hash {}: {e}", path.display()))?;
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
@@ -650,19 +654,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_three_release_names_split_correctly() {
+    fn the_release_name_splits_correctly() {
         for (name, version, tag) in [
             ("mission_humanity_re-0.1.0-net.zip", "0.1.0", "net"),
-            (
-                "mission_humanity_re-0.1.0-net-debug.zip",
-                "0.1.0",
-                "net-debug",
-            ),
-            (
-                "mission_humanity_re-0.1.0-brokered-debug.zip",
-                "0.1.0",
-                "brokered-debug",
-            ),
+            ("mission_humanity_re-0.2.0-rc1-net.zip", "0.2.0-rc1", "net"),
         ] {
             let p = parse_package_name(name).expect(name);
             assert_eq!(
@@ -677,9 +672,9 @@ mod tests {
     /// itself contains hyphens, so neither `split('-').next()` nor `rsplit` gets these right.
     #[test]
     fn a_hyphenated_version_survives() {
-        let p = parse_package_name("mission_humanity_re-0.1.0-rc1-net-debug.zip").unwrap();
+        let p = parse_package_name("mission_humanity_re-0.1.0-rc1-net.zip").unwrap();
         assert_eq!(p.version, "0.1.0-rc1");
-        assert_eq!(p.tag, "net-debug");
+        assert_eq!(p.tag, "net");
         let p = parse_package_name("mission_humanity_re-0.0.0-dev-net.zip").unwrap();
         assert_eq!(p.version, "0.0.0-dev");
         assert_eq!(p.tag, "net");
@@ -690,6 +685,9 @@ mod tests {
         for bad in [
             "some_other_game-1.0-net.zip",
             "mission_humanity_re-0.1.0-server.zip",
+            // the retired configurations (RL7) are not release names any more
+            "mission_humanity_re-0.1.0-net-debug.zip",
+            "mission_humanity_re-0.1.0-brokered-debug.zip",
             "mission_humanity_re-net.zip",
             "mission_humanity_re-0.1.0-net.7z",
         ] {
@@ -740,66 +738,60 @@ transport=tcp
 ; relay=HOST:PORT
 ";
 
-    /// dist LA6 done_when, on the install path: with a relay the copied ini gains exactly the two
-    /// keys and the receipt digests THAT file; without one the ini is the zip's, byte for byte,
-    /// and no key file exists.
+    /// dist RL4: a release set that carries `mh_net.ini` (every pre-0.2.0 zip did) still puts NO ini
+    /// and NO key beside the exe -- that file's existence flips mh.dll into portable mode -- and
+    /// the receipt lists neither. The player's own ini, if one is already there, is left alone.
     #[test]
-    fn an_install_provisions_the_relay_only_when_the_manifest_has_one() {
-        let root = std::env::temp_dir().join("mh_launcher_test_install_relay");
+    fn an_install_never_writes_an_ini_or_a_key_beside_the_exe() {
+        let root = std::env::temp_dir().join("mh_launcher_test_install_no_ini");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let layout = Layout::rooted(root.join("state"));
         let zip_path = fake_release(&root);
-        let relay = Relay {
-            addr: "192.0.2.10:7100".into(),
-            key: "ab".repeat(32),
-        };
 
-        for (name, with) in [("plain", false), ("relayed", true)] {
+        for (name, preexisting) in [("fresh", false), ("with_ini", true)] {
             let game = root.join(name);
             std::fs::create_dir_all(&game).unwrap();
             std::fs::write(game.join(GAME_EXE), b"exe").unwrap();
             std::fs::write(game.join("mh.dll"), b"the game's own dll").unwrap();
-            let r = if with { Some(&relay) } else { None };
-            let report = install(&layout, &zip_path, &game, r).unwrap();
-            assert_eq!(report.version, "0.1.0");
-
-            let ini = std::fs::read(game.join(relay::INI_NAME)).unwrap();
-            if with {
-                assert_eq!(
-                    ini,
-                    SHIPPED_INI
-                        .replace("transport=tcp", "transport=udp")
-                        .replace(
-                            "[net]
-",
-                            "[net]
-relay=192.0.2.10:7100
-"
-                        )
-                        .as_bytes()
-                );
-                assert!(game.join(relay::KEY_NAME).is_file());
-            } else {
-                assert_eq!(ini, SHIPPED_INI.as_bytes(), "the zip's ini, untouched");
-                assert!(!game.join(relay::KEY_NAME).exists());
+            if preexisting {
+                std::fs::write(game.join(relay::INI_NAME), b"[net]\nrole=host\n").unwrap();
             }
-            // The receipt names the ini as it was LEFT, so uninstall recognises it.
+            let report = install(&layout, &zip_path, &game).unwrap();
+            assert_eq!(report.version, "0.1.0");
+            assert_eq!(report.created, Vec::<String>::new());
+            assert_eq!(report.replaced, vec!["mh.dll".to_string()]);
+
+            if preexisting {
+                assert_eq!(
+                    std::fs::read(game.join(relay::INI_NAME)).unwrap(),
+                    b"[net]\nrole=host\n",
+                    "the player's ini is not overwritten by the zip's"
+                );
+            } else {
+                assert!(
+                    !game.join(relay::INI_NAME).exists(),
+                    "no ini beside the exe"
+                );
+            }
+            assert!(!game.join(relay::KEY_NAME).exists());
             let receipt = read_manifest(&game).expect("a receipt was written");
-            let (_, sha, _) = receipt
-                .files
-                .iter()
-                .find(|(_, _, f)| f == relay::INI_NAME)
-                .expect("the ini has a row");
-            assert_eq!(*sha, sha256_file(&game.join(relay::INI_NAME)).unwrap());
-            assert!(!receipt.files.iter().any(|(_, _, f)| f == relay::KEY_NAME));
+            assert!(
+                !receipt
+                    .files
+                    .iter()
+                    .any(|(_, _, f)| f == relay::INI_NAME || f == relay::KEY_NAME),
+                "{:?}",
+                receipt.files
+            );
             assert!(game.join(format!("mh.dll{BACKUP_SUFFIX}")).is_file());
 
             let un = uninstall(&game).unwrap();
             assert!(un.summary().contains("removed"), "{}", un.summary());
-            assert!(
-                !game.join(relay::INI_NAME).exists(),
-                "the provisioned ini is ours to remove"
+            assert_eq!(
+                game.join(relay::INI_NAME).exists(),
+                preexisting,
+                "uninstall does not touch an ini it never installed"
             );
             assert_eq!(
                 std::fs::read(game.join("mh.dll")).unwrap(),
@@ -892,7 +884,6 @@ relay=192.0.2.10:7100
             &layout,
             &fake_release_v(&root, "0.1.0", b"our dll v1"),
             &game,
-            None,
         )
         .unwrap();
         assert_eq!(r1.replaced, vec!["mh.dll".to_string()]);
@@ -910,25 +901,22 @@ relay=192.0.2.10:7100
             "replaced"
         );
 
-        // The player edits the ini by hand.
+        // The player has an ini of their own (portable mode). The zip carries one too (dist RL4:
+        // it is never copied), so it is neither overwritten nor receipted.
         std::fs::write(game.join(relay::INI_NAME), b"[net]\nrole=host\n").unwrap();
 
-        // Second install (a newer release): our dll is ours by name/hash, the edited ini is ours
-        // by NAME, mh_net_udp.dll (unchanged bytes) is ours by hash. No new backup anywhere.
+        // Second install (a newer release): our dll is ours by name/hash, mh_net_udp.dll
+        // (unchanged bytes) is ours by hash. No new backup anywhere.
         let r2 = install(
             &layout,
             &fake_release_v(&root, "0.1.1", b"our dll v2"),
             &game,
-            None,
         )
         .unwrap();
         // mh.dll: ours now, but the first install's backup (retail) stands behind it, so its row
         // stays `replaced` -- that is what makes the uninstall below put retail back.
         assert_eq!(r2.replaced, vec!["mh.dll".to_string()]);
-        assert_eq!(
-            r2.overwritten,
-            vec![relay::INI_NAME.to_string(), "mh_net_udp.dll".to_string()]
-        );
+        assert_eq!(r2.overwritten, vec!["mh_net_udp.dll".to_string()]);
         let backups: Vec<String> = std::fs::read_dir(&game)
             .unwrap()
             .flatten()
@@ -971,14 +959,18 @@ relay=192.0.2.10:7100
         // file is untouched, and nothing *.mhbak is left behind.
         let un = uninstall(&game).unwrap();
         assert_eq!(un.restored, vec!["mh.dll".to_string()]);
-        assert_eq!(un.removed.len(), 3, "{un:?}");
+        assert_eq!(un.removed.len(), 2, "{un:?}");
         assert_eq!(
             std::fs::read(game.join("mh.dll")).unwrap(),
             b"the game's own dll"
         );
         assert!(!game.join(format!("mh.dll{BACKUP_SUFFIX}")).exists());
         assert!(!game.join("mh_net_udp.dll").exists());
-        assert!(!game.join(relay::INI_NAME).exists());
+        assert_eq!(
+            std::fs::read(game.join(relay::INI_NAME)).unwrap(),
+            b"[net]\nrole=host\n",
+            "the player's own ini outlives the uninstall"
+        );
         assert!(!game.join(INSTALL_MANIFEST).exists());
         assert!(game.join("unrelated.txt").is_file());
         assert!(game.join(GAME_EXE).is_file());
@@ -1009,13 +1001,7 @@ relay=192.0.2.10:7100
             Ownership::Foreign
         );
 
-        let r = install(
-            &layout,
-            &fake_release_v(&root, "0.1.0", b"our dll"),
-            &game,
-            None,
-        )
-        .unwrap();
+        let r = install(&layout, &fake_release_v(&root, "0.1.0", b"our dll"), &game).unwrap();
         assert_eq!(r.overwritten, vec!["mh.dll".to_string()]);
         assert_eq!(r.replaced, vec!["mh_net_udp.dll".to_string()]);
         assert!(!game.join(format!("mh.dll{BACKUP_SUFFIX}")).exists());
@@ -1038,13 +1024,7 @@ relay=192.0.2.10:7100
         std::fs::write(game.join(GAME_EXE), b"exe").unwrap();
         std::fs::write(game.join("mh_net_udp.dll"), b"somebody's own proxy").unwrap();
 
-        let r = install(
-            &layout,
-            &fake_release_v(&root, "0.1.0", b"our dll"),
-            &game,
-            None,
-        )
-        .unwrap();
+        let r = install(&layout, &fake_release_v(&root, "0.1.0", b"our dll"), &game).unwrap();
         assert_eq!(r.replaced, vec!["mh_net_udp.dll".to_string()]);
         assert!(
             r.summary().contains("mh_net_udp.dll"),

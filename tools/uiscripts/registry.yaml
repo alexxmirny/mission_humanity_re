@@ -2381,8 +2381,20 @@ tests:
     harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
     tol: 0.0  # tol 0: the readout is ~0.1% of frame; the default 2% tol would let it vanish and still pass.
     desc: 'LIFT-TACT: tactical mission running -- selection panel + active-count HUD on a real frame'
+  - name: campaign_planet_switch
+    budget_s: 200
+    long_why: "NEW GAME plays the campaign intro movie before the sim starts (~125 s of the walk, measured 2026-10-09), then ESC -> Load game"
+    kind: solo
+    script: sp_planet_switch.txt
+    # The save is the lane's ONLY entry, so the load dialog opens with it selected (README in saves/).
+    deploy_save: 2-almost
+    # Pixels cannot tell the planet: presence.json (the launcher's Discord feed) must be rewritten
+    # with the new planet, and not still say Nortus, the planet NEW GAME starts on.
+    post_check: [tools/check_presence.py, --not-planet, Nortus]
+    desc: 'dist RL15: campaign NEW GAME on Nortus, then ESC -> Load game of a save on Aman -- presence.json
+      follows the planet switch (campaign, system and planet named, planet no longer Nortus)'
   - name: boot_snapshot
-    budget_s: 30  # gate diet: max measured (gate 5s, n2 6s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
+    budget_s: 30 # gate diet: max measured (gate 5s, n2 6s, n6 5s) x 1.3 = 10, FLOORED at 30 (BUDGET_FLOOR_S)
     kind: solo
     script: boot_snapshot_capture.txt
     # Only catches the capture faulting/aborting (as a timeout); a silently wrong blob is caught

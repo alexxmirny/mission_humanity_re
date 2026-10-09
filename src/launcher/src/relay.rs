@@ -1,5 +1,14 @@
 //! `mh_launcher` dist **LA6**: provisioning the relay the signed manifest names.
 //!
+//! **dist RL4 moved the target.** Since mh.dll resolves its own files through `mh::cfgdir` (RL3), the
+//! launcher no longer writes anything beside `mh.exe`: `provision_for_game` resolves the game's CONFIG
+//! directory (`cfgdir::game_config_dir`: `%LOCALAPPDATA%\MissionHumanity\games\<hash>\` unless the
+//! player is in portable mode or set `MH_CONFIG_DIR`) and the functions below write `mh_net.ini` /
+//! `mh_key.txt` THERE. An ini beside the exe would flip the game into portable mode (RL3's trap), so
+//! nothing here ever creates one. The relay VALUE is derived from `launcher.toml`'s `relay_mode`
+//! (`RelayPlan`): `auto` = the signed manifest's relay (LA6, below), `off` = remove the `relay=` line,
+//! `custom` = the player's own `relay_custom` address (their own key file is left alone).
+//!
 //! A player today would reach the relay by hand-editing `mh_net.ini` (`[net] transport=udp` and
 //! `[net] relay=host:port`) and pasting the deployment key into `mh_key.txt` -- and the relay's
 //! address may never live in this tree (`tools/lint_machine_paths.py`), so no shipped ini can carry
@@ -124,6 +133,120 @@ impl Relay {
     }
 }
 
+/// `launcher.toml`'s `relay_mode` values (`auto`, the default, is everything that is neither of these).
+pub const MODE_OFF: &str = "off";
+pub const MODE_CUSTOM: &str = "custom";
+
+/// What provisioning is asked to do, derived from `relay_mode` (dist RL4, UI_design decision 3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RelayPlan {
+    /// Touch neither file: `auto` with no accepted manifest relay, or `custom` with no usable
+    /// address. (A launcher that "helpfully" normalised the ini on the strength of nothing would be
+    /// editing a player's configuration -- rule 1 above.)
+    Untouched,
+    /// `auto`: the signed manifest's relay -- transport, address and the deployment key.
+    Auto(Relay),
+    /// `off`: remove the `relay=` line if the ini has one. Creates nothing, changes no other key.
+    Off,
+    /// `custom`: transport=udp and the player's own address. The key file is the player's.
+    Custom(String),
+}
+
+impl RelayPlan {
+    /// The relay the plan makes the game use, for display: `Auto`'s manifest relay, `Custom`'s own
+    /// (an open relay), nothing for `Off` / `Untouched`.
+    pub fn relay(&self) -> Option<Relay> {
+        match self {
+            RelayPlan::Auto(r) => Some(r.clone()),
+            RelayPlan::Custom(addr) => Some(Relay {
+                addr: addr.clone(),
+                key: "open".to_string(),
+            }),
+            RelayPlan::Off | RelayPlan::Untouched => None,
+        }
+    }
+}
+
+/// Derive the plan from the setting. An unknown mode is `auto` (the default, and every
+/// `launcher.toml` written before RL4); a `custom` whose address would not survive being written
+/// into the ini is `Untouched` rather than an error -- the page validates it, and a hand-edited
+/// bad value must not stop Play.
+pub fn plan_for(mode: &str, custom: &str, manifest: Option<&Relay>) -> RelayPlan {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        MODE_OFF => RelayPlan::Off,
+        MODE_CUSTOM => {
+            let addr = custom.trim();
+            if addr.is_empty() {
+                return RelayPlan::Untouched;
+            }
+            let probe = Relay {
+                addr: addr.to_string(),
+                key: "open".to_string(),
+            };
+            match probe.validate() {
+                Ok(()) => RelayPlan::Custom(addr.to_string()),
+                Err(e) => {
+                    log::line(format!(
+                        "relay: relay_custom is not usable ({e}) -- the ini is left alone"
+                    ));
+                    RelayPlan::Untouched
+                }
+            }
+        }
+        _ => manifest.map_or(RelayPlan::Untouched, |r| RelayPlan::Auto(r.clone())),
+    }
+}
+
+/// Carry out `plan` in the CONFIG directory `config_dir` (the directory, not the ini).
+pub fn provision_plan(config_dir: &Path, plan: &RelayPlan) -> Result<Provisioned, String> {
+    match plan {
+        RelayPlan::Untouched => Ok(Provisioned::NONE),
+        RelayPlan::Auto(r) => provision(config_dir, Some(r)),
+        RelayPlan::Off => {
+            let ini = provision_off_file(&config_dir.join(INI_NAME))?;
+            let done = Provisioned {
+                ini,
+                key: Change::Untouched,
+            };
+            log::line(format!("relay: off -- {INI_NAME} {}", done.ini.word()));
+            Ok(done)
+        }
+        RelayPlan::Custom(addr) => {
+            let ini = provision_ini_file(&config_dir.join(INI_NAME), addr)?;
+            let done = Provisioned {
+                ini,
+                key: Change::Untouched,
+            };
+            log::line(format!(
+                "relay: custom address -- {INI_NAME} {} ([net] transport=udp, relay=...)",
+                done.ini.word()
+            ));
+            Ok(done)
+        }
+    }
+}
+
+/// `provision_plan` for a game directory: resolve its config directory the way the DLL does
+/// (`cfgdir`), make sure it exists, and write there. Never creates an ini beside the exe.
+pub fn provision_for_game(
+    layout: &crate::paths::Layout,
+    game_dir: &Path,
+    plan: &RelayPlan,
+) -> Result<Provisioned, String> {
+    if *plan == RelayPlan::Untouched {
+        return Ok(Provisioned::NONE);
+    }
+    let (dir, source) = crate::cfgdir::game_config_dir(layout, game_dir);
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("cannot create the config directory {}: {e}", dir.display()))?;
+    log::line(format!(
+        "relay: config directory {} ({})",
+        dir.display(),
+        source.describe()
+    ));
+    provision_plan(&dir, plan)
+}
+
 /// What happened to one of the two files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
@@ -179,13 +302,16 @@ impl Provisioned {
 /// relay's host is a value dist LA6 says must never land in one; the ini's own `relay=` line is
 /// blanked there for the same reason. The log says WHAT was done, and the ini says what it was done
 /// with.
-pub fn provision(game_dir: &Path, relay: Option<&Relay>) -> Result<Provisioned, String> {
+///
+/// `config_dir` is the game's CONFIG directory (dist RL4: `provision_for_game` resolves it), not the
+/// game directory.
+pub fn provision(config_dir: &Path, relay: Option<&Relay>) -> Result<Provisioned, String> {
     let Some(relay) = relay else {
         return Ok(Provisioned::NONE);
     };
     relay.validate()?;
-    let ini = provision_ini_file(&game_dir.join(INI_NAME), &relay.addr)?;
-    let key = provision_key_file(&game_dir.join(KEY_NAME), &relay.key_line())?;
+    let ini = provision_ini_file(&config_dir.join(INI_NAME), &relay.addr)?;
+    let key = provision_key_file(&config_dir.join(KEY_NAME), &relay.key_line())?;
     let done = Provisioned { ini, key };
     log::line(format!("relay: {}", done.summary()));
     Ok(done)
@@ -209,6 +335,22 @@ pub fn provision_ini_file(path: &Path, addr: &str) -> Result<Change, String> {
     } else {
         Change::Created
     })
+}
+
+/// `off` on one file: remove the first `[net] relay=` line, and nothing else. A missing file or a
+/// file with no such line is `Unchanged` -- `off` never creates an ini (and never one beside the exe).
+pub fn provision_off_file(path: &Path) -> Result<Change, String> {
+    let existing = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Change::Unchanged),
+        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
+    };
+    let edited = edit_net(Some(&existing), None, None, false);
+    if edited == existing {
+        return Ok(Change::Unchanged);
+    }
+    write_atomically(path, &edited)?;
+    Ok(Change::Written)
 }
 
 /// The key half. "Different" is judged the way the game judges the file (`net_key.cpp`
@@ -288,20 +430,37 @@ fn trim_ascii(b: &[u8]) -> &[u8] {
 /// belong to the next section; after the header they are unambiguously inside `[net]`, which is the
 /// only thing `GetPrivateProfileString` cares about.
 pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
-    let transport_line = {
+    edit_net(existing, Some(TRANSPORT_VALUE), Some(addr.as_bytes()), true)
+}
+
+/// The editor under `provision_ini_bytes` and the `off` plan: set `[net] relay=<relay>` (and
+/// `transport=<transport>` when given); `relay` `None` REMOVES the first `[net] relay=` line (the
+/// `off` case -- only with `insert_missing` false). `insert_missing` false = only REPLACE / drop
+/// lines that exist (`off` must not grow a file); true = also insert / append what is missing.
+fn edit_net(
+    existing: Option<&[u8]>,
+    transport: Option<&[u8]>,
+    relay: Option<&[u8]>,
+    insert_missing: bool,
+) -> Vec<u8> {
+    let transport_line = transport.map(|t| {
         let mut v = TRANSPORT_KEY.to_vec();
         v.push(b'=');
-        v.extend_from_slice(TRANSPORT_VALUE);
+        v.extend_from_slice(t);
         v
-    };
-    let relay_line = {
+    });
+    let relay_line = relay.map(|r| {
         let mut v = RELAY_KEY.to_vec();
         v.push(b'=');
-        v.extend_from_slice(addr.as_bytes());
+        v.extend_from_slice(r);
         v
-    };
+    });
+    debug_assert!(relay.is_some() || !insert_missing);
 
     let Some(existing) = existing.filter(|b| !b.is_empty()) else {
+        if !insert_missing {
+            return Vec::new();
+        }
         // A fresh file. CRLF because that is what the game's own writers use (net_key.cpp,
         // tools/make_lane.py) and what Notepad expects; the DLL reads either.
         let mut out = Vec::new();
@@ -310,7 +469,7 @@ pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
               here.\r\n\
               ; Every key not set here takes the DLL's default; the full reference is the \
               mh_net.ini that\r\n\
-              ; ships in the release zip (src/mh_dll/mh_net.example.ini). The launcher rewrites \
+              ; the launcher's Settings page edits (src/mh_dll/mh_net.example.ini). It rewrites \
               only the two\r\n\
               ; [net] lines below, from its signed update manifest, and leaves everything else \
               alone.\r\n\
@@ -318,10 +477,14 @@ pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
         );
         out.extend_from_slice(SECTION);
         out.extend_from_slice(b"\r\n");
-        out.extend_from_slice(&transport_line);
-        out.extend_from_slice(b"\r\n");
-        out.extend_from_slice(&relay_line);
-        out.extend_from_slice(b"\r\n");
+        if let Some(t) = &transport_line {
+            out.extend_from_slice(t);
+            out.extend_from_slice(b"\r\n");
+        }
+        if let Some(r) = &relay_line {
+            out.extend_from_slice(r);
+            out.extend_from_slice(b"\r\n");
+        }
         return out;
     };
 
@@ -361,14 +524,19 @@ pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
                 // rewriting it would be changing a line the game never reads.
                 if !have_transport && key.eq_ignore_ascii_case(TRANSPORT_KEY) {
                     have_transport = true;
-                    out.extend_from_slice(&transport_line);
-                    out.extend_from_slice(term);
-                    continue;
+                    if let Some(t) = &transport_line {
+                        out.extend_from_slice(t);
+                        out.extend_from_slice(term);
+                        continue;
+                    }
                 }
                 if !have_relay && key.eq_ignore_ascii_case(RELAY_KEY) {
                     have_relay = true;
-                    out.extend_from_slice(&relay_line);
-                    out.extend_from_slice(term);
+                    // `None` = `off`: the line is dropped, not blanked.
+                    if let Some(r) = &relay_line {
+                        out.extend_from_slice(r);
+                        out.extend_from_slice(term);
+                    }
                     continue;
                 }
             }
@@ -376,15 +544,20 @@ pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
         out.extend_from_slice(raw);
     }
 
+    if !insert_missing {
+        return out;
+    }
     match header_end {
         Some(at) => {
             let mut insert = Vec::new();
             if !have_transport {
-                insert.extend_from_slice(&transport_line);
-                insert.extend_from_slice(eol);
+                if let Some(t) = &transport_line {
+                    insert.extend_from_slice(t);
+                    insert.extend_from_slice(eol);
+                }
             }
-            if !have_relay {
-                insert.extend_from_slice(&relay_line);
+            if let (false, Some(r)) = (have_relay, &relay_line) {
+                insert.extend_from_slice(r);
                 insert.extend_from_slice(eol);
             }
             if !insert.is_empty() {
@@ -400,10 +573,14 @@ pub fn provision_ini_bytes(existing: Option<&[u8]>, addr: &str) -> Vec<u8> {
             out.extend_from_slice(eol);
             out.extend_from_slice(SECTION);
             out.extend_from_slice(eol);
-            out.extend_from_slice(&transport_line);
-            out.extend_from_slice(eol);
-            out.extend_from_slice(&relay_line);
-            out.extend_from_slice(eol);
+            if let Some(t) = &transport_line {
+                out.extend_from_slice(t);
+                out.extend_from_slice(eol);
+            }
+            if let Some(r) = &relay_line {
+                out.extend_from_slice(r);
+                out.extend_from_slice(eol);
+            }
         }
     }
     out
@@ -723,5 +900,122 @@ mod tests {
         );
         assert!(!dir.join(KEY_NAME).exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- dist RL4: the relay value is derived from relay_mode, and lands in the config directory --
+
+    #[test]
+    fn relay_mode_picks_the_plan() {
+        let m = relay();
+        assert_eq!(plan_for("auto", "", Some(&m)), RelayPlan::Auto(m.clone()));
+        assert_eq!(
+            plan_for("", "", Some(&m)),
+            RelayPlan::Auto(m.clone()),
+            "empty = auto"
+        );
+        assert_eq!(
+            plan_for("garbage", "", Some(&m)),
+            RelayPlan::Auto(m.clone())
+        );
+        assert_eq!(plan_for("auto", "", None), RelayPlan::Untouched);
+        assert_eq!(plan_for("OFF", "x:1", Some(&m)), RelayPlan::Off);
+        assert_eq!(
+            plan_for("custom", " relay.example.org:7100 ", Some(&m)),
+            RelayPlan::Custom("relay.example.org:7100".into())
+        );
+        assert_eq!(plan_for("custom", "", Some(&m)), RelayPlan::Untouched);
+        assert_eq!(
+            plan_for("custom", "no port", Some(&m)),
+            RelayPlan::Untouched
+        );
+    }
+
+    #[test]
+    fn off_removes_the_relay_line_and_creates_and_adds_nothing() {
+        let dir = scratch("off");
+        // no file: nothing is created
+        assert_eq!(
+            provision_plan(&dir, &RelayPlan::Off).unwrap().ini,
+            Change::Unchanged
+        );
+        assert!(!dir.join(INI_NAME).exists());
+        // a file with a relay: the line is gone, every other byte kept
+        let src = "[net]\r\ntransport=udp\r\nrelay=192.0.2.10:7100\r\nport=6501\r\n";
+        std::fs::write(dir.join(INI_NAME), src).unwrap();
+        assert_eq!(
+            provision_plan(&dir, &RelayPlan::Off).unwrap().ini,
+            Change::Written
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join(INI_NAME)).unwrap(),
+            "[net]\r\ntransport=udp\r\nport=6501\r\n"
+        );
+        assert_eq!(
+            provision_plan(&dir, &RelayPlan::Off).unwrap().ini,
+            Change::Unchanged
+        );
+        // a file with no relay line at all is not grown
+        std::fs::write(dir.join(INI_NAME), "[net]\r\nport=6501\r\n").unwrap();
+        assert_eq!(
+            provision_plan(&dir, &RelayPlan::Off).unwrap().ini,
+            Change::Unchanged
+        );
+        assert!(!dir.join(KEY_NAME).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn custom_writes_the_players_address_and_leaves_the_key_alone() {
+        let dir = scratch("custom");
+        std::fs::write(dir.join(KEY_NAME), "open\r\n").unwrap();
+        let done =
+            provision_plan(&dir, &RelayPlan::Custom("relay.example.org:7100".into())).unwrap();
+        assert_eq!((done.ini, done.key), (Change::Created, Change::Untouched));
+        let ini = std::fs::read_to_string(dir.join(INI_NAME)).unwrap();
+        assert_eq!(
+            relay_addr_in_ini(&ini).as_deref(),
+            Some("relay.example.org:7100")
+        );
+        assert!(ini.contains("transport=udp"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(KEY_NAME)).unwrap(),
+            "open\r\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The point of RL4 for provisioning: the game folder never gains an ini or a key.
+    #[test]
+    fn provisioning_for_a_game_writes_the_config_dir_never_the_game_folder() {
+        let root = scratch("forgame");
+        let game = root.join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("mh.exe"), b"x").unwrap();
+        let layout = crate::paths::Layout::rooted(root.join("state"));
+        let plan = RelayPlan::Auto(relay());
+        let done = provision_for_game(&layout, &game, &plan).unwrap();
+        assert_eq!((done.ini, done.key), (Change::Created, Change::Created));
+        let cfg = layout
+            .root
+            .join("games")
+            .join(crate::paths::game_dir_hash(&game));
+        assert!(cfg.join(INI_NAME).is_file() && cfg.join(KEY_NAME).is_file());
+        assert!(!game.join(INI_NAME).exists() && !game.join(KEY_NAME).exists());
+        // again: nothing changes
+        let again = provision_for_game(&layout, &game, &plan).unwrap();
+        assert_eq!(
+            (again.ini, again.key),
+            (Change::Unchanged, Change::Unchanged)
+        );
+        // Untouched does not even create the directory
+        let other = root.join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        provision_for_game(&layout, &other, &RelayPlan::Untouched).unwrap();
+        assert!(!layout
+            .root
+            .join("games")
+            .join(crate::paths::game_dir_hash(&other))
+            .exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

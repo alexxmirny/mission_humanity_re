@@ -410,6 +410,32 @@ inline source_t resolve(const inputs &in, result &out) {
     return out.source     = SRC_EXE;
 }
 
+// ---- legacy key adoption (dist RL4) -------------------------------------------------------------
+//
+// Before v0.2.0 the key lived beside the exe. A player who launches the game by hand (no launcher, so
+// no launcher migration) and has `mh_key.txt` there but no `mh_net.ini` would otherwise resolve to user
+// storage (rule 3), find no key, and quietly mint a NEW one -- cutting them off from every relay game
+// they had been playing. So, once, when the config directory is user storage and holds no key:
+// COPY the exe-side key in. A copy, not a move: the exe folder may be read-only, and the launcher's
+// migration owns removing it (with a backup). Never overwrites a key that exists in the config
+// directory, and only for SRC_USER (portable mode IS the exe directory; an env override is explicit).
+inline bool adopt_legacy_key(const char *exe_dir, const result &r) {
+    if (r.source != SRC_USER || exe_dir == nullptr) return false;
+    static const char kKey[] = "mh_key.txt";
+    const int         el     = detail::len_of(exe_dir);
+    const int         cl     = detail::len_of(r.dir);
+    if (el + (int)sizeof(kKey) > MAX_PATH || cl + (int)sizeof(kKey) > MAX_PATH) return false;
+    char from[MAX_PATH], to[MAX_PATH];
+    for (int i = 0; i < el; ++i) from[i] = exe_dir[i];
+    for (int i = 0; i <= (int)sizeof(kKey) - 1; ++i) from[el + i] = kKey[i];
+    for (int i = 0; i < cl; ++i) to[i] = r.dir[i];
+    for (int i = 0; i <= (int)sizeof(kKey) - 1; ++i) to[cl + i] = kKey[i];
+    if (GetFileAttributesA(to) != INVALID_FILE_ATTRIBUTES) return false; // a key (or a dir) is there: it wins
+    const DWORD fa = GetFileAttributesA(from);
+    if (fa == INVALID_FILE_ATTRIBUTES || (fa & FILE_ATTRIBUTE_DIRECTORY) != 0) return false;
+    return CopyFileA(from, to, TRUE) != 0;
+}
+
 // ---- the real process ---------------------------------------------------------------------------
 struct real_buffers {
     char    exe_dir[MAX_PATH];
@@ -473,6 +499,7 @@ inline cache_t &ensure() {
         static real_buffers b; // large; static keeps it off the (possibly small) DllMain stack
         const inputs        in = real_inputs(b);
         resolve(in, c.r);
+        adopt_legacy_key(in.exe_dir, c.r); // RL4: a hand-launch player keeps the key they had
         const int n = len_of(in.exe_dir);
         for (int i = 0; i <= n; ++i) c.exe_dir[i] = in.exe_dir[i];
         MemoryBarrier();

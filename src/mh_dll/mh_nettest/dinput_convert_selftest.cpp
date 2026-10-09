@@ -300,6 +300,117 @@ void test_relative() {
     delete q5;
 }
 
+// Stream `n` packets of (dx, dy) through a fresh scaler; returns sum |out_x| / sum |in_x| (sign flips every 64).
+double stream_ratio(const pointer_settings &ps, int dx, int dy, int n = 400) {
+    pointer_scaler sc;
+    long long      in = 0, out = 0;
+    for (int k = 0; k < n; ++k) {
+        const int sg = ((k / 64) & 1) ? -1 : 1;
+        int32_t   ox = 0, oy = 0;
+        sc.apply(ps, sg * dx, sg * dy, &ox, &oy);
+        in += dx;
+        out += ox < 0 ? -ox : ox;
+    }
+    return in ? (double)out / (double)in : 0;
+}
+
+bool near_to(double got, double want, double tol) { return got >= want - tol && got <= want + tol; }
+
+// PT-INPUT1 pointer ballistics. The reference numbers are what system DirectInput returned on a Win11
+// 26200 VM for real SendInput moves of that size, measured with
+// a DI5 mouse probe at speeds 6 / 10 / 14 / 20, with and without enhance-pointer-precision.
+void test_pointer() {
+    pointer_settings id;
+    int32_t          ox = 0, oy = 0;
+    pointer_scaler   sc;
+    check("speed 10, no acceleration is the identity (and says so)", !sc.apply(id, 7, -3, &ox, &oy) && ox == 7 && oy == -3);
+    check("speed factors: 6 = 0.5, 10 = 1, 14 = 2, 20 = 3.5",
+          pointer_speed_factor(6) == 0.5 && pointer_speed_factor(10) == 1.0 && pointer_speed_factor(14) == 2.0 && pointer_speed_factor(20) == 3.5);
+    check("speed is clamped to 1..20", pointer_speed_factor(0) == 0.03125 && pointer_speed_factor(99) == 3.5);
+
+    pointer_settings slow;
+    slow.speed = 4; // 0.25
+    check("speed 4: 1000 one-count packets = 250 counts, none lost to rounding", near_to(stream_ratio(slow, 1, 0, 1000) * 1000, 250, 1));
+    pointer_scaler s2;
+    int            total = 0;
+    for (int i = 0; i < 8; ++i) {
+        s2.apply(slow, 1, 0, &ox, &oy);
+        total += ox;
+    }
+    check("speed 4: the carry pays out one count every fourth packet", total == 2);
+    pointer_settings fast;
+    fast.speed = 20;
+    s2.reset();
+    s2.apply(fast, 3, -5, &ox, &oy);
+    check("speed 20: (3,-5) -> (10,-17) with the half counts carried", ox == 10 && oy == -17);
+    s2.apply(fast, 3, -5, &ox, &oy);
+    check("... and the second packet pays them out: (11,-18)", ox == 11 && oy == -18);
+
+    // EPP on, the stock curve: measured X-only ratios (packet size -> sum out / sum in).
+    pointer_settings e10;
+    e10.epp = true;
+    struct {
+        int    dx;
+        double want;
+        double tol;
+    } m10[] = {{1, 0.560, 0.03}, {2, 0.630, 0.02}, {3, 0.707, 0.012}, {5, 0.821, 0.01}, {8, 1.001, 0.01}, {12, 1.100, 0.01}, {20, 1.629, 0.01}, {32, 2.026, 0.01}, {50, 2.264, 0.01}, {80, 2.422, 0.01}, {100, 2.475, 0.01}, {140, 2.535, 0.01}, {150, 2.546, 0.01}, {200, 2.581, 0.01}, {300, 2.616, 0.01}, {600, 2.651, 0.01}, {1200, 2.669, 0.01}, {2500, 2.678, 0.01}};
+    bool ok = true;
+    for (const auto &m : m10) {
+        const double g = stream_ratio(e10, m.dx, 0);
+        if (!near_to(g, m.want, m.tol)) {
+            printf("    EPP speed 10, %d counts: got %.4f want %.3f\n", m.dx, g, m.want);
+            ok = false;
+        }
+    }
+    check("EPP, speed 10: 18 packet sizes (1..2500 counts) match system DirectInput", ok);
+
+    // With EPP on the slider scales the curve LINEARLY (speed/10), not by the 20-step table.
+    pointer_settings e6 = e10, e14 = e10, e20 = e10;
+    e6.speed  = 6;
+    e14.speed = 14;
+    e20.speed = 20;
+    ok        = near_to(stream_ratio(e6, 1, 0), 0.325, 0.02) && near_to(stream_ratio(e6, 8, 0), 0.599, 0.01) && near_to(stream_ratio(e6, 32, 0), 1.216, 0.01) &&
+         near_to(stream_ratio(e6, 80, 0), 1.453, 0.01) && near_to(stream_ratio(e14, 1, 0), 0.78, 0.02) && near_to(stream_ratio(e14, 8, 0), 1.402, 0.01) &&
+         near_to(stream_ratio(e14, 80, 0), 3.391, 0.01) && near_to(stream_ratio(e20, 8, 0), 2.003, 0.01) && near_to(stream_ratio(e20, 80, 0), 4.845, 0.01);
+    check("EPP at speeds 6 / 14 / 20: scaled by speed/10, matching system DirectInput", ok);
+
+    // The gain follows max + min/2 of the packet (a diagonal (n, n) reads as 1.5 n), and keeps its direction.
+    ok = near_to(stream_ratio(e10, 2, 2), 0.700, 0.02) && near_to(stream_ratio(e10, 5, 5), 0.979, 0.012) && near_to(stream_ratio(e10, 12, 12), 1.510, 0.012) &&
+         near_to(stream_ratio(e10, 32, 32), 2.246, 0.012) && near_to(stream_ratio(e10, 80, 80), 2.510, 0.012);
+    check("EPP: diagonal packets match the OS (gain on max + min/2)", ok);
+    pointer_scaler s3;
+    ok           = true;
+    long long sx = 0, sy = 0;
+    for (int k = 0; k < 50; ++k) {
+        s3.apply(e10, 40, -20, &ox, &oy);
+        sx += ox;
+        sy += oy;
+    }
+    ok = sx > 0 && sy < 0 && near_to((double)sx / (double)-sy, 2.0, 0.02);
+    check("EPP: the direction of (40,-20) is preserved (x = -2y)", ok);
+    pointer_scaler s4, s5;
+    int32_t        px = 0, py = 0;
+    s4.apply(e10, -30, 0, &ox, &oy);
+    s5.apply(e10, 30, 0, &px, &py);
+    check("EPP is sign-symmetric", ox == -px && oy == py);
+
+    ok          = true;
+    double prev = 0;
+    for (int mag = 1; mag < 3000; ++mag) {
+        const double g = pointer_gain(e10, mag);
+        ok &= g + 1e-12 >= prev;
+        prev = g;
+    }
+    check("EPP gain is non-decreasing from 1 to 3000 counts per packet", ok);
+
+    pointer_settings lin = e10; // a registry curve is honoured: Y = X gives gain 0.8 / 3.5 at any size inside the table
+    for (int i = 0; i < 5; ++i) lin.in[i] = lin.out[i] = i * 0x10000;
+    check("a registry curve is honoured (Y = X -> gain 0.8 / 3.5)", near_to(pointer_gain(lin, 7), 0.8 / 3.5, 1e-9));
+    pointer_scaler z;
+    z.apply(e10, 0, 0, &ox, &oy);
+    check("a zero-length packet scales to nothing", ox == 0 && oy == 0);
+}
+
 void test_norm_roundtrip() {
     const int ext[] = {640, 1024, 1280, 1920, 2560, 3840, 5120};
     bool      ok    = true;
@@ -321,6 +432,7 @@ int run_dinputconvtest() {
     test_absolute();
     test_relative();
     test_norm_roundtrip();
+    test_pointer();
     printf("dinputconvtest: %d checks, %d failures\n", g_checks, g_fails);
     return g_fails ? 1 : 0;
 }

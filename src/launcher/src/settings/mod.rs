@@ -10,9 +10,9 @@
 //! ```
 //!
 //! Adding a setting means a registry row (`ini_keys.def`, regenerate the schema) plus strings in
-//! `i18n/*.toml`; no code in this module changes. WU-C wires `Model` + `render` into the Settings and
-//! Diagnostics pages and implements `LauncherStore` over `Config`; until then the engine is exercised
-//! by its tests only, hence the `dead_code` allowance.
+//! `i18n/*.toml`; no code in this module changes. `app/pages/{settings,diagnostics}.rs` draw `Model`
+//! through `render`, and `store::ConfigStore` is the `LauncherStore` over the App's `Config`.
+//! (`dead_code` is allowed because a schema field is read only by the rows that use it.)
 #![allow(dead_code)]
 
 pub mod ini_io;
@@ -22,3 +22,4 @@ pub mod render;
 pub mod schema;
 #[cfg(test)]
 mod shots;
+pub mod store;

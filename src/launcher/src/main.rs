@@ -36,7 +36,9 @@ mod install;
 mod launch;
 mod log;
 mod machine;
+mod migrate;
 mod paths;
+mod procs;
 mod relay;
 mod report;
 mod settings;
@@ -66,7 +68,8 @@ usage: mh_launcher [options]
                         relay from the accepted manifest is written into mh_net.ini +
                         mh_key.txt; the lobby is the game's own)
   --exit-after-launch   close the launcher once the game it started has exited
-  --view <name>         open on play | status | report (default: play, the Play page)
+  --view <name>         open on play | settings | report | about | diagnostics
+                        (default: play; the old names status, launch and update open Play)
   --size <W>x<H>        initial window size in points (default 1280x720)
   --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\\MissionHumanity
 
@@ -84,7 +87,9 @@ usage: mh_launcher [options]
   --verify-binary       print this build's version and exit 0 -- the health gate a NEW launcher
                         must pass before it is allowed to replace a running one
   --step <what>         perform ONE install step into the game directory and exit, no window:
-                        install:<version>:<tag> (the staged set), uninstall, or provision.
+                        install:<version>:<tag> (the staged set), uninstall, provision, or
+                        migrate (move the pre-0.2.0 files -- mh_net.ini, mh_key.txt, logs\\ --
+                        out of the game folder into the player's user storage, once; dist RL4).
                         This is what the launcher re-runs ELEVATED when the game directory is
                         not writable (Program Files) -- never the game itself (dist LA13)
   --result <file>       where --step writes its verdict (first line ok|err, then the summary)

@@ -3,6 +3,8 @@
 //
 #include "input/dinput_convert.h"
 
+#include <math.h>
+
 namespace mh::input {
 
 namespace {
@@ -18,6 +20,43 @@ uint8_t scan_to_dik(uint16_t make, bool e0, bool e1, uint16_t vkey) {
     if (e1) return 0;                      // any other E1 sequence: nothing DirectInput names
     if (make == 0 || make >= 0x80) return 0;
     return (uint8_t)(make | (e0 ? 0x80 : 0));
+}
+
+double pointer_gain(const pointer_settings &s, double mag) {
+    if (mag <= 0) return 1.0;
+    if (!s.epp) return pointer_speed_factor(s.speed);
+    // Y(x) on the curve, x = mag / 3.5; past the last point the last segment continues.
+    const double x = mag / 3.5;
+    double       y = 0;
+    int          i = 1;
+    while (i < 4 && x > s.in[i] / 65536.0) ++i;
+    const double x0 = s.in[i - 1] / 65536.0, x1 = s.in[i] / 65536.0;
+    const double y0 = s.out[i - 1] / 65536.0, y1 = s.out[i] / 65536.0;
+    y = x1 > x0 ? y0 + (x - x0) * (y1 - y0) / (x1 - x0) : y1;
+    if (y < 0) y = 0;
+    return (s.speed < 1 ? 1 : s.speed > 20 ? 20
+                                           : s.speed) /
+           10.0 * 0.8 * y / mag;
+}
+
+bool pointer_scaler::apply(const pointer_settings &s, int32_t dx, int32_t dy, int32_t *ox, int32_t *oy) {
+    if (s.is_identity()) {
+        *ox = dx;
+        *oy = dy;
+        return false;
+    }
+    // The size Windows feeds the curve is NOT the Euclidean length: a diagonal (n, n) packet measured as 1.5 n,
+    // which is max + min/2 (the classic cheap magnitude), not 1.414 n.
+    const double ax = dx < 0 ? -(double)dx : dx, ay = dy < 0 ? -(double)dy : dy;
+    const double g = pointer_gain(s, (ax > ay ? ax : ay) + (ax > ay ? ay : ax) * 0.5);
+    ax_ += (int64_t)floor((double)dx * g * 65536.0 + 0.5);
+    ay_ += (int64_t)floor((double)dy * g * 65536.0 + 0.5);
+    const int64_t qx = ax_ / 65536, qy = ay_ / 65536; // toward zero, like the game's IDIV
+    ax_ -= qx * 65536;
+    ay_ -= qy * 65536;
+    *ox = (int32_t)qx;
+    *oy = (int32_t)qy;
+    return true;
 }
 
 bool mouse_queue::push(const mouse_raw &e) {

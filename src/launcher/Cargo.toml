@@ -150,6 +150,9 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Diagnostics_Debug",
+    # dist RL9: the process snapshot behind `procs::game_running_here` (is mh.exe running from this
+    # folder?) -- CreateToolhelp32Snapshot / Process32FirstW / Process32NextW.
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_SystemServices",

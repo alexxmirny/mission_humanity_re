@@ -90,6 +90,57 @@ inline int32_t carry_step(int32_t &acc, int32_t raw, int32_t div) {
     return q * div;
 }
 
+// ---- mouse, relative: Windows pointer ballistics -------------------------------------------------
+//
+// SYSTEM DirectInput does not hand the game raw hardware counts: on Windows 10/11 its relative X / Y are
+// the counts AFTER the Control Panel's pointer settings, i.e. what moves the desktop pointer. Measured
+// 2026-10-09 (Win11 26200 VM, real SendInput into a dinput.dll mouse, NONEXCLUSIVE and EXCLUSIVE alike,
+// per-packet paced 1..8 ms -- the result does not depend on the packet rate, only on its size):
+//   * "Enhance pointer precision" OFF: counts * T[speed], T = the 20-step table below (speed 10 = 1.0).
+//   * ON: the smooth-mouse curve. out = (speed / 10) * 0.8 * Y(|v| / 3.5) along the packet's direction (each axis times the same gain),
+//     |v| = max(|dx|,|dy|) + min(|dx|,|dy|)/2 counts (a diagonal n,n packet reads as 1.5 n, not 1.41 n), Y = the piecewise-linear curve through (SmoothMouseXCurve[i],
+//     SmoothMouseYCurve[i]) (16.16 fixed, HKCU\Control Panel\Mouse), extended past the last point with
+//     the last segment's slope. Fits the 10 measured sizes (1..80 counts) to <0.3% (1.5% on the 1- and
+//     2-count packets, which are integer-rounded) and the 150..2500-count packets to <1%.
+//   * the remainder is carried (a stream of 1-count packets at gain 0.56 sums to 0.56 per packet).
+//   * the display's DPI scale multiplies all of it (125% -> x1.25 for a per-monitor-aware process); a
+//     mode switch to a low resolution (what the real DirectDraw does) takes the factor back to 1.0. The
+//     owned device applies NO such factor: that is the retail feel at the game's own display mode.
+// Raw Input (what the owned device reads) carries none of this, so a 20000 dpi mouse fed 1:1 moved the
+// game cursor far more per hand movement than system DirectInput did. pointer_scaler puts it back.
+
+// The 20 steps of SPI_GETMOUSESPEED with "enhance pointer precision" off.
+inline double pointer_speed_factor(int speed) {
+    static const double T[20] = {0.03125, 0.0625, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5};
+    if (speed < 1) speed = 1;
+    if (speed > 20) speed = 20;
+    return T[speed - 1];
+}
+
+// The control-panel state the gain depends on. Default = the stock Windows 10/11 curve.
+struct pointer_settings {
+    int     speed  = 10;                                         // SPI_GETMOUSESPEED, 1..20
+    bool    epp    = false;                                      // enhance pointer precision (SPI_GETMOUSE acceleration flag)
+    int32_t in[5]  = {0, 0x6E15, 0x14000, 0x3DC29, 0x280000};    // SmoothMouseXCurve, 16.16: |v| / 3.5
+    int32_t out[5] = {0, 0x111FD, 0x42400, 0x12FC00, 0x1BBC000}; // SmoothMouseYCurve, 16.16
+    bool    is_identity() const { return !epp && speed == 10; }
+};
+
+// Pointer-gain at a packet of |v| = mag counts: output counts / input counts (> 0).
+double pointer_gain(const pointer_settings &s, double mag);
+
+// Raw relative counts -> the counts Windows would have moved the pointer by, remainder carried per axis.
+class pointer_scaler {
+public:
+    // Scale one packet; returns false (outputs untouched = the packet unchanged) when the settings are the
+    // identity. The outputs are whole counts; the sub-count rest waits in the carry for the next packet.
+    bool apply(const pointer_settings &s, int32_t dx, int32_t dy, int32_t *ox, int32_t *oy);
+    void reset() { ax_ = ay_ = 0; }
+
+private:
+    int64_t ax_ = 0, ay_ = 0; // carry, in 1/65536 count
+};
+
 // ---- mouse, absolute -----------------------------------------------------------------------------
 
 // A normalized Raw Input absolute coordinate (0..65535 over `extent` pixels starting at `origin`) ->

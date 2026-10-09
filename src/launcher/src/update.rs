@@ -161,6 +161,9 @@ const STARTED_SECONDS: f64 = 20.0;
 // name the same thing. They are a vocabulary, not decoration: `grep 'refuse NOT NEWER' launcher.log`
 // has to answer a support question without anyone reading this file.
 pub const R_FETCH: &str = "refuse FETCH";
+/// The marker `Http` puts in a `refuse FETCH` error for an HTTP 404 answer, and the only thing
+/// `is_not_found` accepts. A transport failure, a 500 or a 403 never carries it.
+pub const NOT_FOUND_MARK: &str = "HTTP 404";
 pub const R_SIGNATURE: &str = "refuse SIGNATURE";
 pub const R_MALFORMED: &str = "refuse MALFORMED";
 pub const R_SCHEMA: &str = "refuse SCHEMA";
@@ -243,7 +246,9 @@ impl GameManifest {
 /// What one check yields: both channel manifests, each of which passed every gate.
 #[derive(Clone, Debug)]
 pub struct Releases {
-    pub launcher: LauncherManifest,
+    /// `None` when the channel publishes no `launcher.json` (an HTTP 404 on it): "this channel
+    /// offers no launcher". Never set by any other failure -- those are errors.
+    pub launcher: Option<LauncherManifest>,
     pub game: GameManifest,
 }
 
@@ -251,9 +256,11 @@ impl Releases {
     /// How many days ago the OLDER of the two manifests was issued -- the freeze tripwire's number
     /// (`STALE_WARN_DAYS`, the Status page's "manifest issued N days ago").
     pub fn age_days(&self, now: DateTime<Utc>) -> Option<i64> {
-        let a = issued_age_days(&self.launcher.issued_at, now)?;
         let b = issued_age_days(&self.game.issued_at, now)?;
-        Some(a.max(b))
+        match &self.launcher {
+            Some(l) => Some(issued_age_days(&l.issued_at, now)?.max(b)),
+            None => Some(b),
+        }
     }
 }
 
@@ -735,11 +742,13 @@ pub struct Plan {
 /// * the launcher is offered when the channel's is newer than `mine` (never otherwise);
 /// * the game is offered when `check_game_install` allows it against `installed` (the receipt's
 ///   version of the chosen configuration, empty when it is not installed);
+/// * a channel with no launcher manifest (`None`) never plans a launcher step; `min_launcher` is then
+///   checked against `mine` alone (blocked, "download it by hand", when too old);
 /// * a game-only release therefore yields `launcher: None` -- the launcher manifest is not acted on;
 /// * `mine` below the game's `min_launcher`: if the channel's launcher is newer AND reaches
 ///   `min_launcher`, the game is `deferred` until after the restart; otherwise it is `blocked`.
 pub fn plan(
-    launcher_m: &LauncherManifest,
+    launcher_m: Option<&LauncherManifest>,
     game_m: &GameManifest,
     mine: &str,
     installed: &str,
@@ -747,9 +756,11 @@ pub fn plan(
     channel: &str,
 ) -> Plan {
     let mut p = Plan::default();
-    let launcher_newer = check_launcher_install(&launcher_m.version, mine).is_ok();
-    if launcher_newer {
-        p.launcher = Some(launcher_m.version.clone());
+    // A channel with no launcher manifest never plans a launcher step.
+    let launcher_newer =
+        launcher_m.is_some_and(|l| check_launcher_install(&l.version, mine).is_ok());
+    if let (true, Some(l)) = (launcher_newer, launcher_m) {
+        p.launcher = Some(l.version.clone());
     }
     if check_game_install(
         &game_m.version,
@@ -775,19 +786,27 @@ pub fn plan(
         return p;
     }
     let fixes_it = launcher_newer
-        && semver::Version::parse(&launcher_m.version)
-            .ok()
+        && launcher_m
+            .and_then(|l| semver::Version::parse(&l.version).ok())
             .zip(semver::Version::parse(&game_m.min_launcher).ok())
             .is_some_and(|(l, min)| l >= min);
     if fixes_it {
         p.game = Some(game_m.version.clone());
         p.deferred = true;
     } else {
-        p.blocked = Some(format!(
-            "{R_LAUNCHER_OLD}: game {} needs launcher {} or newer, this is {mine} and the {channel} \
-             channel offers launcher {}. The current game is kept.",
-            game_m.version, game_m.min_launcher, launcher_m.version
-        ));
+        p.blocked = Some(match launcher_m {
+            Some(l) => format!(
+                "{R_LAUNCHER_OLD}: game {} needs launcher {} or newer, this is {mine} and the \
+                 {channel} channel offers launcher {}. The current game is kept.",
+                game_m.version, game_m.min_launcher, l.version
+            ),
+            None => format!(
+                "{R_LAUNCHER_OLD}: game {} needs launcher {} or newer, this is {mine} and the \
+                 {channel} channel offers no launcher. Download the launcher by hand. The \
+                 current game is kept.",
+                game_m.version, game_m.min_launcher
+            ),
+        });
     }
     p
 }
@@ -869,11 +888,12 @@ impl Default for Http {
 impl Fetch for Http {
     fn get(&self, url: &str, limit: u64) -> Result<Vec<u8>, String> {
         log::line(format!("update: GET {url}"));
-        let mut response = self
-            .agent
-            .get(url)
-            .call()
-            .map_err(|e| format!("{R_FETCH}: {url} -- {e}"))?;
+        let mut response = self.agent.get(url).call().map_err(|e| match e {
+            ureq::Error::StatusCode(404) => {
+                format!("{R_FETCH}: {url} -- {NOT_FOUND_MARK} (not found)")
+            }
+            e => format!("{R_FETCH}: {url} -- {e}"),
+        })?;
         let bytes = response
             .body_mut()
             .with_config()
@@ -895,18 +915,39 @@ pub fn manifest_url(base: &str, channel: &str, kind: &str) -> String {
     join_url(base, &format!("channels/{channel}/{kind}.json"))
 }
 
+/// Is `err` the `Fetch` error for an HTTP 404 answer -- and nothing else?
+pub fn is_not_found(err: &str) -> bool {
+    err.starts_with(R_FETCH) && err.contains(NOT_FOUND_MARK)
+}
+
 /// Fetch one channel manifest and run it through every gate. -> the accepted document plus the
 /// exact bytes and signature it was accepted from (what `remember_accepted` keeps).
+///
+/// `Ok(None)` only for the OPTIONAL kind (the launcher) when its manifest answers HTTP 404. A
+/// present manifest whose `.minisig` answers 404 is `refuse SIGNATURE`, not "absent".
 fn fetch_accepted(
     fetch: &dyn Fetch,
     base_url: &str,
     env: &Env,
     kind: &str,
     layout: Option<&Layout>,
-) -> Result<(Accepted, Vec<u8>, String), String> {
+) -> Result<Option<(Accepted, Vec<u8>, String)>, String> {
     let url = manifest_url(base_url, env.channel, kind);
-    let bytes = fetch.get(&url, MAX_MANIFEST_BYTES)?;
-    let sig = fetch.get(&format!("{url}.minisig"), MAX_MANIFEST_BYTES)?;
+    let bytes = match fetch.get(&url, MAX_MANIFEST_BYTES) {
+        Ok(b) => b,
+        Err(e) if kind == KIND_LAUNCHER && is_not_found(&e) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let sig = match fetch.get(&format!("{url}.minisig"), MAX_MANIFEST_BYTES) {
+        Ok(s) => s,
+        Err(e) if kind == KIND_LAUNCHER && is_not_found(&e) => {
+            return Err(format!(
+                "{R_SIGNATURE}: {url} exists but {url}.minisig does not (HTTP 404); an unsigned \
+                 manifest is refused, not treated as absent"
+            ));
+        }
+        Err(e) => return Err(e),
+    };
     let sig =
         String::from_utf8(sig).map_err(|_| format!("{R_SIGNATURE}: {url}.minisig is not text"))?;
     let floor = layout.and_then(|l| load_floor(l, env.channel, kind, env.key));
@@ -921,7 +962,7 @@ fn fetch_accepted(
         env.key,
     )
     .map_err(|e| format!("{e} ({url})"))?;
-    Ok((accepted, bytes, sig))
+    Ok(Some((accepted, bytes, sig)))
 }
 
 /// Fetch and accept the channel's two manifests. The only function the UI and the command line
@@ -949,15 +990,28 @@ pub fn check(
                 .to_string(),
         );
     }
-    let (launcher, lbytes, lsig) = fetch_accepted(fetch, base_url, env, KIND_LAUNCHER, remember)?;
-    let (game, gbytes, gsig) = fetch_accepted(fetch, base_url, env, KIND_GAME, remember)?;
+    let launcher = fetch_accepted(fetch, base_url, env, KIND_LAUNCHER, remember)?;
+    // game.json stays mandatory: a 404 here is an error like any other.
+    let (game, gbytes, gsig) = fetch_accepted(fetch, base_url, env, KIND_GAME, remember)?
+        .ok_or_else(|| format!("{R_FETCH}: the {} channel has no game.json", env.channel))?;
+    let (launcher, launcher_raw) = match launcher {
+        Some((a, b, s)) => (Some(a.into_launcher()?), Some((b, s))),
+        None => {
+            log::line(format!(
+                "update: the {} channel has no launcher.json (HTTP 404) -- it offers no launcher; \
+                 no launcher update will be planned",
+                env.channel
+            ));
+            (None, None)
+        }
+    };
     let releases = Releases {
-        launcher: launcher.into_launcher()?,
+        launcher,
         game: game.into_game()?,
     };
     log::line(format!(
         "update: {} channel accepted -- game {} (issued {}, min launcher {}, {} configuration(s), \
-         relay {}), launcher {} (issued {})",
+         relay {}), launcher {}",
         env.channel,
         releases.game.version,
         releases.game.issued_at,
@@ -968,10 +1022,15 @@ pub fn check(
         } else {
             "none"
         },
-        releases.launcher.version,
-        releases.launcher.issued_at
+        match &releases.launcher {
+            Some(l) => format!("{} (issued {})", l.version, l.issued_at),
+            None => "none offered".to_string(),
+        }
     ));
-    debug_assert_eq!(releases.launcher.channel, releases.game.channel);
+    debug_assert!(releases
+        .launcher
+        .as_ref()
+        .is_none_or(|l| l.channel == releases.game.channel));
     if let Some(days) = releases.age_days(Utc::now()) {
         if days > STALE_WARN_DAYS {
             log::line(format!(
@@ -983,7 +1042,11 @@ pub fn check(
         }
     }
     if let Some(layout) = remember {
-        for (kind, bytes, sig) in [(KIND_LAUNCHER, &lbytes, &lsig), (KIND_GAME, &gbytes, &gsig)] {
+        let mut keep = vec![(KIND_GAME, &gbytes, &gsig)];
+        if let Some((b, s)) = &launcher_raw {
+            keep.insert(0, (KIND_LAUNCHER, b, s));
+        }
+        for (kind, bytes, sig) in keep {
             if let Err(e) = remember_accepted(layout, env.channel, kind, bytes, sig) {
                 log::line(format!("update: {e}"));
             }
@@ -1138,6 +1201,9 @@ pub struct Staged {
 /// not writable by this token (Program Files), it is performed by an elevated re-run of this
 /// launcher (`elevate::run_step_elevated`, `--step install:<version>:<tag>`) -- the download and
 /// the staging above stay per-user, and so does everything after, the game's launch included.
+///
+/// dist RL4: install writes NO ini and NO key; the relay is provisioned by the caller into the
+/// config directory (`relay::provision_for_game`), which never needs elevation.
 pub fn apply(
     layout: &Layout,
     fetch: &dyn Fetch,
@@ -1147,35 +1213,94 @@ pub fn apply(
     base_url: &str,
     progress: Progress,
 ) -> Result<Applied, String> {
+    match apply_guarded(
+        layout,
+        fetch,
+        manifest,
+        tag,
+        game_dir,
+        base_url,
+        progress,
+        &|| false,
+    )? {
+        Guarded::Applied(a) => Ok(a),
+        Guarded::Deferred(why) => Err(why),
+    }
+}
+
+/// What `apply_guarded` did.
+#[derive(Clone, Debug)]
+pub enum Guarded {
+    Applied(Applied),
+    /// The guard said the game is running once the download was in: nothing was installed. The
+    /// string says why, for the log and the status line.
+    Deferred(String),
+}
+
+/// `apply` with the RL9 guard: after the download is verified and staged -- the slow part, during
+/// which a player can start the game -- and IMMEDIATELY before the first byte is copied beside
+/// `mh.exe`, `running()` is asked again. True means the game is up: nothing is installed and the
+/// staged set simply waits (the next attempt re-stages it, which is a download's worth of cost
+/// paid only in that narrow race).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_guarded(
+    layout: &Layout,
+    fetch: &dyn Fetch,
+    manifest: &GameManifest,
+    tag: &str,
+    game_dir: &Path,
+    base_url: &str,
+    progress: Progress,
+    running: &dyn Fn() -> bool,
+) -> Result<Guarded, String> {
     let staged = fetch_and_stage(layout, fetch, manifest, tag, base_url, progress)?;
-    progress(&format!(
-        "installing {} beside {GAME_EXE}...",
-        staged.package
-    ));
-    let summary = if elevate::needs_elevation(game_dir) {
-        elevated_install(layout, game_dir, &staged, progress)?
-    } else {
-        match install_staged_set(&staged, manifest.relay.as_ref(), game_dir) {
-            Ok(report) => report.summary(),
-            Err(e) if elevate::is_access_denied(&e) => {
-                log::line(format!("update: {e} -- retrying that step elevated"));
-                elevated_install(layout, game_dir, &staged, progress)?
-            }
-            Err(e) => return Err(e),
-        }
-    };
+    if running() {
+        let why = format!(
+            "the game started while {} was being downloaded -- it stays staged and installs \
+             after the game has exited",
+            staged.package
+        );
+        log::line(format!("update: {why}"));
+        return Ok(Guarded::Deferred(why));
+    }
+    let summary = install_set(layout, game_dir, &staged, progress)?;
     let kept = version_dirs(layout);
     log::line(format!(
         "update: {} installed; version directories now {:?}",
         manifest.version, kept
     ));
-    Ok(Applied {
+    Ok(Guarded::Applied(Applied {
         version: manifest.version.clone(),
         tag: staged.pkg.tag.clone(),
         channel: manifest.channel.clone(),
         summary,
         kept,
-    })
+    }))
+}
+
+/// Copy a staged set beside `mh.exe`, elevating that one step when the folder needs it (dist
+/// LA13). Shared by `apply`, `reverify` and `rollback`.
+pub fn install_set(
+    layout: &Layout,
+    game_dir: &Path,
+    staged: &Staged,
+    progress: Progress,
+) -> Result<String, String> {
+    progress(&format!(
+        "installing {} beside {GAME_EXE}...",
+        staged.package
+    ));
+    if elevate::needs_elevation(game_dir) {
+        return elevated_install(layout, game_dir, staged, progress);
+    }
+    match install_staged_set(staged, game_dir) {
+        Ok(report) => Ok(report.summary()),
+        Err(e) if elevate::is_access_denied(&e) => {
+            log::line(format!("update: {e} -- retrying that step elevated"));
+            elevated_install(layout, game_dir, staged, progress)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn elevated_install(
@@ -1202,14 +1327,12 @@ fn elevated_install(
 /// The second half of `apply`, and the whole of an elevated `--step install` (dist LA13): remove a
 /// DIFFERENT configuration's set first (receipt-driven, so retail's own `mh.dll` -- parked as
 /// `mh.dll.mhbak`, the one FOREIGN file every install displaces, dist LA12 -- is put back and then
-/// parked again), copy the staged set beside `mh.exe`, provision the relay, write the receipt.
+/// parked again), copy the staged set beside `mh.exe`, write the receipt.
 ///
-/// `relay` is the accepted manifest's (dist LA6): the ini the zip just put beside mh.exe gets it
-/// before its digest goes in the receipt, and the key file is written -- the same call every
-/// launch makes.
+/// dist RL4: the relay is NOT provisioned here any more -- it goes into the config directory, from
+/// the caller, so this step has nothing user-side to write and an elevated run has no reason to.
 pub fn install_staged_set(
     staged: &Staged,
-    relay: Option<&Relay>,
     game_dir: &Path,
 ) -> Result<install::InstallReport, String> {
     if let Some(receipt) = install::read_manifest(game_dir) {
@@ -1222,13 +1345,7 @@ pub fn install_staged_set(
             ));
         }
     }
-    install::install_from_version_dir(
-        &staged.version_dir,
-        &staged.pkg,
-        &staged.package,
-        game_dir,
-        relay,
-    )
+    install::install_from_version_dir(&staged.version_dir, &staged.pkg, &staged.package, game_dir)
 }
 
 /// The first half of `apply`: download, digest, unpack into staging, rename into place.
@@ -1382,7 +1499,7 @@ pub fn make_ready(
         return Ok(None);
     }
     let p = plan(
-        &releases.launcher,
+        releases.launcher.as_ref(),
         &releases.game,
         env.mine,
         "",
@@ -1422,6 +1539,9 @@ pub struct Offer {
     /// How old the older of the two manifests is, in days (the Status page's "manifest issued N
     /// days ago"). Filled by the caller that has a clock; `offer_for` leaves it `None`.
     pub age_days: Option<i64>,
+    /// The channel publishes no launcher manifest: the UI says "no launcher offered on this
+    /// channel" instead of a launcher version.
+    pub no_launcher: bool,
 }
 
 impl Offer {
@@ -1447,7 +1567,7 @@ impl Offer {
 /// configuration, empty when that configuration is not installed) and over `env.mine`.
 pub fn offer_for(releases: &Releases, installed: &str, env: &Env) -> Offer {
     let p = plan(
-        &releases.launcher,
+        releases.launcher.as_ref(),
         &releases.game,
         env.mine,
         installed,
@@ -1459,6 +1579,7 @@ pub fn offer_for(releases: &Releases, installed: &str, env: &Env) -> Offer {
         launcher: p.launcher,
         blocked: p.blocked,
         age_days: None,
+        no_launcher: releases.launcher.is_none(),
     }
 }
 
@@ -1487,7 +1608,7 @@ pub fn apply_if_needed(
     let tag = resolve_tag(&releases.game, tag)?;
     let installed = installed_version_of(game_dir, &tag);
     let p = plan(
-        &releases.launcher,
+        releases.launcher.as_ref(),
         &releases.game,
         env.mine,
         &installed,
@@ -1651,6 +1772,8 @@ pub enum SelfUpdate {
     NotNeeded(String),
     /// The exe was replaced and a new process was started from it.
     Restarted(String),
+    /// dist RL9, "Later": the exe was replaced and nothing was started (the window is closing).
+    Replaced(String),
 }
 
 /// What `--verify-binary` prints. The health gate compares against it, so it is one place.
@@ -1821,20 +1944,52 @@ pub fn sweep_self_replace_leftovers_at_start() {
     }
 }
 
-pub fn self_update(
+/// A launcher candidate that has been downloaded, digest-checked and has PASSED ITS HEALTH GATE,
+/// and is waiting to take this executable's place (dist RL9). Nothing has been replaced yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StagedLauncher {
+    pub version: String,
+    pub candidate: PathBuf,
+}
+
+/// `stage_self_update`'s verdict.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelfStage {
+    /// The manifest's launcher is this one, or older.
+    NotNeeded(String),
+    Staged(StagedLauncher),
+}
+
+/// The first half of a launcher self-update (dist RL9): refuse a launcher that is not newer,
+/// download, check the digest, and make the candidate prove itself with `--verify-binary` -- and
+/// STOP. The running executable is not touched, so this is safe to do silently in the background;
+/// `commit_self_update` is the one-way door and is only walked through when the player says so
+/// (Restart now) or the launcher is closing anyway (Later).
+pub fn stage_self_update(
     layout: &Layout,
     fetch: &dyn Fetch,
-    releases: &Releases,
+    manifest: &LauncherManifest,
+    mine: &str,
     base_url: &str,
-    restart_args: &[String],
-) -> Result<SelfUpdate, String> {
-    let mine = crate::version::VERSION;
-    let manifest = &releases.launcher;
+) -> Result<SelfStage, String> {
+    stage_self_update_with(layout, fetch, manifest, mine, base_url, &health_gate)
+}
+
+/// `stage_self_update` with the health gate injectable, so a test can stage a byte string that is
+/// not a program.
+pub fn stage_self_update_with(
+    layout: &Layout,
+    fetch: &dyn Fetch,
+    manifest: &LauncherManifest,
+    mine: &str,
+    base_url: &str,
+    gate: &dyn Fn(&Path, &str) -> Result<String, String>,
+) -> Result<SelfStage, String> {
     let theirs = &manifest.version;
     // The launcher NEVER goes down (`check_launcher_install`), whatever channel is followed.
     if let Err(e) = check_launcher_install(theirs, mine) {
         log::line(format!("update: the launcher stays at {mine} -- {e}"));
-        return Ok(SelfUpdate::NotNeeded(format!(
+        return Ok(SelfStage::NotNeeded(format!(
             "the launcher is {mine}; the manifest offers {theirs}"
         )));
     }
@@ -1863,7 +2018,7 @@ pub fn self_update(
         bytes.len()
     ));
 
-    match health_gate(&candidate, theirs) {
+    match gate(&candidate, theirs) {
         Ok(said) => log::line(format!(
             "update: health gate passed -- {} said {said:?}",
             candidate.display()
@@ -1876,21 +2031,484 @@ pub fn self_update(
             return Err(e);
         }
     }
+    Ok(SelfStage::Staged(StagedLauncher {
+        version: theirs.clone(),
+        candidate,
+    }))
+}
 
+/// The second half (dist RL9): replace this executable with the staged candidate. With
+/// `restart_args` the replacement is started with them (Restart now -- `crate::restart_argv`
+/// composes the `--view <current>` list); with `None` nothing is started (Later: the launcher is
+/// already closing, and the next start simply runs the new version).
+pub fn commit_self_update(
+    staged: &StagedLauncher,
+    restart_args: Option<&[String]>,
+) -> Result<SelfUpdate, String> {
     let running = std::env::current_exe()
         .map_err(|e| format!("cannot find this executable's own path ({e})"))?;
-    self_replace::self_replace(&candidate)
-        .map_err(|e| format!("cannot replace {} ({e})", running.display()))?;
-    let _ = std::fs::remove_file(&candidate);
+    commit_self_update_with(
+        staged,
+        restart_args,
+        &running,
+        &|candidate| {
+            self_replace::self_replace(candidate)
+                .map_err(|e| format!("cannot replace {} ({e})", running.display()))
+        },
+        &|exe, args| {
+            Command::new(exe)
+                .args(args)
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("replaced the launcher but cannot start it ({e})"))
+        },
+    )
+}
+
+/// The spawn half of a restart: start `exe` with `args`.
+pub type SpawnFn<'a> = &'a dyn Fn(&Path, &[String]) -> Result<(), String>;
+
+/// `commit_self_update` with the replace and the spawn injectable (a test cannot replace the test
+/// binary it is running in).
+pub fn commit_self_update_with(
+    staged: &StagedLauncher,
+    restart_args: Option<&[String]>,
+    running: &Path,
+    replace: &dyn Fn(&Path) -> Result<(), String>,
+    spawn: SpawnFn,
+) -> Result<SelfUpdate, String> {
+    if !staged.candidate.is_file() {
+        return Err(format!(
+            "the staged launcher {} is gone -- nothing was replaced",
+            staged.candidate.display()
+        ));
+    }
+    replace(&staged.candidate)?;
+    let _ = std::fs::remove_file(&staged.candidate);
+    match restart_args {
+        Some(args) => {
+            log::line(format!(
+                "update: {} replaced with launcher {}; restarting with {args:?}",
+                running.display(),
+                staged.version
+            ));
+            spawn(running, args)?;
+            Ok(SelfUpdate::Restarted(staged.version.clone()))
+        }
+        None => {
+            log::line(format!(
+                "update: {} replaced with launcher {}; not restarted (the window is closing)",
+                running.display(),
+                staged.version
+            ));
+            Ok(SelfUpdate::Replaced(staged.version.clone()))
+        }
+    }
+}
+
+/// Replace this executable with the manifest's launcher and start the replacement: stage, then
+/// commit with a restart (the Update button and `--self-update`). dist RL9 split the two halves so
+/// the silent auto-update can stage now and commit at the player's word.
+pub fn self_update(
+    layout: &Layout,
+    fetch: &dyn Fetch,
+    releases: &Releases,
+    base_url: &str,
+    restart_args: &[String],
+) -> Result<SelfUpdate, String> {
+    let Some(launcher) = &releases.launcher else {
+        return Ok(SelfUpdate::NotNeeded(
+            "this channel offers no launcher".to_string(),
+        ));
+    };
+    match stage_self_update(layout, fetch, launcher, crate::version::VERSION, base_url)? {
+        SelfStage::NotNeeded(msg) => Ok(SelfUpdate::NotNeeded(msg)),
+        SelfStage::Staged(staged) => commit_self_update(&staged, Some(restart_args)),
+    }
+}
+
+// --------------------------------------------------------------------------- dist RL9: silent auto-update
+
+/// What the silent auto-update needs besides a `Fetch`: where, which configuration, and the few
+/// facts that decide whether to act (`auto_update`).
+pub struct AutoCtx<'a> {
+    pub layout: &'a Layout,
+    pub base_url: &'a str,
+    pub game_dir: &'a Path,
+    pub tag: &'a str,
+    pub env: &'a Env<'a>,
+    /// The version the player ROLLED BACK from (`Config::rollback_skip`), or empty. The auto-update
+    /// never installs this version or anything not newer than it -- a rollback that the next tick
+    /// undid would be no rollback. A release newer than it is offered as usual, and the manual
+    /// Update button ignores the pin.
+    pub skip_version: &'a str,
+    /// A launcher is already staged and waiting for its restart: do not download another.
+    pub launcher_pending: bool,
+}
+
+/// What one silent run found and did.
+#[derive(Clone, Debug, Default)]
+pub struct AutoRun {
+    /// What the accepted manifests offer (the Play page's line).
+    pub offer: Offer,
+    /// A launcher candidate that passed its health gate and awaits "Restart now / Later".
+    pub launcher: Option<StagedLauncher>,
+    /// The game update that was installed, if one was.
+    pub applied: Option<Applied>,
+    /// A game update was wanted and held back, and why (the game is running; a launcher restart is
+    /// owed first). Not an error: the next tick tries again.
+    pub deferred: Option<String>,
+    /// Failures that did not stop the other half (a launcher download that failed while the game
+    /// update succeeded). The current versions are untouched by every one of them.
+    pub errors: Vec<String>,
+}
+
+/// The silent update (dist RL9): fetch the signed manifests, `plan`, and carry out what is owed
+/// WITHOUT a click -- with three limits.
+///
+/// 1. **Launcher: stage only.** A newer launcher is downloaded, digest-checked and health-gated
+///    (`stage_self_update`) and handed back; the restart is the player's call.
+/// 2. **Game: only an UPDATE of what is installed.** Installing a configuration that is not there
+///    (or switching one) is Play's job (`make_ready`) and the player's decision; a silent download
+///    of the whole game onto a folder that merely holds retail would be a surprise.
+/// 3. **Never while `mh.exe` runs from the folder.** Asked before the download starts and again
+///    right before the first file is copied (`apply_guarded`) -- the download takes long enough
+///    for a player to press Play.
+///
+/// An `Err` is a failure before anything was decided (the fetch, a refused manifest); the caller
+/// shows it on the non-blocking update line and the NEXT tick tries again. Whatever fails, the
+/// installed versions are exactly what they were.
+pub fn auto_update(
+    fetch: &dyn Fetch,
+    ctx: &AutoCtx,
+    running: &dyn Fn() -> bool,
+    progress: Progress,
+) -> Result<AutoRun, String> {
+    let releases = check(fetch, ctx.base_url, ctx.env, "", Some(ctx.layout))?;
+    let tag = resolve_tag(&releases.game, ctx.tag)?;
+    let installed = installed_version_of(ctx.game_dir, &tag);
+    let p = plan(
+        releases.launcher.as_ref(),
+        &releases.game,
+        ctx.env.mine,
+        &installed,
+        ctx.env.installed_channel,
+        ctx.env.channel,
+    );
+    let mut run = AutoRun {
+        offer: offer_for(&releases, &installed, ctx.env),
+        ..Default::default()
+    };
+    run.offer.age_days = releases.age_days(Utc::now());
+
+    if let (Some(launcher), false) = (&releases.launcher, ctx.launcher_pending) {
+        if p.launcher.is_some() {
+            match stage_self_update(ctx.layout, fetch, launcher, ctx.env.mine, ctx.base_url) {
+                Ok(SelfStage::Staged(s)) => run.launcher = Some(s),
+                Ok(SelfStage::NotNeeded(_)) => {}
+                Err(e) => {
+                    log::line(format!("update: launcher not staged -- {e}"));
+                    run.errors.push(e);
+                }
+            }
+        }
+    }
+
+    let Some(game_version) = p.game.clone() else {
+        return Ok(run);
+    };
+    if p.deferred {
+        let why = format!(
+            "game {game_version} needs the newer launcher first -- it follows after the restart"
+        );
+        log::line(format!("update: {why}"));
+        run.deferred = Some(why);
+        return Ok(run);
+    }
+    if installed.is_empty() {
+        log::line(format!(
+            "update: {game_version} is offered but {tag} is not installed here -- Play installs it, \
+             the silent update does not"
+        ));
+        return Ok(run);
+    }
+    if !ctx.skip_version.trim().is_empty()
+        && check_newer(&game_version, ctx.skip_version.trim()).is_err()
+    {
+        log::line(format!(
+            "update: {game_version} is not newer than {} (rolled back from it) -- left alone",
+            ctx.skip_version.trim()
+        ));
+        return Ok(run);
+    }
+    if running() {
+        let why = format!("{game_version} is waiting for the game to exit");
+        log::line(format!("update: {why}"));
+        run.deferred = Some(why);
+        return Ok(run);
+    }
+    match apply_guarded(
+        ctx.layout,
+        fetch,
+        &releases.game,
+        &tag,
+        ctx.game_dir,
+        ctx.base_url,
+        progress,
+        running,
+    ) {
+        Ok(Guarded::Applied(a)) => run.applied = Some(a),
+        Ok(Guarded::Deferred(why)) => run.deferred = Some(why),
+        Err(e) => {
+            log::line(format!("update: the game update failed -- {e}"));
+            run.errors.push(e);
+        }
+    }
+    Ok(run)
+}
+
+// --------------------------------------------------------------------------- dist RL9: re-verify and roll back
+
+/// Receipt rows that are not the install's business any more (dist RL4): the player's ini and key
+/// live in the config directory, and a receipt written by an older launcher may still list them.
+fn is_player_file(name: &str) -> bool {
+    name.eq_ignore_ascii_case(crate::relay::INI_NAME)
+        || name.eq_ignore_ascii_case(crate::relay::KEY_NAME)
+}
+
+/// The receipt's rows whose file is missing or no longer hashes to what was installed.
+pub fn receipt_mismatches(game_dir: &Path, receipt: &install::Manifest) -> (usize, Vec<String>) {
+    let mut checked = 0;
+    let mut bad = Vec::new();
+    for (_, sha, file) in &receipt.files {
+        if is_player_file(file) {
+            continue;
+        }
+        checked += 1;
+        let path = game_dir.join(file);
+        if install::sha256_file(&path).ok().as_deref() != Some(sha.as_str()) {
+            bad.push(file.clone());
+        }
+    }
+    (checked, bad)
+}
+
+fn staged_from_receipt(layout: &Layout, version: &str, tag: &str) -> Staged {
+    Staged {
+        version_dir: layout.version_dir(version),
+        pkg: PackageName {
+            version: version.to_string(),
+            tag: tag.to_string(),
+        },
+        package: install::package_file_name(version, tag),
+    }
+}
+
+/// Diagnostics "Re-verify" (dist RL9): re-hash every file the install record lists and, on a
+/// mismatch, put the set back from the kept copy of that version under `versions\`. Returns the
+/// status line. The caller has already refused to run while the game is.
+pub fn reverify(layout: &Layout, game_dir: &Path, progress: Progress) -> Result<String, String> {
+    let receipt = install::read_manifest(game_dir).ok_or_else(|| {
+        format!(
+            "nothing in {} was installed by this launcher, so there is nothing to verify",
+            game_dir.display()
+        )
+    })?;
+    let (checked, bad) = receipt_mismatches(game_dir, &receipt);
+    if bad.is_empty() {
+        let line = format!(
+            "all {checked} installed file(s) match the install record ({} {})",
+            receipt.version, receipt.tag
+        );
+        log::line(format!("reverify: {line}"));
+        return Ok(line);
+    }
+    log::line(format!("reverify: {} file(s) differ: {bad:?}", bad.len()));
+    let staged = staged_from_receipt(layout, &receipt.version, &receipt.tag);
+    if !staged.version_dir.is_dir() {
+        return Err(format!(
+            "{} of {checked} file(s) differ ({}) and the kept copy of {} is gone -- press Update \
+             to download it again",
+            bad.len(),
+            bad.join(", "),
+            receipt.version
+        ));
+    }
+    // The kept copy must itself be what was installed, or "restoring" it restores a different file.
+    let (_, kept_bad) = staged_mismatches(&staged.version_dir, &receipt);
+    if !kept_bad.is_empty() {
+        return Err(format!(
+            "{} file(s) differ ({}) and the kept copy of {} does not match the install record either \
+             ({}) -- press Update to download it again",
+            bad.len(),
+            bad.join(", "),
+            receipt.version,
+            kept_bad.join(", ")
+        ));
+    }
+    install_set(layout, game_dir, &staged, progress)?;
+    let again = install::read_manifest(game_dir)
+        .map(|r| receipt_mismatches(game_dir, &r).1)
+        .unwrap_or_default();
+    if !again.is_empty() {
+        return Err(format!(
+            "reinstalled {} from the kept copy but {} file(s) still differ: {}",
+            receipt.version,
+            again.len(),
+            again.join(", ")
+        ));
+    }
+    let line = format!(
+        "{} of {checked} file(s) differed ({}) -- reinstalled {} from the kept copy",
+        bad.len(),
+        bad.join(", "),
+        receipt.version
+    );
+    log::line(format!("reverify: {line}"));
+    Ok(line)
+}
+
+/// The rows of `receipt` whose file in the kept version directory is missing or hashes differently.
+fn staged_mismatches(version_dir: &Path, receipt: &install::Manifest) -> (usize, Vec<String>) {
+    let mut checked = 0;
+    let mut bad = Vec::new();
+    for (_, sha, file) in &receipt.files {
+        if is_player_file(file) {
+            continue;
+        }
+        checked += 1;
+        if install::sha256_file(&version_dir.join(file))
+            .ok()
+            .as_deref()
+            != Some(sha.as_str())
+        {
+            bad.push(file.clone());
+        }
+    }
+    (checked, bad)
+}
+
+/// What a rollback did.
+#[derive(Clone, Debug)]
+pub struct RolledBack {
+    pub from: String,
+    pub to: String,
+    pub tag: String,
+    pub summary: String,
+}
+
+/// The version `rollback` would go to: the newest kept version directory that is OLDER than
+/// `current` (semver; an unparseable name is never a target).
+pub fn rollback_target(layout: &Layout, current: &str) -> Option<String> {
+    let cur = semver::Version::parse(current).ok()?;
+    version_dirs(layout).into_iter().find(|name| {
+        semver::Version::parse(name).is_ok_and(|v| v < cur) && layout.version_dir(name).is_dir()
+    })
+}
+
+/// Diagnostics "Roll back" (dist RL9): switch the game folder to the kept previous version using
+/// the same two-versions-on-disk mechanism the updater maintains (`prune`). The caller records
+/// `from` as the auto-update pin (`Config::rollback_skip`) and has already refused to run while the
+/// game is.
+pub fn rollback(
+    layout: &Layout,
+    game_dir: &Path,
+    progress: Progress,
+) -> Result<RolledBack, String> {
+    let receipt = install::read_manifest(game_dir).ok_or_else(|| {
+        format!(
+            "nothing in {} was installed by this launcher, so there is nothing to roll back",
+            game_dir.display()
+        )
+    })?;
+    let to = rollback_target(layout, &receipt.version).ok_or_else(|| {
+        format!(
+            "no version older than {} is kept (the launcher keeps the previous one until the new \
+             one has started once)",
+            receipt.version
+        )
+    })?;
+    let staged = staged_from_receipt(layout, &to, &receipt.tag);
+    let have = std::fs::read_dir(&staged.version_dir)
+        .map(|d| d.flatten().filter(|e| e.path().is_file()).count())
+        .unwrap_or(0);
+    if have == 0 {
+        return Err(format!(
+            "the kept copy of {to} ({}) is empty -- nothing was changed",
+            staged.version_dir.display()
+        ));
+    }
     log::line(format!(
-        "update: {} replaced with launcher {theirs}; restarting with {restart_args:?}",
-        running.display()
+        "rollback: {} -> {to} ({}) from {}",
+        receipt.version,
+        receipt.tag,
+        staged.version_dir.display()
     ));
-    Command::new(&running)
-        .args(restart_args)
-        .spawn()
-        .map_err(|e| format!("replaced the launcher but cannot start it ({e})"))?;
-    Ok(SelfUpdate::Restarted(theirs.clone()))
+    let summary = install_set(layout, game_dir, &staged, progress)?;
+    Ok(RolledBack {
+        from: receipt.version,
+        to,
+        tag: receipt.tag,
+        summary,
+    })
+}
+
+// --------------------------------------------------------------------------- dist RL9: the tick's state
+
+/// How often the silent auto-update looks (dist RL9): on start, then every 30 minutes.
+pub const AUTO_INTERVAL: Duration = Duration::from_secs(30 * 60);
+/// ... and how often it retries while an update is WAITING (the game is running): a player who
+/// quits the game should not wait half an hour for the update that was held back.
+pub const AUTO_DEFERRED_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Everything the window remembers for the silent auto-update, in ONE struct so `App` carries one
+/// field for it (the view code is being rewritten in parallel; one line is all the merge sees).
+/// The scheduling is pure (`due`, `schedule`) and tested without a window.
+#[derive(Debug, Default)]
+pub struct AutoState {
+    /// The silent update runs at all: an interactive start with an update source. Scripted runs
+    /// (`--launch`, `--update`, `--report`, ...) never start background work of their own.
+    pub enabled: bool,
+    /// When the next look is due; `None` = now (the first tick after start).
+    pub next: Option<Instant>,
+    /// A launcher candidate that passed its health gate and awaits the player's "Restart now /
+    /// Later" -- and, failing both, the window closing (`commit_self_update(.., None)`).
+    pub pending_restart: Option<StagedLauncher>,
+    /// The modal was answered ("Later"): do not ask again this run.
+    pub restart_dismissed: bool,
+    /// "waiting for the game to exit" has been logged for this wait (once, not every 10 s).
+    pub waiting_logged: bool,
+    /// A migration attempt failed this run (a declined UAC prompt): do not nag again until restart.
+    pub migrate_failed: bool,
+    /// The Apply job in flight was started by Play (a pending game update installing first): if it
+    /// fails, the current version is launched anyway.
+    pub play_update: bool,
+}
+
+impl AutoState {
+    /// Is a look due at `now`?
+    pub fn due(&self, now: Instant) -> bool {
+        self.enabled && self.next.is_none_or(|t| now >= t)
+    }
+
+    /// Schedule the next look: soon while something is waiting, the usual interval otherwise.
+    pub fn schedule(&mut self, now: Instant, waiting: bool) {
+        self.next = Some(
+            now + if waiting {
+                AUTO_DEFERRED_INTERVAL
+            } else {
+                AUTO_INTERVAL
+            },
+        );
+    }
+
+    /// The version to show in the restart modal, until it has been answered.
+    pub fn restart_prompt(&self) -> Option<&str> {
+        if self.restart_dismissed {
+            return None;
+        }
+        self.pending_restart.as_ref().map(|s| s.version.as_str())
+    }
 }
 
 // --------------------------------------------------------------------------- tests
@@ -1920,10 +2538,6 @@ mod tests {
     const TEST_PUB: &str = include_str!("../tests/data/schema2_test.pub");
     const TEST_BASE: &str = "http://127.0.0.1:8099/";
     const PLAY_ZIP_NET: &[u8] = include_bytes!("../tests/data/mission_humanity_re-0.3.0-net.zip");
-    const PLAY_ZIP_NET_DEBUG: &[u8] =
-        include_bytes!("../tests/data/mission_humanity_re-0.3.0-net-debug.zip");
-    const PLAY_ZIP_BROKERED: &[u8] =
-        include_bytes!("../tests/data/mission_humanity_re-0.3.0-brokered-debug.zip");
     const RELAY_ADDR: &str = "192.0.2.10:7100";
     const RELAY_KEY: &str = "4d487465737474656b65794d487465737474656b65794d487465737474656b65";
 
@@ -2185,7 +2799,7 @@ mod tests {
         .expect("no STALE gate any more");
         // ...and the log tripwire is what notices (Releases::age_days over STALE_WARN_DAYS).
         let rel = Releases {
-            launcher: launcher_latest(),
+            launcher: Some(launcher_latest()),
             game: game_latest(),
         };
         assert_eq!(rel.age_days(at("2026-10-12T00:00:00Z")), Some(11));
@@ -2410,7 +3024,7 @@ mod tests {
             (launcher_latest(), game_latest())
         };
         plan(
-            &launcher,
+            Some(&launcher),
             &game,
             mine,
             installed,
@@ -2471,7 +3085,7 @@ mod tests {
         // the channel's launcher does NOT reach min_launcher -> blocked, game kept, launcher still
         // offered (it is newer than mine)
         let p = plan(
-            &launcher_stable(),
+            Some(&launcher_stable()),
             &game_latest(),
             "0.1.0",
             "0.2.5",
@@ -2486,7 +3100,7 @@ mod tests {
         assert!(b.contains("0.2.0") && b.contains("0.1.0"), "{b}");
         // ...but only when a game install is actually wanted: a current game blocks nothing
         let p = plan(
-            &launcher_stable(),
+            Some(&launcher_stable()),
             &game_latest(),
             "0.1.0",
             "0.3.0",
@@ -2496,7 +3110,7 @@ mod tests {
         assert!(p.blocked.is_none() && p.game.is_none());
         // and an unreadable own version is not a reason to refuse
         let p = plan(
-            &launcher_latest(),
+            Some(&launcher_latest()),
             &game_latest(),
             "garbage",
             "0.2.5",
@@ -2525,7 +3139,7 @@ mod tests {
     #[test]
     fn the_offer_names_what_the_plan_would_do_and_says_nothing_when_current() {
         let rel = Releases {
-            launcher: launcher_latest(),
+            launcher: Some(launcher_latest()),
             game: game_latest(),
         };
         let env = |mine, installed_channel| Env {
@@ -2557,7 +3171,7 @@ mod tests {
         assert!(!offer_for(&rel, "0.9.0", &env("0.9.0", "")).any());
         // a launcher too old for a game its channel's launcher cannot fix: the offer says so
         let stuck = Releases {
-            launcher: launcher_stable(),
+            launcher: Some(launcher_stable()),
             game: game_latest(),
         };
         let o = offer_for(&stuck, "0.2.5", &env("0.1.0", "latest"));
@@ -2606,14 +3220,6 @@ mod tests {
         put(&mut rows, "stable", KIND_GAME, fixture!("s2_game_stable"));
         for (name, bytes) in [
             ("mission_humanity_re-0.3.0-net.zip", PLAY_ZIP_NET),
-            (
-                "mission_humanity_re-0.3.0-net-debug.zip",
-                PLAY_ZIP_NET_DEBUG,
-            ),
-            (
-                "mission_humanity_re-0.3.0-brokered-debug.zip",
-                PLAY_ZIP_BROKERED,
-            ),
             ("mission_humanity_re-0.2.9-net.zip", PLAY_ZIP_NET),
         ] {
             rows.push((format!("{TEST_BASE}{name}"), bytes.to_vec()));
@@ -2664,18 +3270,141 @@ mod tests {
         // the real thing, over the stand-in origin: the channel's own two files, both kinds
         let rel = check(&server(), TEST_BASE, &env(&key, "latest", ""), "", None).unwrap();
         assert_eq!(
-            (rel.game.version.as_str(), rel.launcher.version.as_str()),
+            (
+                rel.game.version.as_str(),
+                rel.launcher.as_ref().unwrap().version.as_str()
+            ),
             ("0.3.0", "0.2.0")
         );
         // the channel decides which files are read: stable's are a different pair
         let rel = check(&server(), TEST_BASE, &env(&key, "stable", ""), "", None).unwrap();
         assert_eq!(
-            (rel.game.version.as_str(), rel.launcher.version.as_str()),
+            (
+                rel.game.version.as_str(),
+                rel.launcher.as_ref().unwrap().version.as_str()
+            ),
             ("0.2.9", "0.1.5")
         );
         // the release key trusts neither
         let e = check(&server(), TEST_BASE, &Env::release("latest", ""), "", None).unwrap_err();
         assert!(e.starts_with(R_SIGNATURE), "{e}");
+    }
+
+    /// `server()` with chosen URLs answering a chosen error instead of their bytes.
+    struct Faulty(Canned, Vec<(String, String)>);
+    impl Fetch for Faulty {
+        fn get(&self, url: &str, limit: u64) -> Result<Vec<u8>, String> {
+            match self.1.iter().find(|(u, _)| u == url) {
+                Some((_, e)) => Err(e.clone()),
+                None => self.0.get(url, limit),
+            }
+        }
+    }
+
+    fn err404(url: &str) -> String {
+        format!("{R_FETCH}: {url} -- {NOT_FOUND_MARK} (not found)")
+    }
+
+    /// A channel's launcher.json is OPTIONAL: only an HTTP 404 on it means "no launcher offered".
+    #[test]
+    fn a_missing_launcher_manifest_is_an_absent_launcher_and_nothing_else_is() {
+        let key = test_key();
+        let url = manifest_url(TEST_BASE, "latest", KIND_LAUNCHER);
+        let sig_url = format!("{url}.minisig");
+        let faulty = |rows: Vec<(String, String)>| Faulty(server(), rows);
+        let run = |rows: Vec<(String, String)>, layout: Option<&Layout>| {
+            check(
+                &faulty(rows),
+                TEST_BASE,
+                &env(&key, "latest", ""),
+                "",
+                layout,
+            )
+        };
+        // launcher.json 404: Ok, no launcher, the game accepted
+        let rel = run(vec![(url.clone(), err404(&url))], None).unwrap();
+        assert!(rel.launcher.is_none());
+        assert_eq!(rel.game.version, "0.3.0");
+        // both missing is the same thing
+        let rel = run(
+            vec![
+                (url.clone(), err404(&url)),
+                (sig_url.clone(), err404(&sig_url)),
+            ],
+            None,
+        )
+        .unwrap();
+        assert!(rel.launcher.is_none());
+        // the age tripwire still works off the game alone
+        assert!(rel.age_days(Utc::now()).is_some());
+        // launcher.json present, .minisig 404: a SIGNATURE refusal, not "absent"
+        let e = run(vec![(sig_url.clone(), err404(&sig_url))], None).unwrap_err();
+        assert!(e.starts_with(R_SIGNATURE), "{e}");
+        // a 500 on launcher.json: an error
+        let e500 = format!("{R_FETCH}: {url} -- http status: 500");
+        let e = run(vec![(url.clone(), e500)], None).unwrap_err();
+        assert!(e.starts_with(R_FETCH) && e.contains("500"), "{e}");
+        // so is a transport failure, and a 500 on the .minisig
+        let e = run(
+            vec![(url.clone(), format!("{R_FETCH}: {url} -- timed out"))],
+            None,
+        )
+        .unwrap_err();
+        assert!(!is_not_found(&e), "{e}");
+        let e = run(
+            vec![(sig_url.clone(), format!("{R_FETCH}: {sig_url} -- 500"))],
+            None,
+        )
+        .unwrap_err();
+        assert!(e.starts_with(R_FETCH), "{e}");
+        // a bad signature on a present launcher.json stays a refusal
+        let e = check(&server(), TEST_BASE, &Env::release("latest", ""), "", None).unwrap_err();
+        assert!(e.starts_with(R_SIGNATURE), "{e}");
+        // game.json stays mandatory
+        let gurl = manifest_url(TEST_BASE, "latest", KIND_GAME);
+        let e = run(vec![(gurl.clone(), err404(&gurl))], None).unwrap_err();
+        assert!(e.starts_with(R_FETCH), "{e}");
+        // nothing is remembered for the absent kind
+        let root = std::env::temp_dir().join("mh_launcher_test_no_launcher_remember");
+        let _ = std::fs::remove_dir_all(&root);
+        let layout = Layout::rooted(&root);
+        run(vec![(url.clone(), err404(&url))], Some(&layout)).unwrap();
+        assert!(layout.accepted_manifest("latest", KIND_GAME).exists());
+        assert!(!layout.accepted_manifest("latest", KIND_LAUNCHER).exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn plan_without_a_launcher_manifest_plans_the_game_only_and_blocks_by_hand() {
+        let g = game_latest(); // 0.3.0, min_launcher 0.2.0
+        let p = plan(None, &g, "0.2.0", "0.2.5", "latest", "latest");
+        assert_eq!(
+            p,
+            Plan {
+                launcher: None,
+                game: Some("0.3.0".into()),
+                deferred: false,
+                blocked: None
+            }
+        );
+        // mine below min_launcher: blocked, with the hand-download message, never deferred
+        let p = plan(None, &g, "0.1.0", "0.2.5", "latest", "latest");
+        assert!(p.launcher.is_none() && p.game.is_none() && !p.deferred);
+        let b = p.blocked.expect("blocked");
+        assert!(b.starts_with(R_LAUNCHER_OLD), "{b}");
+        assert!(
+            b.contains("offers no launcher") && b.contains("by hand"),
+            "{b}"
+        );
+        // the offer says so too
+        let rel = Releases {
+            launcher: None,
+            game: g,
+        };
+        let key = test_key();
+        let o = offer_for(&rel, "0.2.5", &env(&key, "latest", "latest"));
+        assert!(o.no_launcher && o.launcher.is_none());
+        assert_eq!(o.game.as_deref(), Some("0.3.0"));
     }
 
     /// `--check-update`'s strict gate, with the switch exception; and the replay floor written by
@@ -2779,11 +3508,11 @@ mod tests {
         root
     }
 
-    /// dist LA8 done_when (1), over schema 2: *on a game directory with nothing installed, Play with
-    /// `net-debug` selected ends with that zip's files installed (receipt names the tag) and the
-    /// relay provisioned*.
+    /// dist LA8 done_when (1), over schema 2 and RL4/RL7: *on a game directory with nothing installed,
+    /// Play ends with the `net` zip's files installed (receipt names the tag), NO ini or key beside
+    /// the exe, and the relay provisioned into the CONFIG directory*.
     #[test]
-    fn play_on_an_empty_directory_installs_the_chosen_configuration_and_the_relay() {
+    fn play_on_an_empty_directory_installs_net_and_provisions_the_relay_in_the_config_dir() {
         let root = scratch("mh_launcher_test_play_install");
         let layout = Layout::rooted(root.join("state"));
         let game = play_game_dir(&root);
@@ -2792,13 +3521,13 @@ mod tests {
         let steps = std::sync::Mutex::new(Vec::<String>::new());
         let progress = |m: &str| steps.lock().unwrap().push(m.to_string());
 
-        assert_eq!(readiness(&game, "net-debug"), Readiness::NeedsInstall);
+        assert_eq!(readiness(&game, "net"), Readiness::NeedsInstall);
         let applied = make_ready(
             &layout,
             &server,
             TEST_BASE,
             &game,
-            "net-debug",
+            "net",
             &env(&key, "latest", ""),
             &progress,
         )
@@ -2810,33 +3539,44 @@ mod tests {
                 applied.tag.as_str(),
                 applied.channel.as_str()
             ),
-            ("0.3.0", "net-debug", "latest")
+            ("0.3.0", "net", "latest")
         );
 
         let receipt = install::read_manifest(&game).expect("a receipt was written");
-        assert_eq!(receipt.tag, "net-debug");
+        assert_eq!(receipt.tag, "net");
         assert_eq!(receipt.version, "0.3.0");
-        assert!(
-            game.join("mh_harness.dll").is_file(),
-            "the debug zip's extra file"
-        );
-        assert_eq!(read(game.join("mh.dll")), "fixture mh.dll (net-debug)");
+        assert_eq!(read(game.join("mh.dll")), "fixture mh.dll (net)");
         assert_eq!(
             read(game.join(format!("mh.dll{}", crate::paths::BACKUP_SUFFIX))),
             "the game's own dll",
             "the game's dll is parked, not lost"
         );
-        // The relay from the signed manifest, provisioned (LA6) as part of the same step.
-        let ini = read(game.join(crate::relay::INI_NAME));
+        // RL4: install writes nothing the player owns beside the exe, even though the fixture zip
+        // still carries an ini.
+        assert!(!game.join(crate::relay::INI_NAME).exists());
+        assert!(!game.join(crate::relay::KEY_NAME).exists());
+        assert!(!receipt
+            .files
+            .iter()
+            .any(|(_, _, f)| f == crate::relay::INI_NAME));
+        // The accepted copy is there for the launch path to re-read the relay from ...
+        let accepted = load_accepted_with_key(&layout, "latest", &key).expect("accepted copy");
+        // ... and the relay goes into the config directory (user storage), per `relay_mode`.
+        let plan = crate::relay::plan_for("auto", "", accepted.relay.as_ref());
+        let done = crate::relay::provision_for_game(&layout, &game, &plan).unwrap();
+        assert_ne!(done, crate::relay::Provisioned::NONE);
+        let cfg = layout
+            .root
+            .join("games")
+            .join(crate::paths::game_dir_hash(&game));
+        let ini = read(cfg.join(crate::relay::INI_NAME));
         assert!(ini.contains("transport=udp"), "{ini}");
         assert!(ini.contains(&format!("relay={RELAY_ADDR}")), "{ini}");
+        assert!(read(cfg.join(crate::relay::KEY_NAME)).starts_with(RELAY_KEY));
         assert!(
-            ini.contains("sp_clock_log=1"),
-            "the DEBUG ini, with its logging key: {ini}"
+            !game.join(crate::relay::INI_NAME).exists(),
+            "still nothing beside the exe"
         );
-        assert!(read(game.join(crate::relay::KEY_NAME)).starts_with(RELAY_KEY));
-        // And the accepted copy is there for the launch path to re-read the relay from.
-        assert!(load_accepted_with_key(&layout, "latest", &key).is_some());
         let steps = steps.lock().unwrap().clone();
         assert!(steps.iter().any(|s| s.starts_with("fetching")), "{steps:?}");
         assert!(
@@ -2848,13 +3588,13 @@ mod tests {
             "{steps:?}"
         );
         // A second Play is a plain launch: the receipt says it is there.
-        assert_eq!(readiness(&game, "net-debug"), Readiness::Ready);
+        assert_eq!(readiness(&game, "net"), Readiness::Ready);
         assert!(make_ready(
             &layout,
             &server,
             TEST_BASE,
             &game,
-            "net-debug",
+            "net",
             &env(&key, "latest", ""),
             &no_progress
         )
@@ -2863,28 +3603,35 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// dist LA8 done_when (2): switching the picker to `net` swaps the install (mh_harness.dll
-    /// gone, receipt updated), with the game's own dll still parked as `.mhbak`.
+    /// dist RL7: a folder installed by an older launcher as `net-debug` (receipt tag, a
+    /// `mh_harness.dll` row) is SWITCHED to `net` by Play -- the debug-only file leaves with the old
+    /// set, retail's dll is still the one parked as `.mhbak`. Built by hand, so the test needs no
+    /// retired zip.
     #[test]
-    fn switching_the_configuration_uninstalls_the_old_set_and_installs_the_new_one() {
+    fn a_legacy_net_debug_install_is_switched_to_net() {
         let root = scratch("mh_launcher_test_play_switch");
         let layout = Layout::rooted(root.join("state"));
         let game = play_game_dir(&root);
         let server = server();
         let key = test_key();
         let e = env(&key, "latest", "");
-        make_ready(
-            &layout,
-            &server,
-            TEST_BASE,
-            &game,
-            "net-debug",
-            &e,
-            &no_progress,
+
+        // the old install: our debug dll over retail's (parked), a harness dll, the receipt
+        std::fs::rename(game.join("mh.dll"), game.join("mh.dll.mhbak")).unwrap();
+        std::fs::write(game.join("mh.dll"), b"old debug dll").unwrap();
+        std::fs::write(game.join("mh_harness.dll"), b"old harness").unwrap();
+        let rows = format!(
+            "replaced\t{}\tmh.dll\ncreated\t{}\tmh_harness.dll\n",
+            sha256_bytes(b"old debug dll"),
+            sha256_bytes(b"old harness")
+        );
+        std::fs::write(
+            game.join(crate::paths::INSTALL_MANIFEST),
+            format!(
+                "version\t0.2.0-rc7.1\ntag\tnet-debug\npackage\tp.zip\ninstalled_at\tx\n{rows}"
+            ),
         )
-        .unwrap()
         .unwrap();
-        assert!(game.join("mh_harness.dll").is_file());
 
         assert_eq!(
             readiness(&game, "net"),
@@ -2909,9 +3656,6 @@ mod tests {
             "the game's own dll",
             "the backup is the GAME's dll, not our previous one"
         );
-        let ini = read(game.join(crate::relay::INI_NAME));
-        assert!(ini.contains(&format!("relay={RELAY_ADDR}")), "{ini}");
-        assert!(!ini.contains("sp_clock_log"), "the plain ini now: {ini}");
         assert_eq!(readiness(&game, "net"), Readiness::Ready);
         let un = install::uninstall(&game).unwrap();
         assert!(un.restored.contains(&"mh.dll".to_string()), "{un:?}");
@@ -2977,7 +3721,7 @@ mod tests {
             .unwrap_err()
             .starts_with(R_MALFORMED));
         let releases = Releases {
-            launcher: launcher_stable(),
+            launcher: Some(launcher_stable()),
             game: odd,
         };
         let before = read(game.join("mh.dll"));
@@ -3217,7 +3961,7 @@ mod tests {
 
         // blocked outright: the channel's launcher does not reach min_launcher either
         let stuck = Releases {
-            launcher: launcher_stable(),
+            launcher: Some(launcher_stable()),
             game: game_latest(),
         };
         let e = apply_if_needed(
@@ -3465,5 +4209,669 @@ mod tests {
         let removed = sweep_self_replace_leftovers(std::slice::from_ref(&d), "mh_launcher");
         assert_eq!(removed.len(), 2, "{removed:?}");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    // ---- dist RL9: the silent auto-update, the launcher stage/commit split, re-verify, rollback -------
+
+    /// A game directory with 0.2.9 (stable) installed, ready for a silent update to 0.3.0 (latest).
+    fn installed_at_029(name: &str) -> (PathBuf, Layout, PathBuf, Canned, String) {
+        let root = scratch(name);
+        let layout = Layout::rooted(root.join("state"));
+        let game = play_game_dir(&root);
+        let server = server();
+        let key = test_key();
+        make_ready(
+            &layout,
+            &server,
+            TEST_BASE,
+            &game,
+            "net",
+            &env(&key, "stable", ""),
+            &no_progress,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        (root, layout, game, server, key)
+    }
+
+    fn ctx<'a>(
+        layout: &'a Layout,
+        game: &'a Path,
+        env: &'a Env<'a>,
+        skip: &'a str,
+        pending: bool,
+    ) -> AutoCtx<'a> {
+        AutoCtx {
+            layout,
+            base_url: TEST_BASE,
+            game_dir: game,
+            tag: "net",
+            env,
+            skip_version: skip,
+            launcher_pending: pending,
+        }
+    }
+
+    /// RL9 done_when: an update published while the game runs is DEFERRED (nothing on disk changes,
+    /// the download does not even start), and applied after the game exits with no click.
+    #[test]
+    fn a_silent_update_waits_for_the_game_and_applies_after_it_exits() {
+        let (root, layout, game, server, key) = installed_at_029("mh_launcher_test_auto_defer");
+        let e = env(&key, "latest", "");
+        let before = read(game.join("mh.dll"));
+        let downloads = std::sync::atomic::AtomicUsize::new(0);
+        struct Counting<'a>(&'a Canned, &'a std::sync::atomic::AtomicUsize);
+        impl Fetch for Counting<'_> {
+            fn get(&self, url: &str, limit: u64) -> Result<Vec<u8>, String> {
+                if url.ends_with(".zip") {
+                    self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                self.0.get(url, limit)
+            }
+        }
+        let counted = Counting(&server, &downloads);
+
+        // game running (hand-launched or ours): deferred, nothing downloaded, nothing changed
+        let run = auto_update(
+            &counted,
+            &ctx(&layout, &game, &e, "", false),
+            &|| true,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none());
+        assert!(
+            run.deferred.as_deref().is_some_and(|d| d.contains("0.3.0")),
+            "{run:?}"
+        );
+        assert_eq!(
+            run.offer.game.as_deref(),
+            Some("0.3.0"),
+            "the offer is still shown"
+        );
+        assert_eq!(downloads.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        assert_eq!(read(game.join("mh.dll")), before);
+
+        // the game exits: the next look applies it, no click
+        let run = auto_update(
+            &counted,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        let a = run
+            .applied
+            .clone()
+            .expect("applied once the game had exited");
+        assert_eq!(
+            (a.version.as_str(), a.channel.as_str()),
+            ("0.3.0", "latest")
+        );
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.3.0");
+        assert!(run.errors.is_empty() && run.deferred.is_none(), "{run:?}");
+        // and a third look has nothing to do
+        let run = auto_update(
+            &counted,
+            &ctx(&layout, &game, &env(&key, "latest", "latest"), "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none() && run.deferred.is_none());
+        assert_eq!(run.offer.game, None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The race the guard exists for: the game was not running when the look started, and IS when
+    /// the download finishes -- immediately before the first file is copied. Nothing is installed.
+    #[test]
+    fn the_guard_rechecks_right_before_the_install() {
+        let (root, layout, game, server, key) = installed_at_029("mh_launcher_test_auto_guard");
+        let e = env(&key, "latest", "");
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        // first ask (before the download): not running; second (right before install): running
+        let running = || calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 1;
+        let before = read(game.join("mh.dll"));
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &e, "", false),
+            &running,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none(), "{run:?}");
+        assert!(
+            run.deferred
+                .as_deref()
+                .is_some_and(|d| d.contains("started while")),
+            "{run:?}"
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        assert_eq!(read(game.join("mh.dll")), before);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// RL9 done_when: a forced download failure keeps the old version -- and Play still works
+    /// (readiness is Ready, the game files are untouched, a plain `apply_if_needed` retry works once
+    /// the server is back).
+    #[test]
+    fn a_failed_download_keeps_the_old_version_and_does_not_block_play() {
+        let (root, layout, game, mut server, key) = installed_at_029("mh_launcher_test_auto_fail");
+        let e = env(&key, "latest", "");
+        let zip = server
+            .0
+            .iter()
+            .position(|(u, _)| u.ends_with("0.3.0-net.zip"))
+            .unwrap();
+        let removed = server.0.remove(zip);
+        let before = read(game.join("mh.dll"));
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none());
+        assert_eq!(run.errors.len(), 1, "{run:?}");
+        assert!(run.errors[0].contains(R_FETCH), "{:?}", run.errors);
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        assert_eq!(read(game.join("mh.dll")), before);
+        assert_eq!(
+            readiness(&game, "net"),
+            Readiness::Ready,
+            "Play is not blocked"
+        );
+        // a manifest fetch failure is an Err for the caller to retry next interval
+        let empty = Canned(Vec::new());
+        assert!(auto_update(
+            &empty,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress
+        )
+        .is_err());
+        // the server comes back: the same look succeeds
+        server.0.push(removed);
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert_eq!(run.applied.expect("applied").version, "0.3.0");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The silent update only UPDATES: it never installs onto a folder that holds no install of this
+    /// configuration, and it honours the rollback pin.
+    #[test]
+    fn a_silent_update_never_installs_from_nothing_and_honours_the_rollback_pin() {
+        let root = scratch("mh_launcher_test_auto_scope");
+        let layout = Layout::rooted(root.join("state"));
+        let game = play_game_dir(&root);
+        let server = server();
+        let key = test_key();
+        let e = env(&key, "latest", "");
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none() && run.errors.is_empty(), "{run:?}");
+        assert!(
+            install::read_manifest(&game).is_none(),
+            "Play installs, not the tick"
+        );
+        assert_eq!(run.offer.game.as_deref(), Some("0.3.0"));
+
+        // installed 0.2.9, pinned at 0.3.0 (rolled back from it): left alone
+        let (root2, layout2, game2, server2, key2) = installed_at_029("mh_launcher_test_auto_pin");
+        let e2 = env(&key2, "latest", "");
+        let run = auto_update(
+            &server2,
+            &ctx(&layout2, &game2, &e2, "0.3.0", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none() && run.errors.is_empty(), "{run:?}");
+        assert_eq!(install::read_manifest(&game2).unwrap().version, "0.2.9");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&root2);
+    }
+
+    /// A launcher below the game's `min_launcher` stages (or fails to stage) the launcher and defers
+    /// the game to after the restart; nothing is replaced and the game stays.
+    #[test]
+    fn a_newer_launcher_is_staged_first_and_the_game_follows_the_restart() {
+        let (root, layout, game, server, key) = installed_at_029("mh_launcher_test_auto_launcher");
+        // 0.1.0 is below both channels' launcher and the game's min_launcher (0.2.0)
+        let old = Env {
+            mine: "0.1.0",
+            ..env(&key, "latest", "")
+        };
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &old, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        // the fixture's launcher entry advertises 1234 bytes but serves none: a staging FAILURE,
+        // reported without touching anything
+        assert!(run.launcher.is_none());
+        assert_eq!(run.errors.len(), 1, "{run:?}");
+        assert!(
+            run.deferred
+                .as_deref()
+                .is_some_and(|d| d.contains("newer launcher")),
+            "{run:?}"
+        );
+        assert!(run.applied.is_none());
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        // with a launcher already staged, no second download is attempted
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &old, "", true),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.errors.is_empty() && run.launcher.is_none(), "{run:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn launcher_entry(version: &str, bytes: &[u8]) -> (LauncherManifest, Canned) {
+        let url = format!("{TEST_BASE}mh_launcher-{version}.exe");
+        let m = LauncherManifest {
+            schema: SCHEMA,
+            kind: KIND_LAUNCHER.to_string(),
+            version: version.to_string(),
+            channel: "latest".into(),
+            issued_at: "2026-10-08T00:00:00Z".into(),
+            url: url.clone(),
+            sha256: sha256_bytes(bytes),
+            size: bytes.len() as u64,
+            notes_url: String::new(),
+        };
+        (m, Canned(vec![(url, bytes.to_vec())]))
+    }
+
+    /// RL9 done_when (launcher): staging downloads, digest-checks and health-gates -- and replaces
+    /// NOTHING; the commit swaps it in and starts it with the restart args (Restart now) or starts
+    /// nothing (Later); a failing gate or a wrong digest removes/never writes the candidate.
+    #[test]
+    fn a_launcher_is_staged_without_replacing_anything_and_committed_on_request() {
+        let root = scratch("mh_launcher_test_stage_launcher");
+        let layout = Layout::rooted(root.join("state"));
+        let (m, fetch) = launcher_entry("0.2.0", b"a launcher executable");
+        let passed = std::sync::Mutex::new(Vec::<String>::new());
+        let gate = |p: &Path, v: &str| -> Result<String, String> {
+            passed.lock().unwrap().push(format!("{}:{v}", p.display()));
+            Ok(format!("mh_launcher {v} ok"))
+        };
+
+        // not newer: nothing staged
+        assert!(matches!(
+            stage_self_update_with(&layout, &fetch, &m, "0.2.0", TEST_BASE, &gate).unwrap(),
+            SelfStage::NotNeeded(_)
+        ));
+        assert!(passed.lock().unwrap().is_empty());
+
+        let SelfStage::Staged(staged) =
+            stage_self_update_with(&layout, &fetch, &m, "0.1.0", TEST_BASE, &gate).unwrap()
+        else {
+            panic!("a newer launcher must stage");
+        };
+        assert_eq!(staged.version, "0.2.0");
+        assert_eq!(
+            std::fs::read(&staged.candidate).unwrap(),
+            b"a launcher executable"
+        );
+        assert_eq!(passed.lock().unwrap().len(), 1, "the health gate ran");
+
+        // Restart now: replace + spawn with the args
+        let replaced = std::sync::Mutex::new(Vec::<PathBuf>::new());
+        let spawned = std::sync::Mutex::new(Vec::<(PathBuf, Vec<String>)>::new());
+        let args = vec!["--view".to_string(), "play".to_string()];
+        let running = PathBuf::from(r"C:\fake\mh_launcher.exe");
+        let done = commit_self_update_with(
+            &staged,
+            Some(&args),
+            &running,
+            &|c| {
+                replaced.lock().unwrap().push(c.to_path_buf());
+                Ok(())
+            },
+            &|exe, a| {
+                spawned
+                    .lock()
+                    .unwrap()
+                    .push((exe.to_path_buf(), a.to_vec()));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(done, SelfUpdate::Restarted("0.2.0".into()));
+        assert_eq!(
+            replaced.lock().unwrap().as_slice(),
+            std::slice::from_ref(&staged.candidate)
+        );
+        assert_eq!(
+            spawned.lock().unwrap().as_slice(),
+            &[(running.clone(), args)]
+        );
+        assert!(!staged.candidate.exists(), "the candidate is consumed");
+
+        // Later: stage again, commit with no restart -> replaced, nothing spawned
+        let SelfStage::Staged(again) =
+            stage_self_update_with(&layout, &fetch, &m, "0.1.0", TEST_BASE, &gate).unwrap()
+        else {
+            panic!()
+        };
+        let later = commit_self_update_with(&again, None, &running, &|_| Ok(()), &|_, _| {
+            panic!("Later must not start a process")
+        })
+        .unwrap();
+        assert_eq!(later, SelfUpdate::Replaced("0.2.0".into()));
+        // a commit whose candidate vanished replaces nothing
+        assert!(commit_self_update_with(
+            &again,
+            None,
+            &running,
+            &|_| panic!("replaced"),
+            &|_, _| Ok(())
+        )
+        .is_err());
+
+        // a failing gate: error, candidate removed, nothing to commit
+        let bad_gate =
+            |_: &Path, _: &str| -> Result<String, String> { Err(format!("{R_HEALTH}: no")) };
+        let e =
+            stage_self_update_with(&layout, &fetch, &m, "0.1.0", TEST_BASE, &bad_gate).unwrap_err();
+        assert!(e.starts_with(R_HEALTH), "{e}");
+        assert!(!layout
+            .root
+            .join("update")
+            .join("mh_launcher-0.2.0.exe")
+            .exists());
+        // a wrong digest is refused before anything is written
+        let mut tampered = m.clone();
+        tampered.sha256 = sha256_bytes(b"something else");
+        let e = stage_self_update_with(&layout, &fetch, &tampered, "0.1.0", TEST_BASE, &gate)
+            .unwrap_err();
+        assert!(e.starts_with(R_DIGEST), "{e}");
+        assert!(!layout
+            .root
+            .join("update")
+            .join("mh_launcher-0.2.0.exe")
+            .exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_auto_schedule_is_30_minutes_and_10_seconds_while_waiting() {
+        let mut a = AutoState {
+            enabled: true,
+            ..Default::default()
+        };
+        let t0 = Instant::now();
+        assert!(a.due(t0), "the first tick after start is due at once");
+        a.schedule(t0, false);
+        assert!(!a.due(t0 + Duration::from_secs(29 * 60)));
+        assert!(a.due(t0 + Duration::from_secs(30 * 60)));
+        a.schedule(t0, true);
+        assert!(!a.due(t0 + Duration::from_secs(9)));
+        assert!(a.due(t0 + Duration::from_secs(10)));
+        a.enabled = false;
+        assert!(
+            !a.due(t0 + Duration::from_secs(3600)),
+            "scripted runs never tick"
+        );
+        // the modal is shown until answered
+        a.pending_restart = Some(StagedLauncher {
+            version: "0.2.0".into(),
+            candidate: PathBuf::from("x"),
+        });
+        assert_eq!(a.restart_prompt(), Some("0.2.0"));
+        a.restart_dismissed = true;
+        assert_eq!(a.restart_prompt(), None);
+        assert!(
+            a.pending_restart.is_some(),
+            "Later keeps it staged for the window close"
+        );
+    }
+
+    /// Diagnostics: re-verify says all-match, then restores a damaged and a deleted file from the
+    /// kept copy; with the kept copy gone it says so instead of guessing.
+    #[test]
+    fn reverify_restores_damaged_files_from_the_kept_copy() {
+        let (root, layout, game, _server, _key) = installed_at_029("mh_launcher_test_reverify");
+        let ok = reverify(&layout, &game, &no_progress).unwrap();
+        assert!(ok.starts_with("all ") && ok.contains("0.2.9"), "{ok}");
+
+        let good = read(game.join("mh.dll"));
+        std::fs::write(game.join("mh.dll"), b"corrupted").unwrap();
+        let names = install::read_manifest(&game).unwrap().files;
+        let other = names
+            .iter()
+            .map(|(_, _, f)| f.clone())
+            .find(|f| f != "mh.dll" && game.join(f).is_file())
+            .unwrap();
+        let other_good = read(game.join(&other));
+        std::fs::remove_file(game.join(&other)).unwrap();
+        let fixed = reverify(&layout, &game, &no_progress).unwrap();
+        assert!(fixed.contains("reinstalled 0.2.9"), "{fixed}");
+        assert_eq!(read(game.join("mh.dll")), good);
+        assert_eq!(read(game.join(&other)), other_good);
+        assert!(reverify(&layout, &game, &no_progress)
+            .unwrap()
+            .starts_with("all "));
+
+        // the kept copy is gone: an honest error, nothing changed
+        std::fs::write(game.join("mh.dll"), b"corrupted again").unwrap();
+        std::fs::remove_dir_all(layout.version_dir("0.2.9")).unwrap();
+        let e = reverify(&layout, &game, &no_progress).unwrap_err();
+        assert!(e.contains("kept copy of 0.2.9 is gone"), "{e}");
+        assert_eq!(read(game.join("mh.dll")), "corrupted again");
+        // a folder this launcher never installed into
+        let bare = root.join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        assert!(reverify(&layout, &bare, &no_progress).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Diagnostics: roll back switches to the kept older version via the last-two-versions mechanism;
+    /// with nothing older kept it refuses.
+    #[test]
+    fn rollback_switches_to_the_kept_previous_version() {
+        let (root, layout, game, server, key) = installed_at_029("mh_launcher_test_rollback");
+        // nothing older than 0.2.9
+        let e = rollback(&layout, &game, &no_progress).unwrap_err();
+        assert!(e.contains("no version older than 0.2.9"), "{e}");
+        assert_eq!(rollback_target(&layout, "0.2.9"), None);
+
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &env(&key, "latest", ""), "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert_eq!(run.applied.unwrap().version, "0.3.0");
+        assert_eq!(rollback_target(&layout, "0.3.0").as_deref(), Some("0.2.9"));
+        let done = rollback(&layout, &game, &no_progress).unwrap();
+        assert_eq!(
+            (done.from.as_str(), done.to.as_str(), done.tag.as_str()),
+            ("0.3.0", "0.2.9", "net")
+        );
+        let r = install::read_manifest(&game).unwrap();
+        assert_eq!(r.version, "0.2.9");
+        assert_eq!(receipt_mismatches(&game, &r).1, Vec::<String>::new());
+        // and the pin keeps the silent update from undoing it
+        let run = auto_update(
+            &server,
+            &ctx(&layout, &game, &env(&key, "latest", ""), &done.from, false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none(), "{run:?}");
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- RL9 end-to-end over REAL HTTP (the rehearsal stand-in, in-process) -------------------------
+
+    /// A tiny HTTP/1.1 server on 127.0.0.1:8099 (the origin the signed fixtures name) serving
+    /// `server()`'s table; `fail_zips` makes every `.zip` answer 500 -- "the CDN is down".
+    struct StandIn {
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        fail_zips: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl StandIn {
+        /// `None` when port 8099 is taken (another lane's rehearsal): the caller skips, loudly.
+        fn start() -> Option<StandIn> {
+            use std::io::{Read, Write};
+            use std::sync::atomic::{AtomicBool, Ordering};
+            use std::sync::Arc;
+            let listener = std::net::TcpListener::bind("127.0.0.1:8099").ok()?;
+            listener.set_nonblocking(true).unwrap();
+            let table: Vec<(String, Vec<u8>)> = server()
+                .0
+                .into_iter()
+                .map(|(u, b)| {
+                    (
+                        u.strip_prefix("http://127.0.0.1:8099").unwrap().to_string(),
+                        b,
+                    )
+                })
+                .collect();
+            let stop = Arc::new(AtomicBool::new(false));
+            let fail_zips = Arc::new(AtomicBool::new(false));
+            let (stop2, fail2) = (stop.clone(), fail_zips.clone());
+            let thread = std::thread::spawn(move || {
+                while !stop2.load(Ordering::SeqCst) {
+                    let Ok((mut sock, _)) = listener.accept() else {
+                        std::thread::sleep(Duration::from_millis(5));
+                        continue;
+                    };
+                    sock.set_nonblocking(false).unwrap();
+                    let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+                    let mut buf = [0u8; 4096];
+                    let n = sock.read(&mut buf).unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let path = req.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let reply = if path.ends_with(".zip") && fail2.load(Ordering::SeqCst) {
+                        b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
+                    } else if let Some((_, body)) = table.iter().find(|(p, _)| *p == path) {
+                        let mut r = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        )
+                        .into_bytes();
+                        r.extend_from_slice(body);
+                        r
+                    } else {
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec()
+                    };
+                    let _ = sock.write_all(&reply);
+                }
+            });
+            Some(StandIn {
+                stop,
+                fail_zips,
+                thread: Some(thread),
+            })
+        }
+    }
+
+    impl Drop for StandIn {
+        fn drop(&mut self) {
+            self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    /// The RL9 scenarios over real sockets and the real `Http` fetcher: the game is running (held
+    /// back, no zip is even requested), a 500 on the zip (old version kept, Play ready), the CDN
+    /// comes back and the same look applies the update with no click.
+    #[test]
+    fn the_silent_update_over_real_http_defers_survives_a_500_and_then_applies() {
+        use std::sync::atomic::Ordering;
+        let Some(stand_in) = StandIn::start() else {
+            eprintln!("SKIPPED: 127.0.0.1:8099 is in use (another rehearsal is running)");
+            return;
+        };
+        let root = scratch("mh_launcher_test_auto_http");
+        let layout = Layout::rooted(root.join("state"));
+        let game = play_game_dir(&root);
+        let key = test_key();
+        let http = Http::new();
+        // 0.2.9 first (stable), then follow latest
+        make_ready(
+            &layout,
+            &http,
+            TEST_BASE,
+            &game,
+            "net",
+            &env(&key, "stable", ""),
+            &no_progress,
+        )
+        .unwrap()
+        .unwrap();
+        let e = env(&key, "latest", "");
+
+        // 1. the game is running: held back
+        let run = auto_update(
+            &http,
+            &ctx(&layout, &game, &e, "", false),
+            &|| true,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none() && run.deferred.is_some(), "{run:?}");
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+
+        // 2. the CDN answers 500 for the zip: the old version stays, Play is ready
+        stand_in.fail_zips.store(true, Ordering::SeqCst);
+        let run = auto_update(
+            &http,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert!(run.applied.is_none());
+        assert!(run.errors[0].contains("500"), "{:?}", run.errors);
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.2.9");
+        assert_eq!(readiness(&game, "net"), Readiness::Ready);
+
+        // 3. the CDN is back; the next look applies it
+        stand_in.fail_zips.store(false, Ordering::SeqCst);
+        let run = auto_update(
+            &http,
+            &ctx(&layout, &game, &e, "", false),
+            &|| false,
+            &no_progress,
+        )
+        .unwrap();
+        assert_eq!(run.applied.expect("applied").version, "0.3.0");
+        assert_eq!(install::read_manifest(&game).unwrap().version, "0.3.0");
+        drop(stand_in);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

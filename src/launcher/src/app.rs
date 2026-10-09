@@ -1,18 +1,20 @@
-//! The window: three views in one, switched by a tab strip.
+//! The window: a menu column on the left, a framed page on the right (dist RL12/RL14).
 //!
-//! STATUS / LAUNCH / REPORT is the shape dist LA1 was scoped to, and the split is by what the
-//! player is DOING, not by what the code does: pointing the launcher at a game and getting the
-//! files there (status), playing (launch), and telling us it went wrong (report). LA2 fills the
-//! update half of the status view and LA4 fills the report view; both were given their own tab now
-//! so that arriving does not reshuffle a layout players have learned.
+//! This file is the CONTROL half: the `App` state, the child process and its crash channel, the
+//! update/report/upload jobs and their polls, launch and install. Everything that DRAWS lives in
+//! `app/`: `app/shell.rs` (menu column, Start button, frame, footer, modals) and
+//! `app/pages/{play,settings,report,about,diagnostics}.rs`, one function per page that takes
+//! `&mut App` -- so a page can reach the state it shows (child modules see this file's private
+//! fields) without this file knowing what a page looks like.
 //!
-//! **dist LA6 made the launch view the FRONT PAGE** -- the first tab, the one the window opens on,
-//! titled *Play* -- with one button, **Play**. It writes the relay the signed manifest names into
-//! the game's `mh_net.ini` + `mh_key.txt` (`relay.rs`) and starts the game. Hosting or joining is
-//! decided in the game's own menu afterwards (create a game, or browse the relay's list --
-//! mp:R2/R7). It was two buttons, Host and Join, until 2026-09-20: they ran identical code and
-//! differed only in the log line, so the user ruled them one. Status (install, update) and Report
-//! keep their tabs.
+//! Pages (dist RL14; the old Status/Launch/Report tabs, LA1/LA6, were folded in):
+//! **Play** (the front page: what is installed, the update, the game folder), **Settings** (the
+//! declarative engine in `settings/`), **Report a problem** (a match list, a description, a consent
+//! screen -- nothing is sent without it), **About** (licences, folders) and **Diagnostics** (log
+//! level, Compatibility, build info). The one **Start game** button lives in the shell, not on a
+//! page: it writes the relay the signed manifest names into the game's `mh_net.ini` + `mh_key.txt`
+//! (`relay.rs`) and starts the game. Hosting or joining is decided in the game's own menu
+//! afterwards (create a game, or browse the relay's list -- mp:R2/R7).
 //!
 //! Everything here is immediate-mode: there is no retained widget tree, so a view is a function of
 //! `self` and the frame draws whatever the state currently says. The only thing that has to be
@@ -20,49 +22,110 @@
 //! frame rather than waited on -- blocking the UI thread on `wait()` would freeze the window for
 //! the length of the game session and make the launcher look like the thing that hung.
 
+mod pages;
+mod shell;
+
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::cfgdir;
 use crate::config::Config;
 use crate::crash::{self, Marker};
 use crate::discord;
 use crate::elevate;
+use crate::i18n::{self, tr, trf, Locale};
 use crate::install;
 use crate::launch::{self, Finished};
 use crate::log;
+use crate::migrate; // RL4
 use crate::paths::{self, Layout};
+use crate::procs; // RL9
 use crate::relay::{self, Relay};
 use crate::report;
+use crate::settings::ini_io;
+use crate::settings::model::Model;
+use crate::settings::providers;
+use crate::settings::render::RenderState;
+use crate::settings::schema::{Provider, Schema};
+use crate::settings::store::ConfigStore;
 use crate::update::{self, Applied, Offer, Readiness, Releases, SelfUpdate};
 use crate::upload::{self, Outbox, Prepared};
 
+/// The pages (dist RL14). One menu entry each; the window opens on `Play`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum View {
-    Status,
-    Launch,
+pub enum Page {
+    Play,
+    Settings,
     Report,
+    About,
+    Diagnostics,
 }
 
-impl View {
-    /// Tab order. Play first: it is the front page (dist LA6).
-    pub const ALL: [View; 3] = [View::Launch, View::Status, View::Report];
+/// What `main.rs` and the restart strip call a page. (It was `View` -- Status / Launch / Report --
+/// until RL14; the scripted `--view` names and the old variant spelling still work.)
+pub type View = Page;
 
+impl Page {
+    /// Menu order. Play first: it is the front page (dist LA6).
+    pub const ALL: [Page; 5] = [
+        Page::Play,
+        Page::Settings,
+        Page::Report,
+        Page::About,
+        Page::Diagnostics,
+    ];
+
+    /// The old name of `Play` (dist LA6 called the front page the "launch" view); `main.rs` still
+    /// spells it this way.
+    #[allow(non_upper_case_globals)]
+    pub const Launch: Page = Page::Play;
+
+    /// The English name, which is also the `--view` spelling (`restart_argv` lowercases it). The
+    /// window shows `tr("menu.<x>")`, never this.
     pub fn title(self) -> &'static str {
         match self {
-            View::Status => "Status",
-            View::Launch => "Play",
-            View::Report => "Report",
+            Page::Play => "Play",
+            Page::Settings => "Settings",
+            Page::Report => "Report",
+            Page::About => "About",
+            Page::Diagnostics => "Diagnostics",
         }
     }
 
-    pub fn parse(s: &str) -> Option<View> {
-        match s.to_ascii_lowercase().as_str() {
-            "status" | "update" => Some(View::Status),
-            "launch" | "play" => Some(View::Launch),
-            "report" => Some(View::Report),
+    /// `--view <name>`. `status`, `update`, `launch` and `home` are the pre-RL14 names; the Status
+    /// tab's contents now live on Play (and its maintenance bits on Diagnostics).
+    pub fn parse(s: &str) -> Option<Page> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "play" | "launch" | "status" | "update" | "home" => Some(Page::Play),
+            "settings" | "options" => Some(Page::Settings),
+            "report" | "reports" => Some(Page::Report),
+            "about" => Some(Page::About),
+            "diagnostics" | "diag" => Some(Page::Diagnostics),
             _ => None,
+        }
+    }
+
+    /// The i18n key of the menu entry.
+    pub fn menu_key(self) -> &'static str {
+        match self {
+            Page::Play => "menu.play",
+            Page::Settings => "menu.settings",
+            Page::Report => "menu.report",
+            Page::About => "menu.about",
+            Page::Diagnostics => "menu.diagnostics",
+        }
+    }
+
+    /// The i18n key of the title in the frame's hazard bar.
+    pub fn title_key(self) -> &'static str {
+        match self {
+            Page::Play => "page.play.title",
+            Page::Settings => "page.settings.title",
+            Page::Report => "page.report.title",
+            Page::About => "page.about.title",
+            Page::Diagnostics => "page.diagnostics.title",
         }
     }
 }
@@ -88,9 +151,25 @@ pub enum UpdateAction {
     /// dist LA8: Play on a directory that does not hold the chosen configuration --
     /// install it (uninstalling another one first), provision the relay, then launch.
     MakeReady,
+    /// dist RL9: the SILENT update (`App::tick_auto_update`): stage a newer launcher, install a
+    /// newer game over the installed one, never while `mh.exe` runs from this folder.
+    AutoUpdate,
 }
 
 impl UpdateAction {
+    /// The player's-language form of `describe` (the Play page's progress line).
+    fn describe_t(self) -> &'static str {
+        tr(match self {
+            UpdateAction::Check | UpdateAction::AutoCheck => "action.check",
+            UpdateAction::Apply => "action.apply",
+            UpdateAction::SelfUpdate => "action.self_update",
+            UpdateAction::Update => "action.update",
+            UpdateAction::MakeReady => "action.make_ready",
+            UpdateAction::AutoUpdate => "action.auto_update",
+        })
+    }
+
+    /// English, for the log (a support reader must be able to grep it, whatever the UI language).
     fn describe(self) -> &'static str {
         match self {
             UpdateAction::Check => "checking for an update",
@@ -99,6 +178,7 @@ impl UpdateAction {
             UpdateAction::SelfUpdate => "updating the launcher",
             UpdateAction::Update => "updating the launcher, then the game",
             UpdateAction::MakeReady => "getting the game ready to play",
+            UpdateAction::AutoUpdate => "updating silently",
         }
     }
 }
@@ -116,6 +196,9 @@ enum Outcome {
     Offered(Offer),
     /// dist LA12: `Update`/`Apply` found the launcher AND the game current; nothing was touched.
     UpToDate,
+    /// dist RL9: what one silent run found and did (a staged launcher, an installed game, a
+    /// deferral, non-fatal errors).
+    Auto(Box<update::AutoRun>),
 }
 
 /// One update run, on its own thread.
@@ -134,31 +217,6 @@ struct Job {
     /// Started from the Play page (the Play button, or the Update button beside the offer), so
     /// its progress and its verdict belong there.
     from_play: bool,
-}
-
-/// The three configurations the picker offers (dist LA8) -- the manifest's own tags, with one
-/// line each on what they are for, in `docs/release.md`'s words. `net` first: it is preselected.
-const CONFIGURATIONS: [(&str, &str); 3] = [
-    (
-        "net",
-        "the game as shipped, plus the restored multiplayer -- what most players want",
-    ),
-    (
-        "net-debug",
-        "the same, with mh_harness.dll and the diagnostic logging keys switched on in mh_net.ini",
-    ),
-    (
-        "brokered-debug",
-        "the hosted / brokered build (libmh.dll) -- for testing the reimplementation, not for play",
-    ),
-];
-
-fn configuration_line(tag: &str) -> &'static str {
-    CONFIGURATIONS
-        .iter()
-        .find(|(t, _)| *t == tag)
-        .map(|(_, line)| *line)
-        .unwrap_or("not one of this launcher's configurations")
 }
 
 /// Startup actions, from the command line. See `main.rs` for why they exist.
@@ -194,6 +252,8 @@ pub struct App {
     layout: Layout,
     config: Config,
     view: View,
+    /// The theme (and the locale) are installed on the first frame, once.
+    theme_done: bool,
     /// Free-text edit buffer for the game directory, so typing a path is possible without a dialog.
     game_dir_edit: String,
     zip_edit: String,
@@ -204,6 +264,9 @@ pub struct App {
     /// dist RL20: the Discord presence worker, alive exactly as long as `session`.
     presence: Option<discord::Handle>,
     last_run: Option<Finished>,
+    /// dist RL9 / RL4: the silent auto-update's schedule, the staged launcher awaiting its restart
+    /// (`auto.pending_restart`), and the migration's once-per-run latch. One field on purpose.
+    auto: update::AutoState,
     description: String,
     startup: Startup,
     startup_done: bool,
@@ -216,11 +279,6 @@ pub struct App {
     update_base_edit: String,
 
     // ---- dist LA8 -------------------------------------------------------------------------
-    /// The configuration the picker shows: `config.update_tag()` at start, then whatever the
-    /// player clicks (written to `config.chosen_tag` at once).
-    tag_pick: String,
-    /// The picker is open. Forced open while nothing is installed; a button opens it otherwise.
-    picker_open: bool,
     /// Play was pressed on a directory that first needed an install: the launch that is
     /// waiting for the `MakeReady` job, holding the text the log will say the player pressed.
     pending_launch: Option<String>,
@@ -282,8 +340,10 @@ pub struct App {
     /// means "use the newest", `report::default_session_dir`'s existing meaning -- a player who
     /// never opens the picker gets exactly that.
     session_pick: Option<String>,
-    /// The session picker is open (mirrors `picker_open`, the configuration picker's own flag).
-    session_picker_open: bool,
+    /// dist RL14: the match list the Report page shows, newest first, and when it was read. Re-read
+    /// every couple of seconds while that page is up, and whenever a game exits or a report lands.
+    matches: Vec<report::MatchRow>,
+    matches_at: Option<std::time::Instant>,
 
     // ---- dist LA17 ------------------------------------------------------------------------
     /// The report build in flight, on its own thread (a state recording is 100-250 MB to deflate;
@@ -291,6 +351,35 @@ pub struct App {
     report_job: Option<report::Job>,
     /// `--report <zip> --exit-after-report`: close once the build that was started for it finishes.
     exit_after_report_job: bool,
+
+    // ---- dist RL14 ------------------------------------------------------------------------
+    /// The settings engine's model over the game's `mh_net.ini` + `launcher.toml`, and the per-page
+    /// state of its renderer. `model_for` is the game directory it was loaded for (`None` = reload).
+    model: Model,
+    settings_state: RenderState,
+    model_for: Option<PathBuf>,
+    /// What the last Apply said (`true` = it failed).
+    settings_note: Option<(String, bool)>,
+    /// Start was pressed with unsaved settings: the Apply / Discard / Cancel prompt is up.
+    start_prompt: bool,
+    /// About: the licence document being read, if one is open.
+    about_doc: Option<pages::about::Doc>,
+    /// The crash marker file of this session's crash (`marker` is its parsed text): kept so Dismiss
+    /// and a sent report can put the `.reported` flag beside it (the RL5 prune contract).
+    marker_path: Option<PathBuf>,
+    /// From the last accepted game manifest (`refresh_relay`): what the Play page and Diagnostics
+    /// say about it.
+    accepted: Accepted,
+    /// Cached Diagnostics facts that cost a read: the receipt is cheap, these are not.
+    last_copied: Option<std::time::Instant>,
+}
+
+/// What the Play and Diagnostics pages show of the last accepted game manifest.
+#[derive(Clone, Debug, Default)]
+pub struct Accepted {
+    pub version: String,
+    pub issued_at: String,
+    pub notes_url: String,
 }
 
 /// One upload, on its own thread.
@@ -300,25 +389,325 @@ struct UploadJob {
     done: bool,
 }
 
+// ================================================================================================
+// dist RL9 (silent auto-update, restart modal, Diagnostics back-ends) and RL4 (migration).
+// Kept in one block of its own so the view rewrite (RL14) and this lane touch different hunks.
+// ================================================================================================
+impl App {
+    /// RL9: called every frame from `ui()`. Starts the silent update when one is due: on start,
+    /// every 30 minutes, and every 10 seconds while a game running from this folder is holding one
+    /// back -- and only with no job, no session of ours, and no `mh.exe` running from the folder.
+    fn tick_auto_update(&mut self, ctx: &egui::Context) {
+        if !self.auto.enabled {
+            return;
+        }
+        // An idle immediate-mode window does not repaint by itself, and the 10 s cadence needs
+        // frames to run on.
+        ctx.request_repaint_after(Duration::from_secs(5));
+        let now = std::time::Instant::now();
+        if !self.auto.due(now) {
+            return;
+        }
+        if self.job.is_some() || self.session.is_some() || self.pending_launch.is_some() {
+            return; // due stays due; the next frame asks again
+        }
+        let Some(dir) = self.game_dir().filter(|d| paths::is_game_dir(d)) else {
+            self.auto.schedule(now, false);
+            return;
+        };
+        if procs::game_running_here(&dir) {
+            if !self.auto.waiting_logged {
+                self.auto.waiting_logged = true;
+                log::line(
+                    "update: mh.exe is running from this folder -- the silent update waits, \
+                     looking again every 10 s",
+                );
+            }
+            self.auto.schedule(now, true);
+            return;
+        }
+        self.auto.waiting_logged = false;
+        // Tentative; `poll_job` reschedules with what the run found.
+        self.auto.schedule(now, false);
+        self.start_update(UpdateAction::AutoUpdate);
+    }
+
+    /// RL9: a game update the last check offered that Play should install first: something is
+    /// installed in this configuration, the offer is a version, and it is not at or below the
+    /// version the player rolled back from.
+    fn pending_game_offer(&self, dir: &Path) -> Option<String> {
+        let offered = self.offer.as_ref()?.game.clone()?;
+        if update::installed_version_of(dir, &self.config.update_tag()).is_empty() {
+            return None;
+        }
+        let skip = self.config.rollback_skip.trim();
+        if !skip.is_empty() && update::check_newer(&offered, skip).is_err() {
+            return None;
+        }
+        Some(offered)
+    }
+
+    /// RL9: Play with a game update pending starts it as an `Apply` job and resumes the launch from
+    /// `poll_job`. True = the launch is parked behind that job.
+    fn start_play_update(&mut self, dir: &Path, how: &str) -> bool {
+        let Some(version) = self.pending_game_offer(dir) else {
+            return false;
+        };
+        if self.job.is_some() || procs::game_running_here(dir) {
+            return false;
+        }
+        log::line(format!(
+            "launch: {how} -- {version} is available; installing it first"
+        ));
+        self.pending_launch = Some(how.to_string());
+        self.auto.play_update = true;
+        self.start_update(UpdateAction::Apply);
+        true
+    }
+
+    /// The game update landed (an `Apply`, a switch, or a silent run): record it, and put the new
+    /// layout in order (RL4) before anything is launched.
+    fn on_applied(&mut self, a: &Applied) {
+        self.config.installed_version = a.version.clone();
+        self.config.installed_tag = a.tag.clone();
+        // dist RL8: the install ends a channel switch -- the game on disk now came from
+        // the channel it was fetched from.
+        self.config.installed_channel = a.channel.clone();
+        // RL9: a version newer than the one rolled back from ends the pin.
+        let skip = self.config.rollback_skip.trim().to_string();
+        if !skip.is_empty() && update::check_newer(&a.version, &skip).is_ok() {
+            self.config.rollback_skip.clear();
+        }
+        self.persist();
+        if let Some(o) = self.offer.as_mut() {
+            o.game = None;
+        }
+        self.update_say(
+            format!(
+                "{} -- versions kept: {} (the previous one stays until {} has started once)",
+                a.summary,
+                a.kept.join(", "),
+                a.version
+            ),
+            false,
+        );
+        self.sync_installed_from_receipt();
+        self.migrate_legacy(); // RL4
+        self.provision_relay_quietly(); // RL4
+    }
+
+    /// RL4: move the legacy files out of the game folder, once. Never while the game runs from it,
+    /// elevating only when the folder needs it, and not again after a declined prompt this run.
+    fn migrate_legacy(&mut self) {
+        if self.auto.migrate_failed {
+            return;
+        }
+        let Some(dir) = self.game_dir().filter(|d| paths::is_game_dir(d)) else {
+            return;
+        };
+        let running = self.session.is_some() || procs::game_running_here(&dir);
+        match migrate::migrate_if_needed(&self.layout, &dir, running) {
+            Ok(Some(line)) => {
+                self.update_say(line, false);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                self.auto.migrate_failed = true;
+                self.update_say(format!("migration to user storage failed: {e}"), true);
+            }
+        }
+    }
+
+    /// RL4: write the relay plan into the config directory after an install, logging (not
+    /// raising) a failure -- Play provisions again before every launch and reports it there.
+    fn provision_relay_quietly(&mut self) {
+        let Some(dir) = self.game_dir().filter(|d| paths::is_game_dir(d)) else {
+            return;
+        };
+        let plan = self.relay_plan();
+        match relay::provision_for_game(&self.layout, &dir, &plan) {
+            Ok(done) if done != relay::Provisioned::NONE => {
+                log::line(format!("install: {}", done.summary()))
+            }
+            Ok(_) => {}
+            Err(e) => log::line(format!("install: relay not provisioned yet ({e})")),
+        }
+    }
+
+    // ---- the launcher restart modal (rendered by the shell at `// RL9: restart modal`) -----------
+
+    /// The version of a staged launcher awaiting "Restart now / Later", until it has been answered.
+    pub(crate) fn restart_prompt(&self) -> Option<&str> {
+        self.auto.restart_prompt()
+    }
+
+    fn current_view_arg(&self) -> String {
+        self.view.title().to_ascii_lowercase()
+    }
+
+    /// "Restart now": swap the staged launcher in and start it on the page the player is on. Refused
+    /// while a game this launcher started is running (the new process would not know the child, and
+    /// the crash channel would be lost). On success the window closes.
+    pub(crate) fn restart_now(&mut self, ctx: &egui::Context) {
+        let Some(staged) = self.auto.pending_restart.clone() else {
+            return;
+        };
+        if self.session.is_some() {
+            self.update_say("close the game first, then restart the launcher", true);
+            return;
+        }
+        let args = crate::restart_argv(
+            &self.startup.restart_args,
+            false,
+            Some(&self.current_view_arg()),
+        );
+        match update::commit_self_update(&staged, Some(&args)) {
+            Ok(_) => {
+                self.auto.pending_restart = None;
+                self.update_say(
+                    format!(
+                        "replaced by launcher {}; this window is closing",
+                        staged.version
+                    ),
+                    false,
+                );
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Err(e) => self.update_say(format!("restart failed (nothing was replaced): {e}"), true),
+        }
+    }
+
+    /// "Later": keep running this launcher; the staged one is swapped in when the window closes
+    /// (`Drop`), and the modal is not shown again this run.
+    pub(crate) fn restart_later(&mut self) {
+        self.auto.restart_dismissed = true;
+        if let Some(s) = self.auto.pending_restart.as_ref() {
+            log::line(format!(
+                "update: launcher {} will replace this one when the window closes",
+                s.version
+            ));
+        }
+    }
+
+    // ---- Diagnostics back-ends (the buttons are hidden until these exist) ------------------------
+
+    /// Why Re-verify / Roll back must not run right now, if they must not.
+    fn diagnostics_blocker(&self, dir: &Path) -> Option<&'static str> {
+        if self.job.is_some() {
+            Some("an update is running -- try again when it has finished")
+        } else if self.session.is_some() || procs::game_running_here(dir) {
+            Some("the game is running -- close it first")
+        } else {
+            None
+        }
+    }
+
+    /// Diagnostics "Re-verify": re-hash the installed files against the install record and put
+    /// back any that differ from the kept copy. Returns (and shows) the status line.
+    pub(crate) fn reverify(&mut self) -> String {
+        let Some(dir) = self.game_dir() else {
+            let m = "pick the game directory first".to_string();
+            self.say(m.clone(), true);
+            return m;
+        };
+        if let Some(why) = self.diagnostics_blocker(&dir) {
+            self.say(why, true);
+            return why.to_string();
+        }
+        match update::reverify(&self.layout, &dir, &|m: &str| {
+            log::line(format!("reverify: {m}"))
+        }) {
+            Ok(line) => {
+                self.sync_installed_from_receipt();
+                self.say(line.clone(), false);
+                line
+            }
+            Err(e) => {
+                self.say(e.clone(), true);
+                e
+            }
+        }
+    }
+
+    /// Diagnostics "Roll back": switch to the kept previous version. The version rolled back FROM
+    /// is remembered (`rollback_skip`) so the silent update does not undo it. Returns the status
+    /// line.
+    pub(crate) fn rollback(&mut self) -> String {
+        let Some(dir) = self.game_dir() else {
+            let m = "pick the game directory first".to_string();
+            self.say(m.clone(), true);
+            return m;
+        };
+        if let Some(why) = self.diagnostics_blocker(&dir) {
+            self.say(why, true);
+            return why.to_string();
+        }
+        match update::rollback(&self.layout, &dir, &|m: &str| {
+            log::line(format!("rollback: {m}"))
+        }) {
+            Ok(done) => {
+                self.config.installed_version = done.to.clone();
+                self.config.installed_tag = done.tag.clone();
+                self.config.rollback_skip = done.from.clone();
+                self.persist();
+                if let Some(o) = self.offer.as_mut() {
+                    o.game = None;
+                }
+                self.sync_installed_from_receipt();
+                log::line(format!("rollback: {}", done.summary));
+                let line = format!(
+                    "rolled back from {} to {} -- automatic updates leave {} alone until a newer \
+                     version is released",
+                    done.from, done.to, done.from
+                );
+                self.say(line.clone(), false);
+                line
+            }
+            Err(e) => {
+                self.say(e.clone(), true);
+                e
+            }
+        }
+    }
+}
+
+impl Drop for App {
+    /// RL9, "Later" and "just closed the window": a launcher that is staged and health-gated takes
+    /// this executable's place now, without starting anything -- the next start runs it.
+    fn drop(&mut self) {
+        if let Some(staged) = self.auto.pending_restart.take() {
+            match update::commit_self_update(&staged, None) {
+                Ok(_) => log::line(format!(
+                    "update: launcher {} is in place for the next start",
+                    staged.version
+                )),
+                Err(e) => log::line(format!(
+                    "update: the staged launcher was not swapped in: {e}"
+                )),
+            }
+        }
+    }
+}
+
 impl App {
     pub fn new(layout: Layout, config: Config, view: View, startup: Startup) -> Self {
         Self {
             game_dir_edit: config.game_dir.clone(),
             zip_edit: String::new(),
             update_base_edit: config.update_base_url_or_default(),
-            tag_pick: config.update_tag(),
-            picker_open: false,
             pending_launch: None,
             last_job_from_play: false,
             offer: None,
             layout,
             config,
             view,
+            theme_done: false,
             status_line: String::new(),
             status_is_error: false,
             session: None,
             presence: None,
             last_run: None,
+            auto: update::AutoState::default(),
             // `--description` seeds the box rather than bypassing it: the scripted path and the
             // typed path then meet at exactly the same value, which is what makes the "an empty
             // description is refused" clause provable from a command line.
@@ -343,15 +732,42 @@ impl App {
             upload_is_error: false,
             started_utc: stamp_for_file(),
             session_pick: None,
-            session_picker_open: false,
+            matches: Vec::new(),
+            matches_at: None,
             report_job: None,
             exit_after_report_job: false,
+            model: Model::new(Schema::builtin()),
+            settings_state: RenderState::default(),
+            model_for: None,
+            settings_note: None,
+            start_prompt: false,
+            about_doc: None,
+            marker_path: None,
+            accepted: Accepted::default(),
+            last_copied: None,
         }
         .with_startup_flags()
     }
 
     fn with_startup_flags(mut self) -> Self {
+        // dist RL16: the launcher speaks the language `ui_lang` names (the Language setting writes it
+        // together with the game's `[lang] pack`).
+        i18n::set_locale(Locale::from_code(&self.config.ui_lang_code()));
         self.include_dump = self.startup.with_minidump;
+        // RL9: the silent update belongs to an interactive start. Scripted work (--launch,
+        // --update, --check-update, --report, --exit-after-*) does its own fetching and must not
+        // find a background job it did not ask for; MH_LAUNCHER_NO_AUTO_UPDATE=1 is the harness's
+        // off switch, and no update source means nothing to look at.
+        self.auto.enabled = self.startup.update.is_none()
+            && !self.startup.launch
+            && !self.startup.uninstall
+            && self.startup.install_zip.is_none()
+            && self.startup.report_to.is_none()
+            && !self.startup.exit_after_update
+            && !self.startup.exit_after_launch
+            && !self.startup.exit_after_report
+            && !self.config.update_base_url_or_default().is_empty()
+            && std::env::var_os("MH_LAUNCHER_NO_AUTO_UPDATE").is_none();
         // dist LA7: already logged by main.rs; here it only has to be SEEN.
         if let Some(notice) = self.startup.game_dir_notice.take() {
             self.status_line = notice;
@@ -375,19 +791,42 @@ impl App {
         Outbox::new(&self.layout.reports())
     }
 
+    /// THE relay decision, for provisioning and for display alike (dist RL4 + RL14): `relay_mode`
+    /// `auto` = the signed manifest's relay, `off` = none (the config-dir ini's `relay=` line is
+    /// removed), `custom` = `relay_custom` (`host:port`, an open relay -- the key line is `open`).
+    /// A custom address that does not validate is `Untouched` (and the Settings page refuses to
+    /// save one).
+    fn relay_plan(&self) -> relay::RelayPlan {
+        relay::plan_for(
+            &self.config.relay_mode,
+            &self.config.relay_custom,
+            self.relay.as_ref(),
+        )
+    }
+
+    /// The relay the plan makes the game use, for the Play page; `None` = direct play (or an
+    /// unusable custom address).
+    fn effective_relay(&self) -> Option<Relay> {
+        self.relay_plan().relay()
+    }
+
     /// Re-read the accepted manifest's relay (dist LA6). Once at startup and after every accepted
     /// check -- the two moments the copy on disk can have changed.
     fn refresh_relay(&mut self) {
         match update::load_accepted(&self.layout) {
             Some(m) => {
                 self.relay_from = m.version.clone();
+                self.accepted = Accepted {
+                    version: m.version.clone(),
+                    issued_at: m.issued_at.clone(),
+                    notes_url: m.notes_url.clone(),
+                };
                 // dist RL8: a pick the channel does not offer falls back to `net` (and says so
                 // in the log); written back so Play's readiness check and the picker agree with
                 // the install `make_ready` will do, instead of looping on a tag nobody can supply.
                 let chosen = self.config.chosen_tag.trim().to_string();
                 if !chosen.is_empty() && !m.game.contains_key(&chosen) {
                     if let Ok(t) = update::resolve_tag(&m, &chosen) {
-                        self.tag_pick = t.clone();
                         self.config.chosen_tag = t;
                         self.persist();
                     }
@@ -397,6 +836,7 @@ impl App {
             None => {
                 self.relay_from.clear();
                 self.relay = None;
+                self.accepted = Accepted::default();
             }
         }
         log::line(format!(
@@ -446,12 +886,34 @@ impl App {
         self.game_dir().map(|d| self.layout.game_log_root(&d))
     }
 
+    /// Every directory sessions can be in for this game: the launcher-owned root (`log_root`) and
+    /// the game's config-dir `logs\` -- where a hand launch writes and where the RL4 migration
+    /// moved the old ones. De-duplicated (the config dir can be the same folder).
+    pub(crate) fn log_roots(&self) -> Vec<PathBuf> {
+        let Some(dir) = self.game_dir() else {
+            return Vec::new();
+        };
+        let mut roots = vec![self.layout.game_log_root(&dir)];
+        let cfg_logs = crate::cfgdir::game_config_dir(&self.layout, &dir)
+            .0
+            .join("logs");
+        let same = |a: &Path, b: &Path| {
+            a.to_string_lossy()
+                .trim_end_matches(['\\', '/'])
+                .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
+        };
+        if !roots.iter().any(|r| same(r, &cfg_logs)) {
+            roots.push(cfg_logs);
+        }
+        roots
+    }
+
     /// dist LA9: which match the report is about -- "let the description form name the match the
     /// player means" (the row's scope). The player's pick from `session_picker_block`, if it still
     /// exists; otherwise the newest, `report::default_session_dir`'s existing default.
     fn chosen_session_dir(&self) -> Option<PathBuf> {
-        let log_root = self.log_root()?;
-        let dirs = report::session_dirs(&log_root);
+        let roots = self.log_roots();
+        let dirs = report::session_dirs_in(&roots);
         if let Some(name) = self.session_pick.as_deref() {
             if let Some(p) = dirs
                 .iter()
@@ -460,61 +922,39 @@ impl App {
                 return Some(p.clone());
             }
         }
-        dirs.into_iter()
-            .next()
-            .or_else(|| report::default_session_dir(Some(&log_root)))
+        dirs.into_iter().next().or_else(|| {
+            roots
+                .iter()
+                .find_map(|r| report::default_session_dir(Some(r)))
+        })
     }
 
-    /// dist LA9: "Match: <name> [Change...]", or the open picker -- one radio line per session
-    /// directory, newest first, mirroring `configuration_block`'s own open/closed shape. Hidden
-    /// when there is nothing to pick between (zero or one match on disk).
-    fn session_picker_block(&mut self, ui: &mut egui::Ui) {
-        let Some(log_root) = self.log_root() else {
-            return;
-        };
-        let dirs = report::session_dirs(&log_root);
-        if dirs.len() < 2 {
+    /// dist RL14: re-read the match list when it is stale (`max_age`), or at once when `force`.
+    /// Cheap (names and small JSON files), but not a per-frame cost.
+    fn refresh_matches(&mut self, force: bool) {
+        let fresh = self
+            .matches_at
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+        if fresh && !force {
             return;
         }
-        let chosen_name = self
-            .chosen_session_dir()
-            .as_deref()
-            .and_then(Path::file_name)
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if !self.session_picker_open {
-            ui.horizontal(|ui| {
-                ui.label("Match:");
-                ui.monospace(&chosen_name);
-                if ui.small_button("Change...").clicked() {
-                    self.session_picker_open = true;
-                }
-            });
-        } else {
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.label(egui::RichText::new("Which match is this report about?").strong());
-                for dir in &dirs {
-                    let name = dir
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
-                    if ui.radio(chosen_name == name, &name).clicked() {
-                        self.session_pick = Some(name);
-                        self.session_picker_open = false;
-                    }
-                }
-                if ui.small_button("Done").clicked() {
-                    self.session_picker_open = false;
-                }
-            });
-        }
+        self.matches_at = Some(std::time::Instant::now());
+        self.matches = report::match_rows(&self.log_roots(), self.session.is_some());
     }
 
     fn say(&mut self, msg: impl Into<String>, is_error: bool) {
         let msg = msg.into();
         log::line(format!("ui: {msg}"));
         self.status_line = msg;
+        self.status_is_error = is_error;
+    }
+
+    /// `say` for a message from the string table (dist RL16): the footer shows it in the player's
+    /// language, the LOG gets the English text -- a support reader greps the log, whatever the UI
+    /// speaks.
+    fn say_t(&mut self, key: &str, args: &[(&str, &str)], is_error: bool) {
+        log::line(format!("ui: {}", i18n::trf_in(Locale::En, key, args)));
+        self.status_line = trf(key, args);
         self.status_is_error = is_error;
     }
 
@@ -527,7 +967,7 @@ impl App {
 
     fn do_install(&mut self, zip: PathBuf) {
         let Some(dir) = self.game_dir() else {
-            self.say("pick the game directory first", true);
+            self.say_t("msg.pick_game_dir", &[], true);
             return;
         };
         // dist LA13: a game directory this token cannot write (Program Files) gets the copy step
@@ -544,20 +984,22 @@ impl App {
                 )
             })
         } else {
-            install::install(&self.layout, &zip, &dir, self.relay.as_ref()).map(|r| r.summary())
+            install::install(&self.layout, &zip, &dir).map(|r| r.summary())
         };
         match result {
             Ok(summary) => {
                 self.sync_installed_from_receipt();
+                self.migrate_legacy(); // RL4
+                self.provision_relay_quietly(); // RL4
                 self.say(summary, false);
             }
-            Err(e) => self.say(format!("install failed: {e}"), true),
+            Err(e) => self.say_t("msg.install_failed", &[("error", &e)], true),
         }
     }
 
     fn do_uninstall(&mut self) {
         let Some(dir) = self.game_dir() else {
-            self.say("pick the game directory first", true);
+            self.say_t("msg.pick_game_dir", &[], true);
             return;
         };
         let result = if elevate::needs_elevation(&dir) {
@@ -570,7 +1012,7 @@ impl App {
                 self.sync_installed_from_receipt();
                 self.say(summary, false);
             }
-            Err(e) => self.say(format!("uninstall failed: {e}"), true),
+            Err(e) => self.say_t("msg.uninstall_failed", &[("error", &e)], true),
         }
     }
 
@@ -579,11 +1021,11 @@ impl App {
     /// choice between hosting and joining is made in the game's own menu (dist LA6).
     fn do_launch(&mut self, how: &str) {
         if self.session.is_some() {
-            self.say("the game is already running", true);
+            self.say_t("msg.already_running", &[], true);
             return;
         }
         let Some(dir) = self.game_dir() else {
-            self.say("pick the game directory first", true);
+            self.say_t("msg.pick_game_dir", &[], true);
             return;
         };
         // dist LA8: the chosen configuration has to BE there. If it is not -- nothing installed,
@@ -605,7 +1047,7 @@ impl App {
                         self.pending_launch = Some(how.to_string());
                         return;
                     }
-                    self.say("an update is already running", true);
+                    self.say_t("msg.update_running", &[], true);
                     return;
                 }
                 log::line(format!(
@@ -616,12 +1058,35 @@ impl App {
                 return;
             }
         }
+        // RL9: a silent update is mid-flight (it may be copying files beside mh.exe): wait for it,
+        // then `poll_job` presses Play again. And a game update that is already known to be
+        // pending installs FIRST; if that fails the current version still launches.
+        if self
+            .job
+            .as_ref()
+            .is_some_and(|j| j.action == UpdateAction::AutoUpdate)
+        {
+            log::line(format!(
+                "launch: {how} -- waiting for the silent update to finish"
+            ));
+            self.pending_launch = Some(how.to_string());
+            return;
+        }
+        if self.start_play_update(&dir, how) {
+            return;
+        }
+        // RL4: a game new enough to read its files from user storage has its legacy files moved
+        // there (a no-op once done) before anything is provisioned or launched.
+        self.migrate_legacy();
         log::line(format!("launch: {how}"));
         // dist LA6: the relay lines go in BEFORE the process exists, every time -- an ini the player
         // (or an older install) changed since is put right again, and one that already says it is
         // not rewritten. A failure here is a refusal to launch, not a warning: a player who pressed
         // Play and got a game that quietly plays direct would blame the relay.
-        match relay::provision(&dir, self.relay.as_ref()) {
+        // dist RL4: into the CONFIG directory (never beside the exe), and the value comes from
+        // `relay_mode` -- auto = the manifest's relay, off = none, custom = `relay_custom`.
+        let plan = self.relay_plan();
+        match relay::provision_for_game(&self.layout, &dir, &plan) {
             Ok(done) if done != relay::Provisioned::NONE => {
                 log::line(format!("launch: {}", done.summary()))
             }
@@ -634,8 +1099,10 @@ impl App {
                 {
                     Ok(summary) => log::line(format!("launch: {summary}")),
                     Err(e) => {
-                        self.say(
-                            format!("cannot set the relay up in {}: {e}", dir.display()),
+                        let d = dir.display().to_string();
+                        self.say_t(
+                            "msg.relay_setup_failed",
+                            &[("dir", &d), ("error", &e)],
                             true,
                         );
                         return;
@@ -643,8 +1110,10 @@ impl App {
                 }
             }
             Err(e) => {
-                self.say(
-                    format!("cannot set the relay up in {}: {e}", dir.display()),
+                let d = dir.display().to_string();
+                self.say_t(
+                    "msg.relay_setup_failed",
+                    &[("dir", &d), ("error", &e)],
                     true,
                 );
                 return;
@@ -655,8 +1124,10 @@ impl App {
         // this (never-virtualized, 64-bit) process can read it.
         let log_root = self.layout.game_log_root(&dir);
         if let Err(e) = std::fs::create_dir_all(&log_root) {
-            self.say(
-                format!("cannot create the logs root {}: {e}", log_root.display()),
+            let d = log_root.display().to_string();
+            self.say_t(
+                "msg.logs_root_failed",
+                &[("dir", &d), ("error", &e.to_string())],
                 true,
             );
             return;
@@ -669,25 +1140,23 @@ impl App {
             None => Vec::new(),
         };
         self.marker = None;
+        self.marker_path = None;
         self.dump = None;
         match launch::start(&dir, Some(&log_root), &env) {
             Ok(s) => {
                 let pid = s.pid();
                 self.presence = discord::start(
-                    &self.config.discord_client_id,
+                    self.config.effective_discord_client_id(),
                     self.config.discord,
                     log_root.join(discord::PRESENCE_FILE),
                     pid,
                 );
                 self.session = Some(s);
                 self.last_run = None;
-                self.view = View::Launch;
-                self.say(
-                    format!("game started, pid {pid} -- waiting for it to exit"),
-                    false,
-                );
+                self.view = View::Play;
+                self.say_t("msg.game_started", &[("pid", &pid.to_string())], false);
             }
-            Err(e) => self.say(format!("launch failed: {e}"), true),
+            Err(e) => self.say_t("msg.launch_failed", &[("error", &e.to_string())], true),
         }
     }
 
@@ -735,6 +1204,7 @@ impl App {
         // to the player like the launcher hung the game -- which, at that point, it would have.
         channel.release();
         self.marker = Some(marker);
+        self.marker_path = Some(marker_path);
     }
 
     /// One poll of the running child. Returns true when the launcher should close itself.
@@ -771,14 +1241,16 @@ impl App {
                 let is_err = finished.outcome.is_crash();
                 self.note_first_run(&finished);
                 self.last_run = Some(finished);
+                self.refresh_matches(true);
                 self.say(text, is_err);
+                self.migrate_legacy(); // RL4: it waits while the game runs; now is the moment
                 self.startup.exit_after_launch
             }
             Err(e) => {
                 self.session = None;
                 self.presence = None;
                 self.channel = None;
-                self.say(format!("lost track of the game process: {e}"), true);
+                self.say_t("msg.lost_game", &[("error", &e.to_string())], true);
                 self.startup.exit_after_launch
             }
         }
@@ -788,7 +1260,7 @@ impl App {
     /// the build runs on a worker thread and `poll_report` takes its result.
     fn do_report(&mut self, dest: Option<PathBuf>) {
         if self.report_job.is_some() {
-            self.say("a report is already being built", true);
+            self.say_t("msg.report_running", &[], true);
             return;
         }
         // dist LA9: the match the description form names -- the player's pick, or the newest.
@@ -804,7 +1276,12 @@ impl App {
         };
         let input = report::OwnedInput {
             game_dir: self.game_dir(),
-            logs_root: self.log_root(),
+            // The report reads the folder the chosen match lives in (either root).
+            logs_root: session_dir
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+                .or_else(|| self.log_root()),
             session_dir,
             launcher_started_utc: Some(self.started_utc.clone()),
             description: self.description.clone(),
@@ -812,9 +1289,14 @@ impl App {
             crash: self.marker.clone(),
             minidump: dump,
             launcher_log: log::path(),
+            // RL4: the ini lives in the config directory now, not beside the exe.
+            ini_path: self
+                .game_dir()
+                .map(|d| crate::cfgdir::ini_path(&self.layout, &d).0),
         };
+        report::set_game_running(self.session.is_some());
         log::line(format!("ui: building the report {}", dest.display()));
-        self.say("building the report...", false);
+        self.say_t("msg.report_building", &[], false);
         self.report_job = Some(report::Job::start(dest, input));
     }
 
@@ -864,7 +1346,7 @@ impl App {
                     p.sha256
                 ));
                 self.consent = Some(p);
-                self.upload_say("read what this would send, below", false);
+                self.upload_say_t("msg.upload_read_below", &[], false);
             }
             Err(e) => self.upload_say(e, true),
         }
@@ -877,7 +1359,7 @@ impl App {
             return;
         };
         if self.upload_job.is_some() {
-            self.upload_say("a report is already being sent", true);
+            self.upload_say_t("msg.upload_running", &[], true);
             self.consent = Some(p);
             return;
         }
@@ -890,7 +1372,11 @@ impl App {
         };
         let outbox = self.outbox();
         let zip = p.zip.clone();
-        self.upload_say(format!("sending {}...", zip.display()), false);
+        self.upload_say_t(
+            "msg.upload_sending",
+            &[("file", &zip.display().to_string())],
+            false,
+        );
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(upload::send(&collector, &p, &outbox));
@@ -925,6 +1411,7 @@ impl App {
                 if let Err(e) = self.outbox().done(&zip) {
                     log::line(format!("upload: {e}"));
                 }
+                self.mark_sent_markers(&zip);
                 self.upload_say(a.summary(), false);
             }
             Err(e) => self.upload_say(e, true),
@@ -933,10 +1420,55 @@ impl App {
         self.outbox_pending = self.outbox().pending();
     }
 
+    /// dist RL14, the RL5 prune contract: the report `zip` was sent, so the crash markers it carried
+    /// get their empty `<marker>.reported` sibling (and the crash prompt on the Play page clears).
+    fn mark_sent_markers(&mut self, zip: &Path) {
+        let Some(b) = self.built.as_ref().filter(|b| b.zip == zip) else {
+            return;
+        };
+        for m in &b.markers {
+            match report::mark_reported(m) {
+                Ok(p) => log::line(format!("report: {} -- the crash was sent", p.display())),
+                Err(e) => log::line(format!("report: {e}")),
+            }
+        }
+        if let Some(mp) = self.marker_path.as_ref() {
+            if b.markers.iter().any(|m| m == mp) {
+                self.marker = None;
+                self.marker_path = None;
+            }
+        }
+        self.refresh_matches(true);
+    }
+
+    /// The player dismissed the crash prompt without sending anything: the same flag, so the folders
+    /// it was keeping can be pruned again.
+    fn dismiss_crash(&mut self) {
+        if let Some(mp) = self.marker_path.take() {
+            match report::mark_reported(&mp) {
+                Ok(p) => log::line(format!(
+                    "report: {} -- the crash was dismissed",
+                    p.display()
+                )),
+                Err(e) => log::line(format!("report: {e}")),
+            }
+        }
+        self.marker = None;
+        self.dump = None;
+        self.refresh_matches(true);
+    }
+
     fn upload_say(&mut self, msg: impl Into<String>, is_error: bool) {
         let msg = msg.into();
         log::line(format!("ui: {msg}"));
         self.upload_line = msg;
+        self.upload_is_error = is_error;
+    }
+
+    /// `upload_say` from the string table (see `say_t`).
+    fn upload_say_t(&mut self, key: &str, args: &[(&str, &str)], is_error: bool) {
+        log::line(format!("ui: {}", i18n::trf_in(Locale::En, key, args)));
+        self.upload_line = trf(key, args);
         self.upload_is_error = is_error;
     }
 
@@ -978,7 +1510,7 @@ impl App {
     /// whose `--view` -- if any -- is already in the restart strip.
     fn start_update_from(&mut self, action: UpdateAction, pressed_on: Option<View>) {
         if self.job.is_some() {
-            self.update_say("an update is already running", true);
+            self.update_say_t("msg.update_running", &[], true);
             return;
         }
         let base = self.config.update_base_url_or_default();
@@ -998,10 +1530,16 @@ impl App {
         );
         let needs_dir = matches!(
             action,
-            UpdateAction::Apply | UpdateAction::MakeReady | UpdateAction::Update
+            UpdateAction::Apply
+                | UpdateAction::MakeReady
+                | UpdateAction::Update
+                | UpdateAction::AutoUpdate
         );
+        // RL9: what the silent run needs to know that the others do not.
+        let skip_version = self.config.rollback_skip.clone();
+        let launcher_pending = self.auto.pending_restart.is_some();
         if needs_dir && game_dir.is_none() {
-            self.update_say("pick the game directory first", true);
+            self.update_say_t("msg.pick_game_dir", &[], true);
             return;
         }
         // dist LA8: "is the offer newer" is asked against the RECEIPT's configuration. When the
@@ -1014,7 +1552,7 @@ impl App {
             Some(r) if r.tag == tag => r.version,
             _ => String::new(),
         };
-        let from_play = action == UpdateAction::MakeReady || pressed_on == Some(View::Launch);
+        let from_play = action == UpdateAction::MakeReady || pressed_on == Some(View::Play);
         // dist RL8: which channel is followed, and which one the game on disk came from (a
         // difference is an explicit switch, the only thing that lets an OLDER game install).
         let channel = self.config.channel().to_string();
@@ -1024,7 +1562,8 @@ impl App {
              {channel}, installed from {installed_channel:?})",
             action.describe()
         ));
-        if action != UpdateAction::AutoCheck {
+        // RL9: a silent run is silent -- no "updating..." line unless it finds something to say.
+        if !matches!(action, UpdateAction::AutoCheck | UpdateAction::AutoUpdate) {
             self.update_say(format!("{}...", action.describe()), false);
         }
         let progress = Arc::new(Mutex::new(String::new()));
@@ -1040,6 +1579,22 @@ impl App {
             };
             let result = (|| -> Result<Outcome, String> {
                 let env = update::Env::release(&channel, &installed_channel);
+                if action == UpdateAction::AutoUpdate {
+                    // RL9: plan -> stage the launcher -> apply the game, with the running guard.
+                    let dir = game_dir.expect("checked above");
+                    let ctx = update::AutoCtx {
+                        layout: &layout,
+                        base_url: &base,
+                        game_dir: &dir,
+                        tag: &tag,
+                        env: &env,
+                        skip_version: &skip_version,
+                        launcher_pending,
+                    };
+                    let running = || procs::game_running_here(&dir);
+                    return update::auto_update(&fetch, &ctx, &running, &report)
+                        .map(|run| Outcome::Auto(Box::new(run)));
+                }
                 if action == UpdateAction::MakeReady {
                     let dir = game_dir.expect("checked above");
                     return match update::make_ready(
@@ -1099,7 +1654,7 @@ impl App {
                         // a current launcher means the game half runs here, now.
                         report("checking the launcher...");
                         match update::self_update(&layout, &fetch, &manifest, &base, &restart)? {
-                            SelfUpdate::Restarted(v) => {
+                            SelfUpdate::Restarted(v) | SelfUpdate::Replaced(v) => {
                                 return Ok(Outcome::SelfUpdated(SelfUpdate::Restarted(v)))
                             }
                             SelfUpdate::NotNeeded(msg) => report(&msg),
@@ -1112,7 +1667,9 @@ impl App {
                             None => Ok(Outcome::UpToDate),
                         }
                     }
-                    UpdateAction::MakeReady => unreachable!("handled above"),
+                    UpdateAction::MakeReady | UpdateAction::AutoUpdate => {
+                        unreachable!("handled above")
+                    }
                 }
             })();
             let _ = tx.send(result);
@@ -1173,7 +1730,18 @@ impl App {
         let pending = self.pending_launch.take();
         let launch_after = match &result {
             Ok(Outcome::Applied(_)) | Ok(Outcome::Ready) | Ok(Outcome::UpToDate) => pending,
-            _ if action == UpdateAction::AutoCheck => pending,
+            _ if matches!(action, UpdateAction::AutoCheck | UpdateAction::AutoUpdate) => pending,
+            // RL9: Play's own game update failed -- the current version still launches.
+            Err(e) if std::mem::take(&mut self.auto.play_update) && pending.is_some() => {
+                self.update_say(
+                    format!("the update failed ({e}) -- starting the version you have"),
+                    true,
+                );
+                if let Some(o) = self.offer.as_mut() {
+                    o.game = None; // so the launch below does not try the same update again
+                }
+                pending
+            }
             _ => {
                 if let (Some(how), Err(e)) = (pending, &result) {
                     self.say(format!("{how}: not started -- {e}"), true);
@@ -1187,37 +1755,54 @@ impl App {
                 None
             }
         };
+        self.auto.play_update = false;
         match result {
             Ok(Outcome::Checked(m)) => {
                 let mut line = format!(
                     "version {} is available on {} (issued {}, launcher {})",
-                    m.game.version, m.game.channel, m.game.issued_at, m.launcher.version
+                    m.game.version,
+                    m.game.channel,
+                    m.game.issued_at,
+                    m.launcher
+                        .as_ref()
+                        .map_or("none offered", |l| l.version.as_str())
                 );
                 if !m.game.notes_url.is_empty() {
                     line.push_str(&format!(" -- notes: {}", m.game.notes_url));
                 }
                 self.update_say(line, false);
             }
-            Ok(Outcome::Applied(a)) => {
-                self.config.installed_version = a.version.clone();
-                self.config.installed_tag = a.tag.clone();
-                // dist RL8: the install ends a channel switch -- the game on disk now came from
-                // the channel it was fetched from.
-                self.config.installed_channel = a.channel.clone();
-                self.persist();
-                self.picker_open = false;
-                if let Some(o) = self.offer.as_mut() {
-                    o.game = None;
+            Ok(Outcome::Applied(a)) => self.on_applied(&a),
+            // RL9: the silent run. Each half reports for itself; none of it blocks the window.
+            Ok(Outcome::Auto(run)) => {
+                let run = *run;
+                let waiting = run.deferred.is_some();
+                if let Some(a) = run.applied {
+                    self.on_applied(&a);
                 }
-                self.update_say(
-                    format!(
-                        "{} -- versions kept: {} (the previous one stays until {} has started once)",
-                        a.summary,
-                        a.kept.join(", "),
-                        a.version
-                    ),
-                    false,
-                );
+                let mut offer = run.offer;
+                if self.config.installed_version == offer.game.clone().unwrap_or_default() {
+                    offer.game = None;
+                }
+                self.offer = Some(offer);
+                if let Some(staged) = run.launcher {
+                    self.update_say(
+                        format!("launcher {} is ready -- restart to use it", staged.version),
+                        false,
+                    );
+                    self.auto.restart_dismissed = false;
+                    self.auto.pending_restart = Some(staged);
+                }
+                if let Some(why) = run.deferred {
+                    self.update_say(format!("update waiting: {why}"), false);
+                }
+                if let Some(e) = run.errors.first() {
+                    self.update_say(
+                        format!("update failed (the current version is kept): {e}"),
+                        true,
+                    );
+                }
+                self.auto.schedule(std::time::Instant::now(), waiting);
             }
             Ok(Outcome::Ready) => self.update_say("already installed", false),
             Ok(Outcome::UpToDate) => {
@@ -1249,7 +1834,7 @@ impl App {
                 self.offer = Some(offer);
             }
             Ok(Outcome::SelfUpdated(SelfUpdate::NotNeeded(msg))) => self.update_say(msg, false),
-            Ok(Outcome::SelfUpdated(SelfUpdate::Restarted(v))) => {
+            Ok(Outcome::SelfUpdated(SelfUpdate::Restarted(v) | SelfUpdate::Replaced(v))) => {
                 self.update_say(
                     format!("replaced by launcher {v}; this window is closing"),
                     false,
@@ -1259,13 +1844,23 @@ impl App {
                 close = true;
             }
             Err(e) => {
-                self.update_say(e, true);
-                crate::set_exit_code(1);
+                if action == UpdateAction::AutoUpdate {
+                    // RL9: a failed silent run is a status line and a retry next interval -- not
+                    // an exit code, and never a blocked Play.
+                    self.update_say(format!("update check failed (will retry): {e}"), true);
+                    self.auto.schedule(std::time::Instant::now(), false);
+                } else {
+                    self.update_say(e, true);
+                    crate::set_exit_code(1);
+                }
             }
         }
         if matches!(
             action,
-            UpdateAction::Apply | UpdateAction::MakeReady | UpdateAction::Update
+            UpdateAction::Apply
+                | UpdateAction::MakeReady
+                | UpdateAction::Update
+                | UpdateAction::AutoUpdate
         ) {
             self.sync_installed_from_receipt();
         }
@@ -1279,27 +1874,17 @@ impl App {
         close
     }
 
-    /// dist LA8: the progress line of the job in flight, when it started from the Play page.
+    /// dist LA8: the progress line of the job in flight, when it started from the Play page. The
+    /// thread's own text (`update::Progress`) is English; until it says something the line is the
+    /// action's, in the player's language.
     fn play_progress(&self) -> Option<String> {
         let job = self.job.as_ref().filter(|j| j.from_play)?;
         let p = job.progress.lock().ok()?.clone();
         Some(if p.is_empty() {
-            format!("{}...", job.action.describe())
+            format!("{}...", job.action.describe_t())
         } else {
             p
         })
-    }
-
-    /// dist LA8: the player picked a configuration. Remembered at once; nothing is installed
-    /// until Play.
-    fn pick_tag(&mut self, tag: &str) {
-        if self.tag_pick == tag {
-            return;
-        }
-        self.tag_pick = tag.to_string();
-        self.config.chosen_tag = tag.to_string();
-        self.persist();
-        log::line(format!("play: configuration {tag} picked"));
     }
 
     /// dist RL8: follow release channel `ch` (`stable` or `latest`) from now on -- the Settings
@@ -1323,6 +1908,12 @@ impl App {
             return;
         }
         self.persist();
+        self.channel_changed();
+    }
+
+    /// The followed channel just changed: by `switch_channel`, or by the Settings page's Apply
+    /// (dist RL14, whose `ConfigStore` has already written it to `launcher.toml`).
+    fn channel_changed(&mut self) {
         log::line(format!(
             "update: channel {} chosen (the game on disk came from {:?}; switching: {})",
             self.config.channel(),
@@ -1335,6 +1926,13 @@ impl App {
         if self.job.is_none() {
             self.start_update(UpdateAction::AutoCheck);
         }
+    }
+
+    /// `update_say` from the string table (see `say_t`).
+    fn update_say_t(&mut self, key: &str, args: &[(&str, &str)], is_error: bool) {
+        log::line(format!("ui: {}", i18n::trf_in(Locale::En, key, args)));
+        self.update_line = trf(key, args);
+        self.update_is_error = is_error;
     }
 
     fn update_say(&mut self, msg: impl Into<String>, is_error: bool) {
@@ -1352,6 +1950,7 @@ impl App {
             self.startup.uninstall = false;
             self.do_uninstall();
         }
+        self.migrate_legacy(); // RL4: first v0.2.0 run on a folder that is already a 0.2.0 install
         if let Some(action) = self.startup.update.take() {
             self.start_update(action);
         } else if !self.startup.launch && self.startup.report_to.is_none() && self.job.is_none() {
@@ -1416,7 +2015,27 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.show(ui);
+    }
+}
+
+/// Which Diagnostics repair actions are available right now (dist RL9); the page draws their
+/// buttons only when `App::repair_actions` says `Some`, and each only when its flag is set.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RepairActions {
+    pub reverify: bool,
+    pub rollback: bool,
+}
+
+impl App {
+    /// One frame: the control half (polls), then the shell and the page. `eframe::App::ui` is a
+    /// one-line forward to this, so a test can drive a frame without an `eframe::Frame`.
+    fn show(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        if !self.theme_done {
+            self.theme_done = true;
+            crate::theme::apply(&ctx);
+        }
         self.log_size_once(&ctx);
         if !self.startup_done {
             self.startup_done = true;
@@ -1430,6 +2049,7 @@ impl eframe::App for App {
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        self.tick_auto_update(&ctx); // RL9
         if self.report_job.is_some() {
             // dist LA17: the build is on a thread; keep painting so the progress line moves and the
             // result is noticed, and so Windows never sees a window that has stopped pumping.
@@ -1448,288 +2068,141 @@ impl eframe::App for App {
             // nothing while a full-screen game has the GPU.
             ctx.request_repaint_after(Duration::from_millis(100));
         }
-
-        egui::Panel::top("tabs").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.heading("Mission Humanity");
-                ui.separator();
-                for view in View::ALL {
-                    if ui
-                        .selectable_label(self.view == view, view.title())
-                        .clicked()
-                    {
-                        self.view = view;
-                    }
-                }
-            });
-            ui.add_space(4.0);
-        });
-
-        egui::Panel::bottom("status").show(ui, |ui| {
-            ui.add_space(4.0);
-            if self.status_line.is_empty() {
-                ui.label(egui::RichText::new("ready").weak());
-            } else if self.status_is_error {
-                ui.colored_label(egui::Color32::from_rgb(200, 70, 70), &self.status_line);
-            } else {
-                ui.label(&self.status_line);
-            }
-            ui.add_space(4.0);
-        });
-
-        egui::CentralPanel::default().show(ui, |ui| match self.view {
-            View::Status => self.status_view(ui),
-            View::Launch => self.launch_view(ui),
-            View::Report => self.report_view(ui),
-        });
-    }
-}
-
-impl App {
-    fn status_view(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Status");
-        ui.add_space(6.0);
-
-        ui.label("Game directory");
-        ui.horizontal(|ui| {
-            let changed = ui
-                .add(
-                    egui::TextEdit::singleline(&mut self.game_dir_edit)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("the folder holding mh.exe"),
-                )
-                .changed();
-            if changed {
-                self.persist();
-            }
-        });
-        ui.horizontal(|ui| {
-            if ui.button("Browse...").clicked() {
-                self.browse_game_dir();
-            }
-            match self.game_dir() {
-                None => ui.label(egui::RichText::new("not set").weak()),
-                Some(d) if paths::is_game_dir(&d) => ui.colored_label(
-                    egui::Color32::from_rgb(70, 160, 90),
-                    format!("OK -- {} is here", paths::GAME_EXE),
-                ),
-                Some(_) => ui.colored_label(
-                    egui::Color32::from_rgb(200, 70, 70),
-                    format!("no {} in this folder", paths::GAME_EXE),
-                ),
-            };
-        });
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-
-        ui.label("Installed");
-        let installed = self.game_dir().and_then(|d| install::read_manifest(&d));
-        match &installed {
-            Some(m) => {
-                ui.monospace(format!(
-                    "version {}   configuration {}   ({} file(s), installed {})",
-                    m.version,
-                    m.tag,
-                    m.files.len(),
-                    m.installed_at
-                ));
-                ui.label(
-                    egui::RichText::new(format!("from {}", m.package))
-                        .weak()
-                        .small(),
-                );
-            }
-            None => {
-                ui.label(egui::RichText::new("nothing installed in this folder yet").weak());
-            }
+        if self.view == View::Report {
+            self.refresh_matches(false);
+            ctx.request_repaint_after(Duration::from_secs(2));
         }
-
-        ui.add_space(10.0);
-        ui.label("Install from a release zip");
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.zip_edit)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("mission_humanity_re-<version>-<configuration>.zip"),
-            );
-        });
-        ui.horizontal(|ui| {
-            if ui.button("Choose zip...").clicked() {
-                if let Some(p) = rfd::FileDialog::new()
-                    .add_filter("release zip", &["zip"])
-                    .set_title("Pick a Mission Humanity release zip")
-                    .pick_file()
-                {
-                    self.zip_edit = p.display().to_string();
-                }
-            }
-            let can = !self.zip_edit.trim().is_empty() && self.game_dir_ok();
-            if ui
-                .add_enabled(can, egui::Button::new("Install"))
-                .on_disabled_hover_text("needs a game directory with mh.exe and a zip")
-                .clicked()
-            {
-                let zip = PathBuf::from(self.zip_edit.trim());
-                self.do_install(zip);
-            }
-            if ui
-                .add_enabled(installed.is_some(), egui::Button::new("Uninstall"))
-                .on_disabled_hover_text("nothing here was installed by this launcher")
-                .clicked()
-            {
-                self.do_uninstall();
-            }
-        });
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-        self.update_block(ui);
-
-        ui.add_space(8.0);
-        ui.collapsing("Launcher files", |ui| {
-            ui.monospace(self.layout.root.display().to_string());
-            match log::path() {
-                Some(p) => ui.monospace(format!("log: {}", p.display())),
-                None => ui.monospace("log: (not open)"),
-            };
-            if let Some(problem) = log::problem() {
-                ui.colored_label(egui::Color32::from_rgb(200, 70, 70), problem);
-            }
-            for line in log::recent(12) {
-                ui.small(line);
-            }
-        });
+        shell::show(self, ui);
     }
 
-    /// The update half of the status view (dist LA2).
-    ///
-    /// It says out loud what it is about to trust, because "where does this come from and who
-    /// signed it" is the one question a program that downloads executables owes its user an answer
-    /// to without being asked.
-    fn update_block(&mut self, ui: &mut egui::Ui) {
-        ui.label("Updates");
-        ui.horizontal(|ui| {
-            let changed = ui
-                .add(
-                    egui::TextEdit::singleline(&mut self.update_base_edit)
-                        .desired_width(f32::INFINITY)
-                        .hint_text(if update::DEFAULT_BASE_URL.is_empty() {
-                            "https://<your pages site>/  (no build-time default)"
-                        } else {
-                            update::DEFAULT_BASE_URL
-                        }),
-                )
-                .changed();
-            if changed {
-                self.config.update_base_url = self.update_base_edit.trim().to_string();
-                if let Err(e) = self.config.save(&self.layout.config()) {
-                    log::line(format!("config: {e}"));
-                }
-            }
-        });
-        ui.label(
-            egui::RichText::new(format!(
-                "Channel {channel}: launcher.json and game.json, signed with minisign and \
-                 checked against the key built into this launcher. Nothing is unpacked before \
-                 its SHA-256 matches what that signature covers, and the previous version stays \
-                 on disk until the new one has run once.",
-                channel = self.config.channel()
-            ))
-            .weak()
-            .small(),
-        );
+    // ---- the Start game button (dist RL14) ---------------------------------------------------
 
-        let busy = self.job.is_some();
-        ui.add_space(4.0);
-        // dist LA12: ONE BUTTON. It was three (Check for updates / Update the game / Update the
-        // launcher) until 2026-09-21, and a player who pressed the middle one first was then on a
-        // launcher that could not update itself from the same page without a restart. The check
-        // is automatic now (every start); the button does the launcher first, then the game.
-        ui.horizontal(|ui| {
-            self.update_button(ui, busy);
-            if busy {
-                ui.spinner();
-            }
-        });
-
-        if !self.update_line.is_empty() {
-            ui.add_space(4.0);
-            if self.update_is_error {
-                ui.colored_label(egui::Color32::from_rgb(200, 70, 70), &self.update_line);
-            } else {
-                ui.label(&self.update_line);
-            }
-        }
-
-        // dist RL8: the freeze mitigation that replaced the 30-day STALE refusal -- say how old
-        // the manifest the offer came from is, so a pinned file is visible to a player.
-        if let Some(days) = self.offer.as_ref().and_then(|o| o.age_days) {
-            ui.label(
-                egui::RichText::new(format!("manifest issued {days} days ago"))
-                    .weak()
-                    .small(),
-            );
-        }
-
-        let kept = update::version_dirs(&self.layout);
-        if !kept.is_empty() {
-            ui.label(
-                egui::RichText::new(format!("version sets on this machine: {}", kept.join(", ")))
-                    .weak()
-                    .small(),
-            );
+    /// Why Start game cannot be pressed right now, in the player's language. Unsaved settings are
+    /// NOT a reason by themselves -- pressing Start then asks (Apply / Discard / Cancel) -- unless
+    /// they hold values that cannot be applied, which leaves only Revert.
+    fn start_blocked(&self) -> Option<&'static str> {
+        if self.session.is_some() {
+            Some(tr("start.running"))
+        } else if self.job.is_some() {
+            Some(tr("start.busy"))
+        } else if !self.game_dir_ok() {
+            Some(tr("start.no_game"))
+        } else if self.model.is_dirty() && self.model.has_problems() {
+            Some(tr("start.dirty"))
+        } else {
+            None
         }
     }
 
-    /// dist LA12: the one Update button, on both pages. Enabled whenever nothing is running and a
-    /// game directory is known; its label carries the offer when there is one.
-    fn update_button(&mut self, ui: &mut egui::Ui, busy: bool) {
-        let label = match self.offer.as_ref().and_then(Offer::line) {
-            Some(line) => format!("Update  ({line})"),
-            None => "Update".to_string(),
+    fn press_start(&mut self) {
+        if self.model.is_dirty() {
+            self.start_prompt = true;
+        } else {
+            self.do_launch("Start game pressed");
+        }
+    }
+
+    /// The Start prompt's three answers. `Apply` starts the game only when the save worked.
+    fn answer_start_prompt(&mut self, answer: StartAnswer) {
+        match answer {
+            StartAnswer::Cancel => self.start_prompt = false,
+            StartAnswer::Discard => {
+                self.model.revert();
+                self.start_prompt = false;
+                self.do_launch("Start game pressed (settings discarded)");
+            }
+            StartAnswer::Apply => {
+                if self.apply_settings() {
+                    self.start_prompt = false;
+                    self.do_launch("Start game pressed (settings applied)");
+                }
+            }
+        }
+    }
+
+    // ---- settings (dist RL14) ----------------------------------------------------------------
+
+    /// Where the settings page reads and writes `mh_net.ini`, and why there (`cfgdir`).
+    fn settings_ini(&self) -> Option<(PathBuf, cfgdir::Source)> {
+        let dir = self.game_dir()?;
+        Some(cfgdir::ini_path(&self.layout, &dir))
+    }
+
+    /// Load the model for the current game directory -- once, and again when the directory changes
+    /// or after an Apply. Pending edits are never dropped by a repaint, only by a different game.
+    fn ensure_model(&mut self) {
+        let dir = self.game_dir();
+        if self.model_for == dir {
+            return;
+        }
+        let Some(dir) = dir else {
+            self.model_for = None;
+            return;
         };
-        if ui
-            .add_enabled(!busy && self.game_dir_ok(), egui::Button::new(label))
-            .on_hover_text(
-                "The launcher first -- a newer one is downloaded, made to prove it starts, swapped \
-                 in and restarted -- then the game for the chosen configuration. One press.",
-            )
-            .on_disabled_hover_text(if busy {
-                "the launcher is busy"
-            } else {
-                "needs a game directory with mh.exe"
-            })
-            .clicked()
-        {
-            self.start_update_from(UpdateAction::Update, Some(self.view));
-        }
-    }
-
-    /// dist LA12: what the start-up check found, on the Play page. Silent until it has answered;
-    /// "up to date" is said once it has.
-    fn offer_line(&self) -> String {
-        match self.offer.as_ref() {
-            None if self
-                .job
-                .as_ref()
-                .is_some_and(|j| j.action == UpdateAction::AutoCheck) =>
-            {
-                "checking for updates...".to_string()
+        let (ini, _) = cfgdir::ini_path(&self.layout, &dir);
+        let bytes = match ini_io::read_file(&ini) {
+            Ok(b) => b,
+            Err(e) => {
+                log::line(format!("settings: {e}"));
+                None
             }
-            None => String::new(),
-            Some(o) => o.line().unwrap_or_else(|| "up to date".to_string()),
+        };
+        self.model
+            .set_provider_options(Provider::LangPacks, providers::lang_packs(Some(&dir)));
+        let store = ConfigStore::new(&mut self.config, self.layout.config());
+        self.model.load(bytes.as_deref(), &store);
+        self.settings_note = None;
+        self.model_for = Some(dir);
+    }
+
+    /// Forget what was loaded, so the next `ensure_model` re-reads the ini and the language packs
+    /// -- when the player opens Settings (a pack may have been built since) and there is nothing
+    /// pending to lose.
+    fn reload_model_if_clean(&mut self) {
+        if !self.model.is_dirty() {
+            self.model_for = None;
         }
     }
 
-    /// The folder picker behind every "Browse..." button. One function, because the Status tab
-    /// and the Play tab's prompt (dist LA7) must set the same field and say the same thing.
+    /// Apply the pending edits: splice the ini, write `launcher.toml`, reload. `true` when it worked.
+    fn apply_settings(&mut self) -> bool {
+        let Some((ini, _)) = self.settings_ini() else {
+            return false;
+        };
+        let old_channel = self.config.channel();
+        let path = self.layout.config();
+        let result = {
+            let mut store = ConfigStore::new(&mut self.config, path);
+            self.model.apply(&ini, &mut store)
+        };
+        match result {
+            Ok(report) => {
+                self.persist();
+                i18n::set_locale(Locale::from_code(&self.config.ui_lang_code()));
+                log::line(format!(
+                    "settings: applied -- ini {:?}, launcher fields {:?}, restart needed {}",
+                    report.ini, report.launcher_fields, report.restart_needed
+                ));
+                if self.config.channel() != old_channel {
+                    self.channel_changed();
+                }
+                self.settings_note = Some((tr("settings.applied").to_string(), false));
+                true
+            }
+            Err(e) => {
+                log::line(format!("settings: apply failed: {e}"));
+                self.settings_note = Some((trf("settings.apply_failed", &[("error", &e)]), true));
+                false
+            }
+        }
+    }
+
+    // ---- shared by the pages -----------------------------------------------------------------
+
+    /// The folder picker behind every "Change..." / "Browse..." button.
     fn browse_game_dir(&mut self) {
         let start = self.game_dir().filter(|d| d.is_dir());
-        let mut dlg = rfd::FileDialog::new().set_title("Where is mh.exe?");
+        let mut dlg = rfd::FileDialog::new().set_title(tr("dialog.game_dir"));
         if let Some(d) = start {
             dlg = dlg.set_directory(d);
         }
@@ -1737,570 +2210,39 @@ impl App {
             self.game_dir_edit = picked.display().to_string();
             self.persist();
             let ok = self.game_dir_ok();
-            self.say(
-                format!(
-                    "game directory set to {}{}",
-                    self.game_dir_edit,
-                    if ok {
-                        ""
-                    } else {
-                        " -- but there is no mh.exe in it"
-                    }
-                ),
+            let d = self.game_dir_edit.clone();
+            self.say_t(
+                if ok {
+                    "msg.game_dir_set"
+                } else {
+                    "msg.game_dir_set_no_exe"
+                },
+                &[("dir", &d)],
                 !ok,
             );
         }
     }
 
-    /// dist LA7: the prompt, shown on the front page ONLY when no directory was found -- the
-    /// launcher's own folder, the current directory and the saved setting were all tried first
-    /// (`paths::resolve_game_dir`). It is the same field the Status tab edits.
-    fn game_dir_prompt(&mut self, ui: &mut egui::Ui) {
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.label(egui::RichText::new(format!("Where is {}?", paths::GAME_EXE)).strong());
-            ui.label(
-                egui::RichText::new(
-                    "Put this launcher into the game folder and it finds the game by itself. \
-                     Otherwise, point it there once:",
-                )
-                .weak()
-                .small(),
-            );
-            ui.horizontal(|ui| {
-                // The button FIRST: an infinitely wide field placed before it would push it off
-                // the right edge of the window (seen on the first live run).
-                if ui.button("Browse...").clicked() {
-                    self.browse_game_dir();
-                }
-                let changed = ui
-                    .add(
-                        egui::TextEdit::singleline(&mut self.game_dir_edit)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("the folder holding mh.exe"),
-                    )
-                    .changed();
-                if changed {
-                    self.persist();
-                }
-            });
-            if let Some(d) = self.game_dir() {
-                if !paths::is_game_dir(&d) {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(200, 70, 70),
-                        format!("no {} in {}", paths::GAME_EXE, d.display()),
-                    );
-                }
-            }
-        });
-    }
-
-    /// dist LA8: "Configuration: net -- …" with a *Change...* button, or the open picker: three
-    /// radio lines, one per manifest tag, `net` preselected on a fresh machine. Picking writes
-    /// `launcher.toml`; nothing is installed until Play, which installs (or switches to)
-    /// the picked one before starting the game.
-    fn configuration_block(&mut self, ui: &mut egui::Ui, installed: Option<&install::Manifest>) {
-        let picked = self.tag_pick.clone();
-        let picked_line = configuration_line(&picked);
-        if !self.picker_open {
-            ui.horizontal(|ui| {
-                ui.label("Configuration:");
-                ui.label(egui::RichText::new(&picked).strong());
-                ui.label(
-                    egui::RichText::new(format!("-- {picked_line}"))
-                        .weak()
-                        .small(),
-                );
-                if ui.small_button("Change...").clicked() {
-                    self.picker_open = true;
-                }
-            });
-        } else {
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.label(egui::RichText::new("Which configuration?").strong());
-                for (tag, line) in CONFIGURATIONS {
-                    ui.horizontal(|ui| {
-                        if ui.radio(picked == tag, tag).clicked() {
-                            self.pick_tag(tag);
-                        }
-                        ui.label(egui::RichText::new(line).weak().small());
-                    });
-                }
-                ui.label(
-                    egui::RichText::new(match installed {
-                        None => format!(
-                            "Nothing is installed in this folder yet: Play downloads \
-                             and installs the {picked} configuration first, then starts the game.",
-                        ),
-                        Some(m) if m.tag == picked => format!(
-                            "{} {} is installed here. Play starts it.",
-                            m.tag, m.version
-                        ),
-                        Some(m) => format!(
-                            "{} {} is installed here: Play removes it and installs \
-                             {picked} first (the game's own files are put back, then parked again).",
-                            m.tag, m.version
-                        ),
-                    })
-                    .weak()
-                    .small(),
-                );
-                if installed.is_some() && ui.small_button("Done").clicked() {
-                    self.picker_open = false;
-                }
-            });
-        }
-        if let Some(m) = installed {
-            ui.label(
-                egui::RichText::new(format!(
-                    "installed: {} {} ({} file(s))",
-                    m.tag,
-                    m.version,
-                    m.files.len()
-                ))
-                .weak()
-                .small(),
-            );
-        }
-    }
-
-    /// The front page (dist LA6): the Play button, the relay it will use, and the last run.
-    fn launch_view(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Play");
-        ui.add_space(6.0);
-
-        if self.game_dir_ok() {
-            if let Some(d) = self.game_dir() {
-                ui.monospace(d.display().to_string());
-            }
-        } else {
-            self.game_dir_prompt(ui);
-        }
-        ui.add_space(8.0);
-
-        // dist LA8: the configuration. What is installed (from the receipt), what is picked, and
-        // the picker itself -- open when nothing is installed, or when the player opens it.
-        let installed = self.game_dir().and_then(|d| install::read_manifest(&d));
-        let busy = self.job.is_some();
-        if installed.is_none() {
-            self.picker_open = true;
-        }
-        self.configuration_block(ui, installed.as_ref());
-        ui.add_space(8.0);
-
-        let running = self.session.is_some();
-        let can = !running && !busy && self.game_dir_ok();
-        let why_not = if running {
-            "the game is running"
-        } else if busy {
-            "the launcher is busy with the install / update shown below"
-        } else {
-            "point the launcher at the folder holding mh.exe first (above)"
+    /// RL9: `Some` when the launcher can re-verify the installed files (an install record is in
+    /// the game folder) and/or roll back (an older version is kept); `None` draws neither
+    /// Diagnostics button.
+    pub(crate) fn repair_actions(&self) -> Option<RepairActions> {
+        let dir = self.game_dir().filter(|d| paths::is_game_dir(d))?;
+        let receipt = install::read_manifest(&dir)?;
+        let r = RepairActions {
+            reverify: true,
+            rollback: update::rollback_target(&self.layout, &receipt.version).is_some(),
         };
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
-                    can,
-                    egui::Button::new(egui::RichText::new("Play").size(22.0)),
-                )
-                .on_hover_text(
-                    "Starts the game. Then NETWORK GAME -> Create game to host (it is listed on \
-                     the relay under your name), or Refresh list to pick a game on the relay.",
-                )
-                .on_disabled_hover_text(why_not)
-                .clicked()
-            {
-                self.do_launch("Play pressed");
-            }
-            if running {
-                ui.spinner();
-            }
-        });
-        // dist LA12: what the start-up check offers, and the one button that takes it.
-        let offer_line = self.offer_line();
-        if !offer_line.is_empty() {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&offer_line).weak());
-                if self.offer.as_ref().is_some_and(Offer::any) {
-                    self.update_button(ui, busy || running);
-                }
-            });
-        }
-        // dist LA8: the install that Play started, in place -- what the thread is doing
-        // now, and, when it is over, what it said.
-        if let Some(progress) = self.play_progress() {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(progress);
-            });
-        } else if self.pending_launch.is_none() && !self.update_line.is_empty() && !busy {
-            // The verdict of the last job, on the page it was started from. `update_line` is
-            // also the Status tab's line, so this shows only what a Play-started job said.
-            if self.last_job_from_play {
-                ui.add_space(6.0);
-                if self.update_is_error {
-                    ui.colored_label(egui::Color32::from_rgb(200, 70, 70), &self.update_line);
-                } else {
-                    ui.label(egui::RichText::new(&self.update_line).weak().small());
-                }
-            }
-        }
-        ui.add_space(6.0);
-        match self.relay.as_ref() {
-            Some(r) => {
-                ui.label(format!(
-                    "Relay: {}  (from the signed manifest, version {})",
-                    r.addr, self.relay_from
-                ));
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Play puts [net] transport=udp and [net] relay= into {} and the \
-                         relay's key into {} before the game starts; the lobby itself is the \
-                         game's. Nothing else in the configuration is touched.",
-                        relay::INI_NAME,
-                        relay::KEY_NAME
-                    ))
-                    .weak()
-                    .small(),
-                );
-            }
-            None => {
-                ui.label(
-                    egui::RichText::new(
-                        "No relay: no accepted manifest names one. Play starts the game \
-                         as it is configured -- direct play by address. The next start-up check \
-                         (or Update) picks one up when the manifest names it.",
-                    )
-                    .weak()
-                    .small(),
-                );
-            }
-        }
-
-        ui.add_space(10.0);
-        if let Some(s) = self.session.as_ref() {
-            ui.label(format!(
-                "running -- pid {}, {:.0}s so far, token {}",
-                s.pid(),
-                s.started.elapsed().as_secs_f64(),
-                launch::describe_elevation(s.elevated)
-            ));
-            ui.label(
-                egui::RichText::new(
-                    "The launcher stays open while the game runs: it is holding the process \
-                     handle, which is where the exit code lives.",
-                )
-                .weak()
-                .small(),
-            );
-        } else if let Some(f) = self.last_run.as_ref() {
-            ui.separator();
-            ui.label("Last run");
-            let text = f.outcome.describe();
-            if f.outcome.is_crash() {
-                ui.colored_label(egui::Color32::from_rgb(200, 70, 70), &text);
-                ui.label(format!("after {:.1}s", f.seconds));
-                ui.add_space(6.0);
-                if ui.button("Report this crash...").clicked() {
-                    self.view = View::Report;
-                }
-            } else {
-                ui.label(&text);
-                ui.label(format!("after {:.1}s", f.seconds));
-            }
-        } else {
-            ui.label(egui::RichText::new("nothing has been launched yet").weak());
-        }
+        Some(r)
     }
+}
 
-    fn report_view(&mut self, ui: &mut egui::Ui) {
-        // THE CONSENT SCREEN REPLACES THE VIEW rather than sitting inside it. While a report is
-        // waiting to be agreed to there is exactly one decision in front of the player, and the
-        // form that built it is not a second thing to fiddle with (plan D13).
-        if self.consent.is_some() {
-            self.consent_view(ui);
-            return;
-        }
-
-        ui.heading("Report a problem");
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "This builds a zip on your machine and shows you every file in it. Nothing is \
-                 sent until you have read that list and said so.",
-            )
-            .weak()
-            .small(),
-        );
-
-        // dist RP1: the "kept, and offered again" half. Unprompted, at the top, on every launch
-        // until the outbox is empty -- a report that is only re-offered if the player thinks to
-        // look is a report that is never sent.
-        if !self.outbox_pending.is_empty() {
-            ui.add_space(8.0);
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{} report(s) from an earlier session were never sent",
-                        self.outbox_pending.len()
-                    ))
-                    .strong(),
-                );
-                for p in self.outbox_pending.clone() {
-                    ui.horizontal(|ui| {
-                        ui.monospace(
-                            p.file_name()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string(),
-                        );
-                        if ui.button("Look at it and send it").clicked() {
-                            self.ask_consent(p.clone());
-                        }
-                    });
-                }
-            });
-        }
-        if !self.upload_line.is_empty() {
-            ui.add_space(6.0);
-            if self.upload_is_error {
-                ui.colored_label(egui::Color32::from_rgb(200, 70, 70), &self.upload_line);
-            } else {
-                ui.label(&self.upload_line);
-            }
-        }
-        ui.add_space(10.0);
-
-        ui.label(egui::RichText::new("Description (required)").strong());
-        ui.add(
-            egui::TextEdit::multiline(&mut self.description)
-                .desired_width(f32::INFINITY)
-                .desired_rows(5)
-                .hint_text("What were you doing? What did you expect to happen?"),
-        );
-        let have_description = report::description_ok(&self.description);
-        if !have_description {
-            ui.colored_label(egui::Color32::from_rgb(200, 70, 70), report::NO_DESCRIPTION);
-        }
-
-        ui.add_space(10.0);
-        // dist LA9: which match this report is about -- a picker when there is more than one.
-        self.session_picker_block(ui);
-
-        ui.add_space(10.0);
-        ui.label("What goes in");
-        match self.last_run.as_ref() {
-            Some(f) => ui.monospace(format!("exit: {}", f.outcome.describe())),
-            None => ui.monospace("exit: (no run in this launcher session)"),
-        };
-        let session = self.chosen_session_dir();
-        match session.as_ref() {
-            Some(dir) => {
-                ui.monospace(format!("session log directory: {}", dir.display()));
-                let count = std::fs::read_dir(dir)
-                    .map(|r| r.flatten().count())
-                    .unwrap_or(0);
-                ui.label(
-                    egui::RichText::new(format!("{count} file(s) from it"))
-                        .weak()
-                        .small(),
-                );
-            }
-            None => {
-                ui.monospace("session log directory: none found under the game folder");
-            }
-        };
-        ui.label(
-            egui::RichText::new(
-                "every process and match directory written since this launcher started (or the \
-                 newest handful, whichever is known), plus any crash marker -- dist LA9",
-            )
-            .weak()
-            .small(),
-        );
-        ui.monospace("config: mh_net.ini, with any key/token setting blanked");
-        ui.label(
-            egui::RichText::new(
-                "The multiplayer key never goes in a report: mh_key.txt is excluded outright and \
-                 any 64-digit key printed into a log is blanked before the log is added.",
-            )
-            .weak()
-            .small(),
-        );
-
-        if let Some(m) = self.marker.as_ref() {
-            ui.add_space(6.0);
-            ui.colored_label(
-                egui::Color32::from_rgb(200, 70, 70),
-                format!(
-                    "crash: 0x{:08x} in {} (thread {})",
-                    m.code,
-                    m.where_text(),
-                    m.tid
-                ),
-            );
-        }
-
-        ui.add_space(6.0);
-        match self.dump.as_ref() {
-            Some(p) => {
-                let mb = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) as f64 / 1_048_576.0;
-                ui.checkbox(
-                    &mut self.include_dump,
-                    format!("Include the memory snapshot ({mb:.1} MB)"),
-                );
-                ui.label(
-                    egui::RichText::new(
-                        "A minidump: the stacks, the loaded modules and the game's own data \
-                         section at the moment it faulted. It is what turns \"it crashed\" into a \
-                         line of code. It is not a full memory capture.",
-                    )
-                    .weak()
-                    .small(),
-                );
-            }
-            None => {
-                ui.label(
-                    egui::RichText::new("no memory snapshot for this run")
-                        .weak()
-                        .small(),
-                );
-            }
-        }
-
-        ui.add_space(10.0);
-        let building = self.report_job.is_some();
-        ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
-                    have_description && !building,
-                    egui::Button::new("Build the report"),
-                )
-                .on_disabled_hover_text(if building {
-                    "a report is being built"
-                } else {
-                    report::NO_DESCRIPTION
-                })
-                .clicked()
-            {
-                self.do_report(None);
-            }
-            if let Some(job) = self.report_job.as_ref() {
-                ui.spinner();
-                ui.label(job.progress().text());
-            }
-            if self.built.is_some() && ui.button("Show me the file").clicked() {
-                if let Some(b) = self.built.as_ref() {
-                    let dir = b.zip.parent().unwrap_or(&b.zip).to_path_buf();
-                    // `explorer` rather than a shell association: the target is a folder, and a
-                    // launcher that opened the zip itself would hand it to whatever the player has
-                    // associated with .zip, which is not what "show me" means.
-                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
-                }
-            }
-        });
-
-        if let Some(b) = self.built.as_ref() {
-            ui.add_space(8.0);
-            ui.monospace(b.zip.display().to_string());
-            ui.collapsing(format!("{} file(s) in the report", b.entries.len()), |ui| {
-                for e in &b.entries {
-                    ui.small(e);
-                }
-            });
-            // The whole of report.json, on screen, before anything is sent. It is the one part of a
-            // report that is ABOUT the player's machine rather than about the game, so showing it
-            // is not a debugging affordance -- it is how a player finds out what they would be
-            // handing over without having to open a zip to do it.
-            ui.collapsing("What report.json says about this machine", |ui| {
-                ui.monospace(&b.meta);
-            });
-        }
-
-        // dist RP1: the send offer. It appears only once a zip EXISTS, and it does not send --
-        // it opens the consent screen, which is the thing that can.
-        if let Some(zip) = self.built.as_ref().map(|b| b.zip.clone()) {
-            ui.add_space(10.0);
-            match self.collector() {
-                Ok(c) => {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(
-                                self.upload_job.is_none(),
-                                egui::Button::new("Send this report..."),
-                            )
-                            .on_hover_text(format!("to {}", c.endpoint()))
-                            .clicked()
-                        {
-                            self.ask_consent(zip);
-                        }
-                        if self.upload_job.is_some() {
-                            ui.label("sending...");
-                        }
-                    });
-                    ui.label(
-                        egui::RichText::new(
-                            "You will see the whole list of files, and what they say about your \
-                             machine, before anything leaves it.",
-                        )
-                        .weak()
-                        .small(),
-                    );
-                }
-                Err(e) => {
-                    ui.label(
-                        egui::RichText::new(format!("This build cannot send reports: {e}"))
-                            .weak()
-                            .small(),
-                    );
-                }
-            }
-        }
-    }
-
-    /// **The consent screen (dist RP1, plan decision D13).** Every entry in the zip, its digest,
-    /// the destination and the whole of `report.json`, then two buttons. It renders
-    /// `upload::consent_text` -- the same text `--send` prints -- so the window and the command
-    /// line cannot describe the same upload differently.
-    fn consent_view(&mut self, ui: &mut egui::Ui) {
-        let Some(p) = self.consent.clone() else {
-            return;
-        };
-        ui.heading("Before this is sent");
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "This is everything that would leave your machine. Nothing else is read, and \
-                 nothing is sent unless you press Send.",
-            )
-            .strong(),
-        );
-        ui.add_space(8.0);
-        egui::ScrollArea::vertical()
-            .max_height(360.0)
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
-                ui.monospace(upload::consent_text(&p));
-            });
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            if ui.button(format!("Send it to {}", p.destination)).clicked() {
-                self.send_consented();
-            }
-            if ui.button("Don't send it").clicked() {
-                log::line("upload: the player declined to send");
-                self.consent = None;
-                self.upload_say(
-                    format!(
-                        "nothing was sent -- the report is still at {}",
-                        p.zip.display()
-                    ),
-                    false,
-                );
-            }
-        });
-    }
+/// The Start prompt's answers.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StartAnswer {
+    Apply,
+    Discard,
+    Cancel,
 }
 
 /// `20260917T164346Z` -- the same UTC shape the game's session directories use, so a report file
@@ -2374,5 +2316,208 @@ mod tests {
         }
         assert_eq!(View::parse("REPORT"), Some(View::Report));
         assert_eq!(View::parse("nonsense"), None);
+        // The pre-RL14 names keep working: scripts, and the restart strip of an older launcher.
+        for old in ["status", "update", "launch", "play"] {
+            assert_eq!(View::parse(old), Some(View::Play), "{old}");
+        }
+        assert_eq!(View::Launch, View::Play);
+    }
+
+    // ---- dist RL9 ------------------------------------------------------------------------------
+
+    fn auto_app(name: &str) -> (App, PathBuf) {
+        let dir = std::env::temp_dir().join(name);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mh.exe"), b"x").unwrap();
+        let cfg = Config {
+            game_dir: dir.display().to_string(),
+            // a closed local port: the silent run fails fast, offline
+            update_base_url: "http://127.0.0.1:1/".to_string(),
+            ..Config::default()
+        };
+        let app = App::new(
+            Layout::rooted(dir.join("app")),
+            cfg,
+            View::Launch,
+            Startup::default(),
+        );
+        (app, dir)
+    }
+
+    /// RL9: a silent run that staged a launcher sets the restart flag (the modal's trigger); "Later"
+    /// answers the modal without dropping the staged launcher.
+    #[test]
+    fn a_staged_launcher_sets_the_restart_flag_and_later_keeps_it_staged() {
+        let (mut app, dir) = auto_app("mh_launcher_test_app_restart");
+        assert!(app.auto.enabled, "an interactive start ticks");
+        assert_eq!(app.restart_prompt(), None);
+        let (tx, rx) = mpsc::channel();
+        let run = update::AutoRun {
+            launcher: Some(update::StagedLauncher {
+                version: "0.2.0".into(),
+                // not a file: the Drop commit at the end of the test must find nothing to replace
+                candidate: dir.join("never_written.exe"),
+            }),
+            ..Default::default()
+        };
+        tx.send(Ok(Outcome::Auto(Box::new(run)))).unwrap();
+        app.job = Some(Job {
+            action: UpdateAction::AutoUpdate,
+            rx,
+            done: false,
+            progress: Arc::new(Mutex::new(String::new())),
+            from_play: false,
+        });
+        assert!(!app.poll_job());
+        assert_eq!(app.restart_prompt(), Some("0.2.0"));
+        assert!(app.update_line.contains("0.2.0"), "{}", app.update_line);
+        assert!(!app.update_is_error);
+        app.restart_later();
+        assert_eq!(app.restart_prompt(), None, "answered");
+        assert!(
+            app.auto.pending_restart.is_some(),
+            "Later keeps it staged for the window close"
+        );
+        // the silent run rescheduled itself 30 minutes out
+        assert!(app
+            .auto
+            .next
+            .is_some_and(|t| t > std::time::Instant::now() + Duration::from_secs(25 * 60)));
+        app.auto.pending_restart = None;
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RL9 done_when: a HAND-LAUNCHED mh.exe (a process this launcher never started) holds the
+    /// silent update back: no job starts, and the next look is 10 seconds out.
+    #[test]
+    fn a_hand_launched_game_holds_the_tick_back() {
+        let (mut app, dir) = auto_app("mh_launcher_test_app_tick_defer");
+        let mut child = crate::procs::testing::spawn_copy_as_mh_exe(&dir);
+        // wait until the OS lists it
+        let t0 = std::time::Instant::now();
+        while !procs::game_running_here(&dir) {
+            assert!(t0.elapsed().as_secs() < 30, "the fake game never appeared");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let ctx = egui::Context::default();
+        app.tick_auto_update(&ctx);
+        assert!(
+            app.job.is_none(),
+            "no update may start while mh.exe runs from the folder"
+        );
+        assert!(app.auto.waiting_logged);
+        let next = app.auto.next.expect("rescheduled");
+        assert!(next <= std::time::Instant::now() + Duration::from_secs(10));
+        // the game exits: the very next due tick starts the silent run
+        child.kill().unwrap();
+        child.wait().unwrap();
+        let t0 = std::time::Instant::now();
+        while procs::game_running_here(&dir) {
+            assert!(t0.elapsed().as_secs() < 30);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        app.auto.next = None; // "10 seconds later"
+        app.tick_auto_update(&ctx);
+        assert!(
+            app.job
+                .as_ref()
+                .is_some_and(|j| j.action == UpdateAction::AutoUpdate),
+            "the deferred update starts with no click once the game has exited"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RL9 done_when: a failed silent run (here: nothing listening) is a status line and a retry
+    /// 30 minutes out -- not an exit code, and Play's readiness is untouched.
+    #[test]
+    fn a_failed_silent_run_is_a_status_line_and_does_not_block_play() {
+        let (mut app, dir) = auto_app("mh_launcher_test_app_tick_fail");
+        let ctx = egui::Context::default();
+        app.tick_auto_update(&ctx);
+        assert!(
+            app.job.is_some(),
+            "a due tick with an idle window starts the run"
+        );
+        let t0 = std::time::Instant::now();
+        while app.job.is_some() {
+            assert!(t0.elapsed().as_secs() < 60, "the silent run never finished");
+            assert!(
+                !app.poll_job(),
+                "a failed silent run must not close the window"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(app.update_is_error, "{}", app.update_line);
+        assert!(
+            app.update_line.contains("will retry"),
+            "{}",
+            app.update_line
+        );
+        assert!(app.pending_launch.is_none() && app.session.is_none());
+        assert!(app
+            .auto
+            .next
+            .is_some_and(|t| t > std::time::Instant::now() + Duration::from_secs(25 * 60)));
+        // a second tick inside the interval starts nothing
+        app.tick_auto_update(&ctx);
+        assert!(app.job.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RL9: scripted starts never grow a background job of their own.
+    #[test]
+    fn scripted_starts_do_not_tick() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_app_scripted");
+        std::fs::create_dir_all(&dir).unwrap();
+        for startup in [
+            Startup {
+                launch: true,
+                ..Startup::default()
+            },
+            Startup {
+                update: Some(UpdateAction::Apply),
+                ..Startup::default()
+            },
+            Startup {
+                exit_after_update: true,
+                ..Startup::default()
+            },
+            Startup {
+                report_to: Some(dir.join("r.zip")),
+                ..Startup::default()
+            },
+        ] {
+            let cfg = Config {
+                update_base_url: "http://127.0.0.1:1/".into(),
+                ..Config::default()
+            };
+            let app = App::new(Layout::rooted(dir.join("app")), cfg, View::Launch, startup);
+            assert!(!app.auto.enabled);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RL9: Play's pending-offer rule honours the rollback pin and needs an installed game.
+    #[test]
+    fn play_installs_a_pending_offer_first_unless_pinned_or_not_installed() {
+        let (mut app, dir) = auto_app("mh_launcher_test_app_offer");
+        app.offer = Some(Offer {
+            game: Some("0.3.0".into()),
+            ..Offer::default()
+        });
+        // nothing installed: Play's own install path handles it, not the pending-offer rule
+        assert_eq!(app.pending_game_offer(&dir), None);
+        std::fs::write(
+            dir.join(paths::INSTALL_MANIFEST),
+            "version\t0.2.9\ntag\tnet\npackage\tp.zip\ninstalled_at\tx\n",
+        )
+        .unwrap();
+        assert_eq!(app.pending_game_offer(&dir).as_deref(), Some("0.3.0"));
+        app.config.rollback_skip = "0.3.0".into();
+        assert_eq!(app.pending_game_offer(&dir), None, "rolled back from it");
+        app.config.rollback_skip = "0.2.5".into();
+        assert_eq!(app.pending_game_offer(&dir).as_deref(), Some("0.3.0"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

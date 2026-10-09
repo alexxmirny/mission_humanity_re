@@ -7,6 +7,7 @@ self-contained instead of depending on a machine-local save directory.
 | file | used by | source location it was rescued from |
 | --- | --- | --- |
 | `11.sav` | all five `poz*` tactical journals (`; save 11` in each header -- `--tact-replay` stages it into the lane's `save/`) | `workdir/mh_en/save/11.sav` (machine-local POLYGON install) |
+| `2-almost.sav` | the `campaign_planet_switch` scenario (ESC -> Load game from a campaign begun on Nortus; this save sits on Aman) | `workdir/mh_en/save/2-almost.sav` (machine-local POLYGON install) |
 | `ayy30.sav` | the `soak_saved` registered scenario (seeds `--soak` via `loadgame_at`) | `workdir/mh_en/saves_storage/ayy30.sav` (SAVE_STORAGE, the 137-save community index) |
 
 Since fork item F1D (2026-09-12) this directory IS the live staging source: `ui_test.resolve_save()`

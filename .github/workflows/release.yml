@@ -1,10 +1,12 @@
-# RELEASE -- build the shipping set with a stamped version, gate it, and publish the three zips.
+# RELEASE -- build the shipping set with a stamped version, gate it, and publish the ONE zip.
 #
 # WHAT IT DOES. A pushed tag `vMAJOR.MINOR.PATCH[-rcN]` builds `src/mh_dll/mh.sln` with
 # `/p:MhVersion=<tag without the v> /p:MhGitSha=<short sha>`, runs the SAME offline gate ci.yml runs
-# (selftests under ASan and plain, the standalone replay, `lint_repo.py --ci`) ON THE STAMPED
+# (selftests under ASan and plain, `--net-only`, and `lint_repo.py --ci`) ON THE STAMPED
 # BINARIES, packages them with `tools/release_package.py`, and publishes a GitHub Release carrying
-# the three drop-in zips and a SHA256SUMS. A `workflow_dispatch` run does everything except the
+# the drop-in `net` zip (msvfw32/mh/mh_net/mh_net_udp -- no ini, no harness, no libmh; RL7, plan D1)
+# and a SHA256SUMS. libmh is not shipped, so CI neither runs its selftests (libmh_selftest.exe) nor the
+# standalone libmh replay (user 2026-10-09); the local gate keeps both. `release_package.py --tester` is NEVER passed here. A `workflow_dispatch` run does everything except the
 # publish: it uploads the zips as a workflow artifact and creates nothing.
 #
 # WHAT A GREEN RUN DOES NOT PROVE, and this is the same statement ci.yml makes because it is the
@@ -33,7 +35,7 @@
 #       git tag -a v0.1.0 -m "..." ; git push origin v0.1.0
 #
 # THE REHEARSAL ORDER (user ruling). Cut the first tag of a series on the PRIVATE repository with an
-# `-rc` suffix and watch this workflow end to end there -- a prerelease with three zips and a
+# `-rc` suffix and watch this workflow end to end there -- a prerelease with one zip and a
 # SHA256SUMS attached, its body the tag message. Only then push the tag to the public repository.
 # The workflow file itself travels to the public tree the way ci.yml did, through
 # `tools/build_public_seed.py --follow-up`; the publish ledger's `ci-workflows` rule already
@@ -158,7 +160,8 @@ jobs:
       - name: the eight artifacts, by name
         shell: pwsh
         run: |
-          # One msbuild produces all three configurations, and a single green build line is exactly
+          # One msbuild produces every module (the gate needs harness/libmh/selftests even though only the
+          # four-file `net` zip ships), and a single green build line is exactly
           # what would hide one artifact that silently stopped being produced. Same list as ci.yml.
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
           $want = @(
@@ -183,16 +186,12 @@ jobs:
           $rel = "$env:GITHUB_WORKSPACE\src\mh_dll\Release"
           $want = "${{ steps.stamp.outputs.version }}"
           $bad = @()
-          foreach ($a in @("msvfw32.dll","mh.dll","mh_net.dll","mh_harness.dll","libmh.dll")) {
+          foreach ($a in @("msvfw32.dll","mh.dll","mh_net.dll","mh_net_udp.dll")) {
             $got = (Get-Item (Join-Path $rel $a)).VersionInfo.FileVersion
             "{0,-16} {1}" -f $a, $got | Write-Host
             if (($got -split '\+')[0] -ne $want) { $bad += "$a=$got" }
           }
           if ($bad) { throw "VERSIONINFO does not carry $want -- $($bad -join ', ')" }
-
-      - name: configuration (3) -- the standalone replay
-        shell: pwsh
-        run: python tools/replay_libref.py
 
       - name: lint (the public subset)
         shell: pwsh
@@ -249,7 +248,7 @@ jobs:
         # THE GATE, not a bare `net_selftest.exe <suite>` run. A bare suite's "0 failures" is not
         # evidence the run did not silently corrupt heap memory; ASan turns that into a deterministic
         # stack trace on run #1. The project's pinned selftest-gate rule, in a machine.
-        run: python tools/run_selftests.py --pass asan
+        run: python tools/run_selftests.py --pass asan --net-only
 
   selftests-plain:
     name: selftests (plain half)
@@ -282,7 +281,7 @@ jobs:
         # THE GATE, not a bare `net_selftest.exe <suite>` run. A bare suite's "0 failures" is not
         # evidence the run did not silently corrupt heap memory; ASan turns that into a deterministic
         # stack trace on run #1. The project's pinned selftest-gate rule, in a machine.
-        run: python tools/run_selftests.py --pass plain
+        run: python tools/run_selftests.py --pass plain --net-only
 
   publish:
     name: publish the GitHub Release
@@ -406,16 +405,20 @@ jobs:
         shell: pwsh
         env:
           MH_UPDATE_BASE_URL: ${{ vars.MH_UPDATE_BASE_URL }}
+          MH_PAGES_BRANCH: ${{ vars.MH_PAGES_BRANCH }}
         run: |
           # The guard (gen_update_manifest --channel-launcher) refuses a game whose min_launcher is
           # newer than the launcher players on this channel are served: that release could not be
           # installed by anyone. It checks the SERVED file (verified against update.rs PUBLIC_KEY by
           # the tool), so a launcher tag that is still building does not count -- release it first.
-          # No update source (the private rehearsal repo has no Pages) = no guard, said loudly.
+          # A repo that publishes no Pages (MH_PAGES_BRANCH unset: the private rehearsal repo) = no guard,
+          # said loudly. Keyed on the Pages branch, not on MH_UPDATE_BASE_URL: the private repo sets that
+          # too (its launcher builds point at the PUBLIC site), and the public site's latest launcher is
+          # not this repo's -- the v0.2.0-rc8 rehearsal went red on exactly that 404.
           New-Item -ItemType Directory -Force tmp/served | Out-Null
           $base = "$env:MH_UPDATE_BASE_URL".TrimEnd('/')
-          if ($base -eq "") {
-            Write-Host "::warning::MH_UPDATE_BASE_URL is unset -- the min_launcher guard is SKIPPED (rehearsal repo)"
+          if ($base -eq "" -or "$env:MH_PAGES_BRANCH" -eq "") {
+            Write-Host "::warning::MH_PAGES_BRANCH or MH_UPDATE_BASE_URL is unset -- the min_launcher guard is SKIPPED (rehearsal repo)"
             "have_guard=false" >> $env:GITHUB_OUTPUT
             exit 0
           }

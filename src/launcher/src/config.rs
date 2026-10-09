@@ -37,7 +37,8 @@ pub struct Config {
     pub chosen_tag: String,
     /// dist RL20: Discord Rich Presence on/off (default on, but inert without a client id).
     pub discord: bool,
-    /// dist RL20: the Discord application id. Empty = the feature is off, silently.
+    /// dist RL20: an override for the Discord application id. Empty (the default) = the built-in
+    /// `DISCORD_CLIENT_ID` (`effective_discord_client_id`).
     pub discord_client_id: String,
     /// dist RL8: the release channel this launcher follows -- `stable` or `latest`. Empty (the
     /// default, and every config written before RL8) means `stable`; anything else is logged at
@@ -51,6 +52,40 @@ pub struct Config {
     /// that arrived through the bridge, or a game dir nothing has been installed into -- is NOT a
     /// switch.
     pub installed_channel: String,
+    /// dist RL16: the launcher's own language (`en`, `ru`). Mirrors the Language setting's `[lang]
+    /// pack` (one choice drives both); empty = English. Written by the settings page's Apply.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub ui_lang: String,
+    /// dist RL4/RL14: how the multiplayer relay is chosen -- `auto` (the signed manifest's, default;
+    /// also what an empty value means), `off` (none: direct play by address) or `custom`
+    /// (`relay_custom`). Read by `relay::plan_for` at provision time; the Settings page writes it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub relay_mode: String,
+    /// dist RL14: `host:port` of the player's own relay, used when `relay_mode` is `custom`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub relay_custom: String,
+    /// dist RL9: the game version the player ROLLED BACK from (Diagnostics "Roll back"). The silent
+    /// auto-update never installs this version or anything not newer than it; the manual Update
+    /// button ignores it. Empty = no pin.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub rollback_skip: String,
+}
+
+/// dist RL20: the project's Discord application (registered by the maintainer, 2026-10-09). Its Rich
+/// Presence art asset is named `mh_logo`.
+pub const DISCORD_CLIENT_ID: &str = "1557767154559090749";
+
+impl Config {
+    /// The Discord application id the launcher uses: the launcher.toml override if one is set,
+    /// otherwise the built-in `DISCORD_CLIENT_ID`.
+    pub fn effective_discord_client_id(&self) -> &str {
+        let own = self.discord_client_id.trim();
+        if own.is_empty() {
+            DISCORD_CLIENT_ID
+        } else {
+            own
+        }
+    }
 }
 
 impl Default for Config {
@@ -65,9 +100,16 @@ impl Default for Config {
             discord_client_id: String::new(),
             channel: String::new(),
             installed_channel: String::new(),
+            ui_lang: String::new(),
+            relay_mode: String::new(),
+            relay_custom: String::new(),
+            rollback_skip: String::new(),
         }
     }
 }
+
+/// The relay modes (dist RL14).
+pub const RELAY_MODES: [&str; 3] = ["auto", "off", "custom"];
 
 /// The two release channels (dist RL8). `stable` is what a player who chose nothing follows;
 /// `latest` is what a release lands on first and is promoted from.
@@ -122,6 +164,26 @@ impl Config {
         Ok(changed)
     }
 
+    /// The relay mode: one of `RELAY_MODES`; empty or unknown is `auto`.
+    pub fn relay_mode(&self) -> &'static str {
+        let t = self.relay_mode.trim().to_ascii_lowercase();
+        RELAY_MODES
+            .iter()
+            .find(|m| **m == t)
+            .copied()
+            .unwrap_or("auto")
+    }
+
+    /// The launcher's own language code (`en` unless `ui_lang` names another).
+    pub fn ui_lang_code(&self) -> String {
+        let t = self.ui_lang.trim().to_ascii_lowercase();
+        if t.is_empty() {
+            "en".to_string()
+        } else {
+            t
+        }
+    }
+
     /// The base URL to fetch the manifest from, with the build-time default filled in. Empty when
     /// neither `launcher.toml` nor the build named one: the caller reports "no update source" and
     /// fetches nothing, rather than guessing a publisher.
@@ -139,11 +201,24 @@ impl Config {
     /// multiplayer build is what a player who has expressed no preference wants (INSTALL.md's own
     /// table says so). The picker FOLLOWS this and this follows the picker: a pick is written to
     /// `chosen_tag`, and a Play on a directory holding a different tag is a switch, not a launch.
+    ///
+    /// dist RL7: there is ONE configuration now (`net`). A stored `net-debug` / `brokered-debug`
+    /// (an older pick, or an older install's receipt) is read as `net`, with one log line per run
+    /// -- the field survives, the retired value does not. Play then SWITCHES such a folder to `net`.
     pub fn update_tag(&self) -> String {
         for t in [self.chosen_tag.trim(), self.installed_tag.trim()] {
-            if !t.is_empty() {
-                return t.to_string();
+            if t.is_empty() {
+                continue;
             }
+            if t != DEFAULT_TAG {
+                static ONCE: std::sync::Once = std::sync::Once::new();
+                ONCE.call_once(|| {
+                    crate::log::line(format!(
+                        "config: configuration {t:?} is retired -- treating it as {DEFAULT_TAG}"
+                    ))
+                });
+            }
+            return DEFAULT_TAG.to_string();
         }
         DEFAULT_TAG.to_string()
     }
@@ -227,6 +302,10 @@ mod tests {
             discord_client_id: "42".into(),
             channel: "latest".into(),
             installed_channel: "stable".into(),
+            ui_lang: "ru".into(),
+            relay_mode: "custom".into(),
+            relay_custom: "relay.example.org:7100".into(),
+            rollback_skip: "0.3.0".into(),
         };
         c.save(&p).unwrap();
         let (back, note) = Config::load(&p);
@@ -238,19 +317,15 @@ mod tests {
     /// dist LA8: the tag the update path installs is the picker's, then the installed one, then
     /// `net` -- and a config written before the field existed still loads.
     #[test]
-    fn the_update_tag_follows_the_picker_then_the_install_then_net() {
+    fn the_update_tag_is_net_whatever_retired_value_is_stored() {
         let mut c = Config::default();
         assert_eq!(c.update_tag(), "net");
         c.installed_tag = "brokered-debug".into();
-        assert_eq!(c.update_tag(), "brokered-debug");
+        assert_eq!(c.update_tag(), "net", "a retired install tag reads as net");
         c.chosen_tag = "net-debug".into();
-        assert_eq!(
-            c.update_tag(),
-            "net-debug",
-            "the pick wins over the install"
-        );
+        assert_eq!(c.update_tag(), "net", "a retired pick reads as net");
         c.chosen_tag = "  ".into();
-        assert_eq!(c.update_tag(), "brokered-debug");
+        assert_eq!(c.update_tag(), "net");
         let (old, note) = Config::load_str("game_dir = 'C:/g'\ninstalled_tag = 'net'\n");
         assert!(note.is_none());
         assert_eq!(old.chosen_tag, "");
@@ -300,6 +375,26 @@ mod tests {
         );
         c.installed_channel = "stable".into();
         assert!(!c.switch_in_progress());
+    }
+
+    /// dist RL14: the three new fields stay out of a file nobody changed, default sensibly and load
+    /// from a config written before they existed.
+    #[test]
+    fn the_language_and_relay_fields_are_optional_and_default_quietly() {
+        let text = toml::to_string_pretty(&Config::default()).unwrap();
+        for k in ["ui_lang", "relay_mode", "relay_custom"] {
+            assert!(
+                !text.contains(k),
+                "{k} written for a default config:\n{text}"
+            );
+        }
+        let (c, note) = Config::load_str("game_dir = 'C:/g'\n");
+        assert!(note.is_none());
+        assert_eq!((c.relay_mode(), c.ui_lang_code().as_str()), ("auto", "en"));
+        let (c, _) = Config::load_str("relay_mode = ' OFF '\nui_lang = 'RU'\n");
+        assert_eq!((c.relay_mode(), c.ui_lang_code().as_str()), ("off", "ru"));
+        let (c, _) = Config::load_str("relay_mode = 'weird'\n");
+        assert_eq!(c.relay_mode(), "auto");
     }
 
     #[test]

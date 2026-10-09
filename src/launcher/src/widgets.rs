@@ -167,17 +167,27 @@ pub fn toggle(ui: &mut Ui, on: bool) -> Option<bool> {
     })
 }
 
-/// A small outlined status badge ("EXPERIMENTAL", "desync").
+/// A small outlined status badge ("EXPERIMENTAL", "desync"). Painted, not framed: a `Frame` child
+/// would be sized from the space left on the row and never wrap, so a badge near the right edge
+/// would hang outside the panel. Allocating its real size first lets `horizontal_wrapped` move it.
 pub fn pill(ui: &mut Ui, text: &str, color: Color32) -> Response {
-    Frame::NONE
-        .stroke(Stroke::new(1.0, color))
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::symmetric(6, 1))
-        .show(ui, |ui| {
-            // `extend`: a badge is one line, however narrow the cell it sits in.
-            ui.add(egui::Label::new(RichText::new(text).size(10.0).color(color)).extend());
-        })
-        .response
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_string(), FontId::proportional(10.0), color);
+    let size = galley.size() + vec2(12.0, 4.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
+    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, text));
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        p.rect_stroke(
+            rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0, color),
+            StrokeKind::Inside,
+        );
+        p.galley(rect.center() - galley.size() / 2.0, galley, color);
+    }
+    resp
 }
 
 /// A status card: dim small-caps key over a larger value.
@@ -189,14 +199,18 @@ pub fn card(ui: &mut Ui, key: &str, value: &str, value_color: Color32) -> Respon
         .inner_margin(Margin::same(8))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(
-                RichText::new(key.to_uppercase())
-                    .size(11.0)
-                    .color(theme::TEXT_DIM)
-                    .extra_letter_spacing(1.2),
-            );
-            ui.label(RichText::new(value).size(15.0).color(value_color));
+            // `ui.columns` hands its cells a JUSTIFIED layout, which spreads a wrapped line across
+            // the width (a long Russian value came out letter-spaced). A plain top-down one does not.
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.label(
+                    RichText::new(key.to_uppercase())
+                        .size(11.0)
+                        .color(theme::TEXT_DIM)
+                        .extra_letter_spacing(1.2),
+                );
+                ui.label(RichText::new(value).size(15.0).color(value_color));
+            });
         })
         .response
 }
@@ -208,19 +222,24 @@ fn scoped_button(
     fill: Color32,
     text: Color32,
 ) -> Response {
-    ui.scope(|ui| {
+    // NOT `ui.scope`: a scope's child Ui is sized from the space left on the row, so inside a
+    // `horizontal_wrapped` it never wraps and a wide (Russian) label hangs out of the frame. The
+    // style is swapped on this Ui and put back instead.
+    let saved = ui.style().clone();
+    {
         let w = &mut ui.visuals_mut().widgets;
         w.inactive.weak_bg_fill = fill;
         w.inactive.bg_stroke = Stroke::new(1.0, line);
         w.hovered.weak_bg_fill = theme::SEL_BG;
         w.hovered.bg_stroke = Stroke::new(1.0, theme::LINE_HI);
-        ui.spacing_mut().button_padding = vec2(14.0, 4.0);
-        ui.add(
-            Button::new(RichText::new(label).size(12.0).color(text))
-                .wrap_mode(egui::TextWrapMode::Extend),
-        )
-    })
-    .inner
+    }
+    ui.spacing_mut().button_padding = vec2(12.0, 4.0);
+    let r = ui.add(
+        Button::new(RichText::new(label).size(12.0).color(text))
+            .wrap_mode(egui::TextWrapMode::Extend),
+    );
+    ui.set_style(saved);
+    r
 }
 
 /// The boxed secondary button (`.gbtn`).
@@ -287,8 +306,12 @@ pub fn game_frame<R>(
                 p.add(theme::hazard_shape(&tex, bar));
                 let galley =
                     p.layout_no_wrap(t.to_string(), FontId::proportional(13.0), theme::TEXT);
-                let plate =
-                    egui::Rect::from_center_size(bar.center(), galley.size() + vec2(36.0, 4.0));
+                // The plate spans the bar's FULL height (inside the bar's 1 px black outline): a plate
+                // shorter than the bar left a dashed row of stripe tops showing above the title.
+                let plate = egui::Rect::from_center_size(
+                    bar.center(),
+                    vec2(galley.size().x + 36.0, bar.height()),
+                );
                 p.rect_filled(plate, CornerRadius::ZERO, theme::TITLE_PLATE);
                 p.rect_stroke(
                     plate,

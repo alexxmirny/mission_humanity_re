@@ -233,13 +233,12 @@ const FIT_ATTEMPTS: usize = 6;
 
 /// The replay inputs (`mp:SES7` match segment + the process recording). A cut replay input is
 /// not replayable, so these are kept whole or left out whole -- never tailed.
-const REPLAY_INPUTS: [&str; 6] = [
+const REPLAY_INPUTS: [&str; 5] = [
     "mh_match_orders.bin",
     "mh_match_clock.bin",
     "mh_match_seed.bin",
     "mh_orders.bin",
     "mh_clock.bin",
-    "mh_harness_seed.bin",
 ];
 
 /// mp:D43. The state recordings (`docs/state-record.md` v1) -- unlike `REPLAY_INPUTS` a cut copy of
@@ -292,7 +291,17 @@ const WHY_STATE_GZ_BAD: &str =
 /// degenerating into "every directory this game folder has ever produced".
 const LOGS_FALLBACK_N: usize = 20;
 
+/// dist LA16: is the game process still alive while a report is built? A process-wide flag rather
+/// than an `Input` field: `upload.rs` (and every test) builds `Input` literally, and the App is the
+/// only one who knows. Set by the App before each build; read into report.json's `game_running`.
+static GAME_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_game_running(running: bool) {
+    GAME_RUNNING.store(running, Ordering::Relaxed);
+}
+
 /// What a report is built from. Everything is optional except the description, which is the point.
+#[derive(Clone)]
 pub struct Input<'a> {
     pub game_dir: Option<&'a Path>,
     /// dist LA13: the directory the session directories live in -- the launcher-owned root
@@ -316,6 +325,10 @@ pub struct Input<'a> {
     /// A dump already written by `crash::write_dump`, if the player asked for one.
     pub minidump: Option<&'a Path>,
     pub launcher_log: Option<PathBuf>,
+    /// dist RL4: the game's `mh_net.ini` -- in the config directory now (`cfgdir::ini_path`), not
+    /// beside the exe. `None` falls back to `<game_dir>\mh_net.ini` (portable mode, and a report
+    /// built with no launcher state to resolve it from).
+    pub ini_path: Option<PathBuf>,
 }
 
 impl Input<'_> {
@@ -335,6 +348,9 @@ pub struct Built {
     pub bytes: u64,
     /// The `report.json` text, which is also the `meta` field RP1 posts.
     pub meta: String,
+    /// dist RL14: the crash marker files (absolute paths under the logs root) this report carries.
+    /// Once the report is sent, each gets its `.reported` sibling (`mark_reported`).
+    pub markers: Vec<PathBuf>,
 }
 
 impl Built {
@@ -394,6 +410,7 @@ pub struct OwnedInput {
     pub crash: Option<Marker>,
     pub minidump: Option<PathBuf>,
     pub launcher_log: Option<PathBuf>,
+    pub ini_path: Option<PathBuf>,
 }
 
 impl OwnedInput {
@@ -408,6 +425,7 @@ impl OwnedInput {
             crash: self.crash.as_ref(),
             minidump: self.minidump.as_deref(),
             launcher_log: self.launcher_log.clone(),
+            ini_path: self.ini_path.clone(),
         }
     }
 }
@@ -501,11 +519,11 @@ fn build_with_budget(dest: &Path, input: &Input, body_budget: u64) -> Result<Bui
 /// The build itself: `body_budget` is the upload-body cap, `progress` says what it is doing.
 fn build_with_progress(
     dest: &Path,
-    input: &Input,
+    input_in: &Input,
     body_budget: u64,
     progress: &Progress,
 ) -> Result<Built, String> {
-    if !description_ok(input.description) {
+    if !description_ok(input_in.description) {
         return Err(NO_DESCRIPTION.to_string());
     }
     if let Some(parent) = dest.parent() {
@@ -514,6 +532,19 @@ fn build_with_progress(
     }
 
     progress.set("looking through the log folders");
+    // dist LA16: this run's own crash marker rides along only when it belongs to the session the
+    // report is about -- an old crash must not make a clean match read as one.
+    let facts = match (input_in.logs_root(), input_in.session_dir.as_deref()) {
+        (Some(lr), Some(sd)) => Some(session_facts(&lr, sd)),
+        _ => None,
+    };
+    let input_owned = Input {
+        crash: input_in
+            .crash
+            .filter(|m| facts.as_ref().is_none_or(|f| marker_belongs(m, f))),
+        ..input_in.clone()
+    };
+    let input = &input_owned;
     let machine = Machine::detect();
     let installed = input.game_dir.and_then(install::read_manifest);
     let session = input.session_dir.clone();
@@ -551,7 +582,10 @@ fn build_with_progress(
     // dist LA6: the ini is read ONCE, here, both to be added (redacted) and to seed the literal
     // scrub every other text file goes through.
     let ini_text: Option<String> = input.game_dir.and_then(|game_dir| {
-        let ini = game_dir.join(relay::INI_NAME);
+        let ini = input
+            .ini_path
+            .clone()
+            .unwrap_or_else(|| game_dir.join(relay::INI_NAME));
         if !ini.is_file() {
             return None;
         }
@@ -572,6 +606,7 @@ fn build_with_progress(
         &pool,
         ini_text.as_deref(),
         &scrub,
+        facts.as_ref(),
     );
 
     let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
@@ -588,6 +623,7 @@ fn build_with_progress(
                 &match_id,
                 &set.included(),
                 &set.dropped_records(),
+                &set.older_crashes,
             )
         };
         let desc_len = description.len() as u64;
@@ -631,6 +667,7 @@ fn build_with_progress(
             entries,
             bytes,
             meta: std::mem::take(&mut meta),
+            markers: set.markers.clone(),
         })
     })();
     std::fs::remove_file(&staging).ok();
@@ -650,6 +687,7 @@ fn build_with_progress(
 /// because the field names are a CONTRACT with two readers outside this crate
 /// (`tools/crash_report.py`, `src/collector`), and a literal object is the spelling in which a
 /// rename is visible in a diff instead of hidden behind a `#[serde(rename)]`.
+#[allow(clippy::too_many_arguments)]
 fn meta_json(
     input: &Input,
     machine: &Machine,
@@ -658,6 +696,7 @@ fn meta_json(
     match_id: &str,
     included: &[String],
     dropped: &[serde_json::Value],
+    older_crashes: &[serde_json::Value],
 ) -> String {
     // `exit_code` is the SIGNED i32 Windows hands a parent, which is what the collector's own
     // example shows (`-1073741819`). The hex spelling is the one a human searches for, so both are
@@ -702,6 +741,10 @@ fn meta_json(
         // `kept_bytes` for a log whose newest part only was kept.
         "included": included,
         "dropped": dropped,
+        // dist LA16: the game was still running when this report was built (its logs end
+        // mid-match), and any crash marker left out because it belongs to another match/run.
+        "game_running": GAME_RUNNING.load(Ordering::Relaxed),
+        "older_crashes": older_crashes,
     });
 
     // OPTIONAL, and its absence is meaningful: `print_drained_report` treats a report with no
@@ -1071,11 +1114,40 @@ fn process_dir_of_session(session_dir: &Path) -> Option<String> {
 /// out the process ("menu") directories the way this does. Exposed so the picker can list every
 /// candidate rather than only the newest.
 pub fn session_dirs(logs_root: &Path) -> Vec<PathBuf> {
-    list_log_dirs(logs_root)
-        .into_iter()
-        .filter(|d| !is_process_dir_name(&d.name))
-        .map(|d| d.path)
-        .collect()
+    // NOT `list_log_dirs`: that sizes every directory (a walk of every file in it), and the page
+    // asks for this list every couple of seconds. The order is the same one: stamp, then name,
+    // newest first.
+    let Ok(read) = std::fs::read_dir(logs_root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, String, PathBuf)> = read
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let stamp = utc_stamp_prefix(&name)?;
+            (!is_process_dir_name(&name)).then(|| (stamp, name, e.path()))
+        })
+        .collect();
+    out.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    out.into_iter().map(|(_, _, p)| p).collect()
+}
+
+/// `session_dirs` over several logs roots (the launcher-owned one and the game's config-dir
+/// `logs\`, where a hand launch writes and where the RL4 migration moved the old ones), merged
+/// newest first and de-duplicated by directory name -- the first root listed wins a tie.
+pub fn session_dirs_in(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut all: Vec<(String, String, PathBuf)> = roots
+        .iter()
+        .flat_map(|r| session_dirs(r))
+        .filter_map(|p| {
+            let name = p.file_name()?.to_string_lossy().to_string();
+            Some((utc_stamp_prefix(&name)?, name, p))
+        })
+        .collect();
+    all.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1))); // stable: root order breaks ties
+    all.dedup_by(|b, a| a.1.eq_ignore_ascii_case(&b.1));
+    all.into_iter().map(|(_, _, p)| p).collect()
 }
 
 // ---- dist LA14: packing against the COMPRESSED upload body -------------------------------------
@@ -1181,6 +1253,11 @@ struct Set {
     shed_order: Vec<usize>,
     /// The `logs\` folders in the order they are written (for `included`).
     folders: Vec<usize>,
+    /// dist LA16: crash markers found under `logs\` that belong to ANOTHER match or run than the
+    /// one this report is about, left out and named in report.json (`older_crashes`).
+    older_crashes: Vec<serde_json::Value>,
+    /// dist RL14: the marker files that did go in (absolute paths), for `Built::markers`.
+    markers: Vec<PathBuf>,
 }
 
 fn entry_cost(it: &Item) -> u64 {
@@ -1872,6 +1949,7 @@ fn collect(
     pool: &[PoolDir],
     ini_text: Option<&str>,
     scrub: &Scrub,
+    facts: Option<&SessionFacts>,
 ) -> Set {
     let mut set = Set::default();
     let fixed = set.group(None, Mode::Fixed, 0);
@@ -1960,7 +2038,14 @@ fn collect(
     // channel caught -- a marker (or its `.ctx32` sidecar) left by an earlier, undrained crash is
     // exactly the evidence a "something looked wrong later" report exists to carry. Fixed: never
     // the thing the budget sacrifices.
+    // dist LA16: ...but only the ones that belong to the session the report is about. The others
+    // are named in report.json (`older_crashes`) instead of being attached.
+    let (crash_files, older) = split_crash_files(crash_files, facts);
+    set.older_crashes = older;
     for p in crash_files {
+        if p.extension().is_some_and(|e| e == "marker") {
+            set.markers.push(p.clone());
+        }
         let leaf = p
             .file_name()
             .unwrap_or_default()
@@ -2286,6 +2371,379 @@ pub fn default_session_dir(logs_root: Option<&Path>) -> Option<PathBuf> {
     logs_root.and_then(paths::newest_session_dir_in)
 }
 
+// ---- dist LA16: which crash markers belong to the session -----------------------------------
+
+/// The `.reported` suffix: the RL5 retention contract with mh.dll's log prune
+/// (`mh_common/include/mh_log_prune.h`). An empty `<marker file name>.reported` beside a marker
+/// says the crash has been sent or dismissed, after which the folders it protected are prunable.
+pub const REPORTED_SUFFIX: &str = ".reported";
+
+/// Create the empty `<marker>.reported` sibling. Idempotent; the marker itself is left alone (the
+/// game's prune reads both).
+pub fn mark_reported(marker: &Path) -> Result<PathBuf, String> {
+    let mut name = marker
+        .file_name()
+        .ok_or_else(|| format!("{} has no file name", marker.display()))?
+        .to_os_string();
+    name.push(REPORTED_SUFFIX);
+    let dest = marker.with_file_name(name);
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&dest)
+        .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+    Ok(dest)
+}
+
+/// Has this marker been sent or dismissed already?
+pub fn is_reported(marker: &Path) -> bool {
+    let mut name = marker.file_name().unwrap_or_default().to_os_string();
+    name.push(REPORTED_SUFFIX);
+    marker.with_file_name(name).is_file()
+}
+
+/// What decides whether a crash marker belongs to the session a report is about: the match id, and
+/// the time window of the game PROCESS that hosted the session (from its own process directory to
+/// the next process directory). All stamps compact UTC (`20260926T175010Z`).
+#[derive(Clone, Debug, Default)]
+pub struct SessionFacts {
+    pub match_id: String,
+    /// The session directory's own stamp.
+    pub start: String,
+    /// The process ("menu") directory the session hangs off, per its `session.json`.
+    pub process_start: Option<String>,
+    /// The stamp of the next process directory: when that process was over.
+    pub process_end: Option<String>,
+}
+
+/// `(name, compact stamp)` of every process directory under `logs_root`, without sizing them.
+fn process_dir_stamps(logs_root: &Path) -> Vec<(String, String)> {
+    let Ok(read) = std::fs::read_dir(logs_root) else {
+        return Vec::new();
+    };
+    read.flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let stamp = utc_stamp_prefix(&name)?;
+            is_process_dir_name(&name).then_some((name, stamp))
+        })
+        .collect()
+}
+
+pub fn session_facts(logs_root: &Path, session: &Path) -> SessionFacts {
+    let name = session
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let process_start = process_dir_of_session(session).and_then(|pd| utc_stamp_prefix(&pd));
+    let process_end = process_start.as_deref().and_then(|ps| {
+        process_dir_stamps(logs_root)
+            .into_iter()
+            .map(|(_, s)| s)
+            .filter(|s| s.as_str() > ps)
+            .min()
+    });
+    SessionFacts {
+        match_id: match_id_from_session(session).unwrap_or_default(),
+        start: utc_stamp_prefix(&name).unwrap_or_default(),
+        process_start,
+        process_end,
+    }
+}
+
+/// Does `m` belong to the session `f` describes?
+///
+/// A marker that names a match belongs to the session of THAT match and no other. One that names
+/// none (a crash in the menu, before any match) belongs to the game process the session ran in:
+/// stamped from that process's directory up to the next process's. A marker whose own stamp cannot
+/// be read, with no match to go by, cannot be shown to be another run's, so it stays (a marker
+/// the game wrote always carries its `when=`; this is the hand-made and the damaged one).
+pub fn marker_belongs(m: &Marker, f: &SessionFacts) -> bool {
+    let mid = m.match_id.trim();
+    if !mid.is_empty() && !f.match_id.is_empty() {
+        return mid.eq_ignore_ascii_case(&f.match_id);
+    }
+    let Some(when) = utc_stamp_prefix(m.when.trim()) else {
+        // Nothing to place it by: it cannot be shown to be ANOTHER run's, and evidence is not
+        // thrown away on a guess.
+        return true;
+    };
+    let lo = f.process_start.as_deref().unwrap_or(&f.start);
+    when.as_str() >= lo && f.process_end.as_deref().is_none_or(|hi| when.as_str() < hi)
+}
+
+/// Split the `mh_crash_*` files swept from the logs root into the ones this report carries and a
+/// record of the markers left out (`older_crashes` in report.json). `.reported` flags are never
+/// carried. With no session to compare against everything but the flags stays (the old behaviour).
+fn split_crash_files(
+    files: Vec<PathBuf>,
+    facts: Option<&SessionFacts>,
+) -> (Vec<PathBuf>, Vec<serde_json::Value>) {
+    let leaf = |p: &Path| {
+        p.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    };
+    let files: Vec<PathBuf> = files
+        .into_iter()
+        .filter(|p| !leaf(p).ends_with(REPORTED_SUFFIX))
+        .collect();
+    let Some(f) = facts else {
+        return (files, Vec::new());
+    };
+    let mut keep: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut older = Vec::new();
+    for p in files.iter().filter(|p| leaf(p).ends_with(".marker")) {
+        match Marker::read(p) {
+            Ok(m) if marker_belongs(&m, f) => {
+                keep.insert(leaf(p));
+            }
+            Ok(m) => older.push(serde_json::json!({
+                "file": leaf(p),
+                "when": m.when,
+                "build": m.build,
+                "match_id": m.match_id,
+            })),
+            // A marker that cannot be read cannot be shown to belong to ANOTHER match either, and
+            // evidence is not thrown away on a guess: it rides along.
+            Err(_) => {
+                keep.insert(leaf(p));
+            }
+        }
+    }
+    let kept = files
+        .into_iter()
+        .filter(|p| {
+            let l = leaf(p);
+            if l.ends_with(".marker") {
+                keep.contains(&l)
+            } else if let Some(stem) = l.strip_suffix(crate::crash::CTX32_SUFFIX) {
+                keep.contains(stem)
+            } else {
+                true
+            }
+        })
+        .collect();
+    (kept, older)
+}
+
+/// The crash markers a report about `session` would carry (absolute paths of the `.marker`
+/// files). What the Report page lists under "What goes in".
+pub fn markers_for_session(logs_root: &Path, session: &Path) -> Vec<PathBuf> {
+    let (_, crash) = root_files(logs_root);
+    let facts = session_facts(logs_root, session);
+    let (kept, _) = split_crash_files(crash, Some(&facts));
+    kept.into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "marker"))
+        .collect()
+}
+
+/// Every `mh_crash_*.marker` directly under the logs root with no `.reported` flag yet.
+pub fn unreported_markers(logs_root: &Path) -> Vec<PathBuf> {
+    let (_, crash) = root_files(logs_root);
+    crash
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "marker") && !is_reported(p))
+        .collect()
+}
+
+/// `unreported_markers` over several logs roots.
+pub fn unreported_markers_in(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots.iter().flat_map(|r| unreported_markers(r)).collect()
+}
+
+// ---- dist RL14: the match list ---------------------------------------------------------------
+
+/// How a match ended, from `session.json`'s `outcome` (RL15), with the launcher's one inference.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatchOutcome {
+    Finished,
+    Quit,
+    Desync,
+    /// INFERRED: the file still says `running` and the game process is gone. The game never
+    /// writes `crash` (a dying process is not trusted to rewrite a file).
+    Crash,
+    /// `running`, and the game is alive right now.
+    Running,
+    /// No `outcome` (a session from before RL15) or one we do not know.
+    Unknown,
+}
+
+/// One line of the Report page's match list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MatchRow {
+    /// The session directory's leaf name -- what selecting the row sets `session_pick` to.
+    pub dir: String,
+    pub match_id: String,
+    /// UTC. From `began`, else the directory name's stamp.
+    pub when: Option<chrono::NaiveDateTime>,
+    /// `network`, `campaign`, `skirmish`, `tutorial`, `tactical`, or empty when unknown.
+    pub mode: String,
+    pub map: String,
+    /// Human player names in slot order.
+    pub players: Vec<String>,
+    pub ai_count: u32,
+    pub outcome: MatchOutcome,
+    /// `host`, `client`, ... -- this peer's role in that session (empty when unknown).
+    pub role: String,
+}
+
+fn json_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+fn parse_stamp(s: &str) -> Option<chrono::NaiveDateTime> {
+    let compact = utc_stamp_prefix(s.trim())?;
+    chrono::NaiveDateTime::parse_from_str(&compact, "%Y%m%dT%H%M%SZ").ok()
+}
+
+/// One row from a session directory name and its `session.json` text (if any). Tolerant by design:
+/// every field may be missing, of the wrong type, or from a game older than RL15 -- a field that
+/// cannot be read is simply empty, never a failure of the list. `running` is returned as
+/// `Running`; deciding it is a crash needs to know whether the game is alive (`match_rows`).
+pub fn parse_match_row(dir: &str, session_json: Option<&str>) -> MatchRow {
+    let v: serde_json::Value = session_json
+        .and_then(|t| serde_json::from_str(t).ok())
+        .unwrap_or(serde_json::Value::Null);
+    // The directory name is `<stamp>_<mid8>_<map>_<mode>`: a fallback for a missing file.
+    let parts: Vec<&str> = dir.split('_').collect();
+    let (name_map, name_mode) = if parts.len() == 4 && parts[1] != "menu" {
+        (parts[2].to_string(), parts[3].to_string())
+    } else {
+        (String::new(), String::new())
+    };
+    let role = {
+        let r = json_str(&v, "role");
+        if r.is_empty() {
+            json_str(&v, "mode")
+        } else {
+            r
+        }
+    };
+    let raw_mode = {
+        let m = json_str(&v, "mode");
+        if m.is_empty() {
+            name_mode
+        } else {
+            m
+        }
+    };
+    let mode = match raw_mode.to_ascii_lowercase().as_str() {
+        "host" | "client" => "network".to_string(),
+        m @ ("campaign" | "skirmish" | "tutorial" | "tactical") => m.to_string(),
+        _ => String::new(),
+    };
+    let map = {
+        let m = json_str(&v, "map");
+        // `map` is a path ("Maps\\krater.mpm"): the leaf, without its extension.
+        let leaf = m.rsplit(['\\', '/']).next().unwrap_or("");
+        let leaf = leaf.rsplit_once('.').map_or(leaf, |(stem, _)| stem);
+        if leaf.is_empty() {
+            name_map
+        } else {
+            leaf.to_string()
+        }
+    };
+    let players: Vec<String> = v
+        .get("players")
+        .and_then(|p| p.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let ai_count = v
+        .get("ai_count")
+        .and_then(|x| x.as_u64())
+        .map_or(0, |n| n.min(64) as u32);
+    let reason = json_str(&v, "reason");
+    let outcome = match json_str(&v, "outcome").as_str() {
+        "finished" => MatchOutcome::Finished,
+        "quit" => MatchOutcome::Quit,
+        "desync" => MatchOutcome::Desync,
+        "running" => MatchOutcome::Running,
+        // A session written before RL15 has no outcome, but a closed one has a reason.
+        "" if !reason.is_empty() => {
+            if reason == "gameover" {
+                MatchOutcome::Finished
+            } else {
+                MatchOutcome::Quit
+            }
+        }
+        _ => MatchOutcome::Unknown,
+    };
+    MatchRow {
+        dir: dir.to_string(),
+        match_id: json_str(&v, "match_id"),
+        when: parse_stamp(&json_str(&v, "began")).or_else(|| parse_stamp(dir)),
+        mode,
+        map,
+        players,
+        ai_count,
+        outcome,
+        role,
+    }
+}
+
+/// The match list: every session under `logs_root`, newest first, one row per MATCH.
+///
+/// * Two copies of one match (`match_id`) -- the host's and a client's, as when two peers share a
+///   machine -- collapse to the HOST's: a client never reliably learns the host's name (its
+///   `players` was seen as `["client", "client"]`), so the host's file is the one to believe.
+/// * `running` with the game gone is a crash. `game_running` says whether a game process is alive;
+///   then only the newest session can still be in progress, everything older is over.
+pub fn match_rows(logs_roots: &[PathBuf], game_running: bool) -> Vec<MatchRow> {
+    let mut rows: Vec<MatchRow> = session_dirs_in(logs_roots)
+        .into_iter()
+        .map(|dir| {
+            let leaf = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let text = std::fs::read_to_string(dir.join("session.json")).ok();
+            parse_match_row(&leaf, text.as_deref())
+        })
+        .collect();
+    finish_match_rows(&mut rows, game_running);
+    rows
+}
+
+/// The pure half of `match_rows`: host preference and crash inference over rows (newest first).
+pub fn finish_match_rows(rows: &mut Vec<MatchRow>, game_running: bool) {
+    // Crash inference first, on every file: the newest `running` one is alive only while a game is.
+    for (i, r) in rows.iter_mut().enumerate() {
+        if r.outcome == MatchOutcome::Running && !(game_running && i == 0) {
+            r.outcome = MatchOutcome::Crash;
+        }
+    }
+    // One row per match: prefer the host's copy, else the newest.
+    let mut keep: Vec<MatchRow> = Vec::new();
+    for r in rows.drain(..) {
+        if r.match_id.is_empty() {
+            keep.push(r);
+            continue;
+        }
+        match keep.iter().position(|k| k.match_id == r.match_id) {
+            None => keep.push(r),
+            Some(i) => {
+                if r.role == "host" && keep[i].role != "host" {
+                    // The host's copy replaces the earlier one in the SAME place in the list.
+                    keep[i] = r;
+                }
+            }
+        }
+    }
+    *rows = keep;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2308,6 +2766,7 @@ mod tests {
                 crash: None,
                 minidump: None,
                 launcher_log: None,
+                ini_path: None,
             };
             let err = build(Path::new("nowhere/report.zip"), &input).unwrap_err();
             assert_eq!(err, NO_DESCRIPTION, "{desc:?}");
@@ -2479,6 +2938,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let built = build(&zip, &input).unwrap();
 
@@ -2600,6 +3060,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let built = build(&zip, &input).unwrap();
 
@@ -2703,6 +3164,7 @@ mod tests {
             crash: Some(&marker),
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let built = build(&zip, &input).unwrap();
         let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
@@ -2796,6 +3258,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let built = build(&zip, &input).unwrap();
         let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
@@ -2882,6 +3345,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         }
     }
 
@@ -3179,6 +3643,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let built = build(&zip, &input).unwrap();
         let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
@@ -3947,6 +4412,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let mut job = Job::start(zip.clone(), input);
         assert_ne!(job.worker_thread(), std::thread::current().id());
@@ -3988,6 +4454,7 @@ mod tests {
             crash: None,
             minidump: None,
             launcher_log: None,
+            ini_path: None,
         };
         let mut job = Job::start(dir.join("out").join("x.zip"), input);
         let t0 = std::time::Instant::now();
@@ -4004,5 +4471,398 @@ mod tests {
             }
         }
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+/// dist RL14: the match list, LA16's marker selection, and the `.reported` contract.
+#[cfg(test)]
+mod rl14_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mh_launcher_test_rl14_{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    const FULL: &str = r#"{
+      "match_id": "01a106fb5a4f4b0c8d6e2f3a4b5c6d7e", "slot": 0, "role": "host", "mode": "host",
+      "map": "Maps\\Krater.mpm", "began": "20261008T211402Z", "ended": "20261008T213402Z",
+      "reason": "gameover", "process_dir": "2026-10-08T21-10-00Z_menu_solo",
+      "players": ["Alex", "Sasha", "Mark"], "ai_count": 1, "outcome": "finished"
+    }"#;
+
+    #[test]
+    fn a_full_session_file_reads_into_one_row() {
+        let r = parse_match_row("2026-10-08T21-14-02Z_aabbccdd_krater_host", Some(FULL));
+        assert_eq!(r.mode, "network");
+        assert_eq!(r.map, "Krater", "the leaf of the path, without .mpm");
+        assert_eq!(r.players, ["Alex", "Sasha", "Mark"]);
+        assert_eq!(r.ai_count, 1);
+        assert_eq!(r.outcome, MatchOutcome::Finished);
+        assert_eq!(r.role, "host");
+        assert_eq!(
+            r.when.unwrap().format("%Y-%m-%d %H:%M:%S").to_string(),
+            "2026-10-08 21:14:02"
+        );
+    }
+
+    #[test]
+    fn every_other_mode_and_outcome_word_maps() {
+        for (mode, want) in [
+            ("client", "network"),
+            ("campaign", "campaign"),
+            ("skirmish", "skirmish"),
+            ("tutorial", "tutorial"),
+            ("tactical", "tactical"),
+            ("nonsense", ""),
+        ] {
+            let j = format!(r#"{{"mode":"{mode}","outcome":"quit"}}"#);
+            let r = parse_match_row("2026-10-08T21-14-02Z_aabbccdd_m_x", Some(&j));
+            assert_eq!(r.mode, want, "{mode}");
+            assert_eq!(r.outcome, MatchOutcome::Quit);
+        }
+        for (word, want) in [
+            ("desync", MatchOutcome::Desync),
+            ("running", MatchOutcome::Running),
+            ("weird", MatchOutcome::Unknown),
+        ] {
+            let j = format!(r#"{{"outcome":"{word}"}}"#);
+            assert_eq!(parse_match_row("x", Some(&j)).outcome, want, "{word}");
+        }
+    }
+
+    /// A file from before RL15 (no outcome), a file that is not JSON, a field of the wrong type, and
+    /// no file at all: each is a row, never a failure -- and the directory name fills in what it can.
+    #[test]
+    fn missing_or_wrong_fields_degrade_to_unknown_instead_of_failing() {
+        let name = "2026-10-08T21-14-02Z_aabbccdd_krater_host";
+        let none = parse_match_row(name, None);
+        assert_eq!(
+            (none.map.as_str(), none.mode.as_str()),
+            ("krater", "network")
+        );
+        assert_eq!(none.outcome, MatchOutcome::Unknown);
+        assert!(
+            none.when.is_some(),
+            "the stamp comes from the directory name"
+        );
+        let junk = parse_match_row(name, Some("{ not json"));
+        assert_eq!(junk.outcome, MatchOutcome::Unknown);
+        let wrong = parse_match_row(
+            name,
+            Some(r#"{"players": "Alex", "ai_count": "many", "outcome": 7, "map": 3}"#),
+        );
+        assert!(wrong.players.is_empty());
+        assert_eq!(wrong.ai_count, 0);
+        assert_eq!(wrong.outcome, MatchOutcome::Unknown);
+        assert_eq!(wrong.map, "krater");
+        // Pre-RL15: no `outcome`, but a closed session has a `reason`.
+        let old = parse_match_row(name, Some(r#"{"reason":"gameover"}"#));
+        assert_eq!(old.outcome, MatchOutcome::Finished);
+        let old = parse_match_row(name, Some(r#"{"reason":"link_lost"}"#));
+        assert_eq!(old.outcome, MatchOutcome::Quit);
+    }
+
+    fn row(dir: &str, mid: &str, role: &str, players: &[&str], outcome: MatchOutcome) -> MatchRow {
+        MatchRow {
+            dir: dir.into(),
+            match_id: mid.into(),
+            when: None,
+            mode: "network".into(),
+            map: "m".into(),
+            players: players.iter().map(|s| s.to_string()).collect(),
+            ai_count: 0,
+            outcome,
+            role: role.into(),
+        }
+    }
+
+    /// RL15's note: a client's copy of a match may list `[client, client]`. When both copies are on
+    /// disk the host's wins, whichever is newer, and it keeps the place in the list.
+    #[test]
+    fn the_hosts_copy_of_a_match_is_preferred_over_the_clients() {
+        let mut rows = vec![
+            row(
+                "c",
+                "M1",
+                "client",
+                &["client", "client"],
+                MatchOutcome::Finished,
+            ),
+            row("other", "M2", "host", &["A"], MatchOutcome::Finished),
+            row(
+                "h",
+                "M1",
+                "host",
+                &["Alex", "Sasha"],
+                MatchOutcome::Finished,
+            ),
+        ];
+        finish_match_rows(&mut rows, false);
+        let dirs: Vec<&str> = rows.iter().map(|r| r.dir.as_str()).collect();
+        assert_eq!(dirs, ["h", "other"]);
+        assert_eq!(rows[0].players, ["Alex", "Sasha"]);
+        // Host copy first: still one row. A match with no id is never merged with another.
+        let mut rows = vec![
+            row("h", "M1", "host", &["Alex"], MatchOutcome::Finished),
+            row("c", "M1", "client", &["client"], MatchOutcome::Finished),
+            row("a", "", "host", &[], MatchOutcome::Unknown),
+            row("b", "", "host", &[], MatchOutcome::Unknown),
+        ];
+        finish_match_rows(&mut rows, false);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].dir, "h");
+    }
+
+    /// `running` with the game gone is a crash; with a game alive only the newest session can still
+    /// be in progress.
+    #[test]
+    fn a_running_session_whose_process_is_gone_is_a_crash() {
+        let mk = || {
+            vec![
+                row("new", "A", "host", &[], MatchOutcome::Running),
+                row("old", "B", "host", &[], MatchOutcome::Running),
+                row("done", "C", "host", &[], MatchOutcome::Desync),
+            ]
+        };
+        let mut rows = mk();
+        finish_match_rows(&mut rows, false);
+        assert_eq!(rows[0].outcome, MatchOutcome::Crash);
+        assert_eq!(rows[1].outcome, MatchOutcome::Crash);
+        assert_eq!(
+            rows[2].outcome,
+            MatchOutcome::Desync,
+            "desync is not rewritten"
+        );
+        let mut rows = mk();
+        finish_match_rows(&mut rows, true);
+        assert_eq!(
+            rows[0].outcome,
+            MatchOutcome::Running,
+            "the game is up: in progress"
+        );
+        assert_eq!(
+            rows[1].outcome,
+            MatchOutcome::Crash,
+            "but an older one is over"
+        );
+    }
+
+    #[test]
+    fn match_rows_reads_the_directories_newest_first_and_ignores_process_folders() {
+        let root = scratch("rows");
+        for (name, json) in [
+            ("2026-10-08T10-00-00Z_menu_solo", None),
+            (
+                "2026-10-08T21-14-02Z_aabbccdd_krater_host",
+                Some(FULL.replace("finished", "running")),
+            ),
+            (
+                "2026-10-07T09-00-00Z_11223344_wyspy_host",
+                Some(r#"{"match_id":"x","outcome":"quit","mode":"host"}"#.to_string()),
+            ),
+        ] {
+            let d = root.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            if let Some(j) = json {
+                std::fs::write(d.join("session.json"), j).unwrap();
+            }
+        }
+        let rows = match_rows(std::slice::from_ref(&root), false);
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        assert!(rows[0].dir.contains("krater") && rows[1].dir.contains("wyspy"));
+        assert_eq!(rows[0].outcome, MatchOutcome::Crash, "running, game gone");
+        assert_eq!(rows[1].outcome, MatchOutcome::Quit);
+        assert_eq!(
+            match_rows(std::slice::from_ref(&root), true)[0].outcome,
+            MatchOutcome::Running
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    // ---- .reported -------------------------------------------------------------------------
+
+    /// The RL5 contract (`mh_log_prune.h`): `<marker file name>.reported`, empty, beside the marker.
+    #[test]
+    fn mark_reported_makes_the_empty_sibling_the_prune_looks_for() {
+        let root = scratch("reported");
+        let marker = root.join("mh_crash_4242.marker");
+        std::fs::write(&marker, "mh_crash=1\n").unwrap();
+        assert!(!is_reported(&marker));
+        assert_eq!(unreported_markers(&root), std::slice::from_ref(&marker));
+        let flag = mark_reported(&marker).unwrap();
+        assert_eq!(flag, root.join("mh_crash_4242.marker.reported"));
+        assert_eq!(std::fs::metadata(&flag).unwrap().len(), 0, "empty");
+        assert!(is_reported(&marker));
+        assert!(unreported_markers(&root).is_empty());
+        // Again: still there, still empty, no error.
+        mark_reported(&marker).unwrap();
+        assert_eq!(std::fs::metadata(&flag).unwrap().len(), 0);
+        assert!(
+            marker.is_file(),
+            "the marker itself is left for the prune to read"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    // ---- LA16 ------------------------------------------------------------------------------
+
+    fn marker_text(match_id: &str, when: &str, build: &str) -> String {
+        format!(
+            "mh_crash=1\ncode=c0000005\npid=1\ntid=2\nmodule=mh.dll\noffset=0x10\n\
+             match_id={match_id}\nwhen={when}\nbuild={build}\n"
+        )
+    }
+
+    fn facts() -> SessionFacts {
+        SessionFacts {
+            match_id: "01a106fb".into(),
+            start: "20261004T100500Z".into(),
+            process_start: Some("20261004T100000Z".into()),
+            process_end: Some("20261004T180000Z".into()),
+        }
+    }
+
+    #[test]
+    fn a_marker_belongs_to_its_match_or_to_its_process_and_to_nothing_else() {
+        let m = |id: &str, when: &str| Marker::parse(&marker_text(id, when, "b")).unwrap();
+        // The report's own match.
+        assert!(marker_belongs(&m("01A106FB", "20261004T101500Z"), &facts()));
+        // LA16's player report: another match, eight days earlier.
+        assert!(!marker_belongs(
+            &m("01a0ded5", "20260926T175010Z"),
+            &facts()
+        ));
+        // ... and another match in the SAME process window is still another match.
+        assert!(!marker_belongs(
+            &m("01a0ded5", "20261004T101500Z"),
+            &facts()
+        ));
+        // A menu crash (no match) of this process belongs; an older or a later process's does not.
+        assert!(marker_belongs(&m("", "20261004T170000Z"), &facts()));
+        assert!(!marker_belongs(&m("", "20261003T170000Z"), &facts()));
+        assert!(!marker_belongs(&m("", "20261004T190000Z"), &facts()));
+        // No readable stamp and no match: it cannot be shown to be another run's, so it stays.
+        assert!(marker_belongs(&m("", ""), &facts()));
+    }
+
+    /// LA16's done_when, end to end: an old marker in the logs root plus a new session -> the report
+    /// omits the old marker (and names it in report.json); the new session's own marker rides along,
+    /// the report built while the game runs says so, and `Built::markers` lists what to flag.
+    #[test]
+    fn an_old_marker_is_left_out_of_a_new_sessions_report_and_named() {
+        let root = scratch("la16");
+        let logs = root.join("logs");
+        let pd = "2026-10-04T10-00-00Z_menu_solo";
+        let sess = "2026-10-04T10-05-00Z_a106fb5a_krater_host";
+        for d in [pd, sess] {
+            std::fs::create_dir_all(logs.join(d)).unwrap();
+        }
+        std::fs::write(
+            logs.join(sess).join("session.json"),
+            format!(r#"{{"match_id":"01a106fb","process_dir":"{pd}","outcome":"running"}}"#),
+        )
+        .unwrap();
+        std::fs::write(logs.join(sess).join("mh_net.log"), "; [build] mh 0.2.0\n").unwrap();
+        std::fs::write(
+            logs.join("mh_crash_000045f86ed5d831.marker"),
+            marker_text("01a0ded5", "20260926T175010Z", "0.2.0-rc4+a6e57fb0"),
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("mh_crash_000045f86ed5d831.marker.ctx32"),
+            [1u8, 2, 3],
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("mh_crash_0000aaaa00000001.marker"),
+            marker_text("01a106fb", "20261004T101500Z", "0.2.0"),
+        )
+        .unwrap();
+        std::fs::write(logs.join("mh_crash_0000aaaa00000001.marker.reported"), "").unwrap();
+
+        let session = logs.join(sess);
+        let preview = markers_for_session(&logs, &session);
+        assert_eq!(
+            preview
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+                .collect::<Vec<_>>(),
+            ["mh_crash_0000aaaa00000001.marker"]
+        );
+
+        set_game_running(true);
+        let zip = root.join("out").join("r.zip");
+        let input = Input {
+            game_dir: None,
+            logs_root: Some(logs.clone()),
+            session_dir: Some(session.clone()),
+            launcher_started_utc: None,
+            description: "it froze",
+            last_run: None,
+            crash: None,
+            minidump: None,
+            ini_path: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+        set_game_running(false);
+        let names: Vec<&str> = built.entries.iter().map(String::as_str).collect();
+        assert!(
+            names.contains(&"crash/mh_crash_0000aaaa00000001.marker"),
+            "{names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n.contains("000045f86ed5d831")),
+            "the old marker (or its sidecar) rode along: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n.ends_with(".reported")),
+            "a flag is not evidence: {names:?}"
+        );
+        assert_eq!(built.markers.len(), 1);
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert_eq!(meta["game_running"], true);
+        let older = meta["older_crashes"].as_array().unwrap();
+        assert_eq!(older.len(), 1);
+        assert_eq!(older[0]["file"], "mh_crash_000045f86ed5d831.marker");
+        assert_eq!(older[0]["build"], "0.2.0-rc4+a6e57fb0");
+        assert_eq!(older[0]["when"], "20260926T175010Z");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// This run's own marker (the live channel's) obeys the same rule.
+    #[test]
+    fn this_runs_marker_is_dropped_when_it_is_not_about_the_selected_session() {
+        let root = scratch("la16_live");
+        let logs = root.join("logs");
+        let sess = "2026-10-04T10-05-00Z_a106fb5a_krater_host";
+        std::fs::create_dir_all(logs.join(sess)).unwrap();
+        std::fs::write(
+            logs.join(sess).join("session.json"),
+            r#"{"match_id":"01a106fb"}"#,
+        )
+        .unwrap();
+        let other = Marker::parse(&marker_text("01a0ded5", "20260926T175010Z", "rc4")).unwrap();
+        let zip = root.join("out").join("r.zip");
+        let input = Input {
+            game_dir: None,
+            logs_root: Some(logs.clone()),
+            session_dir: Some(logs.join(sess)),
+            launcher_started_utc: None,
+            description: "it froze",
+            last_run: None,
+            crash: Some(&other),
+            minidump: None,
+            ini_path: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+        assert!(!built.entries.iter().any(|n| n == "crash/marker.txt"));
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert!(meta.get("crash").is_none(), "{meta}");
+        let _ = std::fs::remove_dir_all(root);
     }
 }

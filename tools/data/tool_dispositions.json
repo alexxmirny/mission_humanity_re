@@ -295,6 +295,12 @@
       "why": "mp:P6: the p6_loser_gap UI scenario's post_check -- reads the host's and client's own `on_gameover ENTER` lines (winner/loser outcomes must differ), anchors each peer's own mh_frametime.log qpc_us to wall-clock the same way tools/mp_analyze.py's find_lobby_clip_qpc does (via that peer's own boot-session \"present hook armed\" line), and asserts (a) the host's own D21 in-band desync watch shows 0 mismatching over a non-vacuous compared-sample count (ALL PAIRS IDENTICAL) and (b) both the client's (loser's) and the host's (winner's) own longest present-to-present gap in the window [host's own outcome, client's own outcome] are under the bound -- the endgame-sync grace's (net_lockstep.cpp HB_ENDGAME_GRACE_MS) real, measured cost.",
       "evidence": "invoked by tools/test_ui.py's p6_loser_gap TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest, 10 synthetic arms)"
     },
+    "check_presence.py": {
+      "class": "keep",
+      "why": "dist RL15: mh.dll's presence.json (the launcher's Discord feed) must follow a campaign planet switch. A UI walk cannot see it (no pixels): reads the file after the run and requires state/mode campaign, system and planet named, the planet no longer the one NEW GAME starts on, and a rewrite after the session began; a --before/--after pair mode checks two hand snapshots. Absence of the file is RED",
+      "evidence": "the campaign_planet_switch row in tools/uiscripts/registry.yaml names it as its post_check (test_ui runs it; no Python source mentions it); `check_presence.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
     "check_publishable.py": {
       "class": "keep",
       "why": "fork F5A: every tracked path carries exactly one publish disposition",
@@ -1084,6 +1090,12 @@
       "class": "keep",
       "why": "builds a parallel rig test-lane install",
       "evidence": "used by check_inmem_patch_parity.py, gate_timeline.py, mp_run.py, test_ui.py, ui_test.py"
+    },
+    "make_lang_workdir.py": {
+      "class": "keep",
+      "why": "RL19 tester workdir: one command builds the manual-testing folder (clean EN game copy, the tester zip, every language pack via langpack.py, the launcher, README_testers.txt)",
+      "evidence": "hand-run by the operator to build the language test folder (docs/lang-packs.md 'Tester workdir'); no machine invoker. Its --selftest runs hermetically from temp dirs",
+      "hand_run": true
     },
     "map_variant.py": {
       "class": "keep",

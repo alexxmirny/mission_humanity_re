@@ -132,16 +132,18 @@ CHANNELS = ("stable", "latest")
 # The oldest launcher a game manifest built by THIS tool may require. Bump it in the commit that
 # makes the game need a newer launcher; --channel-launcher then refuses a game release the served
 # launcher cannot run, so "game first, launcher later" is a red job rather than a blocked player.
-MIN_LAUNCHER = "0.2.0"
+# "0.2.0-rc8", not "0.2.0": semver sorts a prerelease BELOW its release, so "0.2.0" would block every
+# v0.2.0-rcN game on the rc launchers testers run (refuse LAUNCHER TOO OLD). rc8 is the first launcher
+# that moves the ini, key and logs to user storage (dist RL4), which the rc8 game expects.
+MIN_LAUNCHER = "0.2.0-rc8"
 MANIFEST_NAME = "manifest.json"
 SIGNATURE_NAME = "manifest.json.minisig"
 SUMS_NAME = "SHA256SUMS"
 
-# The three configurations tools/release_package.py packages, in the order the launcher offers them.
-# Stated here as well as there because this tool must refuse a dist/ that is missing one rather than
-# publish a manifest with a hole in it, and importing the packager for one tuple would drag its
-# whole module in.
-TAGS = ("net", "net-debug", "brokered-debug")
+# The configurations tools/release_package.py packages (v0.2.0 D1: ONE -- `net`). Stated here as
+# well as there because this tool must refuse a dist/ that is missing one rather than publish a
+# manifest with a hole in it, and importing the packager for one tuple would drag its whole module in.
+TAGS = ("net",)
 BASE_NAME = "mission_humanity_re"
 
 # dist LA6: the two environment variables the release workflow hands the relay in by. Read by
@@ -547,7 +549,7 @@ def build_manifest(
         if not os.path.isfile(path):
             raise Refusal(
                 "MISSING ASSET: %s is not in %s.\n"
-                "The manifest names all three configurations or it names none: a launcher offered "
+                "The manifest names every configuration or it names none: a launcher offered "
                 "a partial set would show a player an update they cannot install."
                 % (name, dist_dir)
             )
@@ -1162,7 +1164,7 @@ def selftest():
             launcher_version="1.2.3",
             issued_at="2026-01-01T00:00:00Z",
         )
-        expect("the manifest names all three configurations", sorted(m["game"]) == sorted(TAGS))
+        expect("the manifest names every configuration", sorted(m["game"]) == sorted(TAGS))
         expect("schema is stated", m["schema"] == SCHEMA)
         expect(
             "an asset url is the base plus the file name",
@@ -1222,13 +1224,13 @@ def selftest():
         for bad in ("", "ab" * 31, "zz" * 32, "ab" * 33):
             refuses("relay key %r" % bad[:8], lambda b=bad: check_relay_key(b))
 
-        os.remove(os.path.join(dist, names[2]))
+        os.remove(os.path.join(dist, names[-1]))
         refuses(
             "a dist directory missing one configuration",
             lambda: build_manifest("1.2.3", dist, "https://example.invalid", launcher_exe=exe),
         )
-        with open(os.path.join(dist, names[2]), "wb") as fh:
-            fh.write(b"zip 2")
+        with open(os.path.join(dist, names[-1]), "wb") as fh:
+            fh.write(b"zip last")
         write_sums(corrupt=names[0])
         refuses(
             "a SHA256SUMS that disagrees with the bytes on disk",
