@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "kind": "game",
+  "channel": "stable",
+  "version": "0.2.0-rc7.1",
+  "issued_at": "2026-10-09T08:01:15Z",
+  "min_launcher": "0.2.0-rc8",
+  "game": {
+    "net": {
+      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc7.1/mission_humanity_re-0.2.0-rc7.1-net.zip",
+      "sha256": "956698eab5065c16933d4fe78acc7f3f73855f0d0b98c13d68a99ede8e404db4",
+      "size": 1444349
+    }
+  },
+  "relay": {
+    "addr": "45.9.15.236:7100",
+    "key": "d3dfaa5aee86d27f1a3a7868e9bf9af84f10b5057a6ad299055a6f7756ea49b9"
+  },
+  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.0-rc7.1"
+}
