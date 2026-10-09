@@ -3,13 +3,13 @@
   "kind": "game",
   "channel": "latest",
   "version": "0.2.0-rc8",
-  "issued_at": "2026-10-09T08:26:45Z",
+  "issued_at": "2026-10-09T12:55:35Z",
   "min_launcher": "0.2.0-rc8",
   "game": {
     "net": {
       "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc8/mission_humanity_re-0.2.0-rc8-net.zip",
-      "sha256": "f82670d7b8d7c36bea12fe515c472ed33130b54b79a13397a4cc32f9fab92285",
-      "size": 1421115
+      "sha256": "82b3aff3c141f4d315839baf747cff34972756df7a4aea2518be7a5a11136b5d",
+      "size": 1421111
     }
   },
   "relay": {
