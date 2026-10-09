@@ -15,6 +15,9 @@ WHAT THE FOLDER HOLDS.
   * lang/<id>/ for each of ru fr de it pl, built by src/formats/langpack.py from game_data/*_rsr
     (a pack whose retail source is absent is SKIPPED by name, not failed);
   * mh_launcher.exe when src/launcher's release build exists (else the cargo command is printed);
+  * the COMMON fonts in the base mh_ex.rsr: `fnt.py install` merges the Cyrillic (lifted from the RU
+    retail fonts) and Polish (derived) glyphs onto the EN fonts, so English -- no pack chosen -- still
+    renders a Russian or Polish chat line and player name (skipped by name when no RU source is found);
   * README_testers.txt: how to switch language, and which packs were built.
 
 COPY, NOT HARDLINK, BY DEFAULT. The game writes its log and its saves IN PLACE, so a hardlinked
@@ -22,8 +25,11 @@ folder would write through to the clean source. --link is there for a read-only 
 the disk space; the tester zip is still unlinked before it is written, so a hardlinked mh.dll never
 writes through either.
 
-FONTS. There is no combined font set. fnt.merge_onto() derives ONE donor onto ONE base, and every
-pack already carries its own fonts (lang/<id>/fnt). The folder keeps those per-pack fonts.
+FONTS. Two layers. Every pack carries its own fonts inside lang/<id>/mh_ex.rsr (fnt.merge_onto with
+that language as the base); the BASE install gets the common EN+Cyrillic+Polish set from
+`src/formats/fnt.py install` (61 Cyrillic glyphs lifted from the RU retail fonts, 5 Cyrillic + 18
+Polish + the guard's box derived; every untouched mh_ex member verified byte-identical), whose
+.vanilla backups are removed from the folder.
 
 REPRODUCIBLE. langpack builds are byte-identical; the tree digest printed at the end is the check
 (a second build of the same inputs prints the same digest).
@@ -42,6 +48,7 @@ import zipfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LANGPACK = os.path.join(REPO, "src", "formats", "langpack.py")
+FNT = os.path.join(REPO, "src", "formats", "fnt.py")
 RELEASE_PACKAGE = os.path.join(REPO, "tools", "release_package.py")
 README_NAME = "README_testers.txt"
 LAUNCHER_NAME = "mh_launcher.exe"
@@ -196,7 +203,13 @@ def run_langpack(lang, src, en_dir, out):
         "--game",
         out,
     ]
-    cmd += ["--ru", src] if lang == "ru" else ["--src", src]
+    if lang == "ru":
+        cmd += ["--ru", src]
+    else:
+        cmd += ["--src", src]
+        ru_dir = os.path.join(DEFAULT_GAME_DATA, PACK_SOURCE["ru"])
+        if os.path.isfile(os.path.join(ru_dir, "mh_ex.rsr")):  # the common fonts' Cyrillic donor
+            cmd += ["--ru", ru_dir]
     proc = _run(cmd)
     text = (proc.stdout + proc.stderr).strip()
     if proc.returncode != 0:
@@ -206,6 +219,32 @@ def run_langpack(lang, src, en_dir, out):
     if chk.returncode != 0:
         return chk.returncode, "pack check failed:\n" + (chk.stdout + chk.stderr).strip()
     return 0, text
+
+
+def run_fonts(en_dir, out):
+    """Merge the common fonts into `out`'s base mh_ex.rsr. Returns (rc, text)."""
+    build_dir = tempfile.mkdtemp(prefix="lang_workdir_fnt_")
+    try:
+        proc = _run(
+            [
+                sys.executable,
+                FNT,
+                "install",
+                "--en",
+                en_dir,
+                "--game",
+                out,
+                "--build-dir",
+                build_dir,
+            ]
+        )
+    finally:
+        shutil.rmtree(build_dir, ignore_errors=True)
+    for name in ("mh_ex.rsr.vanilla", "mh_ex.nam.vanilla"):
+        p = os.path.join(out, name)
+        if os.path.exists(p):
+            os.remove(p)
+    return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
 def _run(cmd):
@@ -267,7 +306,7 @@ def tree_digest(out):
     return h.hexdigest(), len(entries)
 
 
-def readme_text(zip_name, tester_names, built, skipped, failed, launcher, out):
+def readme_text(zip_name, tester_names, built, skipped, failed, launcher, out, fonts=None):
     lines = [
         "Mission: Humanity -- language test folder",
         "",
@@ -305,7 +344,13 @@ def readme_text(zip_name, tester_names, built, skipped, failed, launcher, out):
     lines += [
         "",
         "FONTS",
-        "  Each pack carries its own fonts, inside its mh_ex.rsr. No combined font set is built.",
+        "  Each pack carries its own fonts, inside its mh_ex.rsr.",
+        "  English (no pack): "
+        + (
+            "common fonts -- the EN set plus Cyrillic and Polish letters, for chat and names."
+            if fonts is None
+            else f"stock EN fonts only -- {fonts}"
+        ),
         "",
         "REPORTING",
         "  Note the pack id, the screen, and what is wrong. Attach mh_video.log and mh_net.log.",
@@ -333,6 +378,7 @@ def build(
     link=False,
     launcher_roots=None,
     runner=run_langpack,
+    fonts_runner=run_fonts,
     say=print,
 ):
     if not os.path.isfile(os.path.join(source, "mh.exe")) or not os.path.isfile(
@@ -365,6 +411,15 @@ def build(
     say("unpacked {} ({})".format(os.path.basename(zip_path), ", ".join(names)))
 
     built, skipped, failed = build_packs(langs, game_data, source, out, runner=runner, say=say)
+    # The common fonts: a failure here is a SKIP by name (no RU source on this machine), not a failed
+    # folder -- English still runs, it just cannot draw Cyrillic or Polish chat.
+    rc, text = fonts_runner(source, out)
+    fonts_skip = None
+    if rc == 0:
+        say("fonts    common EN+Cyrillic+Polish set merged into mh_ex.rsr")
+    else:
+        fonts_skip = (text.splitlines() or ["fnt.py install failed"])[-1]
+        say(f"fonts    SKIPPED: {fonts_skip}")
     launcher_src = find_launcher(launcher_roots or [REPO, MAIN])
     if launcher_src:
         shutil.copy2(launcher_src, os.path.join(out, LAUNCHER_NAME))
@@ -385,6 +440,7 @@ def build(
                 failed,
                 launcher_src is not None,
                 out,
+                fonts_skip,
             )
         )
 
@@ -445,6 +501,13 @@ def selftest():
             _write(os.path.join(o, "lang", lang, "mh_ex.nam"), b"pack")
             return 0, ""
 
+        fonts_calls = []
+
+        def fake_fonts(en, o):
+            fonts_calls.append((en, o))
+            _write(os.path.join(o, "mh_ex.rsr"), b"merged")
+            return 0, "installed"
+
         gd_before = sorted(
             (os.path.relpath(os.path.join(r, f), gd), _read(os.path.join(r, f)))
             for r, _d, fs in os.walk(gd)
@@ -460,6 +523,7 @@ def selftest():
             link=False,
             launcher_roots=[tmp],
             runner=fake_runner,
+            fonts_runner=fake_fonts,
             say=quiet,
         )
         expect("build returns 0 with two skips", rc == 0)
@@ -490,6 +554,7 @@ def selftest():
             link=True,
             launcher_roots=[tmp],
             runner=fake_runner,
+            fonts_runner=fake_fonts,
             say=quiet,
         )
         expect(
@@ -515,6 +580,31 @@ def selftest():
             (b"LAUNCHER NOT BUILT" in readme)
             == (not os.path.exists(os.path.join(out, LAUNCHER_NAME))),
         )
+        expect(
+            "the common fonts were merged into the OUTPUT, from the clean source",
+            bool(fonts_calls)
+            and fonts_calls[0] == (os.path.abspath(src), os.path.abspath(out))
+            and _read(os.path.join(out, "mh_ex.rsr")) == b"merged",
+        )
+        expect("README names the common fonts", b"common fonts" in readme)
+        out_skip = os.path.join(tmp, "lang_test_nofonts")
+        rc_skip = build(
+            source=src,
+            out=out_skip,
+            game_data=gd,
+            zip_path=zip_path,
+            langs=("ru",),
+            launcher_roots=[tmp],
+            runner=fake_runner,
+            fonts_runner=lambda en, o: (2, "no RU retail source found"),
+            say=quiet,
+        )
+        expect(
+            "a missing RU font source is a SKIP by name, not a failed folder",
+            rc_skip == 0
+            and b"stock EN fonts only -- no RU retail source found"
+            in _read(os.path.join(out_skip, README_NAME)),
+        )
         expect("README uses CRLF", b"\r\n" in readme and b"\n" not in readme.replace(b"\r\n", b""))
 
         # 4. the launcher is copied when a release exe exists.
@@ -530,6 +620,7 @@ def selftest():
             zip_path=zip_path,
             launcher_roots=[lroot],
             runner=fake_runner,
+            fonts_runner=fake_fonts,
             say=quiet,
         )
         expect(
@@ -546,6 +637,7 @@ def selftest():
             zip_path=zip_path,
             launcher_roots=[tmp],
             runner=fake_runner,
+            fonts_runner=fake_fonts,
             say=quiet,
         )
         expect("second build: identical tree digest", tree_digest(out) == d1)
@@ -567,6 +659,7 @@ def selftest():
                 game_data=gd,
                 zip_path=zip_path,
                 runner=fake_runner,
+                fonts_runner=fake_fonts,
                 say=quiet,
             ),
         )
@@ -578,6 +671,7 @@ def selftest():
                 game_data=gd,
                 zip_path=zip_path,
                 runner=fake_runner,
+                fonts_runner=fake_fonts,
                 say=quiet,
             ),
         )
@@ -592,6 +686,7 @@ def selftest():
                 game_data=gd,
                 zip_path=bad,
                 runner=fake_runner,
+                fonts_runner=fake_fonts,
                 say=quiet,
             ),
         )

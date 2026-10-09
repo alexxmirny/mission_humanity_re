@@ -741,6 +741,9 @@ def make_ini(script_name, timeout_frames, harness_steps=0, is_host=False, ident=
     for ln in make_lane.video_lines(headless, backend, ident.get("fps_limit")):
         k, _, v = ln.partition("=")
         L.add("video", k, v)
+    for ln in make_lane.log_lines():
+        k, _, v = ln.partition("=")
+        L.add("log", k, v)
     for ln in make_lane.input_lines_for(ident, INPUT_BACKEND or None):
         k, _, v = ln.partition("=")
         L.add("input", k, v)

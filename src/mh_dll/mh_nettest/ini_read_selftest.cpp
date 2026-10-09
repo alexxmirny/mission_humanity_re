@@ -172,7 +172,7 @@ void run_gate_checks() {
     clear_lines();
     mh_ini_attach_logger(capture, ship); // a logger, and the start banner
     check("ship: no DEV UNLOCKED banner", count_lines("DEV UNLOCKED") == 0);
-    check("ship: the start banner names the effective level set", count_lines("[log] level=normal effective:") == 1);
+    check("ship: the start banner names the effective level set (no [log] key: the default is debug, v0.2.0)", count_lines("[log] level=debug effective:") == 1 && mh_ini_log_level(ship) == 2);
     check("ship: [dev] unlock reads 0", mh_ini_get_int("dev", "unlock", 0, ship) == 0 && !mh_ini_dev_unlocked(ship));
 
     char v[128];
@@ -231,7 +231,7 @@ void run_gate_checks() {
     check("early read: nothing emitted before a logger is attached", g_nlines == 0);
     mh_ini_attach_logger(capture, ship);
     check("early read: the buffered IGNORED line is flushed on attach, after the banner",
-          count_lines("IGNORED dev key [harness] enable=1") == 1 && count_lines("[log] level=normal") == 1);
+          count_lines("IGNORED dev key [harness] enable=1") == 1 && count_lines("[log] level=debug") == 1);
 
     // ---- RL6: the three levels --------------------------------------------------------------------
     const char *const LEVEL_TEXT[3] = {"quiet", "normal", "debug"};

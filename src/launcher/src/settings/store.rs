@@ -85,7 +85,7 @@ mod tests {
             Some(b"[lang]\r\npack=\r\n"),
             &ConfigStore::new(&mut cfg, toml_path.clone()),
         );
-        assert_eq!(m.value("launcher.channel"), "stable");
+        assert_eq!(m.value("launcher.channel"), "latest");
         assert_eq!(m.value("launcher.relay_mode"), "auto");
         assert_eq!(m.value("launcher.discord"), "1");
         m.set("launcher.channel", "latest");

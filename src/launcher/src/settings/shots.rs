@@ -43,8 +43,8 @@ const INI: &str = "; Mission Humanity configuration\r\n\
 window=borderless      ; borderless | windowed\r\n\
 scale=fit\r\n\
 filter=area\r\n\
-vsync=0\r\n\
-fps_limit=60\r\n\
+vsync=1\r\n\
+fps_limit=0\r\n\
 mouse_clip=1\r\n\
 picker=0\r\n\
 [lang]\r\n\
@@ -56,7 +56,7 @@ port=6501\r\n\
 net_indicator=1\r\n\
 net_indicator_key=Ctrl+Alt+N\r\n\
 [log]\r\n\
-level=normal\r\n\
+level=debug\r\n\
 [video2]\r\n\
 x=1\r\n";
 

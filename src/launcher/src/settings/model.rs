@@ -392,8 +392,10 @@ impl Model {
             Kind::Int => {
                 let n: i64 = t.parse().map_err(|_| Problem::NotInteger)?;
                 if r.min.is_some_and(|m| n < m) || r.max.is_some_and(|m| n > m) {
-                    // A listed option (fps_limit 0 = unlimited) is always allowed.
-                    if r.options.iter().any(|o| o.trim().parse::<i64>() == Ok(n)) {
+                    // A listed option or an `allow`ed value (fps_limit 0 = unlimited) is always ok.
+                    if r.allow.contains(&n)
+                        || r.options.iter().any(|o| o.trim().parse::<i64>() == Ok(n))
+                    {
                         return Ok(());
                     }
                     return Err(Problem::OutOfRange {
@@ -560,7 +562,7 @@ mod tests {
             "1"
         );
         assert!(!m.is_dirty());
-        assert_eq!(m.value("launcher.channel"), "stable");
+        assert_eq!(m.value("launcher.channel"), "latest");
         assert_eq!(m.value("launcher.discord"), "1");
     }
 
@@ -585,9 +587,14 @@ mod tests {
         assert_eq!(m.dirty_count(), 1);
         m.revert();
         assert!(!m.is_dirty());
+        assert!(
+            !m.differs_from_default("video.window"),
+            "the disk value is the ship default (borderless)"
+        );
+        m.set("video.window", "windowed");
         assert!(m.differs_from_default("video.window"));
         m.reset_row("video.window");
-        assert_eq!(m.value("video.window"), "windowed");
+        assert_eq!(m.value("video.window"), "borderless");
         assert!(!m.differs_from_default("video.window"));
     }
 
@@ -612,9 +619,21 @@ mod tests {
         assert_eq!(m.validate("net.port"), Ok(()));
         m.set("net.port", "65535");
         assert!(!m.has_problems());
-        // fps_limit has options 60|0 and no range: any integer is fine, text is not.
-        m.set("video.fps_limit", "144");
-        assert_eq!(m.validate("video.fps_limit"), Ok(()));
+        // fps_limit: 0 (unlimited) or 30..=360; text is not a number.
+        for ok in ["0", "30", "144", "360"] {
+            m.set("video.fps_limit", ok);
+            assert_eq!(m.validate("video.fps_limit"), Ok(()), "{ok}");
+        }
+        for bad in ["1", "29", "361", "-5"] {
+            m.set("video.fps_limit", bad);
+            assert!(
+                matches!(
+                    m.validate("video.fps_limit"),
+                    Err(Problem::OutOfRange { .. })
+                ),
+                "{bad}"
+            );
+        }
         m.set("video.fps_limit", "x");
         assert_eq!(m.validate("video.fps_limit"), Err(Problem::NotInteger));
     }
@@ -666,7 +685,7 @@ mod tests {
         m.load(Some(INI.as_bytes()), &store);
         m.set("video.window", "windowed");
         m.set("video.scale", "integer"); // absent key: inserted
-        m.set("launcher.channel", "latest");
+        m.set("launcher.channel", "stable");
         m.set("launcher.discord", "0");
         let report = m.apply(&ini, &mut store).unwrap();
         assert_eq!(report.ini, Change::Written);
@@ -679,12 +698,12 @@ mod tests {
             after, expect,
             "comments, `on`, dev knob and unknown sections untouched"
         );
-        assert_eq!(store.fields["channel"], "latest");
+        assert_eq!(store.fields["channel"], "stable");
         assert_eq!(store.fields["discord"], "false");
         assert_eq!(store.flushes, 1);
         assert!(!m.is_dirty(), "apply reloads");
         assert_eq!(m.value("video.window"), "windowed");
-        assert_eq!(m.value("launcher.channel"), "latest");
+        assert_eq!(m.value("launcher.channel"), "stable");
         // An Apply with nothing pending does not touch the file at all.
         let before = std::fs::metadata(&ini).unwrap().modified().unwrap();
         let r = m.apply(&ini, &mut store).unwrap();
@@ -778,7 +797,10 @@ mod tests {
         m.set("video.filter", "sharp");
         assert!(!m.is_custom_choice(&f));
         let fps = m.schema().row("video.fps_limit").unwrap().clone();
-        assert!(m.is_custom_choice(&fps), "144 is not 60|0");
+        assert!(
+            !m.is_custom_choice(&fps),
+            "fps_limit is a number field, not a choice"
+        );
     }
 
     #[test]

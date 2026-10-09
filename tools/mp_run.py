@@ -163,6 +163,8 @@ def net_ini(args, role, host, pid, n, mapname):
         s
         + "\n[video]\n"
         + "".join(ln + "\n" for ln in video)
+        + "\n[log]\n"
+        + "".join(ln + "\n" for ln in make_lane.log_lines())
         + "\n[input]\n"
         + "".join(ln + "\n" for ln in inp)
     )

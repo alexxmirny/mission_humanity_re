@@ -113,9 +113,9 @@ fn fixture(tag: &str, with_game: bool) -> Fixture {
     std::fs::write(
         game.join("mh_net.ini"),
         "; Mission Humanity configuration\r\n[video]\r\nwindow=borderless\r\nscale=fit\r\n\
-         filter=area\r\nvsync=0\r\nfps_limit=60\r\nmouse_clip=1\r\npicker=0\r\n[lang]\r\npack=ru\r\n\
+         filter=area\r\nvsync=1\r\nfps_limit=0\r\nmouse_clip=1\r\npicker=0\r\n[lang]\r\npack=ru\r\n\
          [net]\r\nforce_relay=0\r\nport=6501\r\n[hud]\r\nnet_indicator=1\r\nnet_indicator_key=Ctrl+Alt+N\r\n\
-         [log]\r\nlevel=normal\r\n",
+         [log]\r\nlevel=debug\r\n",
     )
     .unwrap();
     let layout = Layout::rooted(root.join("state"));

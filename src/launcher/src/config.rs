@@ -41,8 +41,8 @@ pub struct Config {
     /// `DISCORD_CLIENT_ID` (`effective_discord_client_id`).
     pub discord_client_id: String,
     /// dist RL8: the release channel this launcher follows -- `stable` or `latest`. Empty (the
-    /// default, and every config written before RL8) means `stable`; anything else is logged at
-    /// start-up and treated as `stable` too (`channel`, `channel_note`). A SETTING, written only by
+    /// default, and every config written before RL8) means `latest`; anything else is logged at
+    /// start-up and treated as `latest` too (`channel`, `channel_note`). A SETTING, written only by
     /// an explicit choice (`set_channel`, the Settings page).
     pub channel: String,
     /// dist RL8: the channel the game now on disk was installed from. STATE, not a setting: written
@@ -111,16 +111,16 @@ impl Default for Config {
 /// The relay modes (dist RL14).
 pub const RELAY_MODES: [&str; 3] = ["auto", "off", "custom"];
 
-/// The two release channels (dist RL8). `stable` is what a player who chose nothing follows;
-/// `latest` is what a release lands on first and is promoted from.
+/// The two release channels (dist RL8). `latest` is what a player who chose nothing follows (v0.2.0:
+/// fresh installs and bridge arrivals alike); `stable` is the opt-in channel a release is promoted to.
 pub const CHANNELS: [&str; 2] = ["stable", "latest"];
 
 /// The channel a config that names none follows.
-pub const DEFAULT_CHANNEL: &str = "stable";
+pub const DEFAULT_CHANNEL: &str = "latest";
 
 impl Config {
-    /// The channel to follow: `latest` only when the config says exactly so, `stable` otherwise
-    /// (empty, unknown, or any case/space variant of either name is normalised first).
+    /// The channel to follow: `stable` only when the config says so; `latest` otherwise (empty or
+    /// unknown; any case/space variant of either name is normalised first).
     pub fn channel(&self) -> &'static str {
         let t = self.channel.trim().to_ascii_lowercase();
         CHANNELS
@@ -332,26 +332,26 @@ mod tests {
         assert_eq!(old.update_tag(), "net");
     }
 
-    /// dist RL8: empty and unknown channels follow `stable` (the unknown one with a log line), a
-    /// config written before the field existed loads, and only an exact `latest` follows latest.
+    /// dist RL8 / v0.2.0: empty and unknown channels follow `latest` (the unknown one with a log
+    /// line), a config written before the field existed loads, and only an exact `stable` follows stable.
     #[test]
-    fn the_channel_defaults_to_stable_and_unknown_names_are_noted() {
+    fn the_channel_defaults_to_latest_and_unknown_names_are_noted() {
         let mut c = Config::default();
-        assert_eq!(c.channel(), "stable");
+        assert_eq!(c.channel(), "latest");
         assert_eq!(c.channel_note(), None, "empty is the default, not a typo");
         c.channel = "latest".into();
         assert_eq!(c.channel(), "latest");
-        c.channel = " Latest ".into();
-        assert_eq!(c.channel(), "latest");
+        c.channel = " Stable ".into();
+        assert_eq!(c.channel(), "stable");
         assert_eq!(c.channel_note(), None);
         c.channel = "nightly".into();
-        assert_eq!(c.channel(), "stable");
+        assert_eq!(c.channel(), "latest");
         assert!(c.channel_note().unwrap().contains("nightly"));
         let (old, note) = Config::load_str("game_dir = 'C:/g'\n");
         assert!(note.is_none());
         assert_eq!(
             (old.channel(), old.installed_channel.as_str()),
-            ("stable", "")
+            ("latest", "")
         );
     }
 

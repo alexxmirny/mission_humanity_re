@@ -636,7 +636,8 @@ and notes as before. An rc7.1 launcher offers the launcher update on one click, 
 restarts with `--update`; the new launcher then follows its channel's schema-2 files and never
 reads the bridge again. The new launcher must keep answering `--verify-binary` (`mh_launcher <ver>
 ok`) and accept `--update`, `--view` and `--exit-after-update` for this to work. Bridge arrivals
-default to the `stable` channel (user decision 2026-10-08).
+default to the `latest` channel, exactly like a fresh install (user decision 2026-10-09; it replaces
+the 2026-10-08 "bridge arrivals follow stable" rule).
 
 **Until the v0.2.0 launcher is promoted to stable** the bridge's launcher entry stays as is and
 only `issued_at` moves. The bridge ends at **v0.2.0 stable + 6 months**, recorded in the repository

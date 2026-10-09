@@ -294,6 +294,45 @@ def build_fonts(ru_src, en_src):
 
 
 # ---------------------------------------------------------------------------------- 2. initlang
+def resolve_common_ru(ru=None, en_src=None):
+    """The RU retail Source the COMMON font set is lifted from, or None when this machine has none.
+    Explicit path wins (an explicit path that is not a RU install is an error); else the fnt.py search."""
+    if ru:
+        src = fnt.open_source(ru, "--ru")
+        if not _has_cyrillic(src):
+            raise SystemExit(f"--ru {src.path}: its mh_ex fonts carry no Cyrillic -- not a RU install")
+        return src
+    for p in fnt._candidate_sources():
+        try:
+            s = fnt.Source(p)
+            if s.font_layer("mh_ex") is not None and _has_cyrillic(s):
+                return s
+        except (FileNotFoundError, zipfile.BadZipFile, OSError, ValueError):
+            continue
+    return None
+
+
+def build_common_fonts(ru_src, en_src):
+    """The COMMON font set every non-RU pack and the base install carry: fnt.merge (EN base + 61
+    Cyrillic lifted from RU retail + fnt's derivation table), exactly what `fnt.py install` writes.
+    Returns (blobs {FONT_FILES name: bytes}, merged FontSet, MergeReport, EN layer)."""
+    en, ru = en_src.font_layer("mh_ex"), ru_src.font_layer("mh_ex")
+    merged, report = fnt.merge(en, ru)
+    for name in fnt.PFMENU:
+        if not fnt.verify_prefix(en.fonts[name], merged.fonts[name], len(en.layout)):
+            raise SystemExit(f"{name}: the common-font merge moved or changed an EN record -- refusing")
+    if merged.layout[:len(en.layout)] != en.layout:
+        raise SystemExit("the common-font merge reordered the EN FONTLAY -- refusing")
+    blobs = {"FONTLAY.TXT": fnt.write_fontlay(merged.layout)}
+    for name in fnt.PFMENU:
+        blobs[name] = merged.fonts[name].to_bytes()
+    return blobs, merged, report, en
+
+
+def no_common_warning(lang, current):
+    return f"fonts: no RU retail source -- {lang} pack keeps {current} fonts (no Cyrillic)"
+
+
 def _text_entries(text):
     """[(key, line)] for every `TEXT "KEY" "value"` line, in file order."""
     out = []
@@ -625,8 +664,9 @@ def write_pack_ini(out_dir, codepage):
         )
 
 
-def build_plain(src, en_src, out_dir, lang_id, quiet=False):
-    """fr/de/it: the retail mh_ex verbatim; only initlang gains the TEXT keys it lacks (in English)."""
+def build_plain(src, en_src, out_dir, lang_id, quiet=False, common_ru=None):
+    """fr/de/it: the retail mh_ex verbatim, except initlang (gains the TEXT keys it lacks, in English)
+    and, when `common_ru` is given, the five font members (the common EN+Cyrillic+Polish set)."""
     lang, spec = pack_spec(lang_id)
     report = []
     members = read_pack(src)
@@ -640,6 +680,16 @@ def build_plain(src, en_src, out_dir, lang_id, quiet=False):
     if added:
         _replace(members, "initlang.cfg", il, report, "initlang: + %d TEXT entries in English: %s"
                  % (len(added), ", ".join(added)))
+    if common_ru is not None:
+        blobs, merged, frep, en_layer = build_common_fonts(common_ru, en_src)
+        for base, blob in blobs.items():
+            _replace(members, base, blob, report, "fonts: common set, EN %d -> %d FONTLAY entries (%d Cyrillic lifted, %d derived)"
+                     % (len(en_layer.layout), len(merged.layout), len(frep.lifted), len(frep.derived)))
+        font_line = "recipe: + the common fonts (EN + Cyrillic + Polish; fnt.merge)"
+    else:
+        font_line = no_common_warning(lang, "EN")
+        if not quiet:
+            print(font_line)
     write_pack(members, out_dir)
     msgs = read_loose(src, "Msgs.dat")
     if msgs is not None:
@@ -650,7 +700,8 @@ def build_plain(src, en_src, out_dir, lang_id, quiet=False):
         f"language pack built by {TOOL} (format {FORMAT_VERSION}); retail game data -- never commit",
         f"{lang} source: {os.path.basename(src.path)}  mh_ex.rsr md5 {md5(src._read('mh_ex', '.rsr'))}",
         f"en source: {os.path.basename(en_src.path)}  mh_ex.rsr md5 {md5(en_src._read('mh_ex', '.rsr'))}",
-        "recipe: retail mh_ex carried over (fonts byte-identical to EN; no font merge, no menu art)",
+        "recipe: retail mh_ex carried over (retail fonts byte-identical to EN; no menu art)",
+        font_line,
         f"Msgs.dat: {'copied' if msgs is not None else 'absent in the source'}",
         f"pack.ini: codepage {spec['codepage']}",
         install_strings(lang_id, out_dir),
@@ -677,16 +728,18 @@ def resolve_art_donors():
     return out
 
 
-def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru"):
-    """ru_src = the pack's own retail install (named for the RU original)."""
+def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru", common_ru=None):
+    """ru_src = the pack's own retail install (named for the RU original). `common_ru` = the RU retail
+    Source the common font set is lifted from (fr/de/it/pl; None = keep the pack's current fonts)."""
     _lang, spec = pack_spec(lang_id)
     if spec.get("ext"):
         import langpack_pl
 
         return langpack_pl.build_pl(sys.modules[__name__], fnt, ru_src, en_src, out_dir, quiet,
-                                    art_donors=resolve_art_donors() if art else None, lang_id=lang_id)
+                                    art_donors=resolve_art_donors() if art else None, lang_id=lang_id,
+                                    common_ru=common_ru)
     if not spec["merge"]:
-        return build_plain(ru_src, en_src, out_dir, lang_id, quiet)
+        return build_plain(ru_src, en_src, out_dir, lang_id, quiet, common_ru=common_ru)
     report = []
     members = read_pack(ru_src)
     en_members = read_pack(en_src)
@@ -699,6 +752,14 @@ def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru"):
         _replace(members, base, blob, report,
                  "fonts: RU base %d -> %d FONTLAY entries (%d lifted from EN, %d derived)"
                  % (len(ru_layer.layout), len(merged.layout), len(frep.lifted), len(frep.derived)))
+    # 1b. the RU pack must draw everything the common set draws (so a RU player renders any language's text)
+    common_layout = fnt.merge(en_src.font_layer("mh_ex"), ru_src.font_layer("mh_ex"))[0].layout
+    # C0 controls (EN lists CR/LF) are excluded: RU retail never had glyphs for them and fnt.is_latin_accent
+    # deliberately does not lift them (a new glyph would change the width of RU strings carrying one).
+    missing = sorted(cp for cp in set(common_layout) - set(merged.layout) if cp > 0x20)
+    if missing:
+        raise SystemExit("the RU pack fonts lack code points of the common set: "
+                         + ", ".join(f"U+{c:04X}" for c in missing))
     # 2. initlang
     ru_il = payload(by_key["init\\initlang.cfg"])
     en_il = payload(en_by_key["init\\initlang.cfg"])
@@ -877,8 +938,9 @@ def cmd_build(args):
         ru_src, en_src = resolve_pack_source(lang, args.src), resolve_en(args.en)
     game = args.game or machine.POLYGON
     out = os.path.join(game, "lang", args.id)
+    common_ru = None if spec["merge"] else resolve_common_ru(args.ru, en_src)
     print(f"{lang.upper()} source: {ru_src.path}\nEN source: {en_src.path}\nwriting  : {out}")
-    build(ru_src, en_src, out, art=not args.no_art, lang_id=args.id)
+    build(ru_src, en_src, out, art=not args.no_art, lang_id=args.id, common_ru=common_ru)
     print(f"done -- enable with `[lang] pack={args.id}` in {os.path.join(game, 'mh_net.ini')}")
     return 0
 
@@ -918,6 +980,11 @@ def _selftest_plain(en_arg):
         print(f"  SKIP fr/de/it packs: {exc}")
         return fails
     en_il = payload({m.key(): m for m in read_pack(en_src)}["init\\initlang.cfg"])
+    common_ru = resolve_common_ru()
+    if common_ru is None:
+        print("  NOTE fr/de/it: no RU retail source -- the common-font checks are skipped")
+    else:
+        common_blobs = build_common_fonts(common_ru, en_src)[0]
     for lang, spec in PACKS.items():
         if spec["merge"] or not spec["src"] or spec.get("ext"):
             continue
@@ -929,8 +996,8 @@ def _selftest_plain(en_arg):
         tmp = tempfile.mkdtemp(prefix=f"mh_langpack_{lang}_")
         try:
             a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
-            build(src, en_src, a, quiet=True, lang_id=lang)
-            build(src, en_src, b, quiet=True, lang_id=lang)
+            build(src, en_src, a, quiet=True, lang_id=lang, common_ru=common_ru)
+            build(src, en_src, b, quiet=True, lang_id=lang, common_ru=common_ru)
             names = sorted(os.listdir(a))
             for n in names:
                 if open(os.path.join(a, n), "rb").read() != open(os.path.join(b, n), "rb").read():
@@ -939,8 +1006,21 @@ def _selftest_plain(en_arg):
             if [m.key() for m in orig] != list(now):
                 fails.append(f"{lang}: member list/order differs from the retail pack's")
             changed = [m.key() for m in orig if now[m.key()].stored != m.stored]
-            if changed not in ([], ["init\\initlang.cfg"]):
-                fails.append(f"{lang}: members other than initlang changed: {changed}")
+            font_keys = ["fnt\\" + f.lower() for f in FONT_FILES]
+            if common_ru is None:
+                want_changed = ([], ["init\\initlang.cfg"])
+            else:
+                want_changed = (sorted(font_keys), sorted(font_keys + ["init\\initlang.cfg"]))
+            if sorted(changed) not in want_changed:
+                fails.append(f"{lang}: members other than initlang + fonts changed: {changed}")
+            if common_ru is not None:
+                en_layer, layer = en_src.font_layer("mh_ex"), fnt.Source(a).font_layer("mh_ex")
+                for f in FONT_FILES:
+                    if payload(now["fnt\\" + f.lower()]) != common_blobs[f]:
+                        fails.append(f"{lang}: {f} is not the common set")
+                for name in fnt.PFMENU:
+                    if not fnt.verify_prefix(en_layer.fonts[name], layer.fonts[name], len(en_layer.layout)):
+                        fails.append(f"{lang}: {name}: an EN record moved or changed")
             gap = initlang_coverage(payload(now["init\\initlang.cfg"]), en_il)
             if gap:
                 fails.append(f"{lang}: initlang still lacks {gap}")
@@ -972,11 +1052,14 @@ def _selftest_pl(en_arg):
         print(f"  SKIP pl pack: {exc}")
         return fails
     spec = PACKS["pl"]
+    common_ru = resolve_common_ru()
+    if common_ru is None:
+        print("  NOTE pl: no RU retail source -- fonts are EN+Polish only, the common-font checks are skipped")
     tmp = tempfile.mkdtemp(prefix="mh_langpack_pl_")
     try:
         a, b = os.path.join(tmp, "a"), os.path.join(tmp, "b")
-        build(ext_src, en_src, a, quiet=True, lang_id="pl")
-        build(ext_src, en_src, b, quiet=True, lang_id="pl")
+        build(ext_src, en_src, a, quiet=True, lang_id="pl", common_ru=common_ru)
+        build(ext_src, en_src, b, quiet=True, lang_id="pl", common_ru=common_ru)
         names = sorted(os.listdir(a))
         for n in names:
             if open(os.path.join(a, n), "rb").read() != open(os.path.join(b, n), "rb").read():
@@ -1017,6 +1100,11 @@ def _selftest_pl(en_arg):
                 g = layer.glyph(name, ord(ch))
                 if g is None or g.ink_bbox() is None:
                     fails.append(f"pl: {name}: U+{ord(ch):04X} missing or blank")
+        if common_ru is not None:  # the pack's fonts ARE the common set, so Cyrillic / accents resolve too
+            common_blobs = build_common_fonts(common_ru, en_src)[0]
+            for f in FONT_FILES:
+                if payload(built["fnt\\" + f.lower()]) != common_blobs[f]:
+                    fails.append(f"pl: {f} is not the common set")
         # every code point the text uses is mapped (backslash is markup)
         have = set(layer.layout)
         for key in ("init\\initlang.cfg", "info\\info.txt", "info\\tutorial.txt", "info\\credits.txt"):

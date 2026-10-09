@@ -269,7 +269,7 @@ is asserted by `net_selftest.exe inireadtest`.
 header's level table: `debug` = `net.sp_clock_log`, `trace.temporal_sp`, `desync.verbose`,
 `input.mouse_trace`, `desync.state_record` (the former `release_package.py` DEBUG_KEYS); `quiet` =
 `net.lockstep_log=0` + `net.frametime_log=0` (desync detection — `enabled`, `per_step`, `state_ring` — is
-in no table, so it stays on); `normal` = today's behaviour. An explicit per-key value wins only under the
+in no table, so it stays on); `normal` = the pre-v0.2.0 behaviour (no observer logs); **the default when the key is absent is `debug`** (v0.2.0; the rig pins `normal`). An explicit per-key value wins only under the
 unlock. `release_package.py --selftest` cross-checks its list against the C++ table.
 
 ## Adding a new seam (recipe)

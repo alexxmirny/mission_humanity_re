@@ -305,9 +305,28 @@ def video_lines(headless, backend=None, fps_limit=None):
         # must never hold the operator's pointer, so visible lanes turn it off. Headless lanes need no
         # key: under no_window the owned device leaves the window (and the pointer) alone.
         lines.append("mouse_clip=0")
-    if fps_limit is not None:
-        lines.append("fps_limit=%d" % fps_limit)
+    # v0.2.0 SHIP DEFAULTS MOVED (window=borderless, filter=area, vsync=1, fps_limit=0, log level
+    # debug), but every rig baseline was recorded under the old ones. The rig therefore PINS the old
+    # values explicitly and never leans on the DLL's defaults for them; each is declared in
+    # tools/data/rig_ini_default_exceptions.json (section "video"/"log"/"input").
+    lines += ["window=%s" % RIG_WINDOW, "filter=%s" % RIG_FILTER, "vsync=%d" % RIG_VSYNC]
+    lines.append("fps_limit=%d" % (RIG_FPS_LIMIT if fps_limit is None else fps_limit))
     return lines
+
+
+# The rig's pinned values for the keys whose SHIP default changed in v0.2.0 (see video_lines).
+RIG_WINDOW = "windowed"
+RIG_FILTER = "point"
+RIG_VSYNC = 0
+RIG_FPS_LIMIT = 60
+RIG_LOG_LEVEL = "normal"
+
+
+def log_lines():
+    """The [log] keys (no header) every rig ini carries: `level=normal`. The ship default is `debug`
+    (v0.2.0), which turns on the observer logs and the whole-match state record -- the rig's runs were
+    measured without them, so it pins the old level (ONE place, like video_lines)."""
+    return ["level=%s" % RIG_LOG_LEVEL]
 
 
 def video_lines_for(ident, headless):
@@ -446,6 +465,7 @@ def write_ini(dst, lane, port, headless, extra, backend=None, fps_limit=None, in
     # limiter wait, which is exactly what makes it wrong for pacing measurement. no_window rides with
     # it (see video_lines). The backend is the owned device on every lane unless --backend system.
     lines += video_lines(headless, backend, fps_limit)
+    lines += ["", "[log]"] + log_lines()
     # PT-INPUT1: the owned DirectInput unless --input-backend system (input_lines).
     lines += ["", "[input]"] + input_lines(input_backend)
     if extra:

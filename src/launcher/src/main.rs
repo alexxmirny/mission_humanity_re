@@ -411,7 +411,7 @@ fn main() {
             log::line(format!("config: {e}"));
         }
     }
-    // dist RL8: a `channel` value that is not a channel name follows stable -- say so once.
+    // dist RL8: a `channel` value that is not a channel name follows the default (latest) -- say so once.
     if let Some(note) = cfg.channel_note() {
         log::line(format!("config: {note}"));
     }

@@ -284,6 +284,7 @@ def ui_write_config(
     # PT-GFX5: backend (owned DirectDraw by default) + the headless pair + the lane's own
     # --fps-limit, from the ONE composer.
     lines += make_lane.video_lines_for(ident, not visible)
+    lines += ["", "[log]"] + make_lane.log_lines()
     lines += [
         "",
         "[input]",

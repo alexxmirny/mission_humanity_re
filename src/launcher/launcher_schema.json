@@ -40,7 +40,7 @@
       "store": "launcher",
       "field": "channel",
       "type": "enum",
-      "default": "stable",
+      "default": "latest",
       "label": "launcher.channel",
       "subtab": "updates",
       "options": ["stable", "latest"],
@@ -65,6 +65,11 @@
   "overrides": {
     "net.relay": {
       "hidden": true
+    },
+    "video.fps_limit": {
+      "min": 30,
+      "max": 360,
+      "allow": [0]
     },
     "net.port": {
       "min": 1024,

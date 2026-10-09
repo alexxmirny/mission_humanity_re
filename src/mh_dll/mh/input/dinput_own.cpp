@@ -919,13 +919,13 @@ bool install_owned_dinput(const char *ini) {
     g_trace_m = mh_ini_get_int("input", "mouse_trace", 0, ini) != 0;
     g_trace_k = mh_ini_get_int("input", "key_trace", 0, ini) != 0;
     char v[32];
-    mh::config::read_ini_string("input", "backend", "system", v, sizeof(v), ini);
+    mh::config::read_ini_string("input", "backend", "own", v, sizeof(v), ini);
     bool own = false;
     if (!parse_backend(v, &own)) {
         in_log("; [input] [input] backend=%s not recognised (system | own) -- staying on system", v);
         return false;
     }
-    if (!own) return false; // the default: the loader is not touched
+    if (!own) return false; // backend=system: the loader is not touched
     if (!mh::en_build_ok()) return false;
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)&install_owned_dinput, &g_self);

@@ -43,11 +43,11 @@
 // a player setting. [video] backend also accepts own|null (dev); the player sees system|d3d11|gdi.
 
 // ---- PLAYER SETTINGS (class C_USER), in the launcher's display order (plan section E) ----
-MH_INI_KEY("video", "window", T_ENUM, "windowed", C_USER, "video.window", S_DISPLAY, "borderless|windowed", F_NONE)
+MH_INI_KEY("video", "window", T_ENUM, "borderless", C_USER, "video.window", S_DISPLAY, "borderless|windowed", F_NONE)
 MH_INI_KEY("video", "scale", T_ENUM, "fit", C_USER, "video.scale", S_DISPLAY, "fit|integer", F_NONE)
-MH_INI_KEY("video", "filter", T_ENUM, "point", C_USER, "video.filter", S_DISPLAY, "area|sharp|linear|point", F_NONE)
-MH_INI_KEY("video", "vsync", T_BOOL, "0", C_USER, "video.vsync", S_DISPLAY, "", F_NONE)
-MH_INI_KEY("video", "fps_limit", T_INT, "60", C_USER, "video.fps_limit", S_DISPLAY, "60|0", F_NONE)
+MH_INI_KEY("video", "filter", T_ENUM, "area", C_USER, "video.filter", S_DISPLAY, "area|sharp|linear|point", F_NONE)
+MH_INI_KEY("video", "vsync", T_BOOL, "1", C_USER, "video.vsync", S_DISPLAY, "", F_NONE)
+MH_INI_KEY("video", "fps_limit", T_INT, "0", C_USER, "video.fps_limit", S_DISPLAY, "", F_NONE)
 MH_INI_KEY("video", "mouse_clip", T_BOOL, "1", C_USER, "video.mouse_clip", S_DISPLAY, "", F_NONE)
 MH_INI_KEY("video", "picker", T_BOOL, "0", C_USER, "video.picker", S_DISPLAY, "", F_EXPERIMENTAL|F_RESTART)
 MH_INI_KEY("lang", "pack", T_STRING, "", C_USER, "lang.pack", S_LANGUAGE, "", F_RESTART)
@@ -56,9 +56,9 @@ MH_INI_KEY("net", "force_relay", T_BOOL, "0", C_USER, "net.force_relay", S_MULTI
 MH_INI_KEY("hud", "net_indicator", T_BOOL, "1", C_USER, "hud.net_indicator", S_MULTIPLAYER, "", F_NONE)
 MH_INI_KEY("hud", "net_indicator_key", T_HOTKEY, "Ctrl+Alt+N", C_USER, "hud.net_indicator_key", S_MULTIPLAYER, "", F_NONE)
 MH_INI_KEY("net", "port", T_INT, "6501", C_USER, "net.port", S_MULTIPLAYER, "", F_RESTART)
-MH_INI_KEY("log", "level", T_ENUM, "normal", C_USER, "log.level", S_DIAGNOSTICS, "quiet|normal|debug", F_NONE)
-MH_INI_KEY("video", "backend", T_ENUM, "system", C_USER, "video.backend", S_DIAGNOSTICS, "system|d3d11|gdi", F_RESTART)
-MH_INI_KEY("input", "backend", T_ENUM, "system", C_USER, "input.backend", S_DIAGNOSTICS, "system|own", F_RESTART)
+MH_INI_KEY("log", "level", T_ENUM, "debug", C_USER, "log.level", S_DIAGNOSTICS, "quiet|normal|debug", F_NONE)
+MH_INI_KEY("video", "backend", T_ENUM, "d3d11", C_USER, "video.backend", S_DIAGNOSTICS, "system|d3d11|gdi", F_RESTART)
+MH_INI_KEY("input", "backend", T_ENUM, "own", C_USER, "input.backend", S_DIAGNOSTICS, "system|own", F_RESTART)
 MH_INI_KEY("log", "keep_sessions", T_INT, "20", C_USER, "log.keep_sessions", S_UPDATES, "20|50|0", F_NONE)
 MH_INI_KEY("log", "keep_days", T_INT, "0", C_USER, "log.keep_days", S_UPDATES, "", F_NONE)
 

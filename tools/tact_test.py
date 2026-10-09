@@ -258,6 +258,7 @@ def tact_write_config(
     ]
     # PT-GFX5: backend (owned DirectDraw by default) + the headless pair, from the ONE composer.
     lines += make_lane.video_lines_for(ident, ident.get("headless", True))
+    lines += ["", "[log]"] + make_lane.log_lines()
     lines += [
         "",
         "[tactical]",

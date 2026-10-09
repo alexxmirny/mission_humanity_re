@@ -38,8 +38,8 @@ time (`; [build] mh <version>+<commit>`), which is how a bug report is traced to
 ---- THE TESTER ZIP (explicit flag only) ----------------------------------------------------------
 
 `--tester` builds `<base>-<version>-tester.zip` INSTEAD of the ship zip: the four modules plus
-mh_harness.dll and an `mh_net.ini` that is the reference ini with `[dev] unlock=1`, `[log]
-level=debug`, the three HARNESS_KEYS flipped (the harness armed, clock not pinned) -- the
+mh_harness.dll and an `mh_net.ini` that is the reference ini (`[log] level=debug` is its
+ship default) with `[dev] unlock=1` and the three HARNESS_KEYS flipped (the harness armed, clock not pinned) -- the
 harness keys are dev keys, hence the unlock. The ini is
 there on purpose -- the tester wants portable mode and the dev keys. release.yml never passes
 `--tester`; the selftest asserts the ship zip has no ini and no harness.
@@ -92,16 +92,11 @@ class Refusal(Exception):
 # below) are now supplied as DEFAULTS by that level inside mh.dll (src/mh_dll/mh_common/include/
 # mh_ini_gate.h, LEVEL table) -- and they HAD to move: since dist RL2 the shipped DLL ignores a dev key
 # written in an ini that does not carry `[dev] unlock=1`, so flipping them here would be a no-op.
-DEBUG_KEYS = (
-    (
-        "log",
-        "level",
-        "debug",
-        "turn on the observer logs a bug report wants -- sp_clock_log, temporal_sp, desync verbose, "
-        "mouse_trace and the whole-match state record (mh_match_state.bin). All observers: they write "
-        "lines and change nothing the game does.",
-    ),
-)
+#
+# EMPTY since v0.2.0 (user, 2026-10-09): `[log] level=debug` is the SHIP DEFAULT, so the reference ini already
+# says it and the tester ini has nothing to flip (a flip would be a no-op). The selftest checks the
+# reference ini still carries `level=debug`, so the tester keeps its debug level.
+DEBUG_KEYS = ()
 
 # The (section, key, value) set `[log] level=debug` must supply -- the former DEBUG_KEYS, verbatim.
 # NOT used to write anything: --selftest cross-checks it against the C++ level table, so the two
@@ -511,9 +506,9 @@ def selftest():
         sorted(x for x in flipped if x) == sorted(k for _s, k, _v, _w in keys),
     )
     expect(
-        "tester: unlock=1 and level=debug are declared",
-        {("dev", "unlock", "1"), ("log", "level", "debug")}
-        <= {(s, k, v) for s, k, v, _w in tester_keys()},
+        "tester: unlock=1 is declared and the reference ini already says level=debug (the ship default)",
+        ("dev", "unlock", "1") in {(s, k, v) for s, k, v, _w in tester_keys()}
+        and bool(re.search(r"^level\s*=\s*debug", example, re.M)),
     )
     expect(
         "HARNESS_KEYS arms the harness WITHOUT the clock pin (enable=1, fixed_step=0, order_mode=1)",

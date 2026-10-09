@@ -248,7 +248,7 @@ inline void entry_for(const char *ini, int *unlocked, int *level) {
         u = GetPrivateProfileIntA("dev", "unlock", 0, ini) != 0;
         char v[32];
         v[0] = '\0';
-        GetPrivateProfileStringA("log", "level", "normal", v, sizeof(v), ini);
+        GetPrivateProfileStringA("log", "level", "debug", v, sizeof(v), ini);
         trim_comment(v);
         lv = level_from_text(v);
         lock_acquire(g);

@@ -7,7 +7,8 @@ Polish text and voices are retail data, so, like every pack, nothing this module
 What is committed is this recipe plus `pl_extra.txt` (the strings WE wrote).
 
     lang\pl\mh_ex.rsr/.nam   the EN mh_ex (73 members, EN order) with these members replaced:
-      fnt\FontLay.txt + fnt\PFMENU0..4.FNT   EN fonts + the 18 Polish letters (fnt.py derivation) + the box
+      fnt\FontLay.txt + fnt\PFMENU0..4.FNT   the COMMON font set (fnt.merge: EN + Cyrillic lifted from RU
+                                             retail + Polish + box); EN + Polish only without a RU source
       init\initlang.cfg                      Extermination's Polish text on MH's 721 keys (UTF-16LE)
       info\INFO.TXT                          the 174 Extermination .INF files in MH's <FILE> block format
       info\TUTORIAL.TXT, info\CREDITS.TXT    MH's scripts/credits with Extermination's Polish text
@@ -374,16 +375,21 @@ def _put(members, key, blob, report, why):
     report.append(f"  {m.name:28} {len(blob):9} bytes  {why}")
 
 
-def build_fonts_pl(fnt, en_src):
-    """EN override layer + the 18 Polish letters and the box (fnt.merge_onto, no donor)."""
+def build_fonts_pl(fnt, en_src, common_ru=None):
+    """The pack's fonts. With a RU retail source (`common_ru`): the COMMON set every pack carries
+    (fnt.merge: EN + Cyrillic lifted from RU + the derivation table). Without: EN + the 18 Polish
+    letters and the box only (fnt.merge_onto, no donor)."""
     en = en_src.font_layer("mh_ex")
-    merged, rep = fnt.merge_onto(
-        en,
-        en,
-        lambda _cp: False,
-        "n/a",
-        derive=lambda cp: cp in fnt.POLISH or cp == fnt.BOX_CODEPOINT,
-    )
+    if common_ru is not None:
+        merged, rep = fnt.merge(en, common_ru.font_layer("mh_ex"))
+    else:
+        merged, rep = fnt.merge_onto(
+            en,
+            en,
+            lambda _cp: False,
+            "n/a",
+            derive=lambda cp: cp in fnt.POLISH or cp == fnt.BOX_CODEPOINT,
+        )
     for name in fnt.PFMENU:
         if not fnt.verify_prefix(en.fonts[name], merged.fonts[name], len(en.layout)):
             raise SystemExit(
@@ -421,7 +427,7 @@ def build_voices(L, members_en, ext_by):
     return out, target
 
 
-def build_pl(L, fnt, ext_src, en_src, out_dir, quiet=False, art_donors=None, lang_id="pl"):
+def build_pl(L, fnt, ext_src, en_src, out_dir, quiet=False, art_donors=None, lang_id="pl", common_ru=None):
     """Write <out_dir> (a lang\\pl folder). `L` = the langpack module, `ext_src` = the Extermination
     install, `en_src` = the EN install; `art_donors` = {"de": Source, "fr": Source} for the main-menu
     art letters (None = keep the EN art)."""
@@ -434,15 +440,18 @@ def build_pl(L, fnt, ext_src, en_src, out_dir, quiet=False, art_donors=None, lan
     extra = read_extra()
 
     # 1. fonts
-    blobs, merged, frep, en_layer = build_fonts_pl(fnt, en_src)
+    blobs, merged, frep, en_layer = build_fonts_pl(fnt, en_src, common_ru)
+    if common_ru is None and not quiet:
+        print(L.no_common_warning("pl", "EN+Polish"))
     for key, blob in blobs.items():
         _put(
             members,
             key,
             blob,
             report,
-            "fonts: EN %d -> %d FONTLAY entries (+%d Polish/box derived)"
-            % (len(en_layer.layout), len(merged.layout), len(frep.derived)),
+            "fonts: %s, EN %d -> %d FONTLAY entries (%d lifted, %d derived)"
+            % ("common set" if common_ru is not None else "EN+Polish", len(en_layer.layout),
+               len(merged.layout), len(frep.lifted), len(frep.derived)),
         )
     # 2. initlang, info, tutorial, credits
     il, irep = build_initlang(
@@ -506,7 +515,7 @@ def build_pl(L, fnt, ext_src, en_src, out_dir, quiet=False, art_donors=None, lan
         f"language pack built by {L.TOOL} + src/formats/langpack_pl.py (format {L.FORMAT_VERSION}); retail game data -- never commit",
         f"pl source: {os.path.basename(ext_src.path)} (Extermin + Extermex)  Extermin.rsr md5 {L.md5(ext_src._read('Extermin', '.rsr'))}",
         f"en source: {os.path.basename(en_src.path)}  mh_ex.rsr md5 {L.md5(en_src._read('mh_ex', '.rsr'))}",
-        "recipe: EN mh_ex + Polish letters in the fonts, Extermination text/info/voices, MH tutorial+credits structure",
+        "recipe: EN mh_ex + common fonts (Polish letters, Cyrillic when a RU source exists), Extermination text/info/voices, MH tutorial+credits structure",
         "Msgs.dat: none for pl (the stock one is used)",
         f"pack.ini: codepage {spec['codepage']}",
         L.install_strings(lang_id, out_dir),

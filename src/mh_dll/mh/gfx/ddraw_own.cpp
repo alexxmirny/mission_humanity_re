@@ -143,7 +143,7 @@ enum class backend_kind : uint8_t { gdi,
 bool           g_active = false;
 backend_kind   g_kind   = backend_kind::gdi;
 backend_config g_cfg;
-int            g_fps_limit = 60;    // [video] fps_limit; 0 = unlimited
+int            g_fps_limit = 0;     // [video] fps_limit; 0 = unlimited (the default)
 bool           g_no_window = false; // [video] no_window: the headless keeper owns the window, hands off
 HMODULE        g_self      = nullptr;
 
@@ -1807,7 +1807,7 @@ bool install_owned_ddraw(const char *ini) {
     done = true;
 
     char v[32];
-    mh::config::read_ini_string("video", "backend", "system", v, sizeof(v), ini);
+    mh::config::read_ini_string("video", "backend", "d3d11", v, sizeof(v), ini);
     if (lstrcmpiA(v, "system") == 0 || v[0] == 0) {
         // Informational only: Windows' own DirectDraw is used either way (the default: not one byte touched).
         if (!system_ddraw_wrapper_present())
@@ -1823,9 +1823,9 @@ bool install_owned_ddraw(const char *ini) {
     if (!mh::en_build_ok()) return false;
 
     char s[32];
-    mh::config::read_ini_string("video", "window", "windowed", s, sizeof(s), ini);
+    mh::config::read_ini_string("video", "window", "borderless", s, sizeof(s), ini);
     g_cfg.window = lstrcmpiA(s, "borderless") == 0 ? window_mode::borderless : window_mode::windowed;
-    mh::config::read_ini_string("video", "filter", "point", s, sizeof(s), ini);
+    mh::config::read_ini_string("video", "filter", "area", s, sizeof(s), ini);
     g_cfg.filter      = scale_filter::point;
     bool filter_known = lstrcmpiA(s, "point") == 0;
     for (int i = 1; i < OWNED_FILTER_COUNT; ++i)
@@ -1836,8 +1836,8 @@ bool install_owned_ddraw(const char *ini) {
     if (!filter_known) gfx_log("; [gfx] [video] filter=%s not recognised (point | linear | sharp | area) -- using point", s);
     mh::config::read_ini_string("video", "scale", "fit", s, sizeof(s), ini);
     g_cfg.integer_scale = lstrcmpiA(s, "integer") == 0;
-    g_cfg.vsync         = mh_ini_get_int("video", "vsync", 0, ini) != 0;
-    g_fps_limit         = (int)mh_ini_get_int("video", "fps_limit", 60, ini);
+    g_cfg.vsync         = mh_ini_get_int("video", "vsync", 1, ini) != 0;
+    g_fps_limit         = (int)mh_ini_get_int("video", "fps_limit", 0, ini);
     g_no_window         = mh_ini_get_int("video", "no_window", 0, ini) != 0;
     g_mouse_clip        = mh_ini_get_int("video", "mouse_clip", 1, ini) != 0;
     g_taskbar_guard     = mh_ini_get_int("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8

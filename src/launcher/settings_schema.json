@@ -28,7 +28,7 @@
       "section": "video",
       "key": "window",
       "type": "enum",
-      "default": "windowed",
+      "default": "borderless",
       "label": "video.window",
       "subtab": "display",
       "options": [
@@ -58,7 +58,7 @@
       "section": "video",
       "key": "filter",
       "type": "enum",
-      "default": "point",
+      "default": "area",
       "label": "video.filter",
       "subtab": "display",
       "options": [
@@ -75,7 +75,7 @@
       "section": "video",
       "key": "vsync",
       "type": "bool",
-      "default": 0,
+      "default": 1,
       "label": "video.vsync",
       "subtab": "display",
       "options": [],
@@ -87,13 +87,10 @@
       "section": "video",
       "key": "fps_limit",
       "type": "int",
-      "default": 60,
+      "default": 0,
       "label": "video.fps_limit",
       "subtab": "display",
-      "options": [
-        60,
-        0
-      ],
+      "options": [],
       "experimental": false,
       "restart": false,
       "pending": false
@@ -198,7 +195,7 @@
       "section": "log",
       "key": "level",
       "type": "enum",
-      "default": "normal",
+      "default": "debug",
       "label": "log.level",
       "subtab": "diagnostics",
       "options": [
@@ -214,7 +211,7 @@
       "section": "video",
       "key": "backend",
       "type": "enum",
-      "default": "system",
+      "default": "d3d11",
       "label": "video.backend",
       "subtab": "diagnostics",
       "options": [
@@ -230,7 +227,7 @@
       "section": "input",
       "key": "backend",
       "type": "enum",
-      "default": "system",
+      "default": "own",
       "label": "input.backend",
       "subtab": "diagnostics",
       "options": [

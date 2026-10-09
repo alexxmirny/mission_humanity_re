@@ -91,6 +91,8 @@ pub struct Row {
     pub control: Control,
     pub min: Option<i64>,
     pub max: Option<i64>,
+    /// Int values accepted although they lie outside `min..=max` (`video.fps_limit`: 0 = unlimited).
+    pub allow: Vec<i64>,
     pub provider: Option<Provider>,
     pub page: Page,
     /// Not rendered as a row (derived at provision time, or drawn by a companion control).
@@ -141,6 +143,8 @@ struct Extras {
     control: Option<String>,
     min: Option<i64>,
     max: Option<i64>,
+    #[serde(default)]
+    allow: Vec<i64>,
     provider: Option<String>,
     page: Option<String>,
     hidden: Option<bool>,
@@ -326,6 +330,11 @@ impl Schema {
                 control,
                 min: ov.min.or(ex.min),
                 max: ov.max.or(ex.max),
+                allow: if ov.allow.is_empty() {
+                    ex.allow.clone()
+                } else {
+                    ov.allow.clone()
+                },
                 provider,
                 page,
                 hidden: ov.hidden.or(ex.hidden).unwrap_or(false),
