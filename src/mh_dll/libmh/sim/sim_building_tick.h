@@ -26,6 +26,44 @@ struct building_tick_calls {
 
 const building_tick_calls &live_building_tick_calls();
 
+// patching:PT-FIX1 -- skip the turret reload tick for a building that does not own its turret slot
+// (turrets[player][sub_id].b_index != its own index): a destroyed turret's rubble whose slot a new
+// turret reused. Default false = the faithful retail rule; set from reimpl_fixes::turret_reload_owner_fix
+// by lockstep::set_fixes, so [net] turret_reload_owner_fix is the control.
+void set_turret_reload_owner_fix(bool on);
+bool turret_reload_owner_fix();
+
+// patching:PT-FIX4 -- `[net] turret_clip_fix`: map_CreateBuilding's turret boot sets ammo = Weapon[weapon_id].ammo and
+// resupply_cycles_remaining = -1 (retail leaves both 0 / stale), and llm_strat_bldg_turret_reload_tick refills
+// when ammo <= 0 (retail: == 0), so the magazine and the long reload engage and a negative-ammo turret heals.
+// Default off = retail. Set from reimpl_fixes by lockstep::set_fixes.
+void set_turret_clip_fix(bool on);
+bool turret_clip_fix();
+
+// patching:PT-FIX5 -- `[net] turret_fire_poll_fix`: llm_strat_bldg_state_turret_attack charges every aim pass
+// (per_shot_cost * 0.5 = 0.05 s) against the step's tick budget and fires only with budget left over, so a finished
+// reload waited up to ~0.06 s for the poll. With the key on, a ready turret that is already within the aim
+// tolerance skips the aim loop and fires on the step its reload completes; turning keeps its 0.05 s per heading.
+// Default off = retail. Set from reimpl_fixes by lockstep::set_fixes.
+void set_turret_fire_poll_fix(bool on);
+bool turret_fire_poll_fix();
+
+// patching:PT-FIX2 -- the turret reload timer drains by REAL elapsed sim time per step (GAME_TIME_DELTA =
+// the step's dt, in both mode 3's fixed SIM_STEP_INTERVAL and the single-player variable-dt step) times
+// `turret_fire_rate_mult`, instead of the re-counted budget GAME_CLOCK - last_tick_time that retail hands
+// llm_strat_bldg_turret_reload_tick (the attack state gives an unspent budget back, so that budget runs
+// dt, 2dt .. K*dt and the timer drains ~(K+1)/2 x real time at our small steps). Default off = retail.
+// Set from reimpl_fixes by lockstep::set_fixes ([net] turret_reload_realtime_fix / turret_fire_rate_mult).
+inline constexpr double TURRET_FIRE_RATE_MULT_MIN = 0.1;
+inline constexpr double TURRET_FIRE_RATE_MULT_MAX = 10.0;
+double                  clamp_turret_fire_rate_mult(double m); // NaN -> 2.0 (the shipped default); else clamped to [MIN, MAX]
+void                    set_turret_reload_realtime(bool on, double mult);
+bool                    turret_reload_realtime_fix();
+double                  turret_fire_rate_mult();
+// The drain handed to the reload tick for a step of real length `dt`: dt * mult. ONE definition, called by
+// the twin AND by the retail stub (net_lockstep.cpp), so both carriers round identically.
+double turret_reload_drain(double dt);
+
 namespace detail {
 
 // llm_strat_building_tick @0x0046fd86.

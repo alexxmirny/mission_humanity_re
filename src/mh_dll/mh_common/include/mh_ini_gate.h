@@ -25,8 +25,9 @@
 // RL6 -- [log] level = quiet | normal | debug. The level SUPPLIES DEFAULTS for the observer keys
 // (LEVEL_KEYS below); an explicit per-key value wins only under the unlock, exactly like any dev
 // key. normal = today's ship behaviour (no overrides). debug = the former release_package
-// DEBUG_KEYS set. quiet = lockstep_log=0 + frametime_log=0; the desync detection keys (per_step,
-// state_ring, enabled) are NOT in any table, so quiet keeps detecting.
+// DEBUG_KEYS set minus [desync] state_record (a player setting since mp:Q4) plus mp:Q3's order_record. quiet = lockstep_log=0 + frametime_log=0; the desync detection keys (per_step,
+// state_ring, enabled) are NOT in any table, so quiet keeps detecting -- and since mp:Q1 the
+// session_begin_multi hook that starts each match's detection no longer rides lockstep_log either.
 //
 // HEADER-ONLY, CRT-LIGHT (lstrcmpiA / lstrlenA / wsprintfA only): mh_net_udp.dll and the satellites
 // include it without linking mh_common. State is a function-local POD static (constant-initialised,
@@ -54,6 +55,7 @@ enum {
     T_STRING,
     T_ENUM,
     T_HOTKEY,
+    T_FLOAT,
     C_USER,
     C_DEV,
     C_FIXED,
@@ -61,11 +63,13 @@ enum {
     S_DISPLAY,
     S_LANGUAGE,
     S_MULTIPLAYER,
+    S_GAMEPLAY,
     S_DIAGNOSTICS,
     F_NONE         = 0,
     F_EXPERIMENTAL = 1,
     F_RESTART      = 2,
-    F_PENDING      = 4
+    F_PENDING      = 4,
+    F_HOSTSYNC     = 8
 };
 
 struct reg_row {
@@ -102,12 +106,16 @@ inline const level_key *level_table(int *count) {
         // enabled) is deliberately absent from this table, so it stays on at every level.
         {"net", "lockstep_log", 0, -1},
         {"net", "frametime_log", 0, -1},
-        // debug: exactly the former tools/release_package.py DEBUG_KEYS -- every one an OBSERVER.
+        // debug: the former tools/release_package.py DEBUG_KEYS plus mp:Q3's order_record -- every one
+        // an OBSERVER (release_package.py OBSERVERS_AT_DEBUG is cross-checked against this table).
         {"net", "sp_clock_log", -1, 1},
         {"trace", "temporal_sp", -1, 1},
         {"desync", "verbose", -1, 1},
         {"input", "mouse_trace", -1, 1},
-        {"desync", "state_record", -1, 1},
+        // mp:Q4: [desync] state_record is NOT here any more -- it is a player setting of its own (the
+        // launcher's "Record game state" row, default off), because it costs ~5.6 MB/min on disk.
+        // mp:Q3: mh.dll's own order recording (desync/order_capture.h) -- an observer like the rest.
+        {"desync", "order_record", -1, 1},
     };
     *count = (int)(sizeof(t) / sizeof(t[0]));
     return t;

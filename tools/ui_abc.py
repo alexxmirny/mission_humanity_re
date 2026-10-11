@@ -300,6 +300,15 @@ def ui_write_config(
         "mouse_div=%d" % mouse_div,
         "mouse_accel=%d" % mouse_accel,
         "",
+        # mods:RES8 OFF in every ui_abc lane, recording and replay alike. The committed journals were
+        # recorded with stock worker buttons, whose first press of a process orders 0 workers (and a
+        # press held across steps re-issues that order every step, G359). Replayed with the fix the same
+        # input orders 1 per step: tutorial-solo's order_queue moved at step 1685 and the economy
+        # followed (16633 state mismatches, 0 with the fix off; 2026-10-11). Recording with it off too
+        # keeps every journal, old and new, on one behaviour. res_walk's worker segment proves the fix.
+        "[ui]",
+        "worker_click_fix=0",
+        "",
     ]
     lines += harness_lines + [""]
     with open(os.path.join(lane_dir, "mh_net.ini"), "w", newline="\r\n") as f:

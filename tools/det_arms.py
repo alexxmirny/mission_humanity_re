@@ -1339,6 +1339,25 @@ def det_standard_selftest():
             "G35: unknown desktop size never blocks a run (guard degrades open)",
             not _u.view_exceeds_desktop((1024, 768), None),
         )
+        # RES2: the hang is the SYSTEM DirectDraw's; an owned presenter scales a virtual frame
+        check(
+            "G35: an owned backend pin (d3d11 / own / gdi / null) lifts the desktop check",
+            all(
+                _u.pinned_owned_backend("[video]\nbackend=%s\n" % b)
+                for b in ("d3d11", "own", "gdi", "null")
+            ),
+        )
+        check(
+            "G35: backend=system, or no backend pin at all, keeps it",
+            not _u.pinned_owned_backend("[video]\nbackend=system\n")
+            and not _u.pinned_owned_backend("[video]\nw=1\n"),
+        )
+        check(
+            "G35: the last backend= in the merged fragments wins; the command-line backend is the layer under",
+            not _u.pinned_owned_backend("[video]\nbackend=d3d11\n[video]\nbackend=system\n")
+            and _u.pinned_owned_backend("[video]\nw=1\n", "d3d11")
+            and not _u.pinned_owned_backend("[video]\nbackend=system\n", "d3d11"),
+        )
 
         # ---- U28 3-peer barrier: the vacuity guard's negative cases -------------------------------
         # These exist because the FIRST green 3-peer run was half-vacuous and looked perfect: one
@@ -3689,6 +3708,14 @@ def add_args(ap):
         "store was outside every hashed region until then.",
     )
     ap.add_argument(
+        "--det-wheel",
+        action="store_true",
+        help="--determinism: RES2 -- the HOST peer alone zooms the strategic map with Raw Input wheel packets "
+        "(mp_host_start_wheel.txt: in at the right edge, out at the left edge so the zoom's camera absorb moves "
+        "whole tiles, in again, left zoomed) while the client runs the stock walk; the lockstep hash must stay "
+        "ALL PAIRS IDENTICAL because zoom, crop origin and camera are view state.",
+    )
+    ap.add_argument(
         "--det-chat-utf8",
         action="store_true",
         help="--determinism --det-local: mp:MP-LANG's chat + mixed-pack shape. Drives the chat_utf8 "
@@ -4069,6 +4096,11 @@ def _run_determinism(args, cfg):
     host_script = "mp_host_start_ai.txt" if args.ai else "mp_host_start.txt"
     client_script = "mp_client_start.txt"
     chat_ini = {}
+    if args.det_wheel:
+        # RES2: the HOST alone uses the map wheel zoom (incl. the camera tiles its absorb moves) while the
+        # lockstep match runs; the client is the stock walk. The hash must still agree: zoom is view state.
+        host_script = "mp_host_start_wheel.txt"
+        chat_ini = dict(extra_ini_host="tools/uiscripts/ini/map_zoom_det_host.ini")
     if args.det_chat_utf8:
         # mp:MP-LANG. Chat is display-only (G_TEXT_TMP + the floating text, never a hashed region)
         # and names are ASCII by the time either peer stores them, so this must stay IDENTICAL with

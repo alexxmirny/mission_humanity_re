@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "addr/mh_regions.gen.h"
+#include "desync/order_capture.h"
 #include "desync/state_compress.h"
 #include "desync/state_record.h"
 #include "desync/state_recorder.h"
@@ -473,9 +474,14 @@ void live_mutate(uint32_t step) {
 }
 
 std::vector<std::string> g_log_paths; // every "STATE RECORD -> <path>:" the recorder logged
-int                      g_log_lines = 0;
-const char              *g_write_gz  = nullptr; // --write-gz <file>: copy match 3's .gz out for the Python cross-check
-char                     g_gz_line[1024];       // the last "STATE RECORD compressed" / "compress FAILED" line (mp:D46)
+int                      g_log_lines    = 0;
+const char              *g_write_gz     = nullptr; // --write-gz <file>: copy match 3's .gz out for the Python cross-check
+const char              *g_write_orders = nullptr; // mp:Q3 --write-orders <file>: session A's mh_rec_orders.bin
+char                     g_gz_line[1024];          // the last "STATE RECORD compressed" / "compress FAILED" line (mp:D46)
+int                      g_solo_axis_lines = 0;    // mp:Q2: "STATE RECORD step axis (SOLO session" lines
+int                      g_mp_axis_lines   = 0;    // ...and the session_begin_multi form
+int                      g_ord_lines       = 0;    // mp:Q3: "ORDER RECORD" lines (open / close / off / compressed)
+char                     g_ord_close[1024];        // the last "ORDER RECORD closed" line
 
 void test_log(const char *fmt, ...) {
     char    line[1024];
@@ -486,6 +492,10 @@ void test_log(const char *fmt, ...) {
     ++g_log_lines;
     fputs(line, stdout);
     if (strstr(line, "STATE RECORD compress")) memcpy(g_gz_line, line, sizeof(g_gz_line));
+    if (strstr(line, "STATE RECORD step axis (SOLO session, mp:Q2)")) ++g_solo_axis_lines;
+    if (strstr(line, "STATE RECORD step axis: file step k = desync step k (0 at session_begin_multi")) ++g_mp_axis_lines;
+    if (strstr(line, "ORDER RECORD")) ++g_ord_lines;
+    if (strstr(line, "ORDER RECORD closed")) memcpy(g_ord_close, line, sizeof(g_ord_close));
     for (const char *tag : {"STATE RECORD -> ", "STATE RING -> "}) {
         const char *k = strstr(line, tag);
         if (k) {
@@ -669,6 +679,7 @@ void test_live(const char *write_to) {
         }
         const size_t paths_before = g_log_paths.size();
         rec::match_end();
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
         (void)paths_before;
         // After match_end nothing is recorded (a "Continue game"): the tracker is skipped.
         live_mutate(STEPS + 1);
@@ -766,6 +777,7 @@ void test_live(const char *write_to) {
         }
         const size_t n_paths = g_log_paths.size();
         rec::match_end();
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
         check("match 3: the recorder logged its file", g_log_paths.size() == 3);
         check("match 3: the background compression finished", gzmod::wait_idle(60000));
         if (n_paths == 3 || g_log_paths.size() == 3) {
@@ -804,13 +816,187 @@ void test_live(const char *write_to) {
             hub::step(s);
         }
         rec::match_end();
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
         check("match 4: a name whose .gz exists is taken (mh_match_state.bin skipped -> _2)",
               g_log_paths.size() == 4 && g_log_paths.back().find("mh_match_state_2.bin") != std::string::npos);
+    }
+
+    // ---- mp:Q2: a SOLO session (desync::solo_session_begin's recorder half) -----------------------------
+    // The recorder itself is the same for a single-player session; what differs is the axis it states and the
+    // counter that drives it (the desync module's own solo step counter, 1 = the first step after the solo
+    // session folder opened). The file must decode exactly like a match's, and the MP axis line must not
+    // change for the MP path (byte-identical MP recordings are the other half of the claim).
+    {
+        const int             mp_before = g_mp_axis_lines;
+        const uint32_t        STEPS     = 40;
+        std::vector<uint64_t> truth;
+        hub::reset();
+        rec::axis_info ax = {false, 0};
+        ax.solo           = true;
+        rec::session_start(ax);
+        for (uint32_t s = 1; s <= STEPS; ++s) {
+            if (s > 1) live_mutate(s);
+            hub::step(s);
+            truth.push_back(live_hash());
+        }
+        rec::match_end();
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
+        check("solo: the recorder states the SOLO step axis, once", g_solo_axis_lines == 1);
+        check("solo: no session_begin_multi axis line for a solo session", g_mp_axis_lines == mp_before);
+        check("solo: the recorder logged its file", g_log_paths.size() == 5);
+        if (g_log_paths.size() == 5) {
+            live_ctx ctx;
+            ctx.truth       = &truth;
+            const decoded d = decode(read_file(g_log_paths.back()), false, on_live_step, &ctx);
+            check("solo: steps 1..N decode, every rebuilt state == live memory, END exact",
+                  strcmp(d.stop, "eof") == 0 && ctx.seen == (int)STEPS && ctx.bad == 0 && d.has_end &&
+                      d.end_last == STEPS && d.steps.front() == 1);
+        }
+        check("the MP match files above stated the session_begin_multi axis (one line per file)", g_mp_axis_lines == 4);
     }
     unbind_synthetic();
 }
 
 // ---- mp:D46: the compress step itself ---------------------------------------------------------------
+std::string tmp_dir();
+bool        exists(const std::string &p);
+bool        write_file(const std::string &path, const std::vector<uint8_t> &v);
+
+// ---- mp:Q3: mh.dll's order recording (desync/order_capture) --------------------------------------
+// No log sink is published in this process, so mh_logq_* falls back to synchronous writes and every
+// record is on disk when the call returns -- the batching and the file contents are what is under test.
+// The queue is synthetic: each step keeps most of the previous step's orders (what a real due queue does
+// -- an order stays until the step that executes it) and adds a few new ones.
+namespace oc = mh::desync::orders;
+
+struct ord_truth {
+    std::vector<oc::record> recs;
+    std::vector<uint64_t>   clock;
+    uint32_t                repeats = 0;
+};
+
+void ord_session(const std::string &dir, unsigned long gen, uint32_t steps, ord_truth &t) {
+    std::vector<std::vector<uint8_t>> prev, cur;
+    for (uint32_t s = 1; s <= steps; ++s) {
+        uint64_t clk = 0x4000000000000000ULL + s * 977ULL;
+        oc::step(dir.c_str(), gen, true, clk);
+        t.clock.push_back(clk);
+        cur.clear();
+        if (s % 9 != 0) { // every 9th step: an empty queue (no records, as the harness writes)
+            for (size_t i = 0; i < prev.size() && cur.size() < 6; ++i)
+                if (rnd() % 4 != 0) cur.push_back(prev[i]);
+            const int add = 1 + (int)(rnd() % 3);
+            for (int k = 0; k < add; ++k) {
+                std::vector<uint8_t> o(oc::ORDER_SIZE);
+                for (auto &b : o) b = (uint8_t)rnd();
+                cur.push_back(o);
+            }
+        }
+        std::vector<uint8_t> q;
+        for (auto &o : cur) q.insert(q.end(), o.begin(), o.end());
+        oc::dispatch(q.empty() ? nullptr : q.data(), (int)cur.size());
+        for (auto &o : cur) {
+            oc::record r;
+            r.step = (int32_t)s;
+            memcpy(r.order, o.data(), oc::ORDER_SIZE);
+            t.recs.push_back(r);
+            for (auto &p : prev)
+                if (p == o) {
+                    ++t.repeats;
+                    break;
+                }
+        }
+        prev = cur;
+    }
+}
+
+bool ord_file_is(const std::vector<uint8_t> &f, const std::vector<oc::record> &recs) {
+    if (f.size() != 8 + recs.size() * sizeof(oc::record)) return false;
+    uint32_t hdr[2];
+    memcpy(hdr, f.data(), 8);
+    return hdr[0] == oc::MAGIC && hdr[1] == oc::VERSION &&
+           (recs.empty() || memcmp(f.data() + 8, recs.data(), recs.size() * sizeof(oc::record)) == 0);
+}
+
+bool clock_file_is(const std::vector<uint8_t> &f, const std::vector<uint64_t> &c) {
+    return f.size() == c.size() * 8 && (c.empty() || memcmp(f.data(), c.data(), f.size()) == 0);
+}
+
+void test_order_capture() {
+    printf("--- mp:Q3: order recording (MHOR v1 + clock track, session-scoped, gzip at close) ---\n");
+    const std::string base = tmp_dir();
+    const std::string dA = base + "\\ordA\\", dB = base + "\\ordB\\", dC = base + "\\ordC\\";
+    for (const std::string &d : {dA, dB, dC}) CreateDirectoryA(d.substr(0, d.size() - 1).c_str(), nullptr);
+
+    check("configure: off when not asked", !oc::configure(0, nullptr, &test_log) && !oc::enabled());
+    const int lines0 = g_ord_lines;
+    check("configure: asked but refused (the harness owns the stream) stays off and says why",
+          !oc::configure(1, "the harness owns it", &test_log) && g_ord_lines == lines0 + 1);
+    oc::step(dA.c_str(), 7, true, 1);
+    check("off: a step opens nothing", !oc::current().open && !exists(dA + oc::ORDERS_NAME));
+    check("configure: on", oc::configure(1, nullptr, &test_log) && oc::enabled());
+    oc::set_compress(false);
+
+    // Session A: 200 steps (four flush batches), then the folder goes away -> close.
+    ord_truth tA;
+    oc::dispatch(nullptr, 3); // before any session step: ignored
+    ord_session(dA, 100, 200, tA);
+    {
+        uint8_t junk[oc::ORDER_SIZE] = {};
+        oc::dispatch(junk, oc::ORDER_QCAP + 1); // an impossible count: ignored, as the harness does
+        oc::dispatch(junk, -1);
+    }
+    const oc::stats sA = oc::current();
+    check("A: open while the folder is", sA.open && sA.files == 1 && sA.steps == 200);
+    check("A: the counted repeats == the queue's carried-over orders", sA.repeats == tA.repeats && tA.repeats > 0);
+    oc::step(nullptr, 100, true, 0); // the session closed under us
+    check("A: a step with no folder closes the file", !oc::current().open);
+    check("A: mh_rec_orders.bin == MHOR v1 header + every step's queue, in order",
+          ord_file_is(read_raw(dA + oc::ORDERS_NAME), tA.recs));
+    check("A: mh_rec_clock.bin == one pre-body clock per step, track[0] = step 1",
+          clock_file_is(read_raw(dA + oc::CLOCK_NAME), tA.clock));
+    check("A: the close line reports steps, records and the repeat share",
+          strstr(g_ord_close, "200 step(s)") && strstr(g_ord_close, "repeat the previous"));
+
+    // Session B: closed IN PLACE (the harness stop keeps the folder) -> later steps never reopen it.
+    ord_truth tB;
+    ord_session(dB, 200, 12, tB);
+    oc::session_close("test close in place");
+    const std::vector<uint8_t> fB = read_raw(dB + oc::ORDERS_NAME);
+    for (uint32_t s = 0; s < 5; ++s) {
+        oc::step(dB.c_str(), 200, true, 5);
+        uint8_t o[oc::ORDER_SIZE] = {1};
+        oc::dispatch(o, 1);
+    }
+    check("B: the file holds its 12 steps", ord_file_is(fB, tB.recs));
+    check("B: a closed generation is never reopened (steps after a close in place are not recorded)",
+          !oc::current().open && read_raw(dB + oc::ORDERS_NAME) == fB);
+    oc::step(dC.c_str(), 300, false, 5);
+    check("an unsettled folder read opens nothing", !oc::current().open);
+
+    // Session C: compression on -> only the two .gz are left, and they gunzip to the expected bytes.
+    oc::set_compress(true);
+    const long done0 = gzmod::completed();
+    ord_truth  tC;
+    ord_session(dC, 300, 75, tC);
+    oc::session_close("test close");
+    check("C: the background compression finished", gzmod::wait_idle(60000));
+    check("C: both files compressed (gz::completed counts them)", gzmod::completed() == done0 + 2);
+    check("C: only the .gz files are left",
+          !exists(dC + oc::ORDERS_NAME) && !exists(dC + oc::CLOCK_NAME) &&
+              exists(dC + oc::ORDERS_NAME + ".gz") && exists(dC + oc::CLOCK_NAME + ".gz"));
+    check("C: mh_rec_orders.bin.gz gunzips to the MHOR stream", ord_file_is(read_file(dC + oc::ORDERS_NAME + ".gz"), tC.recs));
+    check("C: mh_rec_clock.bin.gz gunzips to the clock track", clock_file_is(read_file(dC + oc::CLOCK_NAME + ".gz"), tC.clock));
+    if (g_write_orders) {
+        const bool ok = CopyFileA((dA + oc::ORDERS_NAME).c_str(), g_write_orders, FALSE) != 0;
+        check("--write-orders: copied session A's file", ok);
+        if (ok) printf("  wrote %s -- cross-check: python tools/mp_order_diff.py %s %s\n", g_write_orders, g_write_orders,
+                       g_write_orders);
+    }
+    oc::configure(0, nullptr, &test_log);
+    rm_tree(base);
+}
+
 std::string tmp_dir() {
     char tmp[MAX_PATH];
     GetTempPathA(MAX_PATH, tmp);
@@ -1289,6 +1475,7 @@ int run_staterectest(int argc, char **argv) {
         if (strcmp(argv[i], "--write") == 0 && i + 1 < argc) write_to = argv[++i];
         else if (strcmp(argv[i], "--write-ring") == 0 && i + 1 < argc) write_ring = argv[++i];
         else if (strcmp(argv[i], "--write-gz") == 0 && i + 1 < argc) g_write_gz = argv[++i];
+        else if (strcmp(argv[i], "--write-orders") == 0 && i + 1 < argc) g_write_orders = argv[++i];
         else if (strcmp(argv[i], "--hash") == 0 && i + 1 < argc) hash_file = argv[++i];
         else if (strcmp(argv[i], "--from") == 0 && i + 1 < argc) from = (uint32_t)strtoul(argv[++i], nullptr, 10);
         else if (strcmp(argv[i], "--to") == 0 && i + 1 < argc) to = (uint32_t)strtoul(argv[++i], nullptr, 10);
@@ -1309,6 +1496,7 @@ int run_staterectest(int argc, char **argv) {
     test_encoder();
     test_live(write_to);
     test_compress();
+    test_order_capture();
     test_ring_core();
     test_ring_live(write_ring);
 

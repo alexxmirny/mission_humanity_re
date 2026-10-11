@@ -2473,9 +2473,9 @@ using sig_game_RemoveFromAvailableProjects = void(__cdecl *)(uint32_t player, ui
 inline constexpr uintptr_t addr_llm_ui_hud_panel_title_draw = 0x00414313u;
 inline constexpr uint64_t  entry_llm_ui_hud_panel_title_draw = 0x0000002c68e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_ui_hud_panel_title_draw = void(__cdecl *)(char *title_text);  // __watcall callee
-inline constexpr uintptr_t addr_llm_ui_hud_topbar_tick = 0x00414395u;
-inline constexpr uint64_t  entry_llm_ui_hud_topbar_tick = 0x0000025068e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_ui_hud_topbar_tick = void(__cdecl *)(int32_t panel_target_index);  // __watcall callee
+inline constexpr uintptr_t addr_llm_ui_hud_bottom_strip_tick = 0x00414395u;
+inline constexpr uint64_t  entry_llm_ui_hud_bottom_strip_tick = 0x0000025068e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_ui_hud_bottom_strip_tick = void(__cdecl *)(int32_t panel_target_index);  // __watcall callee
 inline constexpr uintptr_t addr_llm_ui_chat_input_process_scancodes = 0x00414a4eu;
 inline constexpr uint64_t  entry_llm_ui_chat_input_process_scancodes = 0x0000002c68e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_ui_chat_input_process_scancodes = void(__cdecl *)(void);  // __watcall callee
@@ -2638,9 +2638,9 @@ using sig_llm_ui_selection_panel_refresh = void(__cdecl *)(int32_t icon_entry_ba
 inline constexpr uintptr_t addr_LoadPanelData = 0x00419adbu;
 inline constexpr uint64_t  entry_LoadPanelData = 0x0000012c68e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_LoadPanelData = void(__cdecl *)(void);  // __watcall callee
-inline constexpr uintptr_t addr_llm_util_unpack_static_category_table = 0x00419b98u;
-inline constexpr uint64_t  entry_llm_util_unpack_static_category_table = 0x0000002868e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_util_unpack_static_category_table = void(__cdecl *)(void);  // __watcall callee
+inline constexpr uintptr_t addr_llm_ui_icon_table_unpack = 0x00419b98u;
+inline constexpr uint64_t  entry_llm_ui_icon_table_unpack = 0x0000002868e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_ui_icon_table_unpack = void(__cdecl *)(void);  // __watcall callee
 inline constexpr uintptr_t addr_llm_gfx_palette_scale_rgb = 0x00419c16u;
 inline constexpr uint64_t  entry_llm_gfx_palette_scale_rgb = 0x0000003468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_gfx_palette_scale_rgb = void(__cdecl *)(uint16_t *dst_palette, uint16_t *src_palette, int32_t *rgb_scale);  // __mh_watcall_ebx_volatile callee
@@ -2683,9 +2683,9 @@ using sig_llm_ui_hud_widget_hit_test = int32_t(__cdecl *)(int32_t widget_id);  /
 inline constexpr uintptr_t addr_llm_ui_icon_rect_hit_test = 0x0041b6dbu;
 inline constexpr uint64_t  entry_llm_ui_icon_rect_hit_test = 0x0000002468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_ui_icon_rect_hit_test = int32_t(__cdecl *)(int32_t icon_index);  // __watcall callee
-inline constexpr uintptr_t addr_llm_ui_icon_rect_hit_test_cached = 0x0041b76cu;
-inline constexpr uint64_t  entry_llm_ui_icon_rect_hit_test_cached = 0x0000002468e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_ui_icon_rect_hit_test_cached = int32_t(__cdecl *)(int32_t icon_index);  // __watcall callee
+inline constexpr uintptr_t addr_llm_ui_icon_rect_hit_test_release_pos = 0x0041b76cu;
+inline constexpr uint64_t  entry_llm_ui_icon_rect_hit_test_release_pos = 0x0000002468e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_ui_icon_rect_hit_test_release_pos = int32_t(__cdecl *)(int32_t icon_index);  // __watcall callee
 inline constexpr uintptr_t addr_llm_ui_icon_rect_hit_test_rmb = 0x0041b7fdu;
 inline constexpr uint64_t  entry_llm_ui_icon_rect_hit_test_rmb = 0x0000002468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_ui_icon_rect_hit_test_rmb = int32_t(__cdecl *)(int32_t widget_id);  // __watcall callee
@@ -2995,6 +2995,9 @@ using sig_llm_gfx_draw_sprite_with_bar = void(__cdecl *)(int32_t sprite_id, int3
 inline constexpr uintptr_t addr_llm_gfx_build_bar_sprite_rle = 0x004282a3u;
 inline constexpr uint64_t  entry_llm_gfx_build_bar_sprite_rle = 0x0000003468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_gfx_build_bar_sprite_rle = void(__cdecl *)(int32_t sprite_id, int32_t bar_row_count, int32_t fill_percent, uint16_t viewbox_width);  // __mh_watcall_ebx_volatile callee
+inline constexpr uintptr_t addr_llm_gfx_set_window_resolution = 0x004285c7u;
+inline constexpr uint64_t  entry_llm_gfx_set_window_resolution = 0x0000003468e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_gfx_set_window_resolution = void(__cdecl *)(int32_t w, int32_t h);  // __watcall callee
 inline constexpr uintptr_t addr_llm_tact_gfx_init_view_tile_ptrs = 0x00428802u;
 inline constexpr uint64_t  entry_llm_tact_gfx_init_view_tile_ptrs = 0x0000002868e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_tact_gfx_init_view_tile_ptrs = void(__cdecl *)(void);  // __watcall callee
@@ -6433,9 +6436,9 @@ using sig_llm_gfx_draw_sprite_unclipped = void(__cdecl *)(int32_t sprite_id, int
 inline constexpr uintptr_t addr_llm_gfx_draw_sprite_clipped_width = 0x004a89dbu;
 inline constexpr uint64_t  entry_llm_gfx_draw_sprite_clipped_width = 0x0000002868e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_gfx_draw_sprite_clipped_width = void(__cdecl *)(int32_t param_1, int32_t param_2, int32_t a2, int32_t param_4, int32_t param_5);  // __watcall callee
-inline constexpr uintptr_t addr_llm_ui_set_draw_surface = 0x004a8b73u;
-inline constexpr uint64_t  entry_llm_ui_set_draw_surface = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_ui_set_draw_surface = void(__cdecl *)(void *surface, int32_t pitch, int32_t x, int32_t y, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h, void *src_bitmap);  // __watcall callee
+inline constexpr uintptr_t addr_llm_ui_blit_bitmap_rect = 0x004a8b73u;
+inline constexpr uint64_t  entry_llm_ui_blit_bitmap_rect = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_ui_blit_bitmap_rect = void(__cdecl *)(void *surface, int32_t pitch, int32_t x, int32_t y, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h, void *src_bitmap);  // __watcall callee
 inline constexpr uintptr_t addr_InitSafe = 0x004a8beau;
 inline constexpr uint64_t  entry_InitSafe = 0x0000002468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_InitSafe = uint32_t(__cdecl *)(int32_t param_1);  // __stdcall callee
@@ -6580,6 +6583,9 @@ using sig_llm_gfx_draw_gauge_bar_horizontal = void(__cdecl *)(int32_t x, int32_t
 inline constexpr uintptr_t addr_llm_gfx_draw_gauge_bar_vertical = 0x004b44ccu;
 inline constexpr uint64_t  entry_llm_gfx_draw_gauge_bar_vertical = 0x0000003868e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_gfx_draw_gauge_bar_vertical = void(__cdecl *)(int32_t x, int32_t y, int32_t width, int32_t height, int32_t percent, uint8_t fill_color_r5, uint8_t fill_color_g6, uint8_t fill_color_b5, uint8_t empty_color_r5, uint8_t empty_color_g6, uint8_t empty_color_b5);  // __mh_watcall_ebx_volatile callee
+inline constexpr uintptr_t addr_llm_mem_copy_words = 0x004b47e3u;
+inline constexpr uint64_t  entry_llm_mem_copy_words = 0x4d8b575651e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_mem_copy_words = void(__cdecl *)(void *dst, void *src, uint32_t count_words);  // __cdecl caller
 inline constexpr uintptr_t addr_llm_strat_ai_grid_fill_below_threshold = 0x004b49dau;
 inline constexpr uint64_t  entry_llm_strat_ai_grid_fill_below_threshold = 0x5652515350e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_ai_grid_fill_below_threshold = void(__cdecl *)(uint8_t *grid_base, int32_t width, int32_t height, int32_t threshold, int32_t fill_value);  // __cdecl caller
@@ -7411,6 +7417,9 @@ using sig_llm_input_key_dequeue = void(__cdecl *)(uint32_t param_1);  // __watca
 inline constexpr uintptr_t addr_llm_input_mouse_init = 0x004d1070u;
 inline constexpr uint64_t  entry_llm_input_mouse_init = 0x00000064be575653ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_input_mouse_init = int32_t(__cdecl *)(uint32_t screen_width, uint32_t screen_height);  // __watcall callee
+inline constexpr uintptr_t addr_llm_input_mouse_device_init = 0x004d10bcu;
+inline constexpr uint64_t  entry_llm_input_mouse_device_init = 0x89ca89ffffffafe8ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_input_mouse_device_init = int32_t(__cdecl *)(uint32_t width, uint32_t height, void *hinst, void *hwnd);  // __watcall callee
 inline constexpr uintptr_t addr_llm_input_dimouse_shutdown = 0x004d10d0u;
 inline constexpr uint64_t  entry_llm_input_dimouse_shutdown = 0x0f00006615603d83ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_input_dimouse_shutdown = void(__cdecl *)(void);  // __watcall callee
@@ -7420,6 +7429,9 @@ using sig_llm_input_mouse_queue_is_empty = int32_t(__cdecl *)(void);  // __watca
 inline constexpr uintptr_t addr_llm_input_mouse_pop_event = 0x004d10f8u;
 inline constexpr uint64_t  entry_llm_input_mouse_pop_event = 0x158bc78957565251ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_input_mouse_pop_event = void(__cdecl *)(mh::game::mh_llm_input_mouse_event *out_event);  // __watcall callee
+inline constexpr uintptr_t addr_llm_input_set_cursor_pos = 0x004d1138u;
+inline constexpr uint64_t  entry_llm_input_set_cursor_pos = 0x027415ff2e505251ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_input_set_cursor_pos = void(__cdecl *)(int32_t x, int32_t y);  // __watcall callee
 inline constexpr uintptr_t addr_llm_input_wndproc_tap = 0x004d1194u;
 inline constexpr uint64_t  entry_llm_input_wndproc_tap = 0x89da89d689555756ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_input_wndproc_tap = void(__cdecl *)(void *hWnd, uint32_t uMsg, uint32_t wParam, int32_t lParam);  // __mh_watcall_ecx_ebx_volatile callee
@@ -8977,11 +8989,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_ui_hud_panel_title_draw() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_hud_panel_title_draw, (void *)mh_export_thunk_llm_ui_hud_panel_title_draw, "llm_ui_hud_panel_title_draw", ::mh::exp::entry_llm_ui_hud_panel_title_draw); \
     }
-#define MH_EXPORT_REPLACE_llm_ui_hud_topbar_tick(IMPL) \
-    static ::mh::exp::sig_llm_ui_hud_topbar_tick mh_export_impl_llm_ui_hud_topbar_tick = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX__callee(mh_export_thunk_llm_ui_hud_topbar_tick, mh_export_impl_llm_ui_hud_topbar_tick) \
-    static bool mh_export_install_llm_ui_hud_topbar_tick() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_hud_topbar_tick, (void *)mh_export_thunk_llm_ui_hud_topbar_tick, "llm_ui_hud_topbar_tick", ::mh::exp::entry_llm_ui_hud_topbar_tick); \
+#define MH_EXPORT_REPLACE_llm_ui_hud_bottom_strip_tick(IMPL) \
+    static ::mh::exp::sig_llm_ui_hud_bottom_strip_tick mh_export_impl_llm_ui_hud_bottom_strip_tick = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX__callee(mh_export_thunk_llm_ui_hud_bottom_strip_tick, mh_export_impl_llm_ui_hud_bottom_strip_tick) \
+    static bool mh_export_install_llm_ui_hud_bottom_strip_tick() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_hud_bottom_strip_tick, (void *)mh_export_thunk_llm_ui_hud_bottom_strip_tick, "llm_ui_hud_bottom_strip_tick", ::mh::exp::entry_llm_ui_hud_bottom_strip_tick); \
     }
 #define MH_EXPORT_REPLACE_llm_ui_chat_input_process_scancodes(IMPL) \
     static ::mh::exp::sig_llm_ui_chat_input_process_scancodes mh_export_impl_llm_ui_chat_input_process_scancodes = IMPL; \
@@ -9307,11 +9319,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_LoadPanelData() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_LoadPanelData, (void *)mh_export_thunk_LoadPanelData, "LoadPanelData", ::mh::exp::entry_LoadPanelData); \
     }
-#define MH_EXPORT_REPLACE_llm_util_unpack_static_category_table(IMPL) \
-    static ::mh::exp::sig_llm_util_unpack_static_category_table mh_export_impl_llm_util_unpack_static_category_table = IMPL; \
-    MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_util_unpack_static_category_table, mh_export_impl_llm_util_unpack_static_category_table) \
-    static bool mh_export_install_llm_util_unpack_static_category_table() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_util_unpack_static_category_table, (void *)mh_export_thunk_llm_util_unpack_static_category_table, "llm_util_unpack_static_category_table", ::mh::exp::entry_llm_util_unpack_static_category_table); \
+#define MH_EXPORT_REPLACE_llm_ui_icon_table_unpack(IMPL) \
+    static ::mh::exp::sig_llm_ui_icon_table_unpack mh_export_impl_llm_ui_icon_table_unpack = IMPL; \
+    MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_ui_icon_table_unpack, mh_export_impl_llm_ui_icon_table_unpack) \
+    static bool mh_export_install_llm_ui_icon_table_unpack() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_icon_table_unpack, (void *)mh_export_thunk_llm_ui_icon_table_unpack, "llm_ui_icon_table_unpack", ::mh::exp::entry_llm_ui_icon_table_unpack); \
     }
 #define MH_EXPORT_REPLACE_llm_gfx_palette_scale_rgb(IMPL) \
     static ::mh::exp::sig_llm_gfx_palette_scale_rgb mh_export_impl_llm_gfx_palette_scale_rgb = IMPL; \
@@ -9397,11 +9409,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_ui_icon_rect_hit_test() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_icon_rect_hit_test, (void *)mh_export_thunk_llm_ui_icon_rect_hit_test, "llm_ui_icon_rect_hit_test", ::mh::exp::entry_llm_ui_icon_rect_hit_test); \
     }
-#define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_cached(IMPL) \
-    static ::mh::exp::sig_llm_ui_icon_rect_hit_test_cached mh_export_impl_llm_ui_icon_rect_hit_test_cached = IMPL; \
-    MH_EXPORT_THUNK_e_u32_EAX__callee(mh_export_thunk_llm_ui_icon_rect_hit_test_cached, mh_export_impl_llm_ui_icon_rect_hit_test_cached) \
-    static bool mh_export_install_llm_ui_icon_rect_hit_test_cached() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_icon_rect_hit_test_cached, (void *)mh_export_thunk_llm_ui_icon_rect_hit_test_cached, "llm_ui_icon_rect_hit_test_cached", ::mh::exp::entry_llm_ui_icon_rect_hit_test_cached); \
+#define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_release_pos(IMPL) \
+    static ::mh::exp::sig_llm_ui_icon_rect_hit_test_release_pos mh_export_impl_llm_ui_icon_rect_hit_test_release_pos = IMPL; \
+    MH_EXPORT_THUNK_e_u32_EAX__callee(mh_export_thunk_llm_ui_icon_rect_hit_test_release_pos, mh_export_impl_llm_ui_icon_rect_hit_test_release_pos) \
+    static bool mh_export_install_llm_ui_icon_rect_hit_test_release_pos() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_icon_rect_hit_test_release_pos, (void *)mh_export_thunk_llm_ui_icon_rect_hit_test_release_pos, "llm_ui_icon_rect_hit_test_release_pos", ::mh::exp::entry_llm_ui_icon_rect_hit_test_release_pos); \
     }
 #define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_rmb(IMPL) \
     static ::mh::exp::sig_llm_ui_icon_rect_hit_test_rmb mh_export_impl_llm_ui_icon_rect_hit_test_rmb = IMPL; \
@@ -10020,6 +10032,12 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     MH_EXPORT_THUNK_e_void_EAX_EDX_EBX_ECX__callee(mh_export_thunk_llm_gfx_build_bar_sprite_rle, mh_export_impl_llm_gfx_build_bar_sprite_rle) \
     static bool mh_export_install_llm_gfx_build_bar_sprite_rle() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_gfx_build_bar_sprite_rle, (void *)mh_export_thunk_llm_gfx_build_bar_sprite_rle, "llm_gfx_build_bar_sprite_rle", ::mh::exp::entry_llm_gfx_build_bar_sprite_rle); \
+    }
+#define MH_EXPORT_REPLACE_llm_gfx_set_window_resolution(IMPL) \
+    static ::mh::exp::sig_llm_gfx_set_window_resolution mh_export_impl_llm_gfx_set_window_resolution = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_gfx_set_window_resolution, mh_export_impl_llm_gfx_set_window_resolution) \
+    static bool mh_export_install_llm_gfx_set_window_resolution() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_gfx_set_window_resolution, (void *)mh_export_thunk_llm_gfx_set_window_resolution, "llm_gfx_set_window_resolution", ::mh::exp::entry_llm_gfx_set_window_resolution); \
     }
 #define MH_EXPORT_REPLACE_llm_tact_gfx_init_view_tile_ptrs(IMPL) \
     static ::mh::exp::sig_llm_tact_gfx_init_view_tile_ptrs mh_export_impl_llm_tact_gfx_init_view_tile_ptrs = IMPL; \
@@ -16897,11 +16915,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_gfx_draw_sprite_clipped_width() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_gfx_draw_sprite_clipped_width, (void *)mh_export_thunk_llm_gfx_draw_sprite_clipped_width, "llm_gfx_draw_sprite_clipped_width", ::mh::exp::entry_llm_gfx_draw_sprite_clipped_width); \
     }
-#define MH_EXPORT_REPLACE_llm_ui_set_draw_surface(IMPL) \
-    static ::mh::exp::sig_llm_ui_set_draw_surface mh_export_impl_llm_ui_set_draw_surface = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4__callee(mh_export_thunk_llm_ui_set_draw_surface, mh_export_impl_llm_ui_set_draw_surface) \
-    static bool mh_export_install_llm_ui_set_draw_surface() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_set_draw_surface, (void *)mh_export_thunk_llm_ui_set_draw_surface, "llm_ui_set_draw_surface", ::mh::exp::entry_llm_ui_set_draw_surface); \
+#define MH_EXPORT_REPLACE_llm_ui_blit_bitmap_rect(IMPL) \
+    static ::mh::exp::sig_llm_ui_blit_bitmap_rect mh_export_impl_llm_ui_blit_bitmap_rect = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4__callee(mh_export_thunk_llm_ui_blit_bitmap_rect, mh_export_impl_llm_ui_blit_bitmap_rect) \
+    static bool mh_export_install_llm_ui_blit_bitmap_rect() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_ui_blit_bitmap_rect, (void *)mh_export_thunk_llm_ui_blit_bitmap_rect, "llm_ui_blit_bitmap_rect", ::mh::exp::entry_llm_ui_blit_bitmap_rect); \
     }
 #define MH_EXPORT_REPLACE_InitSafe(IMPL) \
     static ::mh::exp::sig_InitSafe mh_export_impl_InitSafe = IMPL; \
@@ -17190,6 +17208,12 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     MH_EXPORT_THUNK_e_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4_S4_S4__callee(mh_export_thunk_llm_gfx_draw_gauge_bar_vertical, mh_export_impl_llm_gfx_draw_gauge_bar_vertical) \
     static bool mh_export_install_llm_gfx_draw_gauge_bar_vertical() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_gfx_draw_gauge_bar_vertical, (void *)mh_export_thunk_llm_gfx_draw_gauge_bar_vertical, "llm_gfx_draw_gauge_bar_vertical", ::mh::exp::entry_llm_gfx_draw_gauge_bar_vertical); \
+    }
+#define MH_EXPORT_REPLACE_llm_mem_copy_words(IMPL) \
+    static ::mh::exp::sig_llm_mem_copy_words mh_export_impl_llm_mem_copy_words = IMPL; \
+    MH_EXPORT_THUNK_e_void_S4_S4_S4__caller(mh_export_thunk_llm_mem_copy_words, mh_export_impl_llm_mem_copy_words) \
+    static bool mh_export_install_llm_mem_copy_words() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_mem_copy_words, (void *)mh_export_thunk_llm_mem_copy_words, "llm_mem_copy_words", ::mh::exp::entry_llm_mem_copy_words); \
     }
 #define MH_EXPORT_REPLACE_llm_strat_ai_grid_fill_below_threshold(IMPL) \
     static ::mh::exp::sig_llm_strat_ai_grid_fill_below_threshold mh_export_impl_llm_strat_ai_grid_fill_below_threshold = IMPL; \
@@ -18853,6 +18877,12 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_input_mouse_init() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_input_mouse_init, (void *)mh_export_thunk_llm_input_mouse_init, "llm_input_mouse_init", ::mh::exp::entry_llm_input_mouse_init); \
     }
+#define MH_EXPORT_REPLACE_llm_input_mouse_device_init(IMPL) \
+    static ::mh::exp::sig_llm_input_mouse_device_init mh_export_impl_llm_input_mouse_device_init = IMPL; \
+    MH_EXPORT_THUNK_e_u32_EAX_EDX_EBX_ECX__callee(mh_export_thunk_llm_input_mouse_device_init, mh_export_impl_llm_input_mouse_device_init) \
+    static bool mh_export_install_llm_input_mouse_device_init() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_input_mouse_device_init, (void *)mh_export_thunk_llm_input_mouse_device_init, "llm_input_mouse_device_init", ::mh::exp::entry_llm_input_mouse_device_init); \
+    }
 #define MH_EXPORT_REPLACE_llm_input_dimouse_shutdown(IMPL) \
     static ::mh::exp::sig_llm_input_dimouse_shutdown mh_export_impl_llm_input_dimouse_shutdown = IMPL; \
     MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_input_dimouse_shutdown, mh_export_impl_llm_input_dimouse_shutdown) \
@@ -18870,6 +18900,12 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     MH_EXPORT_THUNK_e_void_EAX__callee(mh_export_thunk_llm_input_mouse_pop_event, mh_export_impl_llm_input_mouse_pop_event) \
     static bool mh_export_install_llm_input_mouse_pop_event() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_input_mouse_pop_event, (void *)mh_export_thunk_llm_input_mouse_pop_event, "llm_input_mouse_pop_event", ::mh::exp::entry_llm_input_mouse_pop_event); \
+    }
+#define MH_EXPORT_REPLACE_llm_input_set_cursor_pos(IMPL) \
+    static ::mh::exp::sig_llm_input_set_cursor_pos mh_export_impl_llm_input_set_cursor_pos = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_input_set_cursor_pos, mh_export_impl_llm_input_set_cursor_pos) \
+    static bool mh_export_install_llm_input_set_cursor_pos() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_input_set_cursor_pos, (void *)mh_export_thunk_llm_input_set_cursor_pos, "llm_input_set_cursor_pos", ::mh::exp::entry_llm_input_set_cursor_pos); \
     }
 #define MH_EXPORT_REPLACE_llm_input_wndproc_tap(IMPL) \
     static ::mh::exp::sig_llm_input_wndproc_tap mh_export_impl_llm_input_wndproc_tap = IMPL; \
@@ -21508,10 +21544,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_ui_hud_panel_title_draw() { \
         (void)mh_export_impl_llm_ui_hud_panel_title_draw; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_ui_hud_topbar_tick(IMPL) \
-    static ::mh::exp::sig_llm_ui_hud_topbar_tick mh_export_impl_llm_ui_hud_topbar_tick = IMPL; \
-    static bool mh_export_install_llm_ui_hud_topbar_tick() { \
-        (void)mh_export_impl_llm_ui_hud_topbar_tick; return false; \
+#define MH_EXPORT_REPLACE_llm_ui_hud_bottom_strip_tick(IMPL) \
+    static ::mh::exp::sig_llm_ui_hud_bottom_strip_tick mh_export_impl_llm_ui_hud_bottom_strip_tick = IMPL; \
+    static bool mh_export_install_llm_ui_hud_bottom_strip_tick() { \
+        (void)mh_export_impl_llm_ui_hud_bottom_strip_tick; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_ui_chat_input_process_scancodes(IMPL) \
     static ::mh::exp::sig_llm_ui_chat_input_process_scancodes mh_export_impl_llm_ui_chat_input_process_scancodes = IMPL; \
@@ -21783,10 +21819,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_LoadPanelData() { \
         (void)mh_export_impl_LoadPanelData; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_util_unpack_static_category_table(IMPL) \
-    static ::mh::exp::sig_llm_util_unpack_static_category_table mh_export_impl_llm_util_unpack_static_category_table = IMPL; \
-    static bool mh_export_install_llm_util_unpack_static_category_table() { \
-        (void)mh_export_impl_llm_util_unpack_static_category_table; return false; \
+#define MH_EXPORT_REPLACE_llm_ui_icon_table_unpack(IMPL) \
+    static ::mh::exp::sig_llm_ui_icon_table_unpack mh_export_impl_llm_ui_icon_table_unpack = IMPL; \
+    static bool mh_export_install_llm_ui_icon_table_unpack() { \
+        (void)mh_export_impl_llm_ui_icon_table_unpack; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_gfx_palette_scale_rgb(IMPL) \
     static ::mh::exp::sig_llm_gfx_palette_scale_rgb mh_export_impl_llm_gfx_palette_scale_rgb = IMPL; \
@@ -21858,10 +21894,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_ui_icon_rect_hit_test() { \
         (void)mh_export_impl_llm_ui_icon_rect_hit_test; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_cached(IMPL) \
-    static ::mh::exp::sig_llm_ui_icon_rect_hit_test_cached mh_export_impl_llm_ui_icon_rect_hit_test_cached = IMPL; \
-    static bool mh_export_install_llm_ui_icon_rect_hit_test_cached() { \
-        (void)mh_export_impl_llm_ui_icon_rect_hit_test_cached; return false; \
+#define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_release_pos(IMPL) \
+    static ::mh::exp::sig_llm_ui_icon_rect_hit_test_release_pos mh_export_impl_llm_ui_icon_rect_hit_test_release_pos = IMPL; \
+    static bool mh_export_install_llm_ui_icon_rect_hit_test_release_pos() { \
+        (void)mh_export_impl_llm_ui_icon_rect_hit_test_release_pos; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_ui_icon_rect_hit_test_rmb(IMPL) \
     static ::mh::exp::sig_llm_ui_icon_rect_hit_test_rmb mh_export_impl_llm_ui_icon_rect_hit_test_rmb = IMPL; \
@@ -22377,6 +22413,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static ::mh::exp::sig_llm_gfx_build_bar_sprite_rle mh_export_impl_llm_gfx_build_bar_sprite_rle = IMPL; \
     static bool mh_export_install_llm_gfx_build_bar_sprite_rle() { \
         (void)mh_export_impl_llm_gfx_build_bar_sprite_rle; return false; \
+    }
+#define MH_EXPORT_REPLACE_llm_gfx_set_window_resolution(IMPL) \
+    static ::mh::exp::sig_llm_gfx_set_window_resolution mh_export_impl_llm_gfx_set_window_resolution = IMPL; \
+    static bool mh_export_install_llm_gfx_set_window_resolution() { \
+        (void)mh_export_impl_llm_gfx_set_window_resolution; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_tact_gfx_init_view_tile_ptrs(IMPL) \
     static ::mh::exp::sig_llm_tact_gfx_init_view_tile_ptrs mh_export_impl_llm_tact_gfx_init_view_tile_ptrs = IMPL; \
@@ -28108,10 +28149,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_gfx_draw_sprite_clipped_width() { \
         (void)mh_export_impl_llm_gfx_draw_sprite_clipped_width; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_ui_set_draw_surface(IMPL) \
-    static ::mh::exp::sig_llm_ui_set_draw_surface mh_export_impl_llm_ui_set_draw_surface = IMPL; \
-    static bool mh_export_install_llm_ui_set_draw_surface() { \
-        (void)mh_export_impl_llm_ui_set_draw_surface; return false; \
+#define MH_EXPORT_REPLACE_llm_ui_blit_bitmap_rect(IMPL) \
+    static ::mh::exp::sig_llm_ui_blit_bitmap_rect mh_export_impl_llm_ui_blit_bitmap_rect = IMPL; \
+    static bool mh_export_install_llm_ui_blit_bitmap_rect() { \
+        (void)mh_export_impl_llm_ui_blit_bitmap_rect; return false; \
     }
 #define MH_EXPORT_REPLACE_InitSafe(IMPL) \
     static ::mh::exp::sig_InitSafe mh_export_impl_InitSafe = IMPL; \
@@ -28352,6 +28393,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static ::mh::exp::sig_llm_gfx_draw_gauge_bar_vertical mh_export_impl_llm_gfx_draw_gauge_bar_vertical = IMPL; \
     static bool mh_export_install_llm_gfx_draw_gauge_bar_vertical() { \
         (void)mh_export_impl_llm_gfx_draw_gauge_bar_vertical; return false; \
+    }
+#define MH_EXPORT_REPLACE_llm_mem_copy_words(IMPL) \
+    static ::mh::exp::sig_llm_mem_copy_words mh_export_impl_llm_mem_copy_words = IMPL; \
+    static bool mh_export_install_llm_mem_copy_words() { \
+        (void)mh_export_impl_llm_mem_copy_words; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_strat_ai_grid_fill_below_threshold(IMPL) \
     static ::mh::exp::sig_llm_strat_ai_grid_fill_below_threshold mh_export_impl_llm_strat_ai_grid_fill_below_threshold = IMPL; \
@@ -29738,6 +29784,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_input_mouse_init() { \
         (void)mh_export_impl_llm_input_mouse_init; return false; \
     }
+#define MH_EXPORT_REPLACE_llm_input_mouse_device_init(IMPL) \
+    static ::mh::exp::sig_llm_input_mouse_device_init mh_export_impl_llm_input_mouse_device_init = IMPL; \
+    static bool mh_export_install_llm_input_mouse_device_init() { \
+        (void)mh_export_impl_llm_input_mouse_device_init; return false; \
+    }
 #define MH_EXPORT_REPLACE_llm_input_dimouse_shutdown(IMPL) \
     static ::mh::exp::sig_llm_input_dimouse_shutdown mh_export_impl_llm_input_dimouse_shutdown = IMPL; \
     static bool mh_export_install_llm_input_dimouse_shutdown() { \
@@ -29752,6 +29803,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static ::mh::exp::sig_llm_input_mouse_pop_event mh_export_impl_llm_input_mouse_pop_event = IMPL; \
     static bool mh_export_install_llm_input_mouse_pop_event() { \
         (void)mh_export_impl_llm_input_mouse_pop_event; return false; \
+    }
+#define MH_EXPORT_REPLACE_llm_input_set_cursor_pos(IMPL) \
+    static ::mh::exp::sig_llm_input_set_cursor_pos mh_export_impl_llm_input_set_cursor_pos = IMPL; \
+    static bool mh_export_install_llm_input_set_cursor_pos() { \
+        (void)mh_export_impl_llm_input_set_cursor_pos; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_input_wndproc_tap(IMPL) \
     static ::mh::exp::sig_llm_input_wndproc_tap mh_export_impl_llm_input_wndproc_tap = IMPL; \
@@ -31709,7 +31765,6 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
 #define MH_EXPORT_REPLACE_llm_boot_stage_tick(IMPL) static_assert(false, "llm_boot_stage_tick: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_gfx_init_blend_luts(IMPL) static_assert(false, "llm_gfx_init_blend_luts: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_planet_tlo_thumbnail_build(IMPL) static_assert(false, "llm_planet_tlo_thumbnail_build: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
-#define MH_EXPORT_REPLACE_llm_gfx_set_window_resolution(IMPL) static_assert(false, "llm_gfx_set_window_resolution: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_gfx_release_display_surfaces(IMPL) static_assert(false, "llm_gfx_release_display_surfaces: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_gfx_skip_sprite_row(IMPL) static_assert(false, "llm_gfx_skip_sprite_row: MH_UNAVAILABLE__return_type_never_determined");
 #define MH_EXPORT_REPLACE_llm_gfx_blit_finish(IMPL) static_assert(false, "llm_gfx_blit_finish: MH_UNAVAILABLE__function_too_small_to_host_a_detour");
@@ -31795,7 +31850,6 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
 #define MH_EXPORT_REPLACE_cfg_ConstructStones(IMPL) static_assert(false, "cfg_ConstructStones: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_ui_text_blit_char_glyph(IMPL) static_assert(false, "llm_ui_text_blit_char_glyph: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_util_memset16(IMPL) static_assert(false, "llm_util_memset16: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
-#define MH_EXPORT_REPLACE_llm_mem_copy_words(IMPL) static_assert(false, "llm_mem_copy_words: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_ui_avi_ic_send_msg_0x403e_dup(IMPL) static_assert(false, "llm_ui_avi_ic_send_msg_0x403e_dup: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_ui_avi_ic_send_msg_0x403c_dup(IMPL) static_assert(false, "llm_ui_avi_ic_send_msg_0x403c_dup: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");
 #define MH_EXPORT_REPLACE_llm_ui_avi_ic_send_msg_0x403d_dup(IMPL) static_assert(false, "llm_ui_avi_ic_send_msg_0x403d_dup: MH_UNAVAILABLE__no_prototype_committed_in_Ghidra");

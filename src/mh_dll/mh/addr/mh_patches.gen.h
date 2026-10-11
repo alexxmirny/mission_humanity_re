@@ -1402,6 +1402,12 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"video_res_label_slot2",      0x0064508fu, "", nullptr},
     {"video_res_options_table",    0x006450c3u, "", nullptr},
     {"video_res_options_table",    0x006450c7u, "", nullptr},
+    {"video_mode_change_guards",   0x004287f4u, "llm_gfx_set_window_resolution", nullptr},
+    {"video_mode_change_guards",   0x004b7322u, "llm_ui_widget_list_draw_frame_layer", nullptr},
+    {"video_mode_change_guards",   0x004c5e88u, "llm_ui_planet_select_screen_build", nullptr},
+    {"video_galaxy_native",        0x004cb445u, "llm_ui_planet_select_screen_open", nullptr},
+    {"video_galaxy_native",        0x004b81fau, "llm_menu_enter_gameplay", nullptr},
+    {"video_galaxy_native",        0x004b826du, "llm_menu_finish_enter_gameplay", nullptr},
     {"run_without_focus",          0x004a04ceu, "llm_wnd_on_activate", nullptr},
     {"lt1c_c4_dead_store_probe",   0x004dc25fu, "llm_strat_bldg_recompute_cell_grid", "none:diagnostic"},
     {"diplo_echo_nop",             0x004c8070u, "llm_ui_diplomacy_apply_and_resume", nullptr},
@@ -1421,6 +1427,12 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"resync_receiver_deadline",   0x004a0423u, "llm_frame_dispatch", nullptr},
     {"gone_peer_frame_guard",      0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
     {"undock_reentry_fix",         0x00466cb6u, "llm_strat_order_queue_dispatch", "migrated:undock_reentry_fix"},
+    {"turret_reload_owner_fix",    0x0046fe5du, "llm_strat_building_tick", "migrated:turret_reload_owner_fix"},
+    {"turret_reload_realtime_fix", 0x0046fe5du, "llm_strat_building_tick", "migrated:turret_reload_realtime_fix"},
+    {"turret_clip_fix",            0x00462ab9u, "map_CreateBuilding", "migrated:turret_clip_fix"},
+    {"turret_clip_refill",         0x0047c6c8u, "llm_strat_bldg_turret_reload_tick", "migrated:turret_clip_fix"},
+    {"turret_fire_poll_fix",       0x004721d0u, "llm_strat_bldg_state_turret_attack", "migrated:turret_fire_poll_fix"},
+    {"air_order_facing_fix",       0x00480b86u, "llm_strat_unit_state_move_path", "migrated:air_order_facing_fix"},
     {"diplo_order_dedup_fix",      0x0046667bu, "llm_strat_order_release_due", "migrated:diplo_order_dedup_fix"},
     {"overlay_dialog_guard",       0x0043f072u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
     {"overlay_dialog_guard",       0x0043f286u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
@@ -1444,7 +1456,13 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"spec_order",                 0x00466068u, "llm_strat_order_dispatch", "migrated:spectate_after_defeat"},
     {"lang_pack_mh_ex",            0x004c3dbau, "llm_boot_progress_draw", nullptr},
     {"lang_pack_msgs",             0x004cb6bcu, "ReadMsgsDat", nullptr},
+    {"worker_click_amount_prime",  0x0050bde7u, "", nullptr},
+    {"worker_click_amount_prime",  0x0050bdfbu, "", nullptr},
+    {"worker_click_press_amount",  0x0041341bu, "llm_ui_bldg_worker_adjust_btn_tick", nullptr},
+    {"worker_click_apply_drain",   0x00413509u, "llm_ui_bldg_worker_adjust_apply", nullptr},
+    {"worker_click_apply_drain",   0x00413520u, "llm_ui_bldg_worker_adjust_apply", nullptr},
+    {"minimap_box_clip",           0x004a2344u, "llm_strat_minimap_draw_viewport_box", nullptr},
 };
-inline constexpr int registered_patch_count = 50;
+inline constexpr int registered_patch_count = 68;
 
 } // namespace mh::addr

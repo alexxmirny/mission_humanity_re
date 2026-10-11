@@ -59,6 +59,7 @@ TYPES = {
     "T_STRING": "string",
     "T_ENUM": "enum",
     "T_HOTKEY": "hotkey",
+    "T_FLOAT": "float",
 }
 CLASSES = {"C_USER": "user", "C_DEV": "dev", "C_FIXED": "fixed"}
 SUBTABS = {
@@ -66,6 +67,7 @@ SUBTABS = {
     "S_DISPLAY": "display",
     "S_LANGUAGE": "language",
     "S_MULTIPLAYER": "multiplayer",
+    "S_GAMEPLAY": "gameplay",
     "S_DIAGNOSTICS": "diagnostics",
     "S_UPDATES": "updates",
 }
@@ -74,8 +76,15 @@ FLAGS = {
     "F_EXPERIMENTAL": "experimental",
     "F_RESTART": "restart",
     "F_PENDING": "pending",
+    "F_HOSTSYNC": "host",
 }
-SUBTAB_ORDER = ["display", "language", "multiplayer", "diagnostics", "updates"]
+SUBTAB_ORDER = ["display", "language", "multiplayer", "gameplay", "diagnostics", "updates"]
+
+# PT-SET1: F_HOSTSYNC rows are read ONLY through the X-macro in this header, and each one needs exactly
+# one apply hook entry {"sec","key",[](...)...} in HOOKS_FILE.
+GAMEPLAY_HEADER = "mh_common/include/mh_gameplay.h"
+HOOKS_FILE = "mh/seams/gameplay_hooks.cpp"
+HOOK_RE = re.compile(r'\{\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*\[')
 
 # Reader call tokens -> how to find (section, key) in the argument list.
 #   sec/key = argument index, or a fixed string (the wrapper hard-wires the section).
@@ -100,6 +109,7 @@ DYNAMIC_OK = {
     ("mh/seams/launch.cpp", '"net"', "key"),  # net_ini_str body
     ("mh/config/ini_read.h", "section", "key"),  # read_ini_string body
     ("mh_common/include/mh_ini_gate.h", "section", "key"),  # the gate's own reads (RL2)
+    ("mh_common/include/mh_gameplay.h", "r.sec", "r.key"),  # PT-SET1: X-macro over F_HOSTSYNC rows
     ("mh_common/include/mh_log_rotate.h", "section", "key"),  # mh_log_cap_bytes body
     ("mh/seams/gfx_overlay.cpp", '"debug"', "key"),  # load_key body
     ("mh_harness/harness.cpp", '"harness"', "k.key"),  # refusal loop over the spine-key table
@@ -131,6 +141,8 @@ class Row:
         "options",
         "flags",
         "line",
+        "lo",
+        "hi",
     )
 
     def ident(self):
@@ -238,6 +250,7 @@ def parse_def(path):
             errors.append("%s: unknown flag %s" % (where, ",".join(bad)))
             continue
         r.type, r.cls, r.subtab = TYPES[typ], CLASSES[cls], SUBTABS[sub]
+        r.lo = r.hi = None
         r.flags = sorted(FLAGS[f] for f in fl if FLAGS[f])
         if r.ident() in seen:
             errors.append(
@@ -259,6 +272,23 @@ def validate_row(r):
         e.append("[%s] %s: bool default must be 0 or 1" % (r.section, r.key))
     if r.type == "int" and not re.fullmatch(r"-?\d+", r.default):
         e.append("[%s] %s: int default must be a decimal number" % (r.section, r.key))
+    if r.type == "float":
+        num = r"(-?[0-9]+(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?)"
+        m = re.fullmatch(r"\s*" + num + r"\s*\.\.\s*" + num + r"\s*", r.options or "")
+        if m:
+            r.lo, r.hi = float(m.group(1)), float(m.group(2))
+        if not m or not r.lo <= r.hi:
+            e.append('[%s] %s: float needs a valid options range "lo..hi"' % (r.section, r.key))
+        else:
+            try:
+                if not r.lo <= float(r.default) <= r.hi:
+                    e.append("[%s] %s: float default outside its range" % (r.section, r.key))
+            except ValueError:
+                e.append("[%s] %s: float default must be a number" % (r.section, r.key))
+    if r.subtab == "gameplay" and "host" not in r.flags:
+        e.append("[%s] %s: a gameplay sub-tab row requires F_HOSTSYNC" % (r.section, r.key))
+    if "host" in r.flags and r.type not in ("bool", "int", "float"):
+        e.append("[%s] %s: F_HOSTSYNC requires a bool/int/float row" % (r.section, r.key))
     if r.type == "enum":
         opts = r.options.split("|") if r.options else []
         if not opts:
@@ -364,20 +394,25 @@ def build_schema(rows):
         else:
             options = []
         d = int(r.default) if r.type in ("int", "bool") else r.default
-        settings.append(
-            {
-                "section": r.section,
-                "key": r.key,
-                "type": r.type,
-                "default": d,
-                "label": r.label,
-                "subtab": r.subtab,
-                "options": options,
-                "experimental": "experimental" in r.flags,
-                "restart": "restart" in r.flags,
-                "pending": "pending" in r.flags,
-            }
-        )
+        if r.type == "float":
+            d = float(r.default)
+        ent = {
+            "section": r.section,
+            "key": r.key,
+            "type": r.type,
+            "default": d,
+            "label": r.label,
+            "subtab": r.subtab,
+            "options": options,
+            "experimental": "experimental" in r.flags,
+            "restart": "restart" in r.flags,
+            "pending": "pending" in r.flags,
+        }
+        if r.type == "float":
+            ent["min"], ent["max"] = r.lo, r.hi
+        if "host" in r.flags:
+            ent["host"] = True
+        settings.append(ent)
     return {
         "_generated": "tools/gen_ini_registry.py from src/mh_dll/mh/config/ini_keys.def -- do not hand-edit",
         "schema_version": 1,
@@ -400,6 +435,37 @@ def _rel(path):
         return path.replace("\\", "/")
 
 
+def hook_problems(rows, src_dir):
+    """Every F_HOSTSYNC row has exactly one hook entry in gameplay_hooks.cpp and vice versa. Vacuous
+    with no F_HOSTSYNC rows and no hooks file."""
+    hooks = {}
+    hp = os.path.join(src_dir, HOOKS_FILE)
+    if os.path.exists(hp):
+        with open(hp, encoding="utf-8", errors="replace") as fh:
+            text = _strip_comments(fh.read())
+        for m in HOOK_RE.finditer(text):
+            hooks.setdefault((m.group(1), m.group(2)), []).append(
+                text.count("\n", 0, m.start()) + 1
+            )
+    out = []
+    reg = {r.ident(): r for r in rows}
+    for r in rows:
+        if "host" in r.flags:
+            n = len(hooks.get(r.ident(), []))
+            if n != 1:
+                out.append(
+                    "%s: [%s] %s is F_HOSTSYNC but has %d hook entries (need exactly 1)"
+                    % (HOOKS_FILE, r.section, r.key, n)
+                )
+    for ident, lines in sorted(hooks.items()):
+        if ident not in reg or "host" not in reg[ident].flags:
+            out.append(
+                "%s:%d: hook for [%s] %s has no F_HOSTSYNC registry row (orphan hook)"
+                % (HOOKS_FILE, lines[0], ident[0], ident[1])
+            )
+    return out
+
+
 def check(def_path, src_dir, ini_path, schema_path, say=print):
     rows, errs = parse_def(def_path)
     problems = list(errs)
@@ -413,8 +479,17 @@ def check(def_path, src_dir, ini_path, schema_path, say=print):
                 "plan's settings table says otherwise)"
                 % (where[0][0], where[0][1], sec, key, _rel(def_path))
             )
+    for (sec, key), ws in sorted(reads.items()):
+        if (sec, key) in reg and "host" in reg[(sec, key)].flags:
+            for rel_, line_ in ws:
+                if not rel_.endswith(GAMEPLAY_HEADER):
+                    problems.append(
+                        "%s:%d: [%s] %s is F_HOSTSYNC -- read it through mh_gameplay.h, never directly"
+                        % (rel_, line_, sec, key)
+                    )
+    problems += hook_problems(rows, src_dir)
     for r in rows:
-        if r.ident() not in reads and "pending" not in r.flags:
+        if r.ident() not in reads and "pending" not in r.flags and "host" not in r.flags:
             problems.append(
                 "%s:%d: [%s] %s is registered but nothing reads it -- delete the row (or flag it "
                 "F_PENDING if its reader lands later)" % (_rel(def_path), r.line, r.section, r.key)
@@ -582,6 +657,49 @@ def selftest():
         expect("a user row without label/sub-tab is RED", rc == 1 and "needs a label" in out)
         rc, out = run(def_t=_DEF_OK.replace("T_BOOL", "T_BOGUS"))
         expect("an unknown enumerator is RED", rc == 1 and "unknown type" in out)
+        # PT-SET1 plants.
+        hdef = (
+            _DEF_OK
+            + 'MH_INI_KEY("net", "gp_mult", T_FLOAT, "2.0", C_USER, "net.gp_mult", S_GAMEPLAY, '
+            '"0.1..10", F_HOSTSYNC)\n'
+        )
+        hook = os.path.join(src, "mh", "seams", "gameplay_hooks.cpp")
+        os.makedirs(os.path.dirname(hook), exist_ok=True)
+        hsrc = os.path.join(src, "mh_common", "include", "mh_gameplay.h")
+        os.makedirs(os.path.dirname(hsrc), exist_ok=True)
+        put(hsrc, "void g(){ mh_ini_get_str(r.sec, r.key, 0); }\n")
+        good_hook = '{"net","gp_mult",[](const V &v, F &fx){ fx.x = 1; }},\n'
+        put(hook, good_hook)
+        rc, out = run(def_t=hdef, ini_t=_INI_OK + "[net]\ngp_mult=2.0\n")
+        expect("a hostsync float row with its hook is green", rc == 0)
+        os.remove(hook)
+        rc, out = run(def_t=hdef, ini_t=_INI_OK + "[net]\ngp_mult=2.0\n")
+        expect("a hostsync row with a MISSING hook is RED", rc == 1 and "0 hook entries" in out)
+        put(hook, good_hook + '{"net","ghost",[](const V &v, F &fx){}},\n')
+        rc, out = run(def_t=hdef, ini_t=_INI_OK + "[net]\ngp_mult=2.0\n")
+        expect("an ORPHAN hook is RED", rc == 1 and "orphan hook" in out)
+        put(hook, good_hook)
+        rc, out = run(
+            def_t=hdef,
+            src_t=_SRC_OK + '  GetPrivateProfileStringA("net", "gp_mult", "", b, 8, ini);\n',
+            ini_t=_INI_OK + "[net]\ngp_mult=2.0\n",
+        )
+        expect("a DIRECT read of a hostsync key is RED", rc == 1 and "never directly" in out)
+        os.remove(hook)
+        os.remove(hsrc)
+        rc, out = run(def_t=hdef.replace('"0.1..10"', '""'))
+        expect("a float row without a range is RED", rc == 1 and "valid options range" in out)
+        rc, out = run(def_t=hdef.replace('"0.1..10"', '"5..1"'))
+        expect(
+            "a float row with an inverted range is RED", rc == 1 and "valid options range" in out
+        )
+        rc, out = run(def_t=hdef.replace("F_HOSTSYNC", "F_NONE"))
+        expect("S_GAMEPLAY without F_HOSTSYNC is RED", rc == 1 and "requires F_HOSTSYNC" in out)
+        rc, out = run(
+            def_t=_DEF_OK
+            + 'MH_INI_KEY("net", "s", T_STRING, "", C_DEV, "", S_NONE, "", F_HOSTSYNC)\n'
+        )
+        expect("F_HOSTSYNC on a string row is RED", rc == 1 and "bool/int/float" in out)
         # Stale schema: change the committed file after generating it.
         run()
         put(s, "{}\n")

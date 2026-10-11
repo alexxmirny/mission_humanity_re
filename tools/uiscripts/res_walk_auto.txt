@@ -1,0 +1,219 @@
+# res_walk_auto -- the segments that need the GENERATED resolution list (resolution=auto on a pinned 1920x1080 desktop,
+# res_walk_auto.ini) in a MAPPED borderless window, in one process on 2-almost.sav (a campaign save on a 64 x 64 map).
+# Each segment starts with `mark <old row name>`; every post_check slices the logs on it (tools/walk_segments.py) and a
+# capture is named <old row>__<name>. Boot size 1920x1056; list [0] 640x480 [1] 800x576 [2] 1024x768 [3] 672x512
+# [4] 928x704 [5] 1152x864 [6] 1408x1056 [7] 960x512 [8] 1280x704 [9] 1536x864 [10] 1920x1056. The options dialog is
+# centred, so its spinner sits at (W/2-22, H/2-3) of the rendered size: 1920x1056 (938,525), 1280x704 (618,349).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 131
+cursor 310 131
+press 310 131
+release 310 131
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+
+# ---- res_auto: boot at the generated Auto size, reach the strategic view and the galaxy screen, leave it again.
+mark res_auto
+capture res_auto__strategic
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+dump
+cursorhold 1700 40 900
+capture res_auto__galaxy
+key 0x01
+gamemode 2
+gameclock +900
+
+# ---- galaxy_native_cursor: entering and leaving the galaxy screen keeps the cursor where it is on the SCREEN.
+# The switch (1920x1056 -> 1024x768 and back) is a real size change and every size change re-inits the mouse for the
+# new mode (stock: the centre, 512,384 on enter and 960,528 on exit). The carry maps the old game point through the old
+# presented image rect to the screen and back through the new one (1920x1056 at (0,12)-(1920,1068), 1024x768 fitted in
+# the 1920x1080 desktop). enter: (1200,300) -> (682,221); exit: the click on the DRAWN Back at (746,723) -> (1289,1005).
+# `curpos` asserts the drawn cursor, the menu cursor the pump resets it from and the DI accumulator, +-2.
+mark galaxy_native_cursor
+cursorhold 1200 300 60
+screensettled
+capture galaxy_native_cursor__before
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+curpos 682 221
+cursorhold 682 221 900
+curpos 682 221
+capture galaxy_native_cursor__galaxy
+click 746 723
+gamemode 2
+curpos 1289 1005
+gameclock +900
+screensettled
+curpos 1289 1005
+capture galaxy_native_cursor__after
+
+# ---- map_zoom_wheel_off: with [input] wheel_zoom=0 three wheel notches over the map leave the zoom at 1x.
+mark map_zoom_wheel_off
+rawfocus 1
+cursorhold 700 300 30
+zoom 100
+rawmouse wheel 120
+cursorhold 700 300 10
+rawmouse wheel 120
+cursorhold 700 300 10
+rawmouse wheel 120
+cursorhold 700 300 60
+zoom 100
+capture map_zoom_wheel_off__w1_no_zoom
+
+# ---- res_list_order: Options > Screen size steps through the generated list in order.
+mark res_list_order
+key 0x01
+present Return
+clickv 111
+present Screen size
+settled Ok
+capture res_list_order__a_1920x1056
+click 938 525
+settled Ok
+capture res_list_order__b_640x480
+click 938 525
+click 938 525
+settled Ok
+capture res_list_order__c_1024x768
+click 938 525
+settled Ok
+capture res_list_order__d_672x512
+click 938 525
+click 938 525
+click 938 525
+settled Ok
+capture res_list_order__e_1408x1056
+click 938 525
+settled Ok
+capture res_list_order__f_960x512
+click 938 525
+settled Ok
+capture res_list_order__g_1280x704
+clickl Cancel
+absent Screen size
+present Return
+clickv 103
+gamemode 2
+gameclock +900
+
+# ---- res_menu_roundtrip: ESC > Return to game three times never moves or resizes the borderless window, a different
+# list entry chosen in the options still applies (1920x1056 -> 1280x704: nine steps through the wrapping spinner), and
+# three more round trips at the new size.
+mark res_menu_roundtrip
+capture res_menu_roundtrip__a_start
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+clickv 111
+present Screen size
+settled Ok
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+clickl Ok
+absent Screen size
+present Return
+clickv 103
+gamemode 2
+gameclock +900
+capture res_menu_roundtrip__b_1280x704
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+settled Return
+clickv 103
+gamemode 2
+key 0x01
+present Return
+clickv 111
+present Screen size
+settled Ok
+click 618 349
+click 618 349
+clickl Ok
+absent Screen size
+present Return
+clickv 103
+gamemode 2
+gameclock +900
+capture res_menu_roundtrip__c_back_1920x1056
+
+# ---- res_frac: the fractional 1.5x size (1280x704 on the 1920x1080 desktop, fit + the area filter): the strategic view
+# and the galaxy screen are reached at it and left again without a crash. Nine steps through the wrapping spinner.
+mark res_frac
+key 0x01
+present Return
+clickv 111
+present Screen size
+settled Ok
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+clickl Ok
+absent Screen size
+present Return
+clickv 103
+gamemode 2
+gameclock +900
+capture res_frac__strategic
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+dump
+cursorhold 1200 40 900
+capture res_frac__galaxy
+key 0x01
+gamemode 2
+gameclock +900
+capture res_frac__after
+end

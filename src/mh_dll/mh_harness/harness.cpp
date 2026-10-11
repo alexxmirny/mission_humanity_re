@@ -911,6 +911,62 @@ struct Config {
     int u49_gap    = 7;   // steps between the two undock orders (the 936e0006 incident: 7)
     int u49_settle = 900; // steps after the second order before the follow-up move order
     int u49_tail   = 300; // steps after the move order before the final verdict line
+    // ---- patching:PT-FIX1: THE TURRET-SLOT-REUSE FIXTURE (2026-10-10) -------------------------------
+    // A destroyed turret's rubble (state 4, up to 20 s) keeps its sub_id; retail ticks the rubble's
+    // reload every step with a growing budget, and once a new turret has taken the freed slot that
+    // drains the NEW turret's reload_timer (about 4x fire rate). Four phases, post-hash, symmetric on
+    // every peer except the replicated build orders (owner peer issues them):
+    //   (1) at >= pt1_at, once player pt1_player's mother has landed: order 0xf2 (construction_debug)
+    //       for a turret of the player's race at the mother + (PT1_T1_DX, PT1_T1_DY);
+    //   (2) once it stands (built_flags 3): kill it (pending_damage >= energy -> the building's own
+    //       tick destroys it, frees turrets[p][slot].b_index, leaves rubble in state 4);
+    //   (3) once the slot is free: order a second turret at (PT1_T2_DX, PT1_T2_DY); it takes the SAME
+    //       slot (lowest free) while the rubble still lives;
+    //   (4) once the new turret owns the slot and the rubble is still state 4: arm it
+    //       (reload_ready_flag = 0, reload_timer = pt1_timer_ms) and count the steps until the flag
+    //       returns to 1. Key on: ~timer/step; key off (retail): a fraction of that. Logged as
+    //       `; PT1 ...` lines the checker (tools/check_pt1_turret_slot.py) reads. 0 = off.
+    int pt1_at       = 0;    // first step the fixture may act (0 = off)
+    int pt1_player   = 0;    // player index whose turrets are used
+    int pt1_timer_ms = 1000; // the armed reload_timer, in game milliseconds
+    int pt1_tail     = 600;  // steps to wait for the flag to return before the verdict line
+    // ---- patching:PT-FIX3: THE HELICOPTER ORDER-DEADLOCK FIXTURE (2026-10-10) ----------------------
+    // Retail: a helicopter in the path state (0x12) at microstep 31 with a stale facing_target that
+    // receives an order is stuck forever (the dispatcher defers while facing_target != the move table's
+    // facing; move_path's ms==31 && order_queued early return never reconciles them). Phases, post-hash,
+    // symmetric on every peer except the replicated orders (owner peer issues them):
+    //   (1) at >= pt3_at, once player pt3_player's mother has landed: order 0xeb (create_unit_debug) for
+    //       the race's helicopter near the landing site, find it;
+    //   (2) MOVE1 ~25 tiles east; once it is in state 0x12: MOVE2 (north-west);
+    //   (3) every step until the dispatcher defers MOVE2 (order_queued): hold state 0x12 / microstep 31 /
+    //       a stale facing (the natural race is a one-microstep window);
+    //   (4) release; for pt3_tail steps record whether the order was applied (order_queued back to 0 /
+    //       state left 0x12) and how far the helicopter moved. Key on: applied within a few steps, it
+    //       leaves; key off (retail): stuck at ms 31 with order_queued 1. `; PT3 ...` lines are read by
+    //       tools/check_pt3_air_order.py. 0 = off.
+    int pt3_at     = 0;   // first step the fixture may act (0 = off)
+    int pt3_player = 0;   // player index whose helicopter is used
+    int pt3_tail   = 300; // steps to observe after the order was deferred
+    // ---- patching:PT-FIX2: THE TURRET FIRE-RATE FIXTURE (2026-10-11) --------------------------------
+    // Retail drains a turret's reload timer with a re-counted budget (llm_strat_bldg_turret_reload_tick's
+    // argument), so the fire interval depends on the sim step: ~2-3x too fast at 10/20 ms. This fixture
+    // builds ONE unshared turret per weapon (weapon ids pt2_w1 / pt2_w2 of the cfg Weapon[] table, matched
+    // against Building.weapon_id), gives them an immobile enemy target (a helicopter created for
+    // pt2_target, energy held topped up) and logs every shot: `; PT2 FIRE w=<weapon> n=<k> clock_us=<t>`.
+    // Phases, post-hash, symmetric on every peer except the replicated create/build orders:
+    //   (1) at >= pt2_at, once player pt2_player's mother has landed: order 0xf2 (construction_debug) for
+    //       the turret of weapon 1, wait until it stands (built_flags 3), then the same for weapon 2;
+    //   (2) order 0xeb (create_unit_debug) for the race's helicopter of player pt2_target between them;
+    //   (3) every step: top up the target's energy; a shot = the turret's reload_timer rose or its ready
+    //       flag fell. Done at pt2_shots shots per turret (or pt2_tail steps): `; PT2 VERDICT ...`.
+    // Read by tools/check_pt2_turret_rate.py. 0 = off.
+    int pt2_at     = 0;  // first step the fixture may act (0 = off)
+    int pt2_player = 0;  // player index whose turrets are used
+    int pt2_target = 1;  // player index that owns the immobile target
+    int pt2_w1     = 8;  // first turret's weapon id (BRON_LASER_14mm_bunkier2, short_time 0.2)
+    int pt2_w2     = 21; // second turret's weapon id (BRON_RAKIETA_ALFA_wieza, short_time 1.75)
+    int pt2_shots  = 24; // shots to record per turret
+    int pt2_tail   = 6000; // steps after the target stands before the verdict (timeout)
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -987,8 +1043,15 @@ constexpr int D38_TIMEOUT         = 3000; // steps a phase may wait for its prec
 constexpr int HOSTILE_DX          = 12;   // pair 2 is dropped this many tiles east of pair 1
 constexpr int HOSTILE_ORDER_AFTER = 300;  // steps after the drop at which the explicit attack order is issued
 constexpr int U49_TIMEOUT         = 3000; // steps to wait for a parked unit before FAIL
-constexpr int CTRL_GROUP_ID       = 1;    // the control group the conquest workload puts its attackers in
-constexpr int TACT_SYNTH_OWNER    = 0;    // the `owner` byte that marks a PLAYER unit in the tactical synth
+constexpr int PT1_TIMEOUT         = 3000; // steps a PT-FIX1 phase may wait for its precondition before FAIL
+constexpr int PT1_T1_DX           = 6;    // first turret: tile offset from the landed mother's origin
+constexpr int PT1_T1_DY           = 6;
+constexpr int PT1_T2_DX           = 10; // second turret (the slot-reuser)
+constexpr int PT1_T2_DY           = 6;
+constexpr int PT3_TIMEOUT         = 3000; // steps a PT-FIX3 phase may wait for its precondition before FAIL
+constexpr int PT3_FAR             = 25;   // tiles the helicopter is first sent east
+constexpr int CTRL_GROUP_ID       = 1; // the control group the conquest workload puts its attackers in
+constexpr int TACT_SYNTH_OWNER    = 0; // the `owner` byte that marks a PLAYER unit in the tactical synth
 
 char g_dir[MAX_PATH]; // exe directory, trailing backslash
 char g_log_path[MAX_PATH];
@@ -1542,6 +1605,20 @@ void load_config() {
     g_cfg.u49_gap                 = mh_ini_get_int("harness", "u49_gap", g_cfg.u49_gap, g_ini_path);
     g_cfg.u49_settle              = mh_ini_get_int("harness", "u49_settle", g_cfg.u49_settle, g_ini_path);
     g_cfg.u49_tail                = mh_ini_get_int("harness", "u49_tail", g_cfg.u49_tail, g_ini_path);
+    g_cfg.pt1_at                  = mh_ini_get_int("harness", "pt1_at", g_cfg.pt1_at, g_ini_path);
+    g_cfg.pt1_player              = mh_ini_get_int("harness", "pt1_player", g_cfg.pt1_player, g_ini_path);
+    g_cfg.pt1_timer_ms            = mh_ini_get_int("harness", "pt1_timer_ms", g_cfg.pt1_timer_ms, g_ini_path);
+    g_cfg.pt1_tail                = mh_ini_get_int("harness", "pt1_tail", g_cfg.pt1_tail, g_ini_path);
+    g_cfg.pt3_at                  = mh_ini_get_int("harness", "pt3_at", g_cfg.pt3_at, g_ini_path);
+    g_cfg.pt3_player              = mh_ini_get_int("harness", "pt3_player", g_cfg.pt3_player, g_ini_path);
+    g_cfg.pt3_tail                = mh_ini_get_int("harness", "pt3_tail", g_cfg.pt3_tail, g_ini_path);
+    g_cfg.pt2_at = mh_ini_get_int("harness", "pt2_at", g_cfg.pt2_at, g_ini_path);
+    g_cfg.pt2_player = mh_ini_get_int("harness", "pt2_player", g_cfg.pt2_player, g_ini_path);
+    g_cfg.pt2_target = mh_ini_get_int("harness", "pt2_target", g_cfg.pt2_target, g_ini_path);
+    g_cfg.pt2_w1 = mh_ini_get_int("harness", "pt2_w1", g_cfg.pt2_w1, g_ini_path);
+    g_cfg.pt2_w2 = mh_ini_get_int("harness", "pt2_w2", g_cfg.pt2_w2, g_ini_path);
+    g_cfg.pt2_shots = mh_ini_get_int("harness", "pt2_shots", g_cfg.pt2_shots, g_ini_path);
+    g_cfg.pt2_tail = mh_ini_get_int("harness", "pt2_tail", g_cfg.pt2_tail, g_ini_path);
     g_cfg.conq_phase_timeout      = mh_ini_get_int("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
     g_cfg.all_ai                  = mh_ini_get_int("harness", "all_ai", g_cfg.all_ai, g_ini_path);
     g_cfg.all_ai_observer         = mh_ini_get_int("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
@@ -3185,6 +3262,28 @@ void order_replay_dispatch_replace() {
 // test starts T. release_due may also REPLACE a queued record in place, so the prefix is written
 // from S(N), not trusted from the live queue. A misread only moves a hash blip: the dispatch-entry
 // replace still makes the executed queue exact, and says so in its counter.
+// tooling:TL-REPLAY-BM: mh_hqueue.bin (optional, beside mh_clock.bin) = one u32 per match step: the
+// recording's order_queue_count at its hash point (0xFFFFFFFF = unknown). Written by
+// tools/replay_match_segment.py from the recording's state file.
+uint32_t *g_hq   = nullptr;
+uint32_t  g_hq_n = 0;
+void hqueue_load() {
+    char path[MAX_PATH];
+    wsprintfA(path, "%smh_hqueue.bin", g_dir);
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    DWORD sz = GetFileSize(h, nullptr), got = 0;
+    g_hq     = static_cast<uint32_t *>(VirtualAlloc(nullptr, (size_t)sz + 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    if (g_hq) {
+        ReadFile(h, g_hq, sz, &got, nullptr);
+        g_hq_n = got / sizeof(uint32_t);
+        char b[96];
+        wsprintfA(b, "; hqueue: loaded %lu hash-point queue counts\n", g_hq_n);
+        append_line(g_log_path, b);
+    }
+    CloseHandle(h);
+}
+
 void order_replay_inject_prefix() {
     if (g_cfg.replay_ai_off && !g_ai_zeroed) {
         zero_ai_enabled_all();
@@ -3213,7 +3312,15 @@ void order_replay_inject_prefix() {
     int       n    = 0; // records of S(N)
     while (g_replay_i + n < g_replay_n && g_replay[g_replay_i + n].step == g_step && n < ORDER_QCAP) ++n;
     int keep = live < n ? live : n; // the kept prefix
-    if (n > keep && g_clock_trk && g_step >= 2 && g_step <= g_clock_n) {
+    if (g_hq && g_step <= g_hq_n && g_hq[g_step - 1] != 0xFFFFFFFFu) {
+        // tooling:TL-REPLAY-BM: the recording's OWN hash-point queue length (the state recording's
+        // order_queue_count at this step, handed over as mh_hqueue.bin) says exactly how many records
+        // of S(N) were already queued here -- released orders AND a human's direct enqueue (the
+        // immediate lane, exec_time 0, which the replay's sim never makes) -- and so where the AI tick's
+        // tail T begins. Exact by construction; replaces the clock-window guess below.
+        const uint32_t h = g_hq[g_step - 1];
+        keep             = (int)h < n ? (int)h : n;
+    } else if (n > keep && g_clock_trk && g_step >= 2 && g_step <= g_clock_n) {
         const double lo = g_clock_trk[g_step - 2], hi = g_clock_trk[g_step - 1];
         while (keep < n) {
             double t;
@@ -7624,6 +7731,500 @@ void u49_tick() {
     }
 }
 
+// ---- patching:PT-FIX1: the turret-slot-reuse fixture (see the config block) ----------------------
+// After the step's hash, outside the HASH-INPUT span. It writes sim state (the kill, the arming), but
+// the same write at the same step on every peer, so the peers stay identical.
+enum { PT1_BUILD1 = 0,
+       PT1_KILL,
+       PT1_BUILD2,
+       PT1_MEASURE,
+       PT1_FINISHED,
+       PT1_FAILED };
+int      g_pt1_phase     = PT1_BUILD1;
+uint32_t g_pt1_wait_from = 0, g_pt1_armed_at = 0;
+bool     g_pt1_issued = false;
+int      g_pt1_t1 = 0, g_pt1_slot = 0;
+
+void pt1_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; PT1 FAIL step=%lu phase=%d: %s\n", g_step, g_pt1_phase, why);
+    append_line(g_log_path, m);
+    g_pt1_phase = PT1_FAILED;
+}
+
+// A built (built_flags 3), non-rubble turret building of player p, skipping index `skip`.
+int pt1_find_turret(unsigned p, int skip) {
+    const auto *bl = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    const auto *B  = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+    for (int i = 1; i < 100; ++i) {
+        if (i == skip || bl[i].building_id == 0 || bl[i].built_flags != 3 || bl[i].state == 4) continue;
+        const unsigned t = B[bl[i].building_id].type;
+        if (t == 5u || t == 0x19u) return i;
+    }
+    return 0;
+}
+
+void pt1_tick() {
+    if (g_cfg.pt1_at <= 0 || g_step < (uint32_t)g_cfg.pt1_at || g_pt1_phase >= PT1_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.pt1_player;
+    if (p >= 8) return pt1_fail("pt1_player out of range");
+    auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    auto          *tu     = reinterpret_cast<mh::game::mh_map_object_turret *>(mh::state::hash_base(mh::state::HIDX_TURRETS)) + p * 32u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    char           m[256];
+    if (planet >= 32) return;
+    if (g_pt1_wait_from == 0) g_pt1_wait_from = g_step;
+    if (g_pt1_phase != PT1_MEASURE && (int)(g_step - g_pt1_wait_from) > PT1_TIMEOUT) return pt1_fail("phase timeout");
+    // The turret type of the player's race: A_TURRET (5) for the aliens (race 2), else H_TURRET (0x19).
+    const unsigned want_type = prof[p].race == 2u ? 5u : 0x19u;
+    int            cfg_idx   = 0;
+    {
+        const auto *B = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+        for (int i = 1; i < 100 && cfg_idx == 0; ++i)
+            if (B[i].type == want_type) cfg_idx = i;
+    }
+    switch (g_pt1_phase) {
+        case PT1_BUILD1: {
+            const int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100 || cfg_idx == 0) return; // not landed yet
+            const int t = pt1_find_turret(p, 0);
+            if (t != 0) {
+                g_pt1_t1        = t;
+                g_pt1_slot      = bl[t].sub_id;
+                g_pt1_phase     = PT1_KILL;
+                g_pt1_wait_from = 0;
+                g_pt1_issued    = false;
+                wsprintfA(m, "; PT1 step=%lu turret #1 stands: building %d slot %d b_index %d\n", g_step, t, g_pt1_slot,
+                          (int)tu[g_pt1_slot].b_index);
+                append_line(g_log_path, m);
+                return;
+            }
+            if (!g_pt1_issued) {
+                g_pt1_issued  = true;
+                const int  bx = (int)bl[mb].x + PT1_T1_DX;
+                const int  by = (int)bl[mb].y + PT1_T1_DY;
+                const bool me = (side == p);
+                if (me)
+                    mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by, (uint32_t)cfg_idx, p);
+                wsprintfA(m, "; PT1 step=%lu order 0xf2 Building[%d] (turret #1) at (%d,%d) for player %u -- %s\n", g_step,
+                          cfg_idx, bx, by, p, me ? "issued here (owner)" : "the owner peer issues it");
+                append_line(g_log_path, m);
+            }
+            return;
+        }
+        case PT1_KILL: {
+            // Destroy it through its own tick: pending_damage >= energy -> llm_strat_bldg_apply_damage.
+            bl[g_pt1_t1].pending_damage = bl[g_pt1_t1].energy + 1.0;
+            g_pt1_phase                 = PT1_BUILD2;
+            g_pt1_wait_from             = 0;
+            g_pt1_issued                = false;
+            wsprintfA(m, "; PT1 step=%lu KILL turret #1 (building %d, slot %d)\n", g_step, g_pt1_t1, g_pt1_slot);
+            append_line(g_log_path, m);
+            return;
+        }
+        case PT1_BUILD2: {
+            const int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100 || cfg_idx == 0) return;
+            if (tu[g_pt1_slot].b_index != 0 && !g_pt1_issued) return; // wait for the slot to be freed
+            if (!g_pt1_issued) {
+                g_pt1_issued  = true;
+                const int  bx = (int)bl[mb].x + PT1_T2_DX;
+                const int  by = (int)bl[mb].y + PT1_T2_DY;
+                const bool me = (side == p);
+                if (me)
+                    mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by, (uint32_t)cfg_idx, p);
+                wsprintfA(m, "; PT1 step=%lu order 0xf2 Building[%d] (turret #2) at (%d,%d) for player %u -- %s "
+                             "(slot %d b_index %d, rubble state %d)\n",
+                          g_step, cfg_idx, bx, by, p, me ? "issued here (owner)" : "the owner peer issues it", g_pt1_slot,
+                          (int)tu[g_pt1_slot].b_index, (int)bl[g_pt1_t1].state);
+                append_line(g_log_path, m);
+                return;
+            }
+            const int t = pt1_find_turret(p, g_pt1_t1);
+            if (t == 0) return;
+            if ((int)bl[t].sub_id != g_pt1_slot || tu[g_pt1_slot].b_index != (int16_t)t) {
+                wsprintfA(m, "turret #2 (building %d) took slot %d, not the freed slot %d (b_index %d)", t,
+                          (int)bl[t].sub_id, g_pt1_slot, (int)tu[g_pt1_slot].b_index);
+                return pt1_fail(m);
+            }
+            if (bl[g_pt1_t1].state != 4) return pt1_fail("the first turret's rubble is gone before the second stands");
+            // ARM: the new turret mid-reload, ready flag clear; then count steps until it is ready again.
+            tu[g_pt1_slot].reload_ready_flag = 0;
+            tu[g_pt1_slot].reload_timer      = (double)g_cfg.pt1_timer_ms / 1000.0;
+            g_pt1_armed_at                   = g_step;
+            g_pt1_phase                      = PT1_MEASURE;
+            wsprintfA(m, "; PT1 ARMED step=%lu rubble=%d(state %d) live=%d slot=%d b_index=%d timer_ms=%d\n", g_step,
+                      g_pt1_t1, (int)bl[g_pt1_t1].state, t, g_pt1_slot, (int)tu[g_pt1_slot].b_index,
+                      g_cfg.pt1_timer_ms);
+            append_line(g_log_path, m);
+            return;
+        }
+        case PT1_MEASURE: {
+            const int n = (int)(g_step - g_pt1_armed_at);
+            if (tu[g_pt1_slot].reload_ready_flag != 0) {
+                wsprintfA(m, "; PT1 READY step=%lu steps_to_ready=%d rubble_state=%d b_index=%d\n", g_step, n,
+                          (int)bl[g_pt1_t1].state, (int)tu[g_pt1_slot].b_index);
+                append_line(g_log_path, m);
+                g_pt1_phase = PT1_FINISHED;
+            } else if (n >= g_cfg.pt1_tail) {
+                wsprintfA(m, "; PT1 READY step=%lu steps_to_ready=-1 rubble_state=%d b_index=%d (timeout)\n", g_step,
+                          (int)bl[g_pt1_t1].state, (int)tu[g_pt1_slot].b_index);
+                append_line(g_log_path, m);
+                g_pt1_phase = PT1_FINISHED;
+            }
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- patching:PT-FIX3: the helicopter order-deadlock fixture (see the config block) -------------
+// After the step's hash, outside the HASH-INPUT span. It writes sim state (move_microstep, facing) on
+// every peer identically, and only the owner peer issues the (replicated) create / move orders.
+enum { PT3_CREATE = 0,
+       PT3_FIND,
+       PT3_SETTLE,
+       PT3_MOVE1,
+       PT3_WATCH,
+       PT3_FORCE,
+       PT3_MEASURE,
+       PT3_FINISHED,
+       PT3_FAILED };
+int      g_pt3_phase = PT3_CREATE;
+uint32_t g_pt3_wait_from = 0, g_pt3_mark = 0, g_pt3_queued_at = 0;
+bool     g_pt3_issued = false;
+int      g_pt3_unit = 0, g_pt3_cfg = 0, g_pt3_tx = 0, g_pt3_ty = 0, g_pt3_qx = 0, g_pt3_qy = 0;
+int      g_pt3_applied_at = -1;
+
+void pt3_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; PT3 FAIL step=%lu phase=%d: %s\n", g_step, g_pt3_phase, why);
+    append_line(g_log_path, m);
+    g_pt3_phase = PT3_FAILED;
+}
+
+void pt3_sample(const char *tag, const mh::game::mh_map_object_unit &u) {
+    char m[256];
+    wsprintfA(m, "; PT3 %s step=%lu unit=%d state=0x%02x ms=%d oq=%d facing=%d/%d heading=%d xy=%d,%d goal=%d,%d\n", tag,
+              g_step, g_pt3_unit, (unsigned)u.state, (int)u.move_microstep, (int)u.order_queued, (int)u.facing_target,
+              (int)u.facing_current, (int)u.move_heading, (int)u.x, (int)u.y, (int)u.goal_x, (int)u.goal_y);
+    append_line(g_log_path, m);
+}
+
+void pt3_order_move(unsigned p, int tx, int ty, const char *which) {
+    const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const bool     me   = (side == p);
+    if (me) {
+        auto          *seqp = reinterpret_cast<uint8_t *>(ADDR_ORDER_SEQ() + side);
+        const unsigned seq  = *seqp;
+        mh::call::llm_strat_unit_order_move(side, (int32_t)g_pt3_unit, (uint32_t)tx, (uint32_t)ty, seq);
+        if (++(*seqp) == 0) ++(*seqp);
+    }
+    char m[224];
+    wsprintfA(m, "; PT3 MOVE%s step=%lu unit=%d -> (%d,%d) -- %s\n", which, g_step, g_pt3_unit, tx, ty,
+              me ? "issued here (owner)" : "the owner peer issues it");
+    append_line(g_log_path, m);
+}
+
+void pt3_tick() {
+    if (g_cfg.pt3_at <= 0 || g_step < (uint32_t)g_cfg.pt3_at || g_pt3_phase >= PT3_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.pt3_player;
+    if (p >= 8) return pt3_fail("pt3_player out of range");
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const auto    *ms_tbl = reinterpret_cast<const mh::game::mh_llm_strat_move_microstep *>(mh::addr::_G_LLM_STRAT_MOVE_MICROSTEPS);
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw     = synth_map_w(), mh_ = synth_map_h();
+    char           m[256];
+    if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_pt3_wait_from == 0) g_pt3_wait_from = g_step;
+    if (g_pt3_phase != PT3_MEASURE && (int)(g_step - g_pt3_wait_from) > PT3_TIMEOUT) return pt3_fail("phase timeout");
+    switch (g_pt3_phase) {
+        case PT3_CREATE: {
+            const int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100) return; // not landed yet
+            // The player's helicopter class: A_HELI (0xf) for the aliens (race 2), else H_HELI (0x10).
+            const unsigned want = prof[p].race == 2u ? 0x0fu : 0x10u;
+            for (int k = 1; k < 512 && g_pt3_cfg == 0; ++k)
+                if (U[k].type == want) g_pt3_cfg = k;
+            if (g_pt3_cfg == 0) return pt3_fail("no helicopter proto in the cfg for this race");
+            const int bx = (int)prof[p].landing_x[planet] + 2, by = (int)prof[p].landing_y[planet] + 3;
+            if (side == p)
+                mh::call::llm_strat_order_create_unit_debug((uint32_t)bx, (uint32_t)by, (uint32_t)(g_pt3_cfg + 1), p);
+            wsprintfA(m, "; PT3 step=%lu order 0xeb create Unit[%d] (type 0x%x) at (%d,%d) for player %u -- %s\n", g_step,
+                      g_pt3_cfg + 1, want, bx, by, p, side == p ? "issued here (owner)" : "the owner peer issues it");
+            append_line(g_log_path, m);
+            g_pt3_phase     = PT3_FIND;
+            g_pt3_wait_from = 0;
+            return;
+        }
+        case PT3_FIND: {
+            for (unsigned i = 2; i < 100u; ++i) {
+                const auto &u = un[i];
+                if (u.energy <= 0.0) continue;
+                if ((int)u.unit_proto_id != g_pt3_cfg && (int)u.unit_proto_id != g_pt3_cfg + 1) continue;
+                g_pt3_unit      = (int)i;
+                g_pt3_phase     = PT3_SETTLE;
+                g_pt3_mark      = g_step;
+                g_pt3_wait_from = 0;
+                pt3_sample("FOUND", u);
+                return;
+            }
+            return;
+        }
+        case PT3_SETTLE: {
+            if (g_step < g_pt3_mark + 60) return;
+            const auto &u = un[g_pt3_unit];
+            if (!(u.energy > 0.0)) return pt3_fail("the helicopter died before the first move");
+            g_pt3_tx = (int)((u.x + (unsigned)PT3_FAR) % mw);
+            g_pt3_ty = (int)u.y;
+            pt3_order_move(p, g_pt3_tx, g_pt3_ty, "1");
+            g_pt3_phase     = PT3_WATCH;
+            g_pt3_wait_from = 0;
+            return;
+        }
+        case PT3_WATCH: {
+            // MOVE1 sends the unit through group_marshal/group_step into the path state (0x12): arm there.
+            const auto &u = un[g_pt3_unit];
+            if (!(u.energy > 0.0)) return pt3_fail("the helicopter died");
+            if (u.state != 0x12) return;
+            pt3_sample("IN_PATH", u);
+            // MOVE2: a different heading (north-west, half the distance) so the group-move shape is real.
+            g_pt3_qx = (int)u.x;
+            g_pt3_qy = (int)u.y;
+            g_pt3_tx = (int)((u.x + mw - (unsigned)PT3_FAR / 2u) % mw);
+            g_pt3_ty = (int)((u.y + mh_ - (unsigned)PT3_FAR / 2u) % mh_);
+            pt3_order_move(p, g_pt3_tx, g_pt3_ty, "2");
+            g_pt3_phase     = PT3_FORCE;
+            g_pt3_wait_from = 0;
+            return;
+        }
+        case PT3_FORCE: {
+            // Hold the stuck-helicopter precondition until the dispatcher defers the order: state 0x12,
+            // microstep 31, facing_target/current stale (6 compass steps off the table facing).
+            auto &u = un[g_pt3_unit];
+            if (!(u.energy > 0.0)) return pt3_fail("the helicopter died");
+            if (u.order_queued) {
+                g_pt3_queued_at  = g_step;
+                g_pt3_applied_at = -1;
+                g_pt3_qx         = (int)u.x; // displacement is measured from here (the forced steps moved it)
+                g_pt3_qy         = (int)u.y;
+                pt3_sample("QUEUED", u);
+                g_pt3_phase     = PT3_MEASURE;
+                g_pt3_wait_from = 0;
+                return;
+            }
+            if (u.state != 0x12) return pt3_fail("left state 0x12 before the order was deferred (arrived, or applied unqueued)");
+            const uint8_t tbl = ms_tbl[(unsigned)u.move_heading % 24u * 32u + 31u].facing;
+            const uint8_t bad = (uint8_t)(tbl > 12 ? tbl - 6 : tbl + 6);
+            u.move_microstep  = 31;
+            u.facing_target   = bad;
+            u.facing_current  = bad;
+            return;
+        }
+        case PT3_MEASURE: {
+            const auto &u = un[g_pt3_unit];
+            const int   n = (int)(g_step - g_pt3_queued_at);
+            if (g_pt3_applied_at < 0 && (!u.order_queued || u.state != 0x12)) {
+                g_pt3_applied_at = n;
+                pt3_sample("APPLIED", u);
+            }
+            if (n % 25 == 0 && n > 0) pt3_sample("SAMPLE", u);
+            if (n < g_cfg.pt3_tail) return;
+            int dx = (int)u.x - g_pt3_qx, dy = (int)u.y - g_pt3_qy;
+            if (dx > 128) dx -= 256;
+            if (dx < -128) dx += 256;
+            if (dy > 128) dy -= 256;
+            if (dy < -128) dy += 256;
+            const int moved = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
+            wsprintfA(m, "; PT3 VERDICT step=%lu applied_after=%d state=0x%02x oq=%d ms=%d moved_tiles=%d goal=%d,%d "
+                         "want_goal=%d,%d\n",
+                      g_step, g_pt3_applied_at, (unsigned)u.state, (int)u.order_queued, (int)u.move_microstep, moved,
+                      (int)u.goal_x, (int)u.goal_y, g_pt3_tx, g_pt3_ty);
+            append_line(g_log_path, m);
+            g_pt3_phase = PT3_FINISHED;
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- patching:PT-FIX2: the turret fire-rate fixture (see the config block) -----------------------
+// After the step's hash, outside the HASH-INPUT span. Writes sim state (the target's energy top-up) with the
+// same value at the same step on every peer; only the owner peers issue the replicated build/create orders.
+enum { PT2_BUILD1 = 0,
+       PT2_BUILD2,
+       PT2_TARGET,
+       PT2_MEASURE,
+       PT2_FINISHED,
+       PT2_FAILED };
+int      g_pt2_phase = PT2_BUILD1;
+uint32_t g_pt2_wait_from = 0, g_pt2_start = 0;
+bool     g_pt2_issued = false;
+int      g_pt2_bld[2] = {0, 0}, g_pt2_slot[2] = {0, 0}, g_pt2_cfg[2] = {0, 0}, g_pt2_unit = 0, g_pt2_ucfg = 0;
+int      g_pt2_shots[2] = {0, 0};
+uint8_t  g_pt2_prev_flag[2] = {1, 1};
+double   g_pt2_prev_timer[2] = {0.0, 0.0};
+
+void pt2_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; PT2 FAIL step=%lu phase=%d: %s\n", g_step, g_pt2_phase, why);
+    append_line(g_log_path, m);
+    g_pt2_phase = PT2_FAILED;
+}
+
+// The first built (built_flags 3), non-rubble turret building of player p whose cfg weapon is `weapon`.
+int pt2_find_turret(unsigned p, int weapon) {
+    const auto *bl = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    const auto *B  = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+    for (int i = 1; i < 100; ++i) {
+        if (bl[i].building_id == 0 || bl[i].built_flags != 3 || bl[i].state == 4) continue;
+        const auto &c = B[bl[i].building_id];
+        if ((c.type == 5u || c.type == 0x19u) && c.weapon_id == weapon) return i;
+    }
+    return 0;
+}
+
+void pt2_tick() {
+    if (g_cfg.pt2_at <= 0 || g_step < (uint32_t)g_cfg.pt2_at || g_pt2_phase >= PT2_FINISHED) return;
+    const unsigned p  = (unsigned)g_cfg.pt2_player;
+    const unsigned tp = (unsigned)g_cfg.pt2_target;
+    if (p >= 8 || tp >= 8) return pt2_fail("pt2_player / pt2_target out of range");
+    auto *bl = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    auto *tu = reinterpret_cast<mh::game::mh_map_object_turret *>(mh::state::hash_base(mh::state::HIDX_TURRETS)) + p * 32u;
+    auto *un = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + tp * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *B      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    char           m[256];
+    if (planet >= 32) return;
+    if (g_pt2_wait_from == 0) g_pt2_wait_from = g_step;
+    if (g_pt2_phase != PT2_MEASURE && (int)(g_step - g_pt2_wait_from) > 3000) return pt2_fail("phase timeout");
+    const int mb = prof[p].primary_mother_bldg[planet];
+    switch (g_pt2_phase) {
+        case PT2_BUILD1:
+        case PT2_BUILD2: {
+            const int k = g_pt2_phase == PT2_BUILD1 ? 0 : 1;
+            const int w = k == 0 ? g_cfg.pt2_w1 : g_cfg.pt2_w2;
+            if (mb <= 0 || mb >= 100) return; // not landed yet
+            if (g_pt2_cfg[k] == 0) {
+                for (int i = 1; i < 100 && g_pt2_cfg[k] == 0; ++i)
+                    if ((B[i].type == 5u || B[i].type == 0x19u) && B[i].weapon_id == w)
+                        g_pt2_cfg[k] = i;
+                if (g_pt2_cfg[k] == 0) {
+                    for (int i = 1; i < 100; ++i)
+                        if (B[i].type == 5u || B[i].type == 0x19u) {
+                            wsprintfA(m, "; PT2 turret cfg Building[%d] type 0x%x weapon_id %d (race %u)\n", i, (unsigned)B[i].type,
+                                      (int)B[i].weapon_id, (unsigned)prof[p].race);
+                            append_line(g_log_path, m);
+                        }
+                    return pt2_fail("no turret building of this race mounts that weapon");
+                }
+            }
+            const int t = pt2_find_turret(p, w);
+            if (t != 0) {
+                g_pt2_bld[k]    = t;
+                g_pt2_slot[k]   = bl[t].sub_id;
+                g_pt2_wait_from = 0;
+                g_pt2_issued    = false;
+                wsprintfA(m, "; PT2 step=%lu turret %d (weapon %d) stands: building %d slot %d b_index %d\n", g_step, k, w, t,
+                          g_pt2_slot[k], (int)tu[g_pt2_slot[k]].b_index);
+                append_line(g_log_path, m);
+                g_pt2_phase = k == 0 ? PT2_BUILD2 : PT2_TARGET;
+                return;
+            }
+            if (!g_pt2_issued) {
+                g_pt2_issued  = true;
+                const int  bx = (int)bl[mb].x + 6 + 4 * k;
+                const int  by = (int)bl[mb].y + 6;
+                const bool me = (side == p);
+                if (me) mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by, (uint32_t)g_pt2_cfg[k], p);
+                wsprintfA(m, "; PT2 step=%lu order 0xf2 Building[%d] (turret %d, weapon %d) at (%d,%d) for player %u -- %s\n",
+                          g_step, g_pt2_cfg[k], k, w, bx, by, p, me ? "issued here (owner)" : "the owner peer issues it");
+                append_line(g_log_path, m);
+            }
+            return;
+        }
+        case PT2_TARGET: {
+            if (g_pt2_ucfg == 0) {
+                const unsigned want = prof[tp].race == 2u ? 0x0fu : 0x10u; // the race's helicopter class
+                for (int k = 1; k < 512 && g_pt2_ucfg == 0; ++k)
+                    if (U[k].type == want) g_pt2_ucfg = k;
+                if (g_pt2_ucfg == 0) return pt2_fail("no helicopter proto for the target race");
+            }
+            if (!g_pt2_issued) {
+                g_pt2_issued  = true;
+                const int  bx = (int)bl[mb].x + 8;
+                const int  by = (int)bl[mb].y + 8;
+                const bool me = (side == tp);
+                if (me) mh::call::llm_strat_order_create_unit_debug((uint32_t)bx, (uint32_t)by, (uint32_t)(g_pt2_ucfg + 1), tp);
+                wsprintfA(m, "; PT2 step=%lu order 0xeb create Unit[%d] for player %u (the target) at (%d,%d) -- %s\n", g_step,
+                          g_pt2_ucfg + 1, tp, bx, by, me ? "issued here (owner)" : "the owner peer issues it");
+                append_line(g_log_path, m);
+                return;
+            }
+            for (unsigned i = 2; i < 100u; ++i) {
+                const auto &u = un[i];
+                if (u.energy <= 0.0) continue;
+                if ((int)u.unit_proto_id != g_pt2_ucfg && (int)u.unit_proto_id != g_pt2_ucfg + 1) continue;
+                g_pt2_unit  = (int)i;
+                g_pt2_start = g_step;
+                for (int k = 0; k < 2; ++k) {
+                    g_pt2_prev_flag[k]  = tu[g_pt2_slot[k]].reload_ready_flag;
+                    g_pt2_prev_timer[k] = tu[g_pt2_slot[k]].reload_timer;
+                }
+                wsprintfA(m, "; PT2 step=%lu target unit %d at (%d,%d) state=0x%02x -- measuring\n", g_step, (int)i, (int)u.x,
+                          (int)u.y, (unsigned)u.state);
+                append_line(g_log_path, m);
+                g_pt2_phase = PT2_MEASURE;
+                return;
+            }
+            return;
+        }
+        case PT2_MEASURE: {
+            auto &u = un[g_pt2_unit];
+            // immobile AND immortal: restore the cfg maximum every step (same write on every peer). NOT an
+            // inflated value: 100000 froze the game (an energy far above the cfg cap sends a state loop spinning).
+            u.energy         = U[u.unit_proto_id].energy;
+            u.pending_damage = 0.0;
+            for (int k = 0; k < 2; ++k) { // the target may be armed: keep both turrets alive too
+                bl[g_pt2_bld[k]].energy         = B[bl[g_pt2_bld[k]].building_id].energy;
+                bl[g_pt2_bld[k]].pending_damage = 0.0;
+            }
+            const double clock = *reinterpret_cast<const double *>(mh::state::hash_base(IDX_CLOCK));
+            for (int k = 0; k < 2; ++k) {
+                const auto &t = tu[g_pt2_slot[k]];
+                if (t.b_index != (int16_t)g_pt2_bld[k]) return pt2_fail("a turret lost its slot");
+                const bool fired = (t.reload_ready_flag == 0) && (g_pt2_prev_flag[k] != 0 || t.reload_timer > g_pt2_prev_timer[k]);
+                g_pt2_prev_flag[k]  = t.reload_ready_flag;
+                g_pt2_prev_timer[k] = t.reload_timer;
+                if (fired && g_pt2_shots[k] < g_cfg.pt2_shots) {
+                    ++g_pt2_shots[k];
+                    wsprintfA(m, "; PT2 FIRE w=%d n=%d step=%lu clock_us=%d timer_ms=%d ammo=%d\n",
+                              k == 0 ? g_cfg.pt2_w1 : g_cfg.pt2_w2, g_pt2_shots[k], g_step, (int)(clock * 1000000.0 + 0.5),
+                              (int)(t.reload_timer * 1000.0 + 0.5), (int)t.ammo);
+                    append_line(g_log_path, m);
+                }
+            }
+            const bool done = g_pt2_shots[0] >= g_cfg.pt2_shots && g_pt2_shots[1] >= g_cfg.pt2_shots;
+            if (done || (int)(g_step - g_pt2_start) >= g_cfg.pt2_tail) {
+                wsprintfA(m, "; PT2 VERDICT step=%lu shots=%d,%d steps=%d done=%d\n", g_step, g_pt2_shots[0], g_pt2_shots[1],
+                          (int)(g_step - g_pt2_start), done ? 1 : 0);
+                append_line(g_log_path, m);
+                g_pt2_phase = PT2_FINISHED;
+            }
+            return;
+        }
+        default: return;
+    }
+}
+
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
 // ---- mp:D38 row 5: the dead-docked-unit fixture (see the config block) ---------------------------
 enum { D38_BLDG = 0,
@@ -8194,6 +8795,9 @@ void on_sim_step() {
     }
     verdict_snap_tick(); // mp:SES7b -- after the hash, at the instant the desync watch snapshots
     u49_tick();          // mp:U49 -- the double-undock fixture (after the hash: outside the HASH-INPUT span)
+    pt1_tick();          // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
+    pt3_tick();          // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
+    pt2_tick();          // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
     // The clock track. `order_mode == 1` IMPLIES clock_record, so every recording path that predates
@@ -9407,6 +10011,7 @@ extern "C" int MH_Harness_Init(void) {
         }
     } else if (g_cfg.order_mode == 2) {
         order_replay_load();
+        hqueue_load();
         clock_load(); // optional mh_clock.bin -> reproduce a real-time recording's per-step deltas
         // The enqueue neuter is DEFERRED to MH_Harness_LateArm -- see it for why. Doing it here is
         // what made `replay_suppress_enqueue=1` invalidate the whole orders promotion.

@@ -64,10 +64,13 @@
 #include "en_guard.h"
 #include "include/mh_net_export.h"
 #include "include/mh_run_context.h"       // MH_RunDir (the snapshot lands next to the run's logs)
+#include "desync/order_capture.h"         // mp:Q3: the order recording rides this module's step hook
 #include "include/mh_transport_present.h" // F3F: gate the SAMPLING (not the arm) on a live module
 #include "desync/desync_wire2.h"          // mp:D44: per-step comparison + live localisation (WIRE_VERSION 2)
 #include "desync/world_sync.h"            // mp:X3c: the host-authoritative world resync (action=1)
+#include "desync/hitch_probe.h"           // mp:Q4: game-thread time per recording path
 #include "desync/state_recorder.h"        // mp:D40: the whole-match recorder, a listener on the hub
+#include "desync/state_compress.h"        // mp:Q4: gz::active / wait_idle for the exit drain
 #include "desync/state_ring.h"            // mp:D41: the ship ring, dumped at the first mismatch
 #include "desync/state_tracker.h"         // mp:D40: the ONE per-step incremental tracker (mp:D39's core)
 #include "state/inc_state.h"
@@ -176,6 +179,10 @@ uint64_t g_manifest_fp = 0;
 // ---- state --------------------------------------------------------------------------------------
 bool g_armed   = false; // config said yes and the manifest fits
 bool g_running = false; // ...and we are in a live multi-peer lockstep session
+// mp:Q2: a SINGLE-PLAYER session the state recorder follows (solo_session_begin). It has no detector,
+// no wire and no g_step of its own -- only the recorder's step axis, counted here.
+bool     g_solo      = false;
+uint32_t g_solo_step = 0; // sim steps since solo_session_begin (the recorder's file step)
 
 uint32_t g_step = 0; // sim steps since session_reset(); the sample key
 ring     g_ring;
@@ -385,7 +392,6 @@ constexpr uint32_t SNAP_MAGIC = 0x4e53484du; // 'MHSN' little-endian
 // the buffer and the handle; the sim thread's cost is the emit, which is the same walk the hash
 // already pays. A machine that cannot allocate 3 MB writes nothing and says so.
 struct SnapJob {
-    HANDLE   h;
     uint8_t *buf;
     uint32_t len;
     uint32_t step;
@@ -393,11 +399,19 @@ struct SnapJob {
     char     path[MAX_PATH];
 };
 
+// mp:Q4: the writer also CREATES the file -- the CreateFile used to run on the sim thread.
 DWORD WINAPI snapshot_writer(LPVOID arg) {
-    SnapJob *j  = static_cast<SnapJob *>(arg);
-    DWORD    w  = 0;
-    BOOL     ok = WriteFile(j->h, j->buf, j->len, &w, nullptr);
-    CloseHandle(j->h);
+    SnapJob *j = static_cast<SnapJob *>(arg);
+    HANDLE   h = CreateFileA(j->path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        say("; [desync] SNAPSHOT FAILED: cannot create %s (err %lu)\n", j->path, GetLastError());
+        HeapFree(GetProcessHeap(), 0, j->buf);
+        HeapFree(GetProcessHeap(), 0, j);
+        return 0;
+    }
+    DWORD w  = 0;
+    BOOL  ok = WriteFile(h, j->buf, j->len, &w, nullptr);
+    CloseHandle(h);
     if (ok && w == j->len)
         say("; [desync] SNAPSHOT: %d-region VERDICT-stream dump at step %lu -> %s (dump #%d, %lu "
             "bytes, written off the sim thread; diff the peers' files with "
@@ -437,14 +451,9 @@ void snap_put(SnapBuf &b, const void *src, uint32_t n) {
 }
 
 void do_snapshot(uint32_t step) {
-    char path[MAX_PATH];
+    hitch::scope hs(hitch::SNAPSHOT);
+    char         path[MAX_PATH];
     wsprintfA(path, "%smh_desync_snap_%lu.bin", MH_RunDir(), (unsigned long)step);
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
-    if (h == INVALID_HANDLE_VALUE) {
-        say("; [desync] SNAPSHOT FAILED: cannot create %s (err %lu)\n", path, GetLastError());
-        return;
-    }
     struct {
         uint32_t magic, ver, step, region_count;
         uint64_t manifest_fp;
@@ -468,16 +477,13 @@ void do_snapshot(uint32_t step) {
         say("; [desync] SNAPSHOT FAILED: out of memory building the %lu-byte stream for %s\n",
             (unsigned long)b.len, path);
         if (b.p) HeapFree(GetProcessHeap(), 0, b.p);
-        CloseHandle(h);
         return;
     }
     SnapJob *j = static_cast<SnapJob *>(HeapAlloc(GetProcessHeap(), 0, sizeof(SnapJob)));
     if (j == nullptr) {
         HeapFree(GetProcessHeap(), 0, b.p);
-        CloseHandle(h);
         return;
     }
-    j->h    = h;
     j->buf  = b.p;
     j->len  = b.len;
     j->step = step;
@@ -485,7 +491,10 @@ void do_snapshot(uint32_t step) {
     lstrcpynA(j->path, path, MAX_PATH);
     HANDLE t = CreateThread(nullptr, 0, snapshot_writer, j, 0, nullptr);
     if (t == nullptr) {
-        snapshot_writer(j); // no thread: still write it, on this thread, and say so through the line
+        // mp:Q4: no thread -> no snapshot. Writing ~3 MB here is the 5.5 s stall this function was rebuilt to end.
+        say("; [desync] SNAPSHOT NOT WRITTEN: no writer thread (err %lu) for %s\n", GetLastError(), path);
+        HeapFree(GetProcessHeap(), 0, j->buf);
+        HeapFree(GetProcessHeap(), 0, j);
         return;
     }
     CloseHandle(t);
@@ -1324,6 +1333,7 @@ void match_end() {
             (unsigned long)g2_tx_frames, g_pre_fallback, (unsigned long)g_step);
     }
     dirty_probe_report();
+    g_solo = false;                      // mp:Q2: a solo session's file ends at the same boundary
     mh::desync::recorder::match_end();   // mp:D40: END + close; a Continue-game after this is not recorded
     mh::desync::state_ring::match_end(); // mp:D41: a tail in progress is dumped; the RAM/cost line
     g_mismatches        = 0;
@@ -1413,6 +1423,49 @@ void session_reset() {
     world_sync::session_reset();             // mp:X3c: any transfer in flight belongs to the match that just ended
     g_running = true;
     say("; [desync] session reset -- sampling from step 1\n");
+}
+
+// mp:Q2 -- the SINGLE-PLAYER half of the recorder. A campaign, skirmish, tutorial or loaded save never
+// passes llm_strat_session_begin_multi (the campaign enters through llm_strat_planet_session_begin and
+// a loaded save through neither), so session_reset() above -- the only thing that armed the recorder --
+// never ran there, and step_common returned before the tracker was asked anything. The session layer
+// (net_discovery.cpp, SES8) opens a solo session folder at the first in-match present; this is called
+// right after, and the file ends where every session's does: close_rollups -> match_end(). Nothing MP
+// runs: no detector, no ring, no order digest, no world sync -- g_running stays false, which is what
+// keeps the MP path byte-identical. An MP session_reset that follows (cannot, today: a lobby opens its
+// own session) would end this file first through its own match_end().
+void drain_writers(unsigned ms) {
+    const DWORD t0  = GetTickCount();
+    const long  rec = mh::desync::recorder::active(), gzn = mh::desync::gz::active();
+    const bool  rng = !mh::desync::state_ring::writer_idle();
+    if (rec == 0 && gzn == 0 && !rng) return;
+    auto left = [&]() -> unsigned {
+        const DWORD el = GetTickCount() - t0;
+        return el >= ms ? 0u : (unsigned)(ms - el);
+    };
+    bool ok = mh::desync::recorder::wait_idle(left()); // first: a closing writer starts its own gzip
+    while (!mh::desync::state_ring::writer_idle() && left() > 0) Sleep(2);
+    ok = ok && mh::desync::state_ring::writer_idle();
+    ok = mh::desync::gz::wait_idle(left()) && ok;
+    say("; [desync] exit drain: %ld state writer(s), %ld gzip thread(s)%s pending at exit -> %s after %lu ms (bound %u "
+        "ms)%s\n",
+        rec, gzn, rng ? ", a ring dump" : "", ok ? "all finished" : "NOT all finished", (unsigned long)(GetTickCount() - t0),
+        ms, ok ? "" : " -- an unfinished file is a valid prefix, and an unfinished gzip leaves the raw file");
+}
+
+void solo_session_begin() {
+    if (!g_armed || !mh::desync::recorder::enabled() || g_running) return;
+    if (g_solo) mh::desync::recorder::match_end(); // a solo file whose SESSION_END never came
+    g_solo      = true;
+    g_solo_step = 0;
+    mh::desync::state_hub::reset();
+    mh::desync::recorder::axis_info axis;
+    axis.session_folder = MH_RunDir_SessionActive() != 0;
+    axis.pre_steps      = (axis.session_folder && MH_RunDirGeneration() == g_axis_gen) ? g_axis_steps : 0;
+    axis.solo           = true;
+    mh::desync::recorder::session_start(axis);
+    say("; [desync] SOLO session -- the state recorder follows this single-player session from its next sim "
+        "step (mp:Q2); no detector, no wire\n");
 }
 
 namespace {
@@ -1902,7 +1955,26 @@ namespace {
 // The per-step body both hooks share. `offered` is the caller's already-computed v1 hash set (the
 // harness, kind 1) or null.
 void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool hashed_caller) {
+    hitch::scope hs(hitch::STEP_TOTAL); // mp:Q4: the whole per-step hook, every step
     if (g_armed && mh::desync::recorder::enabled()) axis_tick();
+    if (g_armed && mh::desync::orders::enabled()) {
+        // mp:Q3: the order recording's step tick, in SP and MP alike, before anything below can return.
+        // The folder is read between two generation reads: a switch in between (none happens on this
+        // thread today) leaves the open/close decision to the next step.
+        const unsigned long g1  = MH_RunDirGeneration();
+        const bool          act = MH_RunDir_SessionActive() != 0;
+        char                dir[MAX_PATH];
+        if (act) lstrcpynA(dir, MH_RunDir(), MAX_PATH);
+        const bool settled = MH_RunDirGeneration() == g1;
+        mh::desync::orders::step(act ? dir : nullptr, g1, settled, game_clock_bits_now());
+    }
+    if (g_armed && g_solo && !g_running) {
+        // mp:Q2: the solo session's own step counter, and the tracker asked ONLY for the recorder (the
+        // v2 compare, the ring and the digest are lockstep instruments). state_hub::step consults every
+        // listener's wants_step(), so once the recorder has stopped this is a branch.
+        mh::desync::state_hub::step(++g_solo_step);
+        return;
+    }
     if (!g_armed || !g_running) return;
     // mp:X3c: the world resync's per-step hook -- BEFORE the step counter advances and before this step's
     // digest fold, so a host capture and a minority import both sit at the pre-body point of step g_step+1.
@@ -1994,6 +2066,19 @@ uint64_t game_clock_bits_now() { return *mh::state::ptr<const uint64_t>(mh::stat
 uint64_t sim_step_interval_bits_now() { return *mh::state::ptr<const uint64_t>(mh::state::RID_STRAT_SIM_STEP_INTERVAL); }
 
 void on_sim_step() { step_common(nullptr, 0, 0, false); }
+
+bool configure_order_record(int enabled, const char *refused) {
+    if (!g_armed) {
+        if (enabled) say("; [desync] ORDER RECORD off: it rides the [desync] step hook, which is not armed\n");
+        return mh::desync::orders::configure(0, nullptr, &say);
+    }
+    return mh::desync::orders::configure(enabled, refused, &say);
+}
+
+void on_order_dispatch() {
+    const int32_t n = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
+    mh::desync::orders::dispatch(mh::state::ptr<const uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE), (int)n);
+}
 
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state) { step_common(per, n, state, true); }
 

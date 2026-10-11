@@ -87,7 +87,7 @@ constexpr int       CHAT_LINE_MAX       = 0x28;              // bytes, the inser
 // against the decompile of every llm_str_ansi_to_wide(_scratch) call site (EN, 2026-09-29):
 //
 //  (a) the SOURCE is the in-game chat edit line [0x0050a84c, +0x29): the HUD's line draw
-//      (llm_ui_hud_topbar_tick 0x0041451d) and both local echoes (llm_net_chat_input_process
+//      (llm_ui_hud_bottom_strip_tick 0x0041451d) and both local echoes (llm_net_chat_input_process
 //      0x0044df90, llm_strat_input_update 0x00441d0b / 0x00441da7) all widen the line itself.
 //  (b) the SOURCE is the lobby RX chat text, _G_LLM_LOBBY_RX_TYPE + 10 = 0x0065d678: the lobby's
 //      chat packet (type 0x0d) is shown by llm_lobby_announce_line(.., &_G_LLM_LOBBY_RX_TYPE), which
@@ -555,7 +555,7 @@ static_assert(RET_IN_SCRATCH == 0x004cf417u, "ansi_to_wide_thunk spells this lit
 // ---- H4 (MP-LANG): the chat caret ---------------------------------------------------------------
 //
 // llm_gfx_font_measure_text_width has exactly ONE caller (xref, EN 2026-09-29): the chat caret in
-// llm_ui_hud_topbar_tick @0x00414579, which measures `wcslen(status prefix) + CURSOR - 1` UTF-16
+// llm_ui_hud_bottom_strip_tick @0x00414579, which measures `wcslen(status prefix) + CURSOR - 1` UTF-16
 // units of "<prefix><widened line>". CURSOR is a BYTE index -- and at that moment it is one past the
 // original cursor, because the tick has just inserted a placeholder space at the cursor
 // (llm_ui_chat_input_char_insert_unbounded(' ')) that it erases after drawing. With a UTF-8 line the

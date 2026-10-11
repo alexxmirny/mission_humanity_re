@@ -1,0 +1,46 @@
+# patching:PT-FIX1 HOST walk -- a destroyed turret's rubble must not reload the turret that re-used its slot.
+# Pair with mp_client_idle.txt. Rows: turret_slot_reuse (ship, [net] turret_reload_owner_fix=1) and
+# turret_slot_reuse_retail (tier: release, [net] turret_reload_owner_fix=0, the reproduction arm).
+#
+# Retail ticks llm_strat_bldg_turret_reload_tick for every turret building including rubble (state 4, up
+# to 20 s). A destroyed turret's slot is freed and handed to the next turret, but the rubble keeps its
+# sub_id and a growing tick budget, so it drains the new turret's reload_timer: ~4x the fire rate.
+#
+# The turrets are the harness fixture's (`pt1_*`: build a turret with order 0xf2, kill it, order a second
+# one into the freed slot while the rubble lives, arm it with a 1 s reload and count the steps until it is
+# ready again). This walk only lands the mother (one capture) and lets the match run. The assertion is
+# the post_check (tools/check_pt1_turret_slot.py), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture orders the first turret
+# once the mother has landed (~step 520) and logs its verdict within ~1500 steps of that.
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+gameclock 4500
+capture pt1_landed
+gameclock 12000
+log pt1 done
+end

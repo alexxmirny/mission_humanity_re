@@ -1007,6 +1007,17 @@ bool harness_mouse_button(int button, bool down) {
     return true;
 }
 
+bool harness_mouse_wheel(int delta) {
+    if (!g_active || !g_mouse) return false;
+    RAWMOUSE m;
+    ZeroMemory(&m, sizeof(m));
+    m.usButtonFlags = RI_MOUSE_WHEEL;
+    m.usButtonData  = (USHORT)(SHORT)delta;
+    ++g_harness;
+    on_raw_mouse(m, GetTickCount(), true);
+    return true;
+}
+
 bool harness_key(uint16_t make, bool e0, bool down) {
     if (!g_active || !g_kbd) return false;
     RAWKEYBOARD k;

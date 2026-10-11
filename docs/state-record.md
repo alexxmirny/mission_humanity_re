@@ -79,19 +79,37 @@ Semantics:
 
 ## The mh.dll writer (mp:D40)
 
-`[desync] state_record=1` in `mh_net.ini` (keyframes every 3000 steps, fixed). One file per
+`[desync] state_record=1` in `mh_net.ini` (keyframes every 3000 steps, fixed): the launcher's
+**Record game state** setting, default off (mp:Q4; `[log] level=debug` does not turn it on). One file per
 match, opened at the match's first step in the match folder: `mh_match_state.bin`, or
 `mh_match_state_<n>.bin` when that folder already holds one. It is closed at the session's end,
 and steps after that ("Continue game") are not recorded. `mh_net.log` carries:
 
-- `; [desync] STATE RECORD -> <path>: ...` when the file opens.
+- `; [desync] STATE RECORD -> <path>: ...` when the file opens. The writer thread logs it: it
+  creates the file (mp:Q4), so the line can follow the step-axis line.
 - `; [desync] STATE RECORD step axis: ...`. This line gives the offset between `step` and the
   harness's match step axis in `mh_match_harness.log`. The harness's match step 1 is the first sim
   step that sees the session folder. The line counts the sim steps that ran in that folder before
   `session_begin_multi` (0 = the same axis). With no session folder open there is no harness
   segment, and the line says so.
 - `; [desync] STATE RECORD match end: ...` gives steps, keyframes, file bytes and the sim-thread
-  cost per step. Then `; [desync] STATE RECORD writer ...` gives the writer thread's stats.
+  cost per step. The writer then logs `; [desync] STATE RECORD writer: closed <path> -- ...` from its
+  own thread once the file is closed: bytes, writes, max write, the keyframes it wrote from its image,
+  the peak queue and how long the create took.
+
+**Keyframes after the first (mp:Q4).** The writer keeps the first keyframe as an image and applies every
+STEP chunk it writes to it, so a later keyframe at step K is that image (the state at K) re-stamped and
+re-sealed on the writer thread. The bytes on disk are what a copy of the shadow at K would give; the sim
+thread no longer copies 2.8 MB per keyframe. `net_selftest.exe staterectest` decodes every step of
+recordings with keyframes every 25 steps and a mid-match rebase against the live memory; skipping the
+image update fails 5 of its checks.
+
+**Single-player sessions (mp:Q2).** A campaign, skirmish, tutorial or loaded save never passes
+`session_begin_multi`, so its file is armed at the solo session folder's open
+(`mh::desync::solo_session_begin`) instead, on a step counter of its own, and closed at that
+session's close like any other. Same format, same name, same folder; the axis line reads
+`; [desync] STATE RECORD step axis (SOLO session, mp:Q2): file step k = the k-th sim step after the
+solo session folder opened ...` (0 pre-steps = the harness segment's axis).
 
 ### The compressed file (mp:D46)
 
@@ -102,7 +120,7 @@ same bytes inside a gzip member**, `mh_match_state.bin.gz` (`mh_match_state_<n>.
 - **When.** After the writer thread has closed the raw file (END written), a separate
   below-normal-priority thread streams it through deflate level 6 (RFC 1951 inside an RFC 1952 gzip
   header and trailer; no optional header fields, mtime 0). The sim and render threads never wait for
-  it, and neither does `match_end`'s bounded wait, which covers only the raw writer. Library: miniz
+  it (nor, since mp:Q4, for the raw writer). Library: miniz
   3.0.2 (MIT, `src/mh_dll/include/miniz/`, compiled by `desync/state_miniz.c`; see `THIRD_PARTY.md`).
   It is always on (the `state_compress` key was retired 2026-10-06). A recording that STOPPED early (writer
   fell behind, allocation failed) is a valid prefix and is compressed the same way; one whose write
@@ -110,10 +128,11 @@ same bytes inside a gzip member**, `mh_match_state.bin.gz` (`mh_match_state_<n>.
 - **The order of events is the safety rule.** raw -> `<raw>.gz.tmp` -> **verify** (re-inflate the temp
   file; CRC-32 and length must equal what was read from the raw file) -> flush -> rename to
   `<raw>.gz` -> only then delete the raw file. At every instant at least one complete file exists:
-  a process that exits during the compress leaves the raw file whole (no join at shutdown; the exit
-  kills the thread) and a `.gz.tmp` that no reader or glob looks at; a process that dies between the
-  rename and the delete leaves two complete copies. The accepted cost, by user ruling, is that a quit
-  right after a match, or a crash, leaves the recording **raw**. A failed compress logs why and keeps the
+  a process that exits during the compress leaves the raw file whole and a `.gz.tmp` that no reader or
+  glob looks at; a process that dies between the rename and the delete leaves two complete copies. The
+  game's own exit (the WM_DESTROY witness) waits at most 3 s for the raw writers and the compress threads
+  (mp:Q4, `desync::drain_writers`, one `; [desync] exit drain:` line), so only a longer compress, a
+  crash or a killed process leaves the recording **raw** -- the accepted cost, by user ruling. A failed compress logs why and keeps the
   raw file.
 - **Naming.** A recording is `<stem>.bin` or `<stem>.bin.gz`; a name whose `.gz` exists counts as
   taken when mh.dll picks the next `mh_match_state_<n>.bin`.
@@ -126,6 +145,36 @@ same bytes inside a gzip member**, `mh_match_state.bin.gz` (`mh_match_state_<n>.
   raw bytes -> <gzip> gzip bytes (<pct>%), <ms> ms (deflate level 6, verified by re-inflating; the raw
   file is removed)`, or `compress FAILED ... the raw file is kept as it is`.
 - **Out of scope.** The D41 ring dump `mh_desync_state.bin` (~4 MB) is not compressed.
+
+### The order recording (mp:Q3)
+
+Not this format, and not a state record: the companion files mh.dll writes beside it at `[desync]
+order_record=1` (on at `[log] level=debug`), one pair per session folder, gzipped at the session close
+through the same compressor (`mh_rec_orders.bin.gz`, `mh_rec_clock.bin.gz`).
+
+- `mh_rec_orders.bin` -- **MHOR v1**, the determinism harness's order format: `u32 magic 'MHOR'`
+  (`0x524F484D`), `u32 version 1`, then flat `{i32 step; u8 order[0x44]}` records (0x48 bytes). For
+  every step, the due-now queue (`llm_strat_order[0..count)`) as it stands at
+  `llm_strat_order_queue_dispatch`'s entry -- the orders that step runs. A step whose queue is empty
+  has no records. An order that waits N steps appears N times: the format is a per-step **snapshot**
+  (the replay replaces the queue with each step's records), so it cannot carry a delta.
+- `mh_rec_clock.bin` -- raw little-endian doubles, the game clock at each step's pre-body boundary;
+  entry 0 = step 1.
+- **Axis.** Step 1 = the first sim step with the session folder open -- the harness's per-match
+  segment axis, so `mh_rec_orders.bin` compares record for record with `mh_match_orders.bin` and
+  `mh_rec_clock.bin` with `mh_match_clock.bin`. Copied next to mh.exe as `mh_orders.bin` /
+  `mh_clock.bin` they are the harness's `order_mode=2` replay inputs (a replay also needs the match's
+  seed blob, which this recorder does not write).
+- **Batching.** Records and clocks are staged on the sim thread and handed to the async log sink every
+  50 steps (or 256 KB) as reliable binary records, at the start of a step, so a batch always holds whole
+  steps; a process killed between hand-overs leaves two files that end on the same step. A session the
+  harness stop closes in place (pre-body of its stop step) ends with that step's clock and none of its
+  orders.
+- **Readers.** `tools/mp_order_diff.py` (`load`, so the CLI and `check_orders_agree.py`) reads `.bin` and
+  `.bin.gz`.
+- **Log.** `; [desync] ORDER RECORD -> <path> ...` at open; `; [desync] ORDER RECORD closed (<why>): <path>
+  -- N step(s), N dispatch call(s), N order record(s) (P% repeat the previous step's queue ...), bytes,
+  sim thread mean us/step`; one `ORDER RECORD compressed` / `ORDER RECORD clock compressed` line per file.
 
 ### Cutting a tail (mp:D43)
 

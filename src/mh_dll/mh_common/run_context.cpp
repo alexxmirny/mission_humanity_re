@@ -29,6 +29,7 @@
 #include "include/mh_run_context.h"
 #include "include/mh_config_dir.h"
 #include "include/mh_session_dir.h"
+#include "include/mh_log_sink.h" // mp:Q4: the breadcrumb goes through the sink
 
 namespace {
 
@@ -118,16 +119,15 @@ bool safe_join(char *dst, int cap, const char *base, const char *leaf) {
 // It goes in the config dir (RL3; beside the exe in portable mode) -- or, under MH_LOG_ROOT (LA13),
 // INTO that root: beside the exe it would be virtualized away with everything else, and the
 // launcher that set the root is the reader.
+// mp:Q4: through the log sink's writer (create/truncate record) -- every session open and close
+// rewrites it, on the game thread, and that thread does no file I/O. Before the sink exists (the
+// process's first init, from DllMain) the header's own fallback writes it synchronously.
 void write_breadcrumb() {
     char bc[MAX_PATH];
     if (!safe_join(bc, sizeof(bc), g_bc_dir, "mh_run.txt")) return;
-    HANDLE h = CreateFileA(bc, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD w;
-    WriteFile(h, g_run_dir, lstrlenA(g_run_dir), &w, nullptr);
-    WriteFile(h, "\r\n", 2, &w, nullptr);
-    CloseHandle(h);
+    char      text[MAX_PATH + 4];
+    const int n = wsprintfA(text, "%s\r\n", g_run_dir);
+    mh_logq_create_bin(bc, text, n);
 }
 
 // Create "<logs root>\<name>\" and write it (with the trailing backslash) into dst.

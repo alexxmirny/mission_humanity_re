@@ -15,6 +15,13 @@
 
 namespace mh::sim {
 
+namespace {
+bool g_air_order_facing_fix = false; // patching:PT-FIX3, see set_air_order_facing_fix
+} // namespace
+
+void set_air_order_facing_fix(bool on) { g_air_order_facing_fix = on; }
+bool air_order_facing_fix() { return g_air_order_facing_fix; }
+
 const unit_state_move_path_calls &live_unit_state_move_path_calls() {
     static const unit_state_move_path_calls c = {
         MH_LIBMH_BIND(llm_strat_unit_chase_check),
@@ -66,6 +73,22 @@ void unit_state_move_path(const sim_view &v, sim_store &own, const unit_state_mo
 
     // 0x00480b6b-0x00480b9a: a queued order is about to replace this state -- do nothing this tick.
     if (u.move_microstep == 0x1f && u.order_queued != 0) {
+        // patching:PT-FIX3 ([net] air_order_facing_fix). The dispatcher defers an air unit's order while
+        // facing_target != MICROSTEPS[heading][ms].facing, and this early return (plus update_rotation,
+        // which skips non-independent units in state 0x12) never reconciles them: a helicopter that
+        // reaches ms 31 with a stale facing and then gets an order is stuck forever. Snap both facings
+        // to the table value (cfg type > 0xe, the dispatcher's own test at 0x00466aab); a unit whose
+        // facing already matches, and every ground unit, is bit-identical. Retail carrier: the block
+        // splice at 0x00480b86 (net_lockstep.cpp install_air_order_facing_fix).
+        if (g_air_order_facing_fix && (int32_t)v.cfg_units[u.unit_proto_id].type > 0xe) {
+            const uint8_t facing = v.move_microsteps[static_cast<uint32_t>(u.move_heading) * MICROSTEPS_PER_HEADING +
+                                                     static_cast<uint32_t>(u.move_microstep)]
+                                       .facing;
+            if (u.facing_target != facing) {
+                u.facing_target  = facing;
+                u.facing_current = facing;
+            }
+        }
         own.tick_budget() = 0.0;
         return;
     }

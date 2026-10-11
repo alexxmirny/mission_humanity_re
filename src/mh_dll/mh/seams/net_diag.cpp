@@ -19,6 +19,7 @@
 #include "net_internal.h"
 #include "include/mh_log_rotate.h" // SES2: the shared size cap + one-generation ".prev.log" rotation
 #include "include/mh_log_sink.h"   // LOG1: the async log sink
+#include "desync/desync_watch.h"   // mp:Q4: drain_writers -- the recordings finish at exit, not mid-game
 #include "addr/mh_addrs.gen.h"
 #include "state/region_runtime.h" // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                   // where it IS, not where the binary put it
@@ -34,6 +35,7 @@ namespace {
 // D15 exit witness: the binary's two self-driven exits, both of which leave no WER report.
 constexpr uintptr_t ADDR_UTILS_ABORT    = mh::addr::utils_abort;        // ends in _exit()
 constexpr uintptr_t ADDR_WND_ON_DESTROY = mh::addr::llm_wnd_on_destroy; // WM_DESTROY -> ExitProcess
+constexpr unsigned  EXIT_DRAIN_MS       = 3000;                         // mp:Q4: the recordings' exit drain bound (desync::drain_writers)
 // The four lockstep clock globals the temporal trace samples (RU/EN-identical data VAs).
 constexpr uintptr_t ADDR_SESSION_MODE = mh::addr::_G_LLM_GAME_SESSION_MODE; // byte; 3 = live lockstep
 constexpr uintptr_t ADDR_GAME_CLOCK   = mh::addr::_G_LLM_STRAT_GAME_CLOCK;
@@ -520,6 +522,8 @@ void on_wnd_destroy(unsigned caller) {
               caller, (int)*(const uint8_t *)ADDR_GAME_MODE,
               (int)*(const uint8_t *)ADDR_SESSION_MODE, ms_of(ADDR_GAME_CLOCK));
     seam_log(b);
+    // mp:Q4: the recordings' background writers finish here, at exit, instead of on a quit-to-menu frame.
+    mh::desync::drain_writers(EXIT_DRAIN_MS);
     mh_logq_flush(1000); // mp:LOG1: ExitProcess follows; the witness line must be on disk first
     // mp:U62 (HM-M4): a hub leaving by closing the window hands the transport over first (clean quit, then
     // MH_Net_HubLeave). The witness line above is already out, so a death in here is not silent.
@@ -946,20 +950,32 @@ DWORD WINAPI wd_thread(LPVOID) {
         seam_log("; [freeze] frame watchdog NOT armed (OpenThread on the main thread failed)\n");
         return 0;
     }
-    {
-        // A thread hook whose proc lives in a DLL needs that DLL's module handle.
-        HMODULE self = nullptr;
-        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           (LPCSTR)(uintptr_t)&wd_callwnd, &self);
-        g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, self, g_main_tid);
-    }
-    char b[200];
+    // A thread hook whose proc lives in a DLL needs that DLL's module handle. The install can fail
+    // when this thread starts before the main thread is a GUI thread (2026-10-12: `focus tap=off` in
+    // 5 of 5 alttab_d3d11 runs, on/off/off on match_launch_net with one build -- a race, not a
+    // refusal), so a failed first try is retried every pass of the loop below until it takes.
+    HMODULE self = nullptr;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)(uintptr_t)&wd_callwnd, &self);
+    // Error 126 (ERROR_MOD_NOT_FOUND) with the DLL's own handle was measured on the rig (a lane reaches
+    // mh.dll through a link); a thread hook on this process's own thread may pass a NULL module.
+    g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, self, g_main_tid);
+    if (!g_wd_hook) g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, nullptr, g_main_tid);
+    const DWORD hook_err  = g_wd_hook ? 0 : GetLastError();
+    const DWORD hook_from = GetTickCount();
+    char        b[200];
     if (g_wd_ms > 0)
         wsprintfA(b, "; [freeze] frame watchdog armed: threshold=%d ms (MP matches only), focus tap=%s%s\n", g_wd_ms,
-                  g_wd_hook ? "on" : "off", g_wd_inject_ms > 0 ? ", INJECT arm set" : "");
+                  g_wd_hook ? "on" : "off (retrying)", g_wd_inject_ms > 0 ? ", INJECT arm set" : "");
     else
-        wsprintfA(b, "; [freeze] frame watchdog OFF ([net] frame_watchdog_ms=0), focus tap=%s\n", g_wd_hook ? "on" : "off");
+        wsprintfA(b, "; [freeze] frame watchdog OFF ([net] frame_watchdog_ms=0), focus tap=%s\n",
+                  g_wd_hook ? "on" : "off (retrying)");
     seam_log(b);
+    if (!g_wd_hook) {
+        wsprintfA(b, "; [freeze] focus tap: SetWindowsHookEx failed, error %lu -- retrying every 100 ms\n",
+                  (unsigned long)hook_err);
+        seam_log(b);
+    }
     LONG  rep_n    = -1;
     DWORD rep_ref  = 0;
     DWORD m3_since = 0;
@@ -967,8 +983,16 @@ DWORD WINAPI wd_thread(LPVOID) {
     bool  ddraw    = false;
     for (;;) {
         Sleep(100);
-        const DWORD now  = GetTickCount();
-        const int   sess = *(const uint8_t *)ADDR_SESSION_MODE;
+        const DWORD now = GetTickCount();
+        if (!g_wd_hook) {
+            g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, self, g_main_tid);
+            if (!g_wd_hook) g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, nullptr, g_main_tid);
+            if (g_wd_hook) {
+                wsprintfA(b, "; [freeze] focus tap=on after %lu ms of retries\n", (unsigned long)(now - hook_from));
+                seam_log(b);
+            }
+        }
+        const int sess = *(const uint8_t *)ADDR_SESSION_MODE;
         if (sess != 3) {
             if (rep_n >= 0) {
                 wsprintfA(b, "; [freeze] frozen main thread ended: left the match after %lu ms without a present\n",

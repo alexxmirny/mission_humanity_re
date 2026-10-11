@@ -27,7 +27,8 @@ Unzip it next to the game executable. That is the whole install, and it is exact
   * NO README.txt, LICENSE, THIRD_PARTY.md: the launcher embeds them (About page).
   * NO mh_harness.dll, NO libmh.dll: the harness is a developer/tester instrument (dev lanes get it
     from make_lane), and the hosted spine is not a shipped configuration. The `net-debug` and
-    `brokered-debug` zips of v0.1.x are gone; diagnostics are `[log] level=debug` in the user's ini.
+    `brokered-debug` zips of v0.1.x are gone; diagnostics are `[log] level=debug` in the user's ini
+    (and, since mp:Q4, the separate `[desync] state_record` player setting for the whole-session state record).
 
 SHA256SUMS covers the zip, in `sha256sum -c` format. gen_update_manifest.py reads it.
 
@@ -39,8 +40,8 @@ time (`; [build] mh <version>+<commit>`), which is how a bug report is traced to
 
 `--tester` builds `<base>-<version>-tester.zip` INSTEAD of the ship zip: the four modules plus
 mh_harness.dll and an `mh_net.ini` that is the reference ini (`[log] level=debug` is its
-ship default) with `[dev] unlock=1` and the three HARNESS_KEYS flipped (the harness armed, clock not pinned) -- the
-harness keys are dev keys, hence the unlock. The ini is
+ship default) with `[dev] unlock=1`, the three HARNESS_KEYS flipped (the harness armed, clock not pinned) and
+`[desync] state_record=1` (DEBUG_KEYS, mp:Q4: no longer part of the debug level) -- the harness keys are dev keys, hence the unlock. The ini is
 there on purpose -- the tester wants portable mode and the dev keys. release.yml never passes
 `--tester`; the selftest asserts the ship zip has no ini and no harness.
 
@@ -93,12 +94,25 @@ class Refusal(Exception):
 # mh_ini_gate.h, LEVEL table) -- and they HAD to move: since dist RL2 the shipped DLL ignores a dev key
 # written in an ini that does not carry `[dev] unlock=1`, so flipping them here would be a no-op.
 #
-# EMPTY since v0.2.0 (user, 2026-10-09): `[log] level=debug` is the SHIP DEFAULT, so the reference ini already
-# says it and the tester ini has nothing to flip (a flip would be a no-op). The selftest checks the
-# reference ini still carries `level=debug`, so the tester keeps its debug level.
-DEBUG_KEYS = ()
+# Since v0.2.0 (user, 2026-10-09) `[log] level=debug` is the SHIP DEFAULT, so the reference ini already says
+# it and the tester ini does not flip it. The selftest checks the reference ini still carries `level=debug`,
+# so the tester keeps its debug level.
+#
+# mp:Q4 (user, 2026-10-10): `[desync] state_record` left the debug level and became a PLAYER setting (the
+# launcher's "Record game state", default off: ~5.6 MB/min on disk). The tester zip is the one zip that
+# exists to produce evidence, so it keeps recording by saying so explicitly; a user key needs no unlock.
+DEBUG_KEYS = (
+    (
+        "desync",
+        "state_record",
+        "1",
+        "record the whole session's state into mh_match_state.bin(.gz) in each session folder -- the "
+        "evidence tools/state_record.py reads. No longer supplied by [log] level=debug (mp:Q4).",
+    ),
+)
 
-# The (section, key, value) set `[log] level=debug` must supply -- the former DEBUG_KEYS, verbatim.
+# The (section, key, value) set `[log] level=debug` must supply -- the former DEBUG_KEYS minus
+# [desync] state_record (a player setting since mp:Q4), plus mp:Q3's order_record.
 # NOT used to write anything: --selftest cross-checks it against the C++ level table, so the two
 # statements of "what debug means" cannot drift apart. `quiet` is the other half of that check.
 OBSERVERS_AT_DEBUG = (
@@ -106,7 +120,7 @@ OBSERVERS_AT_DEBUG = (
     ("trace", "temporal_sp", "1"),
     ("desync", "verbose", "1"),
     ("input", "mouse_trace", "1"),
-    ("desync", "state_record", "1"),
+    ("desync", "order_record", "1"),  # mp:Q3: mh.dll's own order recording (mh_rec_orders.bin.gz)
 )
 OBSERVERS_AT_QUIET = (
     ("net", "lockstep_log", "0"),
@@ -535,7 +549,7 @@ def selftest():
         if d >= 0:
             cpp_debug.add((sec, key, str(d)))
     expect(
-        "the C++ level table's DEBUG set is exactly the former DEBUG_KEYS (%d keys)"
+        "the C++ level table's DEBUG set is exactly OBSERVERS_AT_DEBUG (%d keys)"
         % len(OBSERVERS_AT_DEBUG),
         cpp_debug == set(OBSERVERS_AT_DEBUG),
     )

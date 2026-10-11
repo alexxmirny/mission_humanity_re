@@ -91,7 +91,7 @@
 // `v.sidebar_multi_panel_visible_rows` exist; it will not build until the conductor adds them.
 //
 // PROOF PATH: RIG (net_selftest.exe tacttest is the offline half). No floats, no RNG. The only
-// outward call whose side effects escape this closure is llm_ui_set_draw_surface/the two row-draw
+// outward call whose side effects escape this closure is llm_ui_blit_bitmap_rect/the two row-draw
 // helpers -- all frontier, presentation-only.
 //
 #pragma once

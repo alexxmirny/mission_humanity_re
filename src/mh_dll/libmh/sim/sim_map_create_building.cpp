@@ -10,6 +10,7 @@
 // a contradiction between the assembly and sim_state.h's own foreign_bldg_event_pending() comment.
 //
 #include "sim/sim_map_create_building.h"
+#include "sim/sim_building_tick.h" // turret_clip_fix (PT-FIX4)
 
 #include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -205,8 +206,15 @@ void create_building(const sim_view &v, sim_store &own, const create_building_ca
                 t.attack_range = 0;
             } else {
                 t.resupply_available = 1; // +0x25
-                t.reload_ready_flag  = 1;
-                t.attack_range       = v.cfg_weapons[cfg.weapon_id].range_max[player];
+                // patching:PT-FIX4 ([net] turret_clip_fix; retail splice at 0x00462ab9): the magazine starts
+                // full and the resupply countdown is unlimited. Retail leaves both untouched (0 / a freed
+                // slot's leftovers), so ammo goes negative on the first shot and the clip never engages.
+                if (turret_clip_fix()) {
+                    t.ammo                      = v.cfg_weapons[t.weapon_id].ammo;
+                    t.resupply_cycles_remaining = -1;
+                }
+                t.reload_ready_flag = 1;
+                t.attack_range      = v.cfg_weapons[cfg.weapon_id].range_max[player];
             }
             break;
         }

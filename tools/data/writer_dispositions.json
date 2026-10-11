@@ -1880,7 +1880,7 @@
     "CHAT_INPUT_LEN",
     "STRAT_CHAT_INPUT_LINE"
    ],
-   "why": "NOT a second editor and NOT dead: its sole caller llm_ui_hud_topbar_tick inserts a literal space to MEASURE the caret's pixel offset, then removes it via llm_ui_chat_input_erase_char in the same frame -- net effect on the buffer across the tick is zero. Same head/tail field split and same non-hashed, non-saved regions as llm_ui_chat_input_process_scancodes -- see that entry for the mechanism; this one is cited rather than restated so the two cannot drift apart."
+   "why": "NOT a second editor and NOT dead: its sole caller llm_ui_hud_bottom_strip_tick inserts a literal space to MEASURE the caret's pixel offset, then removes it via llm_ui_chat_input_erase_char in the same frame -- net effect on the buffer across the tick is zero. Same head/tail field split and same non-hashed, non-saved regions as llm_ui_chat_input_process_scancodes -- see that entry for the mechanism; this one is cited rather than restated so the two cannot drift apart."
   },
   "llm_ui_chat_input_delete_at_cursor": {
    "owner": "SB-UI",
@@ -1902,7 +1902,7 @@
     "CHAT_INPUT_LEN",
     "STRAT_CHAT_INPUT_LINE"
    ],
-   "why": "NOT the Backspace handler and NOT dead: sole caller llm_ui_hud_topbar_tick, immediately after char_insert_unbounded, removing that frame's measurement space. Its one behavioural difference from backspace (it also erases at position 0) exists to undo the unbounded insert wherever the cursor was. Same head/tail field split and same non-hashed, non-saved regions as llm_ui_chat_input_process_scancodes -- see that entry for the mechanism; this one is cited rather than restated so the two cannot drift apart."
+   "why": "NOT the Backspace handler and NOT dead: sole caller llm_ui_hud_bottom_strip_tick, immediately after char_insert_unbounded, removing that frame's measurement space. Its one behavioural difference from backspace (it also erases at position 0) exists to undo the unbounded insert wherever the cursor was. Same head/tail field split and same non-hashed, non-saved regions as llm_ui_chat_input_process_scancodes -- see that entry for the mechanism; this one is cited rather than restated so the two cannot drift apart."
   },
   "llm_ui_chat_input_process_scancodes": {
    "owner": "SB-UI",
@@ -1913,7 +1913,7 @@
     "CHAT_INPUT_LEN",
     "STRAT_CHAT_INPUT_LINE"
    ],
-   "why": "The local chat-line editor's scancode decoder, reached only from llm_ui_hud_topbar_tick while chat is open. IT DOES RUN DURING A LIVE STRATEGIC MATCH, not only in a lobby -- so the safety is not a timing argument. It is a FIELD SPLIT inside the 81-byte STRAT_CHAT_INPUT_LINE: llm_net_chat_input_process and llm_strat_input_update write the TAIL [0x29..] as a raw-scancode producer queue indexed by CHAT_INPUT_WRITE_POS, which this function only READS; this family writes the HEAD [0..CHAT_INPUT_LEN], the visible committed text. Nothing in the order/lockstep path reads that text; none of the three regions carries MF_HASH or MF_SAVE. The libmh writer, game_SetEvent's EV_CHAT_INPUT_OPEN arm, resets len/cursor/line[0] once on the chat-open transition, which by construction happens-before any keystroke this function can decode."
+   "why": "The local chat-line editor's scancode decoder, reached only from llm_ui_hud_bottom_strip_tick while chat is open. IT DOES RUN DURING A LIVE STRATEGIC MATCH, not only in a lobby -- so the safety is not a timing argument. It is a FIELD SPLIT inside the 81-byte STRAT_CHAT_INPUT_LINE: llm_net_chat_input_process and llm_strat_input_update write the TAIL [0x29..] as a raw-scancode producer queue indexed by CHAT_INPUT_WRITE_POS, which this function only READS; this family writes the HEAD [0..CHAT_INPUT_LEN], the visible committed text. Nothing in the order/lockstep path reads that text; none of the three regions carries MF_HASH or MF_SAVE. The libmh writer, game_SetEvent's EV_CHAT_INPUT_OPEN arm, resets len/cursor/line[0] once on the chat-open transition, which by construction happens-before any keystroke this function can decode."
   },
   "llm_ui_chat_target_add": {
    "owner": "SB-UI",
@@ -2118,7 +2118,7 @@
    ],
    "why": "The PRODUCER end of the same slot: stages the currently-selected building as the pending depart candidate. It is the only place slot B ever receives a non-zero value; the other writer only clears. Narrower still, the action is single-player only -- in multiplayer the branch merely plays a different sound."
   },
-  "llm_ui_hud_topbar_tick": {
+  "llm_ui_hud_bottom_strip_tick": {
    "owner": "SB-UI",
    "verdict": "except",
    "class": "permanent-wall",

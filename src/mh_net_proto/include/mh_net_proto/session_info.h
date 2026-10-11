@@ -99,6 +99,10 @@ struct SessionInfo {
     // (the advert's format is unchanged). The host stamps its own so join_admit() can compare it with
     // the joiner's JoinRequest::build; empty = "no build claim" (selftest hosts), which skips the check.
     char build[BUILD_MAX + 1] = {0};
+    // PT-SET1: digest of the gameplay key SET this host syncs (gameplay_set_digest), HOST-LOCAL like
+    // `build`: NOT on the SESSION_INFO wire. 0 = "no claim" (selftest hosts, builds with no synced
+    // keys), which skips the check in join_admit().
+    std::uint32_t gameplay_digest = 0;
 };
 
 // Worst-case encoded size: 11 scalar bytes + two length-prefixed strings + the fixed 0x17c map header
@@ -187,7 +191,7 @@ const char           *session_match_id_log_line(const std::uint8_t match_id[UUID
 // request frame would be a second thing that can be lost, a second thing to retry, and a second
 // piece of state to reconcile with the join; carrying the answer in the message that already asks
 // to be admitted means a peer that joined has, by construction, already said what it holds.
-constexpr std::uint8_t JOIN_REQUEST_FORMAT = 6;
+constexpr std::uint8_t JOIN_REQUEST_FORMAT = 7;
 
 // The oldest JOIN a SES0 host admits. A v1/v2 client carries no match_id, so admitting it would seat a
 // peer whose logs can never be correlated with the host's -- the whole point of SES0. It is refused by
@@ -211,7 +215,12 @@ constexpr std::uint8_t JOIN_REQUEST_FORMAT = 6;
 // peers on different releases are likely, and the build is load-bearing for admission: the host
 // compares it and refuses a mismatch by name. A v5 client cannot state its build, so it is refused
 // as an old protocol ("protocol 5 < 6") rather than admitted on the assumption it agrees.
-constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = 6;
+//
+// RAISED TO 7 BY PT-SET1 (v7: + the joiner's gameplay key-set digest). The host dictates the synced
+// gameplay values in FLAG_START, so a joiner whose build syncs a different KEY SET would silently
+// adopt a partial set; the digest is load-bearing for admission. A v6 client cannot state one, so it
+// is refused as an old protocol ("protocol 6 < 7").
+constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = 7;
 
 struct JoinRequest {
     std::uint32_t tag                              = 0;   // lobby-id tag (must equal the host's SessionInfo.tag)
@@ -228,17 +237,20 @@ struct JoinRequest {
     // measurement, never an echo of the host's. Two players on the same release must match, and a dev
     // build must match itself, which the release part satisfies and the sha-qualified MH_VERSION_FULL
     // would not (two dev builds of one stamp differ in sha but share a wire generation). Empty for v1..v5.
-    char         build[BUILD_MAX + 1] = {0};
+    char build[BUILD_MAX + 1] = {0};
+    // PT-SET1 (v7): gameplay_set_digest of the key set THIS joiner syncs (0 = no claim). Its own
+    // measurement, never an echo of the host's. 0 for v1..v6.
+    std::uint32_t gameplay_digest = 0;
     std::uint8_t format               = JOIN_REQUEST_FORMAT; // the format byte DECODE actually read (not sent; see below)
 };
 
 // Worst-case encoded size: format byte + tag + length-prefixed name + length-prefixed player_name +
-// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5) + the length-prefixed build (v6). `format` is NOT a wire
+// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5) + the length-prefixed build (v6) + the u32 gameplay digest (v7). `format` is NOT a wire
 // field of its own -- encode always writes JOIN_REQUEST_FORMAT, and decode reports what it read
 // there so the admit policy can act on it.
 constexpr std::size_t JOIN_REQUEST_MAX_ENCODED = 1 + 4 + (1 + SESSION_NAME_MAX) +
                                                  (1 + PLAYER_NAME_MAX) + UUID7_BYTES + 2 +
-                                                 MAP_HASH_BYTES + (1 + BUILD_MAX); // 87 + 8 + 16 = 111
+                                                 MAP_HASH_BYTES + (1 + BUILD_MAX) + 4;
 
 // Serialize `jr` little-endian into `out` (must hold >= JOIN_REQUEST_MAX_ENCODED bytes). Returns bytes written.
 std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexcept;
@@ -262,6 +274,9 @@ JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage,
 // RL11: ...and the four-argument form that also states this joiner's release version (null/empty = none).
 JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
                              const char *my_build) noexcept;
+// PT-SET1: ...and the five-argument form that also states this joiner's gameplay key-set digest (0 = none).
+JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
+                             const char *my_build, std::uint32_t my_gameplay_digest) noexcept;
 
 // True iff `jr` names the same lobby (name AND tag) as host session `si` -- the host's LOBBY test.
 // Deliberately still name+tag only: the tag is already re-minted on every lobby re-create, so adding
@@ -282,6 +297,7 @@ enum class JoinAdmit : std::uint8_t {
     RefusedWrongLobby,    // parsed fine, but names a different name#tag
     RefusedCodepage,      // F3: parsed fine, our lobby, but the joiner pins a DIFFERENT input codepage
     RefusedBuild,         // RL11: parsed fine, our lobby, but the joiner runs a DIFFERENT release version
+    RefusedGameplay,      // PT-SET1: both sides state a gameplay key-set digest and they differ
 };
 
 // A short, stable, greppable reason string for the log line. Never null.

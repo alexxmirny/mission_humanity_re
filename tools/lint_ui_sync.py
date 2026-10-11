@@ -85,6 +85,10 @@ KNOWN_WAIT_OPS = frozenset(
         "winactive",
         "dimouse",
         "keystate",
+        "zoom",
+        "curpos",
+        "gzdone",
+        "mapsize",
     }
 )
 # ACTION ops: fire once, never a synchronization mechanism themselves (a `cursorhold`/`keyhold`
@@ -125,6 +129,7 @@ KNOWN_ACTION_OPS = frozenset(
         "pokerace",
         "injectstart",
         "dump",
+        "mark",
         "end",
     }
 )

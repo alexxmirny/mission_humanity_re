@@ -89,6 +89,44 @@ inline RECT fit_image_rect(int cw, int ch, int fw, int fh, bool integer = false)
     return r;
 }
 
+// One point through an image rect `r` showing an mw x mh frame (the rect fit_image_rect returns). client -> game: a
+// client point in the bars clamps to the image edge, the result is a pixel of the frame. game -> client: the CENTRE
+// of the game pixel, so client_to_game(game_to_client(p)) == p. The owned device's mouse mapping
+// (ddraw_own.cpp) and the RES6 cursor carry (remap_cursor_across_modes) both use these two.
+inline void image_client_to_game(const RECT &r, int mw, int mh, int &x, int &y) {
+    const int rw = (int)(r.right - r.left), rh = (int)(r.bottom - r.top);
+    if (rw <= 0 || rh <= 0 || mw <= 0 || mh <= 0) return;
+    const int cx = x < r.left ? (int)r.left : x >= r.right ? (int)r.right - 1
+                                                           : x;
+    const int cy = y < r.top ? (int)r.top : y >= r.bottom ? (int)r.bottom - 1
+                                                          : y;
+    x            = (int)((long long)(cx - r.left) * mw / rw);
+    y            = (int)((long long)(cy - r.top) * mh / rh);
+}
+
+inline void image_game_to_client(const RECT &r, int mw, int mh, int &x, int &y) {
+    const int rw = (int)(r.right - r.left), rh = (int)(r.bottom - r.top);
+    if (rw <= 0 || rh <= 0 || mw <= 0 || mh <= 0) return;
+    const int gx = x < 0 ? 0 : x >= mw ? mw - 1
+                                       : x;
+    const int gy = y < 0 ? 0 : y >= mh ? mh - 1
+                                       : y;
+    x            = (int)r.left + (int)(((long long)gx * 2 + 1) * rw / (2LL * mw));
+    y            = (int)r.top + (int)(((long long)gy * 2 + 1) * rh / (2LL * mh));
+}
+
+// RES6: a game cursor (x,y) of an old_w x old_h frame shown in old_r, carried across a mode change to the new_w x
+// new_h frame shown in new_r (both rects in the same client space) so it stays on the same screen point: old game
+// pixel -> its client point -> the new frame's pixel there, clamped to the new image (a point that falls in the new
+// mode's bars lands on the nearest image edge).
+inline POINT remap_cursor_across_modes(const RECT &old_r, int old_w, int old_h, const RECT &new_r, int new_w, int new_h,
+                                       int x, int y) {
+    image_game_to_client(old_r, old_w, old_h, x, y);
+    image_client_to_game(new_r, new_w, new_h, x, y);
+    POINT p = {x, y};
+    return p;
+}
+
 class present_backend {
 public:
     virtual ~present_backend() = default;

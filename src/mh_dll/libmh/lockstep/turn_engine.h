@@ -603,6 +603,42 @@ struct reimpl_fixes {
     // install_undock_reentry_fix); this member is the promoted body's half. Initialiser = faithful stock.
     bool undock_reentry_fix = false;
 
+    // [net] turret_reload_owner_fix -- PT-FIX1: building_tick skips llm_strat_bldg_turret_reload_tick unless
+    // turrets[player][sub_id].b_index is the ticking building's own index. A destroyed turret's rubble
+    // (state 4, up to 20 s) keeps its sub_id; its slot is freed (unmap_footprint) and re-used by the next
+    // turret (map_CreateBuilding), and the rubble's growing tick budget then drains the new turret's
+    // reload_timer every step (~4x fire rate). SIM-AFFECTING (shipped default 1, not negotiated). Byte
+    // splice for the unpromoted tick: net_lockstep.cpp install_turret_reload_owner_fix. Initialiser = faithful stock.
+    bool turret_reload_owner_fix = false;
+
+    // [net] turret_reload_realtime_fix + turret_fire_rate_mult -- PT-FIX2: building_tick hands the turret
+    // reload tick dt * turret_fire_rate_mult (dt = GAME_TIME_DELTA, one step's real length) instead of the
+    // re-counted budget, which at our 10/20 ms steps ran dt..K*dt and fired ~2x fast. SIM-AFFECTING
+    // (shipped default 1 / 2.0; C_DEV, so a shipped build ignores an ini override and every peer carries the
+    // same values). Byte splice for the unpromoted tick: net_lockstep.cpp install_turret_reload_splice.
+    // Initialiser = faithful stock.
+    bool   turret_reload_realtime_fix = false;
+    double turret_fire_rate_mult      = 2.0;
+
+    // [net] turret_clip_fix -- PT-FIX4: a new turret starts with ammo = Weapon.ammo and
+    // resupply_cycles_remaining = -1, and the reload tick refills at ammo <= 0 (retail: never initialised,
+    // refill only at exactly 0, so the clip / long reload are dead). SIM-AFFECTING, shipped default OFF
+    // (balance change, C_DEV). Byte splices: net_lockstep.cpp install_turret_clip_fix. Initialiser = faithful stock.
+    bool turret_clip_fix = false;
+
+    // [net] turret_fire_poll_fix -- PT-FIX5: a ready turret already within the aim tolerance skips the aim loop of
+    // llm_strat_bldg_state_turret_attack (whose passes cost 0.05 s of tick budget each) and fires on the step its
+    // reload completes (retail: fire interval = reload + 0..~0.06 s). SIM-AFFECTING, shipped default OFF (user ruling:
+    // a Gameplay-tab setting, C_DEV). Byte splice: net_lockstep.cpp install_turret_fire_poll_fix.
+    bool turret_fire_poll_fix = false;
+
+    // [net] air_order_facing_fix -- PT-FIX3: llm_strat_unit_state_move_path's ms==31 && order_queued early
+    // return snaps an air unit's facing_target/facing_current to MOVE_MICROSTEPS[heading][31].facing when
+    // they differ, so the dispatcher's turn-completion gate lets the queued order through (retail: the
+    // helicopter is stuck forever, RE-MISC10). SIM-AFFECTING (shipped default 1, not negotiated). Byte
+    // splice for the unpromoted body: net_lockstep.cpp install_air_order_facing_fix. Initialiser = faithful stock.
+    bool air_order_facing_fix = false;
+
     // [net] player_left_pin_fix -- MP U56: a NATURAL elimination of a human is observed by every peer's
     // own sim at the same step (llm_strat_player_presence_lost(p, 0)), but the eliminated peer's
     // CTL_PLAYER_LEFT used to flip that player's HUMAN/DEFEATED/GONE flags AT RECEIVE TIME -- a different

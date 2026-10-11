@@ -36,6 +36,8 @@
     <ClCompile Include="seams\ui_cheat_gate.cpp" />
     <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
+    <ClCompile Include="seams\ui_worker_click.cpp" />
+    <ClCompile Include="seams\ui_minimap_box.cpp" />
     <ClCompile Include="seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="seams\sim_pioneer_refill.cpp" />
     <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp" />
@@ -47,6 +49,9 @@
     <ClCompile Include="seams\ui_drive.cpp" />
     <ClCompile Include="seams\ui_keyrepeat.cpp" />
     <ClCompile Include="seams\ui_pause.cpp" />
+    <ClCompile Include="seams\strat_pre_input.cpp" />
+    <ClCompile Include="seams\ui_map_zoom.cpp" />
+    <ClCompile Include="seams\view_wrap.cpp" />
     <ClCompile Include="seams\launch.cpp" />
     <ClCompile Include="seams\mp_menu.cpp" />
     <ClCompile Include="seams\lang_pack.cpp" />
@@ -55,6 +60,8 @@
     <ClCompile Include="seams\net_discovery.cpp" />
     <ClCompile Include="seams\map_transfer.cpp" />
     <ClCompile Include="seams\net_lockstep.cpp" />
+    <ClCompile Include="seams\gameplay_hooks.cpp" />
+    <ClCompile Include="config\gameplay.cpp" />
     <ClCompile Include="seams\net_seams.cpp" />
     <ClCompile Include="seams\reimpl_probe.cpp" />
     <ClCompile Include="ui\ui_runtime.cpp" />
@@ -73,6 +80,7 @@
     <ClCompile Include="desync\state_tracker.cpp" />
     <ClCompile Include="desync\state_recorder.cpp" />
     <ClCompile Include="desync\state_compress.cpp" />
+    <ClCompile Include="desync\order_capture.cpp" />
     <ClCompile Include="desync\state_miniz.c" />
     <ClCompile Include="desync\state_ring.cpp" />
     <ClCompile Include="desync\world_sync.cpp" />
@@ -83,6 +91,14 @@
          per-file by mh_nettest.vcxproj, which tools/lint_fp_flags.py gates.
          (An XML comment may not contain a double hyphen, which is why this one has none.) -->
     <ClCompile Include="seams\video.cpp" />
+    <ClCompile Include="seams\video_mode_guards.cpp" />
+    <ClCompile Include="seams\ui_panel_rows.cpp" />
+    <ClCompile Include="gfx\cpu_scale.cpp" />
+    <ClCompile Include="gfx\res_list.cpp" />
+    <ClCompile Include="gfx\wrap_window.cpp" />
+    <ClCompile Include="gfx\panel_rows.cpp" />
+    <ClCompile Include="gfx\zoom_scale.cpp" />
+    <ClCompile Include="gfx\map_zoom.cpp" />
     <ClCompile Include="gfx\ddraw_own.cpp" />
     <ClCompile Include="input\dinput_own.cpp" />
     <ClCompile Include="input\dinput_convert.cpp" />
@@ -104,6 +120,15 @@
   <ItemGroup>
     <ClInclude Include="addr\mh_addrs.gen.h" />
     <ClInclude Include="gfx\ddraw_own.h" />
+    <ClInclude Include="gfx\cpu_scale.h" />
+    <ClInclude Include="gfx\res_list.h" />
+    <ClInclude Include="gfx\wrap_window.h" />
+    <ClInclude Include="gfx\panel_rows.h" />
+    <ClInclude Include="gfx\zoom_scale.h" />
+    <ClInclude Include="gfx\map_zoom.h" />
+    <ClInclude Include="seams\strat_pre_input.h" />
+    <ClInclude Include="seams\video_mode_guards.h" />
+    <ClInclude Include="seams\ui_panel_rows.h" />
     <ClInclude Include="input\dinput_own.h" />
     <ClInclude Include="input\dinput_convert.h" />
     <ClInclude Include="gfx\present_backend.h" />
@@ -135,9 +160,11 @@
     <ClInclude Include="desync\state_tracker.h" />
     <ClInclude Include="desync\state_recorder.h" />
     <ClInclude Include="desync\state_compress.h" />
+    <ClInclude Include="desync\order_capture.h" />
     <ClInclude Include="desync\state_miniz_config.h" />
     <ClInclude Include="desync\state_ring.h" />
     <ClInclude Include="desync\state_ring_core.h" />
+    <ClInclude Include="desync\hitch_probe.h" />
     <ClInclude Include="desync\world_sync.h" />
     <ClInclude Include="desync\world_sync_core.h" />
     <ClInclude Include="hook\patch.h" />

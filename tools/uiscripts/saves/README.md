@@ -7,10 +7,15 @@ self-contained instead of depending on a machine-local save directory.
 | file | used by | source location it was rescued from |
 | --- | --- | --- |
 | `11.sav` | all five `poz*` tactical journals (`; save 11` in each header -- `--tact-replay` stages it into the lane's `save/`) | `workdir/mh_en/save/11.sav` (machine-local POLYGON install) |
-| `2-almost.sav` | the `campaign_planet_switch` scenario (ESC -> Load game from a campaign begun on Nortus; this save sits on Aman) | `workdir/mh_en/save/2-almost.sav` (machine-local POLYGON install) |
-| `ayy30.sav` | the `soak_saved` registered scenario (seeds `--soak` via `loadgame_at`) | `workdir/mh_en/saves_storage/ayy30.sav` (SAVE_STORAGE, the 137-save community index) |
+| `2-almost.sav` | `res_walk` / `res_walk_auto` (the resolution walks: a campaign save on Aman, a 64 x 64 map with 8 available and 13 owned buildings, a selected landed building and two insect groups beside the wrap seam), `galaxy_bg_picker`, and the `campaign_planet_switch` scenario (ESC -> Load game from a campaign begun on Nortus; this save sits on Aman) | `workdir/mh_en/save/2-almost.sav` (machine-local POLYGON install) |
+| `ayy30.sav` | `res_walk` (the second Load row: 21 available buildings and 74 units in groups of 5 / 18 / 51, for the panel lists that outgrow 2-almost) and the `soak_saved` registered scenario (seeds `--soak` via `loadgame_at`) | `workdir/mh_en/saves_storage/ayy30.sav` (SAVE_STORAGE, the 137-save community index) |
 
 Since fork item F1D (2026-09-12) this directory IS the live staging source: `ui_test.resolve_save()`
 prefers the committed copy here and falls back to the machine dirs (`machine.POLYGON/save`,
 `machine.SAVE_STORAGE`) only for saves not committed here -- so these two scenarios run from a clean
 clone, while the 137-save SAVE_STORAGE index and ad-hoc polygon saves keep working unchanged.
+
+A scenario that needs two saves lists both in `deploy_save` (comma separated, e.g. `2-almost,ayy30`). The Load dialog
+shows them newest-first -- the runner stamps the first name newest and each later one a minute older -- and the dialog
+preselects the LAST LOADED save, not the top row, so a walk that switches saves clicks the row it wants (the split
+click pattern, `cursor`/`press`/`release`) instead of relying on the preselection.

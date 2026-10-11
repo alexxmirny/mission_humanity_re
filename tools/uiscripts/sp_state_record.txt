@@ -1,0 +1,57 @@
+# mp:Q2/Q3: the SINGLE-PLAYER recordings at `[log] level=debug` -- a loaded save, then a new campaign,
+# each its own solo session, each quit to the main menu.
+#
+# What the row asserts (tools/check_sp_recording.py, its post_check): every solo session folder holds
+# mh_match_state.bin.gz (the state recorder, which before mp:Q2 armed only at session_begin_multi -- a
+# path no single-player session takes) plus mh_rec_orders.bin.gz + mh_rec_clock.bin.gz (mp:Q3), and
+# all three decode. `gzdone N` is what makes that a state the script can wait for: the files are
+# compressed on a background thread AFTER the session closes, and a runner that ends the process at
+# `end` would kill that thread and leave the raw file behind. N counts this process's compressions:
+# three per session.
+#
+# The quit is ESC > Quit game > Yes (galaxy_native_quit.txt's walk), which runs the quit-to-menu seam
+# -- the session close the recordings end on.
+
+# ---- 1: a loaded save (the developed ayy30 world; a loaded save reaches neither session-begin body)
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+# relative: the save's own clock is already far past any absolute target
+gameclock +10000
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+gzdone 3
+log SP-REC: loaded-save session closed, its three recordings compressed
+
+# ---- 2: a new campaign (llm_strat_planet_session_begin, SESSION_MODE 1) -- sp_campaign.txt's walk. The row
+# arms the harness ONLY for `skip_intro_avi=1` (the intro movie + briefing cost ~120 s headless otherwise);
+# its order_mode stays 0, so the order recording under test stays mh.dll's own.
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+# the campaign's opening (the ship-placement prompt) steps slowly; 5 s of game time is plenty
+gameclock +5000
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+gzdone 6
+capture q2_menu
+log SP-REC: new-campaign session closed, its three recordings compressed
+end

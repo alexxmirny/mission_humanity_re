@@ -126,6 +126,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="include\mh_net_proto\gameplay_set.h" />
     <ClInclude Include="include\mh_net_proto\net_crypto.h" />
     <ClInclude Include="include\mh_net_proto\net_udp.h" />
     <ClInclude Include="include\mh_net_proto\net_wire.h" />
@@ -134,6 +135,7 @@
     <ClInclude Include="src\byteio.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\gameplay_set.cpp" />
     <ClCompile Include="src\net_crypto.cpp" />
     <ClCompile Include="src\net_udp.cpp" />
     <ClCompile Include="src\net_wire.cpp" />

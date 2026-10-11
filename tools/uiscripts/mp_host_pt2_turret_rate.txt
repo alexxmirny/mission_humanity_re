@@ -1,0 +1,42 @@
+# patching:PT-FIX2 HOST walk -- an unshared weapon-8 and an unshared weapon-21 turret shoot an immobile target;
+# the fire interval is logged shot by shot. Pair with mp_client_idle.txt. Rows: turret_rate / turret_rate_10ms
+# (ship, [net] turret_reload_realtime_fix=1, sim_step_ms 20 / 10) and the `_retail` twins (tier: release,
+# turret_reload_realtime_fix=0, the retail re-count arm).
+#
+# Retail drains a turret's reload timer with a re-counted budget (the attack state gives an unspent budget
+# back), so the fire interval depends on the sim step; the fix drains by the real step dt * turret_fire_rate_mult.
+# The turrets, the target and the shot log are the harness fixture's (pt2_*: pt2_tick in mh_harness/harness.cpp).
+# This walk only lands the mother and lets the match run; the assertion is the post_check
+# (tools/check_pt2_turret_rate.py), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture acts once the mother has landed
+absent Network players
+gameclock 3000
+capture pt2_start
+simrclick 480 330 shift
+gameclock 40000
+log pt2 done
+end

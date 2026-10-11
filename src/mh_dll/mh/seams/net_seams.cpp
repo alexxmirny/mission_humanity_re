@@ -40,6 +40,8 @@
 #include "include/mh_overlay_export.h"      // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
 #include "include/mh_keyrepeat_export.h"    // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
 #include "include/mh_pause_export.h"        // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
+#include "include/mh_viewwrap_export.h"     // MH_ViewWrap_Install (view_wrap.cpp) -- RES3 biased sprite wrap window
+#include "include/mh_mapzoom_export.h"      // MH_MapZoom_Install (ui_map_zoom.cpp) -- RES2 wheel zoom, cursor anchor, torus minimum
 #include "include/mh_fontguard_export.h"    // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
 #include "include/mh_chatinput_export.h"    // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
 #include "include/mh_cheatgate_export.h"    // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
@@ -49,6 +51,8 @@
 #include "include/mh_storagepurge_export.h" // MH_StoragePurge_Install (ui_storage_panel_purge.cpp) -- D38 row 5 the storage panel leaves dead docked units to the sim in lockstep
 #include "include/mh_buildprobe_export.h"   // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
 #include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
+#include "include/mh_workerclick_export.h"  // MH_WorkerClick_Install (ui_worker_click.cpp) -- RES8 the worker +/- buttons order one worker on every press
+#include "include/mh_minimapbox_export.h"   // MH_MinimapBox_Install (ui_minimap_box.cpp) -- RES9 the minimap viewport box drawn clipped to the minimap
 #include "include/mh_infoguard_export.h"    // MH_InfoGuard_Install (ui_info_guard.cpp) -- U73 an info screen is never opened for a blank/stale entity (no "Cannot find info text" modal)
 #include "include/mh_infoavi_export.h"      // MH_InfoAvi_Install (ui_info_avi.cpp) -- X2g an info screen whose AVI will not open shows without video, never IDIVs by 0
 #include "include/mh_uidrive_export.h"      // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
@@ -82,8 +86,10 @@
 #include "en_guard.h"                       // EN-only build gate
 #include "net_internal.h"                   // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
 #include "config/ini_read.h"                // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "config/gameplay.h"                // PT-SET1: host-synced gameplay settings (boot apply)
 #include "seams/map_transfer.h"             // mp:X2: the map download, its Start gate and its resolve seam
 #include "hook/detour.h"                    // install_jmp / install_trampoline (shared toolkit)
+#include "hook/promoted.h"                  // mp:Q3: promoted_owner_of -- the order recorder's route
 #include "hook/hookpoint.h"                 // D5/R7: the named hook points -- the C10 session-begin observer
 #include "hook/tombstone.h"                 // X-TOMB: trap-fill every body we claim dead
 #include "hook/export.h"                    // set_export_logger (P0-EXPORT arm reporting)
@@ -628,7 +634,9 @@ void dump_players_state(const char *tag) {
 
 // Phase 2c thread-1: session_begin_multi entry logger. It writes SESSION_MODE = (DAT_005d54bc<2 ? 2 : 3).
 // If it runs a SECOND time on the client with the peer count momentarily <2, it downgrades 3->2. Log
-// every entry with the count + current mode to catch a re-entry. Gated by lockstep_log.
+// every entry with the count + current mode to catch a re-entry. Only those LOG lines are gated by
+// lockstep_log; the hook itself and everything above the `if (!g_ls_log)` below run at every level
+// (mp:Q1).
 constexpr uintptr_t ADDR_SESSION_BEGIN_MULTI = mh::addr::llm_strat_session_begin_multi;
 void               *g_sbm_tramp              = nullptr;
 void                on_session_begin_multi() {
@@ -767,6 +775,57 @@ __declspec(naked) void desync_sim_step_detour() {
     }
 }
 
+// mp:Q3: the order recording's dispatch hook (desync/order_capture.h). Same naked shape as the sim_step
+// detour above; the body reads the due-now queue inside the desync module.
+void                  *g_ordrec_tramp = nullptr;
+void                   on_ordrec_dispatch() { mh::desync::on_order_dispatch(); }
+__declspec(naked) void ordrec_dispatch_detour() {
+    __asm {
+        pushad
+        pushfd
+        call on_ordrec_dispatch
+        popfd
+        popad
+        jmp  dword ptr [g_ordrec_tramp]
+    }
+}
+
+// `[desync] order_record` (on at `[log] level=debug`). One writer per stream: when mh_harness.dll's own
+// order_mode is non-zero it owns llm_strat_order_queue_dispatch (record or replay) and this stays off.
+// The hook is the harness recorder's two routes, chosen the same way: the promoted body's observer when
+// a promotion owns the entry (D18), else a trampoline on the original's entry.
+void install_order_record(bool desync_armed) {
+    const int want = mh_ini_get_int("desync", "order_record", 0, g_ini);
+    if (!desync_armed) {
+        if (want) seam_log("; [desync] ORDER RECORD off: it rides the [desync] step hook, which is not armed\n");
+        return;
+    }
+    const char *refused = nullptr;
+    if (MH_HarnessModule_IsBound() && mh_ini_get_int("harness", "enable", 0, g_ini) &&
+        mh_ini_get_int("harness", "order_mode", 0, g_ini) != 0)
+        refused = "mh_harness.dll's own [harness] order_mode owns the dispatch stream this run (one writer per "
+                  "stream; its mh_orders.bin / mh_match_orders.bin are the recording)";
+    if (!mh::desync::configure_order_record(want, refused)) return;
+    constexpr uintptr_t ADDR = mh::addr::llm_strat_order_queue_dispatch;
+    const char         *how  = nullptr;
+    if (mh::hook::promoted_owner_of(ADDR)) {
+        if (mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_ordrec_dispatch))
+            how = "the promoted body's dispatch observer (D18)";
+    } else if (mh::hook::arm_observer(mh::hook::point::order_dispatch, (void *)ordrec_dispatch_detour,
+                                      &g_ordrec_tramp)) {
+        how = "a trampoline on llm_strat_order_queue_dispatch's entry";
+    }
+    if (how) {
+        char b[200];
+        wsprintfA(b, "; [desync] ORDER RECORD armed via %s\n", how);
+        seam_log(b);
+    } else {
+        mh::desync::configure_order_record(0, nullptr);
+        seam_log("; [desync] ORDER RECORD off: the dispatch entry is unavailable (the [interlock] summary names "
+                 "its owner)\n");
+    }
+}
+
 // Arm the detector and give it whichever hook this run leaves available. Reports BOTH outcomes by
 // name: "armed" and "armed but never sampling" are the pair this repo keeps having to tell apart.
 void install_desync_watch() {
@@ -785,7 +844,9 @@ void install_desync_watch() {
         wh.libmh_ok = +[]() -> bool { return MH_LibmhModule_IsBound() != 0 && mh::orders::promotion_active(); };
         mh::desync::world_sync::set_hooks(wh);
     }
-    if (!mh::desync::install(g_ini)) return; // it has already said why
+    const bool desync_armed = mh::desync::install(g_ini) != 0;
+    install_order_record(desync_armed); // mp:Q3 -- silent unless [desync] order_record is on
+    if (!desync_armed) return;          // it has already said why
     if (install_trampoline(ADDR_DESYNC_SIM_STEP, (void *)desync_sim_step_detour, &g_desync_tramp, 8,
                            mh::hook::entry_claim::exclusive,
                            "the D21 desync sampler's sim_step hook")) {
@@ -2157,6 +2218,9 @@ static int MH_Core_Arm(void) {
     // hires/qpc clock + the per-frame timing log + the time_tick hook -- same install order as
     // pre-split (arm-log parity gate). Sets g_ls_log (read by the DIAG gates below + net_diag).
     lockstep_install_core();
+    // PT-SET1: the F_HOSTSYNC gameplay settings, from this process's own ini (SP and the host's starting point;
+    // a client re-applies the host's set at the match handoff). AFTER the core install so the hooks overlay the fixes it built.
+    mh::gameplay::apply_local(mh::gameplay::Source::LOCAL);
 
     // Promotions are installed above (reimpl_probe_install) and the byte patches just now, so this is
     // the first point at which the interlock can state the whole picture: which registered fixes were
@@ -2170,8 +2234,16 @@ static int MH_Core_Arm(void) {
 
     // Phase 2c thread-1: presence_lost entry logger (diagnose the client's early SESSION 3->2 drop).
     // Armed with the lockstep log so an MP diagnostic run captures it automatically.
-    if (g_ls_log) {
-        install_presence_lost_logger(); // net_diag: presence_lost entry logger (pure log)
+    if (g_ls_log) install_presence_lost_logger(); // net_diag: presence_lost entry logger (pure log)
+    // mp:Q1 -- THE session_begin_multi HOOK IS NOT A LOGGER, so it no longer waits for one. It sat
+    // inside the `if (g_ls_log)` block between the two pure loggers, so `[log] level=quiet`
+    // (lockstep_log=0) silently dropped everything on_session_begin_multi carries that is not a log
+    // line: the manual-menu host player-count fix-up, mh::desync::session_reset() (the per-step
+    // detector, the order digest, the state recorder and the ring never started) and the U52
+    // lobby-mode push. Only the observer's own ENTER / Players[] lines stay under g_ls_log, inside the
+    // observer. Same position in the install order, so a default-level arm log is unchanged.
+    // `[net] sbm_hook_log_gated=1` (dev) restores the old guard: the fix-off arm of the quiet rows.
+    if (g_ls_log || !mh_ini_get_int("net", "sbm_hook_log_gated", 0, g_ini)) {
         if (install_trampoline(ADDR_SESSION_BEGIN_MULTI, (void *)session_begin_multi_detour, &g_sbm_tramp, 8,
                                entry_claim::exclusive, "the session_begin_multi logger"))
             seam_log("; session_begin_multi logger armed\n");
@@ -2190,8 +2262,8 @@ static int MH_Core_Arm(void) {
                      "owned by a promotion, so the host-count fix-up and desync session_reset run from "
                      "the body's first statement instead of a trampoline\n");
         }
-        install_savegame_err_logger(); // net_diag: error-dlg CALLER logger (pure log)
     }
+    if (g_ls_log) install_savegame_err_logger(); // net_diag: error-dlg CALLER logger (pure log)
 
 
     // Present hook (frametime / eager-advertise / temporal drain) + the game-over leave-lockstep
@@ -2226,6 +2298,8 @@ static int MH_Core_Arm(void) {
     }
     MH_KeyRepeat_Install();    // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
     MH_Pause_Install();        // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
+    MH_ViewWrap_Install();     // RES3: the render call sites of llm_strat_pixel_delta_wrapped take the biased window (best-effort; sim callers stay stock)
+    MH_MapZoom_Install();      // RES2: wheel zoom anchored at the cursor + the torus minimum zoom + our resampler (best-effort; after the pause hook: they share one detour)
     MH_FontGuard_Install();    // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
     MH_ChatInput_Install();    // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
     MH_CheatGate_Install();    // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
@@ -2237,6 +2311,8 @@ static int MH_Core_Arm(void) {
     MH_StoragePurge_Install(); // D38 row 5: the storage panel's dead-docked purge is skipped in a lockstep match -- the sim purges on every peer (best-effort)
     MH_BuildProbe_Install();   // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
     MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
+    MH_WorkerClick_Install();  // RES8: the worker +/- buttons order one worker on every press, the first one included (best-effort)
+    MH_MinimapBox_Install();   // RES9: the minimap viewport box is drawn clipped to the 128x128 minimap (best-effort)
     MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)
     MH_InfoGuard_Install();    // U73: entity info screen entry guard + the storage panel's stale info-request consume (best-effort)
     MH_Overlay_Install();      // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)

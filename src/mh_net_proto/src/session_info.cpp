@@ -183,6 +183,8 @@ std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexce
     *p++              = blen;
     std::memcpy(p, jr.build, blen);
     p += blen;
+    put_u32(p, jr.gameplay_digest);
+    p += 4; // PT-SET1 (v7): OUR gameplay key-set digest
     return std::size_t(p - out);
 }
 
@@ -238,12 +240,24 @@ bool join_request_decode(const std::uint8_t *in, std::size_t len, JoinRequest &o
         out.build[blen] = '\0';
         p += blen;
     }
+    out.gameplay_digest = 0; // default: v1..v6 state no gameplay digest
+    if (fmt >= 7) {          // PT-SET1 (v7): the joiner's gameplay key-set digest
+        if (p + 4 > end) return false; // REQUIRED at v7, same rule as the id
+        out.gameplay_digest = get_u32(p);
+        p += 4;
+    }
     return true;
 }
 
 JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
                              const char *my_build) noexcept {
+    return join_request_for(si, my_codepage, my_map_hash, my_build, 0);
+}
+
+JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
+                             const char *my_build, std::uint32_t my_gameplay_digest) noexcept {
     JoinRequest jr;
+    jr.gameplay_digest = my_gameplay_digest; // PT-SET1: OUR key-set digest -- deliberately NOT si.gameplay_digest
     jr.tag        = si.tag;
     std::size_t n = clamp_len(si.name, SESSION_NAME_MAX);
     std::memcpy(jr.name, si.name, n);
@@ -371,6 +385,7 @@ const char *join_admit_reason(JoinAdmit a) noexcept {
         case JoinAdmit::RefusedWrongLobby: return "not our lobby";
         case JoinAdmit::RefusedCodepage: return "input codepage mismatch";
         case JoinAdmit::RefusedBuild: return "build (release version) mismatch";
+        case JoinAdmit::RefusedGameplay: return "gameplay key set mismatch";
     }
     return "unknown";
 }
@@ -404,6 +419,9 @@ JoinAdmit join_admit(const std::uint8_t *in, std::size_t len, const SessionInfo 
     // hosts) accepts anyone, the codepage rule's direction; a host WITH one refuses a joiner that
     // states a different one. (A joiner at v6 always states one; v<6 never reaches here.)
     if (mine.build[0] != '\0' && std::strcmp(out.build, mine.build) != 0) return JoinAdmit::RefusedBuild;
+    // PT-SET1: both digests stated (nonzero) and different = the two builds sync different gameplay keys.
+    if (mine.gameplay_digest != 0 && out.gameplay_digest != 0 && out.gameplay_digest != mine.gameplay_digest)
+        return JoinAdmit::RefusedGameplay;
     return JoinAdmit::Admit;
 }
 
@@ -501,6 +519,11 @@ const char *join_refusal_text(JoinAdmit a, const SessionInfo &mine, const JoinRe
         case JoinAdmit::RefusedBuild:
             // RL11: "build <host>/<joiner>"; the joiner parses it and shows "Host runs X, you run Y: update".
             std::snprintf(out, cap, "build %s/%s", mine.build, theirs.build[0] ? theirs.build : "?");
+            break;
+        case JoinAdmit::RefusedGameplay:
+            // PT-SET1: "gameplay keys <host>/<joiner>" (hex digests, host first, like the build line).
+            std::snprintf(out, cap, "gameplay keys %08X/%08X", (unsigned)mine.gameplay_digest,
+                          (unsigned)theirs.gameplay_digest);
             break;
         case JoinAdmit::RefusedNewerProtocol:
             std::snprintf(out, cap, "protocol %u > %u", (unsigned)theirs.format, (unsigned)JOIN_REQUEST_FORMAT);

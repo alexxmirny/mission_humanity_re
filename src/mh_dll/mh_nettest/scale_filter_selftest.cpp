@@ -37,6 +37,7 @@
 #include <string.h>
 #include <vector>
 
+#include "gfx/cpu_scale.h"
 #include "gfx/present_backend.h"
 
 namespace {
@@ -94,42 +95,9 @@ bool render(const std::vector<uint16_t> &src, int fw, int fh, int ow, int oh, gf
 }
 
 // ---- CPU reference --------------------------------------------------------------------------------
-struct rgbf {
-    float r, g, b;
-};
-
-rgbf texel(const std::vector<uint16_t> &s, int fw, int fh, int x, int y) { // clamp addressing
-    x                = x < 0 ? 0 : x >= fw ? fw - 1
-                                           : x;
-    y                = y < 0 ? 0 : y >= fh ? fh - 1
-                                           : y;
-    const uint16_t p = s[(size_t)y * fw + x];
-    // B5G6R5_UNORM reads as v / (2^n - 1); the 8-bit render target stores round(c * 255).
-    return {(float)(p >> 11) / 31.0f, (float)((p >> 5) & 63) / 63.0f, (float)(p & 31) / 31.0f};
-}
-
-// Per axis: the two texels to blend and the second one's weight, for output pixel centre p (texels).
-void axis_weights(gfx::scale_filter f, double p, double scale, int *k0, double *w1) {
-    if (f == gfx::scale_filter::point) {
-        *k0 = (int)floor(p);
-        *w1 = 0.0;
-        return;
-    }
-    double t = scale; // the ramp slope in output px per texel
-    if (f == gfx::scale_filter::linear) t = 1.0;
-    if (f == gfx::scale_filter::sharp) t = floor(scale) < 1.0 ? 1.0 : floor(scale);
-    if (f == gfx::scale_filter::area && t < 1.0) t = 1.0;
-    // Nearest texel edge e = round(p). The next texel's weight ramps linearly across the edge:
-    // w = clamp((p - e) * t + 0.5, 0, 1), with texel e-1 on the left and e on the right. For t = 1 that
-    // is exactly bilinear between centres e-0.5 and e+0.5; for the true scale it is the box filter.
-    const double e = floor(p + 0.5);
-    double       w = (p - e) * t + 0.5;
-    w              = w < 0.0 ? 0.0 : w > 1.0 ? 1.0
-                                             : w;
-    *k0            = (int)e - 1;
-    *w1            = w;
-}
-
+// The kernels live in gfx/cpu_scale.{h,cpp} (shared with the background scaler in
+// seams/video_mode_guards.cpp, which `bgscaletest` measures); this suite only places them on the
+// presenter's image rect and converts to the back buffer's 8-bit channels.
 void reference(const std::vector<uint16_t> &s, int fw, int fh, int ow, int oh, gfx::scale_filter f, bool integer,
                std::vector<uint32_t> &out, std::vector<uint8_t> *tie_mask) {
     const RECT   ir = gfx::fit_image_rect(ow, oh, fw, fh, integer);
@@ -139,26 +107,10 @@ void reference(const std::vector<uint16_t> &s, int fw, int fh, int ow, int oh, g
     if (tie_mask) tie_mask->assign((size_t)ow * oh, 0);
     for (int oy = ir.top; oy < ir.bottom; ++oy) {
         const double py = (oy - ir.top + 0.5) / sy;
-        int          y0;
-        double       wy;
-        axis_weights(f, py, sy, &y0, &wy);
         for (int ox = ir.left; ox < ir.right; ++ox) {
-            const double px = (ox - ir.left + 0.5) / sx;
-            int          x0;
-            double       wx;
-            axis_weights(f, px, sx, &x0, &wx);
-            rgbf c;
-            if (f == gfx::scale_filter::point) {
-                c = texel(s, fw, fh, x0, y0);
-            } else {
-                const rgbf a = texel(s, fw, fh, x0, y0), bb = texel(s, fw, fh, x0 + 1, y0);
-                const rgbf cc = texel(s, fw, fh, x0, y0 + 1), d = texel(s, fw, fh, x0 + 1, y0 + 1);
-                auto       mix = [&](float u, float v, float z, float q) {
-                    return (float)((1 - wy) * ((1 - wx) * u + wx * v) + wy * ((1 - wx) * z + wx * q));
-                };
-                c = {mix(a.r, bb.r, cc.r, d.r), mix(a.g, bb.g, cc.g, d.g), mix(a.b, bb.b, cc.b, d.b)};
-            }
-            const uint32_t r = (uint32_t)lround(c.r * 255.0f), g = (uint32_t)lround(c.g * 255.0f),
+            const double               px = (ox - ir.left + 0.5) / sx;
+            const gfx::cpu_scale::rgbf c  = gfx::cpu_scale::sample(s.data(), fw, fh, false, (int)f, px, py, sx, sy);
+            const uint32_t             r = (uint32_t)lround(c.r * 255.0f), g = (uint32_t)lround(c.g * 255.0f),
                            b          = (uint32_t)lround(c.b * 255.0f);
             out[(size_t)oy * ow + ox] = 0xFF000000u | (r << 16) | (g << 8) | b;
             if (tie_mask) {
@@ -247,6 +199,36 @@ int run_dump(int argc, char **argv) {
 int run_scalefiltertest(int argc, char **argv) {
     if (argc > 2 && strcmp(argv[2], "--dump") == 0) return run_dump(argc, argv);
     printf("=== scalefiltertest (PT-GFX6: d3d11 scaling filters vs a CPU reference) ===\n");
+
+    // RES6 cursor carry (pure, no device): a cursor kept on its screen point across the galaxy screen's switch from
+    // a 1696x960 picker size to 1024x768 and back, on the 2560x1440 desktop of the user's report (fit: the 1696x960
+    // image is (8,0)-(2552,1440), the 1024x768 one (320,0)-(2240,1440) with 320 px side bars).
+    {
+        const RECT big = gfx::fit_image_rect(2560, 1440, 1696, 960), nat = gfx::fit_image_rect(2560, 1440, 1024, 768);
+        check("carry: 1696x960 fit rect on 2560x1440", big.left == 8 && big.top == 0 && big.right == 2552 && big.bottom == 1440);
+        check("carry: 1024x768 fit rect on 2560x1440", nat.left == 320 && nat.top == 0 && nat.right == 2240 && nat.bottom == 1440);
+        // The report's enter (1607,205): its screen point is in the new mode's right bar -> the image's right edge.
+        POINT p = gfx::remap_cursor_across_modes(big, 1696, 960, nat, 1024, 768, 1607, 205);
+        check("carry: enter (1607,205) -> (1023,164), clamped to the edge", p.x == 1023 && p.y == 164);
+        // The report's exit (729,710) -> the same screen point in 1696x960.
+        p = gfx::remap_cursor_across_modes(nat, 1024, 768, big, 1696, 960, 729, 710);
+        check("carry: exit (729,710) -> (1119,888)", p.x == 1119 && p.y == 888);
+        // A point inside both images survives the round trip within one pixel.
+        p             = gfx::remap_cursor_across_modes(big, 1696, 960, nat, 1024, 768, 600, 500);
+        const POINT b = gfx::remap_cursor_across_modes(nat, 1024, 768, big, 1696, 960, p.x, p.y);
+        check("carry: (600,500) round trip within 1 px", b.x >= 599 && b.x <= 601 && b.y >= 499 && b.y <= 501);
+        // The centre maps to the centre (what the stock re-centre gives, so a centred cursor does not move).
+        p = gfx::remap_cursor_across_modes(big, 1696, 960, nat, 1024, 768, 848, 480);
+        check("carry: centre -> centre", p.x == 512 && p.y == 384);
+        // Integer scale on the same desktop: 1024x768 x1 = (768,336)-(1792,1104); a point keeps its screen pixel.
+        const RECT ni = gfx::fit_image_rect(2560, 1440, 1024, 768, true);
+        p             = gfx::remap_cursor_across_modes(big, 1696, 960, ni, 1024, 768, 848, 480);
+        check("carry: integer-scale target keeps the screen point", p.x == 512 && p.y == 384);
+        // Stretch (the image fills the client): the map is the plain mode ratio.
+        const RECT full = {0, 0, 2560, 1440};
+        p               = gfx::remap_cursor_across_modes(full, 1696, 960, full, 1024, 768, 1272, 720);
+        check("carry: stretch is the mode ratio", p.x == 768 && p.y == 576);
+    }
 
     struct shape {
         int  fw, fh, ow, oh;

@@ -620,6 +620,11 @@
       "name": "llm_chat_history_push",
       "en": "0x00415475",
       "note": "mp:CH1 (2026-09-21). __watcall(void), plain RET. The one call every Enter in the in-game chat line makes BEFORE the mode split (llm_strat_input_update 0x00441c27; also llm_net_chat_input_process and the scancode drain's own 0x1c arm) -- the run-before site of the redacted `; [chat] submit` log line (seams/ui_cheat_gate.cpp). Entry `55 89 E5 68 24 00 00 00`."
+    },
+    {
+      "name": "llm_strat_minimap_draw_viewport_box",
+      "en": "0x004a2344",
+      "note": "RES9: the minimap's viewport-box draw, hand-written asm, no parameters, preserves only ECX/ESI/EBP; sole caller llm_strat_minimap_render (0x004a22f6, inside its PUSHAD/POPAD). Draws the W x H outline in 0xDEFF at [_G_LLM_GFX_DRAW_SURFACE] + pitch*ORIGIN_Y + 2*ORIGIN_X + BOX_OFS with no clipping; at render heights >= 1152 in zoom mode 4 the box starts above the side-panel surface. Entry `8B 3D 00 3B 60 00` (MOV EDI,[0x00603b00]) is JMPed to the clipped draw (seams/ui_minimap_box.cpp)."
     }
   ],
   "anchors": [
@@ -865,6 +870,60 @@
       "en": "0x004a0c12",
       "parent": "WinMain",
       "note": "true headless: CALL ShowSplashScreen (E8 2C FE FF FF). A SECOND top-level window -- ShowSplashScreen registers class 'tgl_splash', creates a 0x80x0x40 popup with WS_VISIBLE already set, ShowWindow x2 + UpdateWindow, Sleep(500), DestroyWindow. None of the main-window patches reach it, so it is a half-second visible focus-stealing window on every launch. The callee ends in a bare RET (no stack args), so NOPing the 5-byte CALL is balanced"
+    },
+    {
+      "name": "vres_hittest_call_site",
+      "en": "0x004287f4",
+      "parent": "llm_gfx_set_window_resolution",
+      "note": "E8 3E DF 07 00 CALL llm_gfx_hittest_begin -- the mode-change pixel probe (reads FRAMEBUFFER + CURSOR_Y*FB_PITCH + CURSOR_X*2 with a cursor that may still be valid for the previous, larger mode); re-pointed to the cursor clamp, which then jumps to llm_gfx_hittest_begin"
+    },
+    {
+      "name": "ui_bg_restore_call_site",
+      "en": "0x004b7322",
+      "parent": "llm_ui_widget_list_draw_frame_layer",
+      "note": "E8 BC D4 FF FF CALL llm_mem_copy_words(FB, gfx+4, W*H words) -- the full-screen background restore; re-pointed to the header-aware scaler"
+    },
+    {
+      "name": "ui_galaxy_bg_mode_read",
+      "en": "0x004c5e88",
+      "parent": "llm_ui_planet_select_screen_build",
+      "note": "A1 A8 2A AE 00 MOV EAX,[_G_LLM_VIEW_SIZE_MODE] feeding the BACK0<mode>_<sys> background index; replaced by a CALL returning min(mode,2) (one pre-authored background per STOCK mode)"
+    },
+    {
+      "name": "ui_planet_build_call_site",
+      "en": "0x004cb445",
+      "parent": "llm_ui_planet_select_screen_open",
+      "note": "E8 9B A9 FF FF CALL llm_ui_planet_select_screen_build -- the planet-select screen builder (its only caller); wrapped so a picker size other than 1024x768 switches to the stock 1024x768 mode before the build (the art and the widget offsets are authored for it) and the menu-side size cache holds the size to restore on exit"
+    },
+    {
+      "name": "ui_view_apply_call_a",
+      "en": "0x004b81fa",
+      "parent": "llm_menu_enter_gameplay",
+      "note": "E8 39 FE FF FF CALL llm_map_view_size_mode_apply -- the resume-to-gameplay size restore (re-applies the menu-side size cache and re-centres the camera); wrapped so the galaxy screen's native 1024x768 mode is always restored to the picker size, whatever a menu opened over it wrote into the cache"
+    },
+    {
+      "name": "ui_view_apply_call_b",
+      "en": "0x004b826d",
+      "parent": "llm_menu_finish_enter_gameplay",
+      "note": "E8 C6 FD FF FF CALL llm_map_view_size_mode_apply -- the tutorial-resume twin of ui_view_apply_call_a; wrapped for the same reason"
+    },
+    {
+      "name": "workeradj_press_snd_call_site",
+      "en": "0x0041341b",
+      "parent": "llm_ui_bldg_worker_adjust_btn_tick",
+      "note": "RES8: E8 13 1E 01 00 CALL llm_snd_play (EAX 0x44, EDX 0x64) -- the worker +/- button's press-edge click sound, right after pending_row = row + 1; spliced to a thunk that also sets the record's pending_worker_amount to 1, so the order the press issues is one worker and never a stale 0 (first press of a process) or a stale hold-repeat count"
+    },
+    {
+      "name": "workeradj_apply_assign_call_site",
+      "en": "0x00413509",
+      "parent": "llm_ui_bldg_worker_adjust_apply",
+      "note": "RES8 mode 2: E8 A8 AA 05 00 CALL llm_strat_bldg_order_assign_workers (EAX player, EDX building, EBX = the record's pending_worker_amount, already loaded) -- the worker + order issued every frame pending_row is set; spliced to a thunk that zeroes the record's pending_worker_amount before tail-jumping to the order, so one press orders one worker and the later frames of the same press order 0 until the hold auto-repeat writes a new amount"
+    },
+    {
+      "name": "workeradj_apply_unassign_call_site",
+      "en": "0x00413520",
+      "parent": "llm_ui_bldg_worker_adjust_apply",
+      "note": "RES8 mode 2: E8 2F AB 05 00 CALL llm_strat_bldg_order_unassign_workers -- the worker - twin of workeradj_apply_assign_call_site, spliced to the same drain thunk"
     }
   ],
   "data": [
@@ -1408,7 +1467,7 @@
     {
       "name": "_G_LLM_GFX_PANEL_ROW_SKIP",
       "en": "0x00603b04",
-      "note": "TACT1E (2026-08-27), llm_tact_ui_sel_panel_init/llm_tact_sidebar_dispatch/llm_tact_ui_char_panel_row_draw all pass it as the `pitch` argument to llm_ui_set_draw_surface alongside RID_GFX_DRAW_SURFACE (0x00603b00, 4 bytes earlier -- same one-shot draw-surface block mh_addrs.gen.h's own comment on that symbol describes). Already named in Ghidra (referenced from mh_effects.gen.h's llm_gfx_view_metrics_init comment among ~14 recomputed view/render globals) but had no addr manifest or region entry at all. int, 4 B."
+      "note": "TACT1E (2026-08-27), llm_tact_ui_sel_panel_init/llm_tact_sidebar_dispatch/llm_tact_ui_char_panel_row_draw all pass it as the `pitch` argument to llm_ui_blit_bitmap_rect alongside RID_GFX_DRAW_SURFACE (0x00603b00, 4 bytes earlier -- same one-shot draw-surface block mh_addrs.gen.h's own comment on that symbol describes). Already named in Ghidra (referenced from mh_effects.gen.h's llm_gfx_view_metrics_init comment among ~14 recomputed view/render globals) but had no addr manifest or region entry at all. int, 4 B."
     },
     {
       "name": "_G_LLM_GFX_UI_COLORS_RGB",

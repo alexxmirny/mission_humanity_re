@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "mh_log_sink.h" // mp:Q3: a sink-written file is compressed only once the sink has written it
+
 // miniz 3.0.2 (MIT, src/mh_dll/include/miniz/LICENSE.txt): the library is compiled as C by state_miniz.c;
 // only its header is seen here, configured identically (state_miniz_config.h).
 #include "desync/state_miniz_config.h"
@@ -23,7 +25,8 @@ constexpr size_t   OUT_BUF      = 256u * 1024u; // gzip writes
 constexpr int      LEVEL        = 6;
 constexpr unsigned PATH_MAX_LEN = MAX_PATH + 16;
 
-volatile LONG g_active = 0;
+volatile LONG g_active    = 0;
+volatile LONG g_completed = 0; // mp:Q3: successful compressions (the `gzdone` predicate)
 
 double ms_since(const LARGE_INTEGER &t0) {
     LARGE_INTEGER t1, hz;
@@ -177,8 +180,12 @@ void compress_file(const char *raw_path, result *r) {
     wsprintfA(gz, "%s.gz", raw_path);
     wsprintfA(tmp, "%s.gz.tmp", raw_path);
 
-    HANDLE in = CreateFileA(raw_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN,
-                            nullptr);
+    // mp:Q3: SHARE_WRITE|SHARE_DELETE too -- a file the async log sink wrote may still be held open by its
+    // writer (it closes idle handles after a second, and opens them with all three shares), and a reader
+    // that refuses write sharing is refused itself. The sink has written everything by now (the caller's
+    // ticket), so nothing more arrives; the raw delete at the end then completes when the sink lets go.
+    HANDLE in = CreateFileA(raw_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                            OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (in == INVALID_HANDLE_VALUE) {
         r->why = "cannot open the raw file";
         return;
@@ -260,24 +267,31 @@ void compress_file(const char *raw_path, result *r) {
 namespace {
 
 struct job {
-    char   path[PATH_MAX_LEN];
-    log_fn log;
+    char        path[PATH_MAX_LEN];
+    log_fn      log;
+    long        ticket; // mp:Q3: 0, or the log-sink ticket the file's last record was enqueued under
+    const char *what;
 };
 
 DWORD WINAPI compress_main(LPVOID arg) {
     job *j = static_cast<job *>(arg);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-    result r;
-    compress_file(j->path, &r);
+    result r = {};
+    if (j->ticket != 0) {
+        const DWORD t0 = GetTickCount();
+        while (!mh_logq_ticket_done(j->ticket) && GetTickCount() - t0 < LOGQ_WAIT_MS) Sleep(10);
+        if (!mh_logq_ticket_done(j->ticket)) r.why = "the log sink had not written the file's tail in time";
+    }
+    if (!r.why) compress_file(j->path, &r);
+    if (r.ok) InterlockedIncrement(&g_completed);
     if (j->log) {
         if (r.ok)
-            j->log("; [desync] STATE RECORD compressed %s: %llu raw bytes -> %llu gzip bytes (%.1f%%), %.0f ms (deflate "
+            j->log("; [desync] %s compressed %s: %llu raw bytes -> %llu gzip bytes (%.1f%%), %.0f ms (deflate "
                    "level %d, verified by re-inflating; the raw file is %s)\n",
-                   j->path, (unsigned long long)r.raw, (unsigned long long)r.comp,
-                   r.raw ? 100.0 * (double)r.comp / (double)r.raw : 0.0, r.ms, LEVEL,
-                   r.why ? "KEPT" : "removed");
+                   j->what, j->path, (unsigned long long)r.raw, (unsigned long long)r.comp,
+                   r.raw ? 100.0 * (double)r.comp / (double)r.raw : 0.0, r.ms, LEVEL, r.why ? "KEPT" : "removed");
         else
-            j->log("; [desync] STATE RECORD compress FAILED for %s after %.0f ms: %s -- the raw file is kept as it is\n",
+            j->log("; [desync] %s compress FAILED for %s after %.0f ms: %s -- the raw file is kept as it is\n", j->what,
                    j->path, r.ms, r.why ? r.why : "?");
     }
     free(j);
@@ -287,7 +301,7 @@ DWORD WINAPI compress_main(LPVOID arg) {
 
 } // namespace
 
-void compress_async(const char *raw_path, log_fn log) {
+void compress_async(const char *raw_path, log_fn log, long logq_ticket, const char *what) {
     job *j = static_cast<job *>(malloc(sizeof(job)));
     if (!j) return;
     if (strlen(raw_path) >= sizeof(j->path)) {
@@ -295,12 +309,15 @@ void compress_async(const char *raw_path, log_fn log) {
         return;
     }
     strcpy_s(j->path, raw_path);
-    j->log = log;
+    j->log    = log;
+    j->ticket = logq_ticket;
+    j->what   = what ? what : "STATE RECORD";
     InterlockedIncrement(&g_active);
     HANDLE t = CreateThread(nullptr, 0, compress_main, j, 0, nullptr);
     if (!t) {
         InterlockedDecrement(&g_active);
-        if (log) log("; [desync] STATE RECORD compress thread not started (err %lu): the raw file is kept\n", GetLastError());
+        if (log)
+            log("; [desync] %s compress thread not started (err %lu): the raw file is kept\n", j->what, GetLastError());
         free(j);
         return;
     }
@@ -315,5 +332,8 @@ bool wait_idle(unsigned ms) {
     }
     return true;
 }
+
+long active() { return g_active; }
+long completed() { return g_completed; }
 
 } // namespace mh::desync::gz

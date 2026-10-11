@@ -28,6 +28,13 @@ bool owned_ddraw_active();
 bool owned_image_rect(RECT *out);
 bool owned_client_to_game(POINT *p);
 bool owned_game_to_client(POINT *p);
+// RES6: one game point <-> SCREEN pixels through the current mode's image rect (the geometry is settled first).
+// False, point untouched, when nothing is mapped (as above). owned_refresh_clip re-applies the OS-pointer clip for
+// the current mode now instead of at the next present, so a SetCursorPos right after a mode change is not clamped
+// to the previous mode's image.
+bool owned_game_to_screen(POINT *p);
+bool owned_screen_to_game(POINT *p);
+void owned_refresh_clip();
 // Windowed: the player resized (or maximised) the window, so its size no longer follows the mode.
 bool owned_user_sized();
 // PT-GFX8: would Windows list `h` on the taskbar / in Alt-Tab (visible, not cloaked, unowned without
@@ -35,6 +42,13 @@ bool owned_user_sized();
 bool window_switchable(HWND h, char *facts, int n);
 // The game's current display mode (the frame size every presenter scales), false before SetDisplayMode.
 bool owned_mode_size(int *w, int *h);
+// The largest frame (w x h, 16 bpp) the session can switch to: every game-frame surface created afterwards is
+// allocated at least that big (pitch stays w*2, the presenter reads only w x h). A stale menu frame drawn after
+// a switch to a smaller mode writes past a bevel's unclipped rows; this keeps those writes inside owned memory.
+// Call before the game's first CreateSurface; the largest request wins. Not applicable to backend=system.
+void owned_reserve_frame(int w, int h);
+// Selftest hook: the bytes a w x h surface is actually allocated with (0 on failure), through the real create().
+SIZE_T owned_probe_frame_alloc(int w, int h, bool primary);
 
 // The presenter's LIVE options (present_backend::set_config): applied to the bound backend at once and
 // kept for any later re-attach. filter: 0 point, 1 linear, 2 sharp, 3 area (present_backend.h

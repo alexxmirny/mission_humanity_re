@@ -612,13 +612,42 @@ fn the_badges_sit_on_the_row_of_their_setting() {
     i18n::set_locale(Locale::En);
     let mut f = fixture("badges", true);
     f.app.view = View::Settings;
+    // No shipped Display row is experimental any more, so the pills are checked on a synthetic registry
+    // row (experimental + restart), exactly the shape the old picker row had.
+    let mut doc: serde_json::Value =
+        serde_json::from_str(crate::settings::schema::GAME_SCHEMA_JSON).unwrap();
+    doc["settings"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "section": "video", "key": "zoom_snap", "type": "bool", "default": 0,
+            "label": "video.zoom_snap", "subtab": "display", "options": [],
+            "experimental": true, "restart": true, "pending": false
+        }));
+    f.app.model = crate::settings::model::Model::new(
+        crate::settings::schema::Schema::from_json(
+            &doc.to_string(),
+            Some(crate::settings::schema::LAUNCHER_SCHEMA_JSON),
+        )
+        .unwrap(),
+    );
     let root = f.root.clone();
     let mut h = harness(f.app);
     h.run();
-    // "Extra resolutions in game options" is experimental and restart-flagged; its Off/On control
+    // The synthetic row is experimental and restart-flagged; its Off/On control
     // and both pills must be on the same line (their vertical centres within a few pixels).
     let pill = h.get_by_label("EXPERIMENTAL").rect();
-    let restart = h.get_by_label("next game start").rect();
+    // The Resolution row is restart-flagged too, so several rows carry this pill: take the one on the
+    // experimental row's line.
+    let restart = h
+        .query_all_by_label("next game start")
+        .map(|n| n.rect())
+        .min_by(|a, b| {
+            (a.center().y - pill.center().y)
+                .abs()
+                .total_cmp(&(b.center().y - pill.center().y).abs())
+        })
+        .unwrap();
     let on = h
         .root()
         .children_recursive()
@@ -763,7 +792,7 @@ fn review_screenshots() {
                 seconds: 412.0,
             });
         });
-        for tab in ["display", "language", "multiplayer", "updates"] {
+        for tab in ["display", "language", "multiplayer", "gameplay", "updates"] {
             shot(&format!("settings_{tab}"), true, &|a| {
                 a.view = View::Settings;
                 a.settings_state.subtab = tab.into();

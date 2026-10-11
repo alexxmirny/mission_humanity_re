@@ -1,0 +1,48 @@
+# D13 mode-change guards (galaxy half): open the galaxy (planet-select) screen at a picker mode LARGER than
+# the 1024x768 art and prove it renders, filled, instead of crashing.
+#
+# THE CRASH (rc8, 01M4GGQZ..., fault 0x004b47fd): the planet-select list's background index is
+# (CurrentSystem-1)*3 + 0x17 + VIEW_SIZE_MODE -- three authored backgrounds per system, one per STOCK mode
+# -- and the picker stores its list index there, so 1280x768 (index 3) walked into the NEXT system's art
+# (an 800x576 image) and llm_ui_widget_list_draw_frame_layer copied WindowWidth*WindowHeight words from it.
+# The fix clamps the index to min(mode, 2) and makes the copy header-aware: art that is not the window's
+# size is SCALED to fill the window with the [video] filter.
+#
+# RES6: this row runs with [video] galaxy_native=0 (video_picker_galaxy.ini). By default the galaxy screen now switches to
+# the stock 1024x768 mode and never reaches the scaled-background guard below; the galaxy_native_* rows cover that
+# path, and this one is their fix-off twin and the guard's coverage.
+#
+# Route: the committed campaign save 2-almost (deploy_save) loaded from the main menu -- a campaign
+# (SESSION_SP) session on Aman with no intro movie. Then `E` (scancode 0x12), the minimap-panel hotkey,
+# which in SP with the HUD panel mode 0 opens the planet-select screen (EV_MAP_HOTKEY_TOGGLE).
+
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock 300
+
+key 0x12
+gameclock 400
+key 0x12
+gamemode 3
+dump
+# THE SCREEN IS NOT DONE WHEN gamemode 3 HOLDS. The planets are spinning-FLC previews that appear a moment
+# after the screen is built (measured 2026-10-09: absent at 0, 60 and 360 presents, present by 1360 at
+# both 1024x768 and 1280x768; the moment is wall-clock, not a frame count), and nothing in the widget list
+# says when. The sim clock is stopped here, so `gameclock` is no gate; a long present dwell is, with the
+# cursor parked on empty sky so no planet hover highlight lands in the frame.
+cursorhold 1100 300 6000
+capture galaxy
+
+# leave the screen the way a player does (ESC), and prove the session survived it
+key 0x01
+gamemode 2
+gameclock 900
+# no `capture back`: the strategic frame behind it is live (units move, a message line is drawn), so a
+# pixel baseline would flap; gamemode 2 + the sim clock still advancing is the survival proof.
+log galaxy screen drawn at the picker mode, left again, session alive
+end

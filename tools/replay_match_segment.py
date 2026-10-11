@@ -262,6 +262,7 @@ def resolve(path):
             map=(sj or {}).get("map"),
             slot=(sj or {}).get("slot"),
             lockstep=bool((sj or {}).get("lockstep_step_ms")),
+            role=(sj or {}).get("role"),
             config=config_of(arm),
             arm=arm_flags(arm),
             ref=log,
@@ -305,6 +306,7 @@ def resolve(path):
         map=played[0][1].get("map"),
         slot=played[0][1].get("slot"),
         lockstep=bool(played[0][1].get("lockstep_step_ms")),
+        role=played[0][1].get("role"),
         config=config_of(ref),
         arm=arm,
         ref=ref,
@@ -677,6 +679,186 @@ def replay_flags(rec, steps, seat=-1, legacy_suppress=False, extra=None, session
     return flags
 
 
+def auto_session_mode(rec):
+    """tooling:TL-REPLAY-BM: the SESSION_MODE the recorded sim BODY ran in, from session.json.
+    role=solo (one process, no peer) ran mode 2 even though the config carries lockstep_step_ms (it is
+    a config value, not a statement about the session); a hosted/joined match ran mode 3. A recording
+    with neither signal leaves the replay's own (-1)."""
+    if rec.get("role") == "solo":
+        return 2
+    return 3 if rec.get("lockstep") else -1
+
+
+def host_sync_keys(schema_path=None):
+    """PT-SET1: [(key, default_text)] of the host-synced gameplay rows (settings_schema.json `host: true`)."""
+    path = schema_path or os.path.join(REPO, "src", "launcher", "settings_schema.json")
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    out = []
+    for r in doc.get("settings", doc.get("rows", [])):
+        if r.get("host"):
+            d = r.get("default")
+            out.append((r["key"], repr(d) if isinstance(d, float) else str(int(d))))
+    return out
+
+
+def gameplay_net_extra(sj, user_extra="", keys=None):
+    """PT-SET1: the lane `--net-extra` that replays the recording with the gameplay settings it ran with.
+
+    session.json `gameplay` is "key=value;key=value" (ints %d, floats %.17g) -- exactly the net_extra
+    shape. Returns (net_extra, warning). A recording without the field (or an empty one: it predates the
+    rows) replays with the registry defaults, and the warning says so. Keys the registry no longer
+    knows are dropped with a note; keys the caller's own --net-extra already sets win."""
+    keys = host_sync_keys() if keys is None else keys
+    known = dict(keys)
+    taken = {kv.split("=", 1)[0].strip() for kv in user_extra.split(";") if "=" in kv}
+    raw = (sj or {}).get("gameplay")
+    notes = []
+    if isinstance(raw, str) and raw.strip():
+        vals = {}
+        for kv in raw.split(";"):
+            if "=" not in kv:
+                continue
+            k, v = (x.strip() for x in kv.split("=", 1))
+            if k in known:
+                vals[k] = v
+            else:
+                notes.append("recorded key %r is not a gameplay row any more -- dropped" % k)
+        src = "recording (%s)" % ((sj or {}).get("gameplay_src") or "?")
+        for (
+            k,
+            d,
+        ) in keys:  # a key the recording lacks gets its registry default, not the lane's whatever
+            vals.setdefault(k, d)
+    else:
+        vals = dict(keys)
+        src = "registry defaults"
+        notes.append(
+            "session.json has no `gameplay` field (a recording from before PT-SET1) -- replaying with "
+            "the registry defaults; a desync may be the settings, not the sim"
+        )
+    pairs = ["%s=%s" % (k, vals[k]) for k, _ in keys if k not in taken]
+    return ";".join(pairs), "; ".join(notes) if notes else None, src
+
+
+def hqueue_counts(sr, first, last):
+    """tooling:TL-REPLAY-BM: the recording's order_queue_count AT ITS HASH POINT for match steps
+    first..last -> list of u32 (0xFFFFFFFF = the state recording does not cover that step).
+
+    WHY. The order stream (MHOR) holds the queue at dispatch ENTRY, S(N). The hash point sits earlier
+    in the same sim step, and S(N) = [what was queued by then: released orders + a human's direct
+    enqueue (immediate lane, exec_time 0)] + [the AI tick's tail T, enqueued between hash and
+    dispatch]. The replay's own AI regenerates T but nothing regenerates the human's click, and no
+    field of the record says which is which. The state recording's order_queue_count at step N IS the
+    boundary: the first that-many records of S(N) are the hash-point queue. The harness (mh_hqueue.bin,
+    order_replay_inject_prefix) injects exactly that prefix."""
+    import struct
+
+    ci = sr.region_index["order_queue_count"]
+    base = sr.region_offset[ci]
+    rlen = sr.regions[ci].len
+    out = {}
+    cur = None  # bytearray(4): the count region's bytes as of the chunk being walked
+    for c in sr.chunks:
+        kind = type(c).__name__
+        if kind == "KeyframeChunk":
+            cur = bytearray(c.state[base : base + rlen])
+            out[c.step] = struct.unpack_from("<I", cur, 0)[0]
+        elif kind == "StepChunk":
+            for ridx, off, ln, data in c.runs:
+                if ridx == ci and cur is not None:
+                    cur[off : off + ln] = data
+            if cur is not None:
+                out[c.step] = struct.unpack_from("<I", cur, 0)[0]
+    return [out.get(k, 0xFFFFFFFF) for k in range(first, last + 1)]
+
+
+def write_hqueue(rec, dst, first=1, last=0):
+    """Write mh_hqueue.bin for match steps first..last (replay step k = recorded step first+k-1) from
+    the recording's state file. -> number of steps covered, or 0 (no state recording: the harness
+    falls back to its clock-window split, unchanged)."""
+    import struct
+
+    import state_record
+
+    st_path = match_state_path(rec.get("snap_dir"))
+    if not st_path:
+        return 0
+    sr = state_record.load(st_path)
+    counts = hqueue_counts(sr, first, last)
+    with open(dst, "wb") as fh:
+        fh.write(struct.pack("<%dI" % len(counts), *counts))
+    return sum(1 for v in counts if v != 0xFFFFFFFF)
+
+
+def slice_from_step(rec, step, outdir):
+    """tooling:PT-FIX1 (--from-keyframe): stage the replay inputs for a replay that STARTS at match step
+    `step` instead of step 1, into `outdir`. -> dict(files=<rec files with orders/clock/seed swapped>, base).
+
+    THE SEED. mh_match_state.bin holds the same region set, in the same manifest order, as the step-1
+    seed blob (mh_match_seed.bin -- verified here by size), sampled at the same point (the step's
+    PRE-BODY boundary). state_at(step) laid out flat IS therefore a seed for `step`: the harness injects
+    it at replay step 1, so replay step k runs recorded step `step`+k-1. A keyframe step costs no delta
+    walk; any other step is rebuilt from the previous keyframe.
+    THE ORDERS are the per-step due-queue snapshots (MHOR v1: u32 step + order[0x44]); records of steps
+    >= `step` are kept and renumbered by -(step-1). THE CLOCK is one double per step: dropped (step-1).
+    `base` = the recording's step_base + (step-1), so parse_stream() puts recorded step `step` at 1.
+
+    NOT IN THE SEED: whatever the hash manifest does not cover (the AI's private state, per-module
+    statics). The replay's verdict says whether that matters -- identical hashes from replay step 1."""
+    import struct
+
+    import state_record
+
+    st_path = match_state_path(rec.get("snap_dir"))
+    if not st_path:
+        raise Refusal(
+            "--from-keyframe needs the recording's mh_match_state.bin[.gz] (state_record=1)"
+        )
+    sr = state_record.load(st_path)
+    if sr.stop_reason:
+        print("  note: state recording stops at step %s (%s)" % (sr.last_step, sr.stop_reason))
+    seed_len = os.path.getsize(rec["files"]["seed"])
+    if sr.total_len != seed_len:
+        raise Refusal(
+            "the state recording's region set (%d bytes) is not the seed's (%d bytes) -- cannot "
+            "build a seed from it" % (sr.total_len, seed_len)
+        )
+    try:
+        st = state_record.state_at(sr, step)
+    except ValueError as e:
+        raise Refusal(str(e))
+    os.makedirs(outdir, exist_ok=True)
+    seed = os.path.join(outdir, SEG["seed"])
+    with open(seed, "wb") as fh:
+        for r in sr.regions:
+            fh.write(st[r.name])
+    off = step - 1
+    clock = os.path.join(outdir, SEG["clock"])
+    with open(rec["files"]["clock"], "rb") as fi, open(clock, "wb") as fo:
+        fi.seek(off * 8)
+        shutil.copyfileobj(fi, fo, 1 << 20)
+    orders = os.path.join(outdir, SEG["orders"])
+    kept = 0
+    with open(rec["files"]["orders"], "rb") as fi, open(orders, "wb") as fo:
+        fo.write(fi.read(ORDERS_MAGIC_LEN))
+        while True:
+            chunk = fi.read(ORDER_REC * 4096)
+            if not chunk:
+                break
+            for i in range(0, len(chunk), ORDER_REC):
+                (stp,) = struct.unpack_from("<I", chunk, i)
+                if stp >= step:
+                    fo.write(struct.pack("<I", stp - off) + chunk[i + 4 : i + ORDER_REC])
+                    kept += 1
+    print(
+        "  from step %d: seed = state_at(%d) (%d bytes), clock -%d step(s), %d order record(s) kept"
+        % (step, step, seed_len, off, kept)
+    )
+    files = dict(rec["files"], seed=seed, clock=clock, orders=orders)
+    return dict(files=files, base=rec["base"] + off)
+
+
 def run_replay(
     rec,
     config,
@@ -689,12 +871,30 @@ def run_replay(
     map_file=None,
     session_mode=-1,
     extra_ini=(),
+    hqueue=True,
 ):
     import make_lane
 
     lane = provision_lane(config)
     for k, dst in LANE_NAME.items():
         shutil.copyfile(rec["files"][k], os.path.join(lane, dst))
+    hq_dst = os.path.join(lane, "mh_hqueue.bin")
+    if os.path.isfile(hq_dst):
+        os.remove(
+            hq_dst
+        )  # a lane is reused: never let a previous recording's counts steer this one
+    if hqueue:
+        n_hq = write_hqueue(
+            rec, hq_dst, rec.get("first_step", 1), rec.get("first_step", 1) + steps - 1
+        )
+        print(
+            "  hash-point queue counts: %s"
+            % (
+                "%d step(s) from the state recording" % n_hq
+                if n_hq
+                else "none (no state recording)"
+            )
+        )
     if map_file:
         lane_add_map(lane, map_file)
     row, label = map_row(os.path.join(lane, "Maps"), rec.get("map"))
@@ -745,6 +945,13 @@ def run_replay(
         "120",
         "--headless",
     ]
+    gp_extra, gp_note, gp_src = gameplay_net_extra(
+        _session_json(rec.get("snap_dir") or rec["dir"]), net_extra
+    )
+    print("  gameplay: %s from %s" % (gp_extra or "(none)", gp_src))
+    if gp_note:
+        print("  WARNING: " + gp_note)
+    net_extra = ";".join(x for x in (net_extra, gp_extra) if x)
     if net_extra:
         argv += ["--net-extra", net_extra]
     for frag in extra_ini:
@@ -802,8 +1009,9 @@ def main(argv=None):
     ap.add_argument(
         "--session-mode",
         default="auto",
-        help="the SESSION_MODE the sim body runs in (harness replay_session_mode): auto = 3 for a "
-        "lockstep match (session.json lockstep_step_ms), else leave the replay's own; -1 = leave",
+        help="the SESSION_MODE the sim body runs in (harness replay_session_mode): auto = 2 for a "
+        "solo recording (session.json role=solo), 3 for a lockstep match (lockstep_step_ms), else "
+        "leave the replay's own; -1 = leave",
     )
     ap.add_argument(
         "--legacy-suppress",
@@ -835,6 +1043,21 @@ def main(argv=None):
         help="the pre-TL-REPLAY-ROSTER walk (one computer in slot 1 whatever the recording seated) "
         "-- the negative arm of the roster seating",
     )
+    ap.add_argument(
+        "--from-keyframe",
+        type=int,
+        default=0,
+        metavar="N",
+        help="start the replay AT match step N: the seed is the state recording's state at N "
+        "(mh_match_state.bin), orders/clock are sliced + renumbered from N (replay step k = recorded "
+        "step N+k-1). --steps then counts from N. Saves replaying a long match from step 1",
+    )
+    ap.add_argument(
+        "--no-hqueue",
+        action="store_true",
+        help="do not hand the harness the recording's hash-point queue counts (the pre-"
+        "TL-REPLAY-BM clock-window split of the dispatch snapshot) -- the negative arm",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -846,6 +1069,17 @@ def main(argv=None):
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
         return 2
+    if a.from_keyframe > 1:
+        try:
+            sl = slice_from_step(
+                rec,
+                a.from_keyframe,
+                os.path.join(REPO, "tmp", "replay_match", "from_%d" % a.from_keyframe),
+            )
+        except Refusal as e:
+            print("replay_match_segment: REFUSED -- %s" % e)
+            return 2
+        rec = dict(rec, files=sl["files"], base=sl["base"], first_step=a.from_keyframe)
     ref_steps, ref_regs = parse_stream(rec["ref"], rec["base"])
     ref_steps = {s: v for s, v in ref_steps.items() if s >= 1}
     n_clock = clock_steps(rec["files"]["clock"])
@@ -858,7 +1092,7 @@ def main(argv=None):
         if a.seat == "auto"
         else int(a.seat)
     )
-    smode = (3 if rec.get("lockstep") else -1) if a.session_mode == "auto" else int(a.session_mode)
+    smode = auto_session_mode(rec) if a.session_mode == "auto" else int(a.session_mode)
     print(
         "recording: %s (%s), base=%d, %d hashed step(s), %d clock step(s), %d order record(s), "
         "map=%r, recorded in configuration (%s)"
@@ -905,6 +1139,7 @@ def main(argv=None):
             map_file=a.map_file,
             session_mode=smode,
             extra_ini=a.extra_ini,
+            hqueue=not a.no_hqueue,
         )
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
@@ -969,6 +1204,14 @@ def _line(step, clock, state, regs=None):
     if regs is not None:
         s += "R %d %s\n" % (step, " ".join(regs))
     return s
+
+
+def _refused(fn):
+    try:
+        fn()
+    except Refusal:
+        return True
+    return False
 
 
 def selftest():
@@ -1370,8 +1613,132 @@ def selftest():
             "match_state_path: the lexically first stem wins across both forms (_2.bin.gz before _3.bin)",
             match_state_path(st_d) == os.path.join(st_d, "mh_match_state_2.bin.gz"),
         )
+        # tooling:PT-FIX1 --from-keyframe: slice a 6-step synthetic match (4-byte regions x,y) at step 4.
+        import struct
+
+        sl_dir = os.path.join(tmp, "slice_src")
+        os.makedirs(sl_dir)
+        sl_states = {s: bytes([s] * 4 + [100 + s] * 4) for s in range(1, 7)}
+        sl_data, _ = state_record._build_match(sr_defs, sl_states, keyframe_every=3)
+        put(sl_dir, "mh_match_state.bin", sl_data)
+        put(sl_dir, "mh_harness_seed.bin", sl_states[1])
+        put(sl_dir, "mh_match_clock.bin", struct.pack("<6d", 1, 2, 3, 4, 5, 6))
+        recs = b"MHOR" + struct.pack("<I", 1)
+        for stp in (1, 3, 4, 4, 6):
+            recs += struct.pack("<I", stp) + bytes([stp]) * (ORDER_REC - 4)
+        put(sl_dir, "mh_match_orders.bin", recs)
+        sl_rec = dict(
+            snap_dir=sl_dir,
+            base=10,
+            files=dict(
+                seed=os.path.join(sl_dir, "mh_harness_seed.bin"),
+                clock=os.path.join(sl_dir, "mh_match_clock.bin"),
+                orders=os.path.join(sl_dir, "mh_match_orders.bin"),
+            ),
+        )
+        got = slice_from_step(sl_rec, 4, os.path.join(tmp, "slice_out"))
+        with open(got["files"]["seed"], "rb") as fh:
+            sl_seed = fh.read()
+        with open(got["files"]["clock"], "rb") as fh:
+            sl_clock = struct.unpack("<3d", fh.read())
+        with open(got["files"]["orders"], "rb") as fh:
+            sl_ord = fh.read()
+        sl_steps = [
+            struct.unpack_from("<I", sl_ord, ORDERS_MAGIC_LEN + i * ORDER_REC)[0]
+            for i in range(order_records(got["files"]["orders"]))
+        ]
+        check(
+            "from-keyframe: the seed is the state recording's state at the start step",
+            sl_seed == sl_states[4],
+        )
+        check(
+            "from-keyframe: the clock track starts at the start step (step 4 -> first double)",
+            sl_clock == (4.0, 5.0, 6.0) and sl_ord[:4] == b"MHOR",
+        )
+        check(
+            "from-keyframe: orders before the start step are dropped, the rest renumbered from 1",
+            sl_steps == [1, 1, 3] and got["base"] == 13,
+        )
+        check(
+            "from-keyframe: a start step the state recording does not hold is REFUSED",
+            _refused(lambda: slice_from_step(sl_rec, 9, os.path.join(tmp, "slice_bad"))),
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    # tooling:TL-REPLAY-BM: session mode from session.json; hash-point queue counts from a state file
+    check(
+        "auto session mode: role=solo -> 2 even with lockstep_step_ms",
+        auto_session_mode({"role": "solo", "lockstep": True}) == 2,
+    )
+    check(
+        "auto session mode: hosted lockstep -> 3",
+        auto_session_mode({"role": "host", "lockstep": True}) == 3,
+    )
+    check("auto session mode: neither signal -> -1 (leave)", auto_session_mode({}) == -1)
+    # PT-SET1: the recording's gameplay settings reach the replay lane
+    gk = [
+        ("turret_reload_realtime_fix", "1"),
+        ("turret_fire_rate_mult", "2.0"),
+        ("turret_clip_fix", "0"),
+    ]
+    ex, warn, src = gameplay_net_extra(
+        {
+            "gameplay": "turret_reload_realtime_fix=0;turret_fire_rate_mult=3;turret_clip_fix=1",
+            "gameplay_src": "adopted",
+        },
+        "",
+        gk,
+    )
+    check(
+        "gameplay: a recorded set is passed through verbatim",
+        ex == "turret_reload_realtime_fix=0;turret_fire_rate_mult=3;turret_clip_fix=1"
+        and warn is None
+        and "adopted" in src,
+    )
+    ex, warn, _ = gameplay_net_extra(
+        {"gameplay": "turret_fire_rate_mult=3;gone_key=1"}, "turret_clip_fix=1", gk
+    )
+    check(
+        "gameplay: a missing key = registry default, an unknown key dropped + noted, the caller's --net-extra wins",
+        ex == "turret_reload_realtime_fix=1;turret_fire_rate_mult=3"
+        and warn
+        and "gone_key" in warn,
+    )
+    for sj in ({}, None, {"gameplay": ""}, {"gameplay": 5}):
+        ex, warn, src = gameplay_net_extra(sj, "", gk)
+        check(
+            "gameplay: no usable field %r -> registry defaults + a warning" % (sj,),
+            ex == "turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_clip_fix=0"
+            and warn
+            and "no `gameplay` field" in warn
+            and src == "registry defaults",
+        )
+    live = host_sync_keys()
+    check(
+        "gameplay: the live schema yields the four turret rows",
+        [k for k, _ in live][:4]
+        == [
+            "turret_reload_realtime_fix",
+            "turret_fire_rate_mult",
+            "turret_clip_fix",
+            "turret_fire_poll_fix",
+        ],
+    )
+    import state_record
+
+    rdefs = [("order_queue", 8), ("order_queue_count", 4)]
+    sts = {}
+    for stp, c in ((10, 0), (11, 0), (12, 1), (13, 1), (14, 3), (15, 0)):
+        sts[stp] = bytes(8) + struct.pack("<I", c)
+    blob, _ = state_record._build_match(rdefs, sts, 4)
+    hq_path = os.path.join(tempfile.mkdtemp(prefix="hq_"), "mh_match_state.bin")
+    with open(hq_path, "wb") as fh:
+        fh.write(blob)
+    got = hqueue_counts(state_record.load(hq_path), 9, 16)
+    check(
+        "hqueue_counts: per-step counts, uncovered steps unknown",
+        got == [0xFFFFFFFF, 0, 0, 1, 1, 3, 0, 0xFFFFFFFF],
+    )
     print("replay_match_segment selftest: %s" % ("PASS" if not fails else "FAIL (%d)" % len(fails)))
     return 1 if fails else 0
 

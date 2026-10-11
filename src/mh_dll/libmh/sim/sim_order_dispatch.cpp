@@ -590,6 +590,14 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
 // ---- the public surface ---------------------------------------------------------------------------
 
 void order_queue_dispatch() {
+    // mp:Q3: THIS is the rebind target (`[rebind] llm_strat_order_queue_dispatch -> OURS`, armed at the
+    // ship default), so a promoted llm_strat_sim_step reaches the body HERE by a plain in-module call and
+    // never crosses the entry -- where the promoted arm below fires the observer. Measured: mh.dll's order
+    // recording got 0 dispatch calls over 997 steps of a loaded save while the harness's trampoline run of
+    // the same save recorded 1676 orders. The two routes are disjoint (the promoted arm runs
+    // detail::order_queue_dispatch through run_instrumented, never this wrapper), so the observer still
+    // fires exactly once per dispatch.
+    fire_dispatch_observer();
     sim_state st = state();
     detail::order_queue_dispatch(st.read, st.own, live_dispatch_calls());
 }

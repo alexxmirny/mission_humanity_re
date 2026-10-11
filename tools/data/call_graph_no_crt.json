@@ -813,7 +813,8 @@
    "inline": false,
    "tags": [
     "conf:med",
-    "sub:ui"
+    "sub:ui",
+    "todo:proto"
    ]
   },
   {
@@ -1103,7 +1104,7 @@
   },
   {
    "id": "00414395",
-   "name": "llm_ui_hud_topbar_tick",
+   "name": "llm_ui_hud_bottom_strip_tick",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -1836,13 +1837,12 @@
   },
   {
    "id": "00419b98",
-   "name": "llm_util_unpack_static_category_table",
+   "name": "llm_ui_icon_table_unpack",
    "namespace": "Global",
    "external": false,
    "thunk": false,
    "inline": false,
    "tags": [
-    "conf:low",
     "sub:util"
    ]
   },
@@ -2041,7 +2041,7 @@
   },
   {
    "id": "0041b76c",
-   "name": "llm_ui_icon_rect_hit_test_cached",
+   "name": "llm_ui_icon_rect_hit_test_release_pos",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -11873,7 +11873,9 @@
    "external": false,
    "thunk": false,
    "inline": false,
-   "tags": []
+   "tags": [
+    "sub:unit"
+   ]
   },
   {
    "id": "004813f1",
@@ -11910,7 +11912,9 @@
     "patch:base",
     "patch:crosspool",
     "patch:row",
+    "rev:verified",
     "sub:buildings",
+    "sub:unit",
     "sub:units"
    ]
   },
@@ -16099,6 +16103,7 @@
    "thunk": false,
    "inline": false,
    "tags": [
+    "conf:high",
     "conf:med",
     "sub:net"
    ]
@@ -16333,6 +16338,7 @@
    "thunk": false,
    "inline": false,
    "tags": [
+    "conf:high",
     "conf:med",
     "sub:net"
    ]
@@ -17604,6 +17610,8 @@
    "thunk": false,
    "inline": false,
    "tags": [
+    "rev:verified",
+    "sub:gfx",
     "todo:globals"
    ]
   },
@@ -17628,7 +17636,9 @@
    "external": false,
    "thunk": false,
    "inline": false,
-   "tags": []
+   "tags": [
+    "sub:gfx"
+   ]
   },
   {
    "id": "004a5ae8",
@@ -17966,7 +17976,7 @@
   },
   {
    "id": "004a8b73",
-   "name": "llm_ui_set_draw_surface",
+   "name": "llm_ui_blit_bitmap_rect",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -19133,7 +19143,9 @@
    "external": false,
    "thunk": false,
    "inline": false,
-   "tags": []
+   "tags": [
+    "todo:proto"
+   ]
   },
   {
    "id": "004b7384",
@@ -23809,7 +23821,7 @@
   },
   {
    "id": "004d10bc",
-   "name": "FUN_004d10bc",
+   "name": "llm_input_mouse_device_init",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -23854,7 +23866,7 @@
   },
   {
    "id": "004d1138",
-   "name": "FUN_004d1138",
+   "name": "llm_input_set_cursor_pos",
    "namespace": "Global",
    "external": false,
    "thunk": false,

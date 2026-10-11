@@ -19,6 +19,7 @@
 
 #include "include/mh_log_sink.h" // mp:LOG2: session.json goes through the log sink's writer
 #include "include/mh_net_export.h"
+#include "config/gameplay.h"             // PT-SET1
 #include "include/mh_seam_export.h"      // MH_Seam_StartTransport (async connect kick)
 #include "include/mh_chatinput_export.h" // MH_ChatInput_Codepage -- the pinned input codepage (F3)
 #include "mh_net_proto/session_info.h"   // SESSION_INFO descriptor + lobby-id (S1/S2 discovery)
@@ -34,6 +35,8 @@
 #include "hook/watcall.h"                // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
 #include "desync/desync_watch.h"         // mp:RM1 -- match_end(): the [desync] rollup into the match's own directory
+#include "desync/order_capture.h"        // mp:Q3 -- session_close(): the order recording ends with its session
+#include "desync/hitch_probe.h"          // mp:Q4 -- game-thread time per recording path, [hitch] lines
 #include "seams/session_close_plan.h"    // TL-HARN-CLEANCLOSE -- the close's sequencing, shared with the harness stop
 #include "include/mh_presence.h"         // RL15 -- presence.json (the launcher's Discord module reads it)
 
@@ -559,8 +562,9 @@ extern "C" void MH_Seam_SessionPacing(long *clock_ms, long *stall, long *icon_ca
                                       int *step_ms, int *sim_step_ms); // net_lockstep.cpp
 
 void mp_session_open(const unsigned char *match_id, int slot, const char *mode, const char *map) {
-    if (mh_net_proto::uuid7_is_nil(match_id)) return; // no id -> no session to name
-    char hex[mh_net_proto::UUID7_HEX_CAP];
+    if (mh_net_proto::uuid7_is_nil(match_id)) return;             // no id -> no session to name
+    mh::desync::hitch::scope hs(mh::desync::hitch::SESSION_OPEN); // mp:Q4
+    char                     hex[mh_net_proto::UUID7_HEX_CAP];
     mh_net_proto::uuid7_hex(match_id, hex, sizeof(hex));
     if (MH_RunDir_SessionActive()) {
         if (lstrcmpA(MH_RunDir_SessionMatchId(), hex) == 0) return; // the same lobby re-asserting itself
@@ -591,6 +595,8 @@ void mp_session_open(const unsigned char *match_id, int slot, const char *mode, 
     g_session_rec.map_hash = mh_session_hash((const void *)ADDR_CUR_MAP, mh_net_proto::MAP_HEADER_SIZE);
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
     session_players(&g_session_rec);
+    mh::gameplay::current(g_session_rec.gameplay, (int)sizeof(g_session_rec.gameplay), g_session_rec.gameplay_src,
+                          (int)sizeof(g_session_rec.gameplay_src));    // PT-SET1
     mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP, "running"); // RL15: see mh_session_dir.h
     g_desync_latch = false;
     MH_Seam_SessionPacing(nullptr, nullptr, nullptr, nullptr, &g_session_rec.lockstep_step_ms,
@@ -710,6 +716,9 @@ void mp_session_solo_tick() {
     mh_net_proto::uuid7_make(mh_session_unix_ms(), rnd, id);
     const int slot = (g_a.local_player_index != nullptr) ? *g_a.local_player_index : 0;
     mp_session_open(id, slot, mode, map);
+    // mp:Q2: a solo session has no session_begin_multi to arm the state recorder, so its folder's
+    // open is that boundary (its close already ends the file: close_rollups -> desync::match_end).
+    if (MH_RunDir_SessionActive()) mh::desync::solo_session_begin();
 }
 
 // ---- RL15: presence.json ------------------------------------------------------------------------
@@ -950,6 +959,9 @@ void close_resets() {
     // The per-peer download bookkeeping and the host's content claim belong to the lobby that just
     // ended. The OPEN REDIRECT deliberately survives it -- see session_reset().
     mh::seams::maps::session_reset();
+    // PT-SET1: the match is over: back to this process's own values for the next lobby/skirmish. NOT
+    // recorded -- close_record (next in the plan) samples what the finished match actually ran.
+    mh::gameplay::restore_local("session closed");
 }
 
 // mp:RM1 + mp:U41b: the two end-of-match rollups. Shared by the record and by the harness stop's
@@ -961,6 +973,9 @@ void close_rollups() {
     // to read. Before SESSION_END for the same reason the line below is: the directory switch is
     // the next statement but two.
     mh::desync::match_end();
+    // mp:Q3: the order recording ends with its SESSION (not with a match: a lobby's session_begin_multi
+    // also reaches match_end above, mid-session) -- tail handed to the sink, then gzip.
+    mh::desync::orders::session_close("the session closed");
     // mp:U41b/U41e: the inbound-queue rollup is per MATCH, and this is the match boundary -- not the
     // transport's, which a host_rematch never crosses (the link stays up). The module logs this
     // match's rollup and restarts its counters, keeping anything still queued -- on EITHER transport
@@ -980,6 +995,9 @@ void close_record(const char *reason) {
     // it is a record of what the peer could see at the open, not a promise about the match.
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
     session_players(&g_session_rec); // RL15: complete at the close, like the roster
+    // PT-SET1: the close wins, like the roster -- a client opened with its own values and ran the host's.
+    mh::gameplay::current(g_session_rec.gameplay, (int)sizeof(g_session_rec.gameplay), g_session_rec.gameplay_src,
+                          (int)sizeof(g_session_rec.gameplay_src));
     // RL15: sampled BEFORE close_rollups() -- match_end() resets the detector's counters.
     mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP,
                mh_session_outcome(g_session_rec.reason, g_desync_latch || mh::desync::detected()));
@@ -1037,7 +1055,17 @@ void mp_session_close(const char *reason) {
     // Idempotent: only the first exit seam on an open session does the work. A session the harness
     // already closed IN PLACE (MH_Session_HarnessStop below) gets its directory switch, the resets
     // and U40 here, but no second record.
-    mh::session_close::close(g_close_state, CLOSE_OPS, reason);
+    // mp:Q4: the close is timed only when it has a session to close (an exit seam on no session is a no-op),
+    // and every recording path's [hitch] line for the session is logged after it.
+    const bool timed = MH_RunDir_SessionActive() != 0;
+    {
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        mh::session_close::close(g_close_state, CLOSE_OPS, reason);
+        QueryPerformanceCounter(&t1);
+        if (timed) mh::desync::hitch::add_ticks(mh::desync::hitch::SESSION_CLOSE, t1.QuadPart - t0.QuadPart);
+    }
+    if (timed) mh::desync::hitch::report(&seam_log, reason ? reason : "close");
 }
 
 // TL-HARN-CLEANCLOSE: the determinism harness's end of a match (mh_harness.dll, harness.cpp's
@@ -1049,14 +1077,19 @@ void mp_session_close(const char *reason) {
 // NOT from DllMain / DLL_PROCESS_DETACH: this writes files and takes the transport's queue lock,
 // which is exactly what mh.c's deliberately-empty detach arm forbids.
 extern "C" void MH_Session_HarnessStop(unsigned step) {
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
     const mh::session_close::stop_result r =
         mh::session_close::harness_stop(g_close_state, CLOSE_OPS, "harness_stop");
+    QueryPerformanceCounter(&t1);
+    mh::desync::hitch::add_ticks(mh::desync::hitch::SESSION_CLOSE, t1.QuadPart - t0.QuadPart); // mp:Q4
     char b[256];
     wsprintfA(b,
               "; [session] HARNESS_STOP step=%u close=%s -- the harness stopped hashing; the match's "
               "end-of-match lines are written now because the runner ends this process from outside\n",
               step, mh::session_close::stop_result_name(r));
     seam_log(b);
+    mh::desync::hitch::report(&seam_log, "harness_stop");
 }
 
 namespace {
@@ -1082,6 +1115,7 @@ void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
     memcpy(si.match_id, g_mp_match_id, sizeof(si.match_id)); // SES0: advertise it every tick
     si.host_version = MH_MP_HOST_VERSION;
     lstrcpynA(si.build, mp_own_build(), (int)sizeof(si.build)); // RL11: host-local, join_admit()'s comparand
+    si.gameplay_digest = mh::gameplay::local_digest();          // PT-SET1: host-local, join_admit()'s comparand
     // F3: advertise the input codepage this peer has pinned, every tick, beside the identity. It is
     // resolved rather than stored: MH_ChatInput_Codepage() answers GetACP() when the seam never armed,
     // so "no [input] codepage line in the ini" and "pinned to the machine default" are the same claim
@@ -1983,6 +2017,16 @@ void on_join_recv(int sender, const unsigned char *buf, int len) {
         host_reply_refused(sender, verdict, mine, jr);
         return;
     }
+    if (verdict == mh_net_proto::JoinAdmit::RefusedGameplay) {
+        // PT-SET1: the joiner syncs a different gameplay KEY SET (a different build of the registry). Both
+        // digests are named and the refusal is DELIVERED, like RefusedBuild.
+        wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; ours %08X, theirs %08X)\n",
+                  sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
+                  (unsigned)mine.gameplay_digest, (unsigned)jr.gameplay_digest);
+        seam_log(b);
+        host_reply_refused(sender, verdict, mine, jr);
+        return;
+    }
     if (verdict == mh_net_proto::JoinAdmit::RefusedOldProtocol) {
         wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; format %u < %u)\n",
                   sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
@@ -2213,7 +2257,7 @@ void on_join_connect() {
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build());
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(), mh::gameplay::local_digest());
     fill_my_player_name(jr); // S6: my player name ([A-Za-z0-9], MP-LANG)
     uint8_t buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     int     n = (int)mh_net_proto::join_request_encode(jr, buf);
@@ -2266,7 +2310,7 @@ void mp_join_resend_map_report() {
     uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
     const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
     mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build());
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(), mh::gameplay::local_digest());
     fill_my_player_name(jr);
     uint8_t   buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     const int n = (int)mh_net_proto::join_request_encode(jr, buf);
@@ -2287,6 +2331,11 @@ extern "C" int MH_Seam_ClientStartReceived(void) { return g_client_start_receive
 constexpr int START_SLOTS_BYTES = 0x39 * 8; // stride 0x39, 8 slots -- must match ADDR_LOBBY_SLOTS
 unsigned char g_start_slots[START_SLOTS_BYTES];
 volatile LONG g_start_slots_valid = 0;
+// PT-SET1: the host's gameplay-settings trailer (the bytes after the slot array in FLAG_START), same
+// publish discipline as the slots: the latch is set before g_client_start_received.
+unsigned char g_start_gp[MH_NET_MAX_PAYLOAD];
+int           g_start_gp_len   = 0;
+volatile LONG g_start_gp_valid = 0;
 // U29: disarm a stale Start when the client leaves the lobby. Without this a FLAG_START that arrived
 // (or arrives) while the client is off on the browser is still latched, and the entry driver would
 // act on it against the dead lobby's slots.
@@ -2305,6 +2354,14 @@ extern "C" void MH_Seam_InjectStartReceived(void) {
 extern "C" void MH_Seam_ClearStartReceived(void) {
     InterlockedExchange(&g_client_start_received, 0);
     InterlockedExchange(&g_start_slots_valid, 0); // U28 payload belongs to that Start; drop it too
+    InterlockedExchange(&g_start_gp_valid, 0);    // PT-SET1 trailer: same lifetime
+}
+
+// PT-SET1: the host's gameplay trailer. Returns its length and fills `out` iff the Start carried one.
+extern "C" int MH_Seam_TakeStartGameplay(unsigned char *out, int cap) {
+    if (!g_start_gp_valid || out == nullptr || cap < g_start_gp_len) return 0;
+    memcpy(out, g_start_gp, g_start_gp_len);
+    return g_start_gp_len;
 }
 
 // Returns START_SLOTS_BYTES and fills `out` iff the host shipped a full array with its Start; 0 if it
@@ -2321,9 +2378,19 @@ void on_start_recv(int sender, const unsigned char *buf, int len) {
     // ORDER MATTERS: publish the slots BEFORE the gate. The entry tick polls the gate on the main
     // thread and builds Players[] immediately after it opens, so releasing first would let it win the
     // race and build from its own stale copy -- which is the entire bug this payload exists to close.
-    if (buf != nullptr && len == START_SLOTS_BYTES) {
+    // PT-SET1: a Start from a gameplay-aware host is the slot array followed by a trailer ('GP' ...);
+    // len >= START_SLOTS_BYTES is accepted, the slots are unchanged, and the trailer is stashed for the
+    // adopt point (launch.cpp, before begin_map_load). A bare slot array (an older host) = no trailer.
+    InterlockedExchange(&g_start_gp_valid, 0);
+    if (buf != nullptr && len >= START_SLOTS_BYTES) {
         memcpy(g_start_slots, buf, START_SLOTS_BYTES);
         InterlockedExchange(&g_start_slots_valid, 1);
+        const int tl = len - START_SLOTS_BYTES;
+        if (tl > 0 && tl <= (int)sizeof(g_start_gp)) {
+            memcpy(g_start_gp, buf + START_SLOTS_BYTES, tl);
+            g_start_gp_len = tl;
+            InterlockedExchange(&g_start_gp_valid, 1);
+        }
     } else if (len != 0) {
         // A wrong-sized payload is a BUILD MISMATCH, not something to paper over -- adopting a partial
         // array would be worse than adopting none. Say so, and fall back to the legacy behaviour.
@@ -2340,6 +2407,9 @@ void on_start_recv(int sender, const unsigned char *buf, int len) {
     wsprintfA(b, "; U2 START from %d -> client entering the game (U28 host slots: %s)\n", sender,
               g_start_slots_valid ? "ADOPTED" : "none sent -- using our own");
     seam_log(b);
+    if (g_start_slots_valid && !g_start_gp_valid)
+        seam_log("; gameplay: the host's START carried NO gameplay trailer -- this client will use its OWN local "
+                 "values (host and client on different builds? host-synced settings may differ)\n");
 }
 
 // The role is implied by which stub fires: the client reaches discovery, the host reaches advertise.

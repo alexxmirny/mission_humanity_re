@@ -2184,6 +2184,14 @@ impl App {
         };
         self.model
             .set_provider_options(Provider::LangPacks, providers::lang_packs(Some(&dir)));
+        self.model.set_provider_options(
+            Provider::Resolutions,
+            crate::settings::resolutions::options(
+                crate::settings::resolutions::read_desktop(),
+                tr("setting.video.resolution.auto"),
+                tr("setting.video.resolution.classic"),
+            ),
+        );
         let store = ConfigStore::new(&mut self.config, self.layout.config());
         self.model.load(bytes.as_deref(), &store);
         self.settings_note = None;

@@ -1,0 +1,66 @@
+# RES2: mp_host_start.txt, then the HOST (one peer only) uses the map zoom while the lockstep match runs.
+#
+# The determinism claim is that the zoom, the crop origin and the camera tiles the zoom absorbs are view state:
+# nothing hashed, nothing in the order pipeline or a packet. This script is what makes the claim a measurement --
+# `test_ui.py --determinism --det-wheel` runs this on the host and the stock mp_client_start.txt on the client,
+# and mp_analyze must still report ALL PAIRS IDENTICAL while the host's camera has been moved by the zoom's
+# camera absorb (zooming out toward the edge of the viewport hands whole tiles to the camera) and the client's has not.
+#
+# Pair with mp_client_start.txt. The host's ini (tools/uiscripts/ini/map_zoom_det_host.ini) pins the owned
+# DirectInput the `rawmouse` verb feeds.
+
+settled value:110
+capture m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture m2_lobby_ready
+clickl Start
+
+absent Network players
+gameclock 6000
+capture m3_launched
+rawfocus 1
+
+# zoom in at the right-hand side of the 864x736 viewport (the det run pins 1024x768), then out at the left edge: the out step needs tiles from the camera
+cursorhold 800 300 30
+rawmouse wheel 120
+zoom ge 120
+cursorhold 800 300 10
+rawmouse wheel 120
+cursorhold 800 300 10
+rawmouse wheel 120
+zoom ge 170
+cursorhold 800 300 20
+capture m4_zoomed_in
+log HOST zoomed in 3 notches at the right edge
+cursorhold 40 500 20
+rawmouse wheel -120
+cursorhold 40 500 10
+rawmouse wheel -120
+cursorhold 40 500 20
+log HOST zoomed out 2 notches at the left edge (camera tiles absorbed)
+# and back in, leaving the host zoomed while the match plays on
+rawmouse wheel 120
+cursorhold 400 300 10
+rawmouse wheel 120
+cursorhold 400 300 30
+zoom ge 140
+capture m5_zoomed_end
+log HOST left the match zoomed -- the peers must still agree
+end

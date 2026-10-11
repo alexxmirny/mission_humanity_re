@@ -41,6 +41,8 @@ pub enum Kind {
     Enum,
     Bool,
     Int,
+    /// A decimal number (PT-SET1): `min`/`max` are mandatory in the registry, text box control.
+    Float,
     Str,
     Hotkey,
 }
@@ -61,6 +63,8 @@ pub enum Control {
 pub enum Provider {
     /// `""` (English) plus the packs found under `<game>\lang\`.
     LangPacks,
+    /// `auto`, every size the game generates for this desktop, then `stock` (settings/resolutions.rs).
+    Resolutions,
 }
 
 /// Which page a row renders on.
@@ -71,7 +75,7 @@ pub enum Page {
 }
 
 /// One setting.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Row {
     /// Stable id: `section.key` for an ini row, `launcher.<field>` for a launcher row.
     pub id: String,
@@ -89,8 +93,8 @@ pub struct Row {
     /// Section heading on the Diagnostics page (`compat` -> "Compatibility").
     pub group: Option<String>,
     pub control: Control,
-    pub min: Option<i64>,
-    pub max: Option<i64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
     /// Int values accepted although they lie outside `min..=max` (`video.fps_limit`: 0 = unlimited).
     pub allow: Vec<i64>,
     pub provider: Option<Provider>,
@@ -104,6 +108,8 @@ pub struct Row {
     /// After an Apply that changed this row, also write the value to this launcher field
     /// (the Language row mirrors the chosen pack into `ui_lang`).
     pub mirror: Option<String>,
+    /// PT-SET1 `"host": true`: in multiplayer the host's value is used (a note is drawn under the row).
+    pub host: bool,
 }
 
 impl Row {
@@ -129,7 +135,7 @@ pub struct SubTab {
     pub label: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     pub subtabs: Vec<SubTab>,
     pub rows: Vec<Row>,
@@ -141,8 +147,9 @@ pub struct Schema {
 struct Extras {
     group: Option<String>,
     control: Option<String>,
-    min: Option<i64>,
-    max: Option<i64>,
+    min: Option<f64>,
+    max: Option<f64>,
+    host: Option<bool>,
     #[serde(default)]
     allow: Vec<i64>,
     provider: Option<String>,
@@ -218,6 +225,7 @@ fn parse_kind(t: &str) -> Result<Kind, String> {
         "enum" => Kind::Enum,
         "bool" => Kind::Bool,
         "int" => Kind::Int,
+        "float" => Kind::Float,
         "string" => Kind::Str,
         "hotkey" => Kind::Hotkey,
         other => return Err(format!("unknown row type {other:?}")),
@@ -291,6 +299,7 @@ impl Schema {
             let provider = match pick_s(ov.provider, ex.provider).as_deref() {
                 None => None,
                 Some("lang_packs") => Some(Provider::LangPacks),
+                Some("resolutions") => Some(Provider::Resolutions),
                 Some(o) => return Err(format!("{id}: unknown provider {o:?}")),
             };
             let page = match pick_s(ov.page, ex.page).as_deref() {
@@ -341,6 +350,7 @@ impl Schema {
                 companion: pick_s(ov.companion, ex.companion),
                 visible_if: vis.map(|v| (v.row, v.equals)),
                 mirror: pick_s(ov.mirror, ex.mirror),
+                host: ov.host.or(ex.host).unwrap_or(false),
             });
         }
         // `before` placement: move the row in front of its anchor, when the anchor exists.
@@ -441,7 +451,10 @@ mod tests {
     fn settings_subtabs_follow_the_plan() {
         let s = Schema::builtin();
         let ids: Vec<&str> = s.settings_subtabs().iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["display", "language", "multiplayer", "updates"]);
+        assert_eq!(
+            ids,
+            ["display", "language", "multiplayer", "gameplay", "updates"]
+        );
     }
 
     #[test]
@@ -465,7 +478,7 @@ mod tests {
     fn overrides_apply_by_key() {
         let s = Schema::builtin();
         let port = s.row("net.port").unwrap();
-        assert_eq!((port.min, port.max), (Some(1024), Some(65535)));
+        assert_eq!((port.min, port.max), (Some(1024.0), Some(65535.0)));
         assert_eq!(
             s.row("lang.pack").unwrap().provider,
             Some(Provider::LangPacks)
@@ -512,6 +525,45 @@ mod tests {
             .expect("new tab");
         assert_eq!(t.label, "subtab.brand_new_tab");
         assert_eq!(s.rows_in_subtab("brand_new_tab").count(), 1);
+    }
+
+    /// PT-SET1: a float row with `host: true` in a `gameplay` sub-tab makes the tab appear on its own
+    /// (after multiplayer, before updates), with its range and the host note flag carried through.
+    #[test]
+    fn a_gameplay_float_row_makes_the_gameplay_tab_appear() {
+        let doc = r#"{"schema_version":1,
+            "subtabs":[{"id":"multiplayer","label":"subtab.multiplayer"}],
+            "settings":[
+             {"section":"net","key":"peers","type":"bool","default":1,"label":"net.peers",
+              "subtab":"multiplayer","options":[]},
+             {"section":"net","key":"gp_mult","type":"float","default":2.0,"label":"net.gp_mult",
+              "subtab":"gameplay","options":[],"restart":true,"min":0.1,"max":10.0,"host":true}]}"#;
+        let s = Schema::from_json(doc, None).unwrap();
+        let ids: Vec<&str> = s.settings_subtabs().iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, ["multiplayer", "gameplay"]);
+        let r = s.row("net.gp_mult").unwrap();
+        assert_eq!(r.kind, Kind::Float);
+        assert_eq!((r.min, r.max), (Some(0.1), Some(10.0)));
+        assert!(r.host && r.restart);
+        assert_eq!(r.default, "2.0");
+        assert_eq!(s.rows_in_subtab("gameplay").count(), 1);
+        // The committed schema carries the four turret rows (PT-SET1 S5): the tab is there, every row host-dictated.
+        let b = Schema::builtin();
+        assert!(b.settings_subtabs().iter().any(|t| t.id == "gameplay"));
+        let rows: Vec<&str> = b
+            .rows_in_subtab("gameplay")
+            .map(|r| r.id.as_str())
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                "net.turret_reload_realtime_fix",
+                "net.turret_fire_rate_mult",
+                "net.turret_clip_fix",
+                "net.turret_fire_poll_fix"
+            ]
+        );
+        assert!(b.rows_in_subtab("gameplay").all(|r| r.host && r.restart));
     }
 
     #[test]

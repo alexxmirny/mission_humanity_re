@@ -3053,8 +3053,8 @@
   },
   {
    "va": "0x00414395",
-   "name": "llm_ui_hud_topbar_tick",
-   "cident": "llm_ui_hud_topbar_tick",
+   "name": "llm_ui_hud_bottom_strip_tick",
+   "cident": "llm_ui_hud_bottom_strip_tick",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -5128,8 +5128,8 @@
   },
   {
    "va": "0x00419b98",
-   "name": "llm_util_unpack_static_category_table",
-   "cident": "llm_util_unpack_static_category_table",
+   "name": "llm_ui_icon_table_unpack",
+   "cident": "llm_ui_icon_table_unpack",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -6062,8 +6062,8 @@
   },
   {
    "va": "0x0041b76c",
-   "name": "llm_ui_icon_rect_hit_test_cached",
-   "cident": "llm_ui_icon_rect_hit_test_cached",
+   "name": "llm_ui_icon_rect_hit_test_release_pos",
+   "cident": "llm_ui_icon_rect_hit_test_release_pos",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -10366,17 +10366,43 @@
    "va": "0x004285c7",
    "name": "llm_gfx_set_window_resolution",
    "cident": "llm_gfx_set_window_resolution",
-   "cc": "unknown",
+   "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
    "size": 571,
    "entry8": "0x0000003468e58955",
    "steal": 8,
-   "status": "no_prototype",
-   "params": [],
+   "status": "ok",
+   "params": [
+    {
+     "name": "w",
+     "type": "int",
+     "ctype": "int32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EAX",
+      "phys": "EAX",
+      "size": 4
+     }
+    },
+    {
+     "name": "h",
+     "type": "int",
+     "ctype": "int32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EDX",
+      "phys": "EDX",
+      "size": 4
+     }
+    }
+   ],
    "ret": {
-    "type": "undefined",
-    "ctype": "uint8_t"
+    "type": "void",
+    "ctype": "void",
+    "storage": "void"
    },
    "frame_bytes": 0
   },
@@ -60710,8 +60736,8 @@
   },
   {
    "va": "0x004a8b73",
-   "name": "llm_ui_set_draw_surface",
-   "cident": "llm_ui_set_draw_surface",
+   "name": "llm_ui_blit_bitmap_rect",
+   "cident": "llm_ui_blit_bitmap_rect",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 20,
@@ -62777,19 +62803,54 @@
    "va": "0x004b47e3",
    "name": "llm_mem_copy_words",
    "cident": "llm_mem_copy_words",
-   "cc": "unknown",
-   "cleanup": "callee",
+   "cc": "__cdecl",
+   "cleanup": "caller",
    "purge": 0,
    "size": 33,
    "entry8": "0x4d8b575651e58955",
    "steal": 5,
-   "status": "no_prototype",
-   "params": [],
+   "status": "ok",
+   "params": [
+    {
+     "name": "dst",
+     "type": "pointer",
+     "ctype": "void *",
+     "kind": "ptr",
+     "slot": {
+      "kind": "stack",
+      "off": 4,
+      "size": 4
+     }
+    },
+    {
+     "name": "src",
+     "type": "pointer",
+     "ctype": "void *",
+     "kind": "ptr",
+     "slot": {
+      "kind": "stack",
+      "off": 8,
+      "size": 4
+     }
+    },
+    {
+     "name": "count_words",
+     "type": "uint",
+     "ctype": "uint32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "stack",
+      "off": 12,
+      "size": 4
+     }
+    }
+   ],
    "ret": {
-    "type": "undefined",
-    "ctype": "uint8_t"
+    "type": "void",
+    "ctype": "void",
+    "storage": "void"
    },
-   "frame_bytes": 0
+   "frame_bytes": 12
   },
   {
    "va": "0x004b49da",
@@ -76799,6 +76860,74 @@
    "frame_bytes": 0
   },
   {
+   "va": "0x004d10bc",
+   "name": "llm_input_mouse_device_init",
+   "cident": "llm_input_mouse_device_init",
+   "cc": "__watcall",
+   "cleanup": "callee",
+   "purge": 0,
+   "size": 17,
+   "entry8": "0x89ca89ffffffafe8",
+   "steal": 5,
+   "status": "ok",
+   "params": [
+    {
+     "name": "width",
+     "type": "uint",
+     "ctype": "uint32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EAX",
+      "phys": "EAX",
+      "size": 4
+     }
+    },
+    {
+     "name": "height",
+     "type": "uint",
+     "ctype": "uint32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EDX",
+      "phys": "EDX",
+      "size": 4
+     }
+    },
+    {
+     "name": "hinst",
+     "type": "pointer",
+     "ctype": "void *",
+     "kind": "ptr",
+     "slot": {
+      "kind": "reg",
+      "reg": "EBX",
+      "phys": "EBX",
+      "size": 4
+     }
+    },
+    {
+     "name": "hwnd",
+     "type": "pointer",
+     "ctype": "void *",
+     "kind": "ptr",
+     "slot": {
+      "kind": "reg",
+      "reg": "ECX",
+      "phys": "ECX",
+      "size": 4
+     }
+    }
+   ],
+   "ret": {
+    "type": "int",
+    "ctype": "int32_t",
+    "storage": "u32"
+   },
+   "frame_bytes": 0
+  },
+  {
    "va": "0x004d10d0",
    "name": "llm_input_dimouse_shutdown",
    "cident": "llm_input_dimouse_shutdown",
@@ -76857,6 +76986,50 @@
       "kind": "reg",
       "reg": "EAX",
       "phys": "EAX",
+      "size": 4
+     }
+    }
+   ],
+   "ret": {
+    "type": "void",
+    "ctype": "void",
+    "storage": "void"
+   },
+   "frame_bytes": 0
+  },
+  {
+   "va": "0x004d1138",
+   "name": "llm_input_set_cursor_pos",
+   "cident": "llm_input_set_cursor_pos",
+   "cc": "__watcall",
+   "cleanup": "callee",
+   "purge": 0,
+   "size": 12,
+   "entry8": "0x027415ff2e505251",
+   "steal": 10,
+   "status": "ok",
+   "params": [
+    {
+     "name": "x",
+     "type": "int",
+     "ctype": "int32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EAX",
+      "phys": "EAX",
+      "size": 4
+     }
+    },
+    {
+     "name": "y",
+     "type": "int",
+     "ctype": "int32_t",
+     "kind": "int",
+     "slot": {
+      "kind": "reg",
+      "reg": "EDX",
+      "phys": "EDX",
       "size": 4
      }
     }

@@ -17,7 +17,7 @@
 //      mouse_buttons_cur == 0), dispatch on the hit code:
 //        - ==2                    : consumed with no action (falls through to the checks below with
 //                                   hit_code now 0, which never matches any of them).
-//        - in [0x3c,0x46)         : redraw the group-assign icon panel via llm_ui_set_draw_surface,
+//        - in [0x3c,0x46)         : redraw the group-assign icon panel via llm_ui_blit_bitmap_rect,
 //                                   then stamp the three TILE_VIS_MAP cells immediately covering it.
 //        - ==0xa                  : llm_tact_ui_draw_player_row_list(-1).
 //        - in [0x14,0x28)         : ASSIGN one unit (looked up through the icon-slot LUT) to the

@@ -357,17 +357,17 @@ int run_sessionidtest() {
 
         unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
         size_t        n = join_request_encode(jr, buf);
-        check("the JOIN declares format 6", buf[0] == 6);
-        check("JOIN_REQUEST_FORMAT is 6", JOIN_REQUEST_FORMAT == 6);
+        check("the JOIN declares format 7", buf[0] == 7);
+        check("JOIN_REQUEST_FORMAT is 7", JOIN_REQUEST_FORMAT == 7);
         check("the JOIN is id + codepage + map hash longer than v2",
-              n == 1 + 4 + 8 + 7 + UUID7_BYTES + 2 + MAP_HASH_BYTES + 1); // + the (empty) build's length byte
+              n == 1 + 4 + 8 + 7 + UUID7_BYTES + 2 + MAP_HASH_BYTES + 1 + 4); // + the (empty) build's length byte + the v7 digest
 
         JoinRequest back;
-        check("a v6 JOIN decodes", join_request_decode(buf, n, back));
+        check("a v7 JOIN decodes", join_request_decode(buf, n, back));
         check("the echoed match_id survives", memcmp(back.match_id, ID, UUID7_BYTES) == 0);
         check("the joiner's codepage survives", back.codepage == 1250);
         check("the player name still survives", strcmp(back.player_name, "Ripley") == 0);
-        check("decode reports the format it read", back.format == 6);
+        check("decode reports the format it read", back.format == 7);
 
         // X2's field, and the identical rule the codepage above is asserted under, one field along:
         // the two-argument form declares NOTHING, which is not the same as declaring the advert's
@@ -391,12 +391,14 @@ int run_sessionidtest() {
         // The asymmetry with the ADVERT, whose trailing fields are optional, is deliberate: an
         // advert is read from anyone, a JOIN is a request to be given a seat.
         JoinRequest shortj;
-        check("a v5 JOIN truncated inside its map hash is refused",
+        check("a v7 JOIN truncated inside its gameplay digest is refused",
               !join_request_decode(buf, n - 1, shortj));
+        check("a v5 JOIN truncated inside its map hash is refused",
+              !join_request_decode(buf, n - 4 - 1, shortj));
         check("a v5 JOIN truncated inside its codepage is refused",
-              !join_request_decode(buf, n - MAP_HASH_BYTES - 1, shortj));
+              !join_request_decode(buf, n - 4 - MAP_HASH_BYTES - 1, shortj));
         check("a v5 JOIN truncated inside its id is refused",
-              !join_request_decode(buf, n - MAP_HASH_BYTES - 4, shortj));
+              !join_request_decode(buf, n - 4 - MAP_HASH_BYTES - 4, shortj));
     }
 
     // ---- 9. THE NEGATIVE CASE (b): the host's ADMIT decision --------------------------------------
@@ -451,7 +453,7 @@ int run_sessionidtest() {
             check("a v3 (pre-F3) JOIN is refused on protocol", v == JoinAdmit::RefusedOldProtocol);
             check("the v3 refusal still yields the lobby-id for the log",
                   got.tag == mine.tag && strcmp(got.name, mine.name) == 0);
-            check("JOIN_REQUEST_MIN_FORMAT is 6", JOIN_REQUEST_MIN_FORMAT == 6);
+            check("JOIN_REQUEST_MIN_FORMAT is 7", JOIN_REQUEST_MIN_FORMAT == 7);
         }
 
         // (ii-c) F3's OWN NEGATIVE CASE: a current client, our lobby, DIFFERENT pinned codepage.
@@ -611,6 +613,55 @@ int run_sessionidtest() {
         }
     }
 
+    // ---- PT-SET1: the gameplay key-set digest (JOIN v7) ------------------------------------------
+    {
+        printf("--- PT-SET1: JOIN v7 gameplay digest ---\n");
+        const unsigned char ID[UUID7_BYTES] = {0x01, 0xa0, 0xaf, 0x3c, 0xea, 0x00, 0x70, 0xa1,
+                                               0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9};
+        SessionInfo         mine            = make_session("MH Host", 0x5150u, ID, 1251);
+        auto                try_digest      = [&](unsigned host_d, unsigned joiner_d, JoinRequest &got) {
+            mine.gameplay_digest = host_d;
+            JoinRequest   jr     = join_request_for(mine, 1251, nullptr, nullptr, joiner_d);
+            unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
+            size_t        n = join_request_encode(jr, buf);
+            return join_admit(buf, n, mine, got);
+        };
+        JoinRequest got;
+        check("differing nonzero digests are REFUSED on gameplay",
+              try_digest(0x11111111u, 0x22222222u, got) == JoinAdmit::RefusedGameplay);
+        check("the refused request reports the joiner's digest", got.gameplay_digest == 0x22222222u);
+        check("RefusedGameplay's reason string", strcmp(join_admit_reason(JoinAdmit::RefusedGameplay),
+                                                        "gameplay key set mismatch") == 0);
+        char reason[ANNOUNCE_TEXT_CAP];
+        join_refusal_text(JoinAdmit::RefusedGameplay, mine, got, reason, sizeof(reason));
+        check("the refusal text names both digests, host first", strcmp(reason, "gameplay keys 11111111/22222222") == 0);
+        check("equal digests are admitted", try_digest(0x9c6c82abu, 0x9c6c82abu, got) == JoinAdmit::Admit);
+        check("a zero host digest admits any joiner", try_digest(0, 0x22222222u, got) == JoinAdmit::Admit);
+        check("a zero joiner digest is admitted", try_digest(0x11111111u, 0, got) == JoinAdmit::Admit);
+        check("the one-to-four-argument forms state no digest", join_request_for(mine, 1251, nullptr, "x").gameplay_digest == 0);
+        // The digest is host-local: it must not change the SESSION_INFO advert.
+        SessionInfo   a = mine, b = mine;
+        unsigned char ab[SESSION_INFO_MAX_ENCODED], bb[SESSION_INFO_MAX_ENCODED];
+        a.gameplay_digest = 1;
+        b.gameplay_digest = 2;
+        size_t an = session_info_encode(a, ab), bn = session_info_encode(b, bb);
+        check("gameplay_digest is NOT on the advert wire", an == bn && memcmp(ab, bb, an) == 0);
+        // A v6 JOIN (pre-PT-SET1): format byte 6, frame without the digest.
+        {
+            mine.gameplay_digest = 0x11111111u;
+            JoinRequest   jr     = join_request_for(mine, 1251, nullptr, "0.2.1", 0x11111111u);
+            unsigned char buf[JOIN_REQUEST_MAX_ENCODED];
+            size_t        n = join_request_encode(jr, buf);
+            buf[0]          = 6;
+            JoinRequest v6;
+            JoinAdmit   v = join_admit(buf, n - 4, mine, v6);
+            check("a v6 (pre-PT-SET1) JOIN is refused on protocol", v == JoinAdmit::RefusedOldProtocol);
+            check("the v6 refusal still yields the lobby-id and no digest", v6.tag == mine.tag && v6.gameplay_digest == 0);
+            join_refusal_text(v, mine, v6, reason, sizeof(reason));
+            check("the v6 refusal text is 'protocol 6 < 7'", strcmp(reason, "protocol 6 < 7") == 0);
+        }
+    }
+
     // ---- mp:F3c -- THE REFUSAL REACHES THE JOINER: the REFUSED announce and its text --------------
     // Until F3c a refused JOIN was a host log line and nothing else; the joiner sat in a lobby that
     // showed it seated. The reply rides FLAG_ANNOUNCE as a third kind, addressed by player id, with
@@ -636,11 +687,11 @@ int run_sessionidtest() {
         theirs.format = 3;
         join_refusal_text(JoinAdmit::RefusedOldProtocol, mine, theirs, reason, sizeof(reason));
         check("the old-protocol text names the format seen and the minimum",
-              strcmp(reason, "protocol 3 < 6") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
+              strcmp(reason, "protocol 3 < 7") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
         theirs.format = 250;
         join_refusal_text(JoinAdmit::RefusedNewerProtocol, mine, theirs, reason, sizeof(reason));
         check("the newer-protocol text names the format seen and the maximum",
-              strcmp(reason, "protocol 250 > 6") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
+              strcmp(reason, "protocol 250 > 7") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
         join_refusal_text(JoinAdmit::RefusedWrongLobby, mine, theirs, reason, sizeof(reason));
         check("the wrong-lobby text is the admit reason itself, within budget",
               strcmp(reason, "not our lobby") == 0 && strlen(reason) <= JOIN_REFUSAL_TEXT_MAX);
@@ -1038,6 +1089,20 @@ int run_sessionidtest() {
               matched && wcscmp(w, L"Host runs 0.2.1, you run 0.2.0: update") == 0);
         tr_refusal_reason("build 0.2.1/", w, 128, &matched);
         check("a build reason without a joiner version is not a match", !matched);
+        // PT-SET1: the host composes "gameplay keys <host>/<yours>" (hex digests); the joiner shows its row.
+        {
+            SessionInfo gh     = h8;
+            gh.gameplay_digest = 0x1234ABCDu;
+            JoinRequest gj     = join_request_for(h8, CHAT_ENCODING_UTF8, nullptr, nullptr, 0x0BADF00Du);
+            char        gwhy[ANNOUNCE_TEXT_CAP];
+            join_refusal_text(JoinAdmit::RefusedGameplay, gh, gj, gwhy, sizeof(gwhy));
+            check("the gameplay refusal text names both digests, host first", strcmp(gwhy, "gameplay keys 1234ABCD/0BADF00D") == 0);
+            tr_refusal_reason(gwhy, w, 128, &matched);
+            check("the gameplay reason is shown through its own row",
+                  matched && wcscmp(w, L"Gameplay settings differ (1234ABCD/0BADF00D): update") == 0);
+            tr_refusal_reason("gameplay keys 1234ABCD/", w, 128, &matched);
+            check("a gameplay reason without a joiner digest is not a match", !matched);
+        }
         tr_relay_line("Relay outdated (protocol 0 < 1)", w, 128, &matched);
         check("the relay module's line is the relay row", matched && wcscmp(w, L"Relay outdated (protocol 0 < 1)") == 0);
     }

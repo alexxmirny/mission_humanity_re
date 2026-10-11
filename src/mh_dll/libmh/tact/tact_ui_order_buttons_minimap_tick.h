@@ -17,7 +17,7 @@
 // FOUR BUTTON BRANCHES, mutually exclusive (each is only reached if every earlier one's hit-rect test
 // failed), each gated the same way -- `mouse_in_rect(...) == 1 && *mouse_buttons_cur > 0 &&
 // sidebar_ui_hit_code() == 0` -- and each doing the same three things: redraw its icon via
-// `llm_ui_set_draw_surface`, stamp the 3 TILE_VIS_MAP cells immediately covering the button row dirty,
+// `llm_ui_blit_bitmap_rect`, stamp the 3 TILE_VIS_MAP cells immediately covering the button row dirty,
 // then one or two `llm_tact_group_issue_order` calls, then stamp a distinct `sidebar_ui_hit_code`:
 //
 //   1. @0x00435d0f-0x00435dc3: rect (1,0x8e)-(0x15,0xa2), icon slot 0x23 (35). order 0x46 (CLEAR).

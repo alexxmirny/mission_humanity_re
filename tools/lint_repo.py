@@ -1402,6 +1402,26 @@ def declare_checks(args):
         "mp:U49 double undock -- the negative cases still fire (check_u49_undock --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_u49_undock.py"), "--selftest"],
     )
+    check(
+        "patching:PT-FIX3 air order deadlock -- the negative cases still fire (check_pt3_air_order --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pt3_air_order.py"), "--selftest"],
+    )
+    check(
+        "patching:PT-FIX1 turret slot reuse -- the negative cases still fire (check_pt1_turret_slot --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pt1_turret_slot.py"), "--selftest"],
+    )
+    check(
+        "patching:PT-FIX4 turret clip -- the negative cases still fire (check_pt4_turret_clip --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pt4_turret_clip.py"), "--selftest"],
+    )
+    check(
+        "patching:PT-FIX5 turret fire poll -- the negative cases still fire (check_pt5_turret_poll --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pt5_turret_poll.py"), "--selftest"],
+    )
+    check(
+        "patching:PT-FIX2 turret fire rate -- the negative cases still fire (check_pt2_turret_rate --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pt2_turret_rate.py"), "--selftest"],
+    )
     # mp:P6. The loser-gap post_check (tools/test_ui.py's p6_loser_gap entry) runs only with the
     # rig; its negatives -- a real freeze over the bound passing anyway, the same outcome on both
     # peers (the conquest workload never split winner/loser), a missing on_gameover line, baseline
@@ -1490,6 +1510,20 @@ def declare_checks(args):
     check(
         "dist:V022 orders-agree post-check -- the negative cases still fire (check_orders_agree --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_orders_agree.py"), "--selftest"],
+    )
+    # mp:Q1/Q2/Q3. The three recording post_checks (quiet_level(+_fixoff), sp_state_record,
+    # order_record_mp) run only with the rig; their negatives are gated here off planted folders.
+    check(
+        "mp:Q1 quiet-session post-check -- the negative cases still fire (check_quiet_session --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_quiet_session.py"), "--selftest"],
+    )
+    check(
+        "mp:Q2 SP-recording post-check -- the negative cases still fire (check_sp_recording --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_sp_recording.py"), "--selftest"],
+    )
+    check(
+        "mp:Q3 order-record post-check -- the negative cases still fire (check_order_record --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_order_record.py"), "--selftest"],
     )
     # mp:P13. The sim-rate post_check (tools/test_ui.py's p13_rate_180 entry) runs only with the
     # rig; its negatives -- a slow whole match, a stall that only the worst-30-s window sees, a

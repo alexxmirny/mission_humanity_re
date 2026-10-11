@@ -62,6 +62,7 @@ pub fn option_label(row: &Row, value: &str) -> String {
 pub fn problem_text(p: &Problem) -> String {
     match p {
         Problem::NotInteger => tr("problem.not_integer").to_string(),
+        Problem::NotNumber => tr("problem.not_number").to_string(),
         Problem::OutOfRange {
             min: Some(a),
             max: Some(b),
@@ -227,6 +228,9 @@ pub fn show_rows(ui: &mut Ui, model: &mut Model, state: &mut RenderState, rows: 
                     if let Some(h) = tr_opt(&row.hint_key()) {
                         widgets::hint(ui, h);
                     }
+                    if row.host {
+                        widgets::hint(ui, tr("setting.host_dictated"));
+                    }
                 });
                 ui.end_row();
             }
@@ -300,7 +304,7 @@ fn control(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
                 .collect();
             segmented(ui, model, row, opts);
         }
-        Kind::Int | Kind::Str => text_box(ui, model, row, id, false),
+        Kind::Int | Kind::Float | Kind::Str => text_box(ui, model, row, id, false),
         Kind::Hotkey => hotkey(ui, model, state, row),
     }
 }
@@ -369,7 +373,7 @@ fn text_box(ui: &mut Ui, model: &mut Model, row: &Row, id: &str, wide: bool) {
             w.active.bg_stroke.color = theme::ALERT;
             ui.visuals_mut().selection.stroke.color = theme::ALERT;
         }
-        let width = if wide || row.kind != Kind::Int {
+        let width = if wide || !matches!(row.kind, Kind::Int | Kind::Float) {
             220.0
         } else {
             90.0
@@ -570,10 +574,17 @@ mod tests {
     fn problem_messages_are_filled() {
         assert_eq!(
             problem_text(&Problem::OutOfRange {
-                min: Some(1024),
-                max: Some(65535)
+                min: Some(1024.0),
+                max: Some(65535.0)
             }),
             "Enter a number from 1024 to 65535."
+        );
+        assert_eq!(
+            problem_text(&Problem::OutOfRange {
+                min: Some(0.1),
+                max: Some(10.0)
+            }),
+            "Enter a number from 0.1 to 10."
         );
     }
 }

@@ -46,6 +46,7 @@
 #include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
 #include "addr/mh_structs.gen.h"     // mp:D36 -- mh_cfg_final_struct_Planet (Planets[31]'s string slots)
 #include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "config/gameplay.h"         // PT-SET1: host-synced gameplay settings (publish / adopt)
 #include "state/region_runtime.h"    // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                      // where it IS, not where the binary put it
 #include "addr/mh_calls.gen.h"       // typed __watcall wrappers (map_SavePlanetToDisk, --tactical)
@@ -620,6 +621,7 @@ bool g_entry_started   = false;
 int  g_entry_ticks     = 0;
 int  g_entry_hb        = 0;
 bool g_host_start_done = false;
+bool g_gp_adopted      = false; // PT-SET1: the client applied this Start's gameplay set (per lobby, like the latches above)
 } // namespace
 bool bml_hook_armed(); // mp:D36: is the begin_map_load run-before hook installed?
 namespace {
@@ -835,6 +837,7 @@ extern "C" void MH_MP_RearmLobbyEntry(void) {
     g_entry_ticks     = 0;
     g_entry_hb        = 0;
     g_host_start_done = false;
+    g_gp_adopted      = false;
     lg("; RM1: match over -> lobby entry prep RE-ARMED for the next lobby (client driver + host Start prep)");
 }
 
@@ -1193,6 +1196,22 @@ void          mp_lobby_entry_tick(bool is_host) {
                         occ);
         }
     }
+    // PT-SET1: adopt the host's gameplay settings at the same point as its slots -- before begin_map_load,
+    // so anything the match creation reads (PT-FIX4's turret creation) already sees the host's values.
+    if (!is_host && g_verb == VERB_NONE && g_manual_mp && !g_gp_adopted) {
+        g_gp_adopted = true;
+        unsigned char                   gb[MH_NET_MAX_PAYLOAD];
+        const int                       gl = MH_Seam_TakeStartGameplay(gb, sizeof(gb));
+        mh_net_proto::GameplaySet       gs;
+        const mh_net_proto::GameplayErr ge = gl > 0 ? mh_net_proto::gameplay_set_decode(gb, (size_t)gl, gs) : mh_net_proto::GameplayErr::Truncated;
+        if (gl > 0 && ge == mh_net_proto::GameplayErr::Ok) {
+            mh::gameplay::apply(gs, mh::gameplay::Source::ADOPTED);
+        } else {
+            lg("; gameplay: %s -- using this client's OWN local values (host-synced settings may differ from the host's)",
+               gl > 0 ? mh_net_proto::gameplay_err_text(ge) : "the host's START carried no gameplay trailer");
+            mh::gameplay::apply_local(mh::gameplay::Source::LOCAL, "host set missing or undecodable");
+        }
+    }
     // Symmetric enemy relations: build_players_from_slots copies slot bytes +0x0d.. -> Players.relation[]
     // then sets ONLY the local player's row (Players[PlayerSide].relation[i]=2) -> the peers end with
     // different relation arrays (strat_players desync). Set the FULL N×N matrix in the (identical, synced)
@@ -1242,6 +1261,7 @@ void          mp_lobby_entry_tick(bool is_host) {
     // entry driver disarmed" and no prep). A force-entry verb run leaves begin_map_load unhooked, so it
     // clears here instead; exactly one of the two runs per entry.
     if (!bml_hook_armed()) mp_clear_match_residue();
+    if (g_verb != VERB_NONE) lg("; gameplay: force-entry (verb) path -- no START trailer; both peers run their OWN local values (boot apply)");
     lg("; --mp-%s: TRIGGERING game entry via begin_map_load (slots_occupied=%d pcount=%d map_pcount->%d)",
        is_host ? "host" : "join", occ, *(int *)ADDR_NET_PCOUNT, occ);
     ((void (*)(void))ADDR_BEGIN_MAP_LOAD)();
@@ -1806,11 +1826,23 @@ void on_begin_map_load() {
     // player's last click may not take effect, but the two peers still agree, which is the difference
     // between a UX annoyance and a step-1 desync). The bytes are exactly what build_players_detour
     // will restore on this side, so both peers build from one array.
-    MH_Net_SendStart((const unsigned char *)ADDR_LOBBY_SLOTS, SLOT_STRIDE * 8);
-    g_entry_started = true;
-    lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with %d B "
-       "of authoritative slots (occ=%d)",
-       SLOT_STRIDE * 8, occ);
+    // PT-SET1: the START frame = the slot array + the gameplay-settings trailer. The host applies its OWN
+    // values first (PUBLISHED: the match it is about to load runs on exactly what it ships) and the
+    // clients adopt the same set at their entry. Ini is read once at boot, so the set is final here.
+    {
+        unsigned char fr[SLOT_STRIDE * 8 + mh_net_proto::GAMEPLAY_MAX_ENCODED];
+        memcpy(fr, (const void *)ADDR_LOBBY_SLOTS, SLOT_STRIDE * 8);
+        const mh_net_proto::GameplaySet gp = mh::gameplay::local_set();
+        mh::gameplay::apply(gp, mh::gameplay::Source::PUBLISHED);
+        const size_t tl = mh_net_proto::gameplay_set_encode(gp, fr + SLOT_STRIDE * 8);
+        if (tl == 0) lg("; gameplay: FAILED to encode the trailer -- the START carries slots only (clients keep their own values)");
+        static_assert(SLOT_STRIDE * 8 + mh_net_proto::GAMEPLAY_MAX_ENCODED <= MH_NET_MAX_PAYLOAD, "START frame exceeds the payload cap");
+        MH_Net_SendStart(fr, (int)(SLOT_STRIDE * 8 + tl));
+        g_entry_started = true;
+        lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with %d B "
+           "of authoritative slots + %d B gameplay trailer (occ=%d)",
+           SLOT_STRIDE * 8, (int)tl, occ);
+    }
 }
 
 // Run-before detour on llm_lobby_begin_map_load (steal 8-byte prologue, jmp back to +8).

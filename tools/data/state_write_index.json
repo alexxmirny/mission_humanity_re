@@ -16,20 +16,20 @@
   "one inflates every closure (the rule derive_write_closure applies).",
   "",
   "CURRENCY IS A GATE, NOT A HABIT: `_provenance` stamps the matrix totals this was built",
-  "from, and --check compares them against the committed docs/state-matrix.md summary row."
+  "from, and --check compares them against the committed the state matrix summary row."
  ],
  "_provenance": {
   "program": "mh.exe",
-  "matrix_cells": 10982,
-  "matrix_writes": 9289,
-  "matrix_regions": 3544,
+  "matrix_cells": 10992,
+  "matrix_writes": 9292,
+  "matrix_regions": 3551,
   "write_kinds": [
    "write",
    "rw",
    "movs"
   ],
-  "regions_with_a_writer": 1403,
-  "region_function_pairs": 3620
+  "regions_with_a_writer": 1406,
+  "region_function_pairs": 3623
  },
  "writers": {
   "ANIM": [
@@ -190,27 +190,7 @@
   "DAT_00519d28": [
    "utils_itoa"
   ],
-  "DAT_00519d38": [
-   "FUN_0041b35c",
-   "llm_input_mouse_button_hold_update"
-  ],
   "DAT_00519d44": [
-   "FUN_0041b35c",
-   "llm_input_mouse_button_hold_update"
-  ],
-  "DAT_00519d60": [
-   "FUN_0041b35c",
-   "llm_input_mouse_button_hold_update"
-  ],
-  "DAT_00519d64": [
-   "FUN_0041b35c",
-   "llm_input_mouse_button_hold_update"
-  ],
-  "DAT_00519d68": [
-   "FUN_0041b35c",
-   "llm_input_mouse_button_hold_update"
-  ],
-  "DAT_00519d6c": [
    "FUN_0041b35c",
    "llm_input_mouse_button_hold_update"
   ],
@@ -452,9 +432,6 @@
   "DAT_005d0c50": [
    "llm_cfg_verify_project_inventions_unchanged"
   ],
-  "DAT_005d0c62": [
-   "llm_ui_floating_tip_tick"
-  ],
   "DAT_005d0da9": [
    "llm_game_check_setup_dat_exists"
   ],
@@ -600,28 +577,24 @@
    "llm_gfx_bitmap_resample_center_out"
   ],
   "DAT_005d8b3c": [
-   "llm_ui_set_draw_surface"
+   "llm_ui_blit_bitmap_rect"
   ],
   "DAT_005d8b40": [
-   "llm_ui_set_draw_surface"
+   "llm_ui_blit_bitmap_rect"
   ],
   "DAT_005d8b44": [
-   "llm_ui_set_draw_surface"
+   "llm_ui_blit_bitmap_rect"
   ],
   "DAT_005d8b48": [
-   "llm_ui_set_draw_surface"
+   "llm_ui_blit_bitmap_rect"
   ],
   "DAT_005d8b4c": [
-   "llm_ui_set_draw_surface"
+   "llm_ui_blit_bitmap_rect"
   ],
   "DAT_00603af4": [
+   "llm_ui_blit_bitmap_rect",
    "llm_ui_menu_async_tick",
-   "llm_ui_screen_fade_transition_tick",
-   "llm_ui_set_draw_surface"
-  ],
-  "DAT_00603b08": [
-   "llm_gfx_free_draw_buffers",
-   "llm_tact_gfx_init_view_surfaces"
+   "llm_ui_screen_fade_transition_tick"
   ],
   "DAT_00603f58": [
    "llm_cd_audio_open_and_init_volume"
@@ -633,7 +606,7 @@
    "llm_ui_main_menu_screen_load"
   ],
   "DAT_00644351": [
-   "FUN_004be7b1"
+   "llm_lobby_chat_send_cb"
   ],
   "DAT_006445f7": [
    "llm_intro_frame",
@@ -1027,12 +1000,6 @@
    "llm_gfx_draw_blended_line",
    "llm_gfx_draw_line_clipped"
   ],
-  "DAT_00825044": [
-   "llm_gfx_view_metrics_init"
-  ],
-  "DAT_00825050": [
-   "llm_gfx_view_metrics_init"
-  ],
   "DAT_00825096": [
    "llm_gfx_dashed_rect_outline_set_and_draw"
   ],
@@ -1041,12 +1008,6 @@
   ],
   "DAT_00ae2a88": [
    "DEAD_net_bwstat_accum_0049e8ea"
-  ],
-  "DAT_00e589b4": [
-   "llm_ui_floating_tip_tick"
-  ],
-  "DAT_00e589b8": [
-   "llm_ui_floating_tip_tick"
   ],
   "DAT_00e642a4": [
    "llm_menu_race_select_cb"
@@ -1092,7 +1053,7 @@
    "llm_ui_bldg_build_menu_icon_draw",
    "llm_ui_bldg_prod_queue_slot_draw",
    "llm_ui_build_panel_project_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "G_ICON_PTRS": [
    "LoadPanelData"
@@ -2071,21 +2032,17 @@
    "llm_input_dimouse_shutdown"
   ],
   "_G_LLM_DLG_STATE_FLAGS": [
-   "FUN_004baf42",
-   "FUN_004bc08a",
-   "FUN_004be7b1",
-   "FUN_004c1f67",
-   "FUN_004c316d",
-   "FUN_004c4311",
    "llm_dlg_close_and_resume",
    "llm_game_boot_init",
    "llm_game_return_to_main_menu_cb",
    "llm_game_shutdown_cleanup",
    "llm_game_start_tutorial",
+   "llm_lobby_chat_send_cb",
    "llm_lobby_wait_dialog_open",
    "llm_menu_begin_enter_gameplay",
    "llm_menu_enter_gameplay",
    "llm_menu_force_return_to_main",
+   "llm_menu_intro_avi_done_cb",
    "llm_menu_loadgame_confirm",
    "llm_menu_loading_countdown_tick",
    "llm_menu_ui_state_reset",
@@ -2102,6 +2059,7 @@
    "llm_ui_edit_field_modal_tick",
    "llm_ui_entity_info_screen_close",
    "llm_ui_entity_info_screen_open",
+   "llm_ui_list_widget_mouse_cb",
    "llm_ui_main_menu_screen_load",
    "llm_ui_menu_close_to_hud",
    "llm_ui_menu_dialog_open_handler",
@@ -2111,11 +2069,14 @@
    "llm_ui_modal_key_pump",
    "llm_ui_outcome_dialog",
    "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_cancel_cb",
    "llm_ui_planet_select_frame_enter",
    "llm_ui_planet_select_screen_build",
    "llm_ui_screen_fade_transition_tick",
    "llm_ui_text_viewer_open",
-   "llm_ui_text_viewer_tick"
+   "llm_ui_text_viewer_tick",
+   "llm_ui_tutorial_step_enter_cb",
+   "llm_ui_widget_drag_modal_cb"
   ],
   "_G_LLM_DRAG_SELECT_ANCHOR_COL": [
    "llm_strat_input_update"
@@ -2311,6 +2272,9 @@
    "llm_gfx_free_draw_buffers",
    "llm_tact_gfx_init_view_surfaces"
   ],
+  "_G_LLM_GFX_FB_TILE_ROW_SKIP": [
+   "llm_gfx_view_metrics_init"
+  ],
   "_G_LLM_GFX_FOG_LOOKUP_COL": [
    "llm_strat_render_view_metrics_refresh",
    "llm_tact_tile_fog_set_origin"
@@ -2325,6 +2289,10 @@
   "_G_LLM_GFX_FONT_LINE_HEIGHT": [
    "llm_gfx_font_select",
    "llm_gfx_font_set_line_height"
+  ],
+  "_G_LLM_GFX_HUD_STRIP_SURFACE": [
+   "llm_gfx_free_draw_buffers",
+   "llm_tact_gfx_init_view_surfaces"
   ],
   "_G_LLM_GFX_MARGIN_COL_FIRST": [
    "llm_strat_render_view_metrics_refresh"
@@ -2341,6 +2309,9 @@
   "_G_LLM_GFX_PANEL_ROW_SKIP": [
    "llm_gfx_view_metrics_init"
   ],
+  "_G_LLM_GFX_PANEL_TILE_ROW_SKIP": [
+   "llm_gfx_view_metrics_init"
+  ],
   "_G_LLM_GFX_POLALFA1_GLYPH_PTR": [
    "llm_gfx_apply_resolution_change",
    "llm_gfx_init_blend_luts",
@@ -2353,6 +2324,9 @@
   ],
   "_G_LLM_GFX_RGB565_HALVE_MASK2": [
    "llm_gfx_init_pixel_format"
+  ],
+  "_G_LLM_GFX_STRIP_ROW_SKIP": [
+   "llm_gfx_view_metrics_init"
   ],
   "_G_LLM_GFX_TEXT_LAYOUT_WIDTH": [
    "llm_gfx_draw_glyph_to_framebuffer",
@@ -2406,13 +2380,13 @@
    "llm_ui_scroll_icon_list_draw"
   ],
   "_G_LLM_GFX_UI_COLORS_RGB": [
-   "FUN_004b975f",
-   "FUN_004b9b68",
    "llm_menu_tutorial_uistate_restore",
    "llm_tutorial_load_script",
    "llm_tutorial_step_driver",
    "llm_ui_menu_async_tick",
-   "llm_ui_text_viewer_open"
+   "llm_ui_text_viewer_fade_tick_cb",
+   "llm_ui_text_viewer_open",
+   "llm_ui_tutorial_hint_draw_cb"
   ],
   "_G_LLM_GFX_UI_SPRITE_BASE_INDEX": [
    "llm_ui_main_menu_screen_load"
@@ -2493,6 +2467,12 @@
    "llm_input_di_keyboard_poll",
    "llm_input_keystate_reset",
    "llm_input_wndproc_tap"
+  ],
+  "_G_LLM_INPUT_MOUSE_BOX_H": [
+   "llm_input_mouse_init"
+  ],
+  "_G_LLM_INPUT_MOUSE_BOX_W": [
+   "llm_input_mouse_init"
   ],
   "_G_LLM_INPUT_MOUSE_DELTA_X": [
    "llm_input_mouse_delta_pump"
@@ -2755,7 +2735,7 @@
    "llm_menu_finish_enter_gameplay"
   ],
   "_G_LLM_MENU_SAVE_NAME_PTR": [
-   "FUN_004bb78d",
+   "llm_menu_loadgame_ok_action_cb",
    "llm_menu_savelist_select_name"
   ],
   "_G_LLM_MINIMAP_CLICK_COL": [
@@ -2889,12 +2869,12 @@
    "llm_wait_screen_frame"
   ],
   "_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN": [
-   "FUN_004c7b8a",
+   "llm_net_lockstep_sync_retry_rearm_cb",
    "llm_net_session_globals_reset",
    "llm_strat_time_tick"
   ],
   "_G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED": [
-   "FUN_004c7b8a",
+   "llm_net_lockstep_sync_retry_rearm_cb",
    "llm_net_session_globals_reset",
    "llm_strat_time_tick"
   ],
@@ -3012,8 +2992,8 @@
    "llm_ui_planet_select_screen_build"
   ],
   "_G_LLM_PLANET_SEL_WIDGET_CANCEL": [
-   "FUN_004c4311",
    "llm_dlg_close_and_resume",
+   "llm_ui_planet_select_cancel_cb",
    "llm_ui_planet_select_screen_build"
   ],
   "_G_LLM_PLANET_SEL_WIDGET_PTRS": [
@@ -3156,7 +3136,7 @@
    "llm_strat_bldg_gather_nearby_squad_status"
   ],
   "_G_LLM_STATUS_LINE_TEXT_BUF": [
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_STRAT_ADVISOR_NEXT_TIME": [
    "llm_strat_advisor_tick",
@@ -3190,7 +3170,7 @@
    "llm_strat_ai_group_collect_buildings_of_types"
   ],
   "_G_LLM_STRAT_AI_ENABLED": [
-   "FUN_004b845e",
+   "llm_menu_newgame_fade_done_cb",
    "llm_strat_ai_start_hq_attack_scenario",
    "llm_tutorial_step_driver"
   ],
@@ -3994,10 +3974,10 @@
    "llm_strat_new_game_init"
   ],
   "_G_LLM_STRAT_SHOW_UNIT_FLAGS": [
-   "FUN_004b86a4",
    "llm_game_start_tutorial",
    "llm_strat_planet_session_begin",
-   "llm_strat_session_begin_multi"
+   "llm_strat_session_begin_multi",
+   "llm_ui_options_menu_ok_action_cb"
   ],
   "_G_LLM_STRAT_SIM_ACTIVE": [
    "SwitchToPlanet",
@@ -4114,7 +4094,7 @@
    "llm_ui_hud_bldg_panel_refresh_tick",
    "llm_ui_hud_bldg_panel_refresh_tick_dup",
    "llm_ui_hud_bldg_panel_same_type_count_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_STRAT_UI_BLDG_TAB_SELECT_BLOCKED": [
    "llm_strat_session_state_reset"
@@ -4142,7 +4122,7 @@
   ],
   "_G_LLM_STRAT_UI_MAINPANEL_REFRESH_PENDING": [
    "game_SetEvent",
-   "llm_ui_hud_topbar_tick",
+   "llm_ui_hud_bottom_strip_tick",
    "llm_ui_main_panel_draw"
   ],
   "_G_LLM_STRAT_UI_MAINPANEL_TAB_INDEX": [
@@ -4161,7 +4141,7 @@
   ],
   "_G_LLM_STRAT_UI_PANEL_SWITCH_PENDING": [
    "game_SetEvent",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_STRAT_UI_PLANET_SEL_ACTION_TARGET": [
    "llm_strat_bldg_order_depart_confirm_dispatch",
@@ -4181,7 +4161,7 @@
   "_G_LLM_STRAT_UI_UNIT_PANEL_REFRESH_PENDING": [
    "game_SetEvent",
    "llm_strat_ui_unit_panel_tick",
-   "llm_ui_hud_topbar_tick",
+   "llm_ui_hud_bottom_strip_tick",
    "llm_ui_selection_panel_refresh"
   ],
   "_G_LLM_STRAT_UI_UNIT_TAB_TOGGLE": [
@@ -4189,7 +4169,7 @@
   ],
   "_G_LLM_STRAT_UI_VIEW_RESIZE_PENDING": [
    "game_SetEvent",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_STRAT_UNIT_CHASE_RESULT": [
    "llm_strat_unit_state_move_path"
@@ -4877,7 +4857,7 @@
    "llm_ui_bldg_build_menu_icon_draw",
    "llm_ui_bldg_prod_queue_slot_draw",
    "llm_ui_build_panel_project_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_UI_BLDG_RESOURCE_ROW_HIGHLIGHT_FLAG": [
    "llm_ui_bldg_resource_row_draw"
@@ -4886,7 +4866,7 @@
    "llm_ui_bldg_build_menu_icon_draw",
    "llm_ui_bldg_prod_queue_slot_draw",
    "llm_ui_build_panel_project_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_UI_BLDG_RESOURCE_ROW_STEP_X": [
    "llm_ui_bldg_resource_row_draw"
@@ -4902,14 +4882,14 @@
    "llm_ui_bldg_prod_queue_slot_draw",
    "llm_ui_bldg_resource_row_draw",
    "llm_ui_build_panel_project_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_UI_BLDG_RESOURCE_ROW_Y": [
    "llm_ui_bldg_build_menu_icon_draw",
    "llm_ui_bldg_prod_queue_slot_draw",
    "llm_ui_bldg_resource_row_draw",
    "llm_ui_build_panel_project_row_draw",
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_UI_BLDG_STATUS_MSG_BUF": [
    "llm_ui_dlg_building_construction_status"
@@ -4932,11 +4912,6 @@
    "llm_ui_bldg_selected_panel_tick",
    "llm_ui_hud_storage_slot2_icon_click",
    "llm_ui_hud_storage_slot2_set"
-  ],
-  "_G_LLM_UI_BLDG_WORKER_POOL_COUNTER": [
-   "llm_input_mouse_button_hold_update",
-   "llm_ui_bldg_stat_adjust_row_click",
-   "llm_ui_bldg_worker_adjust_btn_tick"
   ],
   "_G_LLM_UI_BUILD_MENU_ITEM_PENDING": [
    "llm_ui_bldg_available_projects_tab_process_events",
@@ -5008,13 +4983,13 @@
    "llm_ui_main_menu_screen_load"
   ],
   "_G_LLM_UI_FADE_TRANSITION": [
-   "FUN_004b9313",
-   "FUN_004bd0a6",
-   "FUN_004c312e",
    "llm_game_start_tutorial",
+   "llm_lobby_network_setup_cancel_cb",
    "llm_lobby_network_setup_screen",
+   "llm_menu_fade_to_main_menu_cb",
    "llm_menu_newgame_open",
    "llm_menu_play_intro_avi",
+   "llm_menu_racebck_exit_cb",
    "llm_menu_show_credits",
    "llm_mp_local_browser_cancel_to_main",
    "llm_ui_demo_slideshow_tick",
@@ -5025,6 +5000,15 @@
    "llm_ui_screen_fade_transition_tick",
    "llm_ui_text_viewer_open",
    "llm_ui_text_viewer_tick"
+  ],
+  "_G_LLM_UI_FLOATING_TIP_SHOWN": [
+   "llm_ui_floating_tip_tick"
+  ],
+  "_G_LLM_UI_FLOATING_TIP_X": [
+   "llm_ui_floating_tip_tick"
+  ],
+  "_G_LLM_UI_FLOATING_TIP_Y": [
+   "llm_ui_floating_tip_tick"
   ],
   "_G_LLM_UI_FONT_LAYOUT_FILE_END": [
    "llm_ui_main_menu_screen_load"
@@ -5037,15 +5021,15 @@
    "llm_ui_main_menu_screen_load",
    "llm_ui_mouse_poll_next_event"
   ],
+  "_G_LLM_UI_HUD_BOTTOM_STRIP_TICK_COUNTER": [
+   "llm_ui_frame_tick",
+   "llm_ui_hud_bottom_strip_tick"
+  ],
+  "_G_LLM_UI_HUD_BOTTOM_STRIP_VIEW_SIZE_MODE_APPLIED": [
+   "llm_ui_hud_bottom_strip_tick"
+  ],
   "_G_LLM_UI_HUD_COLOR_TABLE": [
    "llm_ui_hud_color_slot_set"
-  ],
-  "_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER": [
-   "llm_ui_frame_tick",
-   "llm_ui_hud_topbar_tick"
-  ],
-  "_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED": [
-   "llm_ui_hud_topbar_tick"
   ],
   "_G_LLM_UI_HUD_WIDGETS": [
    "llm_ui_hud_widget_define"
@@ -5062,14 +5046,14 @@
    "llm_ui_bldg_panel_refresh_apply",
    "llm_ui_bldg_selected_panel_tick",
    "llm_ui_group_tab_on_click",
+   "llm_ui_hud_bottom_strip_tick",
    "llm_ui_hud_mainpanel_tab_row_label_refresh",
-   "llm_ui_hud_topbar_tick",
+   "llm_ui_icon_table_unpack",
    "llm_ui_scroll_icon_list_draw",
-   "llm_ui_selection_panel_refresh",
-   "llm_util_unpack_static_category_table"
+   "llm_ui_selection_panel_refresh"
   ],
   "_G_LLM_UI_ICON_GROUP_FIRST_ENTRY": [
-   "llm_util_unpack_static_category_table"
+   "llm_ui_icon_table_unpack"
   ],
   "_G_LLM_UI_ICON_HOVER_ACTIVE": [
    "FUN_0041b35c",
@@ -5178,11 +5162,11 @@
    "llm_ui_options_menu_open"
   ],
   "_G_LLM_UI_MENU_ASYNC_CALLBACK": [
-   "FUN_004c316d",
    "llm_game_boot_init",
    "llm_intro_frame",
    "llm_lobby_begin_map_load",
    "llm_menu_force_return_to_main",
+   "llm_menu_intro_avi_done_cb",
    "llm_menu_newgame_arm_start",
    "llm_net_lockstep_sync_overlay_show",
    "llm_ui_avi_close_return_to_menu",
@@ -5192,9 +5176,6 @@
    "llm_ui_text_viewer_tick"
   ],
   "_G_LLM_UI_MENU_ASYNC_CALLBACK_A": [
-   "FUN_004baf42",
-   "FUN_004bb78d",
-   "FUN_004c4311",
    "llm_dlg_close_and_resume",
    "llm_game_return_to_main_menu_cb",
    "llm_game_start_tutorial",
@@ -5204,6 +5185,7 @@
    "llm_lobby_wait_dialog_open",
    "llm_menu_enter_gameplay",
    "llm_menu_force_return_to_main",
+   "llm_menu_loadgame_ok_action_cb",
    "llm_menu_savelist_select_name",
    "llm_menu_ui_state_reset",
    "llm_mp_discovery_browser_refresh",
@@ -5226,10 +5208,12 @@
    "llm_ui_options_menu_open",
    "llm_ui_outcome_dialog",
    "llm_ui_outcome_dlg_open",
+   "llm_ui_planet_select_cancel_cb",
    "llm_ui_planet_select_frame_enter",
    "llm_ui_planet_select_screen_build",
    "llm_ui_text_viewer_open",
-   "llm_ui_text_viewer_tick"
+   "llm_ui_text_viewer_tick",
+   "llm_ui_tutorial_step_enter_cb"
   ],
   "_G_LLM_UI_MENU_ASYNC_CALLBACK_B": [
    "llm_game_return_to_main_menu_cb",
@@ -5256,11 +5240,11 @@
    "llm_ui_outcome_dialog"
   ],
   "_G_LLM_UI_MENU_PENDING_WIDGET": [
-   "FUN_004c1f67",
    "llm_lobby_begin_map_load",
    "llm_menu_enter_gameplay",
    "llm_menu_widget_selection_reset",
    "llm_ui_menu_state_tick",
+   "llm_ui_widget_drag_modal_cb",
    "llm_ui_widget_input_tick",
    "llm_ui_widget_menu_request_set"
   ],
@@ -5304,10 +5288,9 @@
    "llm_ui_text_viewer_tick"
   ],
   "_G_LLM_UI_MENU_WIDGET_LIST": [
-   "FUN_004baf42",
-   "FUN_004bd0a6",
    "llm_game_return_to_main_menu_cb",
    "llm_game_start_tutorial",
+   "llm_lobby_network_setup_cancel_cb",
    "llm_menu_enter_gameplay",
    "llm_menu_enter_gameplay_screen_open",
    "llm_menu_finish_enter_gameplay",
@@ -5342,7 +5325,8 @@
    "llm_ui_outcome_dlg_open",
    "llm_ui_planet_select_screen_build",
    "llm_ui_text_viewer_open",
-   "llm_ui_text_viewer_tick"
+   "llm_ui_text_viewer_tick",
+   "llm_ui_tutorial_step_enter_cb"
   ],
   "_G_LLM_UI_MINIMAP_EDGE_DRAG_ACTIVE": [
    "llm_ui_hud_minimap_click_handler"
@@ -5364,12 +5348,37 @@
    "llm_ui_modal_key_pump",
    "llm_ui_mouse_poll_next_event"
   ],
+  "_G_LLM_UI_MOUSE_LEFT_DOWN_LATCH": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_HOLD_MS": [
+   "llm_input_mouse_button_hold_update",
+   "llm_ui_bldg_stat_adjust_row_click",
+   "llm_ui_bldg_worker_adjust_btn_tick"
+  ],
   "_G_LLM_UI_MOUSE_LEFT_PRESS_EDGE": [
    "FUN_0041b35c",
    "llm_input_mouse_button_hold_update",
    "llm_ui_frame_tick"
   ],
+  "_G_LLM_UI_MOUSE_LEFT_PRESS_X": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_PRESS_Y": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
   "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_RELEASE_X": [
+   "FUN_0041b35c",
+   "llm_input_mouse_button_hold_update"
+  ],
+  "_G_LLM_UI_MOUSE_LEFT_RELEASE_Y": [
    "FUN_0041b35c",
    "llm_input_mouse_button_hold_update"
   ],
@@ -5421,9 +5430,9 @@
    "llm_ui_outcome_dlg_tick"
   ],
   "_G_LLM_UI_OUTCOME_DLG_MESSAGE_WIDGET": [
-   "FUN_004c6bc5",
    "llm_tutorial_step_driver",
-   "llm_ui_outcome_dialog"
+   "llm_ui_outcome_dialog",
+   "llm_ui_outcome_dlg_note_icon_action_cb"
   ],
   "_G_LLM_UI_OUTCOME_DLG_NOTE_ICON_WIDGET": [
    "llm_ui_outcome_dialog"
@@ -5476,9 +5485,9 @@
    "llm_ui_paged_list_frame"
   ],
   "_G_LLM_UI_RACE_SEL_PENDING_GFX_IDX": [
-   "FUN_004b845e",
-   "FUN_004b935c",
-   "llm_game_start_tutorial"
+   "llm_game_start_tutorial",
+   "llm_menu_newgame_fade_done_cb",
+   "llm_menu_race_select_draw_cb"
   ],
   "_G_LLM_UI_SAVEGAME_LIST_WIDGET": [
    "llm_menu_savegame_list_build"
@@ -5585,8 +5594,8 @@
    "llm_gfx_draw_sprite_to_buffer",
    "llm_gfx_draw_sprite_unclipped",
    "llm_gfx_draw_text_rgb",
+   "llm_ui_blit_bitmap_rect",
    "llm_ui_panel_text_draw",
-   "llm_ui_set_draw_surface",
    "llm_ui_text_draw_rgb16",
    "llm_ui_text_draw_wrapped_shadowed",
    "llm_ui_wrapped_text_line_draw"
@@ -5601,14 +5610,14 @@
    "llm_gfx_draw_sprite_to_buffer",
    "llm_gfx_draw_sprite_unclipped",
    "llm_gfx_draw_text_rgb",
+   "llm_ui_blit_bitmap_rect",
    "llm_ui_panel_text_draw",
-   "llm_ui_set_draw_surface",
    "llm_ui_text_draw_rgb16",
    "llm_ui_text_draw_wrapped_shadowed",
    "llm_ui_wrapped_text_line_draw"
   ],
   "_G_LLM_UI_TEXT_COLOR_OVERRIDE_INDEX": [
-   "FUN_004b9b68"
+   "llm_ui_tutorial_hint_draw_cb"
   ],
   "_G_LLM_UI_TEXT_VIEWER_BG_IMAGE": [
    "llm_menu_show_credits",
@@ -5663,14 +5672,14 @@
    "llm_game_boot_init"
   ],
   "_G_LLM_UI_VIEW_SIZE_MODE_BIT": [
-   "llm_ui_hud_topbar_tick"
+   "llm_ui_hud_bottom_strip_tick"
   ],
   "_G_LLM_UI_VIEW_SIZE_MODE_CACHE": [
-   "FUN_004b86a4",
    "llm_debug_console_dispatch",
    "llm_strat_input_update",
    "llm_ui_ingame_menu_open",
    "llm_ui_main_menu_screen_load",
+   "llm_ui_options_menu_ok_action_cb",
    "llm_ui_outcome_dlg_open",
    "llm_ui_planet_select_screen_build",
    "llm_ui_planet_select_screen_open"
@@ -5728,10 +5737,10 @@
    "llm_ui_menu_screen_restore_config"
   ],
   "_G_LLM_UI_WGT_MENU_SCREEN_TITLE": [
-   "FUN_004bb78d",
    "llm_game_start_tutorial",
    "llm_lobby_screen_open",
    "llm_menu_enter_gameplay",
+   "llm_menu_loadgame_ok_action_cb",
    "llm_menu_savegame_list_build",
    "llm_menu_savelist_select_name",
    "llm_mp_discovery_browser_refresh",
@@ -5766,12 +5775,12 @@
    "llm_ui_widget_layout_resolve_position"
   ],
   "_G_LLM_UI_WIDGET_DRAW_X": [
-   "FUN_004b9b68",
    "FUN_004c13da",
    "FUN_004c65a6",
    "llm_boot_progress_draw",
    "llm_mp_browser_scrollbar_draw",
    "llm_ui_list_widget_draw",
+   "llm_ui_tutorial_hint_draw_cb",
    "llm_ui_widget_draw",
    "llm_ui_widget_draw_content",
    "llm_ui_widget_input_tick",
@@ -5791,20 +5800,20 @@
    "llm_ui_widget_input_tick"
   ],
   "_G_LLM_UI_WIDGET_KEY_SELECTED": [
-   "FUN_004c1f67",
    "llm_menu_enter_gameplay",
    "llm_menu_widget_selection_reset",
    "llm_ui_avi_close_return_to_menu",
+   "llm_ui_widget_drag_modal_cb",
    "llm_ui_widget_input_tick"
   ],
   "_G_LLM_UI_WIDGET_SELECTED": [
-   "FUN_004c1f67",
    "llm_menu_enter_gameplay",
    "llm_menu_race_select_cb",
    "llm_menu_widget_selection_reset",
    "llm_ui_avi_close_return_to_menu",
    "llm_ui_menu_push_screen",
    "llm_ui_menu_state_tick",
+   "llm_ui_widget_drag_modal_cb",
    "llm_ui_widget_input_tick"
   ],
   "_G_LLM_UNITQ_CLOSED": [
@@ -5832,7 +5841,6 @@
    "llm_gfx_view_metrics_init"
   ],
   "_G_LLM_VIEW_SIZE_MODE": [
-   "FUN_004b86a4",
    "llm_debug_console_dispatch",
    "llm_game_init_first_run_defaults",
    "llm_game_start_tutorial",
@@ -5840,6 +5848,7 @@
    "llm_strat_input_update",
    "llm_ui_menu_close_to_hud",
    "llm_ui_options_menu_cancel",
+   "llm_ui_options_menu_ok_action_cb",
    "llm_ui_options_menu_open"
   ],
   "_G_LLM_VIEW_SIZE_MODE_CACHE": [

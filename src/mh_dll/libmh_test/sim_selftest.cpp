@@ -167,6 +167,11 @@ void run_bldg_state_land_activate_tests();
 void run_bldg_state_deploy_start_tests();
 void run_bldg_state_to_unit_tests();
 void run_bldg_state_turret_scan_tests();
+void run_bldg_tick_turret_owner_tests();    // patching:PT-FIX1
+void run_bldg_tick_turret_rate_tests();     // patching:PT-FIX2
+void run_bldg_turret_clip_tests();          // patching:PT-FIX4
+void run_bldg_turret_poll_tests();          // patching:PT-FIX5
+void run_unit_move_path_air_facing_tests(); // patching:PT-FIX3
 void run_bldg_state_turret_attack_tests();
 void run_bldg_state_construction_tests();
 void run_bldg_state_charge_gate_tests();
@@ -1817,6 +1822,11 @@ int run_simtest() {
     mh::sim::test::run_bldg_state_deploy_start_tests();
     mh::sim::test::run_bldg_state_to_unit_tests();
     mh::sim::test::run_bldg_state_turret_scan_tests();
+    mh::sim::test::run_bldg_tick_turret_owner_tests();    // patching:PT-FIX1
+    mh::sim::test::run_bldg_tick_turret_rate_tests();     // patching:PT-FIX2
+    mh::sim::test::run_bldg_turret_clip_tests();          // patching:PT-FIX4
+    mh::sim::test::run_bldg_turret_poll_tests();          // patching:PT-FIX5
+    mh::sim::test::run_unit_move_path_air_facing_tests(); // patching:PT-FIX3
     mh::sim::test::run_bldg_state_turret_attack_tests();
     mh::sim::test::run_bldg_state_construction_tests();
     mh::sim::test::run_bldg_state_charge_gate_tests();

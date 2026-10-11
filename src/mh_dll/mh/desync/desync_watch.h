@@ -525,6 +525,21 @@ int install(const char *ini_path);
 // step key is only meaningful relative to a session both peers entered together.
 void session_reset();
 
+// mp:Q2: arm the state recorder ([desync] state_record) for a SINGLE-PLAYER session, on a step counter
+// of its own -- called by the session layer right after it opens a solo session folder (new campaign,
+// skirmish, tutorial or loaded save). The file ends when the solo session closes (match_end). A no-op when
+// the recorder is off, the module is not armed, or an MP match is sampling.
+void solo_session_begin();
+
+// mp:Q4: the PROCESS-EXIT drain. No recording path waits on the game thread during play (a match end hands
+// its last chunk to the writer and returns), so the one place a writer can be cut short is the process
+// ending right after a session closed. Called from the game's exit witness (WM_DESTROY, net_diag.cpp) --
+// the window is already being torn down, so the wait costs no frame -- it waits at most `ms` in total for
+// the state recorder's writers, the ring/snapshot writers and the gzip threads, and logs what it found.
+// A writer still running when it returns leaves a valid prefix (every chunk is CRC-sealed) and a raw file
+// in place of its .gz.
+void drain_writers(unsigned ms);
+
 // The outgoing match's rollup, WITHOUT restarting sampling. Called from the session boundary
 // (mp_session_close, net_discovery.cpp) BEFORE the session directory closes, so a match's own
 // `; [desync] match end: N mismatching / M compared` line lands in ITS directory. Until mp:RM1 the
@@ -565,6 +580,13 @@ void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state);
 
 // True once the current match has seen at least one mismatching sample.
 bool detected();
+
+// mp:Q3: the order recording (order_capture.h). configure_order_record runs after install() -- it needs
+// this module's step hook, so with the module unarmed it stays off and says why. on_order_dispatch is
+// the seam's dispatch hook body: it reads the due-now queue (an address, so it lives here) and hands it
+// over. Returns whether the recording is on.
+bool configure_order_record(int enabled, const char *refused);
+void on_order_dispatch();
 
 // mp:X3c: the world resync imported a blob captured at the host's step `capture_step` and this peer must
 // now count as being at step capture_step - 1 (the step counter advances just after, so the body that runs

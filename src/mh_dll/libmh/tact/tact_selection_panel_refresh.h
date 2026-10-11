@@ -11,7 +11,7 @@
 //
 // DERIVATION (straight-line, one gate, five outward calls, all frontier):
 //
-//   1. @0x00434b0f-0x00434b35: llm_ui_set_draw_surface(surface, pitch, x, y, clip_x, clip_y, clip_w,
+//   1. @0x00434b0f-0x00434b35: llm_ui_blit_bitmap_rect(surface, pitch, x, y, clip_x, clip_y, clip_w,
 //      clip_h, src_bitmap), same nine-param prototype already bound and used at every other TACT1E
 //      call site in this module (tact_sidebar_dispatch.cpp, tact_ui_sel_panel_init.cpp, ...):
 //        surface    = EAX = *_G_LLM_GFX_DRAW_SURFACE      (tact_view::gfx_draw_surface)
@@ -52,7 +52,7 @@ struct selection_panel_refresh_calls {
     // The body's TWO draw points are two scope emits (LIFT-TACT L4b), and they
     // stay two because they are not contiguous -- real work runs between them and the hosted sink
     // dispatches where the record is emitted, so merging them would reorder the original (R5).
-    void (*sel_panel_bg)();               // was llm_ui_set_draw_surface @0x004a8b73 (icon-1 plate)
+    void (*sel_panel_bg)();               // was llm_ui_blit_bitmap_rect @0x004a8b73 (icon-1 plate)
     void (*squad_roster_refresh)();       // llm_tact_squad_roster_refresh @0x004356bd
     void (*ui_sidebar_roster_refresh)();  // llm_tact_ui_sidebar_roster_refresh @0x00434b68
     void (*ui_sidebar_draw_rows)();       // llm_tact_ui_sidebar_draw_rows @0x00434ceb

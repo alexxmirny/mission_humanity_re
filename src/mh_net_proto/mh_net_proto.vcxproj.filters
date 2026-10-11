@@ -14,6 +14,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\mh_net_proto\gameplay_set.h">
+      <Filter>include\mh_net_proto</Filter>
+    </ClInclude>
     <ClInclude Include="include\mh_net_proto\net_crypto.h">
       <Filter>include\mh_net_proto</Filter>
     </ClInclude>
@@ -34,6 +37,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\gameplay_set.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\net_crypto.cpp">
       <Filter>src</Filter>
     </ClCompile>

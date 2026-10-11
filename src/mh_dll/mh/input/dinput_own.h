@@ -33,6 +33,7 @@ void on_present();
 bool harness_mouse_abs_game(int gx, int gy);
 bool harness_mouse_rel(int dx, int dy);
 bool harness_mouse_button(int button, bool down); // 0 left, 1 right, 2 middle
+bool harness_mouse_wheel(int delta);              // WHEEL_DELTA (120) per notch, positive = forward
 bool harness_key(uint16_t make, bool e0, bool down);
 // The foreground the owned devices see: -1 = the real one (default), 0 = lost, 1 = focused. A headless
 // lane's window is never foreground, so a script sets 1 to let the game acquire; 0 exercises the

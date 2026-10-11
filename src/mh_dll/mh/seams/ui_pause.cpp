@@ -24,7 +24,7 @@
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "addr/mh_structs.gen.h"    // mh::game::mh_llm_input_key_event (0x38 stride)
-#include "hook/detour.h"            // install_trampoline + WATCOM_PROLOGUE
+#include "strat_pre_input.h"        // the shared run-before detour on llm_strat_input_update
 #include "en_guard.h"               // EN-only build gate
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetPrivateProfile*
@@ -32,7 +32,6 @@
 namespace {
 
 using mh::game::mh_llm_input_key_event;
-using mh::hook::install_trampoline;
 
 constexpr uintptr_t ADDR_INPUT   = mh::addr::llm_strat_input_update;
 constexpr uintptr_t ADDR_MODE    = mh::addr::_G_LLM_GAME_MODE;
@@ -56,7 +55,6 @@ constexpr uint32_t DEFAULT_KEY = 0x19; // P (PC set-1) -- the conventional pause
 constexpr int LOG_FIRST = 20;          // log this many entries, then go quiet
 
 uint32_t g_key    = DEFAULT_KEY;
-void    *g_tramp  = nullptr;
 long     g_enters = 0;
 
 char          g_log[MAX_PATH];
@@ -121,19 +119,6 @@ void on_strat_input() {
         pz_log("; pause ENTER #%ld (scancode 0x%02x) -- mode 2 -> 5", g_enters, g_key);
 }
 
-// clang-format off
-__declspec(naked) void strat_input_detour() {
-    __asm {
-        pushad
-        pushfd
-        call on_strat_input
-        popfd
-        popad
-        jmp  dword ptr [g_tramp] // stolen prologue + jmp back to llm_strat_input_update+8
-    }
-}
-// clang-format on
-
 } // namespace
 
 extern "C" int MH_Pause_Install(void) {
@@ -151,10 +136,9 @@ extern "C" int MH_Pause_Install(void) {
     }
     if (!g_key) return 0; // explicitly unbound
 
-    // U30: see ui_keyrepeat.cpp -- the compare moved into the primitive, which is the only place
-    // that can tell a wrong build from an entry somebody else already owns.
-    if (!install_trampoline(ADDR_INPUT, (void *)strat_input_detour, &g_tramp, 8,
-                            mh::hook::entry_claim::exclusive, "the D19 pause-screen input detour")) {
+    // The detour is shared with the other features that act at the top of the strategic input pump
+    // (seams/strat_pre_input.cpp); it names a refusal itself (U30).
+    if (!mh::seams::strat_pre_input_add(on_strat_input, "the D19 pause-screen input detour")) {
         pz_log("; pause DISARMED: install refused at 0x%08x (the reason is on the [interlock] line "
                "for this address in mh_net.log)",
                (unsigned)ADDR_INPUT);

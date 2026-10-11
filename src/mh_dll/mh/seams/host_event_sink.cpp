@@ -77,7 +77,7 @@ void draw_active_count_hud(int32_t active, int32_t cached) {
     const int32_t        pitch   = *st.read.gfx_panel_row_skip;
 
     // @0x00434e5d-0x00434e86: the icon blit. x/y and clip_x/clip_y are the same literal pair.
-    mh::call::llm_ui_set_draw_surface(surface, pitch, 0x8a, 0x90, 0x8a, 0x90, 0x16, 0x18,
+    mh::call::llm_ui_blit_bitmap_rect(surface, pitch, 0x8a, 0x90, 0x8a, 0x90, 0x16, 0x18,
                                       st.own.sel_panel_icon_gfx_at(0));
 
     // @0x00434e8b-0x00434f19: the two formatted lines, 10 px apart. Each re-formats into the same
@@ -212,7 +212,7 @@ void planet_map_palette() {
 void draw_sel_panel_bg() {
     // @0x00434b0f-0x00434b35: the panel's background plate, icon slot 1.
     mh::tact::tact_state st = mh::tact::state();
-    mh::call::llm_ui_set_draw_surface(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
+    mh::call::llm_ui_blit_bitmap_rect(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
                                       *st.read.gfx_panel_row_skip, /*x=*/0, /*y=*/0xf0,
                                       /*clip_x=*/0, /*clip_y=*/0x48, /*clip_w=*/0xa0,
                                       /*clip_h=*/0xf0, st.own.sel_panel_icon_gfx_at(1));
@@ -243,7 +243,7 @@ void draw_order_button(int32_t button) {
     mh::tact::tact_state st   = mh::tact::state();
     void                *icon = st.own.sel_panel_icon_gfx_at(g.slot);
     const uint16_t      *hdr  = static_cast<const uint16_t *>(icon);
-    mh::call::llm_ui_set_draw_surface(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
+    mh::call::llm_ui_blit_bitmap_rect(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
                                       *st.read.gfx_panel_row_skip, g.x, g.y, /*clip_x=*/0,
                                       /*clip_y=*/0, hdr[0], hdr[1], icon);
 }
@@ -264,7 +264,7 @@ void blit_panel_icon(int32_t slot, int32_t x, int32_t y) {
     mh::tact::tact_state st   = mh::tact::state();
     void                *icon = st.own.sel_panel_icon_gfx_at(slot);
     const uint16_t      *hdr  = static_cast<const uint16_t *>(icon);
-    mh::call::llm_ui_set_draw_surface(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
+    mh::call::llm_ui_blit_bitmap_rect(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
                                       *st.read.gfx_panel_row_skip, x, y, /*clip_x=*/0,
                                       /*clip_y=*/0, hdr[0], hdr[1], icon);
 }
@@ -276,7 +276,7 @@ void blit_panel_icon(int32_t slot, int32_t x, int32_t y) {
 // rather than routed through the helper above.
 void draw_group_panel() {
     mh::tact::tact_state st = mh::tact::state();
-    mh::call::llm_ui_set_draw_surface(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
+    mh::call::llm_ui_blit_bitmap_rect(const_cast<uint8_t *>(*st.read.gfx_draw_surface),
                                       *st.read.gfx_panel_row_skip, /*x=*/2, /*y=*/0x8e,
                                       /*clip_x=*/2, /*clip_y=*/0x8e, /*clip_w=*/0x46,
                                       /*clip_h=*/0x17, st.own.sel_panel_icon_gfx_at(0));
@@ -323,7 +323,7 @@ constexpr int32_t     SEL_PANEL_TEXT_ID_LABEL_2  = 581;
 
 void blit_icon_own_header(void *surface, int32_t pitch, int32_t x, int32_t y, void *icon) {
     const uint16_t *hdr = static_cast<const uint16_t *>(icon);
-    mh::call::llm_ui_set_draw_surface(surface, pitch, x, y, /*clip_x=*/0, /*clip_y=*/0, hdr[0],
+    mh::call::llm_ui_blit_bitmap_rect(surface, pitch, x, y, /*clip_x=*/0, /*clip_y=*/0, hdr[0],
                                       hdr[1], icon);
 }
 

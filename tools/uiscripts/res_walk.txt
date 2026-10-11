@@ -1,0 +1,946 @@
+# res_walk -- ONE process walks the resolution / HUD / panel-row / zoom segments that used to be 25 separate rows.
+# Everything runs on the committed saves 2-almost.sav (a campaign save on Aman: a 64 x 64 map, 8 available and 13
+# owned buildings, a selected landed building and two insect groups beside the wrap seam) and ayy30.sav (21 available
+# buildings, 74 units in groups of 5 / 18 / 51, for the lists that need more than 2-almost holds). Both are deployed
+# into the lane; the Load dialog lists them newest-first and 2-almost is the top, preselected row, so a plain
+# `clickl Load game` loads it, and ayy30 (the second row) is picked with the split-click pattern.
+#
+# Each segment starts with `mark <old row name>`: the line goes into mh_video.log, mh_input.log and mh_net.log, and every
+# post_check slices the logs on it (tools/walk_segments.py). A capture is named <old row>__<name>, so a red frame
+# names the row it replaced. The size is changed IN GAME (ESC > Options > Screen size > Ok), as a player does; the
+# options dialog is centred, so its spinner sits at (W/2-22, H/2-3) of the CURRENT rendered size and one click is the
+# next list entry, wrapping (res_walk.ini: [0] 640x480 [1] 800x576 [2] 1024x768 [3] 1280x768 [4] 1280x960
+# [5] 1280x1024 [6] 1920x1080 (1056 rendered) [7] 1920x1440 [8] 2048x1152 [9] 2560x1440):
+#   1024x768 (490,381)  1280x768 (618,381)  1280x960 (618,477)  1280x1024 (618,509)  1920x1056 (938,525)
+#   1920x1440 (938,717)  2048x1152 (1002,573)  2560x1440 (1258,717)  640x480 (298,237)
+# The Load dialog is centred on the map area, so its second row sits at ((W-160)/2-10, H/2-95).
+
+# ---- boot at the stock 1024x768, load 2-almost from the main menu, and prove it is the 64-tile map
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+
+# ---- res_worker_click_1024: the FIRST worker "+" and "-" of the process each order exactly one worker.
+# The owned tab's row 2 (Extractor, 39 workers, below its maximum of 80; 52-px rows from y 248) has its "+" at
+# (872,372) and its "-" at (884,372).
+mark res_worker_click_1024
+simclick 984 210
+gameclock +300
+cursorhold 600 400 6
+capture res_worker_click_1024__a_owned
+simclick 872 372
+gameclock +3000
+cursorhold 600 400 6
+capture res_worker_click_1024__b_plus
+simclick 884 372
+gameclock +3000
+cursorhold 600 400 6
+capture res_worker_click_1024__c_minus
+
+# ---- res_seam_select: a drag-select box whose left edge is across the wrap seam (map column 63 | 0).
+# The camera starts at world x ~1470, so the seam is at screen x ~580; the two insect groups sit at x ~750 (col 4).
+# Deselect with a click on empty ground, then a box from x = 450 (left of the seam) to (800,700) must select them.
+mark res_seam_select
+cursor 300 300
+cursor 300 300
+press 300 300
+release 300 300
+gameclock +60
+capture res_seam_select__a_deselected
+cursor 450 380
+cursor 450 380
+press 450 380
+cursorhold 800 700 6
+release 800 700
+gameclock +140
+capture res_seam_select__b_box_across_seam_selects
+
+# ---- map_zoom_wheel: three notches in (x1.2 each: 120 / 144 / 173 percent), a notch over the side panel does
+# nothing, three out and one more at 1x is a no-op.
+mark map_zoom_wheel
+rawfocus 1
+cursorhold 700 300 30
+zoom 100
+capture map_zoom_wheel__z0_unzoomed
+rawmouse wheel 120
+zoom ge 120
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 144
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 173
+cursorhold 700 300 30
+zoom 173
+capture map_zoom_wheel__z1_zoomed
+cursorhold 940 300 10
+rawmouse wheel 120
+cursorhold 940 300 40
+zoom 173
+cursorhold 700 300 10
+rawmouse wheel -120
+zoom ge 100
+cursorhold 700 300 10
+rawmouse wheel -120
+cursorhold 700 300 10
+rawmouse wheel -120
+cursorhold 700 300 30
+zoom 100
+rawmouse wheel -120
+cursorhold 700 300 30
+zoom 100
+capture map_zoom_wheel__z2_back
+
+# ---- map_zoom_menu_hold: zoom in, out, ESC, a HELD left click on Return to game, release: the zoom stays at 1x.
+# ESC re-inits the mouse at the mode centre (512,384); Return to game is at (432,455) of the 1024x768 ESC menu.
+mark map_zoom_menu_hold
+rawmouse wheel 120
+zoom ge 120
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 144
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 173
+cursorhold 700 300 30
+zoom 173
+rawmouse wheel -120
+cursorhold 700 300 10
+rawmouse wheel -120
+cursorhold 700 300 10
+rawmouse wheel -120
+cursorhold 700 300 30
+zoom 100
+capture map_zoom_menu_hold__h0b_zoomed_out
+key 0x01
+present Return
+settled Return
+capture map_zoom_menu_hold__h1_menu
+rawmouse rel -80 71
+cursorhold 432 455 20
+rawmouse down l
+cursorhold 432 455 600
+rawmouse up l
+gamemode 2
+cursorhold 700 300 30
+zoom 100
+capture map_zoom_menu_hold__h2_after
+
+# ======== 1280x768 (one step on the list) ========
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+
+# ---- galaxy_native_1280x768: the planet-select screen opens at the stock 1024x768 in every picker size and the
+# picker size comes back when it is left (`E` twice: the minimap-panel hotkey; the second `E` and the dwell are
+# explained in galaxy_bg_picker.txt). Load 2-almost again first: the HUD panel must be on its first tab.
+key 0x01
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 550 275
+cursor 550 275
+press 550 275
+release 550 275
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark galaxy_native_1280x768
+capture galaxy_native_1280x768__before
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+dump
+cursorhold 900 120 6000
+capture galaxy_native_1280x768__galaxy
+cursorhold 746 723 120
+capture galaxy_native_1280x768__back_hover
+click 746 723
+gamemode 2
+gameclock +500
+screensettled
+capture galaxy_native_1280x768__after
+
+# ---- galaxy_native_zoom: three wheel notches (173 percent), the galaxy round trip, and the zoom is still 173.
+mark galaxy_native_zoom
+rawfocus 1
+cursorhold 700 300 30
+zoom 100
+rawmouse wheel 120
+zoom ge 120
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 144
+cursorhold 700 300 10
+rawmouse wheel 120
+zoom ge 173
+cursorhold 700 300 30
+zoom 173
+screensettled
+capture galaxy_native_zoom__zoomed_before
+key 0x12
+gameclock +600
+key 0x12
+gamemode 3
+cursorhold 900 120 600
+key 0x01
+gamemode 2
+gameclock +900
+cursorhold 700 300 30
+zoom 173
+screensettled
+capture galaxy_native_zoom__zoomed_after
+
+# ======== 1280x960 (one more step) ========
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+key 0x01
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 550 371
+cursor 550 371
+press 550 371
+release 550 371
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+
+# ---- res_panel_rows_960 (the owned list; the available list is ayy30's): 2-almost holds 13 owned buildings, so at
+# 1280x960 the owned tab fills 13 rows (52-px rows from y 248; rows 10..12 are below 768) while the available tab holds
+# only 8 entries. Row 12 (Extractor, y 872..924, 44 workers of 80) is a row the stock tables have no slot for: its
+# worker "-" then "+" each move the counter by exactly one.
+mark res_panel_rows_960
+capture res_panel_rows_960__a_avail_8
+simclick 1240 210
+gameclock +300
+cursorhold 600 400 6
+capture res_panel_rows_960__d_owned
+cursorhold 1140 888 4
+press 1140 888
+release 1140 888
+gameclock +3000
+cursorhold 600 400 6
+capture res_panel_rows_960__e_worker_minus
+simclick 1128 888
+gameclock +3000
+cursorhold 600 400 6
+capture res_panel_rows_960__f_worker_plus
+
+# ---- res_panel_rows_ayy30_960: ayy30's available list has 21 entries; 1280x960 shows 13 rows (52 px from y 248),
+# so it scrolls. a_list rows 0..12 = Power Plant .. Spaceport. b_arrow: the down arrow (hovered, then pressed) scrolls
+# one row. c_placing_arrow: a click on row 12 (y 872..924) starts Heavy Factory's placement. c_info: a right click on
+# that row opens its info screen (game mode 4). Each row click is preceded by a hover (`cursorhold`): in a second game
+# of the process the click alone lands before the list has the row as its hovered widget and starts nothing. d_drag: the right button held on the list body and dragged up 80 px
+# scrolls four more rows. e_placing_drag: a click on row 12 starts Ion Cannon's placement.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark res_panel_rows_ayy30_960
+capture res_panel_rows_ayy30_960__a_list
+cursor 1160 236
+cursor 1160 236
+press 1160 236
+release 1160 236
+gameclock +600
+cursorhold 600 400 40
+capture res_panel_rows_ayy30_960__b_arrow
+cursorhold 1170 898 8
+simclick 1170 898
+gameclock +300
+cursorhold 500 500 6
+capture res_panel_rows_ayy30_960__c_placing_arrow
+simrclick 500 500
+gameclock +300
+cursorhold 1240 898 8
+simrclick 1240 898
+gameclock +300
+retry 1500 1 3 gamemode 4
+screensettled
+capture res_panel_rows_ayy30_960__c_info
+key 0x01
+retry 1500 1 3 gamemode 2
+gameclock +300
+rawfocus 1
+rawmouse abs 1200 880
+gameclock +100
+rawmouse abs 1200 880
+gameclock +100
+rawmouse down r
+gameclock +100
+rawmouse rel 0 -20
+gameclock +100
+rawmouse rel 0 -20
+gameclock +100
+rawmouse rel 0 -20
+gameclock +100
+rawmouse rel 0 -20
+gameclock +100
+rawmouse up r
+gameclock +300
+cursorhold 600 400 6
+capture res_panel_rows_ayy30_960__d_drag
+cursorhold 1170 898 8
+simclick 1170 898
+gameclock +300
+cursorhold 500 500 6
+capture res_panel_rows_ayy30_960__e_placing_drag
+
+# ======== 1920x1440 (3 steps on) ========
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 477
+click 618 477
+click 618 477
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+
+# ---- res_panel_rows_ayy30_1440: a selection list past 40 entries on ayy30. All 74 units sit in control groups
+# (5, 18, 51); the selection tab's right column lists the selected group, 16-px rows from y 288. b_group51: the "51"
+# group button selects that group: 51 rows down to y 1104, past the stock tables' 40 rows and the dispatcher's stock
+# 100-record cap. c_hover45: the cursor on row 45 (y 1008..1024) shows "separate unit from the squad". d_click45: the
+# click moves that unit out of the group (group 51 -> 50, ungrouped 0 -> 1).
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+mark res_panel_rows_ayy30_1440
+simclick 1840 182
+gameclock +300
+simclick 1880 210
+gameclock +300
+cursorhold 900 600 4
+capture res_panel_rows_ayy30_1440__a_sel
+cursor 1810 232
+cursor 1810 232
+press 1810 232
+release 1810 232
+gameclock +400
+cursorhold 1700 1350 4
+capture res_panel_rows_ayy30_1440__b_group51
+cursorhold 1880 1016 6
+capture res_panel_rows_ayy30_1440__c_hover45
+simclick 1880 1016
+gameclock +400
+cursorhold 1700 1350 4
+capture res_panel_rows_ayy30_1440__d_click45
+
+# ---- galaxy_native_launch: leave the galaxy screen by LAUNCHING a planet. The screen's planet widget takes the
+# click, the travel confirmation appears, the ship flies across and the session lands on the new planet.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 131
+cursor 310 131
+press 310 131
+release 310 131
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+mark galaxy_native_launch
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+cursorhold 900 120 3000
+cursorhold 57 57 200
+capture galaxy_native_launch__hover_planet
+click 57 57
+cursorhold 57 57 300
+dump
+capture galaxy_native_launch__confirm
+click 433 421
+gamemode 2
+gameclock +2000
+screensettled
+capture galaxy_native_launch__arrived
+
+# ---- res_wrap_window_v: a 1920x1440 view (1760 x 1408 viewport, taller than a half map of 1024 px) on the 64-tile map.
+# The selected building is carried by the camera keys (0x48 = camera up: it moves down; 0x4d = camera right: it moves
+# left and re-enters from the right through the torus) until it sits more than 1024 px below, then also right of
+# the camera. The stock placement folds a sprite more than half a map away to a negative offset and it vanishes.
+key 0x01
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 870 611
+cursor 870 611
+press 870 611
+release 870 611
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 900 600 6
+screensettled
+mark res_wrap_window_v
+capture res_wrap_window_v__w0_start_1920x1440
+cursor 600 500
+cursor 600 500
+keyhold 0x48 60
+gameclock +800
+capture res_wrap_window_v__w1_ship_below_1024
+keyhold 0x4d 120
+gameclock +800
+capture res_wrap_window_v__w2_ship_right_and_below_1024
+
+# ---- galaxy_native_1920x1440 (+ galaxy_native_quit, quit_from_large_mode): the galaxy round trip from a TALL picker
+# size, then ESC > Quit game > Yes drops to the 640x480 menu with the cursor low in the big mode (the stale-cursor
+# guard) and reaches the main menu.
+key 0x01
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 870 611
+cursor 870 611
+press 870 611
+release 870 611
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark galaxy_native_1920x1440
+capture galaxy_native_1920x1440__before
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+dump
+cursorhold 900 120 6000
+capture galaxy_native_1920x1440__galaxy
+cursorhold 746 723 120
+capture galaxy_native_1920x1440__back_hover
+click 746 723
+gamemode 2
+gameclock +500
+screensettled
+capture galaxy_native_1920x1440__after
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+capture galaxy_native_1920x1440__menu
+
+# ======== 2048x1152 ========
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 131
+cursor 310 131
+press 310 131
+release 310 131
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+cursorhold 1200 700 30
+screensettled
+
+# ---- res_nowrap_64: 2048x1152, the largest 16:9 size the cap offers, on the 64-tile map shows ONE copy with the
+# selected building in view; a drag-select across the wrap seam selects the insects; two in-game size changes
+# 2048x1152 -> 1280x768 -> 2048x1152 re-fit the view with no second copy; the camera held 32 tiles away, then
+# more than 1024 px, then round the whole torus keeps the building, its ellipse and its shadow drawn.
+mark res_nowrap_64
+capture res_nowrap_64__a_start_2048x1152
+# Drag-select across the wrap seam at this size: the seam (map column 63 | 0) is at screen x ~1040, the insect groups
+# (column ~4) at x ~1180. Deselect with a click on empty ground, then a box from x = 900 (left of the seam) over them.
+cursor 1500 500
+cursor 1500 500
+press 1500 500
+release 1500 500
+gameclock +60
+capture res_nowrap_64__a2_deselected
+cursor 900 700
+cursor 900 700
+press 900 700
+cursorhold 1300 1050 6
+release 1300 1050
+gameclock +140
+capture res_nowrap_64__a3_box_across_seam_selects
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_nowrap_64__b_1280x768
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 381
+click 618 381
+click 618 381
+click 618 381
+click 618 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_nowrap_64__c_back_2048x1152
+# Camera: key 0x4d held = the camera scrolls RIGHT at ~11 px per presented frame, so the building (x ~1100) moves LEFT
+# and, past the left edge, re-enters from the right through the torus. 91 frames = 1024 px = 32 tiles; 120 frames puts
+# it at ~1820, more than 1024 px right of the camera; 100 more is a full lap of the torus.
+cursor 600 500
+cursor 600 500
+keyhold 0x4d 91
+gameclock +400
+capture res_nowrap_64__d1_camera_32_tiles
+keyhold 0x4d 29
+gameclock +200
+capture res_nowrap_64__d2_ship_right_of_1024
+keyhold 0x4d 100
+gameclock +500
+capture res_nowrap_64__f_camera_wrapped_around
+
+# ---- galaxy_native_2048x1152
+key 0x01
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 934 467
+cursor 934 467
+press 934 467
+release 934 467
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark galaxy_native_2048x1152
+capture galaxy_native_2048x1152__before
+key 0x12
+gameclock +400
+key 0x12
+gamemode 3
+dump
+cursorhold 900 120 6000
+capture galaxy_native_2048x1152__galaxy
+cursorhold 746 723 120
+capture galaxy_native_2048x1152__back_hover
+click 746 723
+gamemode 2
+gameclock +500
+screensettled
+capture galaxy_native_2048x1152__after
+
+# ======== the bottom strip and the 640x480 drop: 2048x1152 -> 1280x1024 (7 steps) ========
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+click 1002 573
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+# ---- res_strip_resize: the bottom HUD strip renders clean after each in-game size change, small to large and back
+# (1280x1024 -> 1920x1056 -> 1920x1440 -> 2560x1440 -> 1024x768 -> 2560x1440); the old status-bar cache left stale pixels.
+mark res_strip_resize
+capture res_strip_resize__a_1280x1024
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 509
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_strip_resize__b_1920x1080
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 525
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_strip_resize__c_1920x1440
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 717
+click 938 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_strip_resize__d_2560x1440
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1258 717
+click 1258 717
+click 1258 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_strip_resize__e_back_1024x768
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+capture res_strip_resize__f_2560x1440_again
+
+# ---- res_minimap_box (RES9): the minimap's viewport box stays inside the 128x128 minimap where the stock draw leaves
+# the side-panel surface. Placed LAST on 2-almost (after the strip frames, which show its burning units: a segment
+# before them shifts the fire animation phase of every later frame on this game). It starts at 2560x1440, the tallest
+# entry of this list (the old row's 2048x1600 is not on it), at zoom 2 as loaded (a 64-tile map: the whole map in the
+# 128 px; at 2560 the view covers it, so no box): "+" is zoom 4 (box 301x177, stock top edge 6238 bytes before the
+# surface), then 2048x1152 (nine spinner steps on) at zoom 4 (box 237x141, 1054 bytes before), "-" is zoom 2 again, and
+# one step on returns to 2560x1440 for the next segment at the zoom it expects. Only zoom levels 2 and 4 exist on this
+# map ("-" at 2 and "+" at 4 do nothing), so the old row's zoom 1 frame is gone. The stock code draws the zoom-2 box
+# only when a game starts (the 119x71 line lands in a later segment), so this segment's zoom-2 frames show the whole map.
+# The zoom buttons sit at panel (8,140) 22x28 ("+") and (30,140) 32x28 ("-"); the panel starts at x = W - 160, so at
+# 2560 they are (2419,154) / (2446,154) and at 2048 (1907,154) / (1934,154).
+# The verdict is tools/check_minimap_box.py (mh_net.log's per-geometry `; RES9:` lines, sliced by this mark): stock would
+# write before the surface, the clipped draw wrote only inside the minimap, no new 0xDEFF word before the surface.
+mark res_minimap_box
+cursorhold 1000 600 6
+capture res_minimap_box__a_1440_z2
+simclick 2419 154
+gameclock +300
+cursorhold 1000 600 6
+capture res_minimap_box__b_1440_z4
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+click 1258 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 600 6
+capture res_minimap_box__c_1152_z4
+simclick 1934 154
+gameclock +300
+cursorhold 1000 600 6
+capture res_minimap_box__d_1152_z2
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1002 573
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+screensettled
+
+# ---- crash_640_from_large: ESC > Options > Screen size from the LAST list entry (2560x1440) to 640x480 > Ok. The Ok
+# handler switches the mode first and the next menu frame still draws the Options dialog with the 2560x1440 layout; the
+# unclipped bevel used to write past the 640x480 surface. Pass = the frames are captured and the game survives.
+mark crash_640_from_large
+key 0x01
+present &Options
+settled &Options
+clickv 111
+present Screen size
+settled Ok
+click 1258 717
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+screensettled
+capture crash_640_from_large__a_640_menu
+clickv 111
+present Screen size
+settled Ok
+screensettled
+capture crash_640_from_large__b_640_options
+clickl Cancel
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+capture crash_640_from_large__c_after
+# back to the stock 1024x768 (two steps on from 640x480; the dialog is drawn at the 640x480 size)
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 298 237
+click 298 237
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+
+# ---- res_hud: the strategic HUD reached through the real menu -> lobby -> launch (single peer: the host seats an AI
+# in slot 1 and clicks Start alone). w1 is a MENU screen (always drawn at 640x480) and w3 the GAMEPLAY HUD at 1024x768.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+mark res_hud
+capture res_hud__w1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+capture res_hud__w2_lobby
+enabled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock +3000
+capture res_hud__w3_hud
+
+# ======== 2048x1152 for the campaign start (six steps on from 1024x768) ========
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+
+# ---- res_land_hud: NEW GAME on the 64-tile planet-1 map at 2048x1152. The landing footprint (a hatched 4x4 tile
+# square under the ship, an effect animation) is drawn while the mothership descends, and a selected landed ship keeps
+# its card, tabs and resource rows. Shift+right-click on lit ground lands the mothership; a click on the landed ship
+# selects it. [harness] skip_intro_avi=1 skips the intro movie. The game clocks are absolute (this is a fresh game);
+# the first `gameclock 2400` is already past, so the footprint frame is taken right after the landing click.
+mark res_land_hud
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock 5000
+cursorhold 900 500 6
+simrclick 900 500 shift
+gameclock 2400
+capture res_land_hud__a_landing_footprint
+gameclock 30000
+capture res_land_hud__b_landed
+gameclock 90000
+simclick 900 500
+gameclock 91500
+capture res_land_hud__c_selected_ship_panel
+end

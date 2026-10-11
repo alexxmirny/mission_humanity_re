@@ -47,9 +47,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 204,
+    "sites": 217,
     "distinct": 151,
-    "outward_sites": 149,
+    "outward_sites": 156,
     "outward_distinct": 114
    },
    "sim": {
@@ -475,9 +475,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 3,
+   "sites": 5,
    "modules": {
-    "seams": 3
+    "seams": 5
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -487,9 +487,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    },
    "adjudication": "event-channel:event"
   },
@@ -499,9 +499,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    },
    "adjudication": "event-channel:event"
   },
@@ -850,9 +850,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 3,
+   "sites": 5,
    "modules": {
-    "seams": 3
+    "seams": 5
    }
   },
   {
@@ -894,9 +894,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 5,
    "modules": {
-    "seams": 2
+    "seams": 5
    }
   },
   {
@@ -1098,9 +1098,9 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 3,
+   "sites": 4,
    "modules": {
-    "seams": 3
+    "seams": 4
    }
   },
   {
@@ -1472,6 +1472,18 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_ui_blit_bitmap_rect",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 6,
+   "modules": {
+    "seams": 6
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_ui_chat_input_char_insert",
    "status": "original",
    "domain": null,
@@ -1616,18 +1628,6 @@
    "adjudication": "event-channel:screen"
   },
   {
-   "name": "llm_ui_set_draw_surface",
-   "status": "original",
-   "domain": null,
-   "tier": null,
-   "promoted": false,
-   "sites": 6,
-   "modules": {
-    "seams": 6
-   },
-   "adjudication": "event-channel:invalidate"
-  },
-  {
    "name": "llm_ui_text_draw_rgb16",
    "status": "original",
    "domain": null,
@@ -1718,9 +1718,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:screen"
   },

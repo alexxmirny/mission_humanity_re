@@ -149,12 +149,13 @@ HMODULE        g_self      = nullptr;
 
 // ---- the display "mode" and the one window -------------------------------------------------------
 
-int  g_mode_w        = 0; // 0 until SetDisplayMode: GetDisplayMode then reports the desktop size
-int  g_mode_h        = 0;
-HWND g_hwnd          = nullptr;
-bool g_geom_placed   = false; // windowed: the first placement centres, later ones keep the user's spot
-int  g_geom_tries    = 0;     // consecutive placements that did not reach the mode's client size
-int  g_geom_logged_w = 0, g_geom_logged_h = 0;
+SIZE_T g_reserve_bytes = 0; // owned_reserve_frame: the largest frame the session can reach (bytes)
+int    g_mode_w        = 0; // 0 until SetDisplayMode: GetDisplayMode then reports the desktop size
+int    g_mode_h        = 0;
+HWND   g_hwnd          = nullptr;
+bool   g_geom_placed   = false; // windowed: the first placement centres, later ones keep the user's spot
+int    g_geom_tries    = 0;     // consecutive placements that did not reach the mode's client size
+int    g_geom_logged_w = 0, g_geom_logged_h = 0;
 
 // ---- the window the player owns (windowed resize, cursor clip, mouse mapping) ----------------------
 bool               g_mouse_clip   = true;  // [video] mouse_clip (default 1): confine the OS pointer to the image while active
@@ -475,9 +476,11 @@ void taskbar_trace_poll(HWND h) {
 //               a player resize. Not topmost.
 //   borderless  WS_POPUP covering the window's monitor, scaled. NOT topmost either: the game creates it
 //               WS_EX_TOPMOST, and a topmost monitor-sized window stays over everything after an
-//               alt-tab. The game's MoveWindow passes through here, so the DirectInput mouse's
+//               alt-tab. The game's FIRST MoveWindow passes through here, so the DirectInput mouse's
 //               cooperative level (llm_wnd_is_fullscreen, read right after it) is decided on the
-//               mode-sized window exactly as before.
+//               mode-sized window exactly as before. Later ones are swallowed: the window stays on its
+//               monitor and only the frame size changes, so a mode change (the in-game menu's 640x480)
+//               never shrinks the window for a frame.
 //
 // Skipped entirely for the null backend and under [video] no_window, whose keeper owns the window, and
 // while the player is inside a size/move modal loop (g_sizing).
@@ -637,26 +640,10 @@ bool image_rect_client(RECT *out) {
     return out->right > out->left && out->bottom > out->top;
 }
 
-void map_client_to_game(const RECT &r, int &x, int &y) {
-    const int rw = r.right - r.left, rh = r.bottom - r.top;
-    const int cx = x < r.left ? r.left : x >= r.right ? r.right - 1
-                                                      : x;
-    const int cy = y < r.top ? r.top : y >= r.bottom ? r.bottom - 1
-                                                     : y;
-    x            = (int)((long long)(cx - r.left) * g_mode_w / rw);
-    y            = (int)((long long)(cy - r.top) * g_mode_h / rh);
-}
+void map_client_to_game(const RECT &r, int &x, int &y) { image_client_to_game(r, g_mode_w, g_mode_h, x, y); }
 
 // The CENTRE of game pixel (x,y) in client pixels, so client_to_game(game_to_client(p)) == p.
-void map_game_to_client(const RECT &r, int &x, int &y) {
-    const int rw = r.right - r.left, rh = r.bottom - r.top;
-    const int gx = x < 0 ? 0 : x >= g_mode_w ? g_mode_w - 1
-                                             : x;
-    const int gy = y < 0 ? 0 : y >= g_mode_h ? g_mode_h - 1
-                                             : y;
-    x            = r.left + (int)(((long long)gx * 2 + 1) * rw / (2LL * g_mode_w));
-    y            = r.top + (int)(((long long)gy * 2 + 1) * rh / (2LL * g_mode_h));
-}
+void map_game_to_client(const RECT &r, int &x, int &y) { image_game_to_client(r, g_mode_w, g_mode_h, x, y); }
 
 void release_clip() {
     if (!g_clipped) return;
@@ -920,10 +907,18 @@ long      g_swallowed_moves = 0;
 
 // llm_gfx_apply_window_resolution MoveWindow's the main window to (0,0,w,h) on every mode change.
 // Windowed: swallowed -- ensure_geometry sizes it (native, or the player's size) at the next present,
-// and the player's position survives. Borderless: passed through (see the geometry note).
+// and the player's position survives. Borderless: the FIRST call passes through (see the geometry note: the
+// window is not ours yet and the DirectInput cooperative level is decided on it); once ensure_geometry has
+// placed the window on its monitor it is swallowed too, because the game's MoveWindow(0,0,w,h) on every
+// mode change (the in-game menu runs at 640x480) would shrink the window for one frame until the next
+// present restored it -- the flicker on ESC > Return to game. The frame size still changes (SetDisplayMode);
+// the presenter scales it into the monitor-sized window.
 BOOL WINAPI own_MoveWindow(HWND h, int x, int y, int w, int hgt, BOOL repaint) {
-    if (geometry_owned() && g_cfg.window == window_mode::windowed && (h == g_hwnd || h == at<HWND>(ADDR_HWND_MAIN))) {
-        if (++g_swallowed_moves <= 4) gfx_log("; [gfx] window: game MoveWindow(%d,%d,%d,%d) swallowed (windowed geometry is ours)", x, y, w, hgt);
+    if (geometry_owned() && (h == g_hwnd || h == at<HWND>(ADDR_HWND_MAIN)) &&
+        (g_cfg.window == window_mode::windowed || g_geom_placed)) {
+        if (++g_swallowed_moves <= 4)
+            gfx_log("; [gfx] window: game MoveWindow(%d,%d,%d,%d) swallowed (%s geometry is ours)", x, y, w, hgt,
+                    g_cfg.window == window_mode::windowed ? "windowed" : "borderless");
         return TRUE;
     }
     return g_real_move(h, x, y, w, hgt, repaint);
@@ -954,7 +949,7 @@ void install_owned_window_hooks() {
     g_move_hooked = g_real_move != nullptr;
     g_real_setcur = (setcur_fn)exe_iat_replace("user32.dll", "SetCursorPos", (void *)&own_SetCursorPos);
     gfx_log("; [gfx] window hooks: MoveWindow %s, SetCursorPos %s (game -> screen mapped)",
-            g_real_move ? (g_cfg.window == window_mode::windowed ? "swallowed for the main window" : "passed through")
+            g_real_move ? (g_cfg.window == window_mode::windowed ? "swallowed for the main window" : "passed through once, then swallowed")
                         : "NOT hooked",
             g_real_setcur ? "hooked" : "NOT hooked");
 }
@@ -1114,14 +1109,22 @@ struct OwnSurface final : IDirectDrawSurface {
     OwnPalette *palette = nullptr;
 
     bool create(int width, int height, DWORD c) {
-        w     = width;
-        h     = height;
-        pitch = width * 2;
-        caps  = c;
+        const bool primary_like = (c & (DDSCAPS_PRIMARYSURFACE | DDSCAPS_BACKBUFFER)) != 0;
+        w                       = width;
+        h                       = height;
+        pitch                   = width * 2;
+        caps                    = c;
         // Slack past the end: the software renderer has measured history of reading a few rows past a
         // surface (video.cpp's hittest_begin note). dgVoodoo's allocations tolerated that; an exact-size
         // VirtualAlloc would turn a benign over-read into an access violation at a page boundary.
-        const SIZE_T body  = (SIZE_T)pitch * (SIZE_T)height;
+        SIZE_T body = (SIZE_T)pitch * (SIZE_T)height;
+        // The game frame (primary / back buffer / a mode-sized offscreen) is allocated for the LARGEST mode the
+        // session can reach, not the current one: the menu frame drawn right after a mode switch still uses the
+        // previous mode's layout and the bevel/blit helpers clip x but not y (PT-GFX9 crash on 1280x1024 -> 640x480).
+        if (primary_like || (width == g_mode_w && height == g_mode_h)) {
+            const SIZE_T r = g_reserve_bytes;
+            if (r > body) body = r;
+        }
         const SIZE_T slack = body / 8 > 65536 ? body / 8 : 65536;
         alloc              = body + slack;
         bits               = (uint8_t *)VirtualAlloc(nullptr, alloc, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -1745,7 +1748,51 @@ bool owned_game_to_client(POINT *p) {
     return true;
 }
 
+// RES6: the cursor carry across the galaxy screen's mode switch. Screen coordinates, so the point survives a
+// windowed client that the switch resizes; ensure_geometry first, as own_SetCursorPos does, because the switch has
+// just changed the mode the rect is computed from.
+bool owned_game_to_screen(POINT *p) {
+    if (!p) return false;
+    ensure_geometry();
+    RECT r;
+    if (!image_rect_client(&r)) return false;
+    int x = p->x, y = p->y;
+    map_game_to_client(r, x, y);
+    POINT s = {x, y};
+    if (!ClientToScreen(g_hwnd, &s)) return false;
+    *p = s;
+    return true;
+}
+
+bool owned_screen_to_game(POINT *p) {
+    if (!p) return false;
+    ensure_geometry();
+    RECT r;
+    if (!image_rect_client(&r)) return false;
+    POINT c = *p;
+    if (!ScreenToClient(g_hwnd, &c)) return false;
+    int x = c.x, y = c.y;
+    map_client_to_game(r, x, y);
+    p->x = x;
+    p->y = y;
+    return true;
+}
+
+void owned_refresh_clip() { update_clip(); }
+
 bool owned_user_sized() { return g_user_sized; }
+
+SIZE_T owned_probe_frame_alloc(int w, int h, bool primary) {
+    OwnSurface s;
+    if (!s.create(w, h, primary ? DDSCAPS_PRIMARYSURFACE : 0)) return 0;
+    return s.alloc; // ~OwnSurface frees the pages
+}
+
+void owned_reserve_frame(int w, int h) {
+    if (w <= 0 || h <= 0) return;
+    const SIZE_T b = (SIZE_T)w * 2 * (SIZE_T)h;
+    if (b > g_reserve_bytes) g_reserve_bytes = b;
+}
 
 bool owned_mode_size(int *w, int *h) {
     if (!g_active || g_mode_w <= 0 || g_mode_h <= 0) return false;

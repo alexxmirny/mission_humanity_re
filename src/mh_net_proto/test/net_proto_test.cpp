@@ -1,5 +1,6 @@
 // mh_net_proto unit test -- round-trips + lobby-id dedup. Portable; returns non-zero on any failure.
 // Built + run by CMake (ctest) on both Windows and Linux. See S1.
+#include "mh_net_proto/gameplay_set.h"
 #include "mh_net_proto/net_wire.h"
 #include "mh_net_proto/net_crypto.h"
 #include "mh_net_proto/net_udp.h"
@@ -431,6 +432,115 @@ int main() {
         CHECK(!announce_refused_decode(ab, n - 1, &who, why, sizeof(why)));   // NUL outside len -> truncated
         std::uint8_t joined[4] = {ANNOUNCE_JOINED, 1, 'x', 0};
         CHECK(!announce_refused_decode(joined, 4, &who, why, sizeof(why)));   // wrong kind
+    }
+
+    // ---- PT-SET1: the gameplay set codec (FLAG_START trailer) + the JOIN v7 digest ----
+    {
+        const std::uint32_t K_MULT = 0x9c6c82abu; // golden: hash_key("net", "turret_fire_rate_mult")
+        const std::uint32_t K_FIX  = 0xc09d7cd4u; // golden: hash_key("net", "turret_reload_realtime_fix")
+        CHECK(gameplay_key_id("net", "turret_fire_rate_mult") == K_MULT);
+        CHECK(gameplay_key_id("NET", "Turret_Fire_Rate_Mult") == K_MULT); // case-folded
+        CHECK(gameplay_key_id("net", "turret_reload_realtime_fix") == K_FIX);
+
+        const std::uint64_t NEG0 = 0x8000000000000000ull;
+        const std::uint64_t NAN1 = 0x7ff8dead0000beefull; // quiet NaN with a payload
+        GameplaySet s{};
+        s.n = 4;
+        s.e[0] = {K_FIX, GAMEPLAY_T_INT, -7, 0};
+        s.e[1] = {K_MULT, GAMEPLAY_T_F64, 0, 0x4000000000000000ull}; // 2.0
+        s.e[2] = {0x01020304u, GAMEPLAY_T_F64, 0, NEG0};
+        s.e[3] = {0xA0B0C0D0u, GAMEPLAY_T_F64, 0, NAN1};
+        std::uint8_t buf[GAMEPLAY_MAX_ENCODED];
+        std::size_t  n = gameplay_set_encode(s, buf);
+        CHECK(n == 4 + (5 + 4) + 3 * (5 + 8));
+        CHECK(buf[0] == 'G' && buf[1] == 'P' && buf[2] == 1 && buf[3] == 4);
+        CHECK(buf[4] == 0xd4 && buf[5] == 0x7c && buf[6] == 0x9d && buf[7] == 0xc0 && buf[8] == GAMEPLAY_T_INT);
+        CHECK(buf[9] == 0xf9 && buf[10] == 0xff && buf[11] == 0xff && buf[12] == 0xff); // -7 LE
+        GameplaySet r{};
+        CHECK(gameplay_set_decode(buf, n, r) == GameplayErr::Ok && r.n == 4);
+        CHECK(r.e[0].key_id == K_FIX && r.e[0].type == GAMEPLAY_T_INT && r.e[0].i == -7);
+        CHECK(r.e[1].f_bits == 0x4000000000000000ull && r.e[2].f_bits == NEG0 && r.e[3].f_bits == NAN1);
+        // trailing bytes after the last entry are ignored
+        std::uint8_t pad[GAMEPLAY_MAX_ENCODED + 8];
+        std::memcpy(pad, buf, n);
+        std::memset(pad + n, 0xEE, 8);
+        CHECK(gameplay_set_decode(pad, n + 8, r) == GameplayErr::Ok && r.n == 4);
+        // empty set
+        GameplaySet empty{};
+        CHECK(gameplay_set_encode(empty, buf) == 4);
+        CHECK(gameplay_set_decode(buf, 4, r) == GameplayErr::Ok && r.n == 0);
+
+        // explicit errors
+        n = gameplay_set_encode(s, buf);
+        for (std::size_t cut = 0; cut < n; ++cut) CHECK(gameplay_set_decode(buf, cut, r) == GameplayErr::Truncated);
+        std::uint8_t bad[GAMEPLAY_MAX_ENCODED];
+        std::memcpy(bad, buf, n);
+        bad[0] = 'X';
+        CHECK(gameplay_set_decode(bad, n, r) == GameplayErr::BadMagic);
+        std::memcpy(bad, buf, n);
+        bad[2] = 2;
+        CHECK(gameplay_set_decode(bad, n, r) == GameplayErr::BadFormat);
+        std::memcpy(bad, buf, n);
+        bad[8] = 9; // entry 0's type
+        CHECK(gameplay_set_decode(bad, n, r) == GameplayErr::UnknownType);
+        bad[8] = GAMEPLAY_T_STR; // reserved: rejected, not skipped
+        CHECK(gameplay_set_decode(bad, n, r) == GameplayErr::UnknownType);
+        std::memcpy(bad, buf, n);
+        bad[3] = GAMEPLAY_MAX_ENTRIES + 1;
+        CHECK(gameplay_set_decode(bad, n, r) == GameplayErr::TooMany);
+        CHECK(r.n == 0); // a failed decode leaves nothing half-filled
+        // encode refuses an invalid set
+        GameplaySet over{};
+        over.n = GAMEPLAY_MAX_ENTRIES + 1;
+        CHECK(gameplay_set_encode(over, buf) == 0);
+        GameplaySet badtype{};
+        badtype.n = 1;
+        badtype.e[0].type = GAMEPLAY_T_STR;
+        CHECK(gameplay_set_encode(badtype, buf) == 0);
+        // a full set (n == cap) round-trips
+        GameplaySet full{};
+        full.n = GAMEPLAY_MAX_ENTRIES;
+        for (int i = 0; i < GAMEPLAY_MAX_ENTRIES; ++i) full.e[i] = {(std::uint32_t)(100 + i), GAMEPLAY_T_F64, 0, (std::uint64_t)i * 0x0101010101ull};
+        CHECK(gameplay_set_encode(full, buf) == GAMEPLAY_MAX_ENCODED);
+        CHECK(gameplay_set_decode(buf, GAMEPLAY_MAX_ENCODED, r) == GameplayErr::Ok && r.n == GAMEPLAY_MAX_ENTRIES);
+        CHECK(r.e[31].f_bits == 31ull * 0x0101010101ull);
+
+        // digest: order independent, value independent, type sensitive, never 0
+        GameplaySet x{}, y{}, z{}, w{};
+        x.n = 2; x.e[0] = {K_MULT, GAMEPLAY_T_F64, 0, 1}; x.e[1] = {K_FIX, GAMEPLAY_T_INT, 5, 0};
+        y.n = 2; y.e[0] = {K_FIX, GAMEPLAY_T_INT, 99, 0}; y.e[1] = {K_MULT, GAMEPLAY_T_F64, 0, 777};
+        CHECK(gameplay_set_digest(x) == gameplay_set_digest(y));
+        CHECK(gameplay_set_digest(x) == 0x65eec1ceu); // golden, FNV-1a over sorted (key_id LE, type)
+        z = x; z.e[1].type = GAMEPLAY_T_F64;
+        CHECK(gameplay_set_digest(z) != gameplay_set_digest(x));
+        w = x; w.n = 1;
+        CHECK(gameplay_set_digest(w) != gameplay_set_digest(x));
+        CHECK(gameplay_set_digest(empty) == 0x811c9dc5u && gameplay_set_digest(empty) != 0);
+    }
+
+    // ---- PT-SET1: JOIN v7 in the portable arm ----
+    {
+        SessionInfo host{};
+        std::strcpy(host.name, "gp"); host.tag = 7;
+        host.gameplay_digest = 0xAAAA0001u;
+        JoinRequest jr = join_request_for(host, 0, nullptr, nullptr, 0xBBBB0002u);
+        std::uint8_t jb[JOIN_REQUEST_MAX_ENCODED];
+        std::size_t  jn = join_request_encode(jr, jb);
+        CHECK(JOIN_REQUEST_FORMAT == 7 && JOIN_REQUEST_MIN_FORMAT == 7 && jb[0] == 7);
+        CHECK(jb[jn - 4] == 0x02 && jb[jn - 3] == 0x00 && jb[jn - 2] == 0xBB && jb[jn - 1] == 0xBB); // digest LE, last field
+        JoinRequest got{};
+        CHECK(join_admit(jb, jn, host, got) == JoinAdmit::RefusedGameplay && got.gameplay_digest == 0xBBBB0002u);
+        char why[64];
+        join_refusal_text(JoinAdmit::RefusedGameplay, host, got, why, sizeof(why));
+        CHECK(std::strcmp(why, "gameplay keys AAAA0001/BBBB0002") == 0);
+        host.gameplay_digest = 0xBBBB0002u;
+        CHECK(join_admit(jb, jn, host, got) == JoinAdmit::Admit);
+        host.gameplay_digest = 0;
+        CHECK(join_admit(jb, jn, host, got) == JoinAdmit::Admit);
+        jb[0] = 6;
+        CHECK(join_admit(jb, jn - 4, host, got) == JoinAdmit::RefusedOldProtocol);
+        jb[0] = 7;
+        CHECK(!join_request_decode(jb, jn - 1, got)); // truncated inside the digest
     }
 
     std::printf(g_fails ? "\n%d CHECK(S) FAILED\n" : "ALL PASS\n", g_fails);

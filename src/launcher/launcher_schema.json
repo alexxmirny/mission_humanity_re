@@ -75,6 +75,9 @@
       "min": 1024,
       "max": 65535
     },
+    "video.resolution": {
+      "provider": "resolutions"
+    },
     "lang.pack": {
       "provider": "lang_packs",
       "mirror": "ui_lang"

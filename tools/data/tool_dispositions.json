@@ -99,6 +99,21 @@
       "why": "mp:D37: the configuration-(1) relay-chain rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the network-panel probe restoring sim bytes it moved and the pair stays IDENTICAL with the in-band desync watch clean; with [net] netcrit_ui_pure=0 (the reproduction arm) the HUD panel's is_network_critical recompute diverges `buildings`, never heals, and the watch logs *** DESYNC",
       "evidence": "invoked by tools/test_ui.py's d37_relay_chain / d37_relay_chain_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_order_record.py": {
+      "class": "keep",
+      "why": "mp:Q3: order_record_mp's cross-peer post_check -- the client's mh.dll order recording (mh_rec_orders.bin + mh_rec_clock.bin, level=debug) must equal the host's harness segment (mh_match_orders.bin + mh_match_clock.bin) on every common step, decoded through tools/mp_order_diff.py",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's order_record_mp row (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_quiet_session.py": {
+      "class": "keep",
+      "why": "mp:Q1: quiet_level / quiet_level_fixoff's post_check -- at [log] level=quiet every peer must still reach desync::session_reset (a decodable mh_match_state.bin and >= 1 MATCH sample in the session folder), and the fix-off twin must show none of it",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's quiet_level and quiet_level_fixoff rows (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_sp_recording.py": {
+      "class": "keep",
+      "why": "mp:Q2/Q3: sp_state_record's post_check -- every solo session folder holds mh_match_state.bin.gz + mh_rec_orders.bin.gz + mh_rec_clock.bin.gz, all decoding (state_record.py info, mp_order_diff), one clock entry per recorded state step",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's sp_state_record row (post_check) and tools/lint_repo.py (--selftest)"
+    },
     "check_storage_purge.py": {
       "class": "keep",
       "why": "mp:D38 row 5: the configuration-(1) storage-panel rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the panel's purge skipped with a dead docked unit left to the sim, the fixture killed on the same step on both peers, and the pair stays IDENTICAL with the in-band desync watch clean; with [net] storage_panel_purge_fix=0 (the reproduction arm) the host's panel purges the dead row ahead of the sim, `unit_storage` diverges right after the kill, and the watch logs *** DESYNC",
@@ -295,11 +310,66 @@
       "why": "mp:P6: the p6_loser_gap UI scenario's post_check -- reads the host's and client's own `on_gameover ENTER` lines (winner/loser outcomes must differ), anchors each peer's own mh_frametime.log qpc_us to wall-clock the same way tools/mp_analyze.py's find_lobby_clip_qpc does (via that peer's own boot-session \"present hook armed\" line), and asserts (a) the host's own D21 in-band desync watch shows 0 mismatching over a non-vacuous compared-sample count (ALL PAIRS IDENTICAL) and (b) both the client's (loser's) and the host's (winner's) own longest present-to-present gap in the window [host's own outcome, client's own outcome] are under the bound -- the endgame-sync grace's (net_lockstep.cpp HB_ENDGAME_GRACE_MS) real, measured cost.",
       "evidence": "invoked by tools/test_ui.py's p6_loser_gap TESTS entry (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest, 10 synthetic arms)"
     },
+    "check_map_zoom.py": {
+      "class": "keep",
+      "why": "RES2: the map zoom's own log is the assertion a frame cannot make -- reads the `[zoom]` lines mh_input.log carries (one per zoom change: the map pixel under the cursor before and after, the camera tiles the absorb moved, the viewport size read) and checks, per row, that the anchor held to 2 px (--wheel, --det), that the side-panel notch left no line, that wheel_zoom=0 left none at all (--off), and that the determinism host's zoom really moved the camera (--det, so the proof is not vacuous). Absence of the log or of the `armed` line is RED",
+      "evidence": "the res_walk (map_zoom_wheel, res_nowrap_64 segments) and res_walk_auto (map_zoom_wheel_off segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_map_zoom.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_mode_guards.py": {
+      "class": "keep",
+      "why": "D13: the mode-change crash guards (seams/video_mode_guards.cpp) must be armed AND have fired -- a UI walk cannot see which code drew a background or whether the cursor really was outside the new mode. Reads mh_video.log: the three arm lines plus, per row, the `background WxH scaled to` line (--scaled) or the `cursor clamp LIVE` line (--cursor). Absence is RED",
+      "evidence": "the galaxy_bg_picker and res_walk (galaxy_native_* segments, --cursor) and res_walk_auto (galaxy_native_cursor segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_mode_guards.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_menu_roundtrip.py": {
+      "class": "keep",
+      "why": "RES3: the borderless window must not move or shrink through the game's mode changes (its MoveWindow(0,0,w,h) on every mode change was the menu-return flicker) -- a captured frame cannot show a one-frame window. Reads mh_video.log: the placement line, no POSCHANGED/SIZE off the monitor rect after it, at least two mode changes, a swallowed MoveWindow, no repeated same-size SetDisplayMode. Absence is RED",
+      "evidence": "the res_walk_auto row (res_menu_roundtrip segment) in tools/uiscripts/registry.yaml names it as its post_check; `check_menu_roundtrip.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_res_list.py": {
+      "class": "keep",
+      "why": "RES3: a UI capture is the composed game frame and cannot say what the presenter was asked for. Reads mh_video.log: the generated list armed and chose the expected size, the owned display was asked for the RENDERED size (not the desktop height, which left black rows at the bottom), and the size got the expected integer/fit scaling rule. Absence is RED",
+      "evidence": "the res_walk_auto row (boot list; res_frac segment, --ingame) in tools/uiscripts/registry.yaml names it as its post_check; `check_res_list.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "walk_segments.py": {
+      "class": "keep",
+      "why": "A multi-segment UI walk (res_walk, res_walk_auto) runs many old scenarios in one process; the script's `mark <segment>` lines go into mh_video.log and mh_input.log and this helper slices the text between two marks, so a post_check's claim is read from the segment that made it and another segment's lines can neither satisfy nor break it. Imported by check_mode_guards / check_map_zoom / check_res_list / check_menu_roundtrip (--segment)",
+      "evidence": "imported by the four checkers named in the why (each takes --segment); `walk_segments.py --selftest` is run by hand",
+      "hand_run": true
+    },
     "check_presence.py": {
       "class": "keep",
       "why": "dist RL15: mh.dll's presence.json (the launcher's Discord feed) must follow a campaign planet switch. A UI walk cannot see it (no pixels): reads the file after the run and requires state/mode campaign, system and planet named, the planet no longer the one NEW GAME starts on, and a rewrite after the session began; a --before/--after pair mode checks two hand snapshots. Absence of the file is RED",
       "evidence": "the campaign_planet_switch row in tools/uiscripts/registry.yaml names it as its post_check (test_ui runs it; no Python source mentions it); `check_presence.py --selftest` plants every negative and is run by hand",
       "hand_run": true
+    },
+    "check_pt3_air_order.py": {
+      "class": "keep",
+      "why": "patching:PT-FIX3: the air_order_deadlock / air_order_deadlock_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT3` probe lines (create a helicopter, send it east, then hold it at microstep 31 / state 0x12 / stale facing until a second move order is deferred, then release): with `[net] air_order_facing_fix=1` the order is applied within a few steps and the helicopter leaves; with =0 (retail) it stays frozen with order_queued 1. Both peers must agree, hashes IDENTICAL",
+      "evidence": "invoked by tools/test_ui.py's air_order_deadlock* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_pt5_turret_poll.py": {
+      "class": "keep",
+      "why": "patching:PT-FIX5: the turret_poll / turret_poll_retail UI scenarios' cross-peer post_check -- reads PT-FIX2's harness fixture `; PT2 FIRE` shot lines for an unshared weapon-8 and weapon-21 turret: with `[net] turret_fire_poll_fix=1` every fire interval is short_time/mult within one sim step (the aimed, ready turret fires on the step its reload completes); with =0 (retail) the intervals follow the turret_rate table (reload/mult + the 0.05 s attack poll). Both peers must agree, hashes IDENTICAL",
+      "evidence": "invoked by the turret_poll* rows of tools/uiscripts/registry.yaml (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_pt4_turret_clip.py": {
+      "class": "keep",
+      "why": "patching:PT-FIX4: the turret_clip / turret_clip_retail UI scenarios' cross-peer post_check -- reads PT-FIX2's harness fixture `; PT2 FIRE` shot lines (now carrying the turret's ammo after the shot) for an unshared weapon-8 (ammo 3, short 0.2, long 0.4) and weapon-21 turret: with `[net] turret_clip_fix=1` ammo runs 2,1,0,2,1,0 and the turret fires 3 shots at short_time then waits long_time; with =0 (retail) ammo runs -1,-2 ... and every reload is short_time. Both peers must agree, hashes IDENTICAL",
+      "evidence": "invoked by the turret_clip* rows of tools/uiscripts/registry.yaml (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_pt2_turret_rate.py": {
+      "class": "keep",
+      "why": "patching:PT-FIX2: the turret_rate* / turret_rate*_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT2 FIRE` shot lines (an unshared weapon-8 and weapon-21 turret vs an immobile target) and compares the mean fire interval with the attack-state model: realtime fix on = short_time/mult + the 0.05 s attack poll at every step size, off = the re-count model; both peers must agree, hashes IDENTICAL",
+      "evidence": "invoked by the turret_rate* rows of tools/uiscripts/registry.yaml (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_pt1_turret_slot.py": {
+      "class": "keep",
+      "why": "patching:PT-FIX1: the turret_slot_reuse / turret_slot_reuse_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT1` probe lines (build a turret, kill it, build a second into the freed slot while the rubble lives, arm a 1 s reload, count steps until ready): with `[net] turret_reload_owner_fix=1` the live turret reloads on its own budget (~100 steps); with =0 (retail) the rubble's budget collapses the timer. Both peers must agree, hashes IDENTICAL",
+      "evidence": "invoked by tools/test_ui.py's turret_slot_reuse* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_publishable.py": {
       "class": "keep",
@@ -1514,6 +1584,24 @@
       "class": "archive",
       "why": "conductor tooling: splits a subagent transcript's wall time into model vs tool time per activity class (iteration-speed measurement, 2026-10-03)",
       "evidence": "hand-run by the conductor; reads ~/.claude transcripts, no machine invoker"
+    },
+    "check_land_hud.py": {
+      "class": "keep",
+      "why": "RES3: the campaign start lands at a spot whose camera depends on the lane's carried state, so a whole-frame pixel baseline is not a stable oracle; the landing footprint (an effect animation the stock view test rejects at 2048 wide on a 64-tile map) and the selected landed ship's complete panel (icon-table overrun above 768 rows) are read from the captured frames by colour counts. Absence of a frame is RED",
+      "evidence": "the res_walk row (res_land_hud segment, --prefix) in tools/uiscripts/registry.yaml names it as its post_check; `check_land_hud.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_panel_rows.py": {
+      "class": "keep",
+      "why": "RES7: the side-panel list rows past 768 run on the user's save, a live game whose map and status numbers move between runs, so a whole-frame pixel baseline is not a stable oracle; the list rows (grid-green per row), the status line (placement / unit info) and a worker counter are read from the captured frames, and the arm lines from mh_video.log. Absence of a frame or a line is RED",
+      "evidence": "the res_walk row (worker_1024, owned_960, ayy30_960 and ayy30_1440 modes) in tools/uiscripts/registry.yaml names it as its post_check; `check_panel_rows.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_minimap_box.py": {
+      "class": "keep",
+      "why": "RES9: the minimap viewport box clipped to the minimap is verified from the seam's own per-geometry mh_net.log lines (stock overrun, drawn and clipped pixels, the canary before the side-panel surface), read from the menu folder and the session folders after it; the row runs on a live save, so pixels are masked and not the oracle. Absence of a line is RED",
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment res_minimap_box); `check_minimap_box.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
     }
   }
 }

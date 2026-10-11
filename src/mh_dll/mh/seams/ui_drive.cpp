@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "include/mh_uidrive_export.h"
+#include "include/mh_mapzoom_export.h" // MH_MapZoom_Get (the `zoom` predicate)
 #include "include/mh_capture_export.h" // MH_Capture_Shot (named per-screen captures for the interpreter)
 #include "include/mh_net_export.h"     // MH_Net_PeerCount (the `peers` predicate: all peers connected)
 #include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (`retryready`), MH_Seam_S3LobbyGen (`lobbygen`)
@@ -37,6 +38,7 @@
 #include "gfx/ddraw_own.h"             // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
 #include "input/dinput_own.h"          // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
 #include "include/mh_run_context.h"    // MH_RunDir
+#include "desync/state_compress.h"     // mp:Q2/Q3: the `gzdone` predicate reads the gzip thread's counters
 #include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
 #include "include/mh_log_sink.h"       // LOG1: the async log sink
 #include "addr/mh_addrs.gen.h"         // generated EN VAs
@@ -48,6 +50,8 @@
 #include "hook/watcall.h"              // call_watcall2 (resolve_position is __watcall)
 #include "en_guard.h"                  // EN-only build gate
 #include "mh_net_proto/text_utf8.h"    // mp:MP-LANG: `wlobby` reads a plain-text needle as UTF-8
+
+void seam_log(const char *s); // the process's single mh_net.log writer (net_seams.cpp)
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetAsyncKeyState / GetPrivateProfileInt
 
@@ -86,7 +90,7 @@ constexpr uintptr_t READIDX  = mh::addr::_G_LLM_INPUT_MOUSE_READ_IDX;
 // THE FIX IS TO PICK THE OTHER PRODUCER, not to tune this one: zero the device pointer and the tap
 // falls through to its absolute-coordinate arm, which is exactly what an absolute pointer provides.
 // Done EVERY FRAME rather than once, because llm_input_di_mouse_create runs on every display init
-// (llm_gfx_display_init -> FUN_004d10bc), so a resolution change would undo a one-shot.
+// (llm_gfx_display_init -> llm_input_mouse_device_init), so a resolution change would undo a one-shot.
 //
 // SAFE, checked rather than assumed: all 18 references to the global live in four functions --
 // llm_input_di_mouse_create, llm_input_dimouse_shutdown, llm_input_wndproc_tap and
@@ -104,6 +108,8 @@ constexpr uintptr_t MOUSE_LAST_Y   = mh::addr::_G_LLM_INPUT_MOUSE_LAST_Y;
 constexpr uintptr_t CURSOR_VISIBLE = mh::addr::_G_LLM_CURSOR_VISIBLE;
 constexpr uintptr_t CURSOR_XX      = mh::addr::_G_LLM_CURSOR_X;
 constexpr uintptr_t CURSOR_YY      = mh::addr::_G_LLM_CURSOR_Y;
+constexpr uintptr_t CURSOR_MENU_X  = 0x00e58cccu; // _G_LLM_CURSOR_MENU_X: the pump resets the drawn cursor from it
+constexpr uintptr_t CURSOR_MENU_Y  = 0x00e58cc8u; // _G_LLM_CURSOR_MENU_Y (the lower address)
 
 // ---- mp:SES3 -- the CAMERA half of the trace (the stuck-scroll hunt, SC2) ----------------------
 // The eight latches plus the camera position they drive. llm_strat_input_update (0x00441b88) is the
@@ -192,7 +198,11 @@ int  g_settle_ms = 120;   // [uitest] settle_ms -- how long a widget center must
 bool g_dumped    = false; // one-shot: log the first non-empty active list (labels for authoring)
 
 char          g_log[MAX_PATH];
-unsigned long g_log_gen = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
+unsigned long g_log_gen      = 0; // SES1: 0 = not yet composed (mh_proc_path pins it to the process dir)
+unsigned long g_mark_vid_gen = 0; // `mark`'s own path generations (mh_video.log is process-scoped, mh_input.log per session)
+unsigned long g_mark_inp_gen = 0;
+char          g_mark_vid[MAX_PATH]; // the composed paths persist: the helpers only rebuild one when its generation moves
+char          g_mark_inp[MAX_PATH];
 
 // ---- PT-GFX8: `winaway` / `winreturn` -- Alt-Tab away from, and back to, the game window ------------------
 //
@@ -1577,6 +1587,9 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                which is the correct failure). Use it to gate an in-game capture on "the match is really
 //                running", e.g. before reading the debug overlay's net.*/perf.* panel.
 //                NOT ENOUGH TO PIN A CAPTURE, though -- see `simstep` below.
+//                `gameclock +MS` (mp:Q2) is the RELATIVE form: the clock has moved MS past where it stood
+//                when the script reached this step -- for a loaded save, whose clock starts wherever the
+//                save left it, so an absolute target is already behind it.
 //     simstep <N> = the sim has reached step N, AND IS HELD THERE. The predicate for an in-game CAPTURE,
 //                where `gameclock` is not: both flip at a deterministic step, but both are read on a
 //                PRESENT, and llm_strat_sim_tick's catch-up loop runs 0..k steps per frame -- so the step
@@ -1594,6 +1607,9 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                take the LAST captures of a scenario. (`simstep 0` is not one: it parses as a target
 //                already in the past and aborts, which is right for a typo and wrong for a release. The
 //                day a script must resume, give it its own directive over MH_Harness_StepFence(0).)
+//     gzdone [N] = mp:Q2/Q3: >= N session recordings (state / orders / clock) compressed to their final .gz by
+//                this process and no compression still running -- gate a script's `end` on it after a quit,
+//                so the runner's kill cannot strand a raw file. Default N = 1.
 //     retryready [N] = MH_Seam_S8RetryArmed() >= N (default 1): a client's FAILED connect (dead/typo'd IP)
 //                has cleared the connect latches, so a corrected-IP re-Connect will re-kick. The S8(b)
 //                round-trip test gates its 2nd Connect on this instead of a time wait for the ~4s fail.
@@ -1756,7 +1772,11 @@ enum {
     OP_W_KEYSTATE,      // PT-INPUT1: `keystate <dik> <0|1>` -- the game's keystate says that key is up / down
     OP_W_WINSWITCHABLE, // PT-GFX8: `winswitchable` -- the game window passes the taskbar / Alt-Tab eligibility rule
     OP_W_WINACTIVE,     // PT-GFX8: `winactive` -- the game window is the foreground window
-    OP_W_LAST = OP_W_WINACTIVE,
+    OP_W_ZOOM,          // RES2: `zoom <pct>` / `zoom ge <pct>` -- the map zoom (x100, 100 = off) is that / at least that
+    OP_W_CURPOS,        // RES6: `curpos <x> <y> [tol]` -- drawn, menu and DI cursor all within tol (default 2) of x,y
+    OP_W_GZDONE,        // mp:Q2/Q3: `gzdone <N>` -- N recordings compressed by this process and none in flight
+    OP_W_MAPSIZE,       // `mapsize <N>` -- the loaded map is N x N tiles (the torus's wrap width, 64 / 128 / 256)
+    OP_W_LAST = OP_W_MAPSIZE,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
@@ -1789,6 +1809,7 @@ enum {
     OP_A_LOG,
     OP_A_SIGNAL,
     OP_A_DUMP,
+    OP_A_MARK, // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
     OP_A_POKERACE,
     OP_A_INJECTSTART,
     OP_A_END,
@@ -1822,8 +1843,8 @@ struct Step {
 // `; [script] ABORT at step 0` line, the terminal status ui_test.py already knows, so the runner
 // goes red at once instead of waiting out its budget. The caps themselves are just larger: a Step
 // is ~200 bytes, so 256 of them is ~50 KB of .bss, and the longest committed script is ~7.3 KB.
-constexpr int          MAX_STEPS     = 256;
-constexpr int          SCRIPT_MAX_KB = 32;
+constexpr int          MAX_STEPS     = 1536;
+constexpr int          SCRIPT_MAX_KB = 96;
 Step                   g_steps[MAX_STEPS];
 int                    g_overflow_steps = 0; // directives parse_line had to drop (load_script refuses on > 0)
 int                    g_nstep          = 0;
@@ -2099,7 +2120,8 @@ void parse_line(const char *line) {
         lstrcpynA(s->text, arg ? arg : "", (int)sizeof(s->text));
     } else if (strcmp(op, "gameclock") == 0) {
         s->op = OP_W_GAMECLOCK;
-        s->a  = (int)strtol(arg, nullptr, 0);
+        s->b  = (arg && *arg == '+') ? 1 : 0; // mp:Q2: `gameclock +MS` -- relative to this step's first look
+        s->a  = (int)strtol(arg + s->b, nullptr, 0);
     } else if (strcmp(op, "stalled") == 0) {
         // stalled [<ms>] -- TL-UISTALL. True while MH_Lockstep_StallBindingPeer() >= 0 (the sim is
         // lockstep-blocked), optionally for at least <ms>. `gameclock` CANNOT gate a capture on a
@@ -2290,6 +2312,14 @@ void parse_line(const char *line) {
         // because a minimised window that stops presenting would never reach the next script op itself.
         s->op = OP_A_WINMIN;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "zoom") == 0) {
+        // `zoom <pct>` -- the strategic map zoom (include/mh_mapzoom_export.h) is exactly <pct> percent
+        // (100 = off); `zoom ge <pct>` -- at least that. The player's zoom, not the screen-shake factor.
+        s->op         = OP_W_ZOOM;
+        const char *q = skip_ws(arg);
+        s->b          = strncmp(q, "ge", 2) == 0 ? 1 : 0;
+        if (s->b) q = skip_ws(q + 2);
+        s->a = (int)strtol(q, nullptr, 0);
     } else if (strcmp(op, "winswitchable") == 0) {
         s->op = OP_W_WINSWITCHABLE;
     } else if (strcmp(op, "winactive") == 0) {
@@ -2329,12 +2359,15 @@ void parse_line(const char *line) {
         const char *q = skip_ws(arg);
         s->c          = strncmp(q, "abs", 3) == 0 ? 0 : strncmp(q, "rel", 3) == 0 ? 1
                                                     : strncmp(q, "down", 4) == 0  ? 2
+                                                    : strncmp(q, "wheel", 5) == 0 ? 4
                                                                                   : 3;
         while (*q && *q != ' ' && *q != '\t') ++q;
         q = skip_ws(q);
-        if (s->c >= 2) {
+        if (s->c == 2 || s->c == 3) {
             s->a = (*q == 'r') ? 1 : (*q == 'm') ? 2
                                                  : 0;
+        } else if (s->c == 4) { // `rawmouse wheel <delta>`: 120 per notch, positive = forward (zoom in)
+            s->a = (int)strtol(q, nullptr, 0);
         } else {
             char *end;
             s->a = (int)strtol(q, &end, 0);
@@ -2354,6 +2387,25 @@ void parse_line(const char *line) {
         }
         s->c = strncmp(q, "down", 4) == 0 ? 1 : strncmp(q, "up", 2) == 0 ? 2
                                                                          : 0;
+    } else if (strcmp(op, "gzdone") == 0) {
+        // `gzdone <N>` -- mp:Q2/Q3: at least N recordings (mh_match_state.bin, mh_rec_orders.bin, ...) have
+        // been compressed to their final .gz by THIS process, and no compression is still running. A session's
+        // recordings are compressed on a background thread AFTER its close, and a runner that ends the process
+        // at the script's `end` would otherwise kill that thread and leave the raw file (by design, see
+        // desync/state_compress.h). State, not time: it holds exactly when the files are final on disk.
+        s->op = OP_W_GZDONE;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
+    } else if (strcmp(op, "curpos") == 0) {
+        // `curpos <x> <y> [tol]` -- RES6 cursor carry: every copy of the cursor the input pump reads is within
+        // tol (default 2) game pixels of (x,y): the drawn cursor _G_LLM_CURSOR_X/Y, the menu cursor the pump resets
+        // it from each frame, and the DI accumulator the next delta is added to. One of them left behind is the
+        // snap-back on the next mouse move, so all three are the claim.
+        s->op = OP_W_CURPOS;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, &end, 0);
+        while (*end == ' ' || *end == '\t') ++end;
+        s->c = *end ? (int)strtol(end, nullptr, 0) : 2;
     } else if (strcmp(op, "dimouse") == 0 || strcmp(op, "keystate") == 0) {
         // `dimouse <x> <y>` -- the DirectInput accumulator is exactly (x,y). `keystate <dik> <0|1>` --
         // the game's keystate byte for that DIK (index dik&0x7f, bit 2 when dik&0x80 else bit 1) is
@@ -2402,6 +2454,12 @@ void parse_line(const char *line) {
         s->op = OP_A_INJECTSTART; // `injectstart` -- U29 (b) test hook, no arguments
     } else if (strcmp(op, "dump") == 0) {
         s->op = OP_A_DUMP; // debug aid: log the active widget list at this point in the walk
+    } else if (strcmp(op, "mark") == 0) {
+        s->op = OP_A_MARK;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "mapsize") == 0) {
+        s->op = OP_W_MAPSIZE;
+        s->a  = (int)strtol(arg, nullptr, 0);
     } else if (strcmp(op, "end") == 0) {
         s->op = OP_A_END;
     } else {
@@ -2748,6 +2806,15 @@ bool wait_satisfied(const Step *s) {
         case OP_W_GAMECLOCK: { // the SIM has advanced >= N ms (stalls when the sim stalls -- not a time wait)
             double clk;
             memcpy(&clk, (const void *)GAMECLOCK_ADDR, sizeof(clk));
+            if (s->b) { // `gameclock +MS`: the clock moved MS past where it stood when this step was reached
+                static int    s_rel_idx = -1;
+                static double s_rel_base;
+                if (s_rel_idx != g_cur) {
+                    s_rel_idx  = g_cur;
+                    s_rel_base = clk;
+                }
+                return (clk - s_rel_base) * 1000.0 >= (double)s->a;
+            }
             return clk * 1000.0 >= (double)s->a; // the global is game-SECONDS (cf. net_internal.h ms_of)
         }
         case OP_W_WINCLIENT: {
@@ -2763,8 +2830,25 @@ bool wait_satisfied(const Step *s) {
             HWND hw = *(HWND *)mh::addr::hWnd_main;
             return hw && GetForegroundWindow() == hw;
         }
+        case OP_W_ZOOM: {
+            int z100 = 100;
+            MH_MapZoom_Get(&z100, nullptr, nullptr, nullptr, nullptr);
+            return s->b ? z100 >= s->a : (z100 >= s->a - 1 && z100 <= s->a + 1);
+        }
         case OP_W_DIMOUSE:
             return *(volatile int *)MOUSE_LAST_X == s->a && *(volatile int *)MOUSE_LAST_Y == s->b;
+        case OP_W_CURPOS: {
+            const int xs[3] = {*(volatile int *)CURSOR_XX, *(volatile int *)CURSOR_MENU_X, *(volatile int *)MOUSE_LAST_X};
+            const int ys[3] = {*(volatile int *)CURSOR_YY, *(volatile int *)CURSOR_MENU_Y, *(volatile int *)MOUSE_LAST_Y};
+            for (int i = 0; i < 3; ++i)
+                if (xs[i] < s->a - s->c || xs[i] > s->a + s->c || ys[i] < s->b - s->c || ys[i] > s->b + s->c) return false;
+            return true;
+        }
+        case OP_W_GZDONE: return mh::desync::gz::completed() >= s->a && mh::desync::gz::active() == 0;
+        case OP_W_MAPSIZE: {
+            const mh::game::mh_llm_strat_map_geom *g = (const mh::game::mh_llm_strat_map_geom *)mh::addr::general;
+            return (int)(g->big_width >> 5) == s->a && (int)(g->big_height >> 5) == s->a;
+        }
         case OP_W_KEYSTATE: {
             const uint8_t ks  = ((volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE)[s->a & 0x7f];
             const uint8_t bit = (s->a & 0x80) ? 2 : 1;
@@ -2967,6 +3051,7 @@ click_result do_action(const Step *s) {
             bool ok = false;
             if (s->c == 0) ok = mh::input::harness_mouse_abs_game(s->a, s->b);
             else if (s->c == 1) ok = mh::input::harness_mouse_rel(s->a, s->b);
+            else if (s->c == 4) ok = mh::input::harness_mouse_wheel(s->a);
             else ok = mh::input::harness_mouse_button(s->a, s->c == 2);
             if (!ok) {
                 ui_log("; rawmouse -- no owned DirectInput mouse ([input] backend=own, device created?)");
@@ -3281,6 +3366,20 @@ click_result do_action(const Step *s) {
         case OP_A_DUMP:
             MH_UIDrive_DumpWidgets();
             break;
+        case OP_A_MARK: {
+            // A segment boundary for the post_checks of a multi-segment walk: the same line in the two logs
+            // they read (mh_video.log: the mode / guard / list lines; mh_input.log: the zoom module's lines),
+            // through the log queue those files are written by, so it sits in order with their own lines.
+            char line[128];
+            wsprintfA(line, "; [mark] %s\n", s->text);
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            mh_run_path(g_mark_inp, MAX_PATH, "%smh_input.log", &g_mark_inp_gen);
+            mh_logq_write(g_mark_vid, line, lstrlenA(line));
+            mh_logq_write(g_mark_inp, line, lstrlenA(line));
+            seam_log(line); // mh_net.log too (stamped): the RES9 minimap-box lines live there
+            ui_log("; [script] MARK: %s", s->text);
+            break;
+        }
         case OP_A_END:
             ui_log("; [script] COMPLETE (end)"); // same terminal marker as running off the last step
             g_script_done = true;

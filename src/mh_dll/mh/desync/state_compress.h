@@ -42,10 +42,23 @@ struct result {
 void compress_file(const char *raw_path, result *r);
 
 // Run compress_file on a new below-normal-priority thread and log one line (success or failure) when it
-// ends. The path is copied. `log` may be null.
-void compress_async(const char *raw_path, log_fn log);
+// ends. The path is copied. `log` may be null. `what` names the stream in that line ("STATE RECORD" for
+// mh_match_state.bin, whose line the tools read).
+//
+// mp:Q3: `logq_ticket` != 0 is a file the ASYNC LOG SINK writes (mh_log_sink.h): the thread first waits,
+// bounded (LOGQ_WAIT_MS), until the sink reports everything up to that ticket on disk, so it never
+// compresses a file whose tail is still queued. Past the bound it compresses nothing, keeps the raw file
+// and says so. 0 = the caller closed the file itself (the state recorder's own writer).
+inline constexpr unsigned LOGQ_WAIT_MS = 15000;
+void                      compress_async(const char *raw_path, log_fn log, long logq_ticket = 0, const char *what = "STATE RECORD");
 
 // Tests: wait until no compress_async thread is running. True if idle within `ms`.
 bool wait_idle(unsigned ms);
+
+// mp:Q3: compress_async threads running now, and files compressed successfully by this process so far.
+// The UI harness's `gzdone <N>` predicate reads both (a run that ends at a session close can wait for its
+// recordings to be on disk in their final form).
+long active();
+long completed();
 
 } // namespace mh::desync::gz

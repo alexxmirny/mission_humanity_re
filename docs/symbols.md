@@ -54,7 +54,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004132c2` | `llm_ui_info_screen_request_pending_row` | `void llm_ui_info_screen_request_pending_row(int widget_id, int row_index)` | conf:high |
 | `0x004132f8` | `llm_ui_bldg_units_panel_request_pending_row` | `void llm_ui_bldg_units_panel_request_pending_row(int widget_id, int row_index)` | conf:high |
 | `0x0041332e` | `llm_ui_storage_panel_request_show_info_slot` | `void llm_ui_storage_panel_request_show_info_slot(int widget_id, int row_index)` | conf:high |
-| `0x00413364` | `llm_ui_bldg_worker_adjust_btn_tick` | `undefined llm_ui_bldg_worker_adjust_btn_tick(void)` | conf:med |
+| `0x00413364` | `llm_ui_bldg_worker_adjust_btn_tick` | `undefined llm_ui_bldg_worker_adjust_btn_tick(void)` | conf:med todo:proto |
 | `0x004134b1` | `llm_ui_bldg_worker_adjust_apply` | `void llm_ui_bldg_worker_adjust_apply(llm_ui_bldg_worker_adjust_btn * adj_btn, uint building_index, int target_is_index)` | conf:med |
 | `0x0041352d` | `llm_ui_bldg_worker_adj_btn0_tick` | `undefined llm_ui_bldg_worker_adj_btn0_tick(void)` | conf:high |
 | `0x00413563` | `llm_ui_bldg_worker_adj_btn1_tick` | `undefined llm_ui_bldg_worker_adj_btn1_tick(void)` | conf:high |
@@ -72,7 +72,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0041395f` | `llm_ui_hud_research_row_click_handler` | `void llm_ui_hud_research_row_click_handler(int widget_id, int row_index)` | conf:med |
 | `0x004139e5` | `llm_ui_hud_bldg_panel_slot_click_handler` | `void llm_ui_hud_bldg_panel_slot_click_handler(int widget_id, int row_index)` | conf:high todo:globals |
 | `0x00414313` | `llm_ui_hud_panel_title_draw` | `void llm_ui_hud_panel_title_draw(char * title_text)` | conf:med |
-| `0x00414395` | `llm_ui_hud_topbar_tick` | `void llm_ui_hud_topbar_tick(int panel_target_index)` | conf:med |
+| `0x00414395` | `llm_ui_hud_bottom_strip_tick` | `void llm_ui_hud_bottom_strip_tick(int panel_target_index)` | conf:med |
 | `0x00414a4e` | `llm_ui_chat_input_process_scancodes` | `void llm_ui_chat_input_process_scancodes(void)` | conf:high |
 | `0x00415475` | `llm_chat_history_push` | `void llm_chat_history_push(void)` |  |
 | `0x00415565` | `llm_chat_history_reset_cursor` | `void llm_chat_history_reset_cursor(void)` |  |
@@ -130,7 +130,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0041944c` | `llm_ui_list_item_icon_label_draw` | `void llm_ui_list_item_icon_label_draw(int slot_id, int mode)` |  |
 | `0x00419549` | `llm_strat_ui_unit_panel_tick` | `void llm_strat_ui_unit_panel_tick(int icon_entry_base)` |  |
 | `0x004197ba` | `llm_ui_selection_panel_refresh` | `void llm_ui_selection_panel_refresh(int icon_entry_base)` |  |
-| `0x00419b98` | `llm_util_unpack_static_category_table` | `void llm_util_unpack_static_category_table(void)` | conf:low |
+| `0x00419b98` | `llm_ui_icon_table_unpack` | `void llm_ui_icon_table_unpack(void)` |  |
 | `0x00419c16` | `llm_gfx_palette_scale_rgb` | `void llm_gfx_palette_scale_rgb(ushort * dst_palette, ushort * src_palette, int * rgb_scale)` | conf:med todo:struct |
 | `0x00419cff` | `llm_ui_hud_widget_define` | `void llm_ui_hud_widget_define(int widget_id, int x, int y, int right, int bottom, void * callback, int cb_arg, int text_id)` | conf:high |
 | `0x00419d84` | `llm_ui_hud_color_slot_set` | `void llm_ui_hud_color_slot_set(int r, int g, int b, int font_id, int slot_index)` | conf:high |
@@ -146,7 +146,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0041b43c` | `llm_input_mouse_button_hold_update` | `void llm_input_mouse_button_hold_update(void)` | conf:med todo:globals todo:struct |
 | `0x0041b64b` | `llm_ui_hud_widget_hit_test` | `int llm_ui_hud_widget_hit_test(int widget_id)` | conf:high |
 | `0x0041b6db` | `llm_ui_icon_rect_hit_test` | `int llm_ui_icon_rect_hit_test(int icon_index)` | conf:high todo:globals todo:struct |
-| `0x0041b76c` | `llm_ui_icon_rect_hit_test_cached` | `int llm_ui_icon_rect_hit_test_cached(int icon_index)` | conf:med todo:globals todo:struct |
+| `0x0041b76c` | `llm_ui_icon_rect_hit_test_release_pos` | `int llm_ui_icon_rect_hit_test_release_pos(int icon_index)` | conf:med todo:globals todo:struct |
 | `0x0041b7fd` | `llm_ui_icon_rect_hit_test_rmb` | `int llm_ui_icon_rect_hit_test_rmb(int widget_id)` | conf:high |
 | `0x0041b88e` | `llm_ui_icon_rect_hit_test_rmb_cached` | `int llm_ui_icon_rect_hit_test_rmb_cached(int widget_id)` | conf:high |
 | `0x0041b91f` | `llm_ui_slot_icon_draw` | `void llm_ui_slot_icon_draw(int slot_idx, int icon_idx)` | conf:high |
@@ -249,7 +249,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00427c6c` | `llm_tact_move_find_approach_tile` | `void llm_tact_move_find_approach_tile(int from_col, int from_row, int target_col, int target_row, int ring_radius_min, int ring_radius_max, uint * out_col, uint * out_row, int unused_param9, undefined1 * out_dir)` |  |
 | `0x00428201` | `llm_gfx_draw_sprite_with_bar` | `void llm_gfx_draw_sprite_with_bar(int sprite_id, int x, int y, int fill_percent, ushort viewbox_width)` | conf:med todo:struct |
 | `0x004282a3` | `llm_gfx_build_bar_sprite_rle` | `void llm_gfx_build_bar_sprite_rle(int sprite_id, int bar_row_count, int fill_percent, ushort viewbox_width)` | conf:med todo:globals todo:struct |
-| `0x004285c7` | `llm_gfx_set_window_resolution` | `undefined llm_gfx_set_window_resolution(void)` |  |
+| `0x004285c7` | `llm_gfx_set_window_resolution` | `void llm_gfx_set_window_resolution(int w, int h)` |  |
 | `0x00428802` | `llm_tact_gfx_init_view_tile_ptrs` | `void llm_tact_gfx_init_view_tile_ptrs(void)` | conf:med |
 | `0x0042894b` | `llm_gfx_release_display_surfaces` | `undefined llm_gfx_release_display_surfaces(void)` | conf:med todo:proto todo:struct |
 | `0x00428981` | `llm_gfx_display_mode_apply` | `void llm_gfx_display_mode_apply(void)` | conf:med |
@@ -1402,7 +1402,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004a8923` | `llm_gfx_draw_sprite_unclipped` | `void llm_gfx_draw_sprite_unclipped(int sprite_id, int dst_x, int dst_y)` |  |
 | `0x004a89db` | `llm_gfx_draw_sprite_clipped_width` | `void llm_gfx_draw_sprite_clipped_width(int param_1, int param_2, int a2, int param_4, int param_5)` |  |
 | `0x004a8ab3` | `llm_gfx_draw_sprite_to_buffer` | `undefined llm_gfx_draw_sprite_to_buffer(ushort * header, int sprite_id, int dst_x, int dst_y)` |  |
-| `0x004a8b73` | `llm_ui_set_draw_surface` | `void llm_ui_set_draw_surface(void * surface, int pitch, int x, int y, int clip_x, int clip_y, int clip_w, int clip_h, void * src_bitmap)` | conf:med |
+| `0x004a8b73` | `llm_ui_blit_bitmap_rect` | `void llm_ui_blit_bitmap_rect(void * surface, int pitch, int x, int y, int clip_x, int clip_y, int clip_w, int clip_h, void * src_bitmap)` | conf:med |
 | `0x004a933d` | `llm_cfg_skip_spaces` | `WCHAR * llm_cfg_skip_spaces(WCHAR * strPtr)` |  |
 | `0x004b3fe1` | `llm_ui_progress_bar_draw` | `void llm_ui_progress_bar_draw(int x, int y, int width, uint percent)` | conf:high |
 | `0x004b4249` | `llm_gfx_draw_bitmask_icon_6x6` | `int llm_gfx_draw_bitmask_icon_6x6(int dst_x_offset, byte icon_index)` | conf:low todo:globals todo:struct |
@@ -1410,7 +1410,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004b44cc` | `llm_gfx_draw_gauge_bar_vertical` | `void llm_gfx_draw_gauge_bar_vertical(int x, int y, int width, int height, int percent, byte fill_color_r5, byte fill_color_g6, byte fill_color_b5, byte empty_color_r5, byte empty_color_g6, byte empty_color_b5)` | conf:med |
 | `0x004b46d0` | `llm_ui_text_blit_char_glyph` | `undefined llm_ui_text_blit_char_glyph(void)` | conf:med todo:proto |
 | `0x004b47bb` | `llm_util_memset16` | `undefined llm_util_memset16(void)` | conf:med |
-| `0x004b47e3` | `llm_mem_copy_words` | `undefined llm_mem_copy_words(void)` |  |
+| `0x004b47e3` | `llm_mem_copy_words` | `void llm_mem_copy_words(pointer dst, pointer src, uint count_words)` |  |
 | `0x004b49da` | `llm_strat_ai_grid_fill_below_threshold` | `void llm_strat_ai_grid_fill_below_threshold(byte * grid_base, int width, int height, int threshold, int fill_value)` | conf:high |
 | `0x004b4a10` | `llm_strat_ai_grid_flood_step` | `void llm_strat_ai_grid_flood_step(byte * grid_base, int width, int height, int source_level, int fill_value)` | conf:high |
 | `0x004b4ac2` | `llm_strat_ai_grid_stamp_seeds` | `void llm_strat_ai_grid_stamp_seeds(byte * grid, int map_width, int map_height, byte * stencil, int span_x, int span_y, int origin_x, int origin_y, int seed_value)` |  |
@@ -1453,7 +1453,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004b6fb4` | `llm_ui_widget_list_center` | `void llm_ui_widget_list_center(astruct_3 * param_1)` |  |
 | `0x004b70c6` | `llm_menu_widget_selection_reset` | `int llm_menu_widget_selection_reset(void)` | conf:med |
 | `0x004b7149` | `llm_ui_widget_layout_resolve_position` | `void llm_ui_widget_layout_resolve_position(llm_ui_widget * widget, void * parent_rect)` | conf:med todo:globals todo:struct |
-| `0x004b72d8` | `llm_ui_widget_list_draw_frame_layer` | `undefined llm_ui_widget_list_draw_frame_layer(llm_ui_widget_list * list)` |  |
+| `0x004b72d8` | `llm_ui_widget_list_draw_frame_layer` | `undefined llm_ui_widget_list_draw_frame_layer(llm_ui_widget_list * list)` | todo:proto |
 | `0x004b7384` | `llm_ui_widget_list_draw` | `void llm_ui_widget_list_draw(llm_ui_widget_list * list)` |  |
 | `0x004b73f9` | `llm_ui_widget_input_tick` | `int llm_ui_widget_input_tick(void)` | conf:med todo:globals |
 | `0x004b7a11` | `llm_ui_menu_screen_save_config` | `undefined llm_ui_menu_screen_save_config(void)` |  |
@@ -1816,9 +1816,11 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004d1018` | `llm_input_key_queue_empty` | `int llm_input_key_queue_empty(void)` |  |
 | `0x004d1030` | `llm_input_key_dequeue` | `void llm_input_key_dequeue(undefined4 param_1)` |  |
 | `0x004d1070` | `llm_input_mouse_init` | `int llm_input_mouse_init(uint screen_width, uint screen_height)` | conf:high todo:globals |
+| `0x004d10bc` | `llm_input_mouse_device_init` | `int llm_input_mouse_device_init(uint width, uint height, pointer hinst, pointer hwnd)` |  |
 | `0x004d10d0` | `llm_input_dimouse_shutdown` | `void llm_input_dimouse_shutdown(void)` | conf:high |
 | `0x004d10e0` | `llm_input_mouse_queue_is_empty` | `int llm_input_mouse_queue_is_empty(void)` | conf:high |
 | `0x004d10f8` | `llm_input_mouse_pop_event` | `void llm_input_mouse_pop_event(llm_input_mouse_event * out_event)` | conf:high |
+| `0x004d1138` | `llm_input_set_cursor_pos` | `void llm_input_set_cursor_pos(int x, int y)` |  |
 | `0x004d1194` | `llm_input_wndproc_tap` | `void llm_input_wndproc_tap(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)` | todo:globals |
 | `0x004d19f0` | `llm_snd_create_notify_window` | `int llm_snd_create_notify_window(void)` | conf:high todo:globals |
 | `0x004d1a88` | `llm_snd_destroy_sound_window` | `void llm_snd_destroy_sound_window(void)` | conf:high todo:globals |
@@ -2557,6 +2559,10 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x005017f4` | `_G_LLM_NET_LOCKSTEP_RESYNC_TIMEOUT_MS` | `double` |
 | `0x005017fc` | `_G_LLM_NET_LOCKSTEP_RESYNC_DEADLINE_PAD_MS` | `double` |
 | `0x00501c7d` | `_G_LLM_SINGLE_INSTANCE_MUTEX_NAME` | `string` |
+| `0x00501ce0` | `_G_LLM_MAP_ZOOM_MAX_X` | `double` |
+| `0x00501ce8` | `_G_LLM_MAP_ZOOM_MAX_Y` | `double` |
+| `0x00501cf0` | `_G_LLM_MAP_ZOOM_MAX_INC_X` | `double` |
+| `0x00501cf8` | `_G_LLM_MAP_ZOOM_MAX_INC_Y` | `double` |
 | `0x00501e68` | `_G_LLM_CFG_KW_BANK` | `unicode` |
 | `0x00501e72` | `_G_LLM_CFG_KW_WEAPON_POWER_ADD` | `unicode` |
 | `0x00501e94` | `_G_LLM_CFG_KW_WEAPON_POWER_MUL` | `unicode` |
@@ -2809,13 +2815,13 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0050bcf7` | `_G_LLM_UI_ICON_GROUP_FIRST_ENTRY` | `int[56]` |
 | `0x0050bddb` | `_G_LLM_UI_BLDG_WORKER_ADJ_BTNS` | `llm_ui_bldg_worker_adjust_btn[2]` |
 | `0x0050be03` | `_G_LLM_STRAT_UI_BASE_MARKER_COORDS` | `llm_strat_ui_base_marker_coord[8]` |
-| `0x0050be53` | `_G_LLM_UI_BLDG_WORKER_POOL_COUNTER` | `uint` |
+| `0x0050be53` | `_G_LLM_UI_MOUSE_LEFT_HOLD_MS` | `uint` |
 | `0x0050be5b` | `_G_LLM_UI_BLDG_ADJUST_ROW_HOLD_MS` | `uint` |
 | `0x0050be63` | `_G_LLM_UI_HUD_WIDGETS` | `llm_ui_hud_widget[332]` |
 | `0x0050e797` | `_G_LLM_UI_HUD_COLOR_TABLE` | `llm_ui_hud_color_slot[16]` |
 | `0x0050e817` | `_G_LLM_UI_ICON_ENTRIES` | `llm_ui_icon_entry[562]` |
-| `0x0050fb9f` | `_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER` | `uint` |
-| `0x0050fba3` | `_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED` | `int` |
+| `0x0050fb9f` | `_G_LLM_UI_HUD_BOTTOM_STRIP_TICK_COUNTER` | `uint` |
+| `0x0050fba3` | `_G_LLM_UI_HUD_BOTTOM_STRIP_VIEW_SIZE_MODE_APPLIED` | `int` |
 | `0x0050fba7` | `_G_LLM_STRAT_UI_EVENT_DEFER_ACTIVE` | `int` |
 | `0x0050fbab` | `_G_LLM_UI_ICON_CLICK_CONSUMED_FLAG` | `int` |
 | `0x0050fbaf` | `_G_LLM_STRAT_UI_EVENT_QUEUE_POS` | `int` |
@@ -2854,6 +2860,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00519d2c` | `_G_LLM_UI_ICON_SPRITE_BASE` | `int` |
 | `0x00519d30` | `_G_LLM_UI_ICON_HOVER_ACTIVE` | `int` |
 | `0x00519d34` | `_G_LLM_UI_BLDG_PANEL_REDRAWN_FLAG` | `bool` |
+| `0x00519d38` | `_G_LLM_UI_MOUSE_LEFT_DOWN_LATCH` | `undefined4` |
 | `0x00519d3c` | `_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE` | `int` |
 | `0x00519d40` | `_G_LLM_UI_MOUSE_LEFT_PRESS_EDGE` | `int` |
 | `0x00519d48` | `_G_LLM_UI_MOUSE_RIGHT_RELEASE_EDGE` | `int` |
@@ -2861,6 +2868,10 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00519d50` | `_G_LLM_CURSOR_ICON_OVERRIDE` | `undefined4` |
 | `0x00519d58` | `_G_LLM_UI_STAGED_CURSOR_X` | `int` |
 | `0x00519d5c` | `_G_LLM_UI_STAGED_CURSOR_Y` | `int` |
+| `0x00519d60` | `_G_LLM_UI_MOUSE_LEFT_PRESS_X` | `undefined4` |
+| `0x00519d64` | `_G_LLM_UI_MOUSE_LEFT_PRESS_Y` | `undefined4` |
+| `0x00519d68` | `_G_LLM_UI_MOUSE_LEFT_RELEASE_X` | `undefined4` |
+| `0x00519d6c` | `_G_LLM_UI_MOUSE_LEFT_RELEASE_Y` | `undefined4` |
 | `0x00519e05` | `_G_LLM_TACT_MOVE_PATH_TRACE_TILE` | `int` |
 | `0x00519e09` | `_G_LLM_TACT_MOVE_PATH_TRACE_BASE` | `int` |
 | `0x00519e0d` | `_G_LLM_TACT_MOVE_PATH_TRACE_DIAG_CAND` | `int` |
@@ -3096,6 +3107,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x005d0c4c` | `_G_LLM_CHEATS_ENABLED` | `undefined4` |
 | `0x005d0c54` | `_G_LLM_STRAT_ANIM_FRAME_PARITY` | `byte` |
 | `0x005d0c55` | `_G_LLM_STRAT_ANIM_FRAME_PHASE` | `byte` |
+| `0x005d0c62` | `_G_LLM_UI_FLOATING_TIP_SHOWN` | `byte` |
 | `0x005d0c66` | `_G_LLM_VIEW_SIZE_MODE_CACHE` | `undefined4` |
 | `0x005d0c70` | `_G_LLM_STRAT_UNIT_CHASE_RESULT` | `int` |
 | `0x005d0c74` | `_G_LLM_STRAT_DEBUG_CAMPAIGN_CHEAT` | `undefined4` |
@@ -3172,6 +3184,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00603afc` | `_G_LLM_FB_PITCH` | `undefined4` |
 | `0x00603b00` | `_G_LLM_GFX_DRAW_SURFACE` | `undefined4` |
 | `0x00603b04` | `_G_LLM_GFX_PANEL_ROW_SKIP` | `undefined4` |
+| `0x00603b08` | `_G_LLM_GFX_HUD_STRIP_SURFACE` | `undefined4` |
 | `0x00603b0c` | `_G_LLM_GFX_VIEWPORT_ROW_BYTES` | `undefined4` |
 | `0x00603ec8` | `_G_LLM_STRAT_AI_GRID_WRAP_MASK` | `uint` |
 | `0x00603ecc` | `_G_LLM_STRAT_RNG_STATE` | `uint[4]` |
@@ -3208,7 +3221,6 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00644873` | `_G_LLM_LOBBY_MAP_SUMMARY_LINE` | `wchar_t[256]` |
 | `0x00644a73` | `_G_LLM_LOBBY_MAP_STATUS_LINE` | `wchar_t[256]` |
 | `0x00644f8f` | `_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT` | `int` |
-| `0x00644f93` | `_G_LLM_UI_MP_BROWSER_LIST_STATE` | `llm_ui_list_state` |
 | `0x00644fdb` | `_G_LLM_UI_MAPPICKER_LIST_ITEMS` | `void * *` |
 | `0x0064504b` | `_G_LLM_UI_OPT_SLIDER_MASTER_VOL_RANGE` | `int` |
 | `0x0064504f` | `_G_LLM_UI_OPT_SLIDER_MASTER_VOL_VALUE_PTR` | `void *` |
@@ -3580,14 +3592,14 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0071009c` | `_G_LLM_GFX_DDRAW_AUX` | `?` |
 | `0x00712120` | `_G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS` | `undefined` |
 | `0x00712920` | `_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS` | `undefined` |
-| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[1018]` |
+| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[300]` |
 | `0x00713d1a` | `_G_LLM_TILE_VIS_MAP_M6` | `byte` |
 | `0x00713d1b` | `_G_LLM_TILE_VIS_MAP_M5` | `byte` |
 | `0x00713d1c` | `_G_LLM_TILE_VIS_MAP_M4` | `byte` |
 | `0x00713d1d` | `_G_LLM_TILE_VIS_MAP_M3` | `byte` |
 | `0x00713d1e` | `_G_LLM_TILE_VIS_MAP_M2` | `byte` |
 | `0x00713d1f` | `_G_LLM_TILE_VIS_MAP_M1` | `byte` |
-| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[1024]` |
+| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[300]` |
 | `0x00714120` | `_G_LLM_SPRITE_META` | `gfx_sprite_meta[22000]` |
 | `0x00824fa0` | `_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_W` | `int` |
 | `0x00824fa4` | `_G_LLM_GFX_BAR_SPRITE_FILL_COLOR` | `ushort` |
@@ -3612,7 +3624,10 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00825034` | `_G_LLM_GFX_DASHED_RECT_LEFT` | `int` |
 | `0x00825038` | `_G_LLM_GFX_BANK_PLANET_PIXEL_RESERVE` | `uint` |
 | `0x0082503c` | `_G_LLM_CUR_TILE_LAYER` | `undefined1` |
+| `0x00825044` | `_G_LLM_GFX_FB_TILE_ROW_SKIP` | `int` |
+| `0x00825048` | `_G_LLM_GFX_STRIP_ROW_SKIP` | `int` |
 | `0x0082504c` | `_G_LLM_MOUSE_BUTTONS_CUR` | `undefined1` |
+| `0x00825050` | `_G_LLM_GFX_PANEL_TILE_ROW_SKIP` | `int` |
 | `0x0082505c` | `_G_LLM_CURSOR_HOTSPOT_Y` | `int` |
 | `0x00825060` | `_G_LLM_CURSOR_HOTSPOT_X` | `int` |
 | `0x00825068` | `_G_LLM_VIEW_TILES_H` | `undefined4` |
@@ -3804,6 +3819,8 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00e589a8` | `_G_LLM_CURSOR_WORLD_ROW` | `int` |
 | `0x00e589ac` | `_G_LLM_LMB_GESTURE_STATE` | `undefined` |
 | `0x00e589ad` | `_G_LLM_RMB_GESTURE_STATE` | `undefined` |
+| `0x00e589b4` | `_G_LLM_UI_FLOATING_TIP_X` | `int` |
+| `0x00e589b8` | `_G_LLM_UI_FLOATING_TIP_Y` | `int` |
 | `0x00e589c0` | `_G_LLM_STRAT_SCENARIO_PLANET_NAME_W` | `wchar_t[16]` |
 | `0x00e58bc8` | `_G_LLM_NET_LOCKSTEP_EXTEND_MARGIN_1` | `double` |
 | `0x00e58bd0` | `_G_LLM_NET_LOCKSTEP_EXTEND_MARGIN_2` | `double` |
@@ -3848,7 +3865,6 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00e60760` | `_G_LLM_MP_CONNECT_IP_BUF` | `undefined` |
 | `0x00e61ca0` | `_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_A` | `undefined` |
 | `0x00e620a0` | `_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B` | `undefined` |
-| `0x00e622a0` | `_G_LLM_LOBBY_BROWSER_ROWS` | `llm_lobby_browser_row[1024]` |
 | `0x00e642a0` | `_G_LLM_AVI_OPEN_STATUS` | `int` |
 | `0x00e642c4` | `_G_LLM_UI_OUTCOME_DLG_CODE` | `undefined1` |
 | `0x00e642c5` | `_G_LLM_UI_DIPLO_TITLE_STR` | `undefined` |
@@ -3882,6 +3898,8 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00e69d98` | `_G_LLM_INPUT_MOUSE_LAST_Y` | `int` |
 | `0x00e69d9c` | `_G_LLM_INPUT_MOUSE_LAST_X` | `int` |
 | `0x00e69da0` | `_G_LLM_INPUT_MOUSE_WHEEL_TOTAL` | `undefined` |
+| `0x00e69da4` | `_G_LLM_INPUT_MOUSE_BOX_W` | `int` |
+| `0x00e69da8` | `_G_LLM_INPUT_MOUSE_BOX_H` | `int` |
 | `0x00e69dac` | `_G_LLM_INPUT_KEY_READ_IDX` | `int` |
 | `0x00e69db0` | `_G_LLM_INPUT_MOUSE_READ_IDX` | `int` |
 | `0x00e69db4` | `_G_LLM_INPUT_KEY_WRITE_IDX` | `int` |

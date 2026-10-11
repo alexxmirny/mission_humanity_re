@@ -25,6 +25,7 @@ refuse.not_our_lobby = чужое лобби
 refuse.cp_mismatch = разные кодировки
 refuse.unknown = неизвестно
 refuse.build = У хоста %s, у вас %s: обновитесь
+refuse.gameplay = Настройки геймплея различаются (%s/%s): обновитесь
 relay.outdated = Ретранслятор устарел (протокол %u < %u)
 
 # map transfer

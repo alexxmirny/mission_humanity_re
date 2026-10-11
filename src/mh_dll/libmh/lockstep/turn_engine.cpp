@@ -12,9 +12,11 @@
 #include "lockstep/lt_peer_timing_reset.h"
 #include "lockstep/lt_player_by_side_id.h"
 #include "lockstep/lt_reload_snapshot_resync.h"
-#include "lockstep/lt_time_query.h" // NET-SESSION: install_seam_session_globals_reset / _wait_screen_frame
-#include "sim/sim_order_dispatch.h" // mp:U49 set_undock_reentry_fix
-#include "orders/order_queue.h"     // ST1: the order counts come from their OWNER, not a second binding
+#include "lockstep/lt_time_query.h"       // NET-SESSION: install_seam_session_globals_reset / _wait_screen_frame
+#include "sim/sim_order_dispatch.h"       // mp:U49 set_undock_reentry_fix
+#include "sim/sim_building_tick.h"        // PT-FIX1 set_turret_reload_owner_fix
+#include "sim/sim_unit_state_move_path.h" // PT-FIX3 set_air_order_facing_fix
+#include "orders/order_queue.h"           // ST1: the order counts come from their OWNER, not a second binding
 
 #include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE / the entry-thunk shapes
 #include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
@@ -689,8 +691,13 @@ reimpl_fixes        g_fixes;
 const reimpl_fixes &fixes() { return g_fixes; }
 void                set_fixes(const reimpl_fixes &f) {
     g_fixes = f;
-    mh::orders::set_admin_dedup_exempt(f.diplo_order_dedup_fix); // mp:U45
-    mh::sim::set_undock_reentry_fix(f.undock_reentry_fix);       // mp:U49
+    mh::orders::set_admin_dedup_exempt(f.diplo_order_dedup_fix);                                // mp:U45
+    mh::sim::set_undock_reentry_fix(f.undock_reentry_fix);                                      // mp:U49
+    mh::sim::set_turret_reload_owner_fix(f.turret_reload_owner_fix);                            // PT-FIX1
+    mh::sim::set_turret_reload_realtime(f.turret_reload_realtime_fix, f.turret_fire_rate_mult); // PT-FIX2
+    mh::sim::set_turret_clip_fix(f.turret_clip_fix);                                            // PT-FIX4
+    mh::sim::set_turret_fire_poll_fix(f.turret_fire_poll_fix);                                  // PT-FIX5
+    mh::sim::set_air_order_facing_fix(f.air_order_facing_fix);                                  // PT-FIX3
 }
 
 // The seam vocabulary `lockstep_seams=` may name. The first nine are install_promotion's table in the

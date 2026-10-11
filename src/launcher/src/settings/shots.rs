@@ -62,6 +62,19 @@ x=1\r\n";
 
 fn model_from(schema: Schema) -> Model {
     let mut m = Model::new(schema);
+    // A pinned 1920x1080 @ 100% desktop, so the review shots show the same list on every machine.
+    m.set_provider_options(
+        Provider::Resolutions,
+        super::resolutions::options(
+            Some(super::resolutions::Desktop {
+                w: 1920,
+                h: 1080,
+                scale_pct: 100,
+            }),
+            tr("setting.video.resolution.auto"),
+            tr("setting.video.resolution.classic"),
+        ),
+    );
     m.set_provider_options(
         Provider::LangPacks,
         vec![
@@ -173,15 +186,8 @@ fn window(ui: &mut Ui, fx: &mut Fx) {
             widgets::game_frame(ui, Some(tr("page.settings.title")), true, |ui| {
                 render::show_settings(ui, &mut fx.model, &mut fx.state);
                 ui.add_space(6.0);
-                let act = render::footer(ui, &fx.model);
-                match act {
-                    render::Action::Apply => {
-                        let path = std::env::temp_dir().join("mh_launcher_shots.ini");
-                        let _ = fx.model.apply(&path, &mut fx.store);
-                    }
-                    render::Action::Revert => fx.model.revert(),
-                    render::Action::None => {}
-                }
+                // No Apply / Revert here: the real launcher saves from the shell's save bar only
+                // (user 2026-10-09; the in-page strip was review-shot-only and removed 2026-10-11).
                 widgets::hint(
                     ui,
                     &trf(
@@ -275,21 +281,43 @@ fn harness(fx: Fx) -> Harness<'static, Fx> {
 // ---- interaction (no GPU) ------------------------------------------------------------------------
 
 #[test]
+fn the_resolution_row_defaults_to_classic_sizes_and_keeps_an_explicit_auto() {
+    // The shipped fixture ini has no `resolution` key: a fresh install reads the default, `stock`.
+    let m = fixture(Schema::builtin()).model;
+    assert_eq!(m.value("video.resolution"), "stock");
+    // An existing ini that says `resolution=auto` keeps Auto.
+    let mut m = model_from(Schema::builtin());
+    let store = MapStore::with(&[]);
+    m.load(
+        Some(
+            b"[video]
+resolution=auto
+",
+        ),
+        &store,
+    );
+    assert_eq!(m.value("video.resolution"), "auto");
+}
+
+#[test]
 fn display_rows_show_and_a_click_makes_the_page_dirty() {
     i18n::set_locale(Locale::En);
     let mut h = harness(fixture(Schema::builtin()));
     h.run();
     assert!(h.query_by_label("Window").is_some());
     assert!(h.query_by_label("V-sync").is_some());
-    // The experimental row carries its pills.
-    assert!(h.query_by_label("EXPERIMENTAL").is_some());
+    // The Resolution row is the page's first row, with its list from the pinned desktop.
+    assert!(h.query_by_label("Game resolution").is_some());
+    // (The pills of an experimental row are asserted by `a_new_registry_row_renders_with_no_launcher_change`:
+    // no shipped Display row is experimental any more.)
     assert!(!h.state().model.is_dirty());
     h.get_by_label("Windowed").click();
     h.run();
     assert_eq!(h.state().model.value("video.window"), "windowed");
     assert_eq!(h.state().model.dirty_count(), 1);
     // The Settings menu entry now carries the unsaved marker via the Start button's disabled reason.
-    h.get_by_label("Revert").click();
+    // Revert lives in the shell's save bar (app/pages/shots.rs covers it); this fixture reverts directly.
+    h.state_mut().model.revert();
     h.run();
     assert!(!h.state().model.is_dirty());
     assert_eq!(h.state().model.value("video.window"), "borderless");
@@ -402,8 +430,8 @@ fn a_new_registry_row_renders_with_no_launcher_change() {
         h.query_by_label("Zoom snap").is_some(),
         "humanised label of the new row"
     );
-    // Two experimental rows now carry the pill.
-    assert_eq!(h.query_all_by_label("EXPERIMENTAL").count(), 2);
+    // The synthetic experimental row carries the pill (no shipped Display row is experimental).
+    assert_eq!(h.query_all_by_label("EXPERIMENTAL").count(), 1);
 }
 
 #[test]
@@ -444,7 +472,7 @@ fn review_screenshots() {
     for loc in Locale::ALL {
         i18n::set_locale(loc);
         let code = loc.code();
-        for tab in ["display", "language", "multiplayer", "updates"] {
+        for tab in ["display", "language", "multiplayer", "gameplay", "updates"] {
             let mut fx = fixture(Schema::builtin());
             fx.state.subtab = tab.into();
             let mut h = harness_wgpu(fx);
@@ -472,6 +500,13 @@ fn review_screenshots() {
     fx.modal = true;
     let mut h = harness_wgpu(fx);
     save(&mut h, &dir, "modal_en");
+    // The Resolution row opened on the pinned 1920x1080 desktop: classic sizes only (the default), Auto, then
+    // the 4:3 sizes, the 16:9 sizes (RES3 list order).
+    let mut h = harness_wgpu(fixture(Schema::builtin()));
+    h.run();
+    h.get_by_role(egui::accesskit::Role::ComboBox).click();
+    h.run();
+    save(&mut h, &dir, "settings_display_resolution_open_en");
     // A custom (hand-written) enum value and the Language combo opened is covered by the unit tests;
     // the picture of the language tab above shows the combo closed.
 }

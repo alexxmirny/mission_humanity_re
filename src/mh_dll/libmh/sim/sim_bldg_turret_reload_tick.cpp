@@ -4,6 +4,7 @@
 // draft.
 //
 #include "sim/sim_bldg_turret_reload_tick.h"
+#include "sim/sim_building_tick.h" // turret_clip_fix (PT-FIX4)
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -45,7 +46,9 @@ void bldg_turret_reload_tick(const sim_view &v, sim_store &own, uint16_t player,
     // weapon_id is read HERE (inside the arm that actually uses it) rather than at the original's
     // unconditional early read (0x0047c655-0x0047c65c, into a dead local whenever an earlier guard
     // failed) -- a plain field read with no side effect, so relocating it changes nothing observable.
-    if (t.ammo == 0) {
+    // patching:PT-FIX4 ([net] turret_clip_fix; retail one-byte splice JNZ->JG at 0x0047c6cf): refill at
+    // ammo <= 0 (signed int32) so a turret that already carries negative ammo is repaired.
+    if (turret_clip_fix() ? (t.ammo <= 0) : (t.ammo == 0)) {
         // 0x0047c6d1-0x0047c6ee: ammo = Weapon[weapon_id].ammo. Refilled ONLY when ammo reads
         // exactly 0, never topped up otherwise.
         t.ammo = v.cfg_weapons[t.weapon_id].ammo;

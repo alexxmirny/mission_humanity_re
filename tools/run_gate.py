@@ -577,7 +577,7 @@ LOOPBACK_SUITES = (
     "udprelinktest",
 )
 
-_GFX_ROWS = ("win_resize", "res_hud", "font_guard", "boot_snapshot", "gx1_overlay_residue")
+_GFX_ROWS = ("win_resize", "res_walk", "font_guard", "boot_snapshot", "gx1_overlay_residue")
 _INPUT_ROWS = ("type_ascii", "key_repeat", "esc_menu", "imgui_swallow", "imgui_hover")
 _UI_ROWS = ("esc_menu", "stats_panel", "debug_overlay", "tact_panel", "ip_cancel", "no_net_lobby")
 _NET_ROWS = ("client_join", "relay_match", "graceful_quit", "link_death", "net_hud")

@@ -34,6 +34,15 @@ struct unit_state_move_path_calls {
 
 const unit_state_move_path_calls &live_unit_state_move_path_calls();
 
+// patching:PT-FIX3 -- an air unit (cfg type > 0xe) parked at move_microstep 31 with an order queued and a
+// facing_target that differs from MOVE_MICROSTEPS[move_heading][31].facing gets facing_target AND
+// facing_current snapped to the table facing instead of returning untouched, so the next dispatch
+// (which defers while the two differ) applies the queued order. Retail has no such sync: the unit is
+// stuck forever (RE-MISC10). Default false = the faithful retail early return; set from
+// reimpl_fixes::air_order_facing_fix by lockstep::set_fixes, so [net] air_order_facing_fix is the control.
+void set_air_order_facing_fix(bool on);
+bool air_order_facing_fix();
+
 namespace detail {
 
 // llm_strat_unit_state_move_path @0x00480b53. See the header derivation above for the full shape.

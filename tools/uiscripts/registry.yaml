@@ -618,6 +618,240 @@ tests:
     post_check_peers: true
     desc: 'U49 negative arm: `[net] undock_reentry_fix=0` (retail dispatch) -- the unit sits in EXIT_WAIT with
       door_mutex_unit = itself and the follow-up move is never consumed (both peers agree: no desync)'
+  # patching:PT-FIX1: a destroyed turret's rubble (state 4) kept ticking turret_reload_tick with a growing
+  # budget; once a new turret re-used the freed slot that drained ITS reload timer (~4x fire rate). The
+  # harness fixture (pt1_*) builds a turret, kills it, builds a second into the freed slot while the
+  # rubble lives, arms it with a 1 s reload and counts the steps until it is ready. Configuration (1)
+  # (no libmh.dll): the call-splice at 0x0046fe5d is what is under test.
+  - name: turret_slot_reuse
+    budget_s: 46
+    budget_evidence: "measured 35 s and 34 s together on the local rig 2026-10-10 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt1_turret.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;turret_reload_realtime_fix=0;turret_fire_poll_fix=0  # isolate PT-FIX1 from PT-FIX2 (the mult would halve the timer)
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt1_at=100;pt1_player=0;pt1_timer_ms=1000;pt1_tail=600
+    timeout: 420
+    post_check: [[tools/check_pt1_turret_slot.py, --expect, fixed]]
+    post_check_peers: true
+    desc: 'PT-FIX1: a new turret in the slot of a destroyed turret (rubble still alive) reloads on its own
+      budget -- a 1 s reload takes ~100 steps; hashes stay IDENTICAL'
+  # Reproduction arm: [net] turret_reload_owner_fix=0 keeps retail -- the rubble's budget collapses the reload.
+  - name: turret_slot_reuse_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 46
+    budget_evidence: "measured 35 s and 34 s together on the local rig 2026-10-10 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt1_turret.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;turret_reload_owner_fix=0;turret_reload_realtime_fix=0;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt1_at=100;pt1_player=0;pt1_timer_ms=1000;pt1_tail=600
+    timeout: 420
+    post_check: [[tools/check_pt1_turret_slot.py, --expect, retail]]
+    post_check_peers: true
+    desc: 'PT-FIX1 negative arm: `[net] turret_reload_owner_fix=0` (retail) -- the rubble drains the new
+      turret''s reload timer (ready in a fraction of the steps); both peers agree: no desync'
+  # patching:PT-FIX3: a helicopter in the path state (0x12) at microstep 31 with a stale facing_target that
+  # receives an order is deferred by the dispatcher forever (move_path's ms==31 && order_queued early return
+  # never reconciles the facing). The harness fixture (pt3_*) creates a helicopter, sends it east, and once it
+  # is in state 0x12 sends it north-west while holding the stuck shape until the order is deferred; it then
+  # releases and records whether the order is applied and whether the helicopter moves. Configuration (1)
+  # (no libmh.dll): the block splice at 0x00480b86 is what is under test.
+  - name: air_order_deadlock
+    budget_s: 46
+    budget_evidence: "measured 33 s and 32 s together on the local rig 2026-10-10 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt3_air_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt3_at=100;pt3_player=0;pt3_tail=300
+    timeout: 420
+    post_check: [[tools/check_pt3_air_order.py, --expect, fixed]]
+    post_check_peers: true
+    desc: 'PT-FIX3: a helicopter held at microstep 31 with a stale facing applies its next move order within a
+      few steps and leaves; hashes stay IDENTICAL'
+  # Reproduction arm: [net] air_order_facing_fix=0 keeps retail -- the helicopter stays frozen at ms 31 with the order queued.
+  - name: air_order_deadlock_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 46
+    budget_evidence: "measured 33 s and 32 s together on the local rig 2026-10-10 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt3_air_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;air_order_facing_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt3_at=100;pt3_player=0;pt3_tail=300
+    timeout: 420
+    post_check: [[tools/check_pt3_air_order.py, --expect, retail]]
+    post_check_peers: true
+    desc: 'PT-FIX3 negative arm: `[net] air_order_facing_fix=0` (retail) -- the helicopter stays in state 0x12 at
+      microstep 31 with order_queued 1 and never takes the order; both peers agree: no desync'
+  # patching:PT-FIX2: turret fire rate vs the sim step. The harness fixture (pt2_*) builds an unshared weapon-8
+  # and weapon-21 turret, gives them an immobile immortal enemy target and logs every shot. Configuration (1)
+  # (no libmh.dll): the 0x0046fe5d stub is what is under test. Ship rows: turret_reload_realtime_fix=1
+  # (turret_fire_rate_mult 2.0); *_retail: the re-count arm. Measured tables: the fx-weapons doc.
+  - name: turret_rate
+    budget_s: 86
+    budget_evidence: "measured 66 s / 65 s / 66 s / 64 s (turret_rate, _10ms, _retail, _10ms_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, fixed, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX2 at sim_step_ms=20: an unshared weapon-8 and weapon-21 turret fire at short_time / turret_fire_rate_mult (+ the attack poll); both peers agree'
+  - name: turret_rate_10ms
+    budget_s: 86
+    budget_evidence: "measured 66 s / 65 s / 66 s / 64 s (turret_rate, _10ms, _retail, _10ms_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=10;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, fixed, --step-ms, "10"]]
+    post_check_peers: true
+    desc: 'PT-FIX2 at sim_step_ms=10: an unshared weapon-8 and weapon-21 turret fire at short_time / turret_fire_rate_mult (+ the attack poll); both peers agree'
+  - name: turret_rate_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 86
+    budget_evidence: "measured 66 s / 65 s / 66 s / 64 s (turret_rate, _10ms, _retail, _10ms_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=0;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, retail, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX2 negative arm at sim_step_ms=20: `[net] turret_reload_realtime_fix=0` (retail) -- the re-counted reload budget; the fire intervals follow the re-count model, both peers agree'
+  - name: turret_rate_10ms_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 86
+    budget_evidence: "measured 66 s / 65 s / 66 s / 64 s (turret_rate, _10ms, _retail, _10ms_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=10;turret_reload_realtime_fix=0;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, retail, --step-ms, "10"]]
+    post_check_peers: true
+    desc: 'PT-FIX2 negative arm at sim_step_ms=10: `[net] turret_reload_realtime_fix=0` (retail) -- the re-counted reload budget; the fire intervals follow the re-count model, both peers agree'
+  # patching:PT-SET1: the HOST's gameplay settings win. turret_rate's fixture with the host at turret_fire_rate_mult=3.0
+  # and the client's own ini saying 1.0 + realtime fix OFF: the client must log `; gameplay: ADOPTED from host <summary>`
+  # equal to the host's PUBLISHED summary, both peers must shoot at the mult-3.0 rate, and the hash stays IDENTICAL.
+  # The poll fix is pinned off on both (its default is on; this row measures the reload rate only).
+  - name: gameplay_host_wins
+    budget_s: 86
+    budget_evidence: "cloned from turret_rate (measured 66 s, 2026-10-11) x 1.3; re-measure on the first run"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_fire_poll_fix=0;turret_fire_rate_mult=3.0
+    net_extra_client: turret_fire_rate_mult=1.0;turret_reload_realtime_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, fixed, --step-ms, "20", --mult, "3.0", --expect-adopted]]
+    post_check_peers: true
+    post_check_session: true  # the PUBLISHED / ADOPTED lines are in the SESSION net log, not the process one
+    desc: 'PT-SET1: host turret_fire_rate_mult=3.0 vs a client ini of 1.0 / realtime off -- the client adopts the host set (ADOPTED == PUBLISHED) and both peers shoot at the 3.0 rate; IDENTICAL'
+  # patching:PT-FIX4: the turret magazine. PT-FIX2's fixture (pt2_* in the harness) with [net] turret_clip_fix pinned
+  # on / off and PT-FIX2's keys pinned explicitly (realtime fix 1, mult 2.0) so a default flip cannot move the rows.
+  # libmh.dll omitted: the byte splices at 0x00462AB9 (creation) and 0x0047C6CF (refill test) are under test.
+  - name: turret_clip
+    budget_s: 90
+    budget_evidence: "measured 66 s (turret_clip) / 69 s (turret_clip_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_clip_fix=1;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt4_turret_clip.py, --expect, clip, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX4 clip arm at sim_step_ms=20: the weapon-8 turret (ammo 3, short 0.2, long 0.4) fires 3 shots at short_time then waits long_time (ammo 2,1,0,2,1,0); weapon 21 (ammo 1) unchanged; both peers agree'
+  - name: turret_clip_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 90
+    budget_evidence: "measured 66 s (turret_clip) / 69 s (turret_clip_retail) on the local rig 2026-10-11 (one run each) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_clip_fix=0;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt4_turret_clip.py, --expect, retail, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX4 negative arm: `[net] turret_clip_fix=0` (retail) -- turret ammo is never initialised (-1,-2 ...), every reload is short_time, steady interval; both peers agree'
+  # patching:PT-FIX5: the turret fire poll. PT-FIX2's fixture (pt2_* in the harness) with [net] turret_fire_poll_fix pinned
+  # on / off and PT-FIX2's keys pinned explicitly (realtime fix 1, mult 2.0). libmh.dll omitted: the byte splice at
+  # 0x004721D0 is under test. sim_step_ms=20, where the retail poll costs weapon 8 0.12 s instead of 0.10 s.
+  - name: turret_poll
+    budget_s: 90
+    budget_evidence: "measured 67 s (turret_poll) / 66 s (turret_poll_retail) on the local rig 2026-10-11 (one run each, 2 at a time) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_fire_poll_fix=1
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt5_turret_poll.py, --expect, fixed, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX5 at sim_step_ms=20: `[net] turret_fire_poll_fix=1` -- the aimed weapon-8 and weapon-21 turrets fire every short_time / turret_fire_rate_mult within one step (no attack-state poll); both peers agree'
+  - name: turret_poll_retail
+    tier: release  # gate-cost valve: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    budget_s: 90
+    budget_evidence: "measured 67 s (turret_poll) / 66 s (turret_poll_retail) on the local rig 2026-10-11 (one run each, 2 at a time) x 1.3"
+    kind: multi
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_fire_poll_fix=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt5_turret_poll.py, --expect, retail, --step-ms, "20"]]
+    post_check_peers: true
+    desc: 'PT-FIX5 negative arm at sim_step_ms=20: `[net] turret_fire_poll_fix=0` (retail) -- the fire intervals follow the turret_rate table (reload / mult + the 0.05 s attack poll); both peers agree'
   # mp:D36: the rc4 rematch shape -- the host LANDS in match 1 (the landing grant goes into the
   # gains-only resource_spent), then rematches a FRESH client process on a shorter-named map.
   # rematch_play cannot see this: its joiner is the same process and nobody lands.
@@ -1691,15 +1925,36 @@ tests:
     clients: [mp_client_ipretry.txt]
     client_dead_ip: !ref machine.DEAD_PEER_IP
     desc: 'S8: client types a dead IP -> empty browser -> corrects the IP via the MRU in-session -> joins'
-  - name: res_hud
-    # gate diet: max measured (gate 19s, n2 14s, n6 15s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
-    budget_s: 30
+  - name: galaxy_bg_picker
+    budget_s: 60
     kind: solo
-    script: res_hud.txt
-    extra_ini: tools/uiscripts/ini/video_1024.ini
-    # Pinned explicitly via [video], not inherited: it's a persisted setup.dat pref, so an unpinned
-    # baseline depends on whatever ran last. (D13)
-    desc: 'D13: menu -> lobby -> launch, strategic HUD rendered at 1024x768 (mode 2)'
+    script: galaxy_bg_picker.txt
+    # The committed campaign save is the lane's only entry; loaded from the main menu (no intro movie).
+    deploy_save: 2-almost
+    # An explicit picker list so size_mode=3 is 1280x768 on every machine; backend=d3d11 pinned.
+    extra_ini: tools/uiscripts/ini/video_picker_galaxy.ini
+    # post_check, not pixels: the SCALED-background line in mh_video.log is what proves the copy took
+    # the header-aware path (a 1024x768 image filled to 1280x768), and the three arm lines prove the
+    # guards were installed -- a frame alone cannot say which code drew the background.
+    post_check: [tools/check_mode_guards.py, --scaled]
+    # 0.05%, not the 2% default: a frame without the Nortus planet differs from the baseline by 0.113% of pixels, which the default could not see.
+    # Measured repeat diff over 4 runs of the 6000-present dwell: 0.000%.
+    tol: 0.0005
+    desc: 'D13 mode guards, galaxy_native=0 (the RES6 fix-off twin): the galaxy screen stays at the picker mode larger than the art (1280x768) and renders with the background SCALED to fill, no crash'
+  # Fix-off negative (release tier): [video] mode_guards=0 disarms the mode-change guards, so the row reproduces its rc8
+  # crash on purpose (expect_red -> XFAIL): the galaxy screen's full-screen background copy off the end of the next
+  # system's smaller image (0x004b47fd). The red is the proof the guard is what keeps galaxy_bg_picker green. (The quit
+  # and 640x480 negatives went with their positives into res_walk: see its comment.)
+  - name: galaxy_bg_picker_off
+    tier: release
+    budget_s: 60
+    budget_evidence: "seeded from galaxy_bg_picker"
+    kind: solo
+    script: galaxy_bg_picker.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/video_picker_galaxy_off.ini
+    expect_red: patching:PT-GFX9
+    desc: 'D13 mode guards, fix OFF: the galaxy screen at 1280x768 with mode_guards=0 crashes (rc8 reproduction, expected red)'
   - name: esc_menu
     # gate diet: max measured (gate 17s, n2 11s, n6 12s) x 1.3 = 25, FLOORED at 30 (BUDGET_FLOOR_S)
     budget_s: 30
@@ -2651,3 +2906,152 @@ tests:
     desc: 'P6: the conquest workload plays a real host-win/client-loss match; post_check asserts the client''s
       (loser''s) longest present-to-present gap between the host''s own outcome and its own is < 500 ms
       -- measured 0 ms on this rig''s own conditions'
+  # mp:Q1: [log] level=quiet used to skip the session_begin_multi hook (it sat behind lockstep_log),
+  # so no MP match at quiet ever reached desync::session_reset or the host player-count fix-up.
+  - name: quiet_level
+    budget_s: 45  # measured 26-31s (2026-10-10, two runs) x 1.3, rounded up
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    # lockstep_log=0 explicitly: the rig's NET_BLOCK writes lockstep_log=1, and under the dev unlock an
+    # explicit key beats the level's default -- without this the run is not quiet where it matters.
+    # frametime_log=1 stays: the runner's boot lock waits on mh_frametime.log (60 s stall without it).
+    net_extra: transport=udp;lockstep_log=0;frametime_log=1
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/log_quiet.ini]
+    post_check: [tools/check_quiet_session.py, --expect, fixed]
+    post_check_peers: true
+    post_check_session: true  # mh_match_state.bin and the MATCH lines are match-time (session dir)
+    desc: 'mp:Q1: a 2-peer UI-path match at [log] level=quiet still runs session_begin_multi''s hook --
+      both peers open mh_match_state.bin (the desync session reset ran) and judge MATCH samples (lockstep
+      mode 3, i.e. the host player-count fix-up held)'
+  - name: quiet_level_fixoff
+    budget_s: 40  # measured 29s x2 (2026-10-10) x 1.3
+    tier: release  # negative arm: skipped by a bare run; test_ui.py --release-tier / run_gate.py --release
+    kind: multi
+    host: mp_host_start.txt
+    clients: [mp_client_start.txt]
+    share_lanes: quiet_level
+    net_extra: transport=udp;lockstep_log=0;frametime_log=1;sbm_hook_log_gated=1
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/log_quiet.ini]
+    post_check: [tools/check_quiet_session.py, --expect, broken]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'mp:Q1 fix-off twin: [net] sbm_hook_log_gated=1 restores the pre-fix guard, and at level=quiet
+      the session reset never runs -- no state file, no MATCH sample'
+  # mp:Q2/Q3: before mp:Q2 the state recorder armed only at session_begin_multi, which no
+  # single-player session passes; mp:Q3 adds mh.dll's own order recording (on at level=debug). Since
+  # mp:Q4 the state recorder is its own player setting (default off), so the row turns it on explicitly.
+  - name: sp_state_record
+    budget_s: 35  # measured 22-24s (2026-10-10, four runs) x 1.3, rounded up
+    kind: solo
+    script: sp_state_record.txt
+    deploy_save: ayy30
+    extra_ini: [tools/uiscripts/ini/video_640.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/state_record.ini]
+    # skip the campaign intro movie + briefing (~120 s headless); order_mode stays 0 -- mh.dll records
+    harness_extra: skip_intro_avi=1
+    tol: 1.0  # the assertion is the post_check (the recordings); the one frame only proves the menu came back
+    post_check: [tools/check_sp_recording.py, --min-sessions, '2']
+    desc: 'mp:Q2/Q3: a loaded save and a new campaign at [log] level=debug + [desync] state_record=1, each quit to the menu -- each
+      solo session folder holds mh_match_state.bin.gz + mh_rec_orders.bin.gz + mh_rec_clock.bin.gz, all
+      decoding, one clock entry per recorded state step'
+  # mp:Q3: mh.dll's order recording equals the harness's recording of the same lockstep match -- the
+  # host records with the harness (order_mode=1, so mh.dll's recorder stays off there), the client with
+  # mh.dll at level=debug; same session axis on both, same due queue every step.
+  - name: order_record_mp
+    budget_s: 45  # measured 32s x3 with the hold past synth_at (2026-10-11); 29-31s before
+    kind: multi
+    host: mp_host_rec.txt
+    clients: [mp_client_rec.txt]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    extra_ini_client: tools/uiscripts/ini/log_debug.ini  # order_record=1 (the level); state_record stays off since mp:Q4
+    # synthetic moves from step 700 (after the m3 capture at gameclock 6000), as match_launch_net
+    harness_extra: synth_move=1;synth_at=700
+    harness_extra_host: order_mode=1
+    post_check: [tools/check_order_record.py]
+    post_check_peers: true
+    post_check_session: true  # both recordings live in the session folders
+    desc: 'mp:Q3: the client''s mh_rec_orders.bin (mh.dll, level=debug) equals the host''s harness
+      mh_match_orders.bin step for step, and the two clock tracks agree, over every common step'
+  # res_walk / res_walk_auto: the resolution / HUD / panel-row / zoom rows folded into two walks (user, 2026-10-11).
+  # Each segment of a walk opens with `mark <old row name>` (the DLL writes it into mh_video.log and mh_input.log, and
+  # the post_checks slice on it: tools/walk_segments.py), every capture is named <old row>__<name>, and a red check
+  # names the segment it belongs to. What each old row proved, and what its fix-off twin measured, is kept next to the
+  # segment that replaced it (the twins themselves are retired).
+  # PROOFS KEPT FROM THE RETIRED ROWS (what each old row measured, so the record outlives its script).
+  #  fix-off twins, all retired (user, 2026-10-11) -- the measured fix-off result of each:
+  #   galaxy_native_cursor_off ([video] galaxy_cursor=0): the stock re-centring the carry replaces -- the DI accumulator
+  #     at 512,384 after the enter and 848,480 after the exit (the user's mh_mtrace.log); res_walk_auto asserts the carry.
+  #   crash_640_from_large_off ([video] mode_guards=0): the drop to 640x480 writes past the 640x480 frame in
+  #     llm_gfx_draw_bevel_rect at 0x004c0fa5 (rc8 reproduction, XFAIL 0xC000041D); quit_from_large_mode_off: the pixel
+  #     probe under the stale cursor at 0x004a675f. The positives are the crash_640_from_large and galaxy_native_1920x1440
+  #     segments (the latter ends in ESC > Quit game > Yes from 1920x1440, which is quit_from_large_mode too).
+  #   res_strip_resize_off ([video] strip_fix=0): the build-once status-bar cache leaves the bar short with stale pixels
+  #     after 1280x1024 -> 2560x1440, ~0.4% of the 2560x1440 frame (run to run ~0.01%).
+  #   res_land_hud_off ([video] fx_view_gate=0, mode_guards=0): no landing footprint, and the selected ship's panel is
+  #     stripped to the empty slot row.
+  #   res_wrap_window_v_off ([video] wrap_window=0): the ship, its ellipse and its shadow vanish once more than 1024 px
+  #     below / right of the camera (the stock short-way-round placement).
+  #   res_panel_rows_960_off ([video] panel_rows=0): at 1280x960 the available list shows 10 rows and a click below 768
+  #     reaches nothing; on ayy30 (measured 2026-10-11, never registered) the list shows 10 rows, the arrow still scrolls
+  #     it, the drag at y 880 does nothing and the row-12 click places nothing; at 1920x1440 the group column stops at
+  #     30 rows (y 768), so row 45 is neither drawn nor clickable.
+  #   RES8 ([ui] worker_click_fix=0, measured 2026-10-11, never registered): the same first-click walk reads
+  #     78 / 78 / 78 (3-kariotyp-2's Extractor row; on 2-almost the row is 39 workers).
+  #   RES9 ([ui] minimap_box_clip=0, measured 2026-10-11, never registered): the first zoom-4 frame at 2048x1152 faults at
+  #     0x004a237a (the stock box's first store), its top edge 1054 bytes before a surface that starts 0x30 bytes into its
+  #     own allocation. The positive is the res_minimap_box segment (2-almost at 2048x1152 and 2560x1440; masks keep only
+  #     the side panel outside the minimap; the verdict is check_minimap_box.py on the segment's `; RES9:` lines).
+  #  dropped, not folded: res_panel_rows_1440 -- it typed ~40 _UNIT console lines to spawn enough units, and asserted
+  #   that CONTROL GROUP 0's list (46-px rows from y 272) draws rows past 10, its 12th row hovers "unit info" and its
+  #   click narrows the selection. LOST: that group-0 column. ayy30_1440 keeps the selection column of a 51-unit group
+  #   (16-px rows, row 45 hover and click), which is the same list family at a different row pitch, so the cap that
+  #   stopped the group column at 30 rows is still proven; the 46-px column is not exercised by any row now.
+  #  map_zoom_wheel_off is not a twin: it proves the wheel_zoom=0 default path, and lives in res_walk_auto.
+  #  3-kariotyp-2.sav is no longer used by any row (2-almost carries its owned list and worker rows; ayy30 the available
+  #   list that needs more than 8 entries); its available list (12 entries, the 12th row placing + info) moved to ayy30's
+  #   row 12.
+  - name: res_walk
+    budget_s: 150
+    budget_evidence: "111-113 s solo with the res_minimap_box segment (2026-10-11, two green runs; 97-106 s solo and 118-121 s beside res_walk_auto before it); the 22 folded rows summed 355 s of last gate times (res_land_hud 139 s of it) plus the panel-row rows"
+    long_why: "one process walks 23 segments on two saves, with ~35 in-game size changes, six galaxy round trips and a lobby game plus a campaign start; replaces 22 rows that each paid a boot (measured seconds in budget_evidence)"
+    kind: solo
+    script: res_walk.txt
+    # 2-almost is the top (preselected) Load row, ayy30 the second.
+    deploy_save: 2-almost,ayy30
+    extra_ini: tools/uiscripts/ini/res_walk.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;skip_intro_avi=1
+    post_check:
+      - [tools/check_panel_rows.py, worker_1024]
+      - [tools/check_panel_rows.py, owned_960]
+      - [tools/check_panel_rows.py, ayy30_960]
+      - [tools/check_panel_rows.py, ayy30_1440]
+      - [tools/check_mode_guards.py, --native, 1280x768, --segment, galaxy_native_1280x768]
+      - [tools/check_mode_guards.py, --native, 1280x768, --segment, galaxy_native_zoom]
+      - [tools/check_mode_guards.py, --native, 1920x1440, --segment, galaxy_native_launch]
+      - [tools/check_mode_guards.py, --native, 1920x1440, --segment, galaxy_native_1920x1440]
+      - [tools/check_mode_guards.py, --native, 2048x1152, --segment, galaxy_native_2048x1152]
+      - [tools/check_mode_guards.py, --cursor]
+      - [tools/check_map_zoom.py, --wheel, --segment, map_zoom_wheel]
+      - [tools/check_map_zoom.py, --nowrap, --segment, res_nowrap_64]
+      - [tools/check_land_hud.py, --prefix, res_land_hud__]
+      - [tools/check_minimap_box.py, --segment, res_minimap_box]
+    tol: 0.0005
+    desc: 'RES2/3/5/6/7/8/9 + D13: the resolution walk -- worker +/- first click, seam drag-select, map zoom (wheel, menu hold), galaxy native round trips at four sizes (zoom, launch, quit), owned and available panel rows at 1280x960 / 1920x1440, wrap window, 64-tile no-wrap at 2048x1152, strip after each size change, the 640x480 drop, the HUD from the lobby, the campaign landing at 2048x1152, the RES9 minimap viewport box clipped at zoom 4 (2560x1440 and 2048x1152)'
+  - name: res_walk_auto
+    budget_s: 130
+    budget_evidence: "96-99 s (2026-10-11, four green runs, solo and beside res_walk); the six folded rows summed 72 s but ran as separate gate units, five of them in a mapped window"
+    long_why: "a MAPPED borderless window at 60 fps: the galaxy dwells (900 presents each) and the cursor-carry waits are wall-clock"
+    kind: solo
+    script: res_walk_auto.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_walk_auto.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_res_list.py, 1920x1056, integer]
+      - [tools/check_mode_guards.py, --native, 1920x1056, --segment, galaxy_native_cursor]
+      - [tools/check_map_zoom.py, --off, --segment, map_zoom_wheel_off]
+      - [tools/check_menu_roundtrip.py, --segment, res_menu_roundtrip]
+      - [tools/check_res_list.py, --ingame, --segment, res_frac, 1280x704, fit]
+    tol: 0.0005
+    desc: 'RES3/RES6: the generated resolution list on a pinned 1920x1080 desktop in a mapped borderless window -- boot at Auto 1920x1056 and the galaxy screen, the galaxy cursor carry, wheel_zoom=0, the list order, menu round trips and a size change, the fractional 1.5x size'

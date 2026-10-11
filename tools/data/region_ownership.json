@@ -286,14 +286,14 @@
    "owner_subsystem": "UI/menus",
    "cross_write_accepted": "misfiled-writer: game_SetEvent is a UI panel-state setter whose name collides with the Win32-style API name, not a genuine Game/boot/misc function.",
    "owned_by_dll": true,
-   "serializer_why": "sole external reader is llm_ui_hud_topbar_tick [UI/menus]; per brief, game_SetEvent is a UI panel-state setter with an API-colliding name, not a Game/boot writer.",
-   "why": "sole external reader is llm_ui_hud_topbar_tick [UI/menus]; per brief, game_SetEvent is a UI panel-state setter with an API-colliding name, not a Game/boot writer."
+   "serializer_why": "sole external reader is llm_ui_hud_bottom_strip_tick [UI/menus]; per brief, game_SetEvent is a UI panel-state setter with an API-colliding name, not a Game/boot writer.",
+   "why": "sole external reader is llm_ui_hud_bottom_strip_tick [UI/menus]; per brief, game_SetEvent is a UI panel-state setter with an API-colliding name, not a Game/boot writer."
   },
   "CHAT_INPUT_CURSOR": {
    "owner_subsystem": "UI/menus",
    "owned_by_dll": false,
-   "serializer_why": "5 external writers + 2 external readers, all llm_ui_chat_input_*/llm_ui_hud_topbar_tick tagged [UI/menus], dominate; our_writer game_SetEvent is the brief's own example of a misfiled UI panel-state setter, reinforcing rather than contesting UI ownership.",
-   "why": "5 external writers + 2 external readers, all llm_ui_chat_input_*/llm_ui_hud_topbar_tick tagged [UI/menus], dominate; our_writer game_SetEvent is the brief's own example of a misfiled UI panel-state setter, reinforcing rather than contesting UI ownership.",
+   "serializer_why": "5 external writers + 2 external readers, all llm_ui_chat_input_*/llm_ui_hud_bottom_strip_tick tagged [UI/menus], dominate; our_writer game_SetEvent is the brief's own example of a misfiled UI panel-state setter, reinforcing rather than contesting UI ownership.",
+   "why": "5 external writers + 2 external readers, all llm_ui_chat_input_*/llm_ui_hud_bottom_strip_tick tagged [UI/menus], dominate; our_writer game_SetEvent is the brief's own example of a misfiled UI panel-state setter, reinforcing rather than contesting UI ownership.",
    "kept_writers": [
     "llm_ui_chat_input_backspace",
     "llm_ui_chat_input_char_insert",
@@ -725,7 +725,7 @@
   "GFX_PANEL_ROW_SKIP": {
    "owner_subsystem": "Graphics/FX",
    "owned_by_dll": false,
-   "why": "TACT1E (2026-08-27). Measured writer: llm_gfx_view_metrics_init [Graphics/FX], the shared view-metrics recompute entry point (same family as TACT_LOS_CACHE_PTR/TILE_VIS_MAP_PTR above). Read-only in the tactical set: llm_tact_ui_sel_panel_init/llm_tact_sidebar_dispatch/llm_tact_ui_char_panel_row_draw [Tactical mode] all pass it straight through as the `pitch` argument to llm_ui_set_draw_surface alongside RID_GFX_DRAW_SURFACE (0x00603b00, 4 bytes earlier, same one-shot draw-surface block)."
+   "why": "TACT1E (2026-08-27). Measured writer: llm_gfx_view_metrics_init [Graphics/FX], the shared view-metrics recompute entry point (same family as TACT_LOS_CACHE_PTR/TILE_VIS_MAP_PTR above). Read-only in the tactical set: llm_tact_ui_sel_panel_init/llm_tact_sidebar_dispatch/llm_tact_ui_char_panel_row_draw [Tactical mode] all pass it straight through as the `pitch` argument to llm_ui_blit_bitmap_rect alongside RID_GFX_DRAW_SURFACE (0x00603b00, 4 bytes earlier, same one-shot draw-surface block)."
   },
   "GFX_UI_COLORS_RGB": {
    "owner_subsystem": "Graphics/FX",
@@ -4124,7 +4124,7 @@
     "llm_ui_hud_bldg_panel_refresh_tick",
     "llm_ui_hud_bldg_panel_refresh_tick_dup",
     "llm_ui_hud_bldg_panel_same_type_count_row_draw",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "kept_writers_why": "SB-SOLE: 11 original writer(s) kept. Reason class(es): producer-consumer (another subsystem legitimately hands the value across a seam); permanent-wall (render/UI/platform, a declared non-goal of the revised M6 exit). Per-writer reasons: tools/data/writer_dispositions.json."
   },
@@ -4185,7 +4185,7 @@
    "serializer_why": "All external writers/readers are llm_ui_* main-panel/topbar functions; the STRAT_UI name prefix is the documented misfiled pattern (brief calls this exact family out), and our_writer game_SetEvent is the brief's example UI panel-state setter with an API-colliding name.",
    "why": "All external writers/readers are llm_ui_* main-panel/topbar functions; the STRAT_UI name prefix is the documented misfiled pattern (brief calls this exact family out), and our_writer game_SetEvent is the brief's example UI panel-state setter with an API-colliding name.",
    "kept_writers": [
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_main_panel_draw"
    ],
    "kept_writers_why": "SB-SOLE: 2 original writer(s) kept. Reason class(es): permanent-wall (render/UI/platform, a declared non-goal of the revised M6 exit). Per-writer reasons: tools/data/writer_dispositions.json."
@@ -4206,8 +4206,8 @@
   "STRAT_UI_PANEL_MODE": {
    "owner_subsystem": "UI/menus",
    "owned_by_dll": false,
-   "serializer_why": "Textbook case of the brief's own misfiled-name example: writer game_SetEvent is literally the cited 'UI panel-state setter with an API-colliding name', and the external writer/reader (llm_ui_bldg_panel_open, llm_ui_hud_topbar_tick) are both UI/menus despite the STRAT_UI prefix.",
-   "why": "Textbook case of the brief's own misfiled-name example: writer game_SetEvent is literally the cited 'UI panel-state setter with an API-colliding name', and the external writer/reader (llm_ui_bldg_panel_open, llm_ui_hud_topbar_tick) are both UI/menus despite the STRAT_UI prefix.",
+   "serializer_why": "Textbook case of the brief's own misfiled-name example: writer game_SetEvent is literally the cited 'UI panel-state setter with an API-colliding name', and the external writer/reader (llm_ui_bldg_panel_open, llm_ui_hud_bottom_strip_tick) are both UI/menus despite the STRAT_UI prefix.",
+   "why": "Textbook case of the brief's own misfiled-name example: writer game_SetEvent is literally the cited 'UI panel-state setter with an API-colliding name', and the external writer/reader (llm_ui_bldg_panel_open, llm_ui_hud_bottom_strip_tick) are both UI/menus despite the STRAT_UI prefix.",
    "kept_writers": [
     "llm_ui_bldg_panel_open"
    ],
@@ -4227,10 +4227,10 @@
   "STRAT_UI_PANEL_SWITCH_PENDING": {
    "owner_subsystem": "UI/menus",
    "owned_by_dll": false,
-   "serializer_why": "STRAT_UI_ is the documented misfiled-name pattern (brief's own PANEL_MODE example); our_writer game_SetEvent is the UI panel-state setter, and the sole external writer llm_ui_hud_topbar_tick is already tagged UI/menus.",
-   "why": "STRAT_UI_ is the documented misfiled-name pattern (brief's own PANEL_MODE example); our_writer game_SetEvent is the UI panel-state setter, and the sole external writer llm_ui_hud_topbar_tick is already tagged UI/menus.",
+   "serializer_why": "STRAT_UI_ is the documented misfiled-name pattern (brief's own PANEL_MODE example); our_writer game_SetEvent is the UI panel-state setter, and the sole external writer llm_ui_hud_bottom_strip_tick is already tagged UI/menus.",
+   "why": "STRAT_UI_ is the documented misfiled-name pattern (brief's own PANEL_MODE example); our_writer game_SetEvent is the UI panel-state setter, and the sole external writer llm_ui_hud_bottom_strip_tick is already tagged UI/menus.",
    "kept_writers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "kept_writers_why": "SB-SOLE: 1 original writer(s) kept. Reason class(es): permanent-wall (render/UI/platform, a declared non-goal of the revised M6 exit). Per-writer reasons: tools/data/writer_dispositions.json."
   },
@@ -4263,11 +4263,11 @@
    "owner_subsystem": "UI/menus",
    "cross_write_accepted": "misfiled-writer: llm_strat_ui_unit_panel_tick is UI code carrying a strategic-mode name per tools/_subsys.py FN_LAYER_OVERRIDES, not an actual sim writer.",
    "owned_by_dll": false,
-   "serializer_why": "Two of three external writers (llm_ui_hud_topbar_tick, llm_ui_selection_panel_on_click) and the reader llm_ui_group_tab_on_click are UI/menus; our_writer game_SetEvent is the documented UI panel-state setter.",
-   "why": "Two of three external writers (llm_ui_hud_topbar_tick, llm_ui_selection_panel_on_click) and the reader llm_ui_group_tab_on_click are UI/menus; our_writer game_SetEvent is the documented UI panel-state setter.",
+   "serializer_why": "Two of three external writers (llm_ui_hud_bottom_strip_tick, llm_ui_selection_panel_on_click) and the reader llm_ui_group_tab_on_click are UI/menus; our_writer game_SetEvent is the documented UI panel-state setter.",
+   "why": "Two of three external writers (llm_ui_hud_bottom_strip_tick, llm_ui_selection_panel_on_click) and the reader llm_ui_group_tab_on_click are UI/menus; our_writer game_SetEvent is the documented UI panel-state setter.",
    "kept_writers": [
     "llm_strat_ui_unit_panel_tick",
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_selection_panel_refresh"
    ],
    "kept_writers_why": "SB-SOLE: 3 original writer(s) kept. Reason class(es): producer-consumer (another subsystem legitimately hands the value across a seam); permanent-wall (render/UI/platform, a declared non-goal of the revised M6 exit). Per-writer reasons: tools/data/writer_dispositions.json."
@@ -4281,10 +4281,10 @@
   "STRAT_UI_VIEW_RESIZE_PENDING": {
    "owner_subsystem": "UI/menus",
    "owned_by_dll": false,
-   "serializer_why": "This is the brief's own worked example: 'STRAT_UI' is a strategic-mode-named UI region, and its writer game_SetEvent is the cited misfiled-name UI panel-state setter. Sole external_writer llm_ui_hud_topbar_tick is already tagged [UI/menus], matching -- no cross-write to reconcile. name_taxonomy's 'Strategic sim/economy' is exactly the STRAT-prefix trap the brief warns about.",
-   "why": "This is the brief's own worked example: 'STRAT_UI' is a strategic-mode-named UI region, and its writer game_SetEvent is the cited misfiled-name UI panel-state setter. Sole external_writer llm_ui_hud_topbar_tick is already tagged [UI/menus], matching -- no cross-write to reconcile. name_taxonomy's 'Strategic sim/economy' is exactly the STRAT-prefix trap the brief warns about.",
+   "serializer_why": "This is the brief's own worked example: 'STRAT_UI' is a strategic-mode-named UI region, and its writer game_SetEvent is the cited misfiled-name UI panel-state setter. Sole external_writer llm_ui_hud_bottom_strip_tick is already tagged [UI/menus], matching -- no cross-write to reconcile. name_taxonomy's 'Strategic sim/economy' is exactly the STRAT-prefix trap the brief warns about.",
+   "why": "This is the brief's own worked example: 'STRAT_UI' is a strategic-mode-named UI region, and its writer game_SetEvent is the cited misfiled-name UI panel-state setter. Sole external_writer llm_ui_hud_bottom_strip_tick is already tagged [UI/menus], matching -- no cross-write to reconcile. name_taxonomy's 'Strategic sim/economy' is exactly the STRAT-prefix trap the brief warns about.",
    "kept_writers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "kept_writers_why": "SB-SOLE: 1 original writer(s) kept. Reason class(es): permanent-wall (render/UI/platform, a declared non-goal of the revised M6 exit). Per-writer reasons: tools/data/writer_dispositions.json."
   },

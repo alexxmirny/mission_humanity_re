@@ -72,12 +72,14 @@ pub struct ProviderOption {
 }
 
 /// Why a value cannot be applied. `render.rs` turns these into strings.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Problem {
     NotInteger,
+    /// A float row whose text is not a finite number.
+    NotNumber,
     OutOfRange {
-        min: Option<i64>,
-        max: Option<i64>,
+        min: Option<f64>,
+        max: Option<f64>,
     },
     BadHotkey,
     /// `;`, a line break -- would corrupt the ini line.
@@ -180,6 +182,15 @@ pub fn parse_hotkey(s: &str) -> Result<Option<Hotkey>, ()> {
     Ok(Some(hk))
 }
 
+/// A finite float in its shortest round-trip form (`2` -> `2`, `2.50` -> `2.5`, `1e1` -> `10`);
+/// anything unparseable is kept as typed.
+fn canon_float(t: &str) -> String {
+    match t.parse::<f64>() {
+        Ok(f) if f.is_finite() => format!("{f}"),
+        _ => t.to_string(),
+    }
+}
+
 /// The comparison/writing form of `raw` for `row`.
 pub fn canon(row: &Row, raw: &str) -> String {
     let t = raw.trim();
@@ -191,6 +202,7 @@ pub fn canon(row: &Row, raw: &str) -> String {
         Kind::Int => t
             .parse::<i64>()
             .map_or_else(|_| t.to_string(), |n| n.to_string()),
+        Kind::Float => canon_float(t),
         Kind::Enum => row
             .options
             .iter()
@@ -389,9 +401,24 @@ impl Model {
         }
         match r.kind {
             Kind::Bool | Kind::Enum | Kind::Str => Ok(()),
+            Kind::Float => {
+                let f: f64 = t
+                    .parse()
+                    .ok()
+                    .filter(|f: &f64| f.is_finite())
+                    .ok_or(Problem::NotNumber)?;
+                if r.min.is_some_and(|m| f < m) || r.max.is_some_and(|m| f > m) {
+                    return Err(Problem::OutOfRange {
+                        min: r.min,
+                        max: r.max,
+                    });
+                }
+                Ok(())
+            }
             Kind::Int => {
                 let n: i64 = t.parse().map_err(|_| Problem::NotInteger)?;
-                if r.min.is_some_and(|m| n < m) || r.max.is_some_and(|m| n > m) {
+                let nf = n as f64;
+                if r.min.is_some_and(|m| nf < m) || r.max.is_some_and(|m| nf > m) {
                     // A listed option or an `allow`ed value (fps_limit 0 = unlimited) is always ok.
                     if r.allow.contains(&n)
                         || r.options.iter().any(|o| o.trim().parse::<i64>() == Ok(n))
@@ -606,8 +633,8 @@ mod tests {
         assert_eq!(
             m.validate("net.port"),
             Err(Problem::OutOfRange {
-                min: Some(1024),
-                max: Some(65535)
+                min: Some(1024.0),
+                max: Some(65535.0)
             })
         );
         m.set("net.port", "70000");
@@ -801,6 +828,58 @@ mod tests {
             !m.is_custom_choice(&fps),
             "fps_limit is a number field, not a choice"
         );
+    }
+
+    fn float_model() -> Model {
+        let schema = Schema::from_json(
+            r#"{"settings":[
+              {"section":"net","key":"gp_mult","type":"float","default":2.0,"label":"net.gp_mult","subtab":"gameplay","min":0.1,"max":10.0,"host":true}]}"#,
+            None,
+        )
+        .unwrap();
+        let mut m = Model::new(schema);
+        m.load(None, &MapStore::default());
+        m
+    }
+
+    #[test]
+    fn float_canon_is_the_shortest_round_trip_form() {
+        let m = float_model();
+        let r = m.schema().row("net.gp_mult").unwrap().clone();
+        assert_eq!(canon(&r, " 2.50 "), "2.5");
+        assert_eq!(canon(&r, "2"), "2");
+        assert_eq!(canon(&r, "2.0"), "2");
+        assert_eq!(canon(&r, "1e1"), "10");
+        assert_eq!(canon(&r, "0.1"), "0.1");
+        assert_eq!(canon(&r, "abc"), "abc");
+        assert_eq!(canon(&r, "inf"), "inf");
+        // The default text differs in spelling only: not "changed".
+        assert!(!m.differs_from_default("net.gp_mult"));
+    }
+
+    #[test]
+    fn float_rows_validate_finite_and_in_range() {
+        let mut m = float_model();
+        for ok in ["0.1", "2", "2.5", "10", "1e1"] {
+            m.set("net.gp_mult", ok);
+            assert_eq!(m.validate("net.gp_mult"), Ok(()), "{ok}");
+        }
+        for bad in ["0.09", "10.01", "-1"] {
+            m.set("net.gp_mult", bad);
+            assert_eq!(
+                m.validate("net.gp_mult"),
+                Err(Problem::OutOfRange {
+                    min: Some(0.1),
+                    max: Some(10.0)
+                }),
+                "{bad}"
+            );
+        }
+        for bad in ["", "x", "NaN", "inf", "-inf", "1,5"] {
+            m.set("net.gp_mult", bad);
+            assert_eq!(m.validate("net.gp_mult"), Err(Problem::NotNumber), "{bad}");
+        }
+        assert!(m.has_problems());
     }
 
     #[test]

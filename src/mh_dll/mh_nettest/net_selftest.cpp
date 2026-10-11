@@ -3404,11 +3404,15 @@ int run_logsinktest();
 // was hand-patched at its own call site. This suite is the durable fix's own proof, against a
 // fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
 int run_inireadtest();
+int run_gameplaytest();                         // gameplay_selftest.cpp -- PT-SET1: host-synced gameplay settings
 int run_infoavitest();                          // info_avi_selftest.cpp -- mp:X2g
 int run_infoguardtest();                        // info_guard_selftest.cpp -- mp:U73
 int run_imguibindtest();                        // imgui_bind_selftest.cpp -- PT-GFX4
 int run_scalefiltertest(int argc, char **argv); // scale_filter_selftest.cpp -- PT-GFX6
 int run_dinputconvtest();                       // dinput_convert_selftest.cpp -- PT-INPUT1
+int run_bgscaletest();                          // bg_scale_selftest.cpp -- the mode-change guards (D13)
+int run_reslisttest();                          // res_list_selftest.cpp -- the generated resolution list (RES3)
+int run_mapzoomtest();                          // map_zoom_selftest.cpp -- the strategic map zoom (RES2)
 int run_runctxtest(int argc, char **argv);      // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
@@ -3641,6 +3645,7 @@ static const suite_row SUITE_TABLE[] = {
     {"logrottest",     true, adapt_void<run_logrottest>},
     {"logsinktest",    true, adapt_void<run_logsinktest>}, // mp:LOG1
     {"inireadtest",    true, adapt_void<run_inireadtest>},
+    {"gameplaytest",   true, adapt_void<run_gameplaytest>}, // PT-SET1
     // mp:X2g. The info-screen media tick's divisor guard (seams/ui_info_avi.h): the arithmetic the
     // replaced llm_ui_info_media_frame_tick runs, driven with the zero-filled context a failed AVI
     // open leaves (the rc4 IDIV-by-zero), plus the live-clip wrap it must not change. Pure; no arena.
@@ -3657,6 +3662,15 @@ static const suite_row SUITE_TABLE[] = {
     // and compared with a CPU reference of each filter's definition (2.25x, 1.40625x, integer 2x).
     // `--dump` renders one raw frame for tools-side comparison. No D3D11 device at all is a SKIP.
     {"scalefiltertest", true, adapt_argv<run_scalefiltertest>},
+    // D13 mode-change guards. The header-aware, filtered background restore (seams/video_mode_guards.cpp)
+    // over a guard page -- the rc8 galaxy crash read past the end of a smaller image -- plus the cursor
+    // clamp and galaxy-index cores. Pure: no device, no game memory.
+    {"bgscaletest",     true, adapt_void<run_bgscaletest>},
+    {"reslisttest",     true, adapt_void<run_reslisttest>},
+    // RES2 map zoom: the cursor-anchored crop origin and its camera absorb, the zoom limits (2*H/768, the
+    // torus minimum), the cursor map, the wheel accumulator, and the resampler against the shared filter
+    // kernels (all four filters, both pixel formats). Pure: no device, no game memory.
+    {"mapzoomtest",     true, adapt_void<run_mapzoomtest>},
     // PT-INPUT1. The owned DirectInput's element conversion (mh/input/dinput_convert.h): scan code ->
     // DIK, DI5 repeat filtering + the focus-loss release set, the relative remainder carry, and the
     // absolute -> exact-delta walk against the game's own IDIV / doubling / clamp for every divisor

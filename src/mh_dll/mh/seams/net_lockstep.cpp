@@ -330,9 +330,14 @@ int  g_overlay_dialog_guard  = 1; // [net] overlay_dialog_guard -- MP U44; twin 
 int  g_desync_icon_gate      = 0; // [net] desync_icon_gate -- MP U20; reimpl-only, see reimpl_fixes
 int  g_gone_peer_frame_guard = 1; // [net] gone_peer_frame_guard -- MP U19e/U19i; body + byte patch, DEFAULT ON
 int  g_undock_reentry_fix    = 1; // [net] undock_reentry_fix -- MP U49; body + byte patch, DEFAULT ON, sim-affecting
-int  g_diplo_order_dedup_fix = 1; // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
-int  g_defang_xui            = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
-int  g_resync_trigger_gate =
+// PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are F_HOSTSYNC
+// registry rows -- their values come ONLY from the gameplay apply path (config/gameplay.cpp -> seams/gameplay_hooks.cpp
+// -> mh_set_turret_*), never from a direct ini read here.
+int g_turret_reload_owner_fix = 1; // [net] turret_reload_owner_fix -- PT-FIX1; body + byte patch, DEFAULT ON, sim-affecting
+int g_air_order_facing_fix    = 1; // [net] air_order_facing_fix -- PT-FIX3; body + byte patch, DEFAULT ON, sim-affecting
+int g_diplo_order_dedup_fix   = 1; // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
+int g_defang_xui              = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
+int g_resync_trigger_gate =
     0; // 1 = gate both RESYNC_TRIGGER_COUNT increments on SYNC_RETRY_COUNTDOWN<0x38 (option c; count only genuine silence)
 int g_resync_count_init =
     1;               // 1 (default) = recompute ACTIVE_PLAYER_COUNT at match start so the resync threshold is players*100, not 0 (mp:P9 root fix; see resync_count_init_tick)
@@ -3721,6 +3726,362 @@ void install_undock_reentry_fix() {
     seam_log(b);
 }
 
+// patching:PT-FIX1 -- `turret_reload_owner_fix`'s BYTE-PATCH CARRIER (call-splice, U49's shape).
+// llm_strat_building_tick calls llm_strat_bldg_turret_reload_tick for EVERY A_/H_TURRET building,
+// rubble (state 4, up to 20 s) included. A destroyed turret's llm_strat_bldg_unmap_footprint zeroes
+// turrets[p][sub_id].b_index, and map_CreateBuilding hands the freed slot to the next turret
+// (b_index = its building index) -- but the rubble keeps its sub_id, and its tick budget
+// (GAME_CLOCK - last_tick_time) grows every step, so the rubble's call drains the NEW turret's
+// reload_timer (+0x27) every step (about 4x fire rate). The splice replaces the 5-byte
+// `CALL 0x0047c60b` at 0x0046fe5d (EAX=player, EDX=building index, stack = double dt, callee RET 8)
+// with a call to a stub that tail-jumps to the original only when turrets[p][sub_id].b_index == the
+// ticking building's own index; otherwise it returns (RET 8) without ticking.
+constexpr uintptr_t ADDR_TURRET_RELOAD_SITE = 0x0046fe5d;
+constexpr uintptr_t ADDR_TURRET_RELOAD_FN   = 0x0047c60b;
+const uint8_t       TURRET_RELOAD_EXPECT[5] = {0xE8, 0xA9, 0xC7, 0x00, 0x00};
+
+// patching:PT-FIX2 -- the SAME call site also carries `turret_reload_realtime_fix`. The two fixes share
+// one splice and one stub (a site can be spliced once); each is a runtime flag the stub tests, and the
+// splice is installed when either key is on. With the realtime fix on, a POSITIVE budget (the double
+// pushed at [esp+4] on entry -- a copy; the callee pops it) is overwritten with
+// dt * turret_fire_rate_mult (one x87 multiply, stored as a double), GAME_TIME_DELTA (0x00e587d1) being the
+// real length of the sim step in progress (written only by time_tick / sim_tick / advance_sim_clock /
+// sim_clock_advance / session_state_reset, never inside sim_step). A zero budget (construction energy gate)
+// stays zero. The twin (sim_building_tick.cpp, turret_reload_drain) is the same product in C++; the two are bit-identical for a
+// power-of-two multiplier (the shipped 2.0) and agree to the last ulp otherwise (x87 vs the TU's double multiply).
+// mh.dll does not link libmh, so the stub cannot call the twin's helper.
+int    g_turret_stub_owner     = 0;     // runtime copies of the two knobs, read by the stub
+int    g_turret_stub_realtime  = 0;     // PT-SET1: set by mh_set_turret_reload_realtime (the gameplay hook); 0 = retail drain
+double g_turret_fire_rate_mult = 2.0;   // PT-SET1: set by mh_set_turret_fire_rate_mult, clamped to [0.1, 10]
+bool   g_turret_reload_carried = false; // the reload splice is PATCHED or DISPLACED (false = MISMATCHED / not installed)
+
+// clang-format off
+__declspec(naked) void turret_reload_stub() {
+    __asm {
+        push  ecx
+        push  ebx
+        cmp   g_turret_stub_owner, 0
+        je    owner_ok
+        imul  ecx, eax, 0x6aa4                 // buildings[player]
+        imul  ebx, edx, 0x111
+        add   ecx, ebx
+        movzx ecx, byte ptr [ecx + 0x00c3d366] // building.sub_id
+        imul  ebx, eax, 0x6e0                  // turrets[player]
+        imul  ecx, ecx, 0x37
+        add   ebx, ecx
+        movzx ebx, word ptr [ebx + 0x00cc0fe0] // turret.b_index (owning building index)
+        cmp   ebx, edx
+        jne   not_owner
+    owner_ok:
+        pop   ebx
+        pop   ecx
+        cmp   g_turret_stub_realtime, 0
+        je    run
+        push  ecx
+        mov   ecx, [esp + 12]                  // budget high dword
+        shl   ecx, 1                           // drop the sign bit: zero iff the budget is +-0
+        or    ecx, [esp + 8]                   // | low dword
+        pop   ecx                              // (pop leaves the flags alone)
+        jz    run                              // zero budget: tick it as retail does
+        push  ecx
+        mov   ecx, 0x00e587d1
+        fld   qword ptr [ecx]                  // GAME_TIME_DELTA: the real length of this sim step
+        pop   ecx
+        fmul  qword ptr [g_turret_fire_rate_mult] // x [net] turret_fire_rate_mult
+        fstp  qword ptr [esp + 4]              // the budget argument the callee will pop
+    run:
+        push  0x0047c60b                       // run retail reload_tick (it pops the double and returns)
+        ret
+    not_owner:
+        pop   ebx
+        pop   ecx
+        ret   8
+    }
+}
+// clang-format on
+
+void install_turret_reload_splice() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_TURRET_RELOAD_SITE)) {
+        what = "DISPLACED by promotion -- the promoted building_tick's own guard/drain carries it";
+    } else {
+        uint8_t       repl[5] = {0xE8, 0, 0, 0, 0};
+        const int32_t rel     = (int32_t)((uintptr_t)&turret_reload_stub - (ADDR_TURRET_RELOAD_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_TURRET_RELOAD_SITE, TURRET_RELOAD_EXPECT, repl, 5)) {
+            what = "PATCHED -- stub at 0046FE5D (owner check / real-dt drain per the two knobs)";
+        } else {
+            what = "MISMATCHED";
+            if (g_turret_stub_owner) refuse_uncarried_fix("turret_reload_owner_fix", ADDR_TURRET_RELOAD_SITE, "llm_strat_building_tick");
+        }
+    }
+    g_turret_reload_carried = what[0] != 'M';
+    char b[240];
+    // PT-SET1: installed UNCONDITIONALLY; realtime is a runtime flag the gameplay hook sets (see mh_set_turret_reload_realtime).
+    wsprintfA(b, "; turret reload splice: %s (PT-FIX1 owner=%d, PT-FIX2 realtime=per-gameplay-setting)\n", what, g_turret_stub_owner);
+    seam_log(b);
+}
+
+// patching:PT-FIX4 -- `turret_clip_fix`'s BYTE-PATCH CARRIERS (two sites, both U49-shaped).
+// Retail never initialises a turret's magazine: map_CreateBuilding's turret boot (0x004629d6-0x00462ab9) writes
+// resupply_available (+0x25) but not ammo (+0x2f) or resupply_cycles_remaining (+0x33), so a fresh slot starts at
+// ammo 0 (zeroed BSS; a reused slot keeps the dead turret's leftovers), the first shot takes it to -1, and
+// llm_strat_bldg_turret_reload_tick refills only when ammo == 0 -- the clip and the long reload are dead code.
+//   (A) 0x00462ab9 `MOV byte [EAX+0xcc1005],1` (7 bytes; EAX = &turrets[p][sub]) -> JMP stub + 2 NOP. The stub
+//       redoes that store, then ammo = Weapon[turret.weapon_id].ammo (Weapon[] stride 0x16c, .ammo at
+//       0xc3a5a2 -- the reload tick's own refill addressing) and resupply_cycles_remaining = -1, and
+//       returns to 0x00462ac0 with every register preserved (EAX/EDX are reloaded there anyway).
+//   (B) 0x0047c6c8 `CMP dword [EAX+0xcc100f],0 ; JNZ 0x0047c6f4` (9 bytes) -> JMP stub + 4 NOP. With the runtime
+//       global on, the stub refills for ammo <= 0, SIGNED on the real dword (JG skips), so a turret already
+//       carrying negative ammo (a saved game, a reused slot) is repaired at its next completed reload.
+// BOTH splices are ALWAYS installed (PT-SET1 contract: the key becomes a host-dictated gameplay setting applied
+// at match start) and branch on the runtime global g_turret_clip_fix_rt, settable through mh_set_turret_clip_fix().
+// With the global 0 each stub does exactly what the retail bytes did (same stores, same compare and branch).
+// The twin: sim_map_create_building.cpp / sim_bldg_turret_reload_tick.cpp (mh::sim::set_turret_clip_fix).
+int                 g_turret_clip_fix_rt         = 0; // read by both stubs; = g_turret_clip_fix at install, then settable
+constexpr uintptr_t ADDR_TURRET_CLIP_CREATE      = 0x00462ab9;
+constexpr uintptr_t ADDR_TURRET_CLIP_RESUME      = 0x00462ac0;
+constexpr uintptr_t ADDR_TURRET_CLIP_REFILL      = 0x0047c6c8;
+constexpr uintptr_t ADDR_TURRET_CLIP_REFILL_DO   = 0x0047c6d1; // the refill body
+constexpr uintptr_t ADDR_TURRET_CLIP_REFILL_SKIP = 0x0047c6f4; // past it
+const uint8_t       TURRET_CLIP_CREATE_EXPECT[7] = {0xC6, 0x80, 0x05, 0x10, 0xCC, 0x00, 0x01};
+const uint8_t       TURRET_CLIP_REFILL_EXPECT[9] = {0x83, 0xB8, 0x0F, 0x10, 0xCC, 0x00, 0x00, 0x75, 0x23};
+
+// clang-format off
+__declspec(naked) void turret_clip_create_stub() {
+    __asm {
+        mov   byte ptr [eax + 0x00cc1005], 1   // the instruction this stub replaced: resupply_available = 1
+        cmp   g_turret_clip_fix_rt, 0
+        je    done                             // key off: exactly retail
+        push  edx
+        movzx edx, byte ptr [eax + 0x00cc1004] // turret.weapon_id (non-zero on this path)
+        imul  edx, edx, 0x16c                  // Weapon[] stride
+        mov   edx, dword ptr [edx + 0x00c3a5a2] // Weapon[weapon_id].ammo
+        mov   dword ptr [eax + 0x00cc100f], edx // turret.ammo
+        mov   dword ptr [eax + 0x00cc1013], -1  // turret.resupply_cycles_remaining = unlimited
+        pop   edx
+    done:
+        push  0x00462ac0
+        ret
+    }
+}
+
+__declspec(naked) void turret_clip_refill_stub() {
+    __asm {
+        cmp   g_turret_clip_fix_rt, 0
+        je    retail
+        cmp   dword ptr [eax + 0x00cc100f], 0  // key on: refill for ammo <= 0 (signed)
+        jg    skip
+        jmp   refill
+    retail:
+        cmp   dword ptr [eax + 0x00cc100f], 0  // the two retail instructions this stub replaced
+        jne   skip
+    refill:
+        push  0x0047c6d1
+        ret
+    skip:
+        push  0x0047c6f4
+        ret
+    }
+}
+// clang-format on
+
+const char *g_turret_clip_what_create = "not installed";
+const char *g_turret_clip_what_refill = "not installed";
+bool        g_turret_clip_carried     = false; // both sites PATCHED or DISPLACED
+
+void install_turret_clip_fix() {
+    const char *whatA, *whatB;
+    if (mh::hook::promoted_owner_of(ADDR_TURRET_CLIP_CREATE)) {
+        whatA = "DISPLACED by promotion -- the promoted map_CreateBuilding carries it";
+    } else {
+        uint8_t       repl[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)&turret_clip_create_stub - (ADDR_TURRET_CLIP_CREATE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_TURRET_CLIP_CREATE, TURRET_CLIP_CREATE_EXPECT, repl, 7)) {
+            whatA = "PATCHED -- a new turret starts with ammo = Weapon.ammo, resupply_cycles_remaining = -1 (00462AB9)";
+        } else {
+            whatA = "MISMATCHED";
+        }
+    }
+    if (mh::hook::promoted_owner_of(ADDR_TURRET_CLIP_REFILL)) {
+        whatB = "DISPLACED by promotion -- the promoted turret reload tick carries it";
+    } else {
+        uint8_t       repl[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)&turret_clip_refill_stub - (ADDR_TURRET_CLIP_REFILL + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_TURRET_CLIP_REFILL, TURRET_CLIP_REFILL_EXPECT, repl, 9)) {
+            whatB = "PATCHED -- stub at 0047C6C8 (refill for ammo <= 0 when on)";
+        } else {
+            whatB = "MISMATCHED";
+        }
+    }
+    g_turret_clip_what_create = whatA;
+    g_turret_clip_what_refill = whatB;
+    g_turret_clip_carried     = whatA[0] != 'M' && whatB[0] != 'M';
+    char b[400];
+    // The "turret clip fix ON/OFF" banner is the gameplay setter's (mh_set_turret_clip_fix): the value is not known yet.
+    wsprintfA(b, "; turret clip splice: installed, gate 0 until the gameplay settings apply: create: %s; refill: %s\n", whatA, whatB);
+    seam_log(b);
+}
+
+// patching:PT-FIX5 -- `turret_fire_poll_fix`'s BYTE-PATCH CARRIER (one site, U49-shaped, always installed).
+// llm_strat_bldg_state_turret_attack (0x00471e53) charges every aim pass per_shot_cost * 0.5 = 0.05 s against the
+// step's tick budget (budget below that is banked back into last_tick_time), breaks once aimed within tolerance 2, and
+// its final gate (0x00472394) fires only when budget is LEFT and reload_ready_flag (turret +0x24) == 1 -- otherwise it
+// discards the rest. The reload tick (before the state handler) sets ready on the step the timer reaches 0, so a
+// finished reload waits for the pass to be affordable: fire interval = reload + 0..~0.06 s.
+// The splice: 0x004721d0 `MOV dword [EBP-0x18],2` (7 bytes, the tolerance local, the instruction right before the loop
+// top 0x004721d7) -> JMP stub + 2 NOP. The stub redoes the store; with the runtime global on, a READY turret
+// (turrets[player*0x6e0 + sub_id*0x37 + 0xcc1006] != 0) whose heading [EBP-0x48] is already within the tolerance of the
+// bearing [EBP-0x44] (|d| <= 2 or |d| >= 22, the loop's own break test) jumps over the loop to 0x004722e9: the budget
+// stays whole, the animation tail stores the unchanged heading and the gate fires. Anything else (still reloading, or
+// has to turn) continues into the retail loop at 0x004721d7, so turning keeps its 0.05 s per heading. EAX/EDX are saved
+// (both are reloaded before use on either continuation anyway). With the global 0 the stub is the retail store + jump.
+// ALWAYS installed (PT-SET1 contract), settable through mh_set_turret_fire_poll_fix(). The twin:
+// sim_bldg_state_turret.cpp (mh::sim::set_turret_fire_poll_fix).
+int                 g_turret_fire_poll_fix_rt = 0; // read by the stub; = g_turret_fire_poll_fix at install, then settable
+constexpr uintptr_t ADDR_TURRET_POLL          = 0x004721d0;
+const uint8_t       TURRET_POLL_EXPECT[7]     = {0xC7, 0x45, 0xE8, 0x02, 0x00, 0x00, 0x00};
+
+// clang-format off
+__declspec(naked) void turret_fire_poll_stub() {
+    __asm {
+        mov   dword ptr [ebp - 0x18], 2          // the instruction this stub replaced: aim tolerance = 2
+        cmp   g_turret_fire_poll_fix_rt, 0
+        je    loop_top                           // key off: exactly retail
+        push  eax
+        push  edx
+        mov   eax, dword ptr ds:[0x00e162dc]     // _G_LLM_STRAT_CUR_BUILDING
+        movzx edx, byte ptr [eax + 0xc6]         // sub_id
+        imul  edx, edx, 0x37                     // sizeof(turret)
+        movzx eax, word ptr ds:[0x00e58144]      // cur_player
+        imul  eax, eax, 0x6e0                    // TURRETS_PER_PLAYER * sizeof(turret)
+        add   edx, eax
+        cmp   byte ptr [edx + 0xcc1006], 0       // turret.reload_ready_flag
+        je    no_skip                            // still reloading: retail loop
+        mov   eax, dword ptr [ebp - 0x48]        // aim_heading
+        sub   eax, dword ptr [ebp - 0x44]        // - target_bearing
+        jns   have_abs
+        neg   eax
+    have_abs:
+        cmp   eax, 2
+        jle   skip                               // within the tolerance
+        cmp   eax, 22
+        jl    no_skip                            // must turn: retail loop
+    skip:
+        pop   edx
+        pop   eax
+        push  0x004722e9
+        ret
+    no_skip:
+        pop   edx
+        pop   eax
+    loop_top:
+        push  0x004721d7
+        ret
+    }
+}
+// clang-format on
+
+const char *g_turret_poll_what    = "not installed";
+bool        g_turret_poll_carried = false;
+
+void install_turret_fire_poll_fix() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_TURRET_POLL)) {
+        what = "DISPLACED by promotion -- the promoted turret attack state carries it";
+    } else {
+        uint8_t       repl[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)&turret_fire_poll_stub - (ADDR_TURRET_POLL + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_TURRET_POLL, TURRET_POLL_EXPECT, repl, 7)) {
+            what = "PATCHED -- stub at 004721D0 (a ready, aimed turret skips the aim loop and fires on the reload step when on)";
+        } else {
+            what = "MISMATCHED";
+        }
+    }
+    g_turret_poll_what    = what;
+    g_turret_poll_carried = what[0] != 'M';
+    char b[360];
+    // The "turret fire poll fix ON/OFF" banner is the gameplay setter's (mh_set_turret_fire_poll_fix).
+    wsprintfA(b, "; turret fire poll splice: installed, gate 0 until the gameplay settings apply: %s\n", what);
+    seam_log(b);
+}
+
+// patching:PT-FIX3 -- `air_order_facing_fix`'s BYTE-PATCH CARRIER (block-splice).
+// llm_strat_order_queue_dispatch (0x00466892) defers an order for an air unit (cfg type > 0xe) while
+// facing_target (+0x2c) != MOVE_MICROSTEPS[move_heading][move_microstep].facing, setting order_queued
+// (+0x2e). llm_strat_unit_state_move_path (0x00480b53) returns early at move_microstep == 31 &&
+// order_queued WITHOUT touching the facing, and llm_strat_unit_update_rotation does not rotate a
+// non-independent unit in state 0x12 -- so a helicopter entering 0x12 at microstep 31 with a stale
+// facing_target and then receiving an order is stuck forever (RE-MISC10). The splice replaces the
+// 25-byte early-return block at 0x00480b86 (reached from 0x00480b82 `JNZ` when ms==31 && order_queued;
+//   MOV dword [0x00ae3738],0 / MOV dword [0x00ae373c],0 / JMP 0x00481172)
+// with a JMP to a stub that, for an air unit whose facing_target differs from the table facing, sets
+// facing_target AND facing_current to it (one-frame snap), then performs the block's own effects
+// (tick budget = 0.0 as two dword stores) and JMPs 0x00481172 (the function epilogue; EBP-relative, so
+// every register is free here). The next step's dispatch then finds the facing equal and applies the order.
+constexpr uintptr_t ADDR_AIR_FACING_SITE  = 0x00480b86;
+constexpr uintptr_t ADDR_AIR_FACING_EXIT  = 0x00481172;
+const uint8_t       AIR_FACING_EXPECT[25] = {0xC7, 0x05, 0x38, 0x37, 0xAE, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC7, 0x05, 0x3C,
+                                             0x37, 0xAE, 0x00, 0x00, 0x00, 0x00, 0x00, 0xE9, 0xD3, 0x05, 0x00, 0x00};
+
+// clang-format off
+__declspec(naked) void air_order_facing_stub() {
+    __asm {
+        push  eax
+        push  ecx
+        push  edx
+        mov   ecx, dword ptr ds:[0x00e162e0]   // _G_LLM_STRAT_CUR_UNIT
+        movzx eax, word ptr [ecx + 2]          // unit_proto_id
+        imul  eax, eax, 0x23f
+        cmp   dword ptr [eax + 0x00e4a176], 0xe // cfg Unit.type -- the dispatcher's own test (0x00466aab)
+        jle   done                             // ground classes: untouched
+        movzx eax, byte ptr [ecx + 0xac]       // move_heading
+        imul  edx, eax, 0x60
+        mov   eax, dword ptr [ecx + 0xa2]      // move_microstep (31 here)
+        lea   eax, [eax + eax * 2]
+        add   eax, edx
+        mov   dl, byte ptr [eax + 0x00ae3742]  // MOVE_MICROSTEPS[heading][ms].facing
+        cmp   dl, byte ptr [ecx + 0x2c]        // facing_target already matches: nothing to do
+        je    done
+        mov   byte ptr [ecx + 0x2c], dl        // facing_target
+        mov   byte ptr [ecx + 0x2d], dl        // facing_current
+    done:
+        pop   edx
+        pop   ecx
+        pop   eax
+        mov   dword ptr ds:[0x00ae3738], 0     // the displaced block: _G_LLM_STRAT_TICK_BUDGET = 0.0
+        mov   dword ptr ds:[0x00ae373c], 0
+        push  0x00481172                       // ... and its JMP to the epilogue
+        ret
+    }
+}
+// clang-format on
+
+void install_air_order_facing_fix() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_AIR_FACING_SITE)) {
+        what = "DISPLACED by promotion -- the promoted move_path's own rule carries it";
+    } else {
+        uint8_t repl[25];
+        memset(repl, 0x90, sizeof(repl));
+        repl[0]           = 0xE9;
+        const int32_t rel = (int32_t)((uintptr_t)&air_order_facing_stub - (ADDR_AIR_FACING_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_AIR_FACING_SITE, AIR_FACING_EXPECT, repl, 25)) {
+            what = "PATCHED -- an air unit stuck at microstep 31 with a stale facing is snapped to the table facing at 00480B86";
+        } else {
+            what = "MISMATCHED";
+            refuse_uncarried_fix("air_order_facing_fix", ADDR_AIR_FACING_SITE, "llm_strat_unit_state_move_path");
+        }
+    }
+    char b[220];
+    wsprintfA(b, "; air order facing fix: %s (PT-FIX3)\n", what);
+    seam_log(b);
+}
+
 // ===== mp:U52 -- THE RETAIL CARRIERS ([net] team_relations_fix, [net] ally_damage_no_hostility) =========
 //
 // Configuration (1) (retail sim under mh.dll's net layer, `[config] mode=original`) has no libmh twins, so the three
@@ -5128,6 +5489,16 @@ void lockstep_install_core() {
     // MP U49. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): an undock order for a unit
     // that is not PARKED is dropped at apply time. Carried by the promoted dispatcher AND a byte patch.
     g_undock_reentry_fix = mh_ini_get_int("net", "undock_reentry_fix", 1, g_ini);
+    // PT-FIX1. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): a turret's reload tick runs
+    // only for the building that owns the turret slot (a rubble sharing a reused slot no longer drains it).
+    g_turret_reload_owner_fix = mh_ini_get_int("net", "turret_reload_owner_fix", 1, g_ini);
+    // PT-FIX2 / PT-FIX4 / PT-FIX5 (turret_reload_realtime_fix, turret_fire_rate_mult, turret_clip_fix, turret_fire_poll_fix):
+    // PT-SET1 host-synced gameplay rows -- NOT read here. config/gameplay.cpp reads them (boot: the local ini; match: the
+    // host's published values) and the hooks in seams/gameplay_hooks.cpp call the mh_set_turret_* setters below.
+    // PT-FIX3. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): an air unit that sits at
+    // microstep 31 in move_path with an order queued and a stale facing is snapped to the table facing, so
+    // the deferred order applies instead of deadlocking forever.
+    g_air_order_facing_fix = mh_ini_get_int("net", "air_order_facing_fix", 1, g_ini);
     // MP U45. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): 0xf4/0xf5 orders never supersede
     // each other in release_due. Carried by the promoted body AND a byte patch.
     g_diplo_order_dedup_fix = mh_ini_get_int("net", "diplo_order_dedup_fix", 1, g_ini);
@@ -5285,7 +5656,11 @@ void lockstep_install_core() {
         seam_log(fx.diplo_order_dedup_fix
                      ? "; U45: diplo_order_dedup_fix=1 -- release_due keeps 0xf4 and 0xf5 from superseding each other\n"
                      : "; U45: diplo_order_dedup_fix=0 -- retail dedup: a relation + control change in one Apply loses the relation order (the reproduction arm)\n");
-        fx.undock_reentry_fix = g_undock_reentry_fix != 0; // U49, see install_undock_reentry_fix
+        fx.undock_reentry_fix      = g_undock_reentry_fix != 0;      // U49, see install_undock_reentry_fix
+        fx.turret_reload_owner_fix = g_turret_reload_owner_fix != 0; // PT-FIX1, see install_turret_reload_splice
+        // PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are set by the
+        // gameplay hooks (seams/gameplay_hooks.cpp), not here.
+        fx.air_order_facing_fix = g_air_order_facing_fix != 0; // PT-FIX3, see install_air_order_facing_fix
         // U56. SIM-AFFECTING (the elimination flag flip moves from CTL_PLAYER_LEFT's receive time into
         // presence_lost), so every peer must carry the same value: shipped default 1, same contract as U45.
         fx.player_left_pin_fix = mh_ini_get_int("net", "player_left_pin_fix", 1, g_ini) != 0;
@@ -5351,8 +5726,15 @@ void lockstep_install_core() {
     if (g_gone_peer_frame_guard) install_gone_peer_frame_guard(); // mp:U19i -- same three outcomes
     if (g_diplo_order_dedup_fix) install_diplo_order_dedup_fix(); // mp:U45 -- same three outcomes
     if (g_undock_reentry_fix) install_undock_reentry_fix();       // mp:U49 -- same three outcomes
-    if (g_overlay_dialog_guard) install_overlay_dialog_guard();   // mp:U44 -- retail carrier; per-site DISPLACED under promotion
     else seam_log("; undock re-entry fix OFF ([net] undock_reentry_fix=0, MP U49): retail dispatch -- a second undock applied to a unit already walking out wedges it in EXIT_WAIT (the reproduction arm)\n");
+    g_turret_stub_owner = g_turret_reload_owner_fix != 0;
+    install_turret_reload_splice(); // PT-FIX1 + PT-FIX2 -- ALWAYS installed (PT-SET1: realtime is a runtime flag, 0 = retail), same three outcomes
+    if (!g_turret_stub_owner) seam_log("; turret reload owner fix OFF ([net] turret_reload_owner_fix=0, PT-FIX1): retail -- a destroyed turret's rubble drains the reload timer of the turret that reused its slot (about 4x fire rate)\n");
+    install_turret_clip_fix();                                  // PT-FIX4 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
+    install_turret_fire_poll_fix();                             // PT-FIX5 -- ALWAYS installed (runtime-gated stub), same three outcomes
+    if (g_air_order_facing_fix) install_air_order_facing_fix(); // PT-FIX3 -- same three outcomes
+    else seam_log("; air order facing fix OFF ([net] air_order_facing_fix=0, PT-FIX3): retail -- a helicopter at microstep 31 with a stale facing never applies its next order\n");
+    if (g_overlay_dialog_guard) install_overlay_dialog_guard();         // mp:U44 -- retail carrier; per-site DISPLACED under promotion
     if (g_player_left_pin_fix) install_player_left_pin_fix();           // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
     if (g_spectate_after_defeat) install_spectate();                    // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)
     if (g_spectate_after_defeat) install_spectate_view();               // mp:U54 -- the spectator's whole-map view (render-only)
@@ -5625,4 +6007,68 @@ void lockstep_transport_started() {
         wsprintfA(b, "; horizon heartbeat started: advertise every %d ms (perf-decouple)\n", g_hb_ms);
         seam_log(b);
     }
+}
+
+// patching:PT-SET1 -- the four turret runtime setters. The gameplay apply hooks (seams/gameplay_hooks.cpp) call them at boot
+// (local ini), on the host before the match is published, and on a client when the host's values are adopted; every peer
+// must pass the same values. Each returns 1 when the value is in force and 0 when it was REFUSED (the fix asked for is on
+// but its byte-patch splice is MISMATCHED and no promoted body carries it -- logged by refuse_uncarried_fix, the gate stays
+// 0 = retail byte for byte). The "turret ... fix ON/OFF" banner the rig checkers parse is logged here, on every change.
+int mh_set_turret_reload_realtime(int on) {
+    on        = on != 0;
+    int taken = on;
+    if (on && !g_turret_reload_carried) {
+        refuse_uncarried_fix("turret_reload_realtime_fix", ADDR_TURRET_RELOAD_SITE, "llm_strat_building_tick");
+        taken = 0;
+    }
+    static int s_last      = -1;
+    g_turret_stub_realtime = taken;
+    if (s_last != taken) {
+        s_last = taken;
+        if (taken) seam_log("; turret reload realtime fix ON ([net] turret_reload_realtime_fix=1, PT-FIX2): the reload timer drains by real step dt * mult\n");
+        else seam_log("; turret reload realtime fix OFF ([net] turret_reload_realtime_fix=0, PT-FIX2): retail -- the reload timer drains by the re-counted budget (2-3x fast at 10/20 ms steps)\n");
+    }
+    return taken == on;
+}
+
+// The multiplier of the realtime drain, clamped to [0.1, 10] as mh::sim::clamp_turret_fire_rate_mult does (NaN -> 2.0).
+void mh_set_turret_fire_rate_mult(double m) {
+    g_turret_fire_rate_mult = !(m == m) ? 2.0 : (m < 0.1 ? 0.1 : (m > 10.0 ? 10.0 : m));
+}
+
+int mh_set_turret_clip_fix(int on) {
+    on        = on != 0;
+    int taken = on;
+    if (on && !g_turret_clip_carried) {
+        refuse_uncarried_fix("turret_clip_fix", ADDR_TURRET_CLIP_CREATE, "map_CreateBuilding / llm_strat_bldg_turret_reload_tick");
+        taken = 0;
+    }
+    static int s_last    = -1;
+    g_turret_clip_fix_rt = taken;
+    if (s_last != taken) {
+        s_last = taken;
+        char b[400];
+        wsprintfA(b, "; turret clip fix %s ([net] turret_clip_fix=%d, PT-FIX4): create: %s; refill: %s\n", taken ? "ON" : "OFF", taken,
+                  g_turret_clip_what_create, g_turret_clip_what_refill);
+        seam_log(b);
+    }
+    return taken == on;
+}
+
+int mh_set_turret_fire_poll_fix(int on) {
+    on        = on != 0;
+    int taken = on;
+    if (on && !g_turret_poll_carried) {
+        refuse_uncarried_fix("turret_fire_poll_fix", ADDR_TURRET_POLL, "llm_strat_bldg_state_turret_attack");
+        taken = 0;
+    }
+    static int s_last         = -1;
+    g_turret_fire_poll_fix_rt = taken;
+    if (s_last != taken) {
+        s_last = taken;
+        char b[360];
+        wsprintfA(b, "; turret fire poll fix %s ([net] turret_fire_poll_fix=%d, PT-FIX5): %s\n", taken ? "ON" : "OFF", taken, g_turret_poll_what);
+        seam_log(b);
+    }
+    return taken == on;
 }

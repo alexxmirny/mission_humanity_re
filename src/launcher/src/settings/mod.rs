@@ -7,6 +7,7 @@
 //!                                         │  Apply
 //!                                         └──► ini_io.rs (byte-preserving splice, atomic write)
 //!   <game>\lang\*  ──► providers.rs ──► run-time option lists
+//!   the desktop     ──► resolutions.rs ─► the Resolution row's list (the game's own generator, in Rust)
 //! ```
 //!
 //! Adding a setting means a registry row (`ini_keys.def`, regenerate the schema) plus strings in
@@ -19,6 +20,7 @@ pub mod ini_io;
 pub mod model;
 pub mod providers;
 pub mod render;
+pub mod resolutions;
 pub mod schema;
 #[cfg(test)]
 mod shots;

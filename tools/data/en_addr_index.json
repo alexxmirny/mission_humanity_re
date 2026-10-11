@@ -2418,7 +2418,7 @@
 "llm_ui_hud_panel_title_draw"
 ],
 "00414395": [
-"llm_ui_hud_topbar_tick"
+"llm_ui_hud_bottom_strip_tick"
 ],
 "00414405": [
 "LAB_00414405"
@@ -4571,7 +4571,7 @@
 "LAB_00419b8e"
 ],
 "00419b98": [
-"llm_util_unpack_static_category_table"
+"llm_ui_icon_table_unpack"
 ],
 "00419bbe": [
 "LAB_00419bbe"
@@ -4973,7 +4973,7 @@
 "LAB_0041b75f"
 ],
 "0041b76c": [
-"llm_ui_icon_rect_hit_test_cached"
+"llm_ui_icon_rect_hit_test_release_pos"
 ],
 "0041b7a2": [
 "LAB_0041b7a2"
@@ -48558,7 +48558,7 @@
 "llm_gfx_draw_sprite_to_buffer"
 ],
 "004a8b73": [
-"llm_ui_set_draw_surface"
+"llm_ui_blit_bitmap_rect"
 ],
 "004a8bea": [
 "InitSafe"
@@ -61870,7 +61870,7 @@
 "llm_input_mouse_init"
 ],
 "004d10bc": [
-"FUN_004d10bc"
+"llm_input_mouse_device_init"
 ],
 "004d10d0": [
 "llm_input_dimouse_shutdown"
@@ -61885,7 +61885,7 @@
 "LAB_004d1130"
 ],
 "004d1138": [
-"FUN_004d1138"
+"llm_input_set_cursor_pos"
 ],
 "004d1144": [
 "FUN_004d1144"
@@ -77886,19 +77886,19 @@
 "DAT_00501cdb"
 ],
 "00501ce0": [
-"DAT_00501ce0"
+"_G_LLM_MAP_ZOOM_MAX_X"
 ],
 "00501ce8": [
-"DAT_00501ce8"
+"_G_LLM_MAP_ZOOM_MAX_Y"
 ],
 "00501cf0": [
-"DAT_00501cf0"
+"_G_LLM_MAP_ZOOM_MAX_INC_X"
 ],
 "00501cf8": [
-"DAT_00501cf8"
+"_G_LLM_MAP_ZOOM_MAX_INC_Y"
 ],
 "00501d00": [
-"s_init\\INITLANG.CFG_00501cff+1"
+"s_init\\INITLANG.CFG_00501d00"
 ],
 "00501d12": [
 "s_init\\INIT.CFG_00501d12"
@@ -80217,7 +80217,7 @@
 "DAT_0050be4f"
 ],
 "0050be53": [
-"_G_LLM_UI_BLDG_WORKER_POOL_COUNTER"
+"_G_LLM_UI_MOUSE_LEFT_HOLD_MS"
 ],
 "0050be57": [
 "DAT_0050be57"
@@ -80460,10 +80460,10 @@
 "_G_LLM_UI_ICON_ENTRIES[0].kind"
 ],
 "0050fb9f": [
-"_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER"
+"_G_LLM_UI_HUD_BOTTOM_STRIP_TICK_COUNTER"
 ],
 "0050fba3": [
-"_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED"
+"_G_LLM_UI_HUD_BOTTOM_STRIP_VIEW_SIZE_MODE_APPLIED"
 ],
 "0050fba7": [
 "_G_LLM_STRAT_UI_EVENT_DEFER_ACTIVE"
@@ -80751,7 +80751,7 @@
 "_G_LLM_UI_ICON_GROUP_BLOB"
 ],
 "005102e9": [
-"PTR_llm_ui_hud_topbar_tick_005102e9"
+"PTR_llm_ui_hud_bottom_strip_tick_005102e9"
 ],
 "005102ed": [
 "DAT_005102ed"
@@ -80841,7 +80841,7 @@
 "_G_LLM_UI_BLDG_PANEL_REDRAWN_FLAG"
 ],
 "00519d38": [
-"DAT_00519d38"
+"_G_LLM_UI_MOUSE_LEFT_DOWN_LATCH"
 ],
 "00519d3c": [
 "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE"
@@ -80871,16 +80871,16 @@
 "_G_LLM_UI_STAGED_CURSOR_Y"
 ],
 "00519d60": [
-"DAT_00519d60"
+"_G_LLM_UI_MOUSE_LEFT_PRESS_X"
 ],
 "00519d64": [
-"DAT_00519d64"
+"_G_LLM_UI_MOUSE_LEFT_PRESS_Y"
 ],
 "00519d68": [
-"DAT_00519d68"
+"_G_LLM_UI_MOUSE_LEFT_RELEASE_X"
 ],
 "00519d6c": [
-"DAT_00519d6c"
+"_G_LLM_UI_MOUSE_LEFT_RELEASE_Y"
 ],
 "00519d70": [
 "DAT_00519d70"
@@ -83821,7 +83821,7 @@
 "DAT_005d0c5a"
 ],
 "005d0c62": [
-"DAT_005d0c62"
+"_G_LLM_UI_FLOATING_TIP_SHOWN"
 ],
 "005d0c66": [
 "_G_LLM_VIEW_SIZE_MODE_CACHE"
@@ -84502,7 +84502,7 @@
 "_G_LLM_GFX_PANEL_ROW_SKIP"
 ],
 "00603b08": [
-"DAT_00603b08"
+"_G_LLM_GFX_HUD_STRIP_SURFACE"
 ],
 "00603b0c": [
 "_G_LLM_GFX_VIEWPORT_ROW_BYTES"
@@ -84926,13 +84926,13 @@
 "_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT"
 ],
 "00644f93": [
-"_G_LLM_UI_MP_BROWSER_LIST_STATE"
+"DAT_00644f93"
 ],
 "00644fab": [
-"_G_LLM_UI_MP_BROWSER_LIST_STATE.count"
+"DAT_00644fab"
 ],
 "00644fb3": [
-"_G_LLM_UI_MP_BROWSER_LIST_STATE.selected"
+"DAT_00644fb3"
 ],
 "00644fb7": [
 "DAT_00644fb7"
@@ -86327,7 +86327,7 @@
 "_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD"
 ],
 "00653a83": [
-"_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD.field4_layout_state"
+"_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD.bg_gfx_index"
 ],
 "00653acb": [
 "_G_LLM_UI_WGT_LIST_TUTORIAL_INTRO"
@@ -86348,7 +86348,7 @@
 "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST"
 ],
 "00653bff": [
-"_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.field4_layout_state"
+"_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.bg_gfx_index"
 ],
 "00653c13": [
 "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.origin_x"
@@ -86366,7 +86366,7 @@
 "_G_LLM_UI_WGT_LIST_PLANET_SELECT"
 ],
 "00653ce3": [
-"_G_LLM_UI_WGT_LIST_PLANET_SELECT.field4_layout_state"
+"_G_LLM_UI_WGT_LIST_PLANET_SELECT.bg_gfx_index"
 ],
 "00653d2b": [
 "_G_LLM_UI_WGT_LIST_BUILD_MENU_LIST"
@@ -86375,7 +86375,7 @@
 "_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST"
 ],
 "00653d7b": [
-"_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST.field4_layout_state"
+"_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST.bg_gfx_index"
 ],
 "00653dc3": [
 "_G_LLM_UI_OUTCOME_DLG_WIDGET_LIST"
@@ -89787,16 +89787,16 @@
 "DAT_00825040+1"
 ],
 "00825044": [
-"DAT_00825044"
+"_G_LLM_GFX_FB_TILE_ROW_SKIP"
 ],
 "00825048": [
-"DAT_00825048"
+"_G_LLM_GFX_STRIP_ROW_SKIP"
 ],
 "0082504c": [
 "_G_LLM_MOUSE_BUTTONS_CUR"
 ],
 "00825050": [
-"DAT_00825050"
+"_G_LLM_GFX_PANEL_TILE_ROW_SKIP"
 ],
 "00825054": [
 "G_WIN_H"
@@ -93831,10 +93831,10 @@
 "_G_LLM_RMB_GESTURE_STATE"
 ],
 "00e589b4": [
-"DAT_00e589b4"
+"_G_LLM_UI_FLOATING_TIP_X"
 ],
 "00e589b8": [
-"DAT_00e589b8"
+"_G_LLM_UI_FLOATING_TIP_Y"
 ],
 "00e589c0": [
 "_G_LLM_STRAT_SCENARIO_PLANET_NAME_W"
@@ -95618,10 +95618,10 @@
 "_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B"
 ],
 "00e622a0": [
-"_G_LLM_LOBBY_BROWSER_ROWS"
+"DAT_00e622a0"
 ],
 "00e622a4": [
-"_G_LLM_LOBBY_BROWSER_ROWS[0].server_idx"
+"DAT_00e622a4"
 ],
 "00e642a0": [
 "_G_LLM_AVI_OPEN_STATUS"
@@ -95747,10 +95747,10 @@
 "_G_LLM_INPUT_MOUSE_WHEEL_TOTAL"
 ],
 "00e69da4": [
-"DAT_00e69da4"
+"_G_LLM_INPUT_MOUSE_BOX_W"
 ],
 "00e69da8": [
-"DAT_00e69da8"
+"_G_LLM_INPUT_MOUSE_BOX_H"
 ],
 "00e69dac": [
 "_G_LLM_INPUT_KEY_READ_IDX"
@@ -97512,7 +97512,7 @@
 [
 "00414395",
 "00414a4d",
-"llm_ui_hud_topbar_tick"
+"llm_ui_hud_bottom_strip_tick"
 ],
 [
 "00414a4e",
@@ -97807,7 +97807,7 @@
 [
 "00419b98",
 "00419c15",
-"llm_util_unpack_static_category_table"
+"llm_ui_icon_table_unpack"
 ],
 [
 "00419c16",
@@ -97892,7 +97892,7 @@
 [
 "0041b76c",
 "0041b7fc",
-"llm_ui_icon_rect_hit_test_cached"
+"llm_ui_icon_rect_hit_test_release_pos"
 ],
 [
 "0041b7fd",
@@ -104777,7 +104777,7 @@
 [
 "004a8b73",
 "004a8be9",
-"llm_ui_set_draw_surface"
+"llm_ui_blit_bitmap_rect"
 ],
 [
 "004a8bea",
@@ -107652,7 +107652,7 @@
 [
 "004d10bc",
 "004d10cc",
-"FUN_004d10bc"
+"llm_input_mouse_device_init"
 ],
 [
 "004d10d0",
@@ -107672,7 +107672,7 @@
 [
 "004d1138",
 "004d1143",
-"FUN_004d1138"
+"llm_input_set_cursor_pos"
 ],
 [
 "004d1144",
@@ -111674,7 +111674,7 @@
 "004118e0": "llm_strat_minimap_cam_goto",
 "004118ed": "llm_ui_hud_widget_hit_test",
 "00411a4b": "utils_assert_stack_capacity",
-"00411a7d": "llm_ui_icon_rect_hit_test_cached",
+"00411a7d": "llm_ui_icon_rect_hit_test_release_pos",
 "00411a89": "llm_ui_icon_rect_hit_test",
 "00411aa0": "llm_ui_icon_draw_vclipped",
 "00411ac6": "llm_strat_minimap_cam_goto",
@@ -111692,7 +111692,7 @@
 "00411c1a": "utils_assert_stack_capacity",
 "00411c32": "llm_ui_icon_rect_hit_test",
 "00411c50": "llm_ui_list_item_icon_label_draw",
-"00411c63": "llm_ui_icon_rect_hit_test_cached",
+"00411c63": "llm_ui_icon_rect_hit_test_release_pos",
 "00411c7a": "llm_unit_ctrl_group_activate",
 "00411c84": "llm_ui_list_item_icon_label_draw",
 "00411c93": "llm_snd_play",
@@ -111707,7 +111707,7 @@
 "00411d1c": "game_SetEvent",
 "00411d28": "llm_ui_list_item_icon_label_draw",
 "00411d3e": "utils_assert_stack_capacity",
-"00411d56": "llm_ui_icon_rect_hit_test_cached",
+"00411d56": "llm_ui_icon_rect_hit_test_release_pos",
 "00411d62": "llm_ui_icon_rect_hit_test",
 "00411d70": "game_SetEvent",
 "00411d7f": "llm_snd_play",
@@ -111717,7 +111717,7 @@
 "00411e03": "llm_ui_planet_select_screen_open",
 "00411e14": "llm_snd_play",
 "00411e2a": "utils_assert_stack_capacity",
-"00411e63": "llm_ui_icon_rect_hit_test_cached",
+"00411e63": "llm_ui_icon_rect_hit_test_release_pos",
 "00411e6f": "llm_ui_icon_rect_hit_test",
 "00411e8e": "llm_snd_play",
 "00411ea1": "llm_ui_icon_rect_hit_test",
@@ -111797,22 +111797,22 @@
 "00412c66": "utils_assert_stack_capacity",
 "00412c88": "llm_ui_ctrlgroup_member_icon_row_draw",
 "00412c9f": "utils_assert_stack_capacity",
-"00412cc6": "llm_ui_icon_rect_hit_test_cached",
+"00412cc6": "llm_ui_icon_rect_hit_test_release_pos",
 "00412cd2": "llm_ui_icon_rect_hit_test",
 "00412cf6": "llm_ui_icon_rect_hit_test",
-"00412d50": "llm_ui_icon_rect_hit_test_cached",
+"00412d50": "llm_ui_icon_rect_hit_test_release_pos",
 "00412dc0": "game_SetEvent",
 "00412dcf": "llm_snd_play",
 "00412ddc": "llm_ui_hud_widget_hit_test",
-"00412ed2": "llm_ui_icon_rect_hit_test_cached",
-"00412eec": "llm_ui_icon_rect_hit_test_cached",
+"00412ed2": "llm_ui_icon_rect_hit_test_release_pos",
+"00412eec": "llm_ui_icon_rect_hit_test_release_pos",
 "00412efa": "llm_ui_hud_widget_hit_test",
 "00412f80": "utils_assert_stack_capacity",
 "00412fa0": "llm_ui_icon_drag_range_process",
 "00412fb6": "utils_assert_stack_capacity",
 "00412fd6": "llm_ui_icon_drag_range_process",
 "00412fec": "utils_assert_stack_capacity",
-"00413085": "llm_ui_icon_rect_hit_test_cached",
+"00413085": "llm_ui_icon_rect_hit_test_release_pos",
 "00413091": "llm_ui_icon_rect_hit_test",
 "004130be": "llm_time_get_ticks_ms",
 "004130d8": "game_SetEvent",
@@ -111821,11 +111821,11 @@
 "0041311a": "llm_ui_icon_draw_vclipped",
 "00413147": "llm_ui_icon_draw_vclipped",
 "00413167": "utils_assert_stack_capacity",
-"0041317f": "llm_ui_icon_rect_hit_test_cached",
+"0041317f": "llm_ui_icon_rect_hit_test_release_pos",
 "0041318b": "llm_ui_icon_rect_hit_test",
 "004131a0": "llm_snd_play",
 "00413201": "utils_assert_stack_capacity",
-"00413219": "llm_ui_icon_rect_hit_test_cached",
+"00413219": "llm_ui_icon_rect_hit_test_release_pos",
 "00413225": "llm_ui_icon_rect_hit_test",
 "0041323a": "llm_snd_play",
 "00413259": "utils_assert_stack_capacity",
@@ -111839,7 +111839,7 @@
 "00413336": "utils_assert_stack_capacity",
 "00413351": "llm_ui_hud_slot_rmb_click_gate",
 "0041336c": "utils_assert_stack_capacity",
-"004133a6": "llm_ui_icon_rect_hit_test_cached",
+"004133a6": "llm_ui_icon_rect_hit_test_release_pos",
 "004133b2": "llm_ui_icon_rect_hit_test",
 "004133e2": "llm_ui_icon_rect_hit_test",
 "00413402": "llm_ui_icon_draw_vclipped",
@@ -111855,7 +111855,7 @@
 "0041356b": "utils_assert_stack_capacity",
 "0041358b": "llm_ui_bldg_worker_adjust_btn_tick",
 "004135a1": "utils_assert_stack_capacity",
-"004135d9": "llm_ui_icon_rect_hit_test_cached",
+"004135d9": "llm_ui_icon_rect_hit_test_release_pos",
 "004135e5": "llm_ui_icon_rect_hit_test",
 "004135fb": "llm_snd_play",
 "0041361d": "llm_ui_icon_rect_hit_test",
@@ -111872,25 +111872,25 @@
 "00413801": "utils_assert_stack_capacity",
 "00413830": "utils_assert_stack_capacity",
 "0041385f": "utils_assert_stack_capacity",
-"00413877": "llm_ui_icon_rect_hit_test_cached",
+"00413877": "llm_ui_icon_rect_hit_test_release_pos",
 "00413883": "llm_ui_icon_rect_hit_test",
 "00413898": "llm_snd_play",
 "004138b7": "utils_assert_stack_capacity",
-"004138cf": "llm_ui_icon_rect_hit_test_cached",
+"004138cf": "llm_ui_icon_rect_hit_test_release_pos",
 "004138db": "llm_ui_icon_rect_hit_test",
 "004138f0": "llm_snd_play",
 "0041390f": "utils_assert_stack_capacity",
-"00413927": "llm_ui_icon_rect_hit_test_cached",
+"00413927": "llm_ui_icon_rect_hit_test_release_pos",
 "00413933": "llm_ui_icon_rect_hit_test",
 "00413948": "llm_snd_play",
 "00413967": "utils_assert_stack_capacity",
-"0041397f": "llm_ui_icon_rect_hit_test_cached",
+"0041397f": "llm_ui_icon_rect_hit_test_release_pos",
 "0041398b": "llm_ui_icon_rect_hit_test",
 "004139ab": "llm_strat_bldg_get_active_research_project",
 "004139c7": "llm_snd_play",
 "004139d2": "llm_ui_hud_slot_rmb_click_gate",
 "004139ed": "utils_assert_stack_capacity",
-"00413a05": "llm_ui_icon_rect_hit_test_cached",
+"00413a05": "llm_ui_icon_rect_hit_test_release_pos",
 "00413a11": "llm_ui_icon_rect_hit_test",
 "00413a26": "llm_snd_play",
 "00413a44": "llm_ui_storage_panel_request_show_info_slot",
@@ -112265,7 +112265,7 @@
 "00419142": "llm_ui_panel_row_icon_label_draw",
 "00419157": "llm_ui_bldg_row_unit_effect_draw",
 "0041916e": "utils_assert_stack_capacity",
-"0041919b": "llm_ui_icon_rect_hit_test_cached",
+"0041919b": "llm_ui_icon_rect_hit_test_release_pos",
 "004191a7": "llm_ui_icon_rect_hit_test",
 "004191e3": "llm_strat_order_ctrlgrp_flash_member",
 "00419209": "llm_strat_order_ctrlgrp_select_member",
@@ -112436,7 +112436,7 @@
 "0041ae78": "llm_strat_ui_hud_widgets_init",
 "0041ae89": "utils_fill_data",
 "0041ae9a": "utils_fill_data",
-"0041ae9f": "llm_util_unpack_static_category_table",
+"0041ae9f": "llm_ui_icon_table_unpack",
 "0041af02": "llm_gfx_palette_scale_rgb",
 "0041af2f": "utils_assert_stack_capacity",
 "0041af51": "utils_assert_stack_capacity",
@@ -112444,7 +112444,7 @@
 "0041b096": "llm_ui_hud_widget_hit_test",
 "0041b0a2": "llm_ui_hud_widget_contains_test_point",
 "0041b0b0": "llm_ui_icon_rect_hit_test",
-"0041b0be": "llm_ui_icon_rect_hit_test_cached",
+"0041b0be": "llm_ui_icon_rect_hit_test_release_pos",
 "0041b0cc": "llm_ui_icon_rect_hit_test_rmb",
 "0041b0da": "llm_ui_icon_rect_hit_test_rmb_cached",
 "0041b152": "utils_w_str_copy",
@@ -112465,22 +112465,22 @@
 "0041b805": "utils_assert_stack_capacity",
 "0041b896": "utils_assert_stack_capacity",
 "0041b927": "utils_assert_stack_capacity",
-"0041b98c": "llm_ui_set_draw_surface",
+"0041b98c": "llm_ui_blit_bitmap_rect",
 "0041b9ac": "utils_assert_stack_capacity",
-"0041ba4c": "llm_ui_set_draw_surface",
+"0041ba4c": "llm_ui_blit_bitmap_rect",
 "0041ba6b": "utils_assert_stack_capacity",
-"0041bad0": "llm_ui_set_draw_surface",
+"0041bad0": "llm_ui_blit_bitmap_rect",
 "0041baf0": "utils_assert_stack_capacity",
 "0041bb6b": "utils_assert_stack_capacity",
 "0041bb85": "utils_itoa",
 "0041bbda": "utils_assert_stack_capacity",
-"0041bc2f": "llm_ui_set_draw_surface",
-"0041bc9e": "llm_ui_set_draw_surface",
-"0041bcde": "llm_ui_set_draw_surface",
-"0041bd16": "llm_ui_set_draw_surface",
+"0041bc2f": "llm_ui_blit_bitmap_rect",
+"0041bc9e": "llm_ui_blit_bitmap_rect",
+"0041bcde": "llm_ui_blit_bitmap_rect",
+"0041bd16": "llm_ui_blit_bitmap_rect",
 "0041bd2d": "utils_assert_stack_capacity",
-"0041bd9a": "llm_ui_set_draw_surface",
-"0041bdfa": "llm_ui_set_draw_surface",
+"0041bd9a": "llm_ui_blit_bitmap_rect",
+"0041bdfa": "llm_ui_blit_bitmap_rect",
 "0041be1f": "utils_assert_stack_capacity",
 "0041be44": "llm_gfx_font_select",
 "0041be8f": "llm_gfx_draw_text_blend_clipped",
@@ -112836,16 +112836,16 @@
 "00426471": "llm_gfx_ddraw_present",
 "0042647b": "llm_gfx_surface_lock",
 "00426492": "utils_assert_stack_capacity",
-"004264b9": "FUN_004d10bc",
+"004264b9": "llm_input_mouse_device_init",
 "004264c2": "llm_fatal_cleanup",
 "004264d1": "FUN_004d1144",
-"004264f4": "FUN_004d1138",
+"004264f4": "llm_input_set_cursor_pos",
 "00426536": "utils_assert_stack_capacity",
 "004265af": "utils_assert_stack_capacity",
 "0042664d": "utils_assert_stack_capacity",
 "00426699": "llm_input_mouse_queue_is_empty",
 "004266a5": "llm_input_mouse_pop_event",
-"004266ea": "FUN_004d1138",
+"004266ea": "llm_input_set_cursor_pos",
 "00426703": "llm_map_zoom_translate_cursor",
 "0042671a": "utils_assert_stack_capacity",
 "00426747": "utils_assert_stack_capacity",
@@ -113471,9 +113471,9 @@
 "00433ede": "utils_sprintf",
 "00433ee9": "GetResourseFilePtr",
 "00433f08": "llm_gfx_convert_pixels_565_to_555",
-"00433f3b": "llm_ui_set_draw_surface",
-"00433f6f": "llm_ui_set_draw_surface",
-"00433fa3": "llm_ui_set_draw_surface",
+"00433f3b": "llm_ui_blit_bitmap_rect",
+"00433f6f": "llm_ui_blit_bitmap_rect",
+"00433fa3": "llm_ui_blit_bitmap_rect",
 "00433faa": "llm_gfx_font_select",
 "00433fb4": "llm_gfx_font_select",
 "00433fc3": "w_sprintf",
@@ -113489,7 +113489,7 @@
 "00434091": "utils_free",
 "004340aa": "utils_assert_stack_capacity",
 "004341d5": "utils_assert_stack_capacity",
-"00434212": "llm_ui_set_draw_surface",
+"00434212": "llm_ui_blit_bitmap_rect",
 "0043423f": "utils_sprintf",
 "0043426f": "utils_sprintf",
 "00434293": "llm_gfx_pack_rgb16",
@@ -113499,8 +113499,8 @@
 "004342d2": "llm_str_ansi_to_wide_scratch",
 "004342e8": "llm_ui_text_draw_rgb16",
 "0043432a": "utils_assert_stack_capacity",
-"00434384": "llm_ui_set_draw_surface",
-"004343e3": "llm_ui_set_draw_surface",
+"00434384": "llm_ui_blit_bitmap_rect",
+"004343e3": "llm_ui_blit_bitmap_rect",
 "004343f3": "atoi",
 "0043440f": "w_sprintf",
 "00434426": "llm_gfx_pack_rgb16",
@@ -113524,7 +113524,7 @@
 "00434629": "llm_tact_ui_char_panel_ammo_draw",
 "00434634": "llm_tact_unit_draw_hp_bar_slot",
 "00434695": "utils_assert_stack_capacity",
-"004346ea": "llm_ui_set_draw_surface",
+"004346ea": "llm_ui_blit_bitmap_rect",
 "004346fd": "w_sprintf",
 "00434711": "llm_gfx_pack_rgb16",
 "0043472b": "llm_ui_text_draw_rgb16",
@@ -113532,7 +113532,7 @@
 "00434760": "w_sprintf",
 "00434774": "llm_gfx_pack_rgb16",
 "0043478e": "llm_ui_text_draw_rgb16",
-"004347cc": "llm_ui_set_draw_surface",
+"004347cc": "llm_ui_blit_bitmap_rect",
 "004347df": "w_sprintf",
 "004347f6": "llm_gfx_pack_rgb16",
 "00434810": "llm_ui_text_draw_rgb16",
@@ -113541,7 +113541,7 @@
 "0043485c": "llm_gfx_pack_rgb16",
 "00434876": "llm_ui_text_draw_rgb16",
 "004348c7": "utils_assert_stack_capacity",
-"0043491f": "llm_ui_set_draw_surface",
+"0043491f": "llm_ui_blit_bitmap_rect",
 "00434932": "w_sprintf",
 "00434946": "llm_gfx_pack_rgb16",
 "00434960": "llm_ui_text_draw_rgb16",
@@ -113549,7 +113549,7 @@
 "00434995": "w_sprintf",
 "004349a9": "llm_gfx_pack_rgb16",
 "004349c3": "llm_ui_text_draw_rgb16",
-"00434a04": "llm_ui_set_draw_surface",
+"00434a04": "llm_ui_blit_bitmap_rect",
 "00434a17": "w_sprintf",
 "00434a2e": "llm_gfx_pack_rgb16",
 "00434a48": "llm_ui_text_draw_rgb16",
@@ -113558,7 +113558,7 @@
 "00434a94": "llm_gfx_pack_rgb16",
 "00434aae": "llm_ui_text_draw_rgb16",
 "00434aff": "utils_assert_stack_capacity",
-"00434b35": "llm_ui_set_draw_surface",
+"00434b35": "llm_ui_blit_bitmap_rect",
 "00434b3a": "llm_tact_squad_roster_refresh",
 "00434b48": "llm_tact_ui_sidebar_roster_refresh",
 "00434b4f": "llm_tact_ui_sidebar_draw_rows",
@@ -113570,7 +113570,7 @@
 "00434d4b": "llm_tact_ui_sidebar_row_draw_left",
 "00434db1": "llm_tact_ui_sidebar_row_draw_right",
 "00434dca": "utils_assert_stack_capacity",
-"00434e86": "llm_ui_set_draw_surface",
+"00434e86": "llm_ui_blit_bitmap_rect",
 "00434e9b": "utils_sprintf",
 "00434eaf": "llm_gfx_pack_rgb16",
 "00434eba": "llm_str_ansi_to_wide_scratch",
@@ -113587,17 +113587,17 @@
 "00435010": "utils_assert_stack_capacity",
 "00435065": "llm_tact_ui_char_panel_ammo_draw",
 "00435080": "utils_assert_stack_capacity",
-"00435117": "llm_ui_set_draw_surface",
-"00435179": "llm_ui_set_draw_surface",
-"004351db": "llm_ui_set_draw_surface",
-"00435264": "llm_ui_set_draw_surface",
-"004352c6": "llm_ui_set_draw_surface",
-"00435328": "llm_ui_set_draw_surface",
-"004353af": "llm_ui_set_draw_surface",
-"00435414": "llm_ui_set_draw_surface",
-"00435479": "llm_ui_set_draw_surface",
+"00435117": "llm_ui_blit_bitmap_rect",
+"00435179": "llm_ui_blit_bitmap_rect",
+"004351db": "llm_ui_blit_bitmap_rect",
+"00435264": "llm_ui_blit_bitmap_rect",
+"004352c6": "llm_ui_blit_bitmap_rect",
+"00435328": "llm_ui_blit_bitmap_rect",
+"004353af": "llm_ui_blit_bitmap_rect",
+"00435414": "llm_ui_blit_bitmap_rect",
+"00435479": "llm_ui_blit_bitmap_rect",
 "004354db": "utils_assert_stack_capacity",
-"00435545": "llm_ui_set_draw_surface",
+"00435545": "llm_ui_blit_bitmap_rect",
 "00435560": "utils_sprintf",
 "00435581": "llm_gfx_pack_rgb16",
 "0043558c": "llm_str_ansi_to_wide_scratch",
@@ -113605,7 +113605,7 @@
 "004355b5": "llm_gfx_pack_rgb16",
 "004355c0": "llm_str_ansi_to_wide_scratch",
 "004355d3": "llm_ui_text_draw_rgb16",
-"0043560e": "llm_ui_set_draw_surface",
+"0043560e": "llm_ui_blit_bitmap_rect",
 "00435629": "utils_sprintf",
 "00435640": "llm_gfx_pack_rgb16",
 "0043564b": "llm_str_ansi_to_wide_scratch",
@@ -113618,7 +113618,7 @@
 "004359c7": "llm_tact_ui_order_buttons_minimap_tick",
 "004359d7": "llm_tact_ui_sel_panel_multi_mode_tick",
 "004359de": "llm_tact_ui_sel_panel_single_mode_tick",
-"00435a47": "llm_ui_set_draw_surface",
+"00435a47": "llm_ui_blit_bitmap_rect",
 "00435a93": "llm_tact_ui_draw_player_row_list",
 "00435b08": "llm_tact_selection_panel_refresh",
 "00435b12": "llm_tact_ui_draw_player_row_list",
@@ -113628,25 +113628,25 @@
 "00435cdb": "llm_tact_ui_sel_panel_draw",
 "00435cf2": "utils_assert_stack_capacity",
 "00435d23": "llm_tact_ui_mouse_in_rect",
-"00435d78": "llm_ui_set_draw_surface",
+"00435d78": "llm_ui_blit_bitmap_rect",
 "00435db4": "llm_tact_group_issue_order",
 "00435ddc": "llm_tact_ui_mouse_in_rect",
-"00435e31": "llm_ui_set_draw_surface",
+"00435e31": "llm_ui_blit_bitmap_rect",
 "00435e6d": "llm_tact_group_issue_order",
 "00435e7f": "llm_tact_group_issue_order",
 "00435ea7": "llm_tact_ui_mouse_in_rect",
-"00435efc": "llm_ui_set_draw_surface",
+"00435efc": "llm_ui_blit_bitmap_rect",
 "00435f2b": "llm_tact_move_path_preview_clear",
 "00435f3d": "llm_tact_group_issue_order",
 "00435f4f": "llm_tact_group_issue_order",
 "00435f77": "llm_tact_ui_mouse_in_rect",
-"00435fcc": "llm_ui_set_draw_surface",
+"00435fcc": "llm_ui_blit_bitmap_rect",
 "00435ffb": "llm_tact_move_path_preview_clear",
 "0043600d": "llm_tact_group_issue_order",
 "0043601f": "llm_tact_group_issue_order",
 "004361a6": "llm_tact_vis_map_fill_default",
 "004361bd": "utils_assert_stack_capacity",
-"00436269": "llm_ui_set_draw_surface",
+"00436269": "llm_ui_blit_bitmap_rect",
 "0043626e": "llm_tact_selection_panel_refresh",
 "00436293": "llm_tact_ui_mouse_in_rect",
 "0043633e": "llm_tact_squad_roster_refresh",
@@ -113664,16 +113664,16 @@
 "004365f3": "llm_tact_selection_panel_refresh",
 "00436622": "llm_tact_ui_mouse_in_rect",
 "00436689": "llm_tact_ui_mouse_in_rect",
-"004366ce": "llm_ui_set_draw_surface",
+"004366ce": "llm_ui_blit_bitmap_rect",
 "00436722": "llm_tact_unit_enqueue_command",
 "00436737": "time_GetCurrentTime",
 "004367c2": "llm_tact_ui_mouse_in_rect",
-"00436803": "llm_ui_set_draw_surface",
+"00436803": "llm_ui_blit_bitmap_rect",
 "0043691f": "llm_tact_vis_map_fill_default",
 "00436949": "llm_tact_ui_mouse_in_rect",
 "004369a8": "llm_tact_selection_panel_refresh",
 "004369c9": "utils_assert_stack_capacity",
-"00436a75": "llm_ui_set_draw_surface",
+"00436a75": "llm_ui_blit_bitmap_rect",
 "00436a7a": "llm_tact_selection_panel_refresh",
 "00436a9f": "llm_tact_ui_mouse_in_rect",
 "00436ad7": "llm_tact_ui_draw_player_row_list",
@@ -120800,7 +120800,7 @@
 "004b5591": "llm_str_ansi_to_wide_scratch",
 "004b55a3": "llm_ui_show_formatted_error_dialog",
 "004b55c6": "utils_assert_stack_capacity",
-"004b5655": "llm_ui_set_draw_surface",
+"004b5655": "llm_ui_blit_bitmap_rect",
 "004b566b": "utils_assert_stack_capacity",
 "004b56ba": "utils_assert_stack_capacity",
 "004b5703": "FUN_004b5663",

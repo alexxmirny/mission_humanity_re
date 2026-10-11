@@ -666,7 +666,7 @@ def is_effect_family(nm, prefixes, walls):
     predicate survives its closure; and BOTH of those only ever match code inside the closure, so
     neither can see a call out to shared, non-exclusive territory. A soundness walk missing any of
     the three descends straight through it and reports nothing -- which is what happened to
-    llm_ui_set_draw_surface, a blit reached from nine tactical members and named by none of the
+    llm_ui_blit_bitmap_rect, a blit reached from nine tactical members and named by none of the
     predicates until `effect_names` existed.
     """
     return (

@@ -75,6 +75,9 @@ int MH_Seam_ClientStartReceived(void);
  * Returns the byte count written, or 0 if the host sent the legacy bare signal (caller then
  * keeps its own slots). Read once, on the main thread, immediately before begin_map_load. */
 int MH_Seam_TakeStartSlots(unsigned char *out, int cap);
+/* PT-SET1: copy the host's gameplay-settings TRAILER (the bytes after the slot array in FLAG_START) into
+ * `out`. Returns the byte count, or 0 if the host sent none (caller keeps its local values). */
+int MH_Seam_TakeStartGameplay(unsigned char *out, int cap);
 
 // mp:L1e: the lobby ping cell's R/D letter for a CLIENT's one measured row (the host's). Wraps
 // net_discovery.cpp's mp_dial_is_relayed (net_internal.h, the mp:R7a kick-site latch) -- a plain

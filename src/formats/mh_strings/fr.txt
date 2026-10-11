@@ -25,6 +25,7 @@ refuse.not_our_lobby = ce n'est pas notre salon
 refuse.cp_mismatch = pages de codes différentes
 refuse.unknown = inconnu
 refuse.build = l'hôte a %s, vous avez %s : mettez à jour
+refuse.gameplay = Paramètres de jeu différents (%s/%s) : mettez à jour
 relay.outdated = Relais obsolète (protocole %u < %u)
 
 # map transfer

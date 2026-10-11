@@ -41,6 +41,7 @@
 #include <windows.h>
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
+#include <cstring>
 
 #include "include/mh_video_export.h"
 #include "include/mh_run_context.h"    // MH_RunDir
@@ -54,6 +55,11 @@
 #include "hook/patch.h"                // patch_bytes_guarded
 #include "gfx/ddraw_own.h"             // PT-GFX1: [video] backend=own -- the owned DirectDraw
 #include "input/dinput_own.h"          // PT-INPUT1: [input] backend=own -- the owned DirectInput
+#include "video_mode_guards.h"         // the mode-change crash guards (cursor clamp, galaxy background)
+#include "ui_panel_rows.h"             // RES7: the side-panel list tables grown for the tallest entry
+#include "gfx/res_list.h"              // RES3: the generated resolution list
+#include "include/mh_mapzoom_export.h" // MH_MapZoom_ReseedWheel
+#include "addr/mh_calls.gen.h"         // RES6: llm_view_set_size_mode / llm_map_cam_set_col
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -366,7 +372,7 @@ bool patch_mode2(int w, int h_req, int h_render, int boot_w, int boot_h) {
 // re-entry rather than a race):
 //
 //   llm_gfx_hittest_check(0x4a677d) <- FUN_004a66c5 <- llm_gfx_draw_sprite_clipped_width
-//     <- llm_ui_hud_topbar_tick <- llm_ui_icon_group_dispatch <- llm_ui_frame_tick
+//     <- llm_ui_hud_bottom_strip_tick <- llm_ui_icon_group_dispatch <- llm_ui_frame_tick
 //     <- llm_strat_input_update <- llm_strat_frame <- llm_frame_dispatch
 //     <- llm_wnd_proc (msg = 0x0F = WM_PAINT) <- USER32!_InternalCallWinProc ...
 //
@@ -570,7 +576,7 @@ bool install_reentrancy_guard() {
 // HUD chrome widening -- the bottom status-bar extension.
 //
 // The strategic HUD's bottom bar is assembled from two blits: a fixed base at HUD widget 0xe (icon
-// 0x42) and, for the wider modes only, an EXTENSION at widget 0xf -- `llm_ui_hud_topbar_tick` does
+// 0x42) and, for the wider modes only, an EXTENSION at widget 0xf -- `llm_ui_hud_bottom_strip_tick` does
 // `llm_ui_hud_widget_icon_blit(0xf, 0x42 + _G_LLM_VIEW_SIZE_MODE)`. Those extension bitmaps are
 // pre-authored ART, one per stock mode (0x43 for 800, 0x44 for 1024), so at a custom width the widest
 // one that exists still stops at the 1024-mode viewport edge and leaves a black gap before the side
@@ -597,54 +603,100 @@ struct HudWidget { // llm_ui_hud_widget, 28 bytes
 };
 
 void *g_hud_icon_tramp = nullptr;
-void *g_widened_for    = nullptr; // the stock bitmap we widened (cache key)
-long  g_widened_w      = 0;
+
+// One slot per authored extension icon (0x42..0x44). The stock bitmap is remembered the first time the slot is
+// seen, and a width-specific copy is kept per slot: the viewport width changes with every in-game Screen size
+// pick, so a bitmap built for one width must never be reused at another (the strip then keeps stale pixels at
+// the new pitch, or -- when narrower -- a too-wide bitmap overruns its row because the blit does not clip).
+constexpr int HUD_ICON_FIRST = 0x42;
+constexpr int HUD_ICON_SLOTS = 3;
+struct HudIconSlot {
+    void           *stock   = nullptr; // the engine's own bitmap (never modified)
+    unsigned short *built   = nullptr; // our copy for `built_w` (nullptr = none)
+    int             built_w = 0;
+};
+HudIconSlot g_hud_slots[HUD_ICON_SLOTS];
+bool        g_strip_fix = true; // [video] strip_fix=0 restores the pre-RES5 build-once cache (fix-off UI row)
+
+// Build a bitmap exactly `need` px wide from the stock one: keep the left half and the right end cap, replicate
+// a middle column for the difference (wider), or drop columns before the cap (narrower).
+unsigned short *build_icon_width(const unsigned short *src, int need) {
+    const int       w0 = (int)src[0], h0 = (int)src[1];
+    unsigned short *dst = (unsigned short *)VirtualAlloc(nullptr, 4 + (unsigned)need * (unsigned)h0 * 2,
+                                                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!dst) return nullptr;
+    dst[0]          = (unsigned short)need;
+    dst[1]          = (unsigned short)h0;
+    const int split = w0 / 2; // [0,split) is the left part, [split,w0) the right end cap
+    const int capw  = w0 - split;
+    for (int row = 0; row < h0; ++row) {
+        const unsigned short *s = src + 2 + row * w0;
+        unsigned short       *d = dst + 2 + row * need;
+        if (need >= w0) {
+            for (int c = 0; c < split; ++c) *d++ = s[c];
+            const unsigned short pad = s[split > 0 ? split - 1 : 0];
+            for (int c = 0; c < need - w0; ++c) *d++ = pad;
+            for (int c = split; c < w0; ++c) *d++ = s[c];
+        } else {
+            const int leftn = need > capw ? need - capw : 0;
+            const int capn  = need - leftn;
+            for (int c = 0; c < leftn; ++c) *d++ = s[c];
+            for (int c = 0; c < capn; ++c) *d++ = s[split + c];
+        }
+    }
+    return dst;
+}
 
 // Returns the icon id the blit should ACTUALLY use.
 //
-// Two things go wrong for widget 0xf once the picker exists. llm_ui_hud_topbar_tick computes
+// Two things go wrong for widget 0xf once the picker exists. llm_ui_hud_bottom_strip_tick computes
 // `0x42 + _G_LLM_VIEW_SIZE_MODE`, and only 0x42/0x43/0x44 are authored bottom-bar extensions -- with a
 // picker index of, say, 18 it reaches icon 0x54, which is unrelated artwork (observed: a stray sprite
 // fragment mid-bar and black to the panel). So clamp to the widest that exists. And the widening must
 // key off "is the extension narrower than the viewport", not off the [video] width/height path, or the
 // picker's own modes get an unwidened bar.
+//
+// The extension is rebuilt whenever the viewport width differs from the width the cached copy was made for
+// (RES5): the engine re-blits it on every size change, and the icon table slot is pointed back at the stock
+// bitmap whenever the stock width already fits.
 int __cdecl on_hud_icon_blit(int widget_id, int icon_id) {
     if (widget_id != HUD_W_EXTENSION) return icon_id;
     if (icon_id > 0x44) icon_id = 0x44;               // past the authored extensions -> use the widest
     if (!g_custom_w && g_nmodes == 0) return icon_id; // nothing of ours armed
+    if (icon_id < HUD_ICON_FIRST) return icon_id;
 
-    void          **icons = (void **)mh::addr::G_ICON_PTRS;
-    unsigned short *src   = (unsigned short *)icons[icon_id];
-    if (!src) return icon_id;
-    if ((void *)src == g_widened_for) return icon_id; // already ours
-
-    const HudWidget *hw   = (const HudWidget *)mh::addr::_G_LLM_UI_HUD_WIDGETS + HUD_W_EXTENSION;
-    const int        winw = *(const int *)mh::addr::G_WIN_W; // viewport width (window minus the panel)
-    const int        need = winw - hw->x;
-    const int        w0 = (int)src[0], h0 = (int)src[1];
-    if (w0 <= 0 || h0 <= 0 || need <= w0) return icon_id; // nothing to do (or nonsense header)
-
-    const int       split = w0 / 2; // keep [0,split) at the left and [split,w0) as the right end cap
-    unsigned short *dst =
-        (unsigned short *)VirtualAlloc(nullptr, 4 + (unsigned)need * (unsigned)h0 * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!dst) return icon_id;
-    dst[0] = (unsigned short)need;
-    dst[1] = (unsigned short)h0;
-
-    const int fill = need - w0; // extra columns, filled by replicating column (split-1)
-    for (int row = 0; row < h0; ++row) {
-        const unsigned short *s = src + 2 + row * w0;
-        unsigned short       *d = dst + 2 + row * need;
-        for (int c = 0; c < split; ++c) *d++ = s[c];
-        const unsigned short pad = s[split > 0 ? split - 1 : 0];
-        for (int c = 0; c < fill; ++c) *d++ = pad;
-        for (int c = split; c < w0; ++c) *d++ = s[c];
+    HudIconSlot &slot  = g_hud_slots[icon_id - HUD_ICON_FIRST];
+    void       **icons = (void **)mh::addr::G_ICON_PTRS;
+    if (!slot.stock) {
+        if (!icons[icon_id]) return icon_id;
+        slot.stock = icons[icon_id]; // first sight: the table still holds the engine's bitmap
     }
-    icons[icon_id] = dst;
-    g_widened_for  = dst;
-    g_widened_w    = need;
-    vid_log("; [video] HUD bottom-bar extension icon 0x%x widened %d -> %d px (viewport %d, widget x %d)", icon_id, w0,
-            need, winw, hw->x);
+    const unsigned short *src  = (const unsigned short *)slot.stock;
+    const HudWidget      *hw   = (const HudWidget *)mh::addr::_G_LLM_UI_HUD_WIDGETS + HUD_W_EXTENSION;
+    const int             winw = *(const int *)mh::addr::G_WIN_W; // viewport width (window minus the panel)
+    const int             need = winw - hw->x;
+    const int             w0 = (int)src[0], h0 = (int)src[1];
+    if (w0 <= 0 || h0 <= 0 || need <= 0 || need == w0) { // nonsense header, no room, or stock already fits
+        icons[icon_id] = slot.stock;
+        return icon_id;
+    }
+    if (!g_strip_fix && slot.built) { // the pre-RES5 behaviour: widen once, reuse at every later width
+        icons[icon_id] = slot.built;
+        return icon_id;
+    }
+    if (!slot.built || slot.built_w != need) {
+        unsigned short *dst = build_icon_width(src, need);
+        if (!dst) {
+            icons[icon_id] = slot.stock;
+            return icon_id;
+        }
+        if (slot.built) VirtualFree(slot.built, 0, MEM_RELEASE);
+        slot.built   = dst;
+        slot.built_w = need;
+        vid_log("; [video] HUD bottom-bar extension icon 0x%x rebuilt %d -> %d px (viewport %d, widget x %d)",
+                icon_id, w0, need, winw, hw->x);
+    }
+    icons[icon_id] = slot.built;
     return icon_id;
 }
 
@@ -746,6 +798,7 @@ struct ResMode {
 constexpr int MAX_MODES = 24;
 ResMode       g_modes[MAX_MODES];
 int           g_pending_ix = -1; // index being applied through the mode-2 slot (-1 = none)
+int           g_applied_ix = -1; // the picker index the mode-2 slot was last applied for (-1 = none)
 void         *g_vsm_tramp  = nullptr;
 wchar_t       g_labels[MAX_MODES][16];
 uint32_t      g_slots[MAX_MODES];
@@ -753,10 +806,23 @@ uint32_t      g_table[MAX_MODES];
 
 int g_modes_dropped = 0;
 
-void add_mode(int w, int h) {
+// `dev` = the size came from an explicit dev key (modes=): it may exceed the no-wrap cap, with a warning. Every
+// other source (the generated list, the per-machine enumeration) drops a size whose view would wrap the
+// smallest (64-tile) map: the terrain would repeat while units and buildings are drawn once.
+void add_mode(int w, int h, bool dev = false) {
     const int hr = h & ~31;
     if (w < 640 || h < 480 || (w % 32) || hr < 480) return;
     if ((w / 32) * (hr / 32) > MAX_TILES) return;
+    if (mh::gfx::reslist::view_wraps_smallest_map(w, hr)) {
+        if (!dev) {
+            vid_log("; [video] size %dx%d dropped -- its view would wrap a 64-tile map (limit %dx%d)", w, hr,
+                    mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
+            return;
+        }
+        vid_log("; [video] WARNING: modes= entry %dx%d is past the no-wrap limit %dx%d -- on a 64-tile map the "
+                "terrain shows twice and units appear in one copy",
+                w, hr, mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
+    }
     for (int i = 0; i < g_nmodes; ++i)
         if (g_modes[i].w == w && g_modes[i].h_render == hr) return; // dedupe (one entry per SIZE)
     if (g_nmodes >= MAX_MODES) {
@@ -771,9 +837,141 @@ void add_mode(int w, int h) {
 
 // Entries 0/1 are the engine's native modes; the rest come from what the display actually offers, so
 // the list can never contain a mode dgVoodoo will refuse. Ascending by area after the fixed two.
-void build_mode_list(const char *ini) {
+// =================================================================================================
+// RES3 -- the GENERATED resolution list ([video] resolution=auto|WxH).
+//
+// Under the owned backends the render size is a UI-scale choice, not a display mode, so the list is built
+// from the desktop size (gfx/res_list.cpp) instead of enumerated, and the chosen entry is pinned as the
+// session's size_mode exactly as an explicit `size_mode=` is. The list must be FINAL here: the boot buffers
+// are sized once for its largest entry (patch_mode2). An explicit `modes=` still wins over generation (the
+// rig and any mod that wants a fixed menu), and `resolution=stock` keeps the legacy picker path.
+// =================================================================================================
+bool g_res_armed  = false; // a generated list was built and its entry is pinned
+int  g_res_chosen = -1;    // g_modes index of the configured size
+int  g_desk_w     = 0;     // the desktop the list was generated for (also the presenter's integer-scale test)
+int  g_desk_h     = 0;
+bool g_user_scale = false; // [video] scale is present in the ini: the player's choice, never overridden
+
+bool desktop_size(const char *ini, int *w, int *h) {
+    char v[32];
+    mh::config::read_ini_string("video", "desktop", "", v, sizeof(v), ini); // dev override (rig: machine-independent)
+    if (v[0] && mh::gfx::reslist::parse_size(v, w, h) && *w > 0 && *h > 0) return true;
+    DEVMODEA dm;
+    ZeroMemory(&dm, sizeof(dm));
+    dm.dmSize = sizeof(dm);
+    if (!EnumDisplaySettingsA(nullptr, ENUM_CURRENT_SETTINGS, &dm)) return false;
+    *w = (int)dm.dmPelsWidth; // the process is DPI-aware (apply_dpi_awareness), so these are real pixels
+    *h = (int)dm.dmPelsHeight;
+    return *w > 0 && *h > 0;
+}
+
+// The Windows display scale in percent: the system DPI (the primary monitor's at sign-in) over 96.
+int display_scale_pct(const char *ini) {
+    const int o = mh_ini_get_int("video", "display_scale", 0, ini); // dev override
+    if (o > 0) return o;
+    typedef UINT(WINAPI * PFN_GetDpiForSystem)(void);
+    HMODULE             u32 = GetModuleHandleA("user32.dll");
+    PFN_GetDpiForSystem f   = u32 ? (PFN_GetDpiForSystem)GetProcAddress(u32, "GetDpiForSystem") : nullptr;
+    const UINT          dpi = f ? f() : 96;
+    return dpi >= 96 ? (int)(dpi * 100 / 96) : 100;
+}
+
+// Fill g_modes from the generated list. Returns false (g_nmodes untouched) when the desktop is unreadable.
+bool build_generated_list(const char *ini, const char *spec) {
+    namespace rl = mh::gfx::reslist;
+    int dw = 0, dh = 0;
+    if (!desktop_size(ini, &dw, &dh)) {
+        vid_log("; [video] resolution=%s: desktop size unreadable -- stock list", spec);
+        return false;
+    }
+    const int pct = display_scale_pct(ini);
+    rl::entry list[rl::MAX_ENTRIES];
+    int       n = rl::generate(dw, dh, list, rl::MAX_ENTRIES);
+
+    rl::entry want    = rl::auto_size(dw, dh, pct);
+    bool      is_auto = lstrcmpiA(spec, "auto") == 0;
+    if (!is_auto) {
+        int w = 0, h = 0;
+        if (!rl::parse_size(spec, &w, &h)) {
+            vid_log("; [video] resolution=%s not recognised (auto | stock | WxH) -- using auto", spec);
+            is_auto = true;
+        } else if (!rl::valid_size(w, rl::floor32(h))) {
+            vid_log("; [video] resolution=%dx%d REJECTED (multiple of 32 wide, 640x480..%dx%d -- the cap keeps the view "
+                    "from wrapping a 64-tile map --, <= %d tiles) -- using auto",
+                    w, h, rl::CAP_W, rl::CAP_H, rl::MAX_TILES);
+            is_auto = true;
+        } else {
+            if (rl::floor32(h) != h)
+                vid_log("; [video] resolution=%dx%d: height snapped down to %d for the 32px tile grid", w, h,
+                        rl::floor32(h));
+            want = rl::entry{w, rl::floor32(h), rl::k_requested};
+        }
+    }
+    int cnt = n;
+    rl::insert_sorted(list, n, rl::MAX_ENTRIES, want, &cnt);
+    n = cnt;
+
+    g_nmodes         = 0;
+    g_modes_dropped  = 0;
+    const bool owned = mh::gfx::owned_ddraw_active();
+    char       nearby[64];
+    for (int i = 0; i < n; ++i) {
+        const rl::entry &e = list[i];
+        if (i == 0) {
+            add_mode(640, 480);
+        } else if (i == 1) {
+            add_mode(800, 600); // renders 800x576
+        } else if (i == 2) {
+            add_mode(1024, 768);
+        } else {
+            // Owned backends present any size, so the display height IS the render height and the picture is
+            // centred (no unrendered bottom rows). Windows' own DirectDraw (backend=system) can only switch
+            // to a mode the monitor enumerates.
+            if (!owned && !mode_is_available(e.w, e.h, nearby, sizeof(nearby))) {
+                vid_log("; [video] resolution list: %dx%d dropped -- backend=system and the display has no such mode",
+                        e.w, e.h);
+                continue;
+            }
+            add_mode(e.w, e.h);
+        }
+    }
+    int best = -1;
+    for (int i = 0; i < g_nmodes; ++i)
+        if (g_modes[i].w == want.w && g_modes[i].h_render == want.h) best = i;
+    if (best < 0) {                        // the wanted size was filtered out: the largest listed entry that is not bigger
+        for (int i = 2; i < g_nmodes; ++i) // the list is grouped by aspect, not ascending: take the largest by area
+            if ((long)g_modes[i].w * g_modes[i].h_render <= (long)want.w * want.h &&
+                (best < 2 || (long)g_modes[i].w * g_modes[i].h_render >
+                                 (long)g_modes[best].w * g_modes[best].h_render))
+                best = i;
+        if (best < 0) best = 2;
+        vid_log("; [video] resolution: %dx%d is not available here -- using %dx%d", want.w, want.h, g_modes[best].w,
+                g_modes[best].h_render);
+    }
+    g_res_chosen = best;
+    g_res_armed  = true;
+    g_desk_w     = dw;
+    g_desk_h     = dh;
+    vid_log("; [video] resolution=%s: desktop %dx%d, display scale %d%% -> %dx%d (entry %d of %d)", spec, dw, dh, pct,
+            g_modes[best].w, g_modes[best].h_render, best, g_nmodes);
+    for (int i = 0; i < g_nmodes && i < n; ++i) {
+        char      lab[64];
+        rl::entry e = rl::entry{g_modes[i].w, g_modes[i].h_render, i < 3 ? (int)rl::k_stock : (int)rl::k_native};
+        rl::describe(e, dw, dh, lab, sizeof(lab));
+        vid_log("; [video]   list [%d] %s", i, lab);
+    }
+    return true;
+}
+
+void build_mode_list(const char *ini, const char *res_spec) {
     g_nmodes        = 0;
     g_modes_dropped = 0;
+    // An explicit `modes=` below wins over generation; otherwise [video] resolution (auto | WxH) generates.
+    char explicit_modes[8];
+    mh::config::read_ini_string("video", "modes", "", explicit_modes, sizeof(explicit_modes), ini);
+    if (res_spec && !explicit_modes[0] && build_generated_list(ini, res_spec)) return;
+    if (res_spec && explicit_modes[0])
+        vid_log("; [video] resolution=%s ignored -- an explicit modes= list wins", res_spec);
     add_mode(640, 480);
     add_mode(800, 600); // renders 800x576
 
@@ -790,7 +988,7 @@ void build_mode_list(const char *ini) {
             } else if (*p == 'x' || *p == 'X') {
                 cur = &h;
             } else { // separator or terminator
-                if (w && h) add_mode(w, h);
+                if (w && h) add_mode(w, h, true);
                 w = h = 0;
                 cur   = &w;
                 if (!*p) break;
@@ -914,15 +1112,57 @@ extern "C" int __cdecl on_view_set_mode_pre(int m) {
         vid_log("; [video] picker: re-poke FAILED for index %d -- falling back to the current mode", m);
         return 2;
     }
-    *(int *)mh::addr::_G_LLM_VIEW_SIZE_MODE_CACHE = -1;
-    g_pending_ix                                  = m;
+    // Clear the cache so a change between two picker entries is not cut short. A request for the entry that is
+    // already applied (the cache still says mode 2) is left alone: the game's own `cache == param` early-out then
+    // skips the whole re-apply (a window move, a display-mode change and a surface rebuild for nothing).
+    int &cache = *(int *)mh::addr::_G_LLM_VIEW_SIZE_MODE_CACHE;
+    if (!(m == g_applied_ix && cache == 2)) cache = -1;
+    g_pending_ix = m;
     return 2;
 }
 
+// RES5: the bottom-strip surface is a one-shot buffer shared by every mode (pitch = G_WIN_W*2, 32 rows), so a
+// size change reinterprets whatever the previous mode left in it. Everything the HUD owns there is redrawn on
+// the resize, but any column no draw covers would otherwise show the old mode's bytes at the new pitch. Clear
+// it to black on every size change; the strip is a pure HUD back-buffer (ground tiles copy it out).
+constexpr uintptr_t ADDR_STRIP_SURFACE = 0x00603b08; // pointer variable: the G_WIN_W x 32 px bottom strip
+size_t              g_strip_cap        = 0;          // bytes the boot allocation holds (sized for the largest entry)
+void                clear_strip_surface() {
+    if (!g_strip_fix) return;
+    void     *strip = *(void **)ADDR_STRIP_SURFACE;
+    const int w     = *(const int *)mh::addr::G_WIN_W;
+    if (!strip || w <= 0 || g_strip_cap == 0) return;
+    const size_t n = (size_t)w << 6;
+    if (n > g_strip_cap) return; // never past the allocation
+    ZeroMemory(strip, n);
+}
+
+// RES3: the picture is presented at its rendered size, centred. A whole-number ratio to the desktop is scaled by
+// whole multiples (pixel-exact); a fractional one fits with the [video] filter (area by default). A [video] scale
+// in the ini is the player's explicit choice and is never overridden.
+void apply_presentation_scale(int mode_ix) {
+    if (!g_res_armed || g_user_scale || !mh::gfx::owned_ddraw_active()) return;
+    if (mode_ix < 0 || mode_ix >= g_nmodes) return;
+    const ResMode &m       = g_modes[mode_ix];
+    const bool     integer = mh::gfx::reslist::integer_scale_ok(g_desk_w, g_desk_h, m.w, m.h_render);
+    mh::gfx::owned_set_integer_scale(integer);
+    static int s_last_w = 0, s_last_h = 0;
+    if (s_last_w != m.w || s_last_h != m.h_render) { // once per size, not per call
+        s_last_w = m.w;
+        s_last_h = m.h_render;
+        vid_log("; [video] presentation: %dx%d on a %dx%d desktop -> %s scaling", m.w, m.h_render, g_desk_w, g_desk_h,
+                integer ? "integer" : "fit");
+    }
+}
+
 extern "C" int __cdecl on_view_set_mode_post(int applied) {
+    clear_strip_surface();
+    mh::video::panel_rows_on_size_change(); // RES7: scroll bodies to the new height, rows past it hidden
+    apply_presentation_scale(g_pending_ix >= 0 ? g_pending_ix : applied);
     if (g_pending_ix < 0) return applied;
     int ix       = g_pending_ix;
     g_pending_ix = -1;
+    g_applied_ix = ix;
     return ix; // report the real index, so the preference (and setup.dat) stores it
 }
 
@@ -940,6 +1180,245 @@ __declspec(naked) void view_set_size_mode_detour() {
     }
 }
 // clang-format on
+
+// =================================================================================================
+// RES6 -- the galaxy / planet-select screen at its native 1024x768.
+//
+// The screen's art (one background per stock mode, the Back button and the info panel baked into it) and its
+// widget offsets are authored for 1024x768, so at any larger picker size it was a stretched picture with the
+// planets laid out against a different grid. Instead, when the screen opens at a picker size other than
+// 1024x768, switch the game to the stock 1024x768 mode (picker slot 2) exactly as the Options dialog's Ok
+// does, and let the presenter scale it to the window like any other mode; the art, the planets, the text and the
+// cursor then share one scale.
+//
+// The return trip is the engine's own. llm_ui_planet_select_screen_open caches the view size, and every way out
+// of the screen (Back/Esc, launching a planet, the outcome dialog) goes through llm_dlg_close_and_resume ->
+// llm_menu_finish_enter_gameplay -> llm_menu_enter_gameplay -> llm_map_view_size_mode_apply, which re-applies
+// that cache (llm_view_set_size_mode) and re-centres the camera for the viewport change. So all this has to do
+// is (1) switch before the build, with the build's own cache write replaced by the size to restore, (2) re-centre
+// the camera for the switch the way the restore does, so the pair cancels exactly, and (3) re-assert the cache at
+// the restore, whatever a menu opened over the screen wrote into it. A switch to 1024x768 and back is a real size
+// change both ways, so the borderless window, the owned surfaces, the strip cache and the presentation scale
+// follow the same paths as any picker change.
+// =================================================================================================
+constexpr uintptr_t ADDR_WINDOW_W = mh::addr::WindowWidth;
+constexpr uintptr_t ADDR_WINDOW_H = mh::addr::WindowHeight;
+constexpr uintptr_t ADDR_VIEW_W   = mh::addr::G_WIN_W;
+constexpr uintptr_t ADDR_VIEW_H   = mh::addr::G_WIN_H;
+constexpr uintptr_t ADDR_CAM_COL  = mh::addr::_G_LLM_MAP_CAM_COL;
+constexpr uintptr_t ADDR_CAM_ROW  = mh::addr::_G_LLM_MAP_CAM_ROW;
+constexpr uintptr_t ADDR_MAPGEOM  = mh::addr::general; // +8 width_mask, +0x20 height_mask
+
+bool g_galaxy_native  = true;  // [video] galaxy_native=0 keeps the stretched screen (guards only)
+bool g_galaxy_active  = false; // the screen is open in the native mode; a restore to g_galaxy_prev_ix is pending
+int  g_galaxy_prev_ix = -1;    // the picker index to restore
+
+uintptr_t g_view_apply_target = 0x004b8038u; // llm_map_view_size_mode_apply
+uintptr_t g_planet_build_orig = 0x004c5de5u; // llm_ui_planet_select_screen_build
+
+int rd_i(uintptr_t a) { return *(const int *)a; }
+
+// ---- the cursor carry (RES6 follow-up, user live test of rev 8) ----------------------------------------------
+// Every size change runs llm_gfx_apply_window_resolution (0x00428a0f) -> llm_gfx_display_init (0x0042648a, call
+// 0x00428ac2), which re-inits the mouse for the new mode: llm_input_mouse_init (0x004d1070) sets the DI accumulator
+// _G_LLM_INPUT_MOUSE_LAST_X/Y to W/2,H/2 (0x004d108c), the game's SetCursorPos thunk (0x004d1138, call 0x004264f4)
+// warps the OS pointer to W/2,H/2, and _G_LLM_CURSOR_X/Y = W/2,H/2. So every galaxy enter put the cursor at 512,384
+// and every exit at the picker mode's centre. Stock does exactly that on its own size changes too (the 640x480 ESC
+// menu and back, Options > Screen size), and those keep it. The galaxy switch carries the cursor instead: the old
+// game point -> where it was on the screen (the old mode's image rect) -> the new mode's pixel there (its image rect,
+// fit / stretch / integer and bars as presented), clamped to the new image; then every copy the pump reads is set to
+// it (drawn cursor, menu cursor, DI accumulator) and the OS pointer is warped through the game's own SetCursorPos, so
+// the next delta (DI) or the next WM_MOUSEMOVE (message path) continues from there. Without an owned window
+// (backend=system, no_window) there is no image rect to read: the point is scaled by the mode ratio (a stretch).
+constexpr uintptr_t ADDR_CUR_X          = mh::addr::_G_LLM_CURSOR_X; // UNALIGNED (0x005204a1): memcpy only
+constexpr uintptr_t ADDR_CUR_Y          = mh::addr::_G_LLM_CURSOR_Y;
+constexpr uintptr_t ADDR_CUR_MENU_X     = 0x00e58cccu; // _G_LLM_CURSOR_MENU_X
+constexpr uintptr_t ADDR_CUR_MENU_Y     = 0x00e58cc8u; // _G_LLM_CURSOR_MENU_Y (the lower address)
+constexpr uintptr_t ADDR_MOUSE_LAST_X   = mh::addr::_G_LLM_INPUT_MOUSE_LAST_X;
+constexpr uintptr_t ADDR_MOUSE_LAST_Y   = mh::addr::_G_LLM_INPUT_MOUSE_LAST_Y;
+constexpr uintptr_t GAME_SET_CURSOR_POS = 0x004d1138u; // __watcall(x, y): SetCursorPos through the exe's import slot
+
+bool g_galaxy_cursor = true; // [video] galaxy_cursor=0: the switch keeps the stock re-centring (fix-off)
+
+struct cursor_carry {
+    bool  armed;
+    bool  on_screen; // `scr` holds the screen point (an owned window mapped it)
+    POINT scr;
+    int   old_w, old_h, gx, gy;
+};
+cursor_carry g_carry = {};
+
+int rd_u(uintptr_t a) {
+    int v;
+    memcpy(&v, (const void *)a, 4);
+    return v;
+}
+void wr_u(uintptr_t a, int v) { memcpy((void *)a, &v, 4); }
+
+// Before the switch: where the drawn cursor is, in game pixels and on the screen.
+void cursor_capture() {
+    g_carry.armed = false;
+    if (!g_galaxy_cursor) return;
+    g_carry.old_w     = rd_i(ADDR_WINDOW_W);
+    g_carry.old_h     = rd_i(ADDR_WINDOW_H);
+    g_carry.gx        = rd_u(ADDR_CUR_X);
+    g_carry.gy        = rd_u(ADDR_CUR_Y);
+    POINT p           = {g_carry.gx, g_carry.gy};
+    g_carry.on_screen = mh::gfx::owned_game_to_screen(&p);
+    g_carry.scr       = p;
+    g_carry.armed     = g_carry.old_w > 0 && g_carry.old_h > 0;
+}
+
+// After the switch (and after the size change re-centred it): put the cursor back on that screen point.
+void cursor_restore(const char *where) {
+    if (!g_carry.armed) return;
+    g_carry.armed = false;
+    const int w = rd_i(ADDR_WINDOW_W), h = rd_i(ADDR_WINDOW_H);
+    if (w <= 0 || h <= 0) return;
+    POINT      p   = g_carry.scr;
+    const bool scr = g_carry.on_screen && mh::gfx::owned_screen_to_game(&p);
+    if (!scr) {
+        p.x = (int)((long long)g_carry.gx * w / g_carry.old_w);
+        p.y = (int)((long long)g_carry.gy * h / g_carry.old_h);
+    }
+    p.x             = p.x < 0 ? 0 : p.x >= w ? w - 1
+                                             : p.x;
+    p.y             = p.y < 0 ? 0 : p.y >= h ? h - 1
+                                             : p.y;
+    const int was_x = rd_u(ADDR_CUR_X), was_y = rd_u(ADDR_CUR_Y);
+    wr_u(ADDR_CUR_X, p.x);
+    wr_u(ADDR_CUR_Y, p.y);
+    *(int *)ADDR_CUR_MENU_X   = p.x;
+    *(int *)ADDR_CUR_MENU_Y   = p.y;
+    *(int *)ADDR_MOUSE_LAST_X = p.x;
+    *(int *)ADDR_MOUSE_LAST_Y = p.y;
+    mh::gfx::owned_refresh_clip(); // the new mode's clip first, or the warp is clamped to the old image
+    mh::call::detail::s_void_EAX_EDX(GAME_SET_CURSOR_POS, (uint32_t)p.x, (uint32_t)p.y);
+    // The OS pointer read back through the same map: where the next WM_MOUSEMOVE would put the cursor.
+    POINT os = {-1, -1};
+    if (scr && GetCursorPos(&os) && !mh::gfx::owned_screen_to_game(&os)) os.x = os.y = -1;
+    vid_log("; [video] galaxy cursor (%s): %d,%d in %dx%d -> %d,%d in %dx%d (%s; the size change had put it at %d,%d; "
+            "OS pointer reads back as %ld,%ld)",
+            where, g_carry.gx, g_carry.gy, g_carry.old_w, g_carry.old_h, p.x, p.y, w, h,
+            scr ? "same screen point" : "scaled, no owned window", was_x, was_y, os.x, os.y);
+}
+
+// What llm_map_view_size_mode_apply does around a size change, applied to the switch we make: the camera
+// holds the map point at the viewport centre. Same arithmetic as the stock code (half = width / 64 tiles).
+void recenter_for_view_change(int old_w, int old_h) {
+    const uint32_t wm = (uint32_t)rd_i(ADDR_MAPGEOM + 8), hm = (uint32_t)rd_i(ADDR_MAPGEOM + 0x20);
+    const uint32_t col = wm & (uint32_t)((old_w >> 6) + rd_i(ADDR_CAM_COL));
+    const uint32_t row = hm & (uint32_t)((old_h >> 6) + rd_i(ADDR_CAM_ROW));
+    mh::call::llm_map_cam_set_col((int32_t)((col - (uint32_t)(rd_i(ADDR_VIEW_W) >> 6)) & wm));
+    mh::call::llm_map_cam_set_row((int32_t)((row - (uint32_t)(rd_i(ADDR_VIEW_H) >> 6)) & hm));
+}
+
+extern "C" void __cdecl on_galaxy_open_pre() {
+    if (!g_galaxy_native || g_galaxy_active) return;
+    const int ix = rd_i(ADDR_SIZE_MODE);
+    if (!g_imm_seeded || g_nmodes <= 3 || ix < 3 || ix >= g_nmodes) return; // stock modes have their own art
+    if (g_modes[2].w != 1024 || g_modes[2].h_req != 768) return;            // slot 2 is not the stock mode
+    if (rd_i(ADDR_WINDOW_W) == 1024 && rd_i(ADDR_WINDOW_H) == 768) return;  // already native
+    const int old_w = rd_i(ADDR_VIEW_W), old_h = rd_i(ADDR_VIEW_H);
+    vid_log("; [video] galaxy native: %dx%d (picker %d) -> 1024x768 for the planet-select screen", rd_i(ADDR_WINDOW_W),
+            rd_i(ADDR_WINDOW_H), ix);
+    cursor_capture();
+    const int applied      = mh::call::llm_view_set_size_mode(2); // the detour: picker slot 2, a real change
+    *(int *)ADDR_SIZE_MODE = applied;                             // what llm_map_view_size_mode_apply stores
+    recenter_for_view_change(old_w, old_h);
+    g_galaxy_prev_ix = ix;
+    g_galaxy_active  = true;
+    MH_MapZoom_ReseedWheel();
+}
+
+// After the build (which wrote the cache from the native mode): the size to restore on exit is the picker one.
+extern "C" void __cdecl on_galaxy_open_post() {
+    if (g_galaxy_active) *(int *)ADDR_MODE_CACHE = g_galaxy_prev_ix;
+    cursor_restore("enter");
+}
+
+// Before the resume's size restore: re-assert the cache, so it holds whatever a menu opened over the screen
+// did not overwrite.
+extern "C" void __cdecl on_view_apply_pre() {
+    if (!g_galaxy_active) return;
+    *(int *)ADDR_MODE_CACHE = g_galaxy_prev_ix;
+    g_galaxy_active         = false;
+    vid_log("; [video] galaxy native: leaving the screen, restoring picker %d", g_galaxy_prev_ix);
+    MH_MapZoom_ReseedWheel(); // the wheel counter restarts with the size change; the zoom itself is kept
+    cursor_capture();
+}
+
+// After llm_map_view_size_mode_apply restored the picker size (llm_gfx_display_init re-centred the cursor in it).
+extern "C" void __cdecl on_view_apply_post() { cursor_restore("exit"); }
+
+// clang-format off
+// Both replace a `CALL <original>` (no stack arguments): run the hook, the original as a subroutine, then the
+// follow-up. Every register the original returns is preserved around the hooks.
+__declspec(naked) void planet_build_thunk() {
+    __asm {
+        pushad
+        pushfd
+        call on_galaxy_open_pre
+        popfd
+        popad
+        call dword ptr [g_planet_build_orig]
+        pushad
+        pushfd
+        call on_galaxy_open_post
+        popfd
+        popad
+        ret
+    }
+}
+
+__declspec(naked) void view_apply_thunk() {
+    __asm {
+        pushad
+        pushfd
+        call on_view_apply_pre
+        popfd
+        popad
+        call dword ptr [g_view_apply_target]
+        pushad
+        pushfd
+        call on_view_apply_post
+        popfd
+        popad
+        ret
+    }
+}
+// clang-format on
+
+bool arm_galaxy_native(const char *ini) {
+    g_galaxy_native = mh_ini_get_int("video", "galaxy_native", 1, ini) != 0;
+    g_galaxy_cursor = mh_ini_get_int("video", "galaxy_cursor", 1, ini) != 0;
+    if (!g_galaxy_native) {
+        vid_log("; [video] galaxy native DISABLED ([video] galaxy_native=0): the planet-select screen stays stretched");
+        return false;
+    }
+    struct site {
+        uintptr_t addr;
+        int32_t   rel;
+        void     *thunk;
+    };
+    const site S[] = {{mh::addr::ui_planet_build_call_site, (int32_t)(0x004c5de5u - (mh::addr::ui_planet_build_call_site + 5)), (void *)planet_build_thunk},
+                      {mh::addr::ui_view_apply_call_a, (int32_t)(0x004b8038u - (mh::addr::ui_view_apply_call_a + 5)), (void *)view_apply_thunk},
+                      {mh::addr::ui_view_apply_call_b, (int32_t)(0x004b8038u - (mh::addr::ui_view_apply_call_b + 5)), (void *)view_apply_thunk}};
+    for (const site &s : S) {
+        uint8_t expect[5] = {0xE8, 0, 0, 0, 0}, repl[5] = {0xE8, 0, 0, 0, 0};
+        memcpy(expect + 1, &s.rel, 4);
+        const int32_t to = (int32_t)((uintptr_t)s.thunk - (s.addr + 5));
+        memcpy(repl + 1, &to, 4);
+        if (!mh::hook::patch_bytes_guarded(s.addr, expect, repl, 5)) {
+            vid_log("; [video] galaxy native NOT armed (expected bytes not found at %08x)", (unsigned)s.addr);
+            return false;
+        }
+    }
+    vid_log("; [video] galaxy native armed: the planet-select screen opens at the stock 1024x768 and restores the picker size on exit; "
+            "cursor carry %s",
+            g_galaxy_cursor ? "on" : "OFF ([video] galaxy_cursor=0: the size change re-centres it, stock)");
+    return true;
+}
 
 bool install_hud_chrome() {
     // U30: one call instead of a compare and a call -- the primitive distinguishes a wrong build from
@@ -1561,13 +2040,14 @@ extern "C" void MH_Video_ApplyProcessAttrs(void) {
     if (!mh::en_build_ok()) return; // EN-only
     char ini[MAX_PATH];
     video_ini_path(ini);
-    apply_dpi_awareness();                // before any window exists (we are inside DllMain)
-    mh::gfx::install_owned_ddraw(ini);    // PT-GFX1: [video] backend (default system = untouched)
-    mh::input::install_owned_dinput(ini); // PT-INPUT1: [input] backend (default system = untouched)
-    apply_no_present(ini);                // headless: cut the blit, keep the composed frame
-    apply_no_window(ini);                 // true headless: never map a window at all
-    apply_fps_cap(ini);                   // [video] fps_cap: bound the headless spin (multi-peer lanes)
-    install_movie_tick(ini);              // the one trampoline both the keeper and [harness] skip_intro_avi need
+    apply_dpi_awareness();                      // before any window exists (we are inside DllMain)
+    mh::gfx::install_owned_ddraw(ini);          // PT-GFX1: [video] backend (default system = untouched)
+    mh::video::install_mode_change_guards(ini); // stock-identical in range; [video] mode_guards=0 disarms
+    mh::input::install_owned_dinput(ini);       // PT-INPUT1: [input] backend (default system = untouched)
+    apply_no_present(ini);                      // headless: cut the blit, keep the composed frame
+    apply_no_window(ini);                       // true headless: never map a window at all
+    apply_fps_cap(ini);                         // [video] fps_cap: bound the headless spin (multi-peer lanes)
+    install_movie_tick(ini);                    // the one trampoline both the keeper and [harness] skip_intro_avi need
 }
 
 extern "C" int MH_Video_Install(void) {
@@ -1580,6 +2060,7 @@ extern "C" int MH_Video_Install(void) {
 
     char nearby[128];
     g_size_mode = mh_ini_get_int("video", "size_mode", -1, ini);
+    g_strip_fix = mh_ini_get_int("video", "strip_fix", 1, ini) != 0;
 
     // A custom size takes over mode 2 and implies it: [video] width/height is the "or higher" half of
     // D13. Both must be given; everything below is validated BEFORE anything is written.
@@ -1622,6 +2103,10 @@ extern "C" int MH_Video_Install(void) {
                         cw, h_render);
             vid_log("; [video] custom res ARMED as mode 2: %dx%d, %d x %d tiles (%d of %d)", cw, h_render, cw / 32,
                     h_render / 32, tiles, MAX_TILES);
+            if (mh::gfx::reslist::view_wraps_smallest_map(cw, h_render))
+                vid_log("; [video] WARNING: custom res %dx%d is past the no-wrap limit %dx%d -- on a 64-tile map the "
+                        "terrain shows twice and units appear in one copy",
+                        cw, h_render, mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
             fix_options_label(cw, h_render);
             g_custom_w  = cw;
             g_custom_h  = h_render;
@@ -1632,8 +2117,18 @@ extern "C" int MH_Video_Install(void) {
     // D13b -- the options-menu PICKER. Independent of [video] width/height: it needs the same engine
     // plumbing (guard, relocated arrays, mode-2 immediates), so if a custom size did not already arm
     // them, arm them here for the largest entry in the list.
-    if (mh_ini_get_int("video", "picker", 0, ini)) {
-        build_mode_list(ini);
+    char res_spec[32];
+    mh::config::read_ini_string("video", "resolution", "stock", res_spec, sizeof(res_spec), ini);
+    const bool res_stock          = res_spec[0] == 0 || lstrcmpiA(res_spec, "stock") == 0;
+    const bool size_mode_explicit = g_size_mode >= 0;
+    {
+        char sc[8];
+        mh::config::read_ini_string("video", "scale", "?", sc, sizeof(sc), ini);
+        g_user_scale = !(sc[0] == '?' && sc[1] == 0);
+    }
+    int picker_maxh = 0; // the armed picker's tallest entry (RES7)
+    if (mh_ini_get_int("video", "picker", 0, ini) || !res_stock) {
+        build_mode_list(ini, res_stock ? nullptr : res_spec);
         if (g_nmodes <= 3) {
             vid_log("; [video] picker NOT armed -- only %d usable modes found, no more than the stock 3", g_nmodes);
         } else {
@@ -1643,8 +2138,11 @@ extern "C" int MH_Video_Install(void) {
                 if (g_modes[i].w > maxw) maxw = g_modes[i].w;
                 if (g_modes[i].h_render > maxh) maxh = g_modes[i].h_render;
             }
-            const int start = (g_custom_w ? 2 : 2); // entry 2 is the first non-native mode
-            bool      ok    = g_custom_w != 0;      // the custom-size path already armed everything below
+            if (mh_ini_get_int("video", "mode_guards", 1, ini) != 0) // PT-GFX9 guard (kill switch shared with the others)
+                mh::gfx::owned_reserve_frame(maxw, maxh);            // the owned frame covers the largest reachable mode
+            g_strip_cap     = (size_t)(maxw - 0xa0) << 6;            // the boot allocation: G_WIN_W << 6 for the widest entry
+            const int start = (g_custom_w ? 2 : 2);                  // entry 2 is the first non-native mode
+            bool      ok    = g_custom_w != 0;                       // the custom-size path already armed everything below
             if (!ok)
                 ok = install_reentrancy_guard() && install_hud_chrome() && relocate_view_arrays() &&
                      patch_mode2(g_modes[start].w, g_modes[start].h_req, g_modes[start].h_render, maxw, maxh);
@@ -1662,10 +2160,19 @@ extern "C" int MH_Video_Install(void) {
                 vid_log("; [video] picker NOT armed -- spinner rewrite failed (see above)");
             } else {
                 vid_log("; [video] picker: boot buffers sized for %dx%d (largest entry)", maxw, maxh);
-                if (g_size_mode < 0) g_size_mode = 0; // arm the menu-load pin so the preference is honoured
+                picker_maxh = maxh;
+                arm_galaxy_native(ini);
+                if (g_res_armed && !size_mode_explicit && g_res_chosen >= 0)
+                    g_size_mode = g_res_chosen; // the configured size is the session's size
+                else if (g_size_mode < 0)
+                    g_size_mode = 0; // arm the menu-load pin so the preference is honoured
             }
         }
     }
+
+    // RES7: the side-panel lists fill the panel at every size the session can reach: their tables are grown for
+    // the tallest one (the picker list is final now; the custom size counts too). Nothing taller than 768: no-op.
+    mh::video::install_panel_rows(ini, picker_maxh > g_custom_h ? picker_maxh : g_custom_h);
 
     // The upper bound depends on whether the picker widened the list: with it armed, size_mode selects
     // any entry (which is also how a resolution is pinned for a test without clicking through the menu).

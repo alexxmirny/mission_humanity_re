@@ -57,3 +57,8 @@ extern "C" int MH_LibmhModule_IsBound(void) { return 1; }
 // boundary", and in this image the question has no subject. Reporting a zero here would be a
 // number that looks like the failure it is meant to detect.
 extern "C" void MH_Libmh_OnPresent(void) {}
+
+// mp:Q3 -- net_seams.cpp's install_order_record asks whether the harness module is bound (its own
+// order_mode owns the dispatch stream). The harness is compiled into this image like the rest, so the
+// answer is the same as the two above; no suite reaches that install (it needs a live game).
+extern "C" int MH_HarnessModule_IsBound(void) { return 1; }

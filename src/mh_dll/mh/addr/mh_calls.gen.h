@@ -216,7 +216,7 @@ inline void game_RemoveFromAvailableBuildings(uint32_t player, int32_t b_i) { de
 inline void game_AddProjectToAvailable(uint32_t player, uint32_t p_i) { detail::s_void_EAX_EDX(0x0041422eu, (uint32_t)player, (uint32_t)p_i); }  // __watcall 0x0041422e
 inline void game_RemoveFromAvailableProjects(uint32_t player, uint32_t p_i) { detail::s_void_EAX_EDX(0x0041428eu, (uint32_t)player, (uint32_t)p_i); }  // __watcall 0x0041428e
 inline void llm_ui_hud_panel_title_draw(char *title_text) { detail::s_void_EAX(0x00414313u, (uint32_t)(uintptr_t)title_text); }  // __watcall 0x00414313
-inline void llm_ui_hud_topbar_tick(int32_t panel_target_index) { detail::s_void_EAX(0x00414395u, (uint32_t)panel_target_index); }  // __watcall 0x00414395
+inline void llm_ui_hud_bottom_strip_tick(int32_t panel_target_index) { detail::s_void_EAX(0x00414395u, (uint32_t)panel_target_index); }  // __watcall 0x00414395
 inline void llm_ui_chat_input_process_scancodes() { detail::s_void(0x00414a4eu); }  // __watcall 0x00414a4e
 inline void llm_chat_history_push() { detail::s_void(0x00415475u); }  // __watcall 0x00415475
 inline void llm_chat_history_reset_cursor() { detail::s_void(0x00415565u); }  // __watcall 0x00415565
@@ -271,7 +271,7 @@ inline void llm_ui_list_item_icon_label_draw(int32_t slot_id, int32_t mode) { de
 inline void llm_strat_ui_unit_panel_tick(int32_t icon_entry_base) { detail::s_void_EAX(0x00419549u, (uint32_t)icon_entry_base); }  // __watcall 0x00419549
 inline void llm_ui_selection_panel_refresh(int32_t icon_entry_base) { detail::s_void_EAX(0x004197bau, (uint32_t)icon_entry_base); }  // __watcall 0x004197ba
 inline void LoadPanelData() { detail::s_void(0x00419adbu); }  // __watcall 0x00419adb
-inline void llm_util_unpack_static_category_table() { detail::s_void(0x00419b98u); }  // __watcall 0x00419b98
+inline void llm_ui_icon_table_unpack() { detail::s_void(0x00419b98u); }  // __watcall 0x00419b98
 inline void llm_gfx_palette_scale_rgb(uint16_t *dst_palette, uint16_t *src_palette, int32_t *rgb_scale) { detail::s_void_EAX_EDX_EBX(0x00419c16u, (uint32_t)(uintptr_t)dst_palette, (uint32_t)(uintptr_t)src_palette, (uint32_t)(uintptr_t)rgb_scale); }  // __mh_watcall_ebx_volatile 0x00419c16
 inline void llm_ui_hud_widget_define(int32_t widget_id, int32_t x, int32_t y, int32_t right, int32_t bottom, void *callback, int32_t cb_arg, int32_t text_id) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4(0x00419cffu, (uint32_t)widget_id, (uint32_t)x, (uint32_t)y, (uint32_t)right, (uint32_t)bottom, (uint32_t)(uintptr_t)callback, (uint32_t)cb_arg, (uint32_t)text_id); }  // __watcall 0x00419cff
 inline void llm_ui_hud_color_slot_set(int32_t r, int32_t g, int32_t b, int32_t font_id, int32_t slot_index) { detail::s_void_EAX_EBX_EDX_ECX_S4(0x00419d84u, (uint32_t)r, (uint32_t)g, (uint32_t)b, (uint32_t)font_id, (uint32_t)slot_index); }  // __mh_watcall_ebx_volatile 0x00419d84
@@ -286,7 +286,7 @@ inline void llm_ui_frame_tick() { detail::s_void(0x0041b1ccu); }  // __watcall 0
 inline void llm_input_mouse_button_hold_update() { detail::s_void(0x0041b43cu); }  // __watcall 0x0041b43c
 inline int32_t llm_ui_hud_widget_hit_test(int32_t widget_id) { return (int32_t)detail::s_u32_EAX(0x0041b64bu, (uint32_t)widget_id); }  // __watcall 0x0041b64b
 inline int32_t llm_ui_icon_rect_hit_test(int32_t icon_index) { return (int32_t)detail::s_u32_EAX(0x0041b6dbu, (uint32_t)icon_index); }  // __watcall 0x0041b6db
-inline int32_t llm_ui_icon_rect_hit_test_cached(int32_t icon_index) { return (int32_t)detail::s_u32_EAX(0x0041b76cu, (uint32_t)icon_index); }  // __watcall 0x0041b76c
+inline int32_t llm_ui_icon_rect_hit_test_release_pos(int32_t icon_index) { return (int32_t)detail::s_u32_EAX(0x0041b76cu, (uint32_t)icon_index); }  // __watcall 0x0041b76c
 inline int32_t llm_ui_icon_rect_hit_test_rmb(int32_t widget_id) { return (int32_t)detail::s_u32_EAX(0x0041b7fdu, (uint32_t)widget_id); }  // __watcall 0x0041b7fd
 inline int32_t llm_ui_icon_rect_hit_test_rmb_cached(int32_t widget_id) { return (int32_t)detail::s_u32_EAX(0x0041b88eu, (uint32_t)widget_id); }  // __watcall 0x0041b88e
 inline void llm_ui_slot_icon_draw(int32_t slot_idx, int32_t icon_idx) { detail::s_void_EAX_EDX(0x0041b91fu, (uint32_t)slot_idx, (uint32_t)icon_idx); }  // __watcall 0x0041b91f
@@ -390,6 +390,7 @@ inline void llm_strat_minimap_cam_goto(uint32_t mode, int32_t marker_slot) { det
 inline void llm_tact_move_find_approach_tile(int32_t from_col, int32_t from_row, int32_t target_col, int32_t target_row, int32_t ring_radius_min, int32_t ring_radius_max, uint32_t *out_col, uint32_t *out_row, int32_t unused_param9, void *out_dir) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4_S4(0x00427c6cu, (uint32_t)from_col, (uint32_t)from_row, (uint32_t)target_col, (uint32_t)target_row, (uint32_t)ring_radius_min, (uint32_t)ring_radius_max, (uint32_t)(uintptr_t)out_col, (uint32_t)(uintptr_t)out_row, (uint32_t)unused_param9, (uint32_t)(uintptr_t)out_dir); }  // __watcall 0x00427c6c
 inline void llm_gfx_draw_sprite_with_bar(int32_t sprite_id, int32_t x, int32_t y, int32_t fill_percent, uint16_t viewbox_width) { detail::s_void_EAX_EDX_EBX_ECX_S4(0x00428201u, (uint32_t)sprite_id, (uint32_t)x, (uint32_t)y, (uint32_t)fill_percent, (uint32_t)viewbox_width); }  // __mh_watcall_ecx_ebx_volatile 0x00428201
 inline void llm_gfx_build_bar_sprite_rle(int32_t sprite_id, int32_t bar_row_count, int32_t fill_percent, uint16_t viewbox_width) { detail::s_void_EAX_EDX_EBX_ECX(0x004282a3u, (uint32_t)sprite_id, (uint32_t)bar_row_count, (uint32_t)fill_percent, (uint32_t)viewbox_width); }  // __mh_watcall_ebx_volatile 0x004282a3
+inline void llm_gfx_set_window_resolution(int32_t w, int32_t h) { detail::s_void_EAX_EDX(0x004285c7u, (uint32_t)w, (uint32_t)h); }  // __watcall 0x004285c7
 inline void llm_tact_gfx_init_view_tile_ptrs() { detail::s_void(0x00428802u); }  // __watcall 0x00428802
 inline void llm_gfx_display_mode_apply() { detail::s_void(0x00428981u); }  // __watcall 0x00428981
 inline void llm_gfx_display_teardown() { detail::s_void(0x004289cfu); }  // __watcall 0x004289cf
@@ -1537,7 +1538,7 @@ inline void llm_gfx_draw_sprite(int32_t sprite_id, int32_t dst_x, int32_t dst_y)
 inline void llm_gfx_draw_sprite_dark(int32_t sprite_id, int32_t dst_x, int32_t dst_y) { detail::s_void_EAX_EDX_EBX(0x004a889fu, (uint32_t)sprite_id, (uint32_t)dst_x, (uint32_t)dst_y); }  // __watcall 0x004a889f
 inline void llm_gfx_draw_sprite_unclipped(int32_t sprite_id, int32_t dst_x, int32_t dst_y) { detail::s_void_EAX_EDX_EBX(0x004a8923u, (uint32_t)sprite_id, (uint32_t)dst_x, (uint32_t)dst_y); }  // __watcall 0x004a8923
 inline void llm_gfx_draw_sprite_clipped_width(int32_t param_1, int32_t param_2, int32_t a2, int32_t param_4, int32_t param_5) { detail::s_void_EAX_EDX_EBX_ECX_S4(0x004a89dbu, (uint32_t)param_1, (uint32_t)param_2, (uint32_t)a2, (uint32_t)param_4, (uint32_t)param_5); }  // __watcall 0x004a89db
-inline void llm_ui_set_draw_surface(void *surface, int32_t pitch, int32_t x, int32_t y, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h, void *src_bitmap) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4(0x004a8b73u, (uint32_t)(uintptr_t)surface, (uint32_t)pitch, (uint32_t)x, (uint32_t)y, (uint32_t)clip_x, (uint32_t)clip_y, (uint32_t)clip_w, (uint32_t)clip_h, (uint32_t)(uintptr_t)src_bitmap); }  // __watcall 0x004a8b73
+inline void llm_ui_blit_bitmap_rect(void *surface, int32_t pitch, int32_t x, int32_t y, int32_t clip_x, int32_t clip_y, int32_t clip_w, int32_t clip_h, void *src_bitmap) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4(0x004a8b73u, (uint32_t)(uintptr_t)surface, (uint32_t)pitch, (uint32_t)x, (uint32_t)y, (uint32_t)clip_x, (uint32_t)clip_y, (uint32_t)clip_w, (uint32_t)clip_h, (uint32_t)(uintptr_t)src_bitmap); }  // __watcall 0x004a8b73
 inline uint32_t InitSafe(int32_t param_1) { return (uint32_t)detail::s_u32_EAX(0x004a8beau, (uint32_t)param_1); }  // __stdcall 0x004a8bea
 inline int32_t cfg_Init(int32_t param_1) { return (int32_t)detail::s_u32_EAX(0x004a8c1du, (uint32_t)param_1); }  // __stdcall 0x004a8c1d
 inline void *llm_cfg_skip_spaces(void *strPtr) { return (void *)(uintptr_t)detail::s_u32_EAX(0x004a933du, (uint32_t)(uintptr_t)strPtr); }  // default 0x004a933d
@@ -1586,6 +1587,7 @@ inline void llm_ui_progress_bar_draw(int32_t x, int32_t y, int32_t width, uint32
 inline int32_t llm_gfx_draw_bitmask_icon_6x6(int32_t dst_x_offset, uint8_t icon_index) { return (int32_t)detail::s_u32_EAX_EDX(0x004b4249u, (uint32_t)dst_x_offset, (uint32_t)icon_index); }  // __watcall 0x004b4249
 inline void llm_gfx_draw_gauge_bar_horizontal(int32_t x, int32_t y, int32_t width, int32_t height, int32_t percent, uint8_t fill_color_r5, uint8_t fill_color_g6, uint8_t fill_color_b5, uint8_t empty_color_r5, uint8_t empty_color_g6, uint8_t empty_color_b5) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4_S4_S4(0x004b42dfu, (uint32_t)x, (uint32_t)y, (uint32_t)width, (uint32_t)height, (uint32_t)percent, (uint32_t)fill_color_r5, (uint32_t)fill_color_g6, (uint32_t)fill_color_b5, (uint32_t)empty_color_r5, (uint32_t)empty_color_g6, (uint32_t)empty_color_b5); }  // __mh_watcall_ebx_volatile 0x004b42df
 inline void llm_gfx_draw_gauge_bar_vertical(int32_t x, int32_t y, int32_t width, int32_t height, int32_t percent, uint8_t fill_color_r5, uint8_t fill_color_g6, uint8_t fill_color_b5, uint8_t empty_color_r5, uint8_t empty_color_g6, uint8_t empty_color_b5) { detail::s_void_EAX_EDX_EBX_ECX_S4_S4_S4_S4_S4_S4_S4(0x004b44ccu, (uint32_t)x, (uint32_t)y, (uint32_t)width, (uint32_t)height, (uint32_t)percent, (uint32_t)fill_color_r5, (uint32_t)fill_color_g6, (uint32_t)fill_color_b5, (uint32_t)empty_color_r5, (uint32_t)empty_color_g6, (uint32_t)empty_color_b5); }  // __mh_watcall_ebx_volatile 0x004b44cc
+inline void llm_mem_copy_words(void *dst, void *src, uint32_t count_words) { detail::s_void_S4_S4_S4(0x004b47e3u, (uint32_t)(uintptr_t)dst, (uint32_t)(uintptr_t)src, (uint32_t)count_words); }  // __cdecl 0x004b47e3
 inline void llm_strat_ai_grid_fill_below_threshold(uint8_t *grid_base, int32_t width, int32_t height, int32_t threshold, int32_t fill_value) { detail::s_void_S4_S4_S4_S4_S4(0x004b49dau, (uint32_t)(uintptr_t)grid_base, (uint32_t)width, (uint32_t)height, (uint32_t)threshold, (uint32_t)fill_value); }  // __cdecl 0x004b49da
 inline void llm_strat_ai_grid_flood_step(uint8_t *grid_base, int32_t width, int32_t height, int32_t source_level, int32_t fill_value) { detail::s_void_S4_S4_S4_S4_S4(0x004b4a10u, (uint32_t)(uintptr_t)grid_base, (uint32_t)width, (uint32_t)height, (uint32_t)source_level, (uint32_t)fill_value); }  // __cdecl 0x004b4a10
 inline void llm_strat_ai_grid_stamp_seeds(uint8_t *grid, int32_t map_width, int32_t map_height, uint8_t *stencil, int32_t span_x, int32_t span_y, int32_t origin_x, int32_t origin_y, int32_t seed_value) { detail::s_void_S4_S4_S4_S4_S4_S4_S4_S4_S4(0x004b4ac2u, (uint32_t)(uintptr_t)grid, (uint32_t)map_width, (uint32_t)map_height, (uint32_t)(uintptr_t)stencil, (uint32_t)span_x, (uint32_t)span_y, (uint32_t)origin_x, (uint32_t)origin_y, (uint32_t)seed_value); }  // __cdecl 0x004b4ac2
@@ -1876,9 +1878,11 @@ inline void llm_input_di_keyboard_destroy() { detail::s_void(0x004d1008u); }  //
 inline int32_t llm_input_key_queue_empty() { return (int32_t)detail::s_u32(0x004d1018u); }  // __watcall 0x004d1018
 inline void llm_input_key_dequeue(uint32_t param_1) { detail::s_void_EAX(0x004d1030u, (uint32_t)param_1); }  // __watcall 0x004d1030
 inline int32_t llm_input_mouse_init(uint32_t screen_width, uint32_t screen_height) { return (int32_t)detail::s_u32_EAX_EDX(0x004d1070u, (uint32_t)screen_width, (uint32_t)screen_height); }  // __watcall 0x004d1070
+inline int32_t llm_input_mouse_device_init(uint32_t width, uint32_t height, void *hinst, void *hwnd) { return (int32_t)detail::s_u32_EAX_EDX_EBX_ECX(0x004d10bcu, (uint32_t)width, (uint32_t)height, (uint32_t)(uintptr_t)hinst, (uint32_t)(uintptr_t)hwnd); }  // __watcall 0x004d10bc
 inline void llm_input_dimouse_shutdown() { detail::s_void(0x004d10d0u); }  // __watcall 0x004d10d0
 inline int32_t llm_input_mouse_queue_is_empty() { return (int32_t)detail::s_u32(0x004d10e0u); }  // __watcall 0x004d10e0
 inline void llm_input_mouse_pop_event(mh::game::mh_llm_input_mouse_event *out_event) { detail::s_void_EAX(0x004d10f8u, (uint32_t)(uintptr_t)out_event); }  // __watcall 0x004d10f8
+inline void llm_input_set_cursor_pos(int32_t x, int32_t y) { detail::s_void_EAX_EDX(0x004d1138u, (uint32_t)x, (uint32_t)y); }  // __watcall 0x004d1138
 inline void llm_input_wndproc_tap(void *hWnd, uint32_t uMsg, uint32_t wParam, int32_t lParam) { detail::s_void_EAX_EDX_EBX_ECX(0x004d1194u, (uint32_t)(uintptr_t)hWnd, (uint32_t)uMsg, (uint32_t)wParam, (uint32_t)lParam); }  // __mh_watcall_ecx_ebx_volatile 0x004d1194
 inline int32_t utils_str_cmp(char *param_1, char *param_2) { return (int32_t)detail::s_u32_EAX_EDX(0x004d16d0u, (uint32_t)(uintptr_t)param_1, (uint32_t)(uintptr_t)param_2); }  // default 0x004d16d0
 inline void *utils_fill_data(void *ptr, uint32_t size, uint8_t default_) { return (void *)(uintptr_t)detail::s_u32_EAX_EBX_EDX(0x004d1780u, (uint32_t)(uintptr_t)ptr, (uint32_t)size, (uint32_t)default_); }  // __watcall 0x004d1780
@@ -2302,7 +2306,6 @@ MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_game_init_subsystems(...); 
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_boot_stage_tick(...);  // 0x004262b4 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_gfx_init_blend_luts(...);  // 0x004269b9 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_planet_tlo_thumbnail_build(...);  // 0x00426f33 unknown
-MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_gfx_set_window_resolution(...);  // 0x004285c7 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_gfx_release_display_surfaces(...);  // 0x0042894b unknown
 MH_UNAVAILABLE__return_type_never_determined llm_gfx_skip_sprite_row(...);  // 0x0043bbaf __mh_watcall_ecx_volatile
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_tlo_shade_table_build_planet(...);  // 0x0043cad5 unknown
@@ -2387,7 +2390,6 @@ MH_UNAVAILABLE__no_prototype_committed_in_Ghidra cfg_ConstructProjects(...);  //
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra cfg_ConstructStones(...);  // 0x004b3e69 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_text_blit_char_glyph(...);  // 0x004b46d0 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_util_memset16(...);  // 0x004b47bb unknown
-MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_mem_copy_words(...);  // 0x004b47e3 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_avi_ic_send_msg_0x403e_dup(...);  // 0x004b4d70 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_avi_ic_send_msg_0x403c_dup(...);  // 0x004b4df8 unknown
 MH_UNAVAILABLE__no_prototype_committed_in_Ghidra llm_ui_avi_ic_send_msg_0x403d_dup(...);  // 0x004b4e80 unknown

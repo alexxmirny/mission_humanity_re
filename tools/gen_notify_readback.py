@@ -146,7 +146,7 @@ def parse_sink():
     # and one more through a second helper resolves a NON-EMPTY target set, so it files CLEAN --
     # with a subtree the tool never looked at. That is not conservatism, it is a silent hole, and
     # it is the exact shape the scope added in the same slice would have had: draw_sel_panel_init
-    # dispatches seven targets directly and llm_ui_set_draw_surface through blit_icon_own_header.
+    # dispatches seven targets directly and llm_ui_blit_bitmap_rect through blit_icon_own_header.
     # A gate whose silence is only sometimes meaningful is worse than one that says it cannot see,
     # because nobody re-reads the clean rows.
     for _ in range(len(helpers) + 1):

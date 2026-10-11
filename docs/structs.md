@@ -2519,8 +2519,8 @@ script after retyping anything.
 | `+0x00` | `direction` | `int` | worker delta direction: >=1 => assign workers, <1 => unassign (read by the apply helper) |
 | `+0x04` | `icon_x_offset` | `int` | x offset added to the panel base position for the button icon draw |
 | `+0x08` | `icon_id` | `int` | G_ICON_PTRS index of the button glyph |
-| `+0x0c` | `pending_worker_amount` | `int` | worker count to (un)assign, computed from the click/hold; consumed once by the apply helper |
-| `+0x10` | `pending_row` | `int` | clicked active-list row +1 (0=idle); set on click, reset to 0 after the tick applies it |
+| `+0x0c` | `pending_worker_amount` | `int` | workers per order. Static 0; written only by llm_ui_bldg_worker_adjust_btn_tick: 1 on a completed click (release inside the rect), (hold_ms-200)/50 during hold auto-repeat. Read by llm_ui_bldg_worker_adjust_apply on every frame pending_row is set, so in stock the FIRST press of each button in a process orders 0 workers (first-click-lost bug; mh.dll primes it). |
+| `+0x10` | `pending_row` | `int` | row+1, set on the press edge (and on hold-repeat frames), kept through the hold, cleared on any release-edge frame; the completed-click branch sets and clears it in the same call. The apply never clears it. |
 
 #### `llm_ui_click_sound_slot` (size 0x1a, category `/llm`)
 
@@ -2710,7 +2710,7 @@ script after retyping anything.
 | `+0x00` | `row_height` | `int` | per-row vertical pitch/divisor (confirmed: llm_ui_hud_scroll_list_body_handler uses (WinH-top_y)/row_height for the hit row) |
 | `+0x04` | `event_handle` | `int` | game event signalled via game::SetEvent on a row click/scroll (llm_ui_hud_scroll_list_body_handler) |
 | `+0x08` | `row_draw_callback` | `void *` | per-row draw callback, invoked as (*cb)(row) by llm_ui_scroll_icon_list_draw |
-| `+0x0c` | `field_0xc` | `undefined1` | unresolved 1-byte field |
+| `+0x0c` | `row_entry_kind` | `byte` | llm_ui_icon_entry.kind written into each visible row's icon-table slot (base + 1 + row) by llm_ui_scroll_icon_list_draw: 4 = the slot is a HUD widget (selection lists), 5 = a nested icon group (available / owned buildings, a building's units). RES7 rewrites group 54's descriptor (0x0051008e) 4 -> 5 when control group 0's list is rebuilt as one nested group per row. |
 | `+0x0d` | `default_row_icon_id` | `int` | index into G_ICON_PTRS for the default (unhighlighted) row icon |
 | `+0x11` | `highlight_icon_id` | `int` | index into G_ICON_PTRS for the highlight/empty-row icon |
 | `+0x15` | `scrollbar_up` | `llm_ui_scroll_arrow_desc *` | -> up-arrow llm_ui_scroll_arrow_desc (set by llm_ui_hud_scroll_list_define) |
@@ -2765,7 +2765,7 @@ script after retyping anything.
 | Offset | Field | Type | Comment |
 | --- | --- | --- | --- |
 | `+0x00` | `children` | `llm_ui_widget * *` | NULL-terminated array of llm_ui_widget* drawn in order (llm_ui_widget_list_draw skips hidden). |
-| `+0x04` | `field4_layout_state` | `int` | Layout/scroll state: draw runs a re-layout pass (FUN_004b42f3) when this is >= 0. |
+| `+0x04` | `bg_gfx_index` | `int` | index into _G_LLM_UI_MENU_GFX_PTRS of the full-screen background image the list restores before drawing (-1 = none). llm_ui_widget_list_draw_frame_layer copies WindowWidth*WindowHeight 16-bit pixels from gfx+4 with NO check against the image's own u16 w,h header. Planet-select sets it to (CurrentSystem-1)*3 + 0x17 + _G_LLM_VIEW_SIZE_MODE (BACK0<mode>_<system>.GFX). |
 | `+0x08` | `frame` | `llm_ui_widget *` | Frame/background widget; drives centering (llm_ui_widget_list_center). 0 -> full-window bounds. |
 | `+0x0c` | `field_0xc` | `int` | Unresolved container field (+0xc). |
 | `+0x10` | `field_0x10` | `int` | Unresolved container field (+0x10). |

@@ -1075,14 +1075,23 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
     # A scenario driven by a launch verb needs its save INSIDE the lane -- `--tactical <name>` and
     # `--load <name>` both resolve save\<name>.sav relative to the exe.
     if DEPLOY_SAVE:
-        src = resolve_save(DEPLOY_SAVE, os.path.join(machine.POLYGON, "save"))
-        if not os.path.isfile(src):
-            raise SystemExit(
-                "--deploy-save: no such save: %s (not in tools/uiscripts/saves/ either)" % src
-            )
+        # One name, or a comma list. The Load dialog lists saves newest-first and opens with the top
+        # row selected, so a list is deployed in DIALOG ORDER: the first name is the newest (the
+        # preselected row), each later one a minute older than the one before it.
+        names = [n for n in DEPLOY_SAVE.split(",") if n]
         dst_dir = os.path.join(host_dir, "save")
         os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, os.path.join(dst_dir, DEPLOY_SAVE + ".sav"))
+        now = time.time()
+        for i, name in enumerate(names):
+            src = resolve_save(name, os.path.join(machine.POLYGON, "save"))
+            if not os.path.isfile(src):
+                raise SystemExit(
+                    "--deploy-save: no such save: %s (not in tools/uiscripts/saves/ either)" % src
+                )
+            dst = os.path.join(dst_dir, name + ".sav")
+            shutil.copy2(src, dst)
+            if len(names) > 1:
+                os.utime(dst, (now - 60 * i, now - 60 * i))
     exe = os.path.join(host_dir, "mh.focus.exe")
     # The verb goes BEFORE --skip-intro because the parser takes the first verb it sees and then
     # keeps scanning only for --skip-intro (seams/launch.cpp); the order is the parser's, not taste.
@@ -3032,6 +3041,31 @@ def pinned_view_size(ini_text):
     return SIZE_MODES.get(mode)
 
 
+def pinned_owned_backend(ini_text, cli_backend=None):
+    """True if the run's [video] backend is one of OUR presenters (own / d3d11 / gdi / null), not `system`.
+
+    A mode larger than the desktop only fails under the system DirectDraw (dgVoodoo): the owned ddraw
+    (gfx/ddraw_own.cpp) makes the mode a virtual frame size that the presenter scales to whatever window
+    it has, which is how a player on a 1080p screen sees a 2560x1440 render. The G35 hang below is the
+    `system` backend's. The last `backend=` in the merged fragments wins, as in the ini; an explicit
+    --backend on the command line is the layer under it.
+    """
+    backend = cli_backend
+    in_video = False
+    for raw in ini_text.splitlines():
+        line = raw.split(";", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_video = line.lower().startswith("[video]")
+            continue
+        if in_video and "=" in line:
+            k, v = (p.strip().lower() for p in line.split("=", 1))
+            if k == "backend":
+                backend = v
+    return backend in ("own", "d3d11", "gdi", "null")
+
+
 def view_exceeds_desktop(view, desktop):
     """(view, desktop) -> True if the pinned view cannot fit the desktop. Pure.
 
@@ -4506,7 +4540,15 @@ def main():
     # reproduce G35 -- see view_exceeds_desktop for what that looks like (it looks like a sim hang).
     _view = pinned_view_size(EXTRA_INI + "\n" + EXTRA_INI_HOST + "\n" + EXTRA_INI_CLIENT)
     _desk = primary_desktop_size()
-    if view_exceeds_desktop(_view, _desk):
+    _owned = pinned_owned_backend(
+        EXTRA_INI + "\n" + EXTRA_INI_HOST + "\n" + EXTRA_INI_CLIENT, getattr(args, "backend", None)
+    )
+    if view_exceeds_desktop(_view, _desk) and _owned:
+        print(
+            "[cfg] display: pinned view %dx%d is larger than the desktop %dx%d, allowed: an OWNED backend "
+            "makes the mode a virtual frame the presenter scales" % (_view + _desk)
+        )
+    elif view_exceeds_desktop(_view, _desk):
         print(
             "[cfg] ABORT: this run pins a %dx%d view but the primary desktop is only %dx%d.\n"
             "      The game will NOT report a mode failure -- it launches, walks the menu, reaches\n"

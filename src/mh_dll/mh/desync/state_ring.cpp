@@ -2,6 +2,7 @@
 // desync/state_ring.cpp -- mp:D41, the ship `net` state ring (state_ring.h).
 //
 #include "desync/state_ring.h"
+#include "desync/hitch_probe.h" // mp:Q4: game-thread time per recording path
 
 #include <windows.h>
 
@@ -175,9 +176,14 @@ void finish(const char *why) {
     InterlockedIncrement(&g_writers);
     HANDLE t = CreateThread(nullptr, 0, writer_main, j, 0, nullptr);
     if (!t) {
-        GLOG("; [desync] STATE RING: no writer thread (err %lu) -- writing on the sim thread instead\n",
+        // mp:Q4: never write on the sim thread -- a multi-MB file there is the hitch this module exists to avoid.
+        GLOG("; [desync] STATE RING NOT WRITTEN: no writer thread (err %lu); the window is dropped rather than written "
+             "on the sim thread\n",
              GetLastError());
-        writer_main(j);
+        j->f.release();
+        j->header.release();
+        free(j);
+        InterlockedDecrement(&g_writers);
         return;
     }
     CloseHandle(t);
@@ -238,6 +244,7 @@ struct listener_impl final : state_hub::listener {
         g_own_ticks += own;
         g_upd_ticks += upd;
         if (own + upd > g_max_ticks) g_max_ticks = own + upd;
+        hitch::add_ticks(hitch::RING_STEP, own);
     }
 };
 
@@ -333,8 +340,9 @@ bool on_first_mismatch(uint32_t mismatch_step) {
 
 void match_end() {
     if (!g_on) return;
-    const bool in_tail = g_core.ph() == sring::phase::tail;
-    const bool held    = g_core.ph() == sring::phase::rolling;
+    hitch::scope hs(hitch::RING_CLOSE);
+    const bool   in_tail = g_core.ph() == sring::phase::tail;
+    const bool   held    = g_core.ph() == sring::phase::rolling;
     if (in_tail) finish("the match ended during the tail");
     if (g_steps) {
         const double n = (double)g_steps;

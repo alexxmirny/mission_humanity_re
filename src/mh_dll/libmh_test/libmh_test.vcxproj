@@ -722,8 +722,12 @@
     <ClCompile Include="sim_bldg_state_turret_attack_selftest.cpp" />
     <ClCompile Include="sim_bldg_state_turret_scan_selftest.cpp" />
     <ClCompile Include="sim_bldg_state_upgrading_selftest.cpp" />
+    <ClCompile Include="sim_bldg_tick_turret_owner_selftest.cpp" />
+    <ClCompile Include="sim_bldg_tick_turret_rate_selftest.cpp" />
     <ClCompile Include="sim_bldg_try_begin_placement_selftest.cpp" />
+    <ClCompile Include="sim_bldg_turret_clip_selftest.cpp" />
     <ClCompile Include="sim_bldg_turret_combat_selftest.cpp" />
+    <ClCompile Include="sim_bldg_turret_poll_selftest.cpp" />
     <ClCompile Include="sim_bldg_unmap_footprint_selftest.cpp" />
     <ClCompile Include="sim_cfg_apply_project_resources_selftest.cpp" />
     <ClCompile Include="sim_clock_resync_selftest.cpp" />
@@ -868,6 +872,7 @@
     <ClCompile Include="sim_unit_group_step_plane_selftest.cpp" />
     <ClCompile Include="sim_unit_housing_count_selftest.cpp" />
     <ClCompile Include="sim_unit_load_into_shuttle_cargo_selftest.cpp" />
+    <ClCompile Include="sim_unit_move_path_air_facing_selftest.cpp" />
     <ClCompile Include="sim_unit_order_disembark_soldiers_selftest.cpp" />
     <ClCompile Include="sim_unit_passive_engage_selftest.cpp" />
     <ClCompile Include="sim_unit_path_free_slot_selftest.cpp" />

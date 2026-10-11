@@ -44,6 +44,13 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_INI = os.path.join(REPO, "src", "mh_dll", "mh_net.example.ini")
 DEFAULT_SRC = os.path.join(REPO, "src", "mh_dll")
+DEFAULT_DEF = os.path.join(DEFAULT_SRC, "mh", "config", "ini_keys.def")
+
+# PT-SET1: a T_FLOAT registry row is read as TEXT (strtod on the string), so it is string-valued for
+# this lint even though no GetPrivateProfileStringA names it literally (it is read through mh_gameplay.h).
+FLOAT_ROW_RE = re.compile(
+    r'MH_INI_KEY\s*\(\s*"([A-Za-z_0-9]+)"\s*,\s*"([A-Za-z_0-9.]+)"\s*,\s*T_FLOAT\b'
+)
 
 # The reader call, with BOTH arguments literal. A reader that builds its key name at runtime
 # (gfx_overlay's `page.<name>.items`) is not a fixed key and cannot be listed in the example ini
@@ -87,6 +94,14 @@ def string_keys(src_dir):
     return keys
 
 
+def float_keys(def_path):
+    """(section, key) of every T_FLOAT row of the registry; empty when the .def is absent."""
+    if not def_path or not os.path.exists(def_path):
+        return set()
+    with io.open(def_path, encoding="utf-8", errors="replace") as fh:
+        return {(a.lower(), b.lower()) for a, b in FLOAT_ROW_RE.findall(fh.read())}
+
+
 def find_violations(ini_text, keys):
     """[(lineno, section, key, line)] for every string-key line with a `;` after its `=`."""
     out = []
@@ -119,7 +134,7 @@ def _rel(path):
         return path.replace("\\", "/")
 
 
-def run(ini_path, src_dir, say=print):
+def run(ini_path, src_dir, say=print, def_path=DEFAULT_DEF):
     keys = string_keys(src_dir)
     if not keys:
         say(
@@ -127,6 +142,8 @@ def run(ini_path, src_dir, say=print):
             % src_dir
         )
         return 1
+    flo = float_keys(def_path)
+    keys |= flo
     with io.open(ini_path, encoding="utf-8") as fh:
         text = fh.read()
     bad = find_violations(text, keys)
@@ -144,7 +161,7 @@ def run(ini_path, src_dir, say=print):
         return 1
     say(
         "lint_ini_string_keys: ok -- %d string keys derived from the readers, none with a same-line "
-        "comment in %s" % (len(keys), _rel(ini_path))
+        "comment in %s (%d of them T_FLOAT registry rows)" % (len(keys), _rel(ini_path), len(flo))
     )
     return 0
 
@@ -214,6 +231,26 @@ def selftest():
             "prose that merely mentions `name=` mid-sentence is not a key line",
             viol("[zz]\n;   e.g. name=abc ; in prose\n") == [],
         )
+        # PT-SET1: a T_FLOAT row is string-valued even with no literal string reader.
+        dfn = os.path.join(tmp, "k.def")
+        with io.open(dfn, "w", encoding="utf-8") as fh:
+            fh.write(
+                'MH_INI_KEY("zz", "mult", T_FLOAT, "2.0", C_USER, "zz.mult", S_GAMEPLAY, "0.1..10", F_HOSTSYNC)\n'
+            )
+        expect("a T_FLOAT row is derived", float_keys(dfn) == {("zz", "mult")})
+        fini = os.path.join(tmp, "f.ini")
+        with io.open(fini, "w", encoding="utf-8") as fh:
+            fh.write("[zz]\nmult=2.0 ; planted\n")
+        expect(
+            "a T_FLOAT row with a same-line comment is RED",
+            run(fini, src, say=lambda *a: None, def_path=dfn) == 1,
+        )
+        with io.open(fini, "w", encoding="utf-8") as fh:
+            fh.write("[zz]\n; own line\nmult=2.0\n")
+        expect(
+            "a T_FLOAT row with the comment above is clean",
+            run(fini, src, say=lambda *a: None, def_path=dfn) == 0,
+        )
         # The gate's exit code, over a planted file.
         ini = os.path.join(tmp, "x.ini")
         with io.open(ini, "w", encoding="utf-8") as fh:
@@ -245,6 +282,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ini", default=DEFAULT_INI)
     ap.add_argument("--src", default=DEFAULT_SRC)
+    ap.add_argument("--def", dest="def_path", default=DEFAULT_DEF)
     ap.add_argument("--list", action="store_true", help="print the derived string-key set")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -254,7 +292,7 @@ def main():
         for sec, key in sorted(string_keys(args.src)):
             print("[%s] %s" % (sec, key))
         return 0
-    return run(args.ini, args.src)
+    return run(args.ini, args.src, def_path=args.def_path)
 
 
 if __name__ == "__main__":

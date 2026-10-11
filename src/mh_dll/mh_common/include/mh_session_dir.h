@@ -342,6 +342,12 @@ struct MH_SessionRecord {
     char players[MH_SESSION_MAX_PLAYERS][MH_SESSION_PLAYER_NAME_CAP];
     int  ai_count;
     char outcome[MH_SESSION_TEXT_CAP];
+    // PT-SET1: the host-synced gameplay settings this process ran the match with ("key=value;..." --
+    // empty while no registry row is F_HOSTSYNC) and where they came from (local | published | adopted).
+    // Sampled at the open and again at the close (the close wins, like the roster): a client opens with
+    // its own values and closes with the host's. tools/replay_match_segment.py replays a match with them.
+    char gameplay[192];
+    char gameplay_src[16];
 };
 
 // RL15: the session close `reason` (gameover|leave|host_left|link_lost|timeout|quit|rolled) plus
@@ -489,6 +495,10 @@ inline int mh_session_json(const MH_SessionRecord *r, char *dst, int cap) {
     at = mh_sd_put_int(dst, cap, at, r->ai_count);
     at = mh_sd_put(dst, cap, at, ",\n  \"outcome\": \"");
     at = mh_sd_put_json(dst, cap, at, r->outcome);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"gameplay\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->gameplay);
+    at = mh_sd_put(dst, cap, at, "\",\n  \"gameplay_src\": \"");
+    at = mh_sd_put_json(dst, cap, at, r->gameplay_src);
     at = mh_sd_put(dst, cap, at, "\"\n}\n");
     return at;
 }

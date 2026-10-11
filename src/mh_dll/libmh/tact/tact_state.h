@@ -442,7 +442,7 @@ struct tact_view {
     // llm_tact_unit_roster_slot[8] (not yet in mh_structs.gen.h) -- raw byte base, same unchecked
     // shape as unassigned_unit_roster/sidebar_icon_slot_unit_lut above.
     const uint8_t *group_unit_roster; // RID_TACT_GROUP_UNIT_ROSTER
-    // The `pitch` argument llm_ui_set_draw_surface takes alongside gfx_draw_surface -- a
+    // The `pitch` argument llm_ui_blit_bitmap_rect takes alongside gfx_draw_surface -- a
     // Graphics/FX-owned view-metrics global, read-only here (same family as gfx_draw_surface).
     const int32_t *gfx_panel_row_skip; // RID_GFX_PANEL_ROW_SKIP
     // The shared localized-string table (same shape/region sim_view already binds).

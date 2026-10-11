@@ -54,6 +54,9 @@
     <Filter Include="mh\addr">
       <UniqueIdentifier>{D5C39D10-F30C-58BD-92F3-CBBB917A04A5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mh\config">
+      <UniqueIdentifier>{95D9B283-2B8D-5750-906B-7D82980CAABF}</UniqueIdentifier>
+    </Filter>
     <Filter Include="mh\desync">
       <UniqueIdentifier>{1B5B9CB0-54B0-53EA-96BA-6D1DD51E4ACA}</UniqueIdentifier>
     </Filter>
@@ -110,10 +113,15 @@
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="log_sink_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="gameplay_selftest.cpp" />
     <ClCompile Include="info_avi_selftest.cpp" />
     <ClCompile Include="info_guard_selftest.cpp" />
     <ClCompile Include="imgui_bind_selftest.cpp" />
     <ClCompile Include="scale_filter_selftest.cpp" />
+    <ClCompile Include="bg_scale_selftest.cpp" />
+    <ClCompile Include="panel_rows_selftest.cpp" />
+    <ClCompile Include="res_list_selftest.cpp" />
+    <ClCompile Include="map_zoom_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
@@ -260,6 +268,9 @@
       <Filter>mh\desync</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\desync\state_compress.cpp">
+      <Filter>mh\desync</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\desync\order_capture.cpp">
       <Filter>mh\desync</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\desync\state_miniz.c">
@@ -2174,6 +2185,12 @@
     <ClCompile Include="..\mh\seams\net_lockstep.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\gameplay_hooks.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\config\gameplay.cpp">
+      <Filter>mh\config</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\mp_menu.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
@@ -2200,6 +2217,12 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_worker_click.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_minimap_box.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp">
@@ -2238,11 +2261,44 @@
     <ClCompile Include="..\mh\seams\ui_pause.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\strat_pre_input.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_map_zoom.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\view_wrap.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\launch.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\video.cpp">
       <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\video_mode_guards.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_panel_rows.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\cpu_scale.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\res_list.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\wrap_window.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\panel_rows.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\zoom_scale.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\map_zoom.cpp">
+      <Filter>mh\gfx</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\gfx\ddraw_own.cpp">
       <Filter>mh\gfx</Filter>
@@ -2287,6 +2343,9 @@
       <Filter>include\imgui\backends</Filter>
     </ClCompile>
     <ClCompile Include="..\..\mh_net_proto\src\session_info.cpp">
+      <Filter>mh_net_proto\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\mh_net_proto\src\gameplay_set.cpp">
       <Filter>mh_net_proto\src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\mh_net_proto\src\uuid7.cpp">

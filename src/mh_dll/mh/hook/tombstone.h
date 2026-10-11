@@ -81,7 +81,7 @@ struct tomb_options {
     // need no exemption: a residue row is unpromoted by definition and is not a `dead` claim.
     //
     // MEASURED, and this is why the exclusion exists rather than a policy of running the right
-    // scenarios: with all four armed, `tombstone_full.ini` passed `res_hud` (986/0) and
+    // scenarios: with all four armed, `tombstone_full.ini` passed `res_hud` (now a segment of `res_walk`; 986/0) and
     // `tutorial_enter` (985/0) and TERMINATED on `tact_panel` -- the mission load runs the
     // un-promoted `map_LoadPlanetFromDisk`, which calls the original `llm_map_fog_of_war_recompute`,
     // exactly as that row's disposition says it will. A green bought by scenario selection is the

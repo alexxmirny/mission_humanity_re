@@ -156,6 +156,11 @@ void section_rl15() {
     check("session.json: ai_count", has(js, "\"ai_count\": 1"));
     check("session.json: outcome running at the open", has(js, "\"outcome\": \"running\""));
     check("session.json: existing fields kept", has(js, "\"match_id\": \"") && has(js, "\"process_dir\": \"") && has(js, "\"roster\""));
+    // PT-SET1: the gameplay settings the match ran with, and where they came from
+    mh_sd_copy(r.gameplay, sizeof(r.gameplay), "turret_fire_rate_mult=3;turret_clip_fix=0");
+    mh_sd_copy(r.gameplay_src, sizeof(r.gameplay_src), "adopted");
+    mh_session_json(&r, js, sizeof(js));
+    check("session.json: gameplay + gameplay_src", has(js, "\"gameplay\": \"turret_fire_rate_mult=3;turret_clip_fix=0\"") && has(js, "\"gameplay_src\": \"adopted\""));
     mh_sd_copy(r.outcome, MH_SESSION_TEXT_CAP, mh_session_outcome("gameover", false));
     mh_session_json(&r, js, sizeof(js));
     check("session.json: outcome finished after the close", has(js, "\"outcome\": \"finished\""));

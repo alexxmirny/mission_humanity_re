@@ -592,7 +592,7 @@
    "size": 130
   },
   {
-   "name": "llm_ui_hud_topbar_tick",
+   "name": "llm_ui_hud_bottom_strip_tick",
    "entry": "0x00414395",
    "end": "0x00414a4d",
    "size": 1721
@@ -976,7 +976,7 @@
    "size": 189
   },
   {
-   "name": "llm_util_unpack_static_category_table",
+   "name": "llm_ui_icon_table_unpack",
    "entry": "0x00419b98",
    "end": "0x00419c15",
    "size": 126
@@ -1088,7 +1088,7 @@
    "size": 145
   },
   {
-   "name": "llm_ui_icon_rect_hit_test_cached",
+   "name": "llm_ui_icon_rect_hit_test_release_pos",
    "entry": "0x0041b76c",
    "end": "0x0041b7fc",
    "size": 145
@@ -10086,7 +10086,7 @@
    "size": 192
   },
   {
-   "name": "llm_ui_set_draw_surface",
+   "name": "llm_ui_blit_bitmap_rect",
    "entry": "0x004a8b73",
    "end": "0x004a8be9",
    "size": 119
@@ -13749,7 +13749,7 @@
    "size": 76
   },
   {
-   "name": "FUN_004d10bc",
+   "name": "llm_input_mouse_device_init",
    "entry": "0x004d10bc",
    "end": "0x004d10cc",
    "size": 17
@@ -13783,7 +13783,7 @@
    "size": 61
   },
   {
-   "name": "FUN_004d1138",
+   "name": "llm_input_set_cursor_pos",
    "entry": "0x004d1138",
    "end": "0x004d1143",
    "size": 12

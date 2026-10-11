@@ -333,7 +333,7 @@
    "site_count": 1
   },
   "0x00414395": {
-   "name": "llm_ui_hud_topbar_tick",
+   "name": "llm_ui_hud_bottom_strip_tick",
    "sites": [
     "DGROUP:0x005102e9"
    ],

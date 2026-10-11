@@ -30,6 +30,41 @@
 
 namespace mh::sim {
 
+namespace {
+bool   g_turret_reload_owner_fix = false; // patching:PT-FIX1, see set_turret_reload_owner_fix
+bool   g_turret_realtime_fix     = false; // patching:PT-FIX2, see set_turret_reload_realtime
+double g_turret_fire_rate_mult   = 2.0;
+} // namespace
+
+double clamp_turret_fire_rate_mult(double m) {
+    if (!(m == m)) return 2.0;
+    if (m < TURRET_FIRE_RATE_MULT_MIN) return TURRET_FIRE_RATE_MULT_MIN;
+    if (m > TURRET_FIRE_RATE_MULT_MAX) return TURRET_FIRE_RATE_MULT_MAX;
+    return m;
+}
+void set_turret_reload_realtime(bool on, double mult) {
+    g_turret_realtime_fix   = on;
+    g_turret_fire_rate_mult = clamp_turret_fire_rate_mult(mult);
+}
+bool   turret_reload_realtime_fix() { return g_turret_realtime_fix; }
+double turret_fire_rate_mult() { return g_turret_fire_rate_mult; }
+double turret_reload_drain(double dt) { return dt * g_turret_fire_rate_mult; }
+
+void set_turret_reload_owner_fix(bool on) { g_turret_reload_owner_fix = on; }
+bool turret_reload_owner_fix() { return g_turret_reload_owner_fix; }
+
+namespace {
+bool g_turret_clip_fix = false; // patching:PT-FIX4
+} // namespace
+void set_turret_clip_fix(bool on) { g_turret_clip_fix = on; }
+bool turret_clip_fix() { return g_turret_clip_fix; }
+
+namespace {
+bool g_turret_fire_poll_fix = false; // patching:PT-FIX5
+} // namespace
+void set_turret_fire_poll_fix(bool on) { g_turret_fire_poll_fix = on; }
+bool turret_fire_poll_fix() { return g_turret_fire_poll_fix; }
+
 const building_tick_calls &live_building_tick_calls() {
     static const building_tick_calls c = {
         MH_LIBMH_BIND(llm_strat_bldg_turret_reload_tick),
@@ -77,11 +112,27 @@ void building_tick(const sim_view &v, sim_store &own, const building_tick_calls 
     // caching across a call). ----
     const cfg_building &cb = v.cfg_buildings[b.building_id];
     if (cb.type == BUILDING_TYPE_A_TURRET || cb.type == BUILDING_TYPE_H_TURRET) {
-        // Args per the .asm push sequence (0x0046fe43-0x0046fe5d): EAX=cur_player, EDX=cur_index
-        // (NOT cur_building.building_id -- mh_calls.gen.h's generated parameter name for this slot
-        // is `building_id`, but the value actually passed is the tick driver's CUR_INDEX; see the
-        // .h's building_tick_calls comment), stack=budget (double, TICK_BUDGET at this point).
-        c.turret_reload_tick(*v.cur_player, (uint32_t)*v.cur_index, budget);
+        // patching:PT-FIX1 ([net] turret_reload_owner_fix). Destroying a turret frees its slot
+        // (turrets[p][sub_id].b_index = 0, llm_strat_bldg_unmap_footprint) and the next turret takes
+        // it (b_index = its index, map_CreateBuilding), but the rubble keeps its sub_id and its tick
+        // budget grows every step, so its reload tick would drain the NEW turret's reload_timer.
+        // Only the slot's owner ticks it. Retail has no check (carried by the 0x0046fe5d splice).
+        const bool owns_slot =
+            !g_turret_reload_owner_fix ||
+            (uint32_t)(uint16_t)own.turret_at((uint32_t)*v.cur_player, b.sub_id).b_index == (uint32_t)*v.cur_index;
+        if (owns_slot)
+            // Args per the .asm push sequence (0x0046fe43-0x0046fe5d): EAX=cur_player, EDX=cur_index
+            // (NOT cur_building.building_id -- mh_calls.gen.h's generated parameter name for this slot
+            // is `building_id`, but the value actually passed is the tick driver's CUR_INDEX; see the
+            // .h's building_tick_calls comment), stack=budget (double, TICK_BUDGET at this point).
+            //
+            // patching:PT-FIX2 ([net] turret_reload_realtime_fix): a step that handed the building a
+            // positive budget drains the reload timer by the step's REAL dt * mult, not by the re-counted
+            // budget (see set_turret_reload_realtime). A zero budget (construction energy gate) stays 0.
+            // The state handlers below keep the retail budget untouched.
+            c.turret_reload_tick(*v.cur_player, (uint32_t)*v.cur_index,
+                                 (g_turret_realtime_fix && budget > 0.0) ? turret_reload_drain(*v.game_time_delta)
+                                                                         : budget);
     }
 
     // ---- ANIMATION STATE (0x0046fe62, unconditional) + PIP ANIM (0x0046fe67-0x0046fe88, gated on

@@ -128,21 +128,21 @@ struct lv_probe {
     int         code_def;
 };
 const lv_probe LV_PROBES[] = {
-    {"net", "lockstep_log", 1}, {"net", "frametime_log", 1}, {"net", "sp_clock_log", 0}, {"trace", "temporal_sp", 0}, {"desync", "verbose", 0}, {"input", "mouse_trace", 0}, {"desync", "state_record", 0}, // the seven the level table owns
+    {"net", "lockstep_log", 1}, {"net", "frametime_log", 1}, {"net", "sp_clock_log", 0}, {"trace", "temporal_sp", 0}, {"desync", "verbose", 0}, {"input", "mouse_trace", 0}, {"desync", "state_record", 0}, {"desync", "order_record", 0}, // the seven the level table owns + state_record, which no level may supply since mp:Q4
     {"desync", "enabled", 1},
     {"desync", "per_step", 1},
     {"desync", "state_ring", 1}, // detection
 };
 // Expected effective value per level {quiet, normal, debug}.
-const int LV_EXPECT[3][10] = {
-    {0, 0, 0, 0, 0, 0, 0, 1, 1, 1}, // quiet: the two per-frame logs off; detection untouched
-    {1, 1, 0, 0, 0, 0, 0, 1, 1, 1}, // normal: every code default
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, // debug: the five observers on
+const int LV_EXPECT[3][11] = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}, // quiet: the two per-frame logs off; detection untouched
+    {1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1}, // normal: every code default
+    {1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1}, // debug: the observers on; state_record stays at its code default (mp:Q4: a player setting)
 };
 
 bool level_set_is(const char *ini, int level_idx) {
     bool ok = true;
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < 11; ++i)
         ok = ok && (int)mh_ini_get_int(LV_PROBES[i].sec, LV_PROBES[i].key, LV_PROBES[i].code_def, ini) == LV_EXPECT[level_idx][i];
     return ok;
 }
@@ -253,8 +253,9 @@ void run_gate_checks() {
         check("level: the effective set is logged at start (one line)", count_lines(what) == 1);
         if (lv == 0) check("quiet: the logged set names lockstep_log=0 and frametime_log=0", count_lines("net.lockstep_log=0") == 1 && count_lines("net.frametime_log=0") == 1);
         if (lv == 2)
-            check("debug: the logged set names the five DEBUG_KEYS", count_lines("net.sp_clock_log=1") == 1 && count_lines("trace.temporal_sp=1") == 1 && count_lines("desync.verbose=1") == 1 &&
-                                                                         count_lines("input.mouse_trace=1") == 1 && count_lines("desync.state_record=1") == 1);
+            check("debug: the logged set names the debug observers and NOT state_record (mp:Q4)", count_lines("net.sp_clock_log=1") == 1 && count_lines("trace.temporal_sp=1") == 1 && count_lines("desync.verbose=1") == 1 &&
+                                                                                                      count_lines("input.mouse_trace=1") == 1 && count_lines("desync.state_record") == 0 &&
+                                                                                                      count_lines("desync.order_record=1") == 1);
         if (lv == 1) check("normal: the logged set says no overrides", count_lines("no overrides") == 1);
         check("level: detection keys are in no level's set", count_lines("per_step") == 0 && count_lines("state_ring") == 0);
         DeleteFileA(lvini);

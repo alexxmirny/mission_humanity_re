@@ -5,16 +5,16 @@
  "_candidate_set": "Every region in tools/data/state_regions.json, against every function in the binary that is not in _reimpl's `done` set. Edges from tmp/state_matrix.json (instruction scan, folds fn-ptr edges), NOT from the direct-call graph.",
  "_provenance": {
   "program": "mh.exe",
-  "matrix_cells": 10982,
-  "matrix_regions": 2716,
-  "matrix_regions_unhosted": 1886,
+  "matrix_cells": 10992,
+  "matrix_regions": 2723,
+  "matrix_regions_unhosted": 1893,
   "reimpl_done": 1000,
   "reimpl_dead": 107,
   "registry_regions": 845,
   "measured": 783,
   "unmeasured": 62,
   "inputs": {
-   "en_functions": "11424f8c4c2c4f75",
+   "en_functions": "cb59c693cf581977",
    "state_regions": "c7f566ee69127362",
    "reimpl_done": "f1486606577a0dd4"
   },
@@ -2511,7 +2511,7 @@
    "external_writers": [],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_addr_takers": [],
    "external_bytes": 1721,
@@ -2538,7 +2538,7 @@
    "external_writers_dead": [],
    "external_readers": [
     "llm_ui_chat_input_delete_at_cursor",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_addr_takers": [],
    "external_bytes": 4757,
@@ -2570,7 +2570,7 @@
     "llm_chat_history_push"
    ],
    "external_addr_takers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_bytes": 14464,
    "subsystems": {
@@ -2681,17 +2681,17 @@
     "llm_ui_bldg_units_panel_tick",
     "llm_ui_bldg_worker_adjust_btn_tick",
     "llm_ui_hud_base_marker_button_handler",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_hud_icon_widget_dispatch",
     "llm_ui_hud_icon_widget_hover_draw",
     "llm_ui_hud_panel_title_draw",
     "llm_ui_hud_scroll_arrow_handler",
-    "llm_ui_hud_topbar_tick",
     "llm_ui_hud_widget_contains_test_point",
     "llm_ui_hud_widget_hit_test",
     "llm_ui_hud_widget_icon_blit",
     "llm_ui_icon_group_dispatch",
     "llm_ui_icon_rect_hit_test",
-    "llm_ui_icon_rect_hit_test_cached",
+    "llm_ui_icon_rect_hit_test_release_pos",
     "llm_ui_icon_rect_hit_test_rmb",
     "llm_ui_icon_rect_hit_test_rmb_cached",
     "llm_ui_list_item_icon_label_draw",
@@ -2732,11 +2732,11 @@
     "llm_ui_ctrlgroup_member_icon_row_draw",
     "llm_ui_group_tab_on_click",
     "llm_ui_hud_base_marker_button_handler",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_hud_icon_widget_dispatch",
     "llm_ui_hud_icon_widget_hover_draw",
     "llm_ui_hud_panel_column_fill_draw",
     "llm_ui_hud_scroll_arrow_handler",
-    "llm_ui_hud_topbar_tick",
     "llm_ui_hud_widget_icon_blit",
     "llm_ui_list_item_icon_label_draw",
     "llm_ui_panel_background_tile_draw",
@@ -2890,7 +2890,7 @@
    ],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_addr_takers": [],
    "external_bytes": 1962,
@@ -2983,7 +2983,7 @@
     "llm_ui_hud_bldg_panel_refresh_tick",
     "llm_ui_hud_bldg_panel_refresh_tick_dup",
     "llm_ui_hud_bldg_panel_same_type_count_row_draw",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_writers_dead": [],
    "external_readers": [
@@ -3007,7 +3007,7 @@
    ],
    "ours_readers": [],
    "external_writers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_writers_dead": [],
    "external_readers": [],
@@ -3028,7 +3028,7 @@
    "ours_readers": [],
    "external_writers": [
     "llm_strat_ui_unit_panel_tick",
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_selection_panel_refresh"
    ],
    "external_writers_dead": [],
@@ -3052,7 +3052,7 @@
    ],
    "ours_readers": [],
    "external_writers": [
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_main_panel_draw"
    ],
    "external_writers_dead": [],
@@ -3075,7 +3075,7 @@
    ],
    "ours_readers": [],
    "external_writers": [
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_writers_dead": [],
    "external_readers": [],
@@ -13203,7 +13203,7 @@
    ],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_ingame_menu_open",
     "llm_ui_main_menu_screen_load",
     "llm_ui_options_menu_open",
@@ -14393,8 +14393,8 @@
    "external_writers": [],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_ui_hud_power_panel_draw",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick",
+    "llm_ui_hud_power_panel_draw"
    ],
    "external_addr_takers": [],
    "external_bytes": 1868,
@@ -14659,8 +14659,8 @@
    "external_writers": [],
    "external_writers_dead": [],
    "external_readers": [
-    "llm_ui_hud_pop_panel_draw",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick",
+    "llm_ui_hud_pop_panel_draw"
    ],
    "external_addr_takers": [],
    "external_bytes": 2003,
@@ -16307,7 +16307,7 @@
    "external_writers_dead": [],
    "external_readers": [
     "llm_bldg_can_afford_resources",
-    "llm_ui_hud_topbar_tick",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_render_planet_selector_tooltip",
     "llm_unit_can_afford_resources"
    ],
@@ -18233,7 +18233,7 @@
     "llm_ui_bldg_worker_adjust_apply",
     "llm_ui_build_menu_item_select",
     "llm_ui_build_panel_project_row_draw",
-    "llm_ui_building_finish_order_cb",
+    "llm_ui_building_cancel_task_yes_cb",
     "llm_ui_building_restart_construction_cb",
     "llm_ui_chat_recalc_target_mode",
     "llm_ui_click_select_target",
@@ -18247,10 +18247,10 @@
     "llm_ui_hud_bldg_network_status_panel_draw",
     "llm_ui_hud_bldg_panel_same_type_count_row_draw",
     "llm_ui_hud_bldg_unload_button_handler",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_hud_pop_panel_draw",
     "llm_ui_hud_power_panel_draw",
     "llm_ui_hud_research_row_click_handler",
-    "llm_ui_hud_topbar_tick",
     "llm_ui_hud_unassigned_unit_row_click_handler",
     "llm_ui_info_panel_weapon_stats_draw",
     "llm_ui_info_screen_stats_draw",
@@ -18265,7 +18265,7 @@
     "llm_unit_ctrl_group_flash_observer"
    ],
    "external_addr_takers": [],
-   "external_bytes": 63805,
+   "external_bytes": 63868,
    "subsystems": {
     "UI/menus": 50,
     "Strategic sim/economy": 36,
@@ -19049,7 +19049,7 @@
     "game_ui_AddTextToPrintQueue",
     "llm_strat_draw_floating_messages",
     "llm_strat_input_update",
-    "llm_ui_hud_topbar_tick"
+    "llm_ui_hud_bottom_strip_tick"
    ],
    "external_addr_takers": [],
    "external_bytes": 13357,

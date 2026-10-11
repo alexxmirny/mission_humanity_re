@@ -25,6 +25,7 @@ refuse.not_our_lobby = non è la nostra lobby
 refuse.cp_mismatch = codepage di input diversa
 refuse.unknown = sconosciuto
 refuse.build = l'host ha %s, tu hai %s: aggiorna
+refuse.gameplay = Impostazioni di gioco diverse (%s/%s): aggiorna
 relay.outdated = Relay obsoleto (protocollo %u < %u)
 
 # map transfer

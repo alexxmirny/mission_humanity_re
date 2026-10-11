@@ -26,6 +26,7 @@ refuse.not_our_lobby = to nie nasze lobby
 refuse.cp_mismatch = różne strony kodowe wejścia
 refuse.unknown = nieznane
 refuse.build = Host ma %s, ty masz %s: zaktualizuj
+refuse.gameplay = Różne ustawienia rozgrywki (%s/%s): zaktualizuj
 relay.outdated = Przekaźnik przestarzały (protokół %u < %u)
 
 # map transfer

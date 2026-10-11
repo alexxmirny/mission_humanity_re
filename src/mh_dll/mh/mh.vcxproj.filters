@@ -6,6 +6,9 @@
     <Filter Include="addr">
       <UniqueIdentifier>{B2FD189B-C5D8-5EC6-B3E1-EC668982F7C4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="config">
+      <UniqueIdentifier>{622BBD39-10E9-59D2-9471-BFA8591E4B0E}</UniqueIdentifier>
+    </Filter>
     <Filter Include="desync">
       <UniqueIdentifier>{44183E90-DDDC-55A1-92DB-E8658718406D}</UniqueIdentifier>
     </Filter>
@@ -124,6 +127,12 @@
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_worker_click.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_minimap_box.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_bldg_build_probe.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -157,6 +166,15 @@
     <ClCompile Include="seams\ui_pause.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\strat_pre_input.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_map_zoom.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\view_wrap.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\launch.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -180,6 +198,12 @@
     </ClCompile>
     <ClCompile Include="seams\net_lockstep.cpp">
       <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\gameplay_hooks.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="config\gameplay.cpp">
+      <Filter>config</Filter>
     </ClCompile>
     <ClCompile Include="seams\net_seams.cpp">
       <Filter>seams</Filter>
@@ -235,6 +259,9 @@
     <ClCompile Include="desync\state_compress.cpp">
       <Filter>desync</Filter>
     </ClCompile>
+    <ClCompile Include="desync\order_capture.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
     <ClCompile Include="desync\state_miniz.c">
       <Filter>desync</Filter>
     </ClCompile>
@@ -246,6 +273,30 @@
     </ClCompile>
     <ClCompile Include="seams\video.cpp">
       <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\video_mode_guards.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_panel_rows.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\cpu_scale.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\res_list.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\wrap_window.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\panel_rows.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\zoom_scale.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\map_zoom.cpp">
+      <Filter>gfx</Filter>
     </ClCompile>
     <ClCompile Include="gfx\ddraw_own.cpp">
       <Filter>gfx</Filter>
@@ -299,6 +350,33 @@
     </ClInclude>
     <ClInclude Include="gfx\ddraw_own.h">
       <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\cpu_scale.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\res_list.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\wrap_window.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\panel_rows.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\zoom_scale.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\map_zoom.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\strat_pre_input.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\video_mode_guards.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\ui_panel_rows.h">
+      <Filter>seams</Filter>
     </ClInclude>
     <ClInclude Include="input\dinput_own.h">
       <Filter>input</Filter>
@@ -391,6 +469,9 @@
     <ClInclude Include="desync\state_compress.h">
       <Filter>desync</Filter>
     </ClInclude>
+    <ClInclude Include="desync\order_capture.h">
+      <Filter>desync</Filter>
+    </ClInclude>
     <ClInclude Include="desync\state_miniz_config.h">
       <Filter>desync</Filter>
     </ClInclude>
@@ -398,6 +479,9 @@
       <Filter>desync</Filter>
     </ClInclude>
     <ClInclude Include="desync\state_ring_core.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\hitch_probe.h">
       <Filter>desync</Filter>
     </ClInclude>
     <ClInclude Include="desync\world_sync.h">

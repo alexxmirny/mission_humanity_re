@@ -435,20 +435,24 @@
     "_G_LLM_GFX_DIM_FLAG",
     "_G_LLM_GFX_DISPLAY_MODE_DESC",
     "_G_LLM_GFX_DRAW_SURFACE",
+    "_G_LLM_GFX_FB_TILE_ROW_SKIP",
     "_G_LLM_GFX_FOG_LOOKUP_COL",
     "_G_LLM_GFX_FOG_LOOKUP_ROW",
     "_G_LLM_GFX_FONT_DATA_PTRS",
     "_G_LLM_GFX_FONT_GLYPH_PTR_TABLE",
     "_G_LLM_GFX_FONT_LINE_HEIGHT",
+    "_G_LLM_GFX_HUD_STRIP_SURFACE",
     "_G_LLM_GFX_MARGIN_COL_FIRST",
     "_G_LLM_GFX_MARGIN_TILES_W",
     "_G_LLM_GFX_MARGIN_TILE_COUNT",
     "_G_LLM_GFX_MARGIN_TILE_CURSOR",
     "_G_LLM_GFX_PANEL_ROW_SKIP",
+    "_G_LLM_GFX_PANEL_TILE_ROW_SKIP",
     "_G_LLM_GFX_POLALFA1_GLYPH_PTR",
     "_G_LLM_GFX_POLALFA2_GLYPH_PTR",
     "_G_LLM_GFX_RGB565_HALVE_MASK2",
     "_G_LLM_GFX_SPRITE_HITTEST_CURSOR",
+    "_G_LLM_GFX_STRIP_ROW_SKIP",
     "_G_LLM_GFX_TEXT_LAYOUT_WIDTH",
     "_G_LLM_GFX_TILE_DRAW_COL",
     "_G_LLM_GFX_TILE_DRAW_FOG_HI",
@@ -483,6 +487,8 @@
     "_G_LLM_INPUT_KEY_QUEUE_READY",
     "_G_LLM_INPUT_KEY_READ_IDX",
     "_G_LLM_INPUT_KEY_WRITE_IDX",
+    "_G_LLM_INPUT_MOUSE_BOX_H",
+    "_G_LLM_INPUT_MOUSE_BOX_W",
     "_G_LLM_INPUT_MOUSE_BUTTON_STATE",
     "_G_LLM_INPUT_MOUSE_DELTA_X",
     "_G_LLM_INPUT_MOUSE_DELTA_Y",
@@ -505,7 +511,6 @@
     "_G_LLM_LMB_DOWN_T_PREV",
     "_G_LLM_LMB_GESTURE_STATE",
     "_G_LLM_LOBBY_AI_DEFAULT_NAME",
-    "_G_LLM_LOBBY_BROWSER_ROWS",
     "_G_LLM_LOBBY_DIRTY_FLAG",
     "_G_LLM_LOBBY_INTRO_WAIT_SHOWN",
     "_G_LLM_LOBBY_KICK_PENDING_SLOT",
@@ -571,6 +576,10 @@
     "_G_LLM_MAP_REGION_ROUTE_STEP_DELTAS",
     "_G_LLM_MAP_REGION_ROUTE_STEP_DELTA_WRAP",
     "_G_LLM_MAP_VIEWPORT_DIRTY_FLAG",
+    "_G_LLM_MAP_ZOOM_MAX_INC_X",
+    "_G_LLM_MAP_ZOOM_MAX_INC_Y",
+    "_G_LLM_MAP_ZOOM_MAX_X",
+    "_G_LLM_MAP_ZOOM_MAX_Y",
     "_G_LLM_MAP_ZOOM_SCALE_X",
     "_G_LLM_MAP_ZOOM_SCALE_Y",
     "_G_LLM_MATH_HALF_TURN_DEG",
@@ -1528,14 +1537,17 @@
     "_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B",
     "_G_LLM_UI_ERROR_DIALOG_FMT",
     "_G_LLM_UI_FADE_TRANSITION",
+    "_G_LLM_UI_FLOATING_TIP_SHOWN",
+    "_G_LLM_UI_FLOATING_TIP_X",
+    "_G_LLM_UI_FLOATING_TIP_Y",
     "_G_LLM_UI_FMT_BLDG_RESOURCE_ROW_4COL",
     "_G_LLM_UI_FONT_LAYOUT_FILE_END",
     "_G_LLM_UI_HITTEST_CURSOR_X",
     "_G_LLM_UI_HITTEST_CURSOR_Y",
+    "_G_LLM_UI_HUD_BOTTOM_STRIP_TICK_COUNTER",
+    "_G_LLM_UI_HUD_BOTTOM_STRIP_VIEW_SIZE_MODE_APPLIED",
     "_G_LLM_UI_HUD_COLOR_TABLE",
     "_G_LLM_UI_HUD_ICON_WIDGET_DESCS",
-    "_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER",
-    "_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED",
     "_G_LLM_UI_HUD_WIDGETS",
     "_G_LLM_UI_ICON_CLICK_CONSUMED_FLAG",
     "_G_LLM_UI_ICON_DRAG_HOVER_INDEX",
@@ -1600,7 +1612,6 @@
     "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE",
     "_G_LLM_UI_MOUSE_RIGHT_PRESS_EDGE",
     "_G_LLM_UI_MOUSE_RIGHT_RELEASE_EDGE",
-    "_G_LLM_UI_MP_BROWSER_LIST_STATE",
     "_G_LLM_UI_MP_BROWSER_LIST_WIDGET",
     "_G_LLM_UI_MP_BROWSER_TAB_STOPS",
     "_G_LLM_UI_NETSETUP_FLD_GAME",
@@ -2051,9 +2062,11 @@
     "llm_input_mouse_button_hold_update",
     "llm_input_mouse_buttons_get",
     "llm_input_mouse_delta_pump",
+    "llm_input_mouse_device_init",
     "llm_input_mouse_init",
     "llm_input_mouse_pop_event",
     "llm_input_mouse_queue_is_empty",
+    "llm_input_set_cursor_pos",
     "llm_input_wndproc_tap",
     "llm_intro_frame",
     "llm_lobby_announce_line",
@@ -3638,6 +3651,7 @@
     "llm_ui_bldg_worker_adj_btn1_tick",
     "llm_ui_bldg_worker_adjust_apply",
     "llm_ui_bldg_worker_adjust_btn_tick",
+    "llm_ui_blit_bitmap_rect",
     "llm_ui_build_menu_item_select",
     "llm_ui_build_panel_project_row_draw",
     "llm_ui_building_cancel_task_yes_cb",
@@ -3701,6 +3715,7 @@
     "llm_ui_hud_bldg_units_count_dec_handler",
     "llm_ui_hud_bldg_units_count_inc_handler",
     "llm_ui_hud_bldg_unload_button_handler",
+    "llm_ui_hud_bottom_strip_tick",
     "llm_ui_hud_color_slot_set",
     "llm_ui_hud_ctrl_group_button_handler",
     "llm_ui_hud_fire_event_button_handler",
@@ -3735,7 +3750,6 @@
     "llm_ui_hud_storage_slot1_set",
     "llm_ui_hud_storage_slot2_icon_click",
     "llm_ui_hud_storage_slot2_set",
-    "llm_ui_hud_topbar_tick",
     "llm_ui_hud_unassigned_unit_row_click_handler",
     "llm_ui_hud_widget_contains_test_point",
     "llm_ui_hud_widget_define",
@@ -3839,7 +3853,6 @@
     "llm_ui_scrollbar_bind_range",
     "llm_ui_selection_count_row_draw",
     "llm_ui_selection_panel_refresh",
-    "llm_ui_set_draw_surface",
     "llm_ui_show_formatted_error_dialog",
     "llm_ui_slot_icon_draw",
     "llm_ui_stepper_update_arrow_state",
@@ -6344,7 +6357,7 @@
      "llm_ui_hud_panel_title_draw"
     ],
     "00414395": [
-     "llm_ui_hud_topbar_tick"
+     "llm_ui_hud_bottom_strip_tick"
     ],
     "00414405": [
      "LAB_00414405"
@@ -52484,7 +52497,7 @@
      "llm_gfx_draw_sprite_to_buffer"
     ],
     "004a8b73": [
-     "llm_ui_set_draw_surface"
+     "llm_ui_blit_bitmap_rect"
     ],
     "004a8bea": [
      "InitSafe"
@@ -65796,7 +65809,7 @@
      "llm_input_mouse_init"
     ],
     "004d10bc": [
-     "FUN_004d10bc"
+     "llm_input_mouse_device_init"
     ],
     "004d10d0": [
      "llm_input_dimouse_shutdown"
@@ -65811,7 +65824,7 @@
      "LAB_004d1130"
     ],
     "004d1138": [
-     "FUN_004d1138"
+     "llm_input_set_cursor_pos"
     ],
     "004d1144": [
      "FUN_004d1144"
@@ -81812,19 +81825,19 @@
      "DAT_00501cdb"
     ],
     "00501ce0": [
-     "DAT_00501ce0"
+     "_G_LLM_MAP_ZOOM_MAX_X"
     ],
     "00501ce8": [
-     "DAT_00501ce8"
+     "_G_LLM_MAP_ZOOM_MAX_Y"
     ],
     "00501cf0": [
-     "DAT_00501cf0"
+     "_G_LLM_MAP_ZOOM_MAX_INC_X"
     ],
     "00501cf8": [
-     "DAT_00501cf8"
+     "_G_LLM_MAP_ZOOM_MAX_INC_Y"
     ],
     "00501d00": [
-     "s_init\\INITLANG.CFG_00501cff+1"
+     "s_init\\INITLANG.CFG_00501d00"
     ],
     "00501d12": [
      "s_init\\INIT.CFG_00501d12"
@@ -84386,10 +84399,10 @@
      "_G_LLM_UI_ICON_ENTRIES[0].kind"
     ],
     "0050fb9f": [
-     "_G_LLM_UI_HUD_TOPBAR_TICK_COUNTER"
+     "_G_LLM_UI_HUD_BOTTOM_STRIP_TICK_COUNTER"
     ],
     "0050fba3": [
-     "_G_LLM_UI_HUD_TOPBAR_VIEW_SIZE_MODE_APPLIED"
+     "_G_LLM_UI_HUD_BOTTOM_STRIP_VIEW_SIZE_MODE_APPLIED"
     ],
     "0050fba7": [
      "_G_LLM_STRAT_UI_EVENT_DEFER_ACTIVE"
@@ -84677,7 +84690,7 @@
      "_G_LLM_UI_ICON_GROUP_BLOB"
     ],
     "005102e9": [
-     "PTR_llm_ui_hud_topbar_tick_005102e9"
+     "PTR_llm_ui_hud_bottom_strip_tick_005102e9"
     ],
     "005102ed": [
      "DAT_005102ed"
@@ -87747,7 +87760,7 @@
      "DAT_005d0c5a"
     ],
     "005d0c62": [
-     "DAT_005d0c62"
+     "_G_LLM_UI_FLOATING_TIP_SHOWN"
     ],
     "005d0c66": [
      "_G_LLM_VIEW_SIZE_MODE_CACHE"
@@ -88428,7 +88441,7 @@
      "_G_LLM_GFX_PANEL_ROW_SKIP"
     ],
     "00603b08": [
-     "DAT_00603b08"
+     "_G_LLM_GFX_HUD_STRIP_SURFACE"
     ],
     "00603b0c": [
      "_G_LLM_GFX_VIEWPORT_ROW_BYTES"
@@ -88852,13 +88865,13 @@
      "_G_LLM_UI_OUTCOME_DLG_PLAYER_SIDE_SNAPSHOT"
     ],
     "00644f93": [
-     "_G_LLM_UI_MP_BROWSER_LIST_STATE"
+     "DAT_00644f93"
     ],
     "00644fab": [
-     "_G_LLM_UI_MP_BROWSER_LIST_STATE.count"
+     "DAT_00644fab"
     ],
     "00644fb3": [
-     "_G_LLM_UI_MP_BROWSER_LIST_STATE.selected"
+     "DAT_00644fb3"
     ],
     "00644fb7": [
      "DAT_00644fb7"
@@ -90253,7 +90266,7 @@
      "_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD"
     ],
     "00653a83": [
-     "_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD.field4_layout_state"
+     "_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD.bg_gfx_index"
     ],
     "00653acb": [
      "_G_LLM_UI_WGT_LIST_TUTORIAL_INTRO"
@@ -90274,7 +90287,7 @@
      "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST"
     ],
     "00653bff": [
-     "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.field4_layout_state"
+     "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.bg_gfx_index"
     ],
     "00653c13": [
      "_G_LLM_UI_WGT_LIST_SAVEGAME_LIST.origin_x"
@@ -90292,7 +90305,7 @@
      "_G_LLM_UI_WGT_LIST_PLANET_SELECT"
     ],
     "00653ce3": [
-     "_G_LLM_UI_WGT_LIST_PLANET_SELECT.field4_layout_state"
+     "_G_LLM_UI_WGT_LIST_PLANET_SELECT.bg_gfx_index"
     ],
     "00653d2b": [
      "_G_LLM_UI_WGT_LIST_BUILD_MENU_LIST"
@@ -90301,7 +90314,7 @@
      "_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST"
     ],
     "00653d7b": [
-     "_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST.field4_layout_state"
+     "_G_LLM_UI_OUTCOME_REPORT_WIDGET_LIST.bg_gfx_index"
     ],
     "00653dc3": [
      "_G_LLM_UI_OUTCOME_DLG_WIDGET_LIST"
@@ -93713,16 +93726,16 @@
      "DAT_00825040+1"
     ],
     "00825044": [
-     "DAT_00825044"
+     "_G_LLM_GFX_FB_TILE_ROW_SKIP"
     ],
     "00825048": [
-     "DAT_00825048"
+     "_G_LLM_GFX_STRIP_ROW_SKIP"
     ],
     "0082504c": [
      "_G_LLM_MOUSE_BUTTONS_CUR"
     ],
     "00825050": [
-     "DAT_00825050"
+     "_G_LLM_GFX_PANEL_TILE_ROW_SKIP"
     ],
     "00825054": [
      "G_WIN_H"
@@ -97757,10 +97770,10 @@
      "_G_LLM_RMB_GESTURE_STATE"
     ],
     "00e589b4": [
-     "DAT_00e589b4"
+     "_G_LLM_UI_FLOATING_TIP_X"
     ],
     "00e589b8": [
-     "DAT_00e589b8"
+     "_G_LLM_UI_FLOATING_TIP_Y"
     ],
     "00e589c0": [
      "_G_LLM_STRAT_SCENARIO_PLANET_NAME_W"
@@ -99544,10 +99557,10 @@
      "_G_LLM_UI_ERROR_DIALOG_ARG_TEXT_B"
     ],
     "00e622a0": [
-     "_G_LLM_LOBBY_BROWSER_ROWS"
+     "DAT_00e622a0"
     ],
     "00e622a4": [
-     "_G_LLM_LOBBY_BROWSER_ROWS[0].server_idx"
+     "DAT_00e622a4"
     ],
     "00e642a0": [
      "_G_LLM_AVI_OPEN_STATUS"
@@ -99673,10 +99686,10 @@
      "_G_LLM_INPUT_MOUSE_WHEEL_TOTAL"
     ],
     "00e69da4": [
-     "DAT_00e69da4"
+     "_G_LLM_INPUT_MOUSE_BOX_W"
     ],
     "00e69da8": [
-     "DAT_00e69da8"
+     "_G_LLM_INPUT_MOUSE_BOX_H"
     ],
     "00e69dac": [
      "_G_LLM_INPUT_KEY_READ_IDX"
@@ -101438,7 +101451,7 @@
     [
      "00414395",
      "00414a4d",
-     "llm_ui_hud_topbar_tick"
+     "llm_ui_hud_bottom_strip_tick"
     ],
     [
      "00414a4e",
@@ -108703,7 +108716,7 @@
     [
      "004a8b73",
      "004a8be9",
-     "llm_ui_set_draw_surface"
+     "llm_ui_blit_bitmap_rect"
     ],
     [
      "004a8bea",
@@ -111578,7 +111591,7 @@
     [
      "004d10bc",
      "004d10cc",
-     "FUN_004d10bc"
+     "llm_input_mouse_device_init"
     ],
     [
      "004d10d0",
@@ -111598,7 +111611,7 @@
     [
      "004d1138",
      "004d1143",
-     "FUN_004d1138"
+     "llm_input_set_cursor_pos"
     ],
     [
      "004d1144",

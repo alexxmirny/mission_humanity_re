@@ -5,6 +5,7 @@
 // against every branch below and agree with the assembly throughout -- see the header banner).
 //
 #include "sim/sim_bldg_state_turret.h"
+#include "sim/sim_building_tick.h" // turret_fire_poll_fix (PT-FIX5)
 
 #include <cstdint>
 #include <cstring>
@@ -268,7 +269,23 @@ void bldg_state_turret_attack(const sim_view &v, sim_store &own, const bldg_stat
 
     // 0x004721d7-0x004722e9: `while (tick_budget > 0.0) { ... }` -- top-tested, may run ZERO passes
     // (unlike turret_scan's do-while above).
-    while (own.tick_budget() > 0.0) {
+    //
+    // patching:PT-FIX5 ([net] turret_fire_poll_fix; retail splice at 0x004721d0, the 7-byte `MOV [EBP-0x18],2`
+    // right before the loop top): every pass costs per_shot_cost out of the step's tick budget, so an
+    // already-aimed turret whose reload just finished waited for >= 0.05 s of accumulated budget to pay for
+    // a pass that turns nothing, and the final gate then needed budget to be left over. With the key on, a
+    // READY turret that is already within the loop's own aim tolerance skips the loop entirely -- the
+    // budget stays whole, the animation tail stores the unchanged heading, and the fire gate below fires
+    // on the step the reload completes. A turret that must turn (outside the tolerance) or is still
+    // reloading takes the retail loop, so turning keeps its 0.05 s per heading.
+    const auto aimed_within_tolerance = [&]() {
+        const int32_t d1 = aim_heading - target_bearing;
+        const int32_t d2 = target_bearing - aim_heading;
+        return (aim_heading <= target_bearing || d1 < 3 || d1 > 0x15) &&
+               (target_bearing <= aim_heading || d2 < 3 || d2 > 0x15);
+    };
+    const bool skip_aim_loop = turret_fire_poll_fix() && t.reload_ready_flag != 0 && aimed_within_tolerance();
+    while (!skip_aim_loop && own.tick_budget() > 0.0) {
         if (own.tick_budget() < per_shot_cost) {
             b.last_tick_time -= own.tick_budget();
             own.tick_budget() = 0.0;
@@ -295,11 +312,7 @@ void bldg_state_turret_attack(const sim_view &v, sim_store &own, const bldg_stat
         }
         // 0x00472290-0x004722e9: the "close enough" tolerance break, evaluated every pass regardless
         // of which arm above ran (using that pass's -- possibly unchanged -- aim_heading).
-        const int32_t d1 = aim_heading - target_bearing;
-        const int32_t d2 = target_bearing - aim_heading;
-        if ((aim_heading <= target_bearing || d1 < 3 || d1 > 0x15) &&
-            (target_bearing <= aim_heading || d2 < 3 || d2 > 0x15))
-            break;
+        if (aimed_within_tolerance()) break;
     }
 
     // 0x0047230a-0x00472331: stored UNCONDITIONALLY, even when the loop above ran zero passes.

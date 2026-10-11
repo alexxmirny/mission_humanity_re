@@ -209,6 +209,52 @@
    "rationale": "The refsites are FOUND by scanning .text for the base immediate (video.cpp scan_text), so no static address list exists and none can be manufactured -- the set depends on the loaded image. Covered by the RUNTIME half instead: patch_bytes_guarded consults hook/promoted.h on every write, so an immediate that happens to sit inside a promoted body is refused and logged rather than silently lost."
   },
   {
+   "id": "video_mode_change_guards",
+   "sources": [
+    {
+     "file": "mh/seams/video_mode_guards.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004287f4",
+    "0x004b7322",
+    "0x004c5e88"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_gfx_set_window_resolution",
+    "llm_ui_widget_list_draw_frame_layer",
+    "llm_ui_planet_select_screen_build"
+   ],
+   "knob": "video.mode_guards",
+   "carrier": null,
+   "note": "the three mode-change crash guards, armed through one arm_call(site, ...) helper: the mode-change pixel probe CALL is re-pointed to a cursor clamp (0x004287f4), the galaxy background-index read to min(mode,2) (0x004c5e88), and the full-screen background restore CALL to a header-aware filtered scaler (0x004b7322)"
+  },
+  {
+   "id": "video_galaxy_native",
+   "sources": [
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "s.addr"
+    }
+   ],
+   "addrs": [
+    "0x004cb445",
+    "0x004b81fa",
+    "0x004b826d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_planet_select_screen_open",
+    "llm_menu_enter_gameplay",
+    "llm_menu_finish_enter_gameplay"
+   ],
+   "knob": "video.galaxy_native",
+   "carrier": null,
+   "note": "RES6: the planet-select screen runs at the stock 1024x768 -- the build call (0x004cb445) is wrapped to switch the size before and set the restore size after, and the two resume-to-gameplay calls of llm_map_view_size_mode_apply (0x004b81fa, 0x004b826d) are wrapped to re-assert that cache before the engine's own restore"
+  },
+  {
    "id": "video_mode2_immediates",
    "sources": [
     {
@@ -232,6 +278,78 @@
    "carrier": null,
    "note": "rewrite the 13 mode-2 resolution immediates, and NOP the boot cursor stores",
    "rationale": "Addresses come from the P[]/CUR[] tables as `site + off` and are re-poked per mode switch with a rolling `expect`, so the effective target is a computed expression rather than a constant. Same runtime coverage as video_view_array_reloc."
+  },
+  {
+   "id": "view_wrap_render_sites",
+   "sources": [
+    {
+     "file": "mh/seams/view_wrap.cpp",
+     "expr": "s.addr"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.wrap_window",
+   "carrier": null,
+   "note": "RES3/D13c: re-point the 21 strategic RENDER calls of llm_strat_pixel_delta_wrapped at the biased-window thunk",
+   "rationale": "Addresses come from the SITES[] table as `s.addr` (21 `call` instructions inside render functions, listed by caller in seams/view_wrap.cpp). None of those callers is promotable (no MH_EXPORT_REPLACE for any render function), so there is no carrier to declare; the runtime half still applies -- patch_bytes_guarded consults promoted_owner_of on every write, and the installer skips (and counts as DISPLACED) a site inside a promoted body. The callee llm_strat_pixel_delta_wrapped IS promoted and is deliberately not patched: the 3 stock callers (2 sim, 1 hit-test) keep calling it."
+  },
+  {
+   "id": "view_wrap_fx_view_gate",
+   "sources": [
+    {
+     "file": "mh/seams/view_wrap.cpp",
+     "expr": "a"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.fx_view_gate",
+   "carrier": null,
+   "note": "RES3/D13c: re-point the two callers of llm_strat_tile_in_view_and_visible (0x00453c9f) at a replacement that takes a whole map axis as in view",
+   "rationale": "Addresses come from the SITES_GATE[] table as `a` (0x004419f7 in llm_strat_projectile_draw and 0x00441af2 in llm_strat_fx_anim_draw: two `call` instructions in draw functions, neither promotable). The callee is not patched. The installer also checks promoted_owner_of before each write."
+  },
+  {
+   "id": "video_panel_list_rows",
+   "sources": [
+    {
+     "file": "mh/seams/video_mode_guards.cpp",
+     "expr": "st.addr"
+    },
+    {
+     "file": "mh/seams/video_mode_guards.cpp",
+     "expr": "f.addr"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.mode_guards",
+   "carrier": null,
+   "note": "RES3/D13c P6: the six panel list row counts read min(WindowHeight, 768) (six `mov reg,[WindowHeight]` become `call thunk; nop`); plus the four calls of llm_ui_panel_background_tile_draw that follow a list's rows (0x00415f2d, 0x004193c0, 0x004196f2, 0x00419963), re-pointed so the filler starts where the uncapped list would end. With ui_panel_list_rows armed the three LIST sites (0x00412163, 0x0041301c, 0x00415c86) read min(WindowHeight, the height the tables were built for) instead",
+   "rationale": "Addresses come from the SITES[] table as `st.addr` (0x00412163 llm_ui_hud_scroll_list_body_handler, 0x0041301c llm_ui_hud_scroll_arrow_handler, 0x00415c86 llm_ui_scroll_icon_list_draw, 0x0041927c llm_ui_group_tab_on_click, 0x004195ae llm_strat_ui_unit_panel_tick, 0x0041981f llm_ui_selection_panel_refresh): HUD panel UI functions, none promoted (no MH_EXPORT_REPLACE for a UI function), so there is no carrier to declare. The four filler call sites (`f.addr`) are in the same functions (llm_ui_scroll_icon_list_draw, llm_ui_group_tab_on_click, llm_strat_ui_unit_panel_tick, llm_ui_selection_panel_refresh)."
+  },
+  {
+   "id": "ui_panel_list_rows",
+   "sources": [
+    {
+     "file": "mh/seams/ui_panel_rows.cpp",
+     "expr": "pt.addr"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.panel_rows",
+   "carrier": null,
+   "note": "RES7: the side-panel list tables sized for the tallest picker mode -- every .text reference to the icon table (0x0050e817), its group starts (0x0050bcf7), the HUD widget table (0x0050be63) and the two selection row-state arrays (0x0050a694, 0x0050a734) re-pointed at DLL copies, the boot unpack call (0x0041ae9f) re-pointed at the rebuild, the dispatcher's 100-record cap (0x0041b00c) lifted, the selection loop bound and stride, and the units-list count-row call (0x00418fff) re-pointed at a row-remap thunk",
+   "rationale": "Addresses come from the ref tables in seams/ui_panel_rows.cpp (WIDGET_REFS, ENTRY_REFS, GSTART_REFS, ROWSTATE_REFS plus the single-site patches), applied as `pt.addr` from one assembled patch list after every site's stock bytes are verified (all-or-nothing, rolled back on a refusal). The sites sit in 43 HUD panel UI functions (FUN_00411f47, llm_strat_ui_panel_init, llm_strat_ui_storage_bldg_panel, llm_strat_ui_unit_panel_tick, llm_ui_bldg_panel_open, llm_ui_bldg_panel_refresh_apply, llm_ui_bldg_panel_tick, llm_ui_bldg_prod_queue_slot_draw, llm_ui_bldg_project_panel_tick, llm_ui_bldg_selected_panel_tick, llm_ui_bldg_shuttle_dock_panel_tick, llm_ui_bldg_stat_rows_draw, llm_ui_bldg_units_panel_tick, llm_ui_bldg_worker_adjust_btn_tick, llm_ui_ctrlgroup_member_icon_scroll_row_draw, llm_ui_group_tab_on_click, llm_ui_hud_base_marker_button_handler, llm_ui_hud_bottom_strip_tick, llm_ui_hud_icon_widget_dispatch, llm_ui_hud_icon_widget_hover_draw, llm_ui_hud_mainpanel_tab_row_label_refresh, llm_ui_hud_panel_title_draw, llm_ui_hud_scroll_arrow_handler, llm_ui_hud_widget_contains_test_point, llm_ui_hud_widget_define, llm_ui_hud_widget_hit_test, llm_ui_hud_widget_icon_blit, llm_ui_icon_group_dispatch, llm_ui_icon_rect_hit_test, llm_ui_icon_rect_hit_test_release_pos, llm_ui_icon_rect_hit_test_rmb, llm_ui_icon_rect_hit_test_rmb_cached, llm_ui_list_item_icon_label_draw, llm_ui_main_panel_draw, llm_ui_scroll_icon_list_draw, llm_ui_selection_count_row_draw, llm_ui_selection_panel_refresh, llm_ui_slot_icon_draw, llm_ui_unassigned_row_state_clear, llm_ui_unit_unassigned_list_draw_row, llm_ui_unit_unassigned_list_scroll_row_draw, llm_ui_icon_table_unpack); none is promoted (no MH_EXPORT_REPLACE use for any of them), so there is no carrier to declare. Runtime half as for the other table-driven rows: patch_bytes_guarded consults promoted_owner_of on every write."
   },
   {
    "id": "run_without_focus",
@@ -784,6 +902,120 @@
    "note": "mp:U49 (2026-10-01): jump-splice the 6 bytes `CMP [EBP-0x28],0 / JNZ 0x00466cda` at 0x00466cb6 (only predecessor: the order_code==0x20 JMP at 0x00466ca3) into a stub that, for a boarding unit, reads the unit's CURRENT state and drops the 0x20 record (jump to the loop's continue at 0x0046997f) unless the unit is PARKED (0x1f) or EXIT_STORAGE_BEGIN (0x20, a same-pass first order). Retail re-applies a second undock to a unit already walking out (0x21), which re-enters exit_storage_begin and wedges it in EXIT_WAIT on a door it holds itself. SIM-AFFECTING, default ON; the promoted dispatcher carries the same rule (sim_order_dispatch.cpp, reimpl_fixes::undock_reentry_fix). Offline oracle: simtest dispatch arm; rig: u49_undock_reentry."
   },
   {
+   "id": "turret_reload_owner_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TURRET_RELOAD_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0046fe5d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_building_tick"
+   ],
+   "knob": "turret_reload_owner_fix",
+   "carrier": "migrated:turret_reload_owner_fix",
+   "note": "patching:PT-FIX1 (2026-10-10): call-splice the 5 bytes `CALL llm_strat_bldg_turret_reload_tick` (E8 A9 C7 00 00 -> 0x0047c60b) at 0x0046fe5d into a stub that tail-jumps to the original only when turrets[player][building.sub_id].b_index == the ticking building's own index, else RET 8. A destroyed turret's rubble (state 4, <= 20 s) keeps its sub_id, its slot is freed (unmap_footprint) and re-used (map_CreateBuilding), and the rubble's growing tick budget drains the new turret's reload_timer every step (~4x fire rate). SIM-AFFECTING, default ON; the promoted building_tick carries the same rule (sim_building_tick.cpp, reimpl_fixes::turret_reload_owner_fix). The stub is SHARED with turret_reload_realtime_fix (PT-FIX2, same site, runtime flags). Offline oracle: simtest building_tick arm; rig: turret_slot_reuse / turret_slot_reuse_retail."
+  },
+  {
+   "id": "turret_reload_realtime_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TURRET_RELOAD_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0046fe5d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_building_tick"
+   ],
+   "knob": "turret_reload_realtime_fix",
+   "carrier": "migrated:turret_reload_realtime_fix",
+   "note": "patching:PT-FIX2 (2026-10-11): SHARES the call-splice at 0x0046fe5d with turret_reload_owner_fix (PT-FIX1) -- one stub, one runtime flag per fix. With the fix on, a positive budget (the double pushed for llm_strat_bldg_turret_reload_tick) is overwritten with dt * [net] turret_fire_rate_mult, dt = GAME_TIME_DELTA (0x00e587d1), the real length of the sim step; retail hands the re-counted budget GAME_CLOCK - last_tick_time (the attack state gives an unspent budget back), which runs dt..K*dt and drains the reload timer ~(K+1)/2 x too fast at 10/20 ms steps. SIM-AFFECTING, default ON, both keys dev-class; the promoted building_tick carries the same rule (sim_building_tick.cpp, reimpl_fixes::turret_reload_realtime_fix). Offline oracle: simtest building_tick arm; rig: turret_rate / turret_rate_retail."
+  },
+  {
+   "id": "turret_clip_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TURRET_CLIP_CREATE"
+    }
+   ],
+   "addrs": [
+    "0x00462ab9"
+   ],
+   "kind": "code",
+   "owner": [
+    "map_CreateBuilding"
+   ],
+   "knob": "turret_clip_fix",
+   "carrier": "migrated:turret_clip_fix",
+   "note": "patching:PT-FIX4 (2026-10-11), creation half: block-splice the 7-byte `MOV byte [EAX+0xcc1005],1` (resupply_available = 1, EAX = &turrets[p][sub]; guard C6 80 05 10 CC 00 01) at the end of the turret boot writes into a JMP + 2 NOP to a stub that redoes the store, then sets turret.ammo (+0x2f) = Weapon[weapon_id].ammo and resupply_cycles_remaining (+0x33) = -1, and returns to 0x00462ac0 with every register preserved. Retail never initialises either (fresh slot ammo 0, reused slot = the dead turret leftovers), so the first shot takes ammo to -1 and the clip / long reload never engage. The splice is ALWAYS installed and the stub branches on the runtime global g_turret_clip_fix_rt (set from [net] turret_clip_fix at install, settable via mh_set_turret_clip_fix); global 0 = byte-for-byte retail. SIM-AFFECTING, DEFAULT OFF (user ruling: opt-in balance change); the promoted map_CreateBuilding carries the same rule (sim_map_create_building.cpp, reimpl_fixes::turret_clip_fix). Offline oracle: simtest turret_clip arm; rig: turret_clip / turret_clip_retail."
+  },
+  {
+   "id": "turret_clip_refill",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TURRET_CLIP_REFILL"
+    }
+   ],
+   "addrs": [
+    "0x0047c6c8"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_turret_reload_tick"
+   ],
+   "knob": "turret_clip_fix",
+   "carrier": "migrated:turret_clip_fix",
+   "note": "patching:PT-FIX4 (2026-10-11), refill half: block-splice the 9 bytes `CMP dword [EAX+0xcc100f],0 ; JNZ 0x0047c6f4` at 0x0047c6c8 (guard 83 B8 0F 10 CC 00 00 75 23) into JMP stub + 4 NOP; with the runtime global g_turret_clip_fix_rt on, the stub refills (0x0047c6d1) for ammo <= 0 on the signed dword (JG skips to 0x0047c6f4), not only == 0, and with it 0 it repeats the retail CMP/JNZ exactly (always installed), so a turret already carrying negative ammo (an old saved game, a reused slot) is repaired at its next completed reload. Same knob as turret_clip_fix; SIM-AFFECTING, DEFAULT OFF; the promoted reload tick carries the same rule (sim_bldg_turret_reload_tick.cpp)."
+  },
+  {
+   "id": "turret_fire_poll_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_TURRET_POLL"
+    }
+   ],
+   "addrs": [
+    "0x004721d0"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_state_turret_attack"
+   ],
+   "knob": "turret_fire_poll_fix",
+   "carrier": "migrated:turret_fire_poll_fix",
+   "note": "patching:PT-FIX5 (2026-10-11): block-splice the 7-byte `MOV dword [EBP-0x18],2` (the aim-tolerance local, guard C7 45 E8 02 00 00 00) right before the aim-loop top 0x004721d7 of llm_strat_bldg_state_turret_attack into JMP stub + 2 NOP. The stub redoes the store; with the runtime global g_turret_fire_poll_fix_rt on, a READY turret (turrets[player*0x6e0 + sub_id*0x37 + 0xcc1006] != 0) whose aim_heading [EBP-0x48] is already within tolerance 2 of the bearing [EBP-0x44] (|d| <= 2 or >= 22, the loop's own break test) jumps over the loop to 0x004722e9, so the budget stays whole and the fire gate at 0x00472394 fires on the step the reload completes (retail: every aim pass costs 0.05 s of tick budget and the gate needs budget left over, so a finished reload waits up to ~0.06 s); any other case continues into the retail loop (turning keeps its 0.05 s per heading), and with the global 0 the stub is the retail store + jump. ALWAYS installed (settable via mh_set_turret_fire_poll_fix). SIM-AFFECTING, DEFAULT OFF; the promoted attack state carries the same rule (sim_bldg_state_turret.cpp, reimpl_fixes::turret_fire_poll_fix). Offline oracle: simtest turret_poll arm; rig: turret_poll / turret_poll_retail."
+  },
+  {
+   "id": "air_order_facing_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_AIR_FACING_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00480b86"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_move_path"
+   ],
+   "knob": "air_order_facing_fix",
+   "carrier": "migrated:air_order_facing_fix",
+   "note": "patching:PT-FIX3 (2026-10-10): block-splice the 25 bytes at 0x00480b86 (`MOV [0x00ae3738],0 / MOV [0x00ae373c],0 / JMP 0x00481172`, the move_path early return for move_microstep==31 && order_queued, entered from the JNZ at 0x00480b82) into a JMP to a stub that, for an air unit (cfg type > 0xe, the dispatcher's own test at 0x00466aab) whose facing_target (+0x2c) differs from MOVE_MICROSTEPS[heading*0x60+ms*3].facing, sets facing_target and facing_current (+0x2d) to it, then performs the block's own tick-budget zeroing and JMPs 0x00481172. Retail defers an air unit's order in llm_strat_order_queue_dispatch (0x00466b03) while the two differ, and nothing reconciles them in states 0x11/0x12/0x2c (update_rotation skips non-independent units; this early return skips the sync): a helicopter at microstep 31 with a stale facing that gets an order is frozen forever (RE-MISC10). SIM-AFFECTING, default ON; the promoted move_path carries the same rule (sim_unit_state_move_path.cpp, reimpl_fixes::air_order_facing_fix). Offline oracle: simtest move_path arm; rig: air_order_deadlock / air_order_deadlock_retail."
+  },
+  {
    "id": "diplo_order_dedup_fix",
    "sources": [
     {
@@ -1124,6 +1356,82 @@
    "knob": "lang.pack",
    "carrier": null,
    "note": "mods:LANG1 (2026-09-29): repoint ReadMsgsDat's `mov eax, s_Msgs_dat_005034cf` operand to `lang\\<id>\\Msgs.dat` when the armed pack carries one. Guarded on the exact 5 original bytes. Runs at the top of WinMain, after DllMain armed it."
+  },
+  {
+   "id": "worker_click_amount_prime",
+   "sources": [
+    {
+     "file": "mh/seams/ui_worker_click.cpp",
+     "expr": "AMOUNT_CELL[i]"
+    }
+   ],
+   "addrs": [
+    "0x0050bde7",
+    "0x0050bdfb"
+   ],
+   "kind": "data",
+   "owner": [],
+   "knob": "ui.worker_click_fix",
+   "carrier": null,
+   "note": "RES8: the two worker +/- button records' pending_worker_amount cells (_G_LLM_UI_BLDG_WORKER_ADJ_BTNS[0/1] + 0x0c) set 0 -> 1 at install, so the first press of each button in the process orders one worker instead of 0"
+  },
+  {
+   "id": "worker_click_press_amount",
+   "sources": [
+    {
+     "file": "mh/seams/ui_worker_click.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x0041341b"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_bldg_worker_adjust_btn_tick"
+   ],
+   "knob": "ui.worker_click_fix",
+   "carrier": null,
+   "note": "RES8: the press-edge branch's CALL llm_snd_play (E8 13 1E 01 00) -> CALL thunk that sets the record's pending_worker_amount = 1 and tail-jumps to llm_snd_play, so a press never orders a stale 0 or a stale hold-repeat count; the hold auto-repeat branch is untouched"
+  },
+  {
+   "id": "worker_click_apply_drain",
+   "sources": [
+    {
+     "file": "mh/seams/ui_worker_click.cpp",
+     "expr": "DRAIN_SITE[i]"
+    }
+   ],
+   "addrs": [
+    "0x00413509",
+    "0x00413520"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_ui_bldg_worker_adjust_apply"
+   ],
+   "knob": "ui.worker_click_fix",
+   "carrier": null,
+   "note": "RES8 mode 2 ([ui] worker_click_fix=2): the apply's two order CALLs (assign E8 A8 AA 05 00, unassign E8 2F AB 05 00) -> CALL a thunk that zeroes the record's pending_worker_amount (EBX already holds it) and tail-jumps to the order, so a press orders exactly one worker and the remaining frames of the press order 0; past 200 ms the hold branch rewrites the amount every frame, so the stock auto-repeat is unchanged"
+  },
+  {
+   "id": "minimap_box_clip",
+   "sources": [
+    {
+     "file": "mh/seams/ui_minimap_box.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004a2344"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_minimap_draw_viewport_box"
+   ],
+   "knob": "ui.minimap_box_clip",
+   "carrier": null,
+   "note": "RES9: the entry's MOV EDI,[0x00603b00] (8B 3D 00 3B 60 00) -> JMP rel32 + NOP to a thunk that draws the viewport box clipped to the 128x128 minimap (stock pixels whenever the box fits); at heights >= 1152 in zoom mode 4 the stock loop writes above the side-panel surface. minimap_box_clip=2 runs the stock body behind the same thunk, measured"
   }
  ]
 }

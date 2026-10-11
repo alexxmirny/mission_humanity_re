@@ -16,12 +16,15 @@ socket). See D14.
 FORMAT (harness.cpp order_record): an 8-byte header, then a flat stream of
     { int32 step; uint8 order[0x44] }
 one record per order sitting in order_queue per recorded step -- so a single order that lingers in
-the queue for 30 steps appears 30 times, once per step.
+the queue for 30 steps appears 30 times, once per step. mh.dll's own recording (mp:Q3,
+desync/order_capture.h: `mh_rec_orders.bin`, gzipped to `mh_rec_orders.bin.gz` at the session close)
+is the same format; a `.gz` path is read through gzip.
 
     usage: python tools/mp_order_diff.py <host_dir_or_bin> <client_dir_or_bin> [--kind 0xf0]
 """
 
 import argparse
+import gzip
 import struct
 import sys
 from pathlib import Path
@@ -76,7 +79,7 @@ def load(path):
     # Coerce, so callers can pass a plain string. rig_batch.py imports this as a library and passed
     # os.path-joined strings; failing on the type would be a pointless trap for every future caller.
     path = Path(path)
-    blob = path.read_bytes()
+    blob = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
     if len(blob) < HEADER_LEN:
         sys.exit("%s is truncated (%d bytes)" % (path, len(blob)))
     body = blob[HEADER_LEN:]

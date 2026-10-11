@@ -2,6 +2,7 @@
 // desync/state_tracker.cpp -- the shared per-step tracker (state_tracker.h).
 //
 #include "desync/state_tracker.h"
+#include "desync/hitch_probe.h" // mp:Q4: game-thread time per recording path
 
 #include <windows.h>
 
@@ -89,7 +90,8 @@ bool step(uint32_t s) {
         g_tr.update(f, 0); // gap 0: EXACT runs
     }
     QueryPerformanceCounter(&t1);
-    g_last_ticks   = t1.QuadPart - t0.QuadPart;
+    g_last_ticks = t1.QuadPart - t0.QuadPart;
+    hitch::add_ticks(hitch::TRACKER, g_last_ticks);
     g_primed_state = true;
     g_last_primed  = prime;
     for (int i = 0; i < n; ++i) act[i]->step_end(s, prime);

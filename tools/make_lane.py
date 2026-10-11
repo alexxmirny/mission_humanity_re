@@ -310,12 +310,17 @@ def video_lines(headless, backend=None, fps_limit=None):
     # values explicitly and never leans on the DLL's defaults for them; each is declared in
     # tools/data/rig_ini_default_exceptions.json (section "video"/"log"/"input").
     lines += ["window=%s" % RIG_WINDOW, "filter=%s" % RIG_FILTER, "vsync=%d" % RIG_VSYNC]
+    # RES3: a player can choose `resolution=auto` (a generated list pinned to the desktop); the rig keeps the
+    # stock three sizes (also the ship default) so no baseline depends on the machine's desktop. A row that tests the list passes
+    # `resolution=...` (plus `desktop=` / `display_scale=`) in its extra ini, which merges over this.
+    lines.append("resolution=%s" % RIG_RESOLUTION)
     lines.append("fps_limit=%d" % (RIG_FPS_LIMIT if fps_limit is None else fps_limit))
     return lines
 
 
 # The rig's pinned values for the keys whose SHIP default changed in v0.2.0 (see video_lines).
 RIG_WINDOW = "windowed"
+RIG_RESOLUTION = "stock"
 RIG_FILTER = "point"
 RIG_VSYNC = 0
 RIG_FPS_LIMIT = 60
@@ -350,7 +355,10 @@ def input_lines(input_backend=None):
     """The [input] keys (no header) that pick a lane's DirectInput: ONE place, shared by write_ini and
     every runner that rewrites a lane's ini (ui_test.make_ini, mp_run, ui_abc, tact_test). None = the
     rig default (own)."""
-    return ["backend=%s" % (input_backend or DEFAULT_INPUT_BACKEND)]
+    # wheel_zoom=0: RES2 made the wheel zoom the map (ship default on). Recorded sessions carry the human's
+    # wheel input, which the retail game ignored; replayed with zoom on, the zoom crop moves the cursor's map
+    # tile and every later click lands elsewhere. The rig pins it off; the zoom rows set it in extra_ini.
+    return ["backend=%s" % (input_backend or DEFAULT_INPUT_BACKEND), "wheel_zoom=0"]
 
 
 def effective_input_backend(ident=None, override=None):

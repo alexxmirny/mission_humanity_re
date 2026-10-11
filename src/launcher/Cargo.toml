@@ -150,6 +150,9 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Diagnostics_Debug",
+    # RES3: EnumDisplaySettingsW + the system DPI, for the Resolution row's list (settings/resolutions.rs).
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
     # dist RL9: the process snapshot behind `procs::game_running_here` (is mh.exe running from this
     # folder?) -- CreateToolhelp32Snapshot / Process32FirstW / Process32NextW.
     "Win32_System_Diagnostics_ToolHelp",

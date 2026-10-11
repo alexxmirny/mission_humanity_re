@@ -324,6 +324,12 @@ void lockstep_install_core();             // [net] pacing knobs + overlay de-fan
                                           //   timing-log path + the time_tick hook. Sets g_ls_log.
 void lockstep_install_present_gameover(); // present hook (frametime/eager/temporal) + game-over detour
 void lockstep_transport_started();        // start the horizon-heartbeat thread (from lazy_start, off loader-lock)
+// PT-SET1: the turret runtime setters the gameplay apply hooks (seams/gameplay_hooks.cpp) call. Each int-returning setter
+// answers 1 = in force, 0 = refused (the fix is asked for but its splice is MISMATCHED: logged, gate stays 0 = retail).
+int  mh_set_turret_reload_realtime(int on);
+void mh_set_turret_fire_rate_mult(double m);
+int  mh_set_turret_clip_fix(int on);
+int  mh_set_turret_fire_poll_fix(int on);
 
 // ---- cross-TU surface of net_discovery.cpp (synth session / browser / S2-S4 discovery+join) --
 void mp_host_advertise_session(); // S2: build + broadcast the host's SESSION_INFO (~1 Hz)
@@ -351,6 +357,7 @@ void           on_session_info_recv(int sender, const unsigned char *buf, int le
 void           on_join_recv(int sender, const unsigned char *buf, int len);         // S4: host admits a JOIN
 void           on_start_recv(int sender, const unsigned char *buf, int len);        // U2: host's FLAG_START
 extern "C" int MH_Seam_TakeStartSlots(unsigned char *out, int cap);                 // U28: host's authoritative slots
+extern "C" int MH_Seam_TakeStartGameplay(unsigned char *out, int cap);              // PT-SET1: host's gameplay trailer
 void           on_leave_recv(int sender);                                           // U12: client left the lobby
 // dead-stub detour bodies (net_seams' install_mp_bootstrap installs them; PROLOGUE-guarded there):
 void discover_poll_detour();  // client discovery poll -> synth/browser record

@@ -25,6 +25,7 @@ refuse.not_our_lobby = nicht unsere Lobby
 refuse.cp_mismatch = Eingabe-Codepage passt nicht
 refuse.unknown = unbekannt
 refuse.build = Host hat %s, du hast %s: bitte aktualisieren
+refuse.gameplay = Gameplay-Einstellungen weichen ab (%s/%s): bitte aktualisieren
 relay.outdated = Relay veraltet (Protokoll %u < %u)
 
 # map transfer

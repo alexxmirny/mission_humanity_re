@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(mh_net_proto STATIC
+    src/gameplay_set.cpp
     src/net_crypto.cpp
     src/net_udp.cpp
     src/net_wire.cpp
