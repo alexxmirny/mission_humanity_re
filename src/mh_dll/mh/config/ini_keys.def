@@ -149,6 +149,7 @@ MH_INI_KEY("net", "turret_reload_owner_fix", T_INT, "1", C_DEV, "", S_NONE, "", 
 MH_INI_KEY("net", "undock_reentry_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 
 // ---- [video] (dev / fixed) ----
+MH_INI_KEY("video", "drag_box_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("video", "fps_cap", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("video", "fx_view_gate", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("video", "galaxy_cursor", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)

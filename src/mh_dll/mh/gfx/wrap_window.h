@@ -65,6 +65,19 @@ int stock_axis(int from, int to, int big);
 // big <= 0 degrades to the plain difference.
 int biased_axis(int from, int to, int big, int k);
 
+// The stock modular distance from `from` to `to` going the positive way round a torus of `big`: ((to - from) mod big)
+// with the mathematical (non-negative) mod, in [0, big). The drag-select box's own width / height: the game picks the
+// box's left edge so that this is the SHORTER of the two ways (<= big/2). big <= 0 degrades to to - from.
+int span_axis(int from, int to, int big);
+
+// The drag-select box's near edge on one axis: where the box's left (top) edge is drawn, given the camera and the two
+// WORLD edges the game chose (left_w .. right_w, right_w - left_w (mod big) the box's width). The stock short-way
+// position when that is left of -k (the anchor scrolled off the left of the view) but the box still reaches into the
+// view (stock + width > 0): there the stock outline is the one a retail view draws and the biased window would file the
+// edge on the far right. Otherwise the biased window (equal to the stock result wherever that lies in [-k, big/2]).
+// The far edge is this + the width, so the box is always ordered.
+int drag_near_axis(int cam, int left_w, int right_w, int big, int k);
+
 // ---- the effect / projectile view gate (llm_strat_tile_in_view_and_visible, 0x00453c9f) ------------------------
 // One axis of the stock test. The span is [cam-1, cam+tiles+1] on a torus of `map_tiles` (a power of two): left =
 // cam-1 (the stock code uses map_tiles when cam is 0), right = (cam+tiles+1) & (map_tiles-1), and a tile is OUT when

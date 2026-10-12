@@ -35,6 +35,20 @@ int biased_axis(int from, int to, int big, int k) {
     return (int)(m - k);
 }
 
+int span_axis(int from, int to, int big) {
+    if (big <= 0) return to - from;
+    long long m = ((long long)to - (long long)from) % big;
+    if (m < 0) m += big;
+    return (int)m;
+}
+
+int drag_near_axis(int cam, int left_w, int right_w, int big, int k) {
+    if (big <= 0) return left_w - cam;
+    const int stock = stock_axis(cam, left_w, big);
+    if (stock < -k && stock + span_axis(left_w, right_w, big) > 0) return stock;
+    return biased_axis(cam, left_w, big, k);
+}
+
 bool tile_in_span_stock(int tile, int cam, int tiles, int map_tiles) {
     const int  left  = cam == 0 ? map_tiles : cam - 1;
     const int  right = (cam + tiles + 1) & (map_tiles - 1);

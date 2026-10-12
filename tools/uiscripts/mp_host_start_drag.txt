@@ -1,0 +1,102 @@
+# RES12: mp_host_start.txt, then the HOST (one peer only) drag-selects at 1920x1056 while the lockstep match runs.
+#
+# The determinism claim is that the drag-select box's outline, its corner placement and the camera scroll that moves its anchor
+# are view state: the selection and the orders a drag produces come from the WORLD corners only. This script makes it a
+# measurement -- `test_ui.py --determinism --det-drag` runs it on the host and the stock mp_client_start.txt on the client, and
+# mp_analyze must still report ALL PAIRS IDENTICAL after boxes in view, across the seam, with the anchor scrolled more than K px
+# off the left (the res_drag_box scenario) and an order for the selection.
+#
+# Pair with mp_client_start.txt. The host's ini (tools/uiscripts/ini/drag_det_host.ini) lists the sizes the in-game size change
+# walks along: [2] 1024x768 -> four clicks -> [6] 1920x1056.
+
+settled value:110
+capture m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture m2_lobby_ready
+clickl Start
+
+absent Network players
+gameclock 6000
+capture m3_launched
+
+# the host's view goes to 1920x1056 (ESC > Options > Screen size, four clicks along the list)
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+log HOST view at 1920x1056
+
+# a held drag over the base, inside the view
+cursorhold 100 100 10
+presshold 100 100
+cursorhold 100 100 6
+cursorhold 800 700 12
+release 800 700
+gameclock +100
+log HOST box 1 released
+
+# the same box, reversed
+cursorhold 800 700 10
+presshold 800 700
+cursorhold 800 700 6
+cursorhold 100 100 12
+release 100 100
+gameclock +100
+log HOST box 2 released
+
+# an order for the selection: a right click on the ground
+cursorhold 600 250 10
+simrclick 600 250
+gameclock +200
+log HOST order given
+
+# the anchor scrolled ~700 px off the left edge (more than K = 288) while the button is held: the D13c inverted box
+cursorhold 300 300 10
+presshold 300 300
+cursorhold 300 300 6
+keyhold 0x4d 64
+cursorhold 500 650 12
+release 500 650
+gameclock +100
+log HOST box 3 released (anchor scrolled off left)
+
+# and off the right
+cursorhold 300 300 10
+presshold 300 300
+cursorhold 300 300 6
+keyhold 0x4b 64
+cursorhold 400 700 12
+release 400 700
+gameclock +100
+log HOST box 4 released (anchor scrolled off right)
+capture m4_after_drags
+log HOST left the match after the drags -- the peers must still agree
+end

@@ -538,10 +538,17 @@ fn build_with_progress(
         (Some(lr), Some(sd)) => Some(session_facts(&lr, sd)),
         _ => None,
     };
+    // dist LA18: ...and when the launcher's last run is some OTHER crash (or none), the crash the
+    // report is about is the marker in the logs root that names the picked session's own match.
+    let kept_crash = input_in
+        .crash
+        .filter(|m| facts.as_ref().is_none_or(|f| marker_belongs(m, f)));
+    let own_marker: Option<Marker> = match (kept_crash, input_in.logs_root(), facts.as_ref()) {
+        (None, Some(lr), Some(f)) if !f.match_id.is_empty() => marker_of_match(&lr, f),
+        _ => None,
+    };
     let input_owned = Input {
-        crash: input_in
-            .crash
-            .filter(|m| facts.as_ref().is_none_or(|f| marker_belongs(m, f))),
+        crash: kept_crash.or(own_marker.as_ref()),
         ..input_in.clone()
     };
     let input = &input_owned;
@@ -772,6 +779,17 @@ fn meta_json(
     serde_json::to_string_pretty(&obj).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// dist LA18: the newest crash marker under `logs_root` that names the match `f` describes.
+fn marker_of_match(logs_root: &Path, f: &SessionFacts) -> Option<Marker> {
+    let (_, crash) = root_files(logs_root);
+    crash
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "marker"))
+        .filter_map(|p| Marker::read(p).ok())
+        .filter(|m| m.match_id.trim().eq_ignore_ascii_case(&f.match_id))
+        .max_by(|a, b| a.when.cmp(&b.when))
+}
+
 /// The build stamp mh.dll writes as the first line of `mh_net.log`: `; [build] mh 0.1.0-rc1+abc1234`.
 fn build_stamp_from_logs(session: &Path) -> Option<String> {
     let text = std::fs::read_to_string(session.join("mh_net.log")).ok()?;
@@ -831,6 +849,10 @@ struct PoolDir {
 /// (the launcher's own start), or -- when that is unknown -- among the newest `LOGS_FALLBACK_N`
 /// directories. What the size budget costs is NOT decided here any more (dist LA14): it is decided
 /// on compressed bytes once everything is staged -- see `Set::shed`.
+///
+/// dist LA18: when the picked session's `session.json` names a match, the report is about that
+/// match ALONE: the pool is that session and its own process directory, not the newest session and
+/// not the launcher-start window (which dragged a later match's logs into an earlier match's report).
 fn plan_logs(
     logs_root: &Path,
     protected_session: Option<&Path>,
@@ -852,8 +874,16 @@ fn plan_logs(
     if let Some(r) = &reported {
         protected.insert(r.clone());
     }
-    if let Some(newest_session) = dirs.iter().find(|d| !is_process_dir_name(&d.name)) {
-        protected.insert(newest_session.name.clone());
+    // dist LA18: a report that names a match is about THAT match alone -- its session, its process
+    // directory, nothing from the other matches of the run (their logs read as this match's).
+    let match_scoped = reported
+        .as_ref()
+        .and_then(|r| by_name.get(r.as_str()))
+        .is_some_and(|d| match_id_from_session(&d.path).is_some());
+    if !match_scoped {
+        if let Some(newest_session) = dirs.iter().find(|d| !is_process_dir_name(&d.name)) {
+            protected.insert(newest_session.name.clone());
+        }
     }
     // Each protected session's own process directory rides along -- LA9's done_when "contains both
     // session dirs, THE process dir": two matches hosted without a restart share one.
@@ -875,6 +905,10 @@ fn plan_logs(
     // happens to predate this launcher process (a `--report` built long after `--launch`) or fall
     // outside the fallback's newest-N.
     let in_window: Vec<&LogDir> = match since_utc {
+        _ if match_scoped => dirs
+            .iter()
+            .filter(|d| protected.contains(&d.name))
+            .collect(),
         Some(since) => dirs
             .iter()
             .filter(|d| d.stamp.as_str() >= since || protected.contains(&d.name))
@@ -3047,7 +3081,7 @@ mod tests {
     /// "which match is this report about" with the newest, and `included` names every directory
     /// the zip actually carries.
     #[test]
-    fn a_non_crash_report_carries_the_newest_session_directory_and_the_older_one_too() {
+    fn a_non_crash_report_carries_the_newest_session_directory_and_not_the_older_one() {
         let dir = fixture("report_session");
         let zip = dir.join("out").join("report.zip");
         let input = Input {
@@ -3079,17 +3113,12 @@ mod tests {
         assert!(names.contains(&"report.json".to_string()));
         assert!(names.contains(&"description.txt".to_string()));
 
-        // dist LA9: the older directory is now IN the report, not excluded from it.
+        // dist LA18: a report that names a match is about THAT match alone -- another run's
+        // directory is no longer packaged next to it.
         assert!(
-            names.contains(&format!("{older}/mh_net.log")),
-            "the older directory did not make it into the report: {names:?}"
+            !names.iter().any(|n| n.starts_with(&format!("{older}/"))),
+            "another match's directory rode along: {names:?}"
         );
-        let older_log = entries_of(&zip)
-            .into_iter()
-            .find(|(n, _)| n == &format!("{older}/mh_net.log"))
-            .unwrap()
-            .1;
-        assert!(String::from_utf8_lossy(&older_log).contains("an older run nobody asked about"));
 
         // report.json names the session it is ABOUT, and the fields tools/crash_report.py reads.
         let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
@@ -3117,8 +3146,9 @@ mod tests {
             included.contains(&"20260917T164346Z_dedd707c_1_client".to_string()),
             "{included:?}"
         );
+        // dist LA18: ...but only the one the report names (the older directory is another run's).
         assert!(
-            included.contains(&"20260916T101010Z_menu_solo".to_string()),
+            !included.contains(&"20260916T101010Z_menu_solo".to_string()),
             "{included:?}"
         );
         assert!(
@@ -3192,7 +3222,7 @@ mod tests {
     /// `logs\` -- planted rather than raised through the live crash channel, the shape a marker
     /// from an EARLIER, undrained crash would take.
     #[test]
-    fn two_matches_in_one_run_ship_both_sessions_the_process_dir_and_a_marker() {
+    fn two_matches_in_one_run_ship_the_picked_session_its_process_dir_and_a_marker() {
         let dir = std::env::temp_dir().join("mh_launcher_test_two_matches");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
@@ -3263,8 +3293,9 @@ mod tests {
         let built = build(&zip, &input).unwrap();
         let names: Vec<String> = entries_of(&zip).into_iter().map(|(n, _)| n).collect();
 
+        // dist LA18: the first match is another match's evidence now, not this report's.
         assert!(
-            names
+            !names
                 .iter()
                 .any(|n| n.starts_with(&format!("logs/{s1_name}/"))),
             "{names:?}"
@@ -3293,7 +3324,7 @@ mod tests {
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
             .collect();
-        assert!(included.contains(&s1_name.to_string()), "{included:?}");
+        assert!(!included.contains(&s1_name.to_string()), "{included:?}");
         assert!(included.contains(&s2_name.to_string()), "{included:?}");
         assert!(included.contains(&proc_name.to_string()), "{included:?}");
         assert_eq!(meta["session_dir"].as_str().unwrap(), s2_name);
@@ -4863,6 +4894,79 @@ mod rl14_tests {
         assert!(!built.entries.iter().any(|n| n == "crash/marker.txt"));
         let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
         assert!(meta.get("crash").is_none(), "{meta}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// dist LA18: two crashed matches in one logs root (the 2026-10-09 player reports), the report
+    /// is for the EARLIER one while the launcher's own last run saw the LATER crash. The crash
+    /// summary and the build come from the picked match's own marker, and the other match's
+    /// session (and its menu directory) stay out.
+    #[test]
+    fn a_report_for_an_earlier_crashed_match_carries_its_own_crash_build_and_only_its_logs() {
+        let root = scratch("la18");
+        let logs = root.join("logs");
+        let pd1 = "2026-10-09T15-50-00Z_menu_solo";
+        let s1 = "2026-10-09T15-51-00Z_38893aa5_krater_host";
+        let pd2 = "2026-10-09T15-57-00Z_menu_solo";
+        let s2 = "2026-10-09T15-57-30Z_b84c4a2d_krater_host";
+        for d in [pd1, s1, pd2, s2] {
+            std::fs::create_dir_all(logs.join(d)).unwrap();
+            std::fs::write(logs.join(d).join("mh_harness.log"), "; x\n").unwrap();
+        }
+        for (s, pd, id) in [(s1, pd1, "38893aa5"), (s2, pd2, "b84c4a2d")] {
+            std::fs::write(
+                logs.join(s).join("session.json"),
+                format!(r#"{{"match_id":"{id}","process_dir":"{pd}"}}"#),
+            )
+            .unwrap();
+        }
+        // The picked (earlier) match's log has no build line; the later one's does.
+        std::fs::write(
+            logs.join(s2).join("mh_net.log"),
+            "; [build] mh 0.2.0-LATER\n",
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("mh_crash_000008a44740a925.marker"),
+            marker_text("38893aa5", "20261009T155600Z", "0.2.0-EARLIER"),
+        )
+        .unwrap();
+        std::fs::write(
+            logs.join("mh_crash_000008a44740b000.marker"),
+            marker_text("b84c4a2d", "20261009T155800Z", "0.2.0-LATER"),
+        )
+        .unwrap();
+        // The launcher's last run is the LATER crash.
+        let later =
+            Marker::parse(&marker_text("b84c4a2d", "20261009T155800Z", "0.2.0-LATER")).unwrap();
+        let zip = root.join("out").join("r.zip");
+        let input = Input {
+            game_dir: None,
+            logs_root: Some(logs.clone()),
+            session_dir: Some(logs.join(s1)),
+            launcher_started_utc: Some("20261009T154000Z".to_string()),
+            description: "first match crashed",
+            last_run: None,
+            crash: Some(&later),
+            minidump: None,
+            ini_path: None,
+            launcher_log: None,
+        };
+        let built = build(&zip, &input).unwrap();
+        let meta: serde_json::Value = serde_json::from_str(&built.meta).unwrap();
+        assert_eq!(meta["match_id"], "38893aa5");
+        assert_eq!(meta["build"], "0.2.0-EARLIER");
+        assert_eq!(meta["crash"]["module"], "mh.dll");
+        assert_eq!(meta["crash"]["offset"], "0x00000010");
+        let mut got: Vec<&str> = meta["included"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        got.sort();
+        assert_eq!(got, [pd1, s1], "only the picked match and its menu dir");
+        assert!(built.entries.iter().any(|n| n == "crash/marker.txt"));
         let _ = std::fs::remove_dir_all(root);
     }
 }

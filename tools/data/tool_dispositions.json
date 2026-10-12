@@ -340,6 +340,12 @@
       "evidence": "imported by the four checkers named in the why (each takes --segment); `walk_segments.py --selftest` is run by hand",
       "hand_run": true
     },
+    "check_session_players.py": {
+      "class": "keep",
+      "why": "dist RL15: both peers' session.json must record the same players (names + order) and ai_count; a client used to write its own name for the host's slot. Reads the host lane's newest session and the `_c1` lane's session for the same match_id; absence of either is a REFUSAL",
+      "evidence": "the graceful_quit and gquit_net rows in tools/uiscripts/registry.yaml name it in their post_check lists; `check_session_players.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
     "check_presence.py": {
       "class": "keep",
       "why": "dist RL15: mh.dll's presence.json (the launcher's Discord feed) must follow a campaign planet switch. A UI walk cannot see it (no pixels): reads the file after the run and requires state/mode campaign, system and planet named, the planet no longer the one NEW GAME starts on, and a rewrite after the session began; a --before/--after pair mode checks two hand snapshots. Absence of the file is RED",
@@ -1595,6 +1601,12 @@
       "class": "keep",
       "why": "RES7: the side-panel list rows past 768 run on the user's save, a live game whose map and status numbers move between runs, so a whole-frame pixel baseline is not a stable oracle; the list rows (grid-green per row), the status line (placement / unit info) and a worker counter are read from the captured frames, and the arm lines from mh_video.log. Absence of a frame or a line is RED",
       "evidence": "the res_walk row (worker_1024, owned_960, ayy30_960 and ayy30_1440 modes) in tools/uiscripts/registry.yaml names it as its post_check; `check_panel_rows.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_drag_box.py": {
+      "class": "keep",
+      "why": "RES12: the drag-select box behaves as in vanilla -- the rows res_drag_stock (the game's own corner conversion at a stock-sized view) and res_drag_box / res_drag_box_orig (1920x1056) run the same scripted drags and one order; this holds each against the committed vanilla record tools/data/drag_box_vanilla.json (world box, camera, selected unit ids, player orders, outline) and refuses an inverted outline or a guard skip. Absence of a drag is RED",
+      "evidence": "the res_drag_stock, res_drag_box and res_drag_box_orig rows in tools/uiscripts/registry.yaml name it as a post_check; `check_drag_box.py --selftest` plants every negative and is run by hand",
       "hand_run": true
     },
     "check_minimap_box.py": {

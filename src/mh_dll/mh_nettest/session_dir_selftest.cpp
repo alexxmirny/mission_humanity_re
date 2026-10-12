@@ -168,6 +168,30 @@ void section_rl15() {
     mh_session_json(&r, js, sizeof(js));
     check("session.json: no players -> empty array", has(js, "\"players\": []"));
 
+    // RL15: a close-time sample from a torn-down lobby never shrinks the player list
+    {
+        MH_SessionRecord keep, fresh;
+        mh_session_record_clear(&keep);
+        mh_session_record_clear(&fresh);
+        fresh.player_count = 2;
+        mh_sd_copy(fresh.players[0], MH_SESSION_PLAYER_NAME_CAP, "host");
+        mh_sd_copy(fresh.players[1], MH_SESSION_PLAYER_NAME_CAP, "client");
+        fresh.ai_count = 1;
+        mh_session_players_merge(&keep, &fresh);
+        check("players merge: first sample adopted", keep.player_count == 2 && strcmp(keep.players[0], "host") == 0 && keep.ai_count == 1);
+        mh_session_record_clear(&fresh);
+        fresh.player_count = 1;
+        mh_sd_copy(fresh.players[0], MH_SESSION_PLAYER_NAME_CAP, "client");
+        mh_session_players_merge(&keep, &fresh);
+        check("players merge: a smaller (torn-down) sample is ignored",
+              keep.player_count == 2 && strcmp(keep.players[0], "host") == 0 && strcmp(keep.players[1], "client") == 0 && keep.ai_count == 1);
+        fresh.player_count = 2;
+        mh_sd_copy(fresh.players[0], MH_SESSION_PLAYER_NAME_CAP, "host");
+        mh_sd_copy(fresh.players[1], MH_SESSION_PLAYER_NAME_CAP, "client2");
+        mh_session_players_merge(&keep, &fresh);
+        check("players merge: an equal-size sample refreshes the names", strcmp(keep.players[1], "client2") == 0);
+    }
+
     // presence.json formatting
     MH_Presence p;
     mh_presence_clear(&p);

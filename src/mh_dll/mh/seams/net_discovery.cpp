@@ -514,12 +514,20 @@ void utf8_from_ansi(const char *src, char *dst, int cap) {
     if (WideCharToMultiByte(CP_UTF8, 0, w, -1, dst, cap, nullptr, nullptr) <= 0) dst[0] = '\0';
 }
 
-void session_players(MH_SessionRecord *r) {
+// Name sources, best first: (1) the lobby slot's own name field (+0x15, launch.cpp SLOT_NAME_OFF) --
+// the host stamps every human's name into the slot array and broadcasts it, so BOTH peers hold the
+// same names, where MH_MP_PeerName is host-only (a client never sees the host's JOIN); (2) the
+// JOIN-learned peer name; (3) our own name for our own slot. RL15: a client used to list its own
+// name for the host's slot. The record only ever grows -- see mh_session_players_merge.
+constexpr int MP_SLOT_NAME = 0x15;
+
+void session_players_sample(MH_SessionRecord *r) {
     const int mine  = (g_a.local_player_index != nullptr) ? *g_a.local_player_index : -1;
     r->player_count = 0;
     r->ai_count     = 0;
     for (int i = 0; i < 8; ++i) {
         unsigned char s       = *(const unsigned char *)(ADDR_MP_LOBBY_SLOTS + i * MP_SLOT_STRIDE + MP_SLOT_STATUS);
+        const char   *sn      = (const char *)(ADDR_MP_LOBBY_SLOTS + i * MP_SLOT_STRIDE + MP_SLOT_NAME);
         const char   *nm      = MH_MP_PeerName(i);
         const bool    named   = (nm != nullptr && nm[0] != '\0');
         const bool    is_mine = (i == mine);
@@ -529,8 +537,14 @@ void session_players(MH_SessionRecord *r) {
         }
         if (s != SLOT_HUMAN && !named && !is_mine) continue;
         char *dst = r->players[r->player_count++];
-        if (named) utf8_from_ansi(nm, dst, MH_SESSION_PLAYER_NAME_CAP);
-        else if (is_mine) utf8_from_ansi((const char *)mh::addr::mp_player_name, dst, MH_SESSION_PLAYER_NAME_CAP);
+        dst[0]    = '\0';
+        if (s == SLOT_HUMAN && (unsigned char)sn[0] >= 0x20u) {
+            char tmp[0x20];
+            lstrcpynA(tmp, sn, sizeof(tmp));
+            utf8_from_ansi(tmp, dst, MH_SESSION_PLAYER_NAME_CAP);
+        }
+        if (dst[0] == '\0' && named) utf8_from_ansi(nm, dst, MH_SESSION_PLAYER_NAME_CAP);
+        if (dst[0] == '\0' && is_mine) utf8_from_ansi((const char *)mh::addr::mp_player_name, dst, MH_SESSION_PLAYER_NAME_CAP);
         if (dst[0] == '\0') wsprintfA(dst, "Player %d", i + 1);
     }
     if (r->player_count == 0) { // single-player: no lobby slots -- the local player alone
@@ -538,6 +552,14 @@ void session_players(MH_SessionRecord *r) {
         if (r->players[0][0] == '\0') mh_sd_copy(r->players[0], MH_SESSION_PLAYER_NAME_CAP, "Player");
         r->player_count = 1;
     }
+}
+
+// Sample, then fold into the record (the roster only grows).
+void session_players(MH_SessionRecord *r) {
+    static MH_SessionRecord fresh; // big; sampled from one thread (the game thread)
+    mh_session_record_clear(&fresh);
+    session_players_sample(&fresh);
+    mh_session_players_merge(r, &fresh);
 }
 
 bool g_desync_latch = false; // RL15: the desync watch fired during THIS session (latched; cleared at open)

@@ -644,6 +644,7 @@ mh_llm_ui_widget_list *active_list() {
 
 // Push one event into the mouse ring, mirroring the producers (llm_input_di_mouse_poll /
 // llm_input_wndproc_tap): write at WRITE_IDX, advance &0x7f, but only if the ring isn't full.
+bool g_btn_held = false; // RES12: `presshold` -- MOVE events carry the left button as a hand-held mouse's do, until `release`
 bool enqueue(uint32_t type, int x, int y) {
     uint32_t w    = *(volatile uint32_t *)WRITEIDX;
     uint32_t next = (w + 1) & 0x7f;
@@ -651,8 +652,9 @@ bool enqueue(uint32_t type, int x, int y) {
     auto *ev = (mh_llm_input_mouse_event *)(EVENTS + (size_t)w * sizeof(mh_llm_input_mouse_event));
     // The wndproc's own snapshot: bit 0 left / bit 1 right, held during DOWN, cleared by UP; only the
     // in-game delta pump reads it.
-    ev->buttons     = (type == EV_LDOWN) ? 1u : (type == EV_RDOWN) ? 2u
-                                                                   : 0u;
+    ev->buttons     = (type == EV_LDOWN) ? 1u : (type == EV_RDOWN)            ? 2u
+                                            : (type == EV_MOVE && g_btn_held) ? 1u
+                                                                              : 0u;
     ev->event_type  = type;
     ev->dx          = 0;
     ev->dy          = 0;
@@ -1340,7 +1342,32 @@ bool rclick_frame(int frame, int x, int y, bool shift) {
             return true;
     }
 }
-extern "C" void MH_UIDrive_Release(int x, int y) { enqueue(EV_LUP, x, y); }
+extern "C" void MH_UIDrive_Release(int x, int y) {
+    g_btn_held = false;
+    enqueue(EV_LUP, x, y);
+}
+
+// tooling:TL-U46R-LOADRED: a retry-exhausted ABORT used to say only "the wait never held". Under suite
+// load the in-game mouse ring stopped draining for good (mtrace: depth grew to max, the cursor never
+// left the last button) while presents and the sim kept running -- so the pump (llm_strat_input_update,
+// from llm_strat_frame) was not on the frame path. Name which frame path IS: the game mode, the
+// dialog/key-ring state and the present's caller chain (image-relative, resolve against the EXE map).
+static void retry_abort_diag() {
+    void           *bt[24];
+    const USHORT    n    = CaptureStackBackTrace(0, 24, bt, nullptr);
+    const uintptr_t base = (uintptr_t)GetModuleHandleA(nullptr);
+    char            line[400];
+    int             k = 0;
+    for (USHORT i = 0; i < n && k < 340; ++i) {
+        const uintptr_t a = (uintptr_t)bt[i];
+        k += wsprintfA(line + k, " %08X", (unsigned)a);
+    }
+    ui_log("; [script]   frame path at abort: gamemode=%d active_dialog=%08X dlgflags=%02x key ring r=%u w=%u "
+           "exe_base=%08X stack:%s",
+           (int)*(volatile unsigned char *)mh::addr::_G_LLM_GAME_MODE, (unsigned)*(volatile uint32_t *)ACTIVE_DIALOG,
+           (unsigned)*(volatile uint8_t *)mh::addr::_G_LLM_DLG_STATE_FLAGS, *(volatile uint32_t *)KREADIDX,
+           *(volatile uint32_t *)KWRITEIDX, (unsigned)base, line);
+}
 
 // `simclick <x> <y>` (tooling:TL-SUITE-SPLICE-HOSTCLICK). An in-game press/release one present apart
 // was lost under suite load (TL-GATE-LOADFLAKE-0925: HUD Menu, status X, the mother's select click)
@@ -1786,6 +1813,7 @@ enum {
     OP_A_CLICK,
     OP_A_PRESS,
     OP_A_RELEASE,
+    OP_A_PRESSHOLD, // RES12: `presshold <x> <y>` -- `press`, and every later MOVE carries the held button until `release` (a real drag)
     OP_A_RCLICK,    // mp:D25: `rclick <x> <y> [shift]`
     OP_A_SIMCLICK,  // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
     OP_A_SIMRCLICK, // mp:X2g: `simrclick <x> <y>` -- the same hold with the right button
@@ -1809,7 +1837,8 @@ enum {
     OP_A_LOG,
     OP_A_SIGNAL,
     OP_A_DUMP,
-    OP_A_MARK, // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
+    OP_A_MARK,   // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
+    OP_A_LOGSEL, // `logsel <label>` -- RES12: a `; [sel] <label> cam= gest= btn= n= bldg= ids=` line (control group 0, sorted) in mh_video.log
     OP_A_POKERACE,
     OP_A_INJECTSTART,
     OP_A_END,
@@ -2178,6 +2207,11 @@ void parse_line(const char *line) {
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, nullptr, 0);
+    } else if (strcmp(op, "presshold") == 0) {
+        s->op = OP_A_PRESSHOLD;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, nullptr, 0);
     } else if (strcmp(op, "simclick") == 0 || strcmp(op, "simrclick") == 0) {
         // `simclick <x> <y>` / `simrclick <x> <y>` -- see simclick_frame.
         s->op = strcmp(op, "simclick") == 0 ? OP_A_SIMCLICK : OP_A_SIMRCLICK;
@@ -2456,6 +2490,9 @@ void parse_line(const char *line) {
         s->op = OP_A_DUMP; // debug aid: log the active widget list at this point in the walk
     } else if (strcmp(op, "mark") == 0) {
         s->op = OP_A_MARK;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logsel") == 0) {
+        s->op = OP_A_LOGSEL;
         copy_trim(s->text, sizeof(s->text), arg);
     } else if (strcmp(op, "mapsize") == 0) {
         s->op = OP_W_MAPSIZE;
@@ -3016,6 +3053,10 @@ click_result do_action(const Step *s) {
         case OP_A_RELEASE:
             MH_UIDrive_Release(s->a, s->b);
             break;
+        case OP_A_PRESSHOLD:
+            MH_UIDrive_Press(s->a, s->b);
+            g_btn_held = true;
+            break;
         case OP_A_SIMCLICK:
             return simclick_frame(g_wait, s->a, s->b) ? CLICK_OK : CLICK_RETRY;
         case OP_A_SIMRCLICK:
@@ -3366,6 +3407,32 @@ click_result do_action(const Step *s) {
         case OP_A_DUMP:
             MH_UIDrive_DumpWidgets();
             break;
+        case OP_A_LOGSEL: {
+            // RES12: the selection the last drag produced -- control group 0 (the selected units; count + uint16 ids at
+            // _G_LLM_STRAT_CTRL_GROUPS) and the selected building -- sorted, so two runs compare as sets. Also the camera
+            // (px) and the drag gesture state (0xe589ac: 2 while a left drag is held) / previous-frame buttons (0xe5899b).
+            const uint8_t *grp = (const uint8_t *)mh::addr::_G_LLM_STRAT_CTRL_GROUPS;
+            int            n   = *(const int32_t *)grp;
+            if (n < 0 || n > 200) n = 0;
+            uint16_t ids[200];
+            for (int i = 0; i < n; ++i) ids[i] = *(const uint16_t *)(grp + 4 + 2 * i);
+            for (int i = 1; i < n; ++i) // insertion sort
+                for (int j = i; j > 0 && ids[j - 1] > ids[j]; --j) {
+                    const uint16_t t = ids[j];
+                    ids[j] = ids[j - 1], ids[j - 1] = t;
+                }
+            char line[1500];
+            int  len = wsprintfA(line, "; [sel] %s cam=%d,%d gest=%d btn=%d n=%d bldg=%d ids=", s->text, (int)*(const int32_t *)0x00e15e38,
+                                 (int)*(const int32_t *)0x00e15e3c, (int)*(const uint8_t *)0x00e589ac, (int)*(const uint8_t *)0x00e5899b, n,
+                                 (int)*(const uint16_t *)BLDGSEL_ADDR());
+            for (int i = 0; i < n && len < (int)sizeof(line) - 12; ++i) len += wsprintfA(line + len, "%s%u", i ? "," : "", (unsigned)ids[i]);
+            line[len++] = '\n';
+            line[len]   = 0;
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            mh_logq_write(g_mark_vid, line, len);
+            ui_log("; [script] %s", line);
+            break;
+        }
         case OP_A_MARK: {
             // A segment boundary for the post_checks of a multi-segment walk: the same line in the two logs
             // they read (mh_video.log: the mode / guard / list lines; mh_input.log: the zoom module's lines),
@@ -3431,6 +3498,7 @@ void script_tick() {
             if (s->retry_used >= s->retry_tries) {
                 ui_log("; [script] ABORT at step %d: retry exhausted -- %d re-attempt(s), the wait never held: %s",
                        g_cur, s->retry_used, s->raw);
+                retry_abort_diag();
                 ui_log("; [script]   active screen at abort:");
                 MH_UIDrive_DumpWidgets();
                 MH_Capture_Shot("script_timeout");

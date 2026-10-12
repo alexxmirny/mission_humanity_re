@@ -360,6 +360,19 @@ inline const char *mh_session_outcome(const char *reason, bool desync_fired) {
     return "quit";
 }
 
+// RL15: fold a fresh sample of the lobby (names + AI count) into the record. The roster only ever
+// GROWS over a session: the lobby slots a client reads are cleared when the match tears down, so the
+// close-time re-sample can see FEWER players than the match-start one did (a client's close read
+// [client] after its start read [host, client]). A smaller fresh sample is a torn-down lobby, not a
+// player list -- keep the fuller one. The AI count follows the same rule.
+inline void mh_session_players_merge(MH_SessionRecord *r, const MH_SessionRecord *fresh) {
+    if (fresh->player_count >= r->player_count) {
+        r->player_count = fresh->player_count;
+        for (int i = 0; i < MH_SESSION_MAX_PLAYERS; ++i) mh_sd_copy(r->players[i], MH_SESSION_PLAYER_NAME_CAP, fresh->players[i]);
+    }
+    if (fresh->ai_count > r->ai_count) r->ai_count = fresh->ai_count;
+}
+
 inline void mh_session_record_clear(MH_SessionRecord *r) {
     char *p = (char *)r;
     for (int i = 0; i < (int)sizeof(MH_SessionRecord); ++i) p[i] = '\0';

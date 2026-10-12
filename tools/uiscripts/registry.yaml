@@ -1841,8 +1841,11 @@ tests:
     timeout: 300
     # post_check, not pixels: a frame can't tell whether the peer learned of the departure via a
     # control frame or a dying socket.
-    post_check: [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
-      --max-drop-steps, '2']
+    # RL15: plus both peers' session.json must agree on WHO PLAYED (a client used to list itself twice).
+    post_check:
+      - [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
+        --max-drop-steps, '2']
+      - [tools/check_session_players.py]
     desc: 'U19: a client ESC-quits a running match -- it lands on the main menu, and the departure reaches
       the survivor over the wire, in order, at the same game clock'
   # mp:U19i: same clean-quit test under configuration (1) -- udp transport, no libmh.dll. (G300)
@@ -1862,8 +1865,11 @@ tests:
     tol: 0.001
     extra_ini: tools/uiscripts/ini/video_640.ini
     timeout: 300
-    post_check: [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
-      --max-drop-steps, '2']
+    # RL15: plus both peers' session.json must agree on WHO PLAYED (a client used to list itself twice).
+    post_check:
+      - [tools/check_graceful_quit.py, --expect-graceful, --expect-same-end-clock, --expect-no-network-error,
+        --max-drop-steps, '2']
+      - [tools/check_session_players.py]
     desc: 'U19i: configuration (1) clean quit -- the survivor ends below quorum (outcome 8) within ms
       of the quitter''s broadcast, no NETWORK_ERROR'
   - name: txdeath_ingame
@@ -3055,3 +3061,56 @@ tests:
       - [tools/check_res_list.py, --ingame, --segment, res_frac, 1280x704, fit]
     tol: 0.0005
     desc: 'RES3/RES6: the generated resolution list on a pinned 1920x1080 desktop in a mapped borderless window -- boot at Auto 1920x1056 and the galaxy screen, the galaxy cursor carry, wheel_zoom=0, the list order, menu round trips and a size change, the fractional 1.5x size'
+  # RES12: the drag-select box (D13c inverted it on a 64-tile map when the anchor scrolled more than K px off-screen: right < left,
+  # the outline's dirty-map memset ran off the 4096-byte tile-vis map at 0x004a583d). The three rows run the SAME eight scripted
+  # drags + one order on 2-almost.sav: res_drag_stock is the vanilla reference (1024x768, wrap_window=0 -- the game's own corner
+  # conversion), whose record is committed (tools/data/drag_box_vanilla.json); res_drag_box / res_drag_box_orig run them at 1920x1056
+  # (shipped configuration = mh.dll without libmh; [config] mode=original) and must select the same unit ids, give the same order
+  # bytes and draw the same outline (tools/check_drag_box.py). The fix-off twin ([video] drag_box_fix=0) reaches the inverted box.
+  - name: res_drag_stock
+    budget_s: 30  # gate diet: measured 4-10 s x6 (2026-10-12) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: res_drag_stock.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_stock.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py, --stock]
+    tol: 0.01  # one frame, only so the row has a capture: the burning units animate (0.19% between identical runs)
+    desc: 'RES12: the vanilla reference arm -- eight scripted drags (inside, reversed, small, across the seam, the anchor scrolled off left / right / top / bottom) and one order at 1024x768 with the wrap splice off; its record is the committed oracle'
+  - name: res_drag_box
+    budget_s: 30  # gate diet: measured 9-13 s x6 (2026-10-12) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: res_drag_box.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_box.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py]
+    tol: 0.003  # the burning units animate: 0.14% frame diffs between identical runs
+    desc: 'RES12: the same drags and order at 1920x1056 (K = 288) in the shipped configuration -- same unit ids, same order bytes, the vanilla outline, no inverted box, no crash'
+  - name: res_drag_box_orig
+    budget_s: 30  # gate diet: measured 9-17 s x4 (2026-10-12) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: res_drag_box.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_box.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/rollback_original.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py]
+    tol: 0.003  # the burning units animate: 0.14% frame diffs between identical runs
+    desc: 'RES12: res_drag_box under [config] mode=original (the game running its own code)'
+  - name: res_drag_box_off
+    tier: release
+    budget_s: 30  # gate diet: measured 14-21 s x4 (2026-10-12; the fault ends the run) x 1.3, FLOORED at 30 (BUDGET_FLOOR_S)
+    kind: solo
+    script: res_drag_box.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_box_off.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    expect_red: mods:RES12
+    desc: 'RES12 fix OFF ([video] drag_box_fix=0): the anchor scrolled more than K px off the left inverts the outline and the dirty-map memset faults at 0x004a583d (expected red)'

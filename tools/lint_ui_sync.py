@@ -104,6 +104,7 @@ KNOWN_ACTION_OPS = frozenset(
         "click",
         "press",
         "release",
+        "presshold",
         "rclick",
         "simclick",
         "simrclick",
@@ -130,6 +131,7 @@ KNOWN_ACTION_OPS = frozenset(
         "injectstart",
         "dump",
         "mark",
+        "logsel",
         "end",
     }
 )

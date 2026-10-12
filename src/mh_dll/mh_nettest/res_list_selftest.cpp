@@ -133,6 +133,61 @@ void wrap_window_checks() {
     check("biased: negative to (elevation shifts) is the same point", ww::biased_axis(100, -40, B, KX) == -140);
     check("biased: big <= 0 degrades to the difference", ww::biased_axis(5, 9, 0, KX) == 4);
 
+    // 3b. RES12: the drag-select box. The game orders the two world corners itself (left = the start of the SHORTER arc, so
+    // right - left (mod big) <= big/2); mh.dll places the near corner (the biased window, or the stock position when the box
+    // still reaches into the view) and derives the far one as near + the modular span, so the box keeps its order and its
+    // stock width wherever the anchor scrolled to.
+    check("span: 100 -> 300 on 2048 is 200", ww::span_axis(100, 300, B) == 200);
+    check("span: across the seam, 2000 -> 40 is 88", ww::span_axis(2000, 40, B) == 88);
+    check("span: 300 -> 100 is the long way, 1848", ww::span_axis(300, 100, B) == B - 200);
+    check("span: equal corners are 0; big <= 0 degrades to the difference", ww::span_axis(7, 7, B) == 0 && ww::span_axis(5, 9, 0) == 4);
+    {
+        const int bigs2[] = {2048, 4096}, ks2[] = {ww::K_X, 288};
+        bool      ordered = true, width_is_stock = true, left_is_biased = true, matches_stock_when_stock_fits = true;
+        int       boxes = 0;
+        for (int big : bigs2)
+            for (int cam = 0; cam < big; cam += 53)
+                for (int a = 0; a < big; a += 71)
+                    for (int c = 0; c < big; c += 97) {
+                        if (a == c) continue;
+                        // llm_ui_map_drag_select_rect_draw's own ordering of the world corners
+                        const bool anchor_is_right = ww::span_axis(c, a, big) < ww::span_axis(a, c, big); // (a-c)%big < (c-a)%big
+                        const int  lw = anchor_is_right ? c : a, rw = anchor_is_right ? a : c;
+                        for (int k : ks2) {
+                            const int ls   = ww::drag_near_axis(cam, lw, rw, big, k);
+                            const int rs   = ls + ww::span_axis(lw, rw, big);
+                            const int span = rs - ls;
+                            ++boxes;
+                            if (rs < ls) ordered = false;
+                            if (span > big / 2 || span != (anchor_is_right ? ww::span_axis(c, a, big) : ww::span_axis(a, c, big)))
+                                width_is_stock = false;
+                            if ((ls < -k || ls >= big - k) && ls != ww::stock_axis(cam, lw, big)) left_is_biased = false;
+                            // wherever the stock result of BOTH corners is consistent (no fold between them) and the box
+                            // reaches into the view, the box is the stock box -- the outline a retail view draws
+                            const int sl = ww::stock_axis(cam, lw, big), sr = ww::stock_axis(cam, rw, big);
+                            if (sr - sl == span && sl + span > 0 && ls != sl) matches_stock_when_stock_fits = false;
+                        }
+                    }
+        sprintf(msg, "drag box: right >= left on every box (%d boxes, both map sizes, K=160 and 288)", boxes);
+        check(msg, ordered);
+        check("drag box: the width is the stock modular span and never more than half a map", width_is_stock);
+        check("drag box: the near edge is the biased-window position of the left corner (or the stock one for a box reaching into the view)", left_is_biased);
+        check("drag box: equal to the stock box wherever the stock corners are consistent and the box reaches into the view", matches_stock_when_stock_fits);
+        // the player's crash: anchor scrolled > K px off the left of a 64-tile map, cursor in view. Independent wraps
+        // put the anchor corner on the far right (left > right); the derived box is ordered.
+        {
+            const int cam = 1000, aw = 1000 - 500, cw = 1000 + 600, K = 288; // anchor 500 left of the camera, cursor 600 right
+            const int ls = ww::biased_axis(cam, aw, 2048, K), rs_independent = ww::biased_axis(cam, cw, 2048, K);
+            check("drag box: the old independent wraps invert it (left 1548 > right 600)", ls > rs_independent);
+            const int nearp = ww::drag_near_axis(cam, aw, cw, 2048, K);
+            check("drag box: the stock outline is kept -- near edge -500, far edge 600 (a retail view's box)",
+                  nearp == -500 && nearp + ww::span_axis(aw, cw, 2048) == 600);
+            // the same anchor with the cursor so close that the box ends before the view (stock + width <= 0): the far-right copy
+            check("drag box: a box wholly left of the view is filed on the far right (the wrap copy)",
+                  ww::drag_near_axis(cam, 1000 - 500, 1000 - 400, 2048, K) == ww::biased_axis(cam, 1000 - 500, 2048, K));
+        }
+    }
+
     // 4. What the cap promises: any sprite from K px left of the edge to the far edge of the widest allowed
     // viewport is placed exactly, on the smallest map.
     {

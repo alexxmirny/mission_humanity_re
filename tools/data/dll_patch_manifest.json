@@ -297,6 +297,43 @@
    "rationale": "Addresses come from the SITES[] table as `s.addr` (21 `call` instructions inside render functions, listed by caller in seams/view_wrap.cpp). None of those callers is promotable (no MH_EXPORT_REPLACE for any render function), so there is no carrier to declare; the runtime half still applies -- patch_bytes_guarded consults promoted_owner_of on every write, and the installer skips (and counts as DISPLACED) a site inside a promoted body. The callee llm_strat_pixel_delta_wrapped IS promoted and is deliberately not patched: the 3 stock callers (2 sim, 1 hit-test) keep calling it."
   },
   {
+   "id": "view_wrap_drag_box_corners",
+   "sources": [
+    {
+     "file": "mh/seams/view_wrap.cpp",
+     "expr": "sites[i]"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.drag_box_fix",
+   "carrier": null,
+   "note": "RES12: re-point the two corner conversions of llm_ui_map_drag_select_rect_draw (0x0044fbbd, 0x0044fbe5) at thunks that keep the box ordered: corner 1 takes the stock / biased position, corner 2 is corner 1 plus the stock modular width / height",
+   "rationale": "Addresses come from the two-element sites[] array (SITE_DRAG_C1, SITE_DRAG_C2), patched in a loop, so the effective target is an indexed expression. Both are `call` instructions inside the drag-select outline draw, a render function that is not promotable (no MH_EXPORT_REPLACE); the callee llm_strat_pixel_delta_wrapped IS promoted and is deliberately not patched. With drag_box_fix=0 both go through the plain biased thunk (the D13c behaviour). The installer checks promoted_owner_of before each write."
+  },
+  {
+   "id": "view_wrap_drag_box_draw_guard",
+   "sources": [
+    {
+     "file": "mh/seams/view_wrap.cpp",
+     "expr": "SITE_DRAG_DRAW"
+    }
+   ],
+   "addrs": [
+    "0x004276a2"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_gfx_dashed_rect_outline_set_and_draw"
+   ],
+   "knob": "video.drag_box_fix",
+   "carrier": null,
+   "note": "RES12: the call from llm_gfx_dashed_rect_outline_set_and_draw to llm_gfx_draw_dashed_rect_outline_colored goes through a guard that skips an inverted outline the stock function would otherwise draw (its dirty-map memset takes its count from right - left), and logs each distinct drag-select box",
+   "rationale": "llm_gfx_dashed_rect_outline_set_and_draw is an 88-byte staging wrapper with one caller (the drag-select draw); it is not promotable (no MH_EXPORT_REPLACE), so no carrier is needed. The guard replicates the stock function's own early-out conditions so a box the stock code would skip is passed through untouched."
+  },
+  {
    "id": "view_wrap_fx_view_gate",
    "sources": [
     {

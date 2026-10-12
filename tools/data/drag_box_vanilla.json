@@ -1,0 +1,219 @@
+{
+ "drags": {
+  "d1": {
+   "box": {
+    "b": 700,
+    "cx": 1440,
+    "cy": 1696,
+    "h": 350,
+    "l": 600,
+    "r": 800,
+    "t": 350,
+    "w": 200,
+    "wb": 348,
+    "wl": 2040,
+    "wr": 192,
+    "wt": 2046
+   },
+   "cam": [
+    1440,
+    1696
+   ],
+   "ids": [
+    2,
+    5
+   ],
+   "n": 2
+  },
+  "d2": {
+   "box": {
+    "b": 700,
+    "cx": 1440,
+    "cy": 1696,
+    "h": 350,
+    "l": 600,
+    "r": 800,
+    "t": 350,
+    "w": 200,
+    "wb": 348,
+    "wl": 2040,
+    "wr": 192,
+    "wt": 2046
+   },
+   "cam": [
+    1440,
+    1696
+   ],
+   "ids": [
+    2,
+    5
+   ],
+   "n": 2
+  },
+  "d3": {
+   "box": {
+    "b": 520,
+    "cx": 1440,
+    "cy": 1696,
+    "h": 120,
+    "l": 650,
+    "r": 790,
+    "t": 400,
+    "w": 140,
+    "wb": 168,
+    "wl": 42,
+    "wr": 182,
+    "wt": 48
+   },
+   "cam": [
+    1440,
+    1696
+   ],
+   "ids": [
+    5
+   ],
+   "n": 1
+  },
+  "d4": {
+   "box": {
+    "b": 520,
+    "cx": 1440,
+    "cy": 1696,
+    "h": 120,
+    "l": 500,
+    "r": 780,
+    "t": 400,
+    "w": 280,
+    "wb": 168,
+    "wl": 1940,
+    "wr": 172,
+    "wt": 48
+   },
+   "cam": [
+    1440,
+    1696
+   ],
+   "ids": [
+    5
+   ],
+   "n": 1
+  },
+  "d5": {
+   "box": {
+    "b": 650,
+    "cx": 96,
+    "cy": 1696,
+    "h": 350,
+    "l": -1,
+    "r": 500,
+    "t": 300,
+    "w": 904,
+    "wb": 298,
+    "wl": 1740,
+    "wr": 596,
+    "wt": 1996
+   },
+   "cam": [
+    96,
+    1696
+   ],
+   "ids": [
+    2,
+    5
+   ],
+   "n": 2
+  },
+  "d6": {
+   "box": {
+    "b": 700,
+    "cx": 1440,
+    "cy": 1696,
+    "h": 400,
+    "l": 400,
+    "r": 1004,
+    "t": 300,
+    "w": 604,
+    "wb": 348,
+    "wl": 1840,
+    "wr": 396,
+    "wt": 1996
+   },
+   "cam": [
+    1440,
+    1696
+   ],
+   "ids": [
+    2,
+    5
+   ],
+   "n": 2
+  },
+  "d7": {
+   "box": {
+    "b": -1,
+    "cx": 1440,
+    "cy": 704,
+    "h": 932,
+    "l": 400,
+    "r": 500,
+    "t": 100,
+    "w": 100,
+    "wb": 1736,
+    "wl": 1840,
+    "wr": 1940,
+    "wt": 804
+   },
+   "cam": [
+    1440,
+    704
+   ],
+   "ids": [],
+   "n": 0
+  },
+  "d8": {
+   "box": {
+    "b": -1,
+    "cx": 1440,
+    "cy": 0,
+    "h": 654,
+    "l": 400,
+    "r": 500,
+    "t": 650,
+    "w": 100,
+    "wb": 1304,
+    "wl": 1840,
+    "wr": 1940,
+    "wt": 650
+   },
+   "cam": [
+    1440,
+    0
+   ],
+   "ids": [],
+   "n": 0
+  }
+ },
+ "orders": [
+  "020000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "020000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003400340000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050000003500350000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "050080000f000a00020000003c000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01800000"
+ ]
+}

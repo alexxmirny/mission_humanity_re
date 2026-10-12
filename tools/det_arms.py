@@ -3716,6 +3716,15 @@ def add_args(ap):
         "ALL PAIRS IDENTICAL because zoom, crop origin and camera are view state.",
     )
     ap.add_argument(
+        "--det-drag",
+        action="store_true",
+        help="--determinism: RES12 -- the HOST peer alone drag-selects at 1920x1056 (mp_host_start_drag.txt: boxes in the "
+        "view, reversed, an order for the selection, then the anchor scrolled more than K px off the left and off the "
+        "right while the button is held) while the client runs the stock walk; the lockstep hash must stay ALL PAIRS "
+        "IDENTICAL because the box, its placement and the camera are view state and the selection / orders come from "
+        "the world corners only.",
+    )
+    ap.add_argument(
         "--det-chat-utf8",
         action="store_true",
         help="--determinism --det-local: mp:MP-LANG's chat + mixed-pack shape. Drives the chat_utf8 "
@@ -4101,6 +4110,11 @@ def _run_determinism(args, cfg):
         # lockstep match runs; the client is the stock walk. The hash must still agree: zoom is view state.
         host_script = "mp_host_start_wheel.txt"
         chat_ini = dict(extra_ini_host="tools/uiscripts/ini/map_zoom_det_host.ini")
+    if args.det_drag:
+        # RES12: the HOST alone drag-selects in the wide view (corners placed by the biased window, the box derived from
+        # them, the anchor scrolled off); the client is the stock walk. The hash must still agree.
+        host_script = "mp_host_start_drag.txt"
+        chat_ini = dict(extra_ini_host="tools/uiscripts/ini/drag_det_host.ini")
     if args.det_chat_utf8:
         # mp:MP-LANG. Chat is display-only (G_TEXT_TMP + the floating text, never a hashed region)
         # and names are ASCII by the time either peer stores them, so this must stay IDENTICAL with
