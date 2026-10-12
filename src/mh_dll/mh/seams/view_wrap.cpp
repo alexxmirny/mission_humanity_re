@@ -91,6 +91,15 @@ constexpr uintptr_t SCROLL_COL = 0x00e15e38u, SCROLL_ROW = 0x00e15e3cu;   // cam
 constexpr uintptr_t ANCHOR_COL = 0x00e5899cu, ANCHOR_ROW = 0x00e589a0u;   // drag anchor, world px
 constexpr uintptr_t CURSOR_WCOL = 0x00e589a4u, CURSOR_WROW = 0x00e589a8u; // cursor, world px
 
+// RES13: the direction compare of the drag-select box. Both llm_ui_map_drag_select_rect_draw and llm_strat_selection_drag_finish
+// compute A = (cursor - anchor + big) % big into EBX and B = (anchor - cursor + big) % big into EDX (the second `idiv`), then
+// `cmp ebx,edx / jle` takes A <= B as "the anchor is the left (top) edge". The 6-byte `idiv dword ptr [big]` that produces B is
+// replaced by a call to a thunk that runs it and, when both ends are on screen, rewrites EBX/EDX to the screen order.
+constexpr uintptr_t SITE_DIR_DRAW_COL = 0x0044fafcu, SITE_DIR_DRAW_ROW = 0x0044fb66u; // llm_ui_map_drag_select_rect_draw
+constexpr uintptr_t SITE_DIR_FIN_COL = 0x004460d3u, SITE_DIR_FIN_ROW = 0x00446123u;   // llm_strat_selection_drag_finish
+constexpr uintptr_t BIG_W = 0x00e153a0u, BIG_H = 0x00e153a8u;                         // general.big_width / big_height
+bool                g_dir_fix = false;                                                // [video] drag_dir_fix armed: the box logger orders the world corners the same way
+
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0;
 
@@ -186,6 +195,66 @@ __declspec(naked) void wrap_thunk() {
     }
 }
 
+
+// ---- RES13: the direction of the drag ----------------------------------------------------------------------------
+// 0 = leave the stock result (EBX = A, EDX = B as the game computed them), 1 = the anchor is the left / top edge, 2 = the cursor is.
+ww::drag_axis_track g_track[2]; // [0] x, [1] y: the anchor's unwrapped screen position (gfx/wrap_window.h)
+
+int dir_code(int axis) {
+    const mh::game::mh_llm_strat_map_geom *g   = (const mh::game::mh_llm_strat_map_geom *)mh::addr::general;
+    const int                              big = axis ? (int)g->big_height : (int)g->big_width;
+    const int                              win = *(const int32_t *)(axis ? mh::addr::G_WIN_H : mh::addr::G_WIN_W);
+    const int                              k   = ww::bias_for(big, win, axis ? ww::K_Y : ww::K_X);
+    const int                              cam = *(const int32_t *)(axis ? SCROLL_ROW : SCROLL_COL);
+    const int                              anc = *(const int32_t *)(axis ? ANCHOR_ROW : ANCHOR_COL);
+    const int                              cur = *(const int32_t *)(axis ? CURSOR_WROW : CURSOR_WCOL);
+    const int                              sa  = ww::drag_track_anchor(g_track[axis], cam, anc, big, k);
+    const int                              d   = ww::drag_dir_screen(sa, ww::biased_axis(cam, cur, big, k), win);
+    return d > 0 ? 1 : d < 0 ? 2
+                             : 0;
+}
+
+// finish = 1 from llm_strat_selection_drag_finish: the drag is over, the next anchor starts a new track.
+int __cdecl dir_impl(int axis, int finish) {
+    const int r = dir_code(axis);
+    if (finish) g_track[axis].valid = false;
+    return r;
+}
+
+// The replacement for `idiv dword ptr [big]` (6 bytes -> `call thunk; nop`): runs the idiv, then optionally rewrites EBX / EDX so the
+// following `cmp ebx,edx / jle` reads the screen order. Every other register is preserved. AXIS 0 = x, 1 = y; FINISH 1 = the
+// selection walk (the drag is over afterwards).
+#define MH_DIR_THUNK(NAME, BIG, AXIS, FINISH)                                  \
+    __declspec(naked) void NAME() {                                            \
+        __asm { idiv dword ptr ds:[BIG] }                                          \
+        __asm { push edx }                                                     \
+        __asm { push ecx }                                                       \
+        __asm { push eax }                                                     \
+        __asm { push FINISH }                                                    \
+        __asm { push AXIS }                                                    \
+        __asm { call dir_impl }                                                  \
+        __asm {add esp, 8} __asm { mov ecx, eax }                              \
+        __asm { pop eax }                                                        \
+        __asm {cmp ecx, 1} __asm { je anchor_left }                            \
+        __asm { cmp ecx, 2 }                                                      \
+        __asm { je cursor_left }                                               \
+        __asm { pop ecx }                                                        \
+        __asm { pop edx }                                                      \
+        __asm { ret }                                                           \
+        __asm {                                                                \
+        anchor_left:                                                           \
+        }                                                                      \
+        __asm { pop ecx }                                                        \
+        __asm {add esp, 4} __asm {mov ebx, 0} __asm {mov edx, 1} __asm { ret } \
+        __asm { cursor_left: }                                                  \
+        __asm { pop ecx }                                                      \
+        __asm { add esp, 4 }                                                      \
+        __asm {mov ebx, 1} __asm {mov edx, 0} __asm { ret }                    \
+    }
+MH_DIR_THUNK(dir_thunk_draw_col, 0x00e153a0, 0, 0)
+MH_DIR_THUNK(dir_thunk_draw_row, 0x00e153a8, 1, 0)
+MH_DIR_THUNK(dir_thunk_fin_col, 0x00e153a0, 0, 1)
+MH_DIR_THUNK(dir_thunk_fin_row, 0x00e153a8, 1, 1)
 
 // ---- RES12: the drag-select box ---------------------------------------------------------------------------------
 // The game orders the two WORLD corners itself (left = the start of the shorter arc, so right - left (mod big) <= big/2)
@@ -298,7 +367,9 @@ int __cdecl drag_draw_impl() {
         const int32_t                          ac = *(const int32_t *)ANCHOR_COL, ar = *(const int32_t *)ANCHOR_ROW, cc = *(const int32_t *)CURSOR_WCOL,
                       cr = *(const int32_t *)CURSOR_WROW, bw = (int)g->big_width, bh = (int)g->big_height;
         // the stock ordering of the world corners (left = start of the shorter arc)
-        const bool    a_right = ww::span_axis(cc, ac, bw) < ww::span_axis(ac, cc, bw), a_bottom = ww::span_axis(cr, ar, bh) < ww::span_axis(ar, cr, bh);
+        // (RES13: the screen order when both ends are on screen -- the same decision the draw and the selection walk make)
+        const bool    a_right  = g_dir_fix && dir_code(0) ? dir_code(0) == 2 : ww::span_axis(cc, ac, bw) < ww::span_axis(ac, cc, bw);
+        const bool    a_bottom = g_dir_fix && dir_code(1) ? dir_code(1) == 2 : ww::span_axis(cr, ar, bh) < ww::span_axis(ar, cr, bh);
         const int32_t wl = a_right ? cc : ac, wr = a_right ? ac : cc, wt = a_bottom ? cr : ar, wb = a_bottom ? ar : cr;
         vlog("; [drag_box] world %d,%d..%d,%d (w %d h %d) cam %d,%d screen %d,%d..%d,%d", wl, wt, wr, wb, ww::span_axis(wl, wr, bw),
              ww::span_axis(wt, wb, bh), *(const int32_t *)SCROLL_COL, *(const int32_t *)SCROLL_ROW, l, t, r, b);
@@ -364,6 +435,32 @@ extern "C" int MH_ViewWrap_Install(void) {
             vlog("; [drag_box] draw guard NOT armed at %08x", (unsigned)SITE_DRAG_DRAW);
     } else {
         vlog("; [drag_box] OFF ([video] drag_box_fix=0): the stock draw and the independent corner wraps");
+    }
+    // [video] drag_dir_fix=0 leaves the stock shorter-arc direction compare in both the outline draw and the selection walk (RES13
+    // fix-off twin: a drag wider than half the map draws and selects the complementary arc). Independent of wrap_window: the
+    // selection is not a placement.
+    g_dir_fix = mh_ini_get_int("video", "drag_dir_fix", 1, ini) != 0;
+    if (g_dir_fix) {
+        const struct {
+            uintptr_t site;
+            void (*thunk)();
+            uintptr_t big;
+        } dsites[4] = {{SITE_DIR_DRAW_COL, &dir_thunk_draw_col, BIG_W}, {SITE_DIR_DRAW_ROW, &dir_thunk_draw_row, BIG_H}, {SITE_DIR_FIN_COL, &dir_thunk_fin_col, BIG_W}, {SITE_DIR_FIN_ROW, &dir_thunk_fin_row, BIG_H}};
+        int armed   = 0;
+        for (const auto &d : dsites) {
+            uint8_t expect[6] = {0xF7, 0x3D, 0, 0, 0, 0}, repl[6] = {0xE8, 0, 0, 0, 0, 0x90}; // idiv dword ptr [big] -> call thunk; nop
+            memcpy(expect + 2, &d.big, 4);
+            const int32_t rel = (int32_t)((uintptr_t)d.thunk - (d.site + 5));
+            memcpy(repl + 1, &rel, 4);
+            if (!mh::hook::promoted_owner_of(d.site) && mh::hook::patch_bytes_guarded(d.site, expect, repl, 6))
+                ++armed;
+            else
+                vlog("; [drag_dir] NOT armed at %08x", (unsigned)d.site);
+        }
+        vlog("; [drag_dir] drag direction armed (%d/4 sites): a drag with both ends on screen runs in screen order", armed);
+        if (armed != 4) g_dir_fix = false;
+    } else {
+        vlog("; [drag_dir] OFF ([video] drag_dir_fix=0): the stock shorter-arc direction");
     }
     // [video] wrap_window=0 leaves the stock placement (the fix-off UI row).
     if (!mh_ini_get_int("video", "wrap_window", 1, ini)) {

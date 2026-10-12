@@ -22,6 +22,7 @@ The oracle tools/data/drag_box_vanilla.json is the stock arm's record. What must
 Absence of a drag is RED.
 
   check_drag_box.py [--stock | --update-oracle] [--allow-skip] <run-dir>
+  check_drag_box.py --wide <run-dir>     RES13: the res_drag_wide row (drags wider than half the map), see wide_problems
   check_drag_box.py --selftest
 """
 
@@ -118,7 +119,7 @@ def read_orders(run_dir):
 def parse(text):
     """{label: {world, cam, screen, ids, n}} plus the guard lines. Drag K's box is the last `[drag_box] world` before dK_dragging."""
     text = "\n".join(STAMP.sub("", ln) for ln in text.splitlines())
-    seg = text.split("; [mark] res_drag_box", 1)
+    seg = re.split(r"; \[mark\] res_drag_(?:box|wide)", text, maxsplit=1)
     body = seg[1] if len(seg) == 2 else ""
     drags, last_box, skipped = {}, None, []
     for ln in body.splitlines():
@@ -161,6 +162,7 @@ def snapshot(run_dir):
         "orders": read_orders(run_dir),
         "skipped": skipped,
         "armed": "draw guard armed" in text,
+        "dir_armed": "drag direction armed (4/4 sites)" in text,
     }, []
 
 
@@ -258,9 +260,70 @@ def problems(snap, oracle, stock, allow_skip=False):
     return out
 
 
+# RES13: res_drag_wide. Camera world (1440, 1696); a screen point is world = camera + screen (mod 2048). The drags are wider than
+# half the map (1400 px against 1024), so there is no vanilla record to equal (a retail view cannot make them): the claim is
+# what the player sees -- the outline runs from the anchor to the cursor ON SCREEN, the world box is the 1400 px one (not the
+# complementary 648 px arc the shorter-arc rule picks), and the selection is what that box holds, the same either way round.
+WIDE_CAM = [1440, 1696]
+WIDE = {  # drag -> (world l,t,r,b, outline l,t,r,b) ; d9 anchor (100,300) -> cursor (1500,700), d10 the reverse
+    "d9": ([1540, 1996, 892, 348], [100, 300, 1500, 700]),
+    "d10": ([1540, 1996, 892, 348], [100, 300, 1500, 700]),
+}
+
+
+def wide_problems(snap, oracle):
+    out = []
+    if not snap["armed"]:
+        out.append("no `[drag_box] draw guard armed` line")
+    if not snap.get("dir_armed"):
+        out.append(
+            "no `[drag_dir] drag direction armed (4/4 sites)` line (drag_dir_fix off or a site not armed)"
+        )
+    if snap["skipped"]:
+        out.append("the draw guard skipped an inverted outline: %s" % snap["skipped"][0])
+    got = {}
+    for k, (world, outl) in sorted(WIDE.items()):
+        d = snap["drags"].get(k)
+        if not d or not d.get("box") or "ids" not in d:
+            out.append("%s: no box / selection logged" % k)
+            continue
+        b = d["box"]
+        got[k] = d["ids"]
+        if [b["cx"], b["cy"]] != WIDE_CAM:
+            out.append("%s: camera %s != %s" % (k, [b["cx"], b["cy"]], WIDE_CAM))
+        if [b["wl"], b["wt"], b["wr"], b["wb"]] != world:
+            out.append(
+                "%s: world box %s != the on-screen one %s (the complementary arc?)"
+                % (k, [b["wl"], b["wt"], b["wr"], b["wb"]], world)
+            )
+        if outline(b) != outl:
+            out.append("%s: outline %s != anchor-to-cursor on screen %s" % (k, outline(b), outl))
+        base = oracle["drags"]["d1"][
+            "ids"
+        ]  # the screen box 600..800 x 350..700 lies inside both drags' boxes
+        if not set(base) <= set(d["ids"]):
+            out.append("%s: selected ids %s lack the units inside the box %s" % (k, d["ids"], base))
+    if len(got) == 2 and got["d9"] != got["d10"]:
+        out.append("the two directions select different units: %s vs %s" % (got["d9"], got["d10"]))
+    return out
+
+
 def main(argv):
     if "--selftest" in argv:
         return selftest()
+    if "--wide" in argv:
+        args = [a for a in argv if not a.startswith("--")]
+        if len(args) != 1:
+            print(__doc__)
+            return 2
+        snap, bad = snapshot(args[0])
+        if not bad:
+            with open(ORACLE) as f:
+                bad = wide_problems(snap, json.load(f))
+        for b in bad:
+            print("  check_drag_box: " + b)
+        print("check_drag_box (wide drags): %s" % ("FAIL" if bad else "PASS"))
+        return 1 if bad else 0
     stock, update, allow_skip = "--stock" in argv, "--update-oracle" in argv, "--allow-skip" in argv
     args = [a for a in argv if not a.startswith("--")]
     if len(args) != 1:
@@ -375,6 +438,42 @@ def selftest():
         lambda s: s.update(skipped=["; [drag_box] SKIPPED an inverted outline"]),
     )
     run("guard not armed", True, lambda s: s.update(armed=False))
+    oracle["drags"]["d1"]["ids"] = [2, 5]
+    wide_good = {
+        "armed": True,
+        "dir_armed": True,
+        "skipped": [],
+        "drags": {k: {"box": box(*w, *o), "ids": [2, 5]} for k, (w, o) in WIDE.items()},
+    }
+
+    def runw(label, want_red, mut):
+        nonlocal fails
+        s = json.loads(json.dumps(wide_good))
+        mut(s)
+        red = bool(wide_problems(s, oracle))
+        ok = red == want_red
+        fails += not ok
+        print("  %s %s" % ("ok  " if ok else "FAIL", label))
+
+    runw("wide: as expected", False, lambda s: None)
+    runw(
+        "wide: the complementary arc (world box 892..1540)",
+        True,
+        lambda s: s["drags"]["d1" if False else "d9"]["box"].update(wl=892, wr=1540),
+    )
+    runw(
+        "wide: the complementary outline",
+        True,
+        lambda s: s["drags"]["d9"]["box"].update(l=1500, r=2148),
+    )
+    runw(
+        "wide: the selection lost the units in the box",
+        True,
+        lambda s: s["drags"]["d10"].update(ids=[]),
+    )
+    runw("wide: the two directions differ", True, lambda s: s["drags"]["d10"].update(ids=[2, 5, 7]))
+    runw("wide: the direction fix not armed", True, lambda s: s.update(dir_armed=False))
+    runw("wide: a drag missing", True, lambda s: s["drags"].pop("d10"))
     text = (
         "[00:00:01.000] ; [drag_box] draw guard armed at 004276a2: x\n"
         "[00:00:02.000] ; [mark] res_drag_box\n"

@@ -49,6 +49,25 @@ int drag_near_axis(int cam, int left_w, int right_w, int big, int k) {
     return biased_axis(cam, left_w, big, k);
 }
 
+int drag_dir_screen(int sa, int sc, int viewport) {
+    if (viewport <= 0 || sa < 0 || sa >= viewport || sc < 0 || sc >= viewport) return 0;
+    return sa <= sc ? 1 : -1;
+}
+
+int drag_track_anchor(drag_axis_track &t, int cam, int anchor, int big, int k) {
+    if (!t.valid || t.anchor != anchor || big <= 0) {
+        t.valid  = true;
+        t.anchor = anchor;
+        t.screen = biased_axis(cam, anchor, big, k);
+    } else {
+        int step = ((cam - t.cam) % big + big) % big; // the camera's wrapped step, in [-big/2, big/2)
+        if (step >= big / 2) step -= big;
+        t.screen -= step;
+    }
+    t.cam = cam;
+    return t.screen;
+}
+
 bool tile_in_span_stock(int tile, int cam, int tiles, int map_tiles) {
     const int  left  = cam == 0 ? map_tiles : cam - 1;
     const int  right = (cam + tiles + 1) & (map_tiles - 1);

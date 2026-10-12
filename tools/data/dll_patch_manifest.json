@@ -314,6 +314,23 @@
    "rationale": "Addresses come from the two-element sites[] array (SITE_DRAG_C1, SITE_DRAG_C2), patched in a loop, so the effective target is an indexed expression. Both are `call` instructions inside the drag-select outline draw, a render function that is not promotable (no MH_EXPORT_REPLACE); the callee llm_strat_pixel_delta_wrapped IS promoted and is deliberately not patched. With drag_box_fix=0 both go through the plain biased thunk (the D13c behaviour). The installer checks promoted_owner_of before each write."
   },
   {
+   "id": "view_wrap_drag_dir",
+   "sources": [
+    {
+     "file": "mh/seams/view_wrap.cpp",
+     "expr": "d.site"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "code",
+   "owner": [],
+   "knob": "video.drag_dir_fix",
+   "carrier": null,
+   "note": "RES13: the `idiv dword ptr [big]` that produces B = (anchor - cursor + big) % big in llm_ui_map_drag_select_rect_draw (0x0044fafc col, 0x0044fb66 row) and llm_strat_selection_drag_finish (0x004460d3 col, 0x00446123 row) becomes `call thunk; nop`; the thunk runs the idiv and, when anchor and cursor are both on screen, rewrites EBX/EDX so the following `cmp ebx,edx / jle` reads the screen order instead of the shorter arc",
+   "rationale": "Addresses come from the four-element dsites[] table (d.site), patched in a loop, so the effective target is an indexed expression. The four sites are inside the drag-select outline draw and the selection finish, neither of which is promotable (no MH_EXPORT_REPLACE); the installer checks promoted_owner_of before each write. A retail-size view (<= half a map) gets the stock result on every input (res_list_selftest `drag dir`, and the committed vanilla record via res_drag_stock / res_drag_box)."
+  },
+  {
    "id": "view_wrap_drag_box_draw_guard",
    "sources": [
     {

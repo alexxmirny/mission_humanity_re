@@ -78,6 +78,29 @@ int span_axis(int from, int to, int big);
 // The far edge is this + the width, so the box is always ordered.
 int drag_near_axis(int cam, int left_w, int right_w, int big, int k);
 
+// RES13: which way the drag-select box runs on one axis. The game picks the direction of the walk from the anchor (and the
+// outline's left edge) by the SHORTER arc between anchor and cursor, which is the on-screen order only while the two are less
+// than half a map apart -- always true of a retail view (<= 864 px against 1024), false of a wide one (1920 px on the 64-tile
+// map), where a drag wider than half the map selected and drew the complementary arc. When BOTH ends are on screen the screen
+// order is the answer: +1 = the anchor is the left (top) edge, -1 = the cursor is. Otherwise 0 = keep the stock rule (an anchor
+// scrolled off-screen has no screen position to order by). For any viewport of at most half a map the two agree on every input,
+// so the stock result is returned unchanged there. A tie (same pixel) is +1, which is the stock result too.
+int drag_dir_screen(int anchor_screen, int cursor_screen, int viewport);
+
+// Where the anchor IS on screen. The anchor's world position wraps (a torus), so the same world column shows at two screen x
+// in a wide view (-404 and 1644 on the 64-tile map): only the way the anchor got there tells them apart. The tracker keeps the
+// anchor's UNWRAPPED screen position: set when a drag starts (the press, the anchor is under the cursor, in view) and moved by
+// the camera's wrapped step on every later call. A drag whose anchor the camera scrolled off the left is then at -404, not
+// at the 1644 the biased window would file it at, and keeps the stock direction (vanilla, which a retail view also draws).
+struct drag_axis_track {
+    bool valid  = false;
+    int  anchor = 0; // the world coordinate the track belongs to (a new anchor starts a new track)
+    int  cam    = 0;
+    int  screen = 0; // unwrapped screen position of the anchor
+};
+// Update for this call's camera / anchor and return the anchor's unwrapped screen position.
+int drag_track_anchor(drag_axis_track &t, int cam, int anchor, int big, int k);
+
 // ---- the effect / projectile view gate (llm_strat_tile_in_view_and_visible, 0x00453c9f) ------------------------
 // One axis of the stock test. The span is [cam-1, cam+tiles+1] on a torus of `map_tiles` (a power of two): left =
 // cam-1 (the stock code uses map_tiles when cam is 0), right = (cam+tiles+1) & (map_tiles-1), and a tile is OUT when

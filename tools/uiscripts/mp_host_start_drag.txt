@@ -72,6 +72,24 @@ release 100 100
 gameclock +100
 log HOST box 2 released
 
+# RES13: boxes wider than half the 2048 px map (1400 px), both ways round -- the drag direction is the screen order, not the
+# shorter arc; the selection (and so the order below) comes from the same world corners every peer would compute for that box
+cursorhold 100 300 10
+presshold 100 300
+cursorhold 100 300 6
+cursorhold 1500 700 24
+release 1500 700
+gameclock +100
+log HOST wide box 3 released
+
+cursorhold 1500 700 10
+presshold 1500 700
+cursorhold 1500 700 6
+cursorhold 100 300 24
+release 100 300
+gameclock +100
+log HOST wide box 4 released
+
 # an order for the selection: a right click on the ground
 cursorhold 600 250 10
 simrclick 600 250

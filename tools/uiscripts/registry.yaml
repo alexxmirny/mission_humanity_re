@@ -3114,3 +3114,44 @@ tests:
     harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
     expect_red: mods:RES12
     desc: 'RES12 fix OFF ([video] drag_box_fix=0): the anchor scrolled more than K px off the left inverts the outline and the dirty-map memset faults at 0x004a583d (expected red)'
+  # RES13: a drag wider than half the map. The game orders a drag (outline and selection walk) by the SHORTER arc, which is the screen
+  # order only below half a map; at 1920x1056 on the 64-tile map a 1400 px drag selected and drew the complementary arc. mh.dll
+  # (drag_dir_fix) orders by the screen when both ends are on screen. res_drag_wide checks outline + selection of drags both ways;
+  # the existing res_drag_stock / res_drag_box rows prove a retail-size view is still byte-for-byte the vanilla record.
+  - name: res_drag_wide
+    budget_s: 30
+    kind: solo
+    script: res_drag_wide.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_wide.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py, --wide]
+    tol: 0.003
+    desc: 'RES13: drags wider than half the map at 1920x1056 on the 64-tile map, both directions -- the outline runs from the anchor to the cursor on screen and the selection is what that box holds (not the complementary arc)'
+  - name: res_drag_wide_orig
+    budget_s: 30
+    kind: solo
+    script: res_drag_wide.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_wide.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/rollback_original.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py, --wide]
+    tol: 0.003
+    desc: 'RES13: res_drag_wide under [config] mode=original (the game running its own code)'
+  - name: res_drag_wide_off
+    tier: release
+    budget_s: 30
+    kind: solo
+    script: res_drag_wide.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/res_drag_wide_off.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    post_check:
+      - [tools/check_drag_box.py, --wide]
+    expect_red: mods:RES13
+    desc: 'RES13 fix OFF ([video] drag_dir_fix=0): a 1400 px drag draws and selects the complementary 648 px arc (expected red)'
