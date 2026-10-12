@@ -205,6 +205,7 @@ Three rules the workflow *depends on* rather than merely documents:
 | --- | --- |
 | **A `-` anywhere in the tag means prerelease** | `v0.1.0-rc1` publishes with `--prerelease`. That is the whole rule — there is no separate flag and no second list to keep in step. |
 | **Tags must be annotated** | A lightweight tag is refused before anything is published. `git tag -l --format='%(contents)'` on a lightweight tag helpfully returns the *commit's* message, so the check is `git cat-file -t`, which answers `tag` for an annotated object and `commit` for a lightweight one. |
+| **Never `rc10` or above: continue `rc9.1`, `rc9.2`** | The launcher orders versions with the semver crate, which compares a letters+digits part as TEXT: `rc10` < `rc7.1` < `rc8` < `rc9` < `rc9.1`. A `v0.2.0-rc10` (2026-10-12) read as a rollback to every installed launcher and its own launcher refused `min_launcher 0.2.0-rc8`; it was withdrawn and re-cut as `rc9.1`. `gen_update_manifest.py` now refuses such a version at manifest build time, so the private rehearsal goes red. (`rc.10`, dot-separated, is numeric and fine.) |
 | **The tag message IS the release notes** | Ruled 2026-09-17. The public repository's history is squash seeds, so auto-generated notes would say nothing a reader can use. An annotated tag with an empty message fails the publish job rather than publishing an empty body. |
 
 So the message is worth writing properly — it is the page every downloader reads:

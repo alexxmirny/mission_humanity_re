@@ -730,7 +730,8 @@ _RFC3339Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 def _ver_key(v):
     """A sort key for `MAJOR.MINOR.PATCH[-pre]`: numeric core, a release above its own prereleases,
-    prerelease dot-parts compared numerically when both are numbers (semver; rc7.1 < rc10)."""
+    prerelease dot-parts compared numerically when both are numbers, alphanumeric parts as ASCII text
+    (semver, as the launcher's semver crate orders them: rc.7 < rc.10, but rc10 < rc8 < rc9 < rc9.1)."""
     core, _, pre = str(v).partition("-")
     try:
         nums = tuple(int(x) for x in core.split("."))
@@ -793,6 +794,22 @@ def v2_trusted_comment(m):
     )
 
 
+def _check_new_version(v):
+    """Refuse a version to PUBLISH whose prerelease has a letters+digits part with more than one digit
+    (`rc10`): semver compares such a part as text, so `rc10` sorts below `rc9` and every installed
+    launcher would treat it as a rollback (v0.2.0-rc10, 2026-10-12). Continue with `rc9.1`, `rc9.2`."""
+    _ver_key(v)
+    pre = str(v).partition("-")[2]
+    for p in pre.split(".") if pre else ():
+        if not p.isdigit() and re.search(r"\d{2,}", p):
+            raise Refusal(
+                "version %r: prerelease part %r mixes letters and a multi-digit number; semver orders "
+                "it as text (rc10 < rc9), so launchers would read it as a rollback -- use rc9.1, rc9.2, ..."
+                % (v, p)
+            )
+    return v
+
+
 def build_launcher_manifest(
     version, launcher_exe, launcher_url, channel="latest", notes_url="", issued_at=None
 ):
@@ -800,6 +817,7 @@ def build_launcher_manifest(
         raise Refusal("--channel must be one of %s" % ", ".join(CHANNELS))
     if not launcher_exe or not os.path.isfile(launcher_exe):
         raise Refusal("no launcher executable at %s" % launcher_exe)
+    _check_new_version(version)
     m = {
         "schema": SCHEMA2,
         "kind": "launcher",
@@ -831,6 +849,7 @@ def build_game_manifest(
     off disk and checked against SHA256SUMS, as in build_manifest."""
     if channel not in CHANNELS:
         raise Refusal("--channel must be one of %s" % ", ".join(CHANNELS))
+    _check_new_version(version)
     relay = relay_field(relay_addr, relay_key)
     dist_dir = os.path.abspath(dist_dir)
     sums = read_sums(dist_dir)
@@ -1440,6 +1459,19 @@ def selftest_schema2(expect, refuses, key_id, seed, pub_text, other_id, other_se
         expect(
             "version order: rc.7 < rc.10 < release (semver)",
             _ver_key("0.2.0-rc.7") < _ver_key("0.2.0-rc.10") < _ver_key("0.2.0"),
+        )
+        expect(
+            "version order as the launcher's semver crate: rc10 < rc7.1 < rc8 < rc9 < rc9.1",
+            _ver_key("0.2.0-rc10")
+            < _ver_key("0.2.0-rc7.1")
+            < _ver_key("0.2.0-rc8")
+            < _ver_key("0.2.0-rc9")
+            < _ver_key("0.2.0-rc9.1"),
+        )
+        refuses("a new rc10 version is refused", lambda: _check_new_version("0.2.0-rc10"))
+        expect(
+            "rc9.1, rc.10 and a release are allowed",
+            all(_check_new_version(v) for v in ("0.2.0-rc9.1", "0.2.0-rc.10", "0.2.0")),
         )
 
         # -- promote: only channel + issued_at change
