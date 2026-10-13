@@ -156,6 +156,8 @@ __declspec(naked) void tile_in_view_thunk() {
     }
 }
 
+void drag_track_tick(); // RES14, below: follow the drag anchor from the press, every rendered frame
+
 // (x1,y1) = camera px, (x2,y2) = the sprite's top-left px; out = the screen offset. cdecl: the thunk below
 // adapts the game's register convention to it.
 void __cdecl wrap_impl(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t *out_dx, int32_t *out_dy) {
@@ -165,6 +167,7 @@ void __cdecl wrap_impl(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t *
     const int ky = ww::bias_for((int)g->big_height, *(const int32_t *)mh::addr::G_WIN_H, ww::K_Y);
     *out_dx      = ww::biased_axis(x1, x2, (int)g->big_width, kx);
     *out_dy      = ww::biased_axis(y1, y2, (int)g->big_height, ky);
+    drag_track_tick();
     if (!g_first && InterlockedCompareExchange(&g_first, 1, 0) == 0)
         vlog("; [view_wrap] first placement: cam %d,%d  sprite %d,%d  big %u x %u K %d,%d -> offset %d,%d (stock would give %d,%d)",
              x1, y1, x2, y2, (unsigned)g->big_width, (unsigned)g->big_height, kx, ky, *out_dx, *out_dy,
@@ -200,7 +203,9 @@ __declspec(naked) void wrap_thunk() {
 // 0 = leave the stock result (EBX = A, EDX = B as the game computed them), 1 = the anchor is the left / top edge, 2 = the cursor is.
 ww::drag_axis_track g_track[2]; // [0] x, [1] y: the anchor's unwrapped screen position (gfx/wrap_window.h)
 
-int dir_code(int axis) {
+// The direction (+1 / -1 / 0, gfx/wrap_window.h drag_dir_screen) and the two ends' screen positions on one axis: sa the anchor's
+// unwrapped one (the tracker), sc the cursor's.
+int dir_screen(int axis, int *sa_out, int *sc_out) {
     const mh::game::mh_llm_strat_map_geom *g   = (const mh::game::mh_llm_strat_map_geom *)mh::addr::general;
     const int                              big = axis ? (int)g->big_height : (int)g->big_width;
     const int                              win = *(const int32_t *)(axis ? mh::addr::G_WIN_H : mh::addr::G_WIN_W);
@@ -209,9 +214,31 @@ int dir_code(int axis) {
     const int                              anc = *(const int32_t *)(axis ? ANCHOR_ROW : ANCHOR_COL);
     const int                              cur = *(const int32_t *)(axis ? CURSOR_WROW : CURSOR_WCOL);
     const int                              sa  = ww::drag_track_anchor(g_track[axis], cam, anc, big, k);
-    const int                              d   = ww::drag_dir_screen(sa, ww::biased_axis(cam, cur, big, k), win);
+    const int                              sc  = ww::biased_axis(cam, cur, big, k);
+    if (sa_out) *sa_out = sa;
+    if (sc_out) *sc_out = sc;
+    return ww::drag_dir_screen(sa, sc, win, big);
+}
+
+int dir_code(int axis) {
+    const int d = dir_screen(axis, nullptr, nullptr);
     return d > 0 ? 1 : d < 0 ? 2
                              : 0;
+}
+
+// RES14: the anchor's track starts at the PRESS, not at the first frame the outline is drawn (the game draws it only once the
+// drag gesture is live, and a player can press and scroll with the arrows before moving the mouse -- a track started then
+// would take an anchor already scrolled off screen at its biased alias). Every rendered sprite placement calls this: with
+// the left button up there is no drag and the track is dropped; with it down the track is (re)started -- the anchor is under
+// the cursor, on screen, on the press frame -- and then moved by every camera step. Cheap: a few loads per axis.
+void drag_track_tick() {
+    if (!g_dir_fix) return;
+    if (!(*(const volatile uint8_t *)mh::addr::_G_LLM_MOUSE_BUTTONS_PREV & 1)) {
+        g_track[0].valid = g_track[1].valid = false;
+        return;
+    }
+    dir_screen(0, nullptr, nullptr);
+    dir_screen(1, nullptr, nullptr);
 }
 
 // finish = 1 from llm_strat_selection_drag_finish: the drag is over, the next anchor starts a new track.
@@ -276,11 +303,21 @@ void __cdecl corner1_impl(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_
     const int                              ky = ww::bias_for((int)g->big_height, *(const int32_t *)mh::addr::G_WIN_H, ww::K_Y);
     *out_dx                                   = ww::drag_near_axis(x1, x2, *(const volatile int32_t *)DASHED_RIGHT, (int)g->big_width, kx);
     *out_dy                                   = ww::drag_near_axis(y1, y2, *(const volatile int32_t *)DASHED_BOTTOM, (int)g->big_height, ky);
-    g_c1_world_x                              = x2;
-    g_c1_world_y                              = y2;
-    g_c1_sx                                   = *out_dx;
-    g_c1_sy                                   = *out_dy;
-    g_c1_valid                                = true;
+    // RES14: where the direction fix ordered the box, the near edge is the end it put on the left (top) -- the anchor's tracked,
+    // unwrapped position or the cursor's. An anchor scrolled more than half a map off screen has no other faithful position
+    // (the stock fold and the biased window both alias it), and the far edge is this + the modular width the game computed.
+    if (g_dir_fix) {
+        int sa, sc;
+        for (int axis = 0; axis < 2; ++axis) {
+            const int d = dir_screen(axis, &sa, &sc);
+            if (d) *(axis ? out_dy : out_dx) = d > 0 ? sa : sc;
+        }
+    }
+    g_c1_world_x = x2;
+    g_c1_world_y = y2;
+    g_c1_sx      = *out_dx;
+    g_c1_sy      = *out_dy;
+    g_c1_valid   = true;
 }
 
 void __cdecl corner2_impl(int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t *out_dx, int32_t *out_dy) {

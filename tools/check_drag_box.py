@@ -139,6 +139,9 @@ def parse(text):
         if lab.endswith("_dragging"):
             k = lab[: -len("_dragging")]
             drags.setdefault(k, {})["box"] = last_box
+        elif lab.endswith("_press"):  # RES14: the camera the drag was pressed at
+            k = lab[: -len("_press")]
+            drags.setdefault(k, {})["press_cam"] = [int(m.group("cx")), int(m.group("cy"))]
         else:
             k = next((x for x in LABELS if x.startswith(lab + "_") or x == lab), lab)
             d = drags.setdefault(k, {})
@@ -198,7 +201,18 @@ def norm(o):
     return [clamp(o[0], STOCK_W), clamp(o[1], STOCK_H), clamp(o[2], STOCK_W), clamp(o[3], STOCK_H)]
 
 
-def problems(snap, oracle, stock, allow_skip=False):
+# RES14: the drags where the fix DEPARTS from the vanilla record on purpose. d7's anchor is scrolled ~1016 px off the top while
+# the button is held, so the drag (anchor at y -1016 to the cursor at 100) is 1116 px tall -- more than half the map, and the
+# stock shorter-arc rule flips it: vanilla draws an inverted outline and selects the complementary 932 px arc. The fix draws and
+# selects the anchor-to-cursor box instead (the player's report, 2026-10-13). Its selection (no unit; a building) and the order
+# record are still compared with the oracle; only the world box and the outline are replaced here.
+DEPARTS = {
+    "d7": {"world": [1840, 1736, 1940, 804], "outline": [400, -1, 500, 100]},
+}
+
+
+def problems(snap, oracle, stock, allow_skip=False, departs=None):
+    departs = DEPARTS if departs is None else departs
     out = []
     if not snap["armed"]:
         out.append("no `[drag_box] draw guard armed` line")
@@ -215,6 +229,27 @@ def problems(snap, oracle, stock, allow_skip=False):
             continue
         b = d["box"]
         ob = o["box"]
+        if (
+            k in departs
+        ):  # RES14: the declared departure -- the anchor-to-cursor box, not the vanilla flip
+            dep = departs[k]
+            if [b["wl"], b["wt"], b["wr"], b["wb"]] != dep["world"]:
+                out.append(
+                    "%s: world box %s != the anchor-to-cursor box %s (RES14)"
+                    % (k, [b["wl"], b["wt"], b["wr"], b["wb"]], dep["world"])
+                )
+            if outline(b) != dep["outline"]:
+                out.append(
+                    "%s: outline %s != the anchor-to-cursor outline %s (RES14)"
+                    % (k, outline(b), dep["outline"])
+                )
+            if [b["cx"], b["cy"]] != [ob["cx"], ob["cy"]]:
+                out.append(
+                    "%s: camera %s != vanilla %s" % (k, [b["cx"], b["cy"]], [ob["cx"], ob["cy"]])
+                )
+            if d["ids"] != o["ids"]:
+                out.append("%s: selected ids %s != vanilla %s" % (k, d["ids"], o["ids"]))
+            continue
         if [b["wl"], b["wt"], b["wr"], b["wb"]] != [ob["wl"], ob["wt"], ob["wr"], ob["wb"]]:
             out.append(
                 "%s: world box %s != vanilla %s"
@@ -271,8 +306,64 @@ WIDE = {  # drag -> (world l,t,r,b, outline l,t,r,b) ; d9 anchor (100,300) -> cu
 }
 
 
-def wide_problems(snap, oracle):
+# RES14: drags whose anchor the CAMERA scrolls off screen mid-drag (arrow keys held with the button down), until the box is wider
+# (d11) / taller (d12) than half the map -- the stock shorter-arc rule flips such a box at any view size, vanilla included. The
+# anchor is pressed at a screen point at the camera logged as dK_press; the cursor ends at a screen point. The world box must
+# run from the anchor to the cursor (both drags are anchor-left / anchor-top), the outline from the anchor's scrolled screen
+# position to the cursor, and the selection hold the units the d1 box holds (they lie inside both boxes).
+SCROLLED = {  # drag -> (anchor screen x,y at the press, cursor screen x,y at the end, the scrolled axis)
+    "d11": ((500, 300), (1500, 700), 0),
+    "d12": ((550, 100), (850, 850), 1),
+}
+
+
+def _signed(v):
+    return (v + BIG // 2) % BIG - BIG // 2
+
+
+def scrolled_problems(snap, oracle):
     out = []
+    base = oracle["drags"]["d1"]["ids"]
+    for k, (anc, cur, axis) in sorted(SCROLLED.items()):
+        d = snap["drags"].get(k)
+        if not d or not d.get("box") or "ids" not in d or "press_cam" not in d:
+            out.append("%s: no press camera / box / selection logged" % k)
+            continue
+        b, pc = d["box"], d["press_cam"]
+        cam = [b["cx"], b["cy"]]
+        moved = [_signed(cam[i] - pc[i]) for i in (0, 1)]
+        sa = [
+            anc[i] - moved[i] for i in (0, 1)
+        ]  # the anchor's screen position after the scroll (unwrapped)
+        if cur[axis] - sa[axis] <= BIG // 2:
+            out.append(
+                "%s: the camera moved %s -- the drag is only %d px on the scrolled axis, not wider than half the map (the test did not test)"
+                % (k, moved, cur[axis] - sa[axis])
+            )
+            continue
+        world = [
+            (pc[0] + anc[0]) % BIG,
+            (pc[1] + anc[1]) % BIG,
+            (cam[0] + cur[0]) % BIG,
+            (cam[1] + cur[1]) % BIG,
+        ]
+        if [b["wl"], b["wt"], b["wr"], b["wb"]] != world:
+            out.append(
+                "%s: world box %s != anchor-to-cursor %s (the complementary arc?)"
+                % (k, [b["wl"], b["wt"], b["wr"], b["wb"]], world)
+            )
+        if outline(b) != [max(-1, sa[0]), max(-1, sa[1]), cur[0], cur[1]]:
+            out.append(
+                "%s: outline %s != scrolled anchor to cursor %s"
+                % (k, outline(b), [max(-1, sa[0]), max(-1, sa[1]), cur[0], cur[1]])
+            )
+        if not set(base) <= set(d["ids"]):
+            out.append("%s: selected ids %s lack the units inside the box %s" % (k, d["ids"], base))
+    return out
+
+
+def wide_problems(snap, oracle):
+    out = scrolled_problems(snap, oracle)
     if not snap["armed"]:
         out.append("no `[drag_box] draw guard armed` line")
     if not snap.get("dir_armed"):
@@ -406,6 +497,37 @@ def selftest():
 
     run("identical", False, lambda s: None)
     run("identical (stock arm)", False, lambda s: None, True)
+    # RES14: a declared departure (d1 here) passes as the anchor-to-cursor box and fails as the vanilla one
+    dep = {"d1": {"world": [30, 20, 10, 40], "outline": [-1, 100, 300, 300]}}
+
+    def rund(label, want_red, mut):
+        nonlocal fails
+        s = json.loads(json.dumps(good))
+        mut(s)
+        red = bool(problems(s, oracle, True, departs=dep))
+        ok = red == want_red
+        fails += not ok
+        print("  %s %s" % ("ok  " if ok else "FAIL", label))
+
+    rund(
+        "departure: the anchor-to-cursor box",
+        False,
+        lambda s: s["drags"]["d1"]["box"].update(wl=30, wr=10, l=-1),
+    )
+    rund("departure: the vanilla box is now red", True, lambda s: None)
+    rund(
+        "departure: the right box with the wrong outline",
+        True,
+        lambda s: s["drags"]["d1"]["box"].update(wl=30, wr=10),
+    )
+    rund(
+        "departure: its selection still matches vanilla",
+        True,
+        lambda s: (
+            s["drags"]["d1"]["box"].update(wl=30, wr=10, l=-1),
+            s["drags"]["d1"].update(ids=[9]),
+        ),
+    )
     run(
         "wide arm: the outline beyond the stock window is clamped away",
         False,
@@ -445,12 +567,26 @@ def selftest():
         "skipped": [],
         "drags": {k: {"box": box(*w, *o), "ids": [2, 5]} for k, (w, o) in WIDE.items()},
     }
+    # d11: pressed at cam 1440 (anchor world 1940,1996), scrolled +704 px right -> cam 96; cursor 1500,700 -> world 1596,348
+    wide_good["drags"]["d11"] = {
+        "box": box(1940, 1996, 1596, 348, -1, 300, 1500, 700, cam=(96, 1696)),
+        "ids": [2, 5],
+        "press_cam": [1440, 1696],
+    }
+    # d12: pressed at cam 1440,1696 (anchor world 1990,1796), scrolled +704 px down -> cam y 352; cursor 850,850 -> 242,1202
+    wide_good["drags"]["d12"] = {
+        "box": box(1990, 1796, 242, 1202, 550, -1, 850, 850, cam=(1440, 352)),
+        "ids": [2, 5],
+        "press_cam": [1440, 1696],
+    }
 
     def runw(label, want_red, mut):
         nonlocal fails
         s = json.loads(json.dumps(wide_good))
         mut(s)
         red = bool(wide_problems(s, oracle))
+        if red != want_red:
+            print("    ", wide_problems(s, oracle))
         ok = red == want_red
         fails += not ok
         print("  %s %s" % ("ok  " if ok else "FAIL", label))
@@ -474,6 +610,30 @@ def selftest():
     runw("wide: the two directions differ", True, lambda s: s["drags"]["d10"].update(ids=[2, 5, 7]))
     runw("wide: the direction fix not armed", True, lambda s: s.update(dir_armed=False))
     runw("wide: a drag missing", True, lambda s: s["drags"].pop("d10"))
+    runw(
+        "scrolled: the stock flip (world box 1596..1940, the complementary arc)",
+        True,
+        lambda s: s["drags"]["d11"]["box"].update(wl=1596, wr=1940),
+    )
+    runw(
+        "scrolled: the outline from the anchor's alias on the right",
+        True,
+        lambda s: s["drags"]["d11"]["box"].update(l=1844),
+    )
+    runw(
+        "scrolled: the vertical flip",
+        True,
+        lambda s: s["drags"]["d12"]["box"].update(wt=1202, wb=1796),
+    )
+    runw(
+        "scrolled: the selection lost the units", True, lambda s: s["drags"]["d12"].update(ids=[7])
+    )
+    runw(
+        "scrolled: the camera barely moved (the case is not exercised)",
+        True,
+        lambda s: s["drags"]["d11"].update(press_cam=[96 - 100, 1696]),
+    )
+    runw("scrolled: no press camera logged", True, lambda s: s["drags"]["d12"].pop("press_cam"))
     text = (
         "[00:00:01.000] ; [drag_box] draw guard armed at 004276a2: x\n"
         "[00:00:02.000] ; [mark] res_drag_box\n"

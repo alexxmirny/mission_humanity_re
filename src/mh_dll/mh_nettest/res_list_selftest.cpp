@@ -190,7 +190,8 @@ void wrap_window_checks() {
 
     // 3c. RES13: the direction of a drag. For a viewport of at most half a map, the screen order of two in-view points IS the
     // stock shorter-arc rule on every input (so a retail view is byte-for-byte vanilla); for a wide one it differs only for a
-    // drag wider than half the map, where the screen order wins; an off-screen end keeps the stock rule (0).
+    // drag wider than half the map, where the screen order wins. RES14: an anchor scrolled off screen orders by its tracked
+    // position too; only an off-screen cursor or a drag of a whole map or more keeps the stock rule (0).
     {
         bool      agrees_retail = true, agrees_or_wide = true, tie_ok = true;
         int       n = 0, flips = 0;
@@ -202,7 +203,7 @@ void wrap_window_checks() {
                     for (int sa = 0; sa < vp; sa += 29)
                         for (int sc = 0; sc < vp; sc += 31) {
                             const int a = (cam + sa) % big, c = (cam + sc) % big;
-                            const int d = ww::drag_dir_screen(sa, ww::biased_axis(cam, c, big, k), vp);
+                            const int d = ww::drag_dir_screen(sa, ww::biased_axis(cam, c, big, k), vp, big);
                             // the stock rule: A = (c-a)%big <= B = (a-c)%big -> the anchor is the left edge
                             const int stock = ww::span_axis(a, c, big) <= ww::span_axis(c, a, big) ? 1 : -1;
                             ++n;
@@ -220,11 +221,21 @@ void wrap_window_checks() {
         check(msg, flips > 0);
         check("drag dir: the same pixel is +1 (the stock tie)", tie_ok);
         check("drag dir: 1920 wide on 2048 -- anchor at screen 100, cursor at 1500 (1400 px) -> anchor left (stock: cursor left)",
-              ww::drag_dir_screen(100, 1500, 1920) == 1 && ww::span_axis(1500, 100, 2048) < ww::span_axis(100, 1500, 2048));
-        check("drag dir: the reverse drag -> cursor left", ww::drag_dir_screen(1500, 100, 1920) == -1);
-        check("drag dir: an anchor off-screen keeps the stock rule (0)", ww::drag_dir_screen(-404, 500, 1920) == 0);
-        check("drag dir: a cursor off-screen keeps the stock rule (0)", ww::drag_dir_screen(100, 1950, 1920) == 0);
-        check("drag dir: no viewport keeps the stock rule (0)", ww::drag_dir_screen(1, 2, 0) == 0);
+              ww::drag_dir_screen(100, 1500, 1920, 2048) == 1 && ww::span_axis(1500, 100, 2048) < ww::span_axis(100, 1500, 2048));
+        check("drag dir: the reverse drag -> cursor left", ww::drag_dir_screen(1500, 100, 1920, 2048) == -1);
+        check("drag dir: an anchor scrolled off the left orders by its tracked position (anchor left)",
+              ww::drag_dir_screen(-404, 500, 1920, 2048) == 1);
+        check("drag dir: an anchor scrolled off the right -> cursor left", ww::drag_dir_screen(2400, 500, 1920, 2048) == -1);
+        check("drag dir: a drag of a whole map or more keeps the stock rule (0)",
+              ww::drag_dir_screen(-1548, 500, 1920, 2048) == 0 && ww::drag_dir_screen(-1547, 500, 1920, 2048) == 1);
+        check("drag dir: a cursor off-screen keeps the stock rule (0)", ww::drag_dir_screen(100, 1950, 1920, 2048) == 0);
+        check("drag dir: no viewport / no map span keeps the stock rule (0)",
+              ww::drag_dir_screen(1, 2, 0, 2048) == 0 && ww::drag_dir_screen(1, 2, 864, 0) == 0);
+        // RES14 at a RETAIL size: 864 wide on 2048, the anchor pressed at 300 and scrolled 500 px off the left (-200), the cursor at
+        // 850 -- a 1050 px drag, wider than half the map, so the stock shorter-arc rule flips it (vanilla does too); ours does not.
+        check("drag dir: retail 864 px, anchor scrolled to -200, cursor 850 -> anchor left (stock: cursor left)",
+              ww::drag_dir_screen(-200, 850, 864, 2048) == 1 &&
+                  ww::span_axis((0 + 850) % 2048, (2048 - 200) % 2048, 2048) < ww::span_axis((2048 - 200) % 2048, 850, 2048));
         // the outline of the wide drag: left = the anchor, width 1400, ordered
         {
             const int k  = ww::bias_for(2048, 1920, ww::K_X);
@@ -245,7 +256,7 @@ void wrap_window_checks() {
             }
             check("drag track: scrolled 726 px right it is at -426, off the left (not the 1622 alias in the biased window)",
                   cam == (1440 + 726) % 2048 && sc == 300 - 726 && ww::biased_axis(cam, anchor, 2048, k) == 2048 + sc);
-            check("drag track: ... so the stock direction rule is kept (0)", ww::drag_dir_screen(sc, 500, 1760) == 0);
+            check("drag track: ... and orders by that tracked position (anchor left, RES14)", ww::drag_dir_screen(sc, 500, 1760, 2048) == 1);
             const int again = ww::drag_track_anchor(t, cam, anchor, 2048, k);
             check("drag track: a repeated call at the same camera does not move it", again == sc);
             t.valid = false;
@@ -258,7 +269,7 @@ void wrap_window_checks() {
                 cam2 = ((cam2 - 11) % 2048 + 2048) % 2048;
                 s2   = ww::drag_track_anchor(u, cam2, anchor, 2048, k);
             }
-            check("drag track: scrolled 704 px left it is at 1004, in view", s2 == 300 + 704 && ww::drag_dir_screen(s2, 400, 1760) == -1);
+            check("drag track: scrolled 704 px left it is at 1004, in view", s2 == 300 + 704 && ww::drag_dir_screen(s2, 400, 1760, 2048) == -1);
         }
     }
 

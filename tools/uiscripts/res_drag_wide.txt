@@ -8,6 +8,12 @@
 #   d10_wide_brtl  the reverse drag (anchor (1500,700) -> cursor (100,300)): the same box, the same ids.
 #   (No vertical analogue: the map pane at 1920x1056 is shorter than half the 2048 px map, so a drag taller than 1024 px cannot be
 #   made on screen; the row arithmetic is covered by res_list_selftest `drag dir`.)
+#   d11_scroll_x   RES14: anchor (500,300), then RIGHT held 64 presents (~704 px: the anchor scrolls off the left to ~-204), then the
+#                  cursor to (1500,700): a ~1700 px drag made by scrolling. The stock shorter-arc rule flips it at ANY view size
+#                  (vanilla too); the fix orders by the anchor's tracked position.
+#   d12_scroll_y   RES14: the vertical one -- the camera back first (LEFT 64), anchor (550,100), DOWN held 64 presents (~704 px,
+#                  the anchor to ~-604), cursor (850,850): a ~1450 px tall drag. Both drags' boxes hold the d1 units (ids 2, 5).
+#   (A scroll of more than half the map is not used: the camera step's sign is then ambiguous to the checker.)
 # tools/check_drag_box.py --wide asserts all of it; the fix-off twin ([video] drag_dir_fix=0) draws and selects the complement arc.
 
 settled value:108
@@ -61,3 +67,31 @@ capture res_drag_wide__d10_dragging
 release 100 300
 gameclock +100
 logsel d10_wide_brtl
+
+# ---- d11_scroll_x (RES14): the anchor scrolled off the left mid-drag by the RIGHT arrow
+cursorhold 500 300 10
+logsel d11_press
+presshold 500 300
+cursorhold 500 300 6
+keyhold 0x4d 64
+cursorhold 1500 700 24
+logsel d11_dragging
+capture res_drag_wide__d11_dragging
+release 1500 700
+gameclock +100
+logsel d11_scroll_x
+
+# ---- d12_scroll_y (RES14): the camera back, then the anchor scrolled off the top mid-drag by the DOWN arrow
+cursorhold 960 500 10
+keyhold 0x4b 64
+cursorhold 550 100 10
+logsel d12_press
+presshold 550 100
+cursorhold 550 100 6
+keyhold 0x50 64
+cursorhold 850 850 24
+logsel d12_dragging
+capture res_drag_wide__d12_dragging
+release 850 850
+gameclock +100
+logsel d12_scroll_y

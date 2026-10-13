@@ -49,8 +49,10 @@ int drag_near_axis(int cam, int left_w, int right_w, int big, int k) {
     return biased_axis(cam, left_w, big, k);
 }
 
-int drag_dir_screen(int sa, int sc, int viewport) {
-    if (viewport <= 0 || sa < 0 || sa >= viewport || sc < 0 || sc >= viewport) return 0;
+int drag_dir_screen(int sa, int sc, int viewport, int big) {
+    if (viewport <= 0 || big <= 0 || sc < 0 || sc >= viewport) return 0;
+    const long long span = (long long)sc - (long long)sa;
+    if (span >= big || -span >= big) return 0;
     return sa <= sc ? 1 : -1;
 }
 

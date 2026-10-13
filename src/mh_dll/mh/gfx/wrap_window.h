@@ -81,11 +81,14 @@ int drag_near_axis(int cam, int left_w, int right_w, int big, int k);
 // RES13: which way the drag-select box runs on one axis. The game picks the direction of the walk from the anchor (and the
 // outline's left edge) by the SHORTER arc between anchor and cursor, which is the on-screen order only while the two are less
 // than half a map apart -- always true of a retail view (<= 864 px against 1024), false of a wide one (1920 px on the 64-tile
-// map), where a drag wider than half the map selected and drew the complementary arc. When BOTH ends are on screen the screen
-// order is the answer: +1 = the anchor is the left (top) edge, -1 = the cursor is. Otherwise 0 = keep the stock rule (an anchor
-// scrolled off-screen has no screen position to order by). For any viewport of at most half a map the two agree on every input,
-// so the stock result is returned unchanged there. A tie (same pixel) is +1, which is the stock result too.
-int drag_dir_screen(int anchor_screen, int cursor_screen, int viewport);
+// map), where a drag wider than half the map selected and drew the complementary arc. The order of the anchor's UNWRAPPED
+// screen position (drag_track_anchor: on screen, or scrolled off by the camera during the drag) against the cursor's is the
+// answer: +1 = the anchor is the left (top) edge, -1 = the cursor is. 0 = keep the stock rule: a cursor off the viewport, no
+// viewport, no map span, or a drag spanning the whole map or more (`big` px; it has no single box). Wherever the two ends are
+// less than half a map apart the screen order IS the shorter arc, so a retail-size drag that does not scroll is returned
+// unchanged; the rule departs from stock only for a drag wider than half the map -- made on screen in a wide view (RES13), or
+// by scrolling the anchor off screen mid-drag in a view of any size (RES14; vanilla flips the box there too). A tie is +1 (stock).
+int drag_dir_screen(int anchor_screen, int cursor_screen, int viewport, int big);
 
 // Where the anchor IS on screen. The anchor's world position wraps (a torus), so the same world column shows at two screen x
 // in a wide view (-404 and 1644 on the 64-tile map): only the way the anchor got there tells them apart. The tracker keeps the
