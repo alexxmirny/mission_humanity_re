@@ -34,6 +34,7 @@
 #include "include/mh_fontguard_export.h"
 #include "seams/ui_net_indicator.h"    // mp:L1 MH_NetIndicator_OnPresent -- the player-visible indicator
 #include "seams/gone_peer_guard.h"     // mp:U19i gone_peer_frame_guard's byte-patch carrier
+#include "seams/bldg_pip_guard.h"      // hotfix rc9.4 bldg_pip_guard's byte-patch carriers
 #include "include/mh_uidrive_export.h" // MH_UIDrive_OnPresent (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_harness_export.h" // MH_Harness_RebindSimTick -- C6 sim_tick promotion by rebind
 #include "include/mh_log_sink.h"       // LOG1: the async log sink (frametime + lockstep logs)
@@ -314,8 +315,10 @@ int             g_defang            = 0; // 1 = suppress the in-game SYNCHRONIZI
 // Diagnostic only: a counter in our DLL is invisible to the sim, so this cannot perturb determinism.
 long      g_icon_calls = 0, g_icon_shown = 0;
 uintptr_t g_wait_target = 0x004c7dc0; // where wait_overlay_gate_thunk forwards: retail wait_player_overlay_show, or odg::wait_thunk (mp:U44 retail carrier)
-long      g_icon_gate   = 0;          // mirrors defang_tt_wait==2 for the thunk (asm cannot read a C++ bool cheaply)
-int       g_icon_count  = 1;          // [net] icon_count -- install the counting thunk even when nothing is gated
+// mp:U20b [net] stall_icon_delay_ms -- the thunk shows the icon only once the parked wait has lasted this long (0 = stock:
+// every wanted frame). A plain long, not an int behind a getter, for the same reason the counters are: the naked thunk reads it.
+long g_icon_delay_ms = SHIP_STALL_ICON_DELAY_MS;
+int  g_icon_count    = 1; // [net] icon_count -- install the counting thunk even when nothing is gated
 
 // U20 (2026-08-30): THE SAME TWO COUNTERS, FED FROM THE PROMOTED BODY. The thunk above can only
 // count while llm_strat_time_tick runs the ORIGINAL, and promotion has been the ship default since
@@ -334,6 +337,7 @@ int  g_undock_reentry_fix    = 1; // [net] undock_reentry_fix -- MP U49; body + 
 // registry rows -- their values come ONLY from the gameplay apply path (config/gameplay.cpp -> seams/gameplay_hooks.cpp
 // -> mh_set_turret_*), never from a direct ini read here.
 int g_turret_reload_owner_fix = 1; // [net] turret_reload_owner_fix -- PT-FIX1; body + byte patch, DEFAULT ON, sim-affecting
+int g_bldg_pip_guard          = 1; // [net] bldg_pip_guard -- hotfix rc9.4; body + byte patches, DEFAULT ON, sim-affecting on illegal state only
 int g_air_order_facing_fix    = 1; // [net] air_order_facing_fix -- PT-FIX3; body + byte patch, DEFAULT ON, sim-affecting
 int g_diplo_order_dedup_fix   = 1; // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
 int g_defang_xui              = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
@@ -3036,6 +3040,23 @@ void on_gameover_pre() {
                   (int)*(const uint8_t *)ADDR_SESSION_MODE, outcome, ms_of(ADDR_GAME_CLOCK),
                   (int)(*(volatile uint32_t *)ADDR_SESSION_MODE == 3));
         seam_log(b);
+        // mp:U54-FW evidence (both configurations): is "You have won! Congratulations" (G_TEXT_PTRS[0x7d]) in the on-screen
+        // print queue (game_ui_AddTextToPrintQueue: 30 slots of WCHAR[120] at MESSAGE_QUEUE) as the outcome dialog opens?
+        // Read-only. The rig verdict of the last-human arms reads it.
+        if (outcome >= 5) {
+            const wchar_t *won = *(const wchar_t *const *)(mh::addr::cfg_G_TEXT_PTRS + 0x7du * 4u);
+            int            hit = 0;
+            for (int i = 0; won && i < 30 && !hit; ++i)
+                hit = lstrcmpW((const wchar_t *)(mh::addr::MESSAGE_QUEUE + (uintptr_t)i * 0xf0u), won) == 0;
+            mh::spectate::roster r;
+            spec_read_roster(r);
+            const int me      = *(const uint16_t *)mh::addr::PlayerSide;
+            int       enemies = 0;
+            for (int i = 0; i < 8; ++i)
+                if (i != me && me < 8 && (r.flags[i] & mh::spectate::ST_ALIVE) && !mh::spectate::mutual_ally(r, me, i)) ++enemies;
+            wsprintfA(b, "; U54-FW outcome=%u won_text_queued=%d enemies_alive=%d\n", outcome, hit, enemies);
+            seam_log(b);
+        }
     }
     hub_note_defeat(); // mp:U62: BEFORE the downgrade -- it reads the mode and the roster as the match left them
     // mp:U54: a SPECTATOR's defeat dialog (outcome 4 at its own elimination, session still lockstep) is NOT the end of the
@@ -3446,18 +3467,27 @@ DWORD WINAPI horizon_heartbeat_thread(LPVOID) {
 // P4 folded in: the thunk now also COUNTS, and is installed even when no gating is wanted (g_icon_gate
 // == 0 -> pure pass-through + a counter). That is why the counter is here rather than in a second
 // patch: one interception point, and "wanted" vs "drawn" fall out of the same place.
-// Register discipline: EAX carries the arg and is untouched; EDX is saved around the countdown read;
-// only EFLAGS are clobbered, which the original gate thunk already did across the same call.
+// mp:U20b (2026-10-14): THE GATE IS BACK, ON A DIFFERENT PREDICATE. The dead countdown branch (the retired
+// defang_tt_wait == 2) is replaced by `[net] stall_icon_delay_ms` (SHIP_STALL_ICON_DELAY_MS): forward only once
+// the parked wait has lasted that long, measured from the game's own accumulator -- see icon_delay_due.
+// Suppressing the call is display-only for the same reason U20's twin gate is: time_tick discards its return.
+// Register discipline: EAX carries the arg; EAX/ECX/EDX are saved around the C helper (it may clobber
+// all three); only EFLAGS are clobbered, which the original gate thunk already did across the same call.
+int __cdecl icon_delay_due();
 __declspec(naked) void wait_overlay_gate_thunk() {
     __asm {
         inc  dword ptr [g_icon_calls] // the game WANTED the icon this frame
-        cmp  dword ptr [g_icon_gate], 0
-        je   forward // no gate -> pass everything through (counting only)
+        cmp  dword ptr [g_icon_delay_ms], 0
+        jle  forward // no delay -> stock: pass everything through (counting only)
+        push eax
+        push ecx
         push edx
-        mov  edx, 0x00e58789 // &_G_LLM_NET_LOCKSTEP_SYNC_RETRY_COUNTDOWN (starts 0x3c, drains on real non-advance)
-        cmp  dword ptr [edx], 0x38
-        pop  edx // restore (pop leaves EFLAGS from cmp intact)
-        jge  suppressed // countdown >= 0x38 => routine at-horizon wait -> skip
+        call icon_delay_due
+        test eax, eax
+        pop  edx // pops leave EFLAGS from the test intact
+        pop  ecx
+        pop  eax
+        jz   suppressed // the wait is still shorter than the delay -> no icon this frame
     forward:
         inc  dword ptr [g_icon_shown] // ...and one was actually drawn
         push dword ptr [g_wait_target] // tail-jump to wait_player_overlay_show (0x004c7dc0, or mp:U44's carrier) -- EAX = player_idx preserved
@@ -3491,12 +3521,30 @@ void install_overlay_gate() {
     int32_t rel = (int32_t)((uintptr_t)&wait_overlay_gate_thunk - (ADDR_OVL_WAIT_CALL + 5));
     memcpy(repl + 1, &rel, sizeof(rel));
     bool ok = patch_bytes_guarded(ADDR_OVL_WAIT_CALL, OVL_WAIT_EXPECT, repl, 5);
+    char b[200];
     if (!ok)
-        seam_log("; overlay gate NOT armed (unexpected bytes at wait-overlay call site)\n");
-    else if (g_icon_gate)
-        seam_log("; overlay gate armed: wait-overlay call -> SYNC_RETRY_COUNTDOWN<0x38 gate (root-cause fix) + P4 counters\n");
+        lstrcpyA(b, "; overlay gate NOT armed (unexpected bytes at wait-overlay call site)\n");
+    else if (g_icon_delay_ms > 0)
+        wsprintfA(b, "; overlay gate armed: wait-overlay call COUNTED, icon shown after %ld ms parked (stall_icon_delay_ms, MP U20b)\n",
+                  g_icon_delay_ms);
     else
-        seam_log("; P4 icon counters armed: wait-overlay call COUNTED, not gated (pass-through)\n");
+        lstrcpyA(b, "; P4 icon counters armed: wait-overlay call COUNTED, not gated (pass-through; stall_icon_delay_ms=0)\n");
+    seam_log(b);
+}
+
+// mp:U20b -- "has the sim been parked at the horizon for at least stall_icon_delay_ms?", from the game's own
+// accumulator rather than a clock of ours. _G_LLM_NET_LOCKSTEP_SYNC_WAIT_ELAPSED is reloaded to 1.0 when a
+// wait ends (and on the 60 s countdown reload) and grows by GAME_TIME_DELTA -- real elapsed time x game_speed --
+// on every parked frame, BEFORE the wait-overlay call reads it. So (elapsed - 1.0) / game_speed is the real
+// wait in seconds. The libmh twin (lockstep/timekeeper.cpp, stall_icon_due) is the same arithmetic.
+// Fail OPEN: a NaN or a non-positive speed shows the icon, i.e. stock behaviour.
+int __cdecl icon_delay_due() {
+    double elapsed = 0.0, speed = 1.0;
+    memcpy(&elapsed, (const void *)ADDR_SYNC_ACCUM(), sizeof(double));
+    memcpy(&speed, (const void *)ADDR_GAME_SPEED, sizeof(double));
+    if (!(speed > 0.0)) speed = 1.0;
+    const double waited_ms = (elapsed - 1.0) * 1000.0 / speed;
+    return (waited_ms < (double)g_icon_delay_ms) ? 0 : 1;
 }
 
 // Resync-wait hang fix (defang dep #2 -- the REAL root cause, live-dump-confirmed 2026-07-24). The go-live
@@ -4605,6 +4653,96 @@ void install_spectate() {
     u52_report("spectate order gate", ADDR_SPEC_ORDER_SITE, outcome, "spectate_after_defeat", "llm_strat_order_dispatch");
 }
 
+// ===== mp:U54-FW -- NO FALSE "YOU HAVE WON" FOR THE LAST HUMAN ([net] last_human_win_check) ===========================
+//
+// Retail llm_strat_player_presence_lost, a survivor's evaluation, "not a victory" arm (0x004982ef..0x00498311): no OTHER
+// human is alive, so outcome 6 ("You are the last player !" + Continue; 8 for a forced removal) -- and then, when the dead
+// player was human, `print_queue_text_id(0x7d)` "You have won! Congratulations" plus (outcome 6) the victory fanfare 0xa5
+// at the tail. It never asks whether an ENEMY is still alive: the last human of a team whose mates died or dropped "won"
+// against a live AI. The fix gives the text + fanfare only when mh_spectate.h's no_enemy_alive says so. DISPLAY-ONLY: the
+// outcome code, the session downgrade and every roster write are untouched; the print queue and a sound are not hashed.
+//  W1  0x00498319 (`JZ 0x00498325; MOV EAX,0x7d`, 7 bytes, the was_human test's branch + the text id): the stub repeats
+//      the JZ, then asks lastwin_mute_retail; muted -> 0x00498325 (skip the CALL), else MOV EAX,0x7d -> 0x00498320 (CALL).
+//  W2  0x0049878d (`MOV EDX,0x64`, the volume of the victory fanfare 0xa5, reached for outcome 3/5/6): when W1 muted an
+//      outcome-6 evaluation, skip the CALL (0x0049879c, the outcome dialog); else repeat the MOV -> 0x00498792.
+// Configuration (2): sim_player_presence_lost.cpp's mute_win carries the same rule; both sites are displaced by promotion.
+int                 g_last_human_win_check = 1;
+volatile int        g_lw_res               = 0; // W1: lastwin_mute_retail's verdict
+volatile int        g_lw_mute_fanfare      = 0; // W1 -> W2: the outcome-6 fanfare is owed silence (consumed at W2)
+constexpr uintptr_t ADDR_LASTWIN_TEXT_SITE = 0x00498319;
+constexpr uintptr_t ADDR_LASTWIN_SND_SITE  = 0x0049878d;
+const uint8_t       LASTWIN_TEXT_EXPECT[7] = {0x74, 0x0A, 0xB8, 0x7D, 0x00, 0x00, 0x00}; // jz 0x00498325; mov eax,0x7d
+const uint8_t       LASTWIN_SND_EXPECT[5]  = {0xBA, 0x64, 0x00, 0x00, 0x00};             // mov edx,0x64
+
+// 1 = an enemy of the local side is still alive: no "You have won" (and, for outcome 6, no fanfare).
+// (Reached only when the dead player was human, which only a natural loss latches -- so in practice outcome 6.)
+int __cdecl lastwin_mute_retail(unsigned outcome) {
+    const unsigned me = *(const uint16_t *)mh::addr::PlayerSide;
+    if (me >= 8) return 0;
+    mh::spectate::roster r;
+    spec_read_roster(r);
+    const auto vd   = mh::spectate::evaluate(r, (int)me);
+    const bool mute = !mh::spectate::no_enemy_alive(vd);
+    if (mute && (outcome & 0xff) == 6) g_lw_mute_fanfare = 1;
+    char b[220];
+    wsprintfA(b, "; U54-FW last human: outcome=%u alive others=%d allied_with_me=%d -> %s (retail carrier)\n", outcome & 0xff, vd.alive,
+              (int)vd.allied_with_me, mute ? "an ENEMY is alive: NO victory text/fanfare" : "no enemy alive: victory text + fanfare");
+    seam_log(b);
+    return mute;
+}
+
+// clang-format off
+__declspec(naked) void lastwin_text_stub() {
+    __asm {
+        jz    no_text                            // the displaced JZ: the dead player was not human
+        pushad
+        movzx eax, byte ptr [ebp - 0x14]         // outcome (6 or 8)
+        push  eax
+        call  lastwin_mute_retail
+        add   esp, 4
+        mov   dword ptr [g_lw_res], eax
+        popad
+        cmp   dword ptr [g_lw_res], 0
+        jne   no_text
+        mov   eax, 0x7d                          // the displaced MOV
+        push  0x00498320                         // CALL llm_ui_print_queue_text_id
+        ret
+    no_text:
+        push  0x00498325                         // JMP 0x0049832c: the common downgrade + fanfare + dialog tail
+        ret
+    }
+}
+__declspec(naked) void lastwin_snd_stub() {
+    __asm {
+        cmp   dword ptr [g_lw_mute_fanfare], 0
+        jne   mute
+        mov   edx, 0x64                          // the displaced MOV
+        push  0x00498792                         // MOV EAX,0xa5; CALL llm_snd_play
+        ret
+    mute:
+        mov   dword ptr [g_lw_mute_fanfare], 0
+        push  0x0049879c                         // the outcome dialog
+        ret
+    }
+}
+// clang-format on
+
+void install_last_human_win_check() {
+    uint8_t repl[8];
+    int     outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_LASTWIN_TEXT_SITE)) {
+        u52_prep(repl, ADDR_LASTWIN_TEXT_SITE, (void *)&lastwin_text_stub, false);
+        outcome = patch_bytes_guarded(ADDR_LASTWIN_TEXT_SITE, LASTWIN_TEXT_EXPECT, repl, 7) ? 1 : 2;
+    }
+    u52_report("last-human text", ADDR_LASTWIN_TEXT_SITE, outcome, "last_human_win_check", "llm_strat_player_presence_lost");
+    outcome = 0;
+    if (!mh::hook::promoted_owner_of(ADDR_LASTWIN_SND_SITE)) {
+        u52_prep(repl, ADDR_LASTWIN_SND_SITE, (void *)&lastwin_snd_stub, false);
+        outcome = patch_bytes_guarded(ADDR_LASTWIN_SND_SITE, LASTWIN_SND_EXPECT, repl, 5) ? 1 : 2;
+    }
+    u52_report("last-human fanfare", ADDR_LASTWIN_SND_SITE, outcome, "last_human_win_check", "llm_strat_player_presence_lost");
+}
+
 
 // ---- mp:U54 THE SPECTATOR'S WHOLE-MAP VIEW (render-only) ---------------------------------------------------------------
 //
@@ -4829,6 +4967,7 @@ struct ledger {
 };
 ledger   g;
 unsigned g_n_dismiss = 0, g_n_show = 0, g_n_wait = 0; // diagnostics
+bool     g_safety = true;                             // U44b (b): overlay_dialog_guard != 2
 
 constexpr uintptr_t       ADDR_CB_A = mh::addr::menu_oneshot_cb; // _G_LLM_UI_MENU_ASYNC_CALLBACK_A
 inline volatile uint8_t  &mode() { return *(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE; }
@@ -4836,6 +4975,17 @@ inline volatile uint32_t &u32(uintptr_t a) { return *(volatile uint32_t *)a; }
 inline bool               slot_free() {
     const uint32_t list = u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST);
     return list == 0 || list == mh::addr::_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD;
+}
+
+// mp:U44b (b) -- is there still a FOREIGN screen to give the mode back to? A dialog (ACTIVE_DIALOG set) or a
+// widget list that is neither empty, the HUD nor lockstep's own. The 2026-10-14 field lock was the rule
+// below restoring mode 3 over NOTHING: the building dialog had been closed by a Sell during the stall, and the
+// icon re-armed by llm_menu_finish_enter_gameplay's own call (0x004b82a8) was never ledgered as ours -- mode 3
+// with no list and no dialog takes no input, so every later dismiss restored the same dead screen.
+inline bool foreign_screen_left() {
+    const uint32_t list = u32(mh::addr::_G_LLM_UI_MENU_WIDGET_LIST);
+    return u32(mh::addr::_G_LLM_UI_ACTIVE_DIALOG) != 0 ||
+           !(list == 0 || list == mh::addr::_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD || list == mh::addr::_G_LLM_UI_WGT_LIST_LOCKSTEP_SYNC);
 }
 
 // bit0 = GAME_MODE != 4 (the callee's guard), bit1 = the screen was mode 3 (viewport dirty after).
@@ -4850,6 +5000,8 @@ void __cdecl post_dismiss(unsigned flags) {
     if (flags & 2) mh::call::llm_map_cam_mark_viewport_dirty(); // twin: host_event_sink, right after the original
     if (!(flags & 1)) return;
     if (!g.latch_ours) { // not lockstep's screen: the original forced mode 2/3 over it -- put the mode back
+        // U44b (b): ...unless that screen is gone -- then the original's own result stands (mode 2 over an empty list).
+        if (g_safety && g.latch_mode == 3 && !foreign_screen_left()) return;
         mode() = g.latch_mode;
         return;
     }
@@ -4996,6 +5148,7 @@ struct odg_site {
     void (*thunk)();
     const char *owner;
     bool        ours_skip; // leave it to the twin whenever libmh runs at all
+    bool        u44b;      // U44b (a): one of the two unledgered wait-icon callers -- off under the dev values 2/3
 };
 const odg_site ODG_SITES[] = {
     {0x0043f072, {0xE8, 0xA5, 0x8C, 0x08, 0x00}, odg::dismiss_thunk, "llm_strat_time_tick", false},
@@ -5006,16 +5159,35 @@ const odg_site ODG_SITES[] = {
     {0x004c7fae, {0xE8, 0x69, 0xFD, 0xFF, 0xFF}, odg::dismiss_thunk, "llm_net_lockstep_sync_overlay_show", false},
     {0x004c8620, {0xE8, 0xF7, 0xF6, 0xFF, 0xFF}, odg::dismiss_thunk, "llm_net_mp_leave_reset_game_mode", true},
     {0x0043f18d, {0xE8, 0x58, 0x8D, 0x08, 0x00}, odg::show_thunk, "llm_strat_time_tick", false},
+    // mp:U44b (a), 2026-10-14: the OTHER caller of llm_net_lockstep_wait_player_overlay_show (0x004c7dc0) that
+    // arms the icon outside this ledger. Retail UI code, never promoted, so it runs in every configuration -- the
+    // libmh twin cannot see it either, which is why the dismiss safety net (b) is what carries the fix there.
+    //   0x004b82a8 llm_menu_finish_enter_gameplay: a dialog closed (Sell / Close) while WAIT_PLAYER_IDX >= 0
+    //              re-arms the icon itself. Unledgered, the next dismiss restored mode 3 over nothing (field lock).
+    // NOT ROUTED: the third caller, 0x004c85e8 in llm_net_lockstep_extend_ui_enter. Its icon is overwritten by
+    // GAME_MODE = 8 on the next instruction, so ledgering it as ours would let a later dismiss rewrite the mode-8
+    // resync barrier to 2 where rc9.3 put 8 back. With it routed, dialog_stall_c1_retail went red 2/2 (both
+    // links died after the third stall's blackhole lifted) while overlay_dialog_guard=3 and the build without
+    // it passed -- on a box shared with other rig runs, so that is a lead, not a proof. Left out on caution:
+    // the dismiss safety net already covers an unledgered icon there.
+    {0x004b82a8, {0xE8, 0x13, 0xFB, 0x00, 0x00}, odg::wait_thunk, "llm_menu_finish_enter_gameplay", false, true},
 };
 constexpr uintptr_t ADDR_ODG_DISMISS_TT1 = 0x0043f072, ADDR_ODG_DISMISS_TT2 = 0x0043f286,
                     ADDR_ODG_DISMISS_TT3 = 0x0043f2e1, ADDR_ODG_DISMISS_PL1 = 0x004982c3,
                     ADDR_ODG_DISMISS_PL2 = 0x0049833f, ADDR_ODG_DISMISS_SOS = 0x004c7fae,
-                    ADDR_ODG_DISMISS_MPL = 0x004c8620, ADDR_ODG_SHOW_TT = 0x0043f18d;
+                    ADDR_ODG_DISMISS_MPL = 0x004c8620, ADDR_ODG_SHOW_TT = 0x0043f18d,
+                    ADDR_ODG_WAIT_FEG = 0x004b82a8;
 
 void install_overlay_dialog_guard() {
-    int patched = 0, displaced = 0, mismatched = 0;
-    g_wait_target = (uintptr_t)&odg::wait_thunk; // the icon thunk's forward (site 0x0043f0fc), see install_overlay_gate
+    int patched = 0, displaced = 0, mismatched = 0, skipped = 0;
+    g_wait_target         = (uintptr_t)&odg::wait_thunk; // the icon thunk's forward (site 0x0043f0fc), see install_overlay_gate
+    odg::g_safety         = g_overlay_dialog_guard != 2; // U44b (b) off only in the rc9.3 reproduction arm
+    const bool u44b_sites = g_overlay_dialog_guard == 1;
     for (const odg_site &s : ODG_SITES) {
+        if (s.u44b && !u44b_sites) {
+            ++skipped; // a dev arm (overlay_dialog_guard 2 / 3)
+            continue;
+        }
         if (mh::hook::promoted_owner_of(s.site) || (s.ours_skip && MH_LibmhModule_IsBound() && mh::config::ours_run())) {
             ++displaced;
             continue;
@@ -5034,6 +5206,7 @@ void install_overlay_dialog_guard() {
             case ADDR_ODG_DISMISS_SOS: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_SOS, s.expect, repl, 5); break;
             case ADDR_ODG_DISMISS_MPL: ok = patch_bytes_guarded(ADDR_ODG_DISMISS_MPL, s.expect, repl, 5); break;
             case ADDR_ODG_SHOW_TT: ok = patch_bytes_guarded(ADDR_ODG_SHOW_TT, s.expect, repl, 5); break;
+            case ADDR_ODG_WAIT_FEG: ok = patch_bytes_guarded(ADDR_ODG_WAIT_FEG, s.expect, repl, 5); break;
         }
         if (ok) {
             ++patched;
@@ -5042,9 +5215,10 @@ void install_overlay_dialog_guard() {
             refuse_uncarried_fix("overlay_dialog_guard", s.site, s.owner);
         }
     }
-    char b[220];
-    wsprintfA(b, "; overlay dialog guard (retail carrier): %d site(s) PATCHED, %d DISPLACED (libmh owns them), %d MISMATCHED; wait site via the icon thunk (MP U44)\n",
-              patched, displaced, mismatched);
+    char b[320];
+    wsprintfA(b, "; overlay dialog guard (retail carrier): %d site(s) PATCHED, %d DISPLACED (libmh owns them), %d MISMATCHED, %d SKIPPED; "
+                 "wait site via the icon thunk (MP U44); overlay_dialog_guard=%d, dismiss safety net %s (MP U44b)\n",
+              patched, displaced, mismatched, skipped, g_overlay_dialog_guard, odg::g_safety ? "ON" : "OFF");
     seam_log(b);
 }
 
@@ -5178,13 +5352,12 @@ void install_overlay_patches() {
     //                       says it fails R1 and R2 (its target is a callee our body still calls
     //                       through), so it is out of scope for retirement no matter how far C8 goes.
     bool xw = true, xm = true;
-    // Permanently 0 now: gating was `tt_wait == 2` and there is no tt_wait. The naked thunk still
-    // READS this and still carries its gate branch -- deleting hand-written asm is a separate risk
-    // and does not belong in the same change as a knob retirement, so the branch is left dead.
-    g_icon_gate = 0;
+    // The thunk's old countdown gate (`tt_wait == 2`) is gone; mp:U20b re-uses the branch for
+    // `[net] stall_icon_delay_ms` (g_icon_delay_ms, read in lockstep_install_core before this runs).
     // mp:U44: the retail overlay_dialog_guard needs the stall icon's arming seen (the thunk's forward target), so the
     // pass-through thunk is installed for it too even with icon_count=0 (it only counts, which cannot perturb anything).
-    if (g_icon_count || g_overlay_dialog_guard) install_overlay_gate(); // the thunk owns the wait-overlay call site
+    if (g_icon_count || g_overlay_dialog_guard || g_icon_delay_ms > 0)
+        install_overlay_gate(); // the thunk owns the wait-overlay call site
     // U20: and the OTHER carrier of the same two counters -- our promoted body, which is what
     // actually runs on the ship default. Wired under the same [net] icon_count knob so "count the
     // de-sync icon" means one thing whichever implementation is live, and unwired (null sinks) when
@@ -5479,9 +5652,17 @@ void lockstep_install_core() {
     // signal for nothing. Reimpl-ONLY -- there is no byte patch, so an unpromoted run cannot carry
     // it; the arming line below says so rather than letting a run believe it is gated.
     g_desync_icon_gate = mh_ini_get_int("net", "desync_icon_gate", 0, g_ini);
+    // MP U20b. DEFAULT 1000: the de-sync corner icon waits until the sim has been parked this long (0 = stock).
+    // Both carriers: the thunk above (unpromoted time_tick) and reimpl_fixes::stall_icon_delay_ms (our body).
+    g_icon_delay_ms = mh_ini_get_int("net", "stall_icon_delay_ms", SHIP_STALL_ICON_DELAY_MS, g_ini);
+    if (g_icon_delay_ms < 0) g_icon_delay_ms = 0;
     // MP U44. DEFAULT ON: the stall overlay no longer closes an open mode-3 dialog (sell/building) on
     // dismiss and no longer lets the kick modal share the screen with it. 0 = the retail rule.
+    // MP U44b adds two dev values for the reproduction arms: 2 = the rc9.3 guard (no wait-site splice at
+    // 0x004b82a8, no dismiss safety net -- reproduces the dead-input lock), 3 = the safety net alone (no
+    // splice). 1 = everything.
     g_overlay_dialog_guard = mh_ini_get_int("net", "overlay_dialog_guard", 1, g_ini);
+    if (g_overlay_dialog_guard < 0 || g_overlay_dialog_guard > 3) g_overlay_dialog_guard = 1;
     // MP U19e. DEFAULT ON: without it the leader's re-broadcast of a peer drop overwrites the very
     // datagram it is dispatching (one shared _G_LLM_NET_SEND_BUF for TX and RX), and the parse walks
     // into the payload and raises outcome 7 on a clean quit. Carried by the promoted body AND (mp:U19i) a byte patch.
@@ -5492,6 +5673,10 @@ void lockstep_install_core() {
     // PT-FIX1. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): a turret's reload tick runs
     // only for the building that owns the turret slot (a rubble sharing a reused slot no longer drains it).
     g_turret_reload_owner_fix = mh_ini_get_int("net", "turret_reload_owner_fix", 1, g_ini);
+    // hotfix rc9.4. DEFAULT ON, SIM-AFFECTING only on an already-illegal record (every peer must carry the same
+    // value): a building pip_level outside 0..4 / pip_active_count outside 0..16 is zeroed before any reader
+    // indexes the 4-entry A_OGIEN table with it (field crashes 0x0047908b / 0x004793e1).
+    g_bldg_pip_guard = mh_ini_get_int("net", "bldg_pip_guard", 1, g_ini);
     // PT-FIX2 / PT-FIX4 / PT-FIX5 (turret_reload_realtime_fix, turret_fire_rate_mult, turret_clip_fix, turret_fire_poll_fix):
     // PT-SET1 host-synced gameplay rows -- NOT read here. config/gameplay.cpp reads them (boot: the local ini; match: the
     // host's published values) and the hooks in seams/gameplay_hooks.cpp call the mh_set_turret_* setters below.
@@ -5511,6 +5696,8 @@ void lockstep_install_core() {
     // MP U54. DEFAULT ON, SIM-AFFECTING: a defeated human stays in the match as a spectator. Needs the pinned flip.
     g_spectate_after_defeat = mh_ini_get_int("net", "spectate_after_defeat", 1, g_ini) != 0 && g_player_left_pin_fix != 0;
     g_spectate_mask         = mh_ini_get_int("net", "spectate_mask", 1, g_ini) != 0; // test knob: 0 = the spectator bit is never exported
+    // MP U54-FW. DEFAULT ON, DISPLAY-ONLY: the last human with an enemy alive gets no "You have won" text/fanfare.
+    g_last_human_win_check = mh_ini_get_int("net", "last_human_win_check", 1, g_ini) != 0;
     // C8-e: the three retired `defang_*` knobs. A SCOPE DECISION, not a retirement -- the capability
     // is gone, so there is no carrier to point at and refuse_uncarried_fix would be the wrong message
     // (it says "the fix moved and you are not running the thing that carries it"; here there is no
@@ -5643,10 +5830,13 @@ void lockstep_install_core() {
         // had this fix on since D14, and restoring that is the point of carrying it.
         // U20. Unlike every other field here, this knob has NO byte-patch carrier -- `defang_tt_wait`
         // was its nearest ancestor and C8-e dropped it, leaving wait_overlay_gate_thunk as a pure
-        // counter with `g_icon_gate` hardcoded 0. So an UNPROMOTED run with this set has no gate at
+        // counter with its gate hardcoded off (U20b later re-used that branch for stall_icon_delay_ms, a different
+        // predicate). So an UNPROMOTED run with this set has no gate at
         // all, and that has to be said out loud rather than discovered from an unchanged icon rate.
         fx.desync_icon_gate     = g_desync_icon_gate != 0;
         fx.overlay_dialog_guard = g_overlay_dialog_guard != 0; // U44
+        fx.overlay_guard_rc93   = g_overlay_dialog_guard == 2; // U44b dev arm: drop the dismiss safety net
+        fx.stall_icon_delay_ms  = (int32_t)g_icon_delay_ms;    // U20b, same knob as the thunk
         // U19e. The promoted body's half of the guard; since mp:U19i an UNPROMOTED dispatch carries the
         // same fix as a byte patch (install_gone_peer_frame_guard), so the knob means one thing in both.
         fx.gone_peer_frame_guard = g_gone_peer_frame_guard != 0;
@@ -5658,6 +5848,7 @@ void lockstep_install_core() {
                      : "; U45: diplo_order_dedup_fix=0 -- retail dedup: a relation + control change in one Apply loses the relation order (the reproduction arm)\n");
         fx.undock_reentry_fix      = g_undock_reentry_fix != 0;      // U49, see install_undock_reentry_fix
         fx.turret_reload_owner_fix = g_turret_reload_owner_fix != 0; // PT-FIX1, see install_turret_reload_splice
+        fx.bldg_pip_guard          = g_bldg_pip_guard != 0;          // hotfix rc9.4, see seams/bldg_pip_guard.cpp
         // PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are set by the
         // gameplay hooks (seams/gameplay_hooks.cpp), not here.
         fx.air_order_facing_fix = g_air_order_facing_fix != 0; // PT-FIX3, see install_air_order_facing_fix
@@ -5682,6 +5873,11 @@ void lockstep_install_core() {
         seam_log(fx.spectate_after_defeat
                      ? "; U54: spectate_after_defeat=1 -- a defeated human with >= 2 other humans alive stays in the match as a spectator\n"
                      : "; U54: spectate_after_defeat=0 -- retail: a defeated human drops out of the lockstep session (the reproduction arm)\n");
+        // U54-FW. DISPLAY-ONLY (a text + a sound), so not sim-affecting; shipped default 1.
+        fx.last_human_win_check = g_last_human_win_check != 0;
+        seam_log(fx.last_human_win_check
+                     ? "; U54-FW: last_human_win_check=1 -- the last human gets \"You have won\" + the fanfare only when no enemy is alive\n"
+                     : "; U54-FW: last_human_win_check=0 -- retail: the last human always gets \"You have won\" (the reproduction arm)\n");
         mh::lockstep::set_fixes(fx);
         if (g_desync_icon_gate) {
             const bool carried = g_lockstep_promoted.time_tick;
@@ -5734,10 +5930,12 @@ void lockstep_install_core() {
     install_turret_fire_poll_fix();                             // PT-FIX5 -- ALWAYS installed (runtime-gated stub), same three outcomes
     if (g_air_order_facing_fix) install_air_order_facing_fix(); // PT-FIX3 -- same three outcomes
     else seam_log("; air order facing fix OFF ([net] air_order_facing_fix=0, PT-FIX3): retail -- a helicopter at microstep 31 with a stale facing never applies its next order\n");
+    install_bldg_pip_guard(g_bldg_pip_guard != 0);                      // hotfix rc9.4 -- per site PATCHED / DISPLACED / MISMATCHED
     if (g_overlay_dialog_guard) install_overlay_dialog_guard();         // mp:U44 -- retail carrier; per-site DISPLACED under promotion
     if (g_player_left_pin_fix) install_player_left_pin_fix();           // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
     if (g_spectate_after_defeat) install_spectate();                    // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)
     if (g_spectate_after_defeat) install_spectate_view();               // mp:U54 -- the spectator's whole-map view (render-only)
+    if (g_last_human_win_check) install_last_human_win_check();         // mp:U54-FW -- no false "You have won" (retail carriers; displaced by promotion)
     if (g_team_relations_fix) install_team_relations_fix();             // mp:U52 -- seed + lock (retail carriers; displaced by promotion)
     if (g_ally_damage_no_hostility) install_ally_damage_no_hostility(); // mp:U52 -- hostility guard
     install_resync_order_horizon();

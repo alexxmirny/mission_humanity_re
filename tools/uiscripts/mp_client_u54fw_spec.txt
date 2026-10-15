@@ -1,0 +1,44 @@
+# mp:U54-FW (tools/det_arms.py --u54-lastwin*; see mp_host_u54fw_lastwin.txt).
+# client2: on T1; force-killed first (step ~300) with two humans + the AI still alive, so it SPECTATES (Continue
+# spectating); when the host falls the match is decided for it and it gets its end-of-match dialog.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated2
+click 221 149
+team 2 1
+signal c2team
+awaitsignal setup
+team 0 1
+team 1 1
+team 2 1
+signal c2ready
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+log c2 reached its defeat dialog
+clickl Continue spectating
+absent Continue spectating
+gamemode 2
+screen 0x00653dc3
+dump
+signal c2done
+log c2 (the spectator) reached the end-of-match dialog
+awaitsignal hostdone
+awaitsignal c1done
+end

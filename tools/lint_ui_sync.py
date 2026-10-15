@@ -89,6 +89,7 @@ KNOWN_WAIT_OPS = frozenset(
         "curpos",
         "gzdone",
         "mapsize",
+        "mring",
     }
 )
 # ACTION ops: fire once, never a synchronization mechanism themselves (a `cursorhold`/`keyhold`

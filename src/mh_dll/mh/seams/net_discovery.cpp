@@ -36,6 +36,7 @@
 #include "ui/lobby_ui.h"                 // mp:R4a -- browser_notice_arm_relay (the relay-level notice)
 #include "desync/desync_watch.h"         // mp:RM1 -- match_end(): the [desync] rollup into the match's own directory
 #include "desync/order_capture.h"        // mp:Q3 -- session_close(): the order recording ends with its session
+#include "desync/replay_record.h"        // the replay record (seed + hash checkpoints) ends with it too
 #include "desync/hitch_probe.h"          // mp:Q4 -- game-thread time per recording path, [hitch] lines
 #include "seams/session_close_plan.h"    // TL-HARN-CLEANCLOSE -- the close's sequencing, shared with the harness stop
 #include "include/mh_presence.h"         // RL15 -- presence.json (the launcher's Discord module reads it)
@@ -998,6 +999,7 @@ void close_rollups() {
     // mp:Q3: the order recording ends with its SESSION (not with a match: a lobby's session_begin_multi
     // also reaches match_end above, mid-session) -- tail handed to the sink, then gzip.
     mh::desync::orders::session_close("the session closed");
+    mh::desync::replay_rec::session_close("the session closed");
     // mp:U41b/U41e: the inbound-queue rollup is per MATCH, and this is the match boundary -- not the
     // transport's, which a host_rematch never crosses (the link stays up). The module logs this
     // match's rollup and restarts its counters, keeping anything still queued -- on EITHER transport

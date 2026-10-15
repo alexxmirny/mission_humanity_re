@@ -1,0 +1,43 @@
+# hotfix rc9.4 [net] bldg_pip_guard HOST walk -- a building with a garbage pip_level must not crash the game.
+# Pair with mp_client_idle.txt. Row: bldg_pip_guard (ship, [net] bldg_pip_guard=1). The reproduction arm
+# ([net] bldg_pip_guard=0: both peers fault at 0x0047908b) is a manual run, see tools/check_pip_guard.py.
+#
+# Field crashes 0x0047908b / 0x004793e1 (tmp/report_triage_2026-10-15/crash_7908b.md): retail indexes the
+# 4-entry fire-animation table with pip_level unchecked. The stimulus is the harness fixture's (`pip_*`:
+# plant pip_level[0] = 0xC384DE82 + half-energy damage into the mother building on every peer at one step).
+# This walk only lands the mother (one capture, BEFORE the landing: the retail arm faults soon after it, and
+# both arms share the frame) and lets the match run. The assertion is the post_check
+# (tools/check_pip_guard.py), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture pokes the mother building
+# once it stands and logs `; PIP DONE` pip_tail (300) steps later.
+absent Network players
+gameclock 3000
+capture pip_start
+simrclick 480 330 shift
+gameclock 10000
+log pip done
+end

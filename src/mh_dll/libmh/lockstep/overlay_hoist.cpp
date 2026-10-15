@@ -119,13 +119,23 @@ void overlay_show_hoist(bool armed) {
 void overlay_dismiss_hoist(bool not4) {
     *mh::state::ptr<int32_t>(RID_NET_LOCKSTEP_WAIT_PLAYER_IDX) = -1;
     if (!not4) return;
+    const uintptr_t list = widget_list();
     if (mh::lockstep::fixes().overlay_dialog_guard && !g_ov.latch_ours) {
         // Not lockstep's screen. Hosted, the original has just forced mode 2/3 over it; put the
         // pre-call mode back. Unhosted nothing wrote, and this is the identity.
+        //
+        // U44b SAFETY NET: ...but only while that screen still EXISTS. Retail UI code arms the wait
+        // icon outside this ledger -- llm_menu_finish_enter_gameplay (0x004b82a8) does, when a dialog is
+        // closed (Sell / Close) while WAIT_PLAYER_IDX >= 0 -- so a "foreign" mode 3 can be the icon over
+        // nothing. Restoring it left mode 3 with no list and no dialog: no input, for the rest of the
+        // match (field report 01M4XZJER40J6TBCFCYR8KW9RN). With no dialog and a free list, the
+        // original's own result stands. The retail carrier ALSO ledgers that call site (odg::wait_thunk).
+        const bool foreign_left = *mh::state::ptr<const uint32_t>(RID_UI_ACTIVE_DIALOG) != 0 ||
+                                  !(list == 0 || list == wgt_gameplay_hud() || list == wgt_lockstep_sync());
+        if (!mh::lockstep::fixes().overlay_guard_rc93 && g_ov.latch_mode == 3 && !foreign_left) return;
         game_mode_ref() = g_ov.latch_mode;
         return;
     }
-    const uintptr_t list = widget_list();
     // The fold: LOCKSTEP_SYNC counts as "slot free" because the real arm nulls it before the
     // mode write -- see the header banner's host-arm-independence note.
     const bool free_after =

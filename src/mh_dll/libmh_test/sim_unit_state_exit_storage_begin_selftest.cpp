@@ -30,7 +30,9 @@
 
 #include <vector>
 
+#include "mh_crew_reminder.h"
 #include "sim_test_support.h"
+#include "lockstep/turn_engine.h" // T12: fixes().crew_shortage_reminder_s
 
 namespace mh::sim::test {
 namespace {
@@ -461,6 +463,88 @@ void run_unit_state_exit_storage_begin_tests() {
               "T11: door_mutex_unit stays claimed (set at 0x0047f026, never released on this fallback)");
         ck_eq((uint32_t)g_race_alert_calls, 0u,
               "T11: race_alert_text_emit NOT called on the can_exit!=0 fallback (that gate is can_exit==0 only)");
+    }
+
+    // =================================================================================================
+    // T12 -- hotfix rc9.4, exit_wait's crew-shortage REMINDER ([ui] crew_shortage_reminder_s). Retail
+    // (fix 0): exit_wait never calls the emitter. Fix 30: the first waiting tick calls it, ticks inside
+    // 30 game-clock seconds do not, the tick at +30 s does, a backwards clock re-arms it, a retail show
+    // restarts the period, the emitter's cooldown is waited out, a non-local unit and a unit with crew
+    // available never do.
+    // =================================================================================================
+    {
+        const mh::lockstep::reimpl_fixes saved = mh::lockstep::fixes();
+        double                           bump  = 5.0;
+        auto                             tick  = [&](double clock) {
+            make_unit(fx);
+            g_can_exit_result                     = 0;
+            fx.game_clock                         = clock;
+            sim_view v                            = fx.view();
+            v.exit_wait_default_activity_bump     = &bump;
+            v.exit_wait_operational_activity_bump = &bump;
+            sim_store own                         = fx.store();
+            detail::unit_state_exit_wait(v, own, g_calls);
+        };
+        fx.reset();
+        reset_recorders();
+        fx.player_side                         = static_cast<int16_t>(PLAYER);
+        fx.population[PLAYER].human            = 0;
+        fx.cfg_units[UNIT_PROTO].human         = 4;
+        fx.cfg_units[UNIT_PROTO].soldier_count = 0;
+
+        mh::lockstep::reimpl_fixes fx0 = saved;
+        fx0.crew_shortage_reminder_s   = 0;
+        mh::lockstep::set_fixes(fx0);
+        for (double t = 100.0; t < 200.0; t += 10.0) tick(t);
+        ck_eq((uint32_t)g_race_alert_calls, 0u, "T12: fix 0 (retail) -- exit_wait never re-shows the crew text");
+
+        mh::lockstep::reimpl_fixes fx30 = saved;
+        fx30.crew_shortage_reminder_s   = 30;
+        mh::lockstep::set_fixes(fx30);
+        tick(1000.0);
+        ck_eq((uint32_t)g_race_alert_calls, 1u, "T12: fix 30 -- the first waiting tick re-shows the crew text");
+        tick(1010.0);
+        tick(1029.9);
+        ck_eq((uint32_t)g_race_alert_calls, 1u, "T12: fix 30 -- nothing inside 30 game-clock seconds");
+        tick(1030.0);
+        ck_eq((uint32_t)g_race_alert_calls, 2u, "T12: fix 30 -- re-shown at +30 s");
+        tick(5.0);
+        ck_eq((uint32_t)g_race_alert_calls, 3u, "T12: fix 30 -- a backwards clock (load / new match) re-arms the throttle");
+
+        // A retail show (exit_storage_begin's own text) restarts the period: nothing right after it.
+        reset_recorders();
+        make_unit(fx);
+        fx.game_clock = 1500.0;
+        {
+            sim_store own = fx.store();
+            detail::unit_state_exit_storage_begin(fx.view(), own, g_calls);
+        }
+        ck_eq((uint32_t)g_race_alert_calls, 1u, "T12: exit_storage_begin shows the crew text (retail)");
+        tick(1501.0);
+        tick(1529.9);
+        ck_eq((uint32_t)g_race_alert_calls, 1u, "T12: fix 30 -- a retail show counts: nothing for 30 s after it");
+        tick(1530.0);
+        ck_eq((uint32_t)g_race_alert_calls, 2u, "T12: fix 30 -- re-shown 30 s after the retail show");
+
+        // The shared throttle never calls inside the emitter's cooldown; it waits WITHOUT advancing.
+        {
+            mh::crew_reminder::throttle th;
+            ck(mh::crew_reminder::due(th, 100.0, 1, -1.0e18, 2.0), "T12: due() fires on its first call");
+            ck(!mh::crew_reminder::due(th, 130.0, 1, 128.5, 2.0), "T12: due() waits inside the emitter cooldown");
+            ck(mh::crew_reminder::due(th, 130.6, 1, 128.5, 2.0), "T12: due() fires as soon as the cooldown ends");
+            ck(!mh::crew_reminder::due(th, 130.6, 0, 0.0, 2.0), "T12: due() period 0 = retail, never");
+        }
+
+        reset_recorders();
+        fx.player_side = static_cast<int16_t>(PLAYER + 1);
+        tick(2000.0);
+        ck_eq((uint32_t)g_race_alert_calls, 0u, "T12: fix 30 -- another player's waiting unit never shows it");
+        fx.player_side              = static_cast<int16_t>(PLAYER);
+        fx.population[PLAYER].human = 4;
+        tick(3000.0);
+        ck_eq((uint32_t)g_race_alert_calls, 0u, "T12: fix 30 -- crew available (waiting for the door) never shows it");
+        ck((g_set_state_calls.empty()), "T12: exit_wait's can't-exit arm sets no state");
+        mh::lockstep::set_fixes(saved);
     }
 }
 

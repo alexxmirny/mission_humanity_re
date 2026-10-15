@@ -80,6 +80,14 @@ inline constexpr int SHIP_TEMPORAL_LEVEL = 0; // [trace] temporal
 // an extended one. Manual saving mid-lockstep-match was not checked before choosing this default -- if
 // retail allows it and it blocks the sim thread near or past 15 s, that is an open follow-up.
 inline constexpr int SHIP_DATA_TIMEOUT_MS = 15000;
+// mp:U20b. [net] stall_icon_delay_ms -- the de-sync corner icon (llm_net_lockstep_wait_player_overlay_show)
+// shows only once the sim has been parked at the lockstep horizon for this long; 0 = stock (the second
+// parked frame). Measured on the 2026-10-14 field reports (three matches, 335 icon episodes, wall time
+// from SYNC_WAIT_ACTIVE 0->1 to 1->0 in mh_lockstep.log): p50 0-31 ms, p90 32-125 ms, max 703 ms -- every
+// icon the players saw was a sub-second at-horizon wait. 1000 ms sits above all of them and well below
+// the kick modal (SYNC_RETRY_COUNTDOWN < 0x38, ~4 s parked), which this does not touch. Display-only and
+// LOCAL: each peer may run its own value.
+inline constexpr int SHIP_STALL_ICON_DELAY_MS = 1000;
 
 // ---- WHICH BODIES RUN: NOT HERE ANY MORE (fork F2E, 2026-09-13) --------------------------------
 //

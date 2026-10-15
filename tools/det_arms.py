@@ -1883,6 +1883,12 @@ U54_BASE = {
     "u54-neg": "client-neg",
     "u54-probe": "client-spec",
     "u54-team": "team",
+    # mp:U54-FW (the false "You have won"): client2 is force-killed first (it spectates), then client1; the host is the
+    # last human. `lastwin` = Team mode + an ENEMY AI (no win text/fanfare), `-neg` = the same with
+    # `[net] last_human_win_check=0` (retail's false win), `lastwin-ally` = FFA + an ALLIED AI (the win text stays).
+    "u54-lastwin": "lastwin",
+    "u54-lastwin-neg": "lastwin",
+    "u54-lastwin-ally": "lastwin-ally",
 }
 U54_ARMS = {
     # base arm: (host script, client1 script, client2 script, victim key)
@@ -1937,8 +1943,24 @@ U54_ARMS.update(
             "mp_client_u53_survivor2.txt",
             "host",
         ),
+        "lastwin": (
+            "mp_host_u54fw_lastwin.txt",
+            "mp_client_u54fw_victim.txt",
+            "mp_client_u54fw_spec.txt",
+            "client1",
+        ),
+        "lastwin-ally": (
+            "mp_host_u54fw_lastwin_ally.txt",
+            "mp_client_u54fw_victim.txt",
+            "mp_client_u54fw_spec.txt",
+            "client1",
+        ),
     }
 )
+# mp:U54-FW: the host issues both force-kills -- client2 (slot 2) first, then client1 (slot 1) -- so the HOST is the last
+# human. The host, not a client: the hub leads the step, so the dying client's CTL_PLAYER_LEFT cannot overtake the host's
+# own natural evaluation (outcome 6). A client as the last human measured outcome 8 (the host's CTL beat its step).
+U54FW_CONQ = "conq_victim=2;conq_kill2_at=540;conq_victim2=1;conq_phase_timeout=5000"
 U53_ARMS.update(U54_ARMS)
 # mp:U62: the arm keys run_u53 takes beyond the U53/U55 ones. `-relay` may follow any of them.
 #   u62-host-quit  the host quits by ESC menu (migration on, the shipped default)
@@ -2048,6 +2070,9 @@ def run_u53(args, cfg, arm, config1=False):
     if arm.startswith("u54-team"):
         # mp:U54 team-victory arm: slot 1 (the spectator) falls at step 300, slot 2 (the enemy) at step 600
         conq += ";conq_kill2_at=540;conq_victim2=2;conq_phase_timeout=5000"
+    lastwin = base_arm in ("lastwin", "lastwin-ally")
+    if lastwin:
+        conq += ";" + U54FW_CONQ
     if arm.startswith("u54-probe"):
         # mp:U54 mutation arm: the host orders 0xf8 AGAIN against the defeated spectator (an order OWNED BY it) at step ~660
         conq += ";conq_spectator_probe_at=600"
@@ -2063,6 +2088,8 @@ def run_u53(args, cfg, arm, config1=False):
             net_parts.append("hub_migration=0")  # the negative arm: migration OFF on every peer
         if arm.startswith("u54-neg"):
             net_parts.append("spectate_after_defeat=0")  # mp:U54 negative arm: today's defeat flow
+        if arm.startswith("u54-lastwin-neg"):
+            net_parts.append("last_human_win_check=0")  # mp:U54-FW negative arm: retail's false win
         if relayed:
             if not relay.ok:
                 return None, ["      SKIP -- the relay could not be started: %s" % relay.note]
@@ -3579,6 +3606,19 @@ def add_args(ap):
             "neg",
             "NEGATIVE arm: client-spec with `[net] spectate_after_defeat=0` reproduces today's defeat flow",
         ),
+        (
+            "lastwin",
+            "U54-FW: Team mode + an enemy AI; client2 then client1 fall, the host is the last human -> outcome 6 with NO "
+            "'You have won' text / fanfare",
+        ),
+        (
+            "lastwin-neg",
+            "U54-FW NEGATIVE arm: lastwin with `[net] last_human_win_check=0` reproduces retail's false win",
+        ),
+        (
+            "lastwin-ally",
+            "U54-FW POSITIVE arm: FFA + an allied AI; the last human with no enemy alive keeps the win text",
+        ),
     ):
         ap.add_argument(
             "--u54-" + _k,
@@ -4033,6 +4073,9 @@ def _run_determinism(args, cfg):
             (args.u54_neg, "u54-neg"),
             (args.u54_probe, "u54-probe"),
             (args.u54_team, "u54-team"),
+            (args.u54_lastwin, "u54-lastwin"),
+            (args.u54_lastwin_neg, "u54-lastwin-neg"),
+            (args.u54_lastwin_ally, "u54-lastwin-ally"),
         )
         if _flag
     ]
@@ -4049,6 +4092,22 @@ def _run_determinism(args, cfg):
                 _arm += "-relay" if args.u55_relay else ""
             rig_phases.begin("u53-" + _arm)
             ok, lines = run_u53(args, cfg, _arm, config1=args.u53_config1)
+            # mp:U54-FW: the last-human shape needs the host's own elimination step to run before client1's
+            # CTL_PLAYER_LEFT arrives (else outcome 8, which no build ever announces as a win). That is a timing race
+            # (~1 in 4 measured), not a verdict: re-run the arm, at most twice, on the checker's RACE marker.
+            for _retry in range(2):
+                if (
+                    ok
+                    or "lastwin" not in _arm
+                    or not any("RACE: forced removal first" in ln for ln in lines)
+                ):
+                    break
+                print("\n".join(lines))
+                print(
+                    "[det] U53 %s: RACE (forced removal first) -- re-running the arm (%d/2)"
+                    % (_arm, _retry + 1)
+                )
+                ok, lines = run_u53(args, cfg, _arm, config1=args.u53_config1)
             rig_phases.end()
             print("\n".join(lines))
             if ok is None:

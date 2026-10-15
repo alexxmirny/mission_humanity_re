@@ -1429,6 +1429,8 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"gone_peer_frame_guard",         0x0049c330u, "llm_net_lockstep_dispatch", "migrated:gone_peer_frame_guard"},
     {"undock_reentry_fix",            0x00466cb6u, "llm_strat_order_queue_dispatch", "migrated:undock_reentry_fix"},
     {"turret_reload_owner_fix",       0x0046fe5du, "llm_strat_building_tick", "migrated:turret_reload_owner_fix"},
+    {"bldg_pip_guard_tick",           0x0046fe67u, "llm_strat_building_tick", "migrated:bldg_pip_guard"},
+    {"bldg_pip_guard_charge",         0x00478ecbu, "llm_strat_bldg_update_charge_pips", "migrated:bldg_pip_guard"},
     {"turret_reload_realtime_fix",    0x0046fe5du, "llm_strat_building_tick", "migrated:turret_reload_realtime_fix"},
     {"turret_clip_fix",               0x00462ab9u, "map_CreateBuilding", "migrated:turret_clip_fix"},
     {"turret_clip_refill",            0x0047c6c8u, "llm_strat_bldg_turret_reload_tick", "migrated:turret_clip_fix"},
@@ -1443,6 +1445,7 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"overlay_dialog_guard",          0x004c7faeu, "llm_net_lockstep_sync_overlay_show", "migrated:overlay_dialog_guard"},
     {"overlay_dialog_guard",          0x004c8620u, "llm_net_mp_leave_reset_game_mode", "migrated:overlay_dialog_guard"},
     {"overlay_dialog_guard",          0x0043f18du, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
+    {"overlay_dialog_guard",          0x004b82a8u, "llm_menu_finish_enter_gameplay", "migrated:overlay_dialog_guard"},
     {"team_seed",                     0x00454504u, "llm_strat_session_begin_multi", "migrated:team_relations_fix"},
     {"team_lock",                     0x004698d2u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
     {"team_vision_human",             0x00469909u, "llm_strat_order_queue_dispatch", "migrated:team_relations_fix"},
@@ -1455,6 +1458,8 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"spec_send",                     0x00498197u, "llm_strat_player_presence_lost", "migrated:spectate_after_defeat"},
     {"spec_end",                      0x004982a8u, "llm_strat_player_presence_lost", "migrated:spectate_after_defeat"},
     {"spec_order",                    0x00466068u, "llm_strat_order_dispatch", "migrated:spectate_after_defeat"},
+    {"lastwin_text",                  0x00498319u, "llm_strat_player_presence_lost", "migrated:last_human_win_check"},
+    {"lastwin_fanfare",               0x0049878du, "llm_strat_player_presence_lost", "migrated:last_human_win_check"},
     {"lang_pack_mh_ex",               0x004c3dbau, "llm_boot_progress_draw", nullptr},
     {"lang_pack_msgs",                0x004cb6bcu, "ReadMsgsDat", nullptr},
     {"worker_click_amount_prime",     0x0050bde7u, "", nullptr},
@@ -1462,8 +1467,14 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"worker_click_press_amount",     0x0041341bu, "llm_ui_bldg_worker_adjust_btn_tick", nullptr},
     {"worker_click_apply_drain",      0x00413509u, "llm_ui_bldg_worker_adjust_apply", nullptr},
     {"worker_click_apply_drain",      0x00413520u, "llm_ui_bldg_worker_adjust_apply", nullptr},
+    {"crew_shortage_reminder",        0x0047f2d7u, "llm_strat_unit_state_exit_wait", "migrated:crew_shortage_reminder_s"},
     {"minimap_box_clip",              0x004a2344u, "llm_strat_minimap_draw_viewport_box", nullptr},
+    {"replay_boundary_notes",         0x004bb74cu, "llm_menu_loadgame_confirm", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
+    {"replay_boundary_notes",         0x0044ceceu, "SwitchToPlanet", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
+    {"replay_boundary_notes",         0x0044d418u, "llm_tact_mission_end_return_to_strategic", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
+    {"replay_boundary_notes",         0x004b8528u, "llm_menu_campaign_start_and_enter", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
+    {"replay_boundary_notes",         0x004c64edu, "llm_menu_campaign_start_confirm_cb", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
 };
-inline constexpr int registered_patch_count = 69;
+inline constexpr int registered_patch_count = 80;
 
 } // namespace mh::addr

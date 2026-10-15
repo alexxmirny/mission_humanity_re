@@ -54,6 +54,43 @@ void set_turret_reload_owner_fix(bool on) { g_turret_reload_owner_fix = on; }
 bool turret_reload_owner_fix() { return g_turret_reload_owner_fix; }
 
 namespace {
+bool g_bldg_pip_guard = false; // hotfix rc9.4, see set_bldg_pip_guard
+int  g_bldg_pip_lines = 0;     // log lines written (capped: a corrupt save could hold many records)
+} // namespace
+void set_bldg_pip_guard(bool on) { g_bldg_pip_guard = on; }
+bool bldg_pip_guard() { return g_bldg_pip_guard; }
+
+bool bldg_pip_state_is_bad(const building &b) {
+    if (b.pip_active_count < 0 || b.pip_active_count > BLDG_PIP_ACTIVE_MAX) return true;
+    for (int i = 0; i < 4; ++i)
+        if (b.pip_level[i] < 0 || b.pip_level[i] > BLDG_PIP_LEVEL_MAX) return true;
+    return false;
+}
+
+bool bldg_pip_sanitize(const sim_view &v, building &b, uint32_t player, int32_t index, const char *site) {
+    if (!bldg_pip_state_is_bad(b)) return false;
+    const int32_t lv[4] = {b.pip_level[0], b.pip_level[1], b.pip_level[2], b.pip_level[3]};
+    const int32_t cnt   = b.pip_active_count;
+    const double  now   = *v.game_clock;
+    // map_CreateBuilding's pip init (0x004625cd-0x00462779; sim_map_create_building.cpp step (5)).
+    for (int i = 0; i < 4; ++i) {
+        b.pip_frame[i] = 0;
+        b.pip_level[i] = 0;
+        b.pip_timer[i] = now;
+    }
+    b.pip_active_count = 0;
+    if (g_bldg_pip_lines < 64) {
+        ++g_bldg_pip_lines;
+        mh::ai::ai_say("; [pip] GUARD (%s): player %lu building %ld type %u state %u built_flags 0x%02X: pip_level "
+                       "{%ld,%ld,%ld,%ld} active %ld out of range -> pip state zeroed; planet %ld clock %.3f\n",
+                       site, (unsigned long)player, (long)index, (unsigned)b.building_id, (unsigned)b.state,
+                       (unsigned)b.built_flags, (long)lv[0], (long)lv[1], (long)lv[2], (long)lv[3], (long)cnt,
+                       v.planet_index ? (long)*v.planet_index : -1L, now);
+    }
+    return true;
+}
+
+namespace {
 bool g_turret_clip_fix = false; // patching:PT-FIX4
 } // namespace
 void set_turret_clip_fix(bool on) { g_turret_clip_fix = on; }
@@ -138,6 +175,10 @@ void building_tick(const sim_view &v, sim_store &own, const building_tick_calls 
     // ---- ANIMATION STATE (0x0046fe62, unconditional) + PIP ANIM (0x0046fe67-0x0046fe88, gated on
     // pip_active_count != 0). ----
     c.tick_animation_state();
+    // hotfix rc9.4 ([net] bldg_pip_guard): an illegal pip state is zeroed BEFORE the pip-anim gate, so neither
+    // tick_pip_anim below nor apply_damage -> update_charge_pips later in this same tick indexes A_OGIEN with it.
+    // Retail has no check (carried by the 0x0046fe67 splice).
+    if (g_bldg_pip_guard) bldg_pip_sanitize(v, b, (uint32_t)*v.cur_player, (int32_t)*v.cur_index, "building_tick");
     if (b.pip_active_count != 0) {
         c.tick_pip_anim(*v.cur_player, (int32_t)*v.cur_index);
     }

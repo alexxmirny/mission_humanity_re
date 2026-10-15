@@ -7,8 +7,10 @@
 //
 #include "sim/sim_unit_state_exit.h"
 
-#include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
-#include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "addr/mh_calls.gen.h"    // typed callables for the original functions we still call OUT to
+#include "ai/ai_state.h"          // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "lockstep/turn_engine.h" // fixes().crew_shortage_reminder_s (hotfix rc9.4)
+#include "mh_crew_reminder.h"     // the reminder throttle shared with the retail splice
 #include "state/host_api.h"
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -35,6 +37,31 @@ const unit_state_exit_calls &live_unit_state_exit_calls() {
 
 namespace detail {
 
+namespace {
+// 0x0047f0b7-0x0047f23b: the local-player crew-shortage test exit_storage_begin gates its advisor text
+// on (no soldiers aboard to offset the loss). Shared with exit_wait's reminder (hotfix rc9.4).
+bool local_crew_shortage(const sim_view &v, const unit &u, uint16_t player, int32_t storage_slot) {
+    int32_t         reserved_passengers = 0;
+    const building &b                   = building_of(v, player, storage_of(v, player, storage_slot).b_index);
+    const uint8_t   bldg_type           = v.cfg_buildings[b.building_id].type;
+    if (bldg_type == BUILDING_TYPE_H_SHUTTLE || bldg_type == BUILDING_TYPE_A_SHUTTLE) {
+        // 0x0047f148-0x0047f199.
+        reserved_passengers =
+            v.prod_shuttle_slots[player * PROD_SHUTTLE_SLOTS_PER_PLAYER + b.shuttle_slot].passengers_reserved;
+    }
+    // 0x0047f19c-0x0047f23b.
+    return player == static_cast<uint16_t>(*v.player_side) &&
+           v.population[player].human + reserved_passengers < v.cfg_units[u.unit_proto_id].human &&
+           v.cfg_units[u.unit_proto_id].soldier_count < 1;
+}
+// hotfix rc9.4: libmh's view of when the crew text was last queued (see mh_crew_reminder.h) -- display-only
+// per-process state, updated at both emitter calls below.
+mh::crew_reminder::emitter_mirror &crew_text_shown() {
+    static mh::crew_reminder::emitter_mirror m;
+    return m;
+}
+} // namespace
+
 void unit_state_exit_storage_begin(const sim_view &v, sim_store &own, const unit_state_exit_calls &c) {
     unit          &u            = own.cur_unit(); // _G_LLM_STRAT_CUR_UNIT dereferenced.
     const uint16_t player       = *v.cur_player;
@@ -48,20 +75,10 @@ void unit_state_exit_storage_begin(const sim_view &v, sim_store &own, const unit
     if (can_exit == 0) {
         // 0x0047f0b7-0x0047f266: still blocked -- optionally warn on a housing shortfall, then queue
         // at the door and transition to EXIT_WAIT.
-        int32_t         reserved_passengers = 0;
-        const building &b                   = building_of(v, player, storage_of(v, player, storage_slot).b_index);
-        const uint8_t   bldg_type           = v.cfg_buildings[b.building_id].type;
-        if (bldg_type == BUILDING_TYPE_H_SHUTTLE || bldg_type == BUILDING_TYPE_A_SHUTTLE) {
-            // 0x0047f148-0x0047f199.
-            reserved_passengers =
-                v.prod_shuttle_slots[player * PROD_SHUTTLE_SLOTS_PER_PLAYER + b.shuttle_slot]
-                    .passengers_reserved;
-        }
-        // 0x0047f19c-0x0047f23b: local-player housing-shortfall alert (no soldiers aboard to offset
+        // 0x0047f0b7-0x0047f23b: local-player housing-shortfall alert (no soldiers aboard to offset
         // the loss).
-        if (player == static_cast<uint16_t>(*v.player_side) &&
-            v.population[player].human + reserved_passengers < v.cfg_units[u.unit_proto_id].human &&
-            v.cfg_units[u.unit_proto_id].soldier_count < 1) {
+        if (local_crew_shortage(v, u, player, storage_slot)) {
+            mh::crew_reminder::mirror_emit(crew_text_shown(), *v.game_clock, mh::crew_reminder::EMITTER_COOLDOWN_S);
             c.race_alert_text_emit();
         }
         // 0x0047f240-0x0047f266.
@@ -108,6 +125,19 @@ void unit_state_exit_wait(const sim_view &v, sim_store &own, const unit_state_ex
         // state never carries a budget shortfall forward, same unconditional-entry-drain idiom
         // sim_unit_state_attack_building.cpp documents.
         own.tick_budget() = 0.0;
+        // hotfix rc9.4 ([ui] crew_shortage_reminder_s): retail tells the player about a crew shortage once, at
+        // exit begin; re-show it while the unit waits for crew. DISPLAY-ONLY -- the throttle is a per-process
+        // static and the emitter touches no hashed state. The retail body's twin is seams/ui_crew_reminder.cpp.
+        const int remind_s = mh::lockstep::fixes().crew_shortage_reminder_s;
+        if (remind_s > 0 && local_crew_shortage(v, u, player, storage_slot)) {
+            static mh::crew_reminder::throttle t;
+            const double                       now = *v.game_clock;
+            if (mh::crew_reminder::due(t, now, remind_s, mh::crew_reminder::mirror_stamp(crew_text_shown(), now),
+                                       mh::crew_reminder::EMITTER_COOLDOWN_S)) {
+                mh::crew_reminder::mirror_emit(crew_text_shown(), now, mh::crew_reminder::EMITTER_COOLDOWN_S);
+                c.race_alert_text_emit();
+            }
+        }
         const building &b = building_of(v, player, storage_of(v, player, storage_slot).b_index);
         if (b.built_flags == BUILT_FLAGS_OPERATIONAL) {
             // 0x0047f31a-0x0047f334: the storage building is fully operational (connected AND

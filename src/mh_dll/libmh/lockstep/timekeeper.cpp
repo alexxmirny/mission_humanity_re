@@ -299,7 +299,9 @@ int32_t time_tick(const timekeeper_state &s, const timekeeper_calls &c, const re
                     // mode-8 sibling's cannot be gated the same way. Countdown is read here at its
                     // pre-decrement value, the same instant the retired byte thunk read it.
                     c.note_overlay_wanted();
-                    if (!fx.desync_icon_gate || *s.sync_retry_countdown < SYNC_OVERLAY_AFTER) {
+                    // U20b: and, separately, not before the wait has lasted stall_icon_delay_ms (0 = stock).
+                    if ((!fx.desync_icon_gate || *s.sync_retry_countdown < SYNC_OVERLAY_AFTER) &&
+                        stall_icon_due(*s.sync_wait_elapsed, *s.game_speed, fx.stall_icon_delay_ms)) {
                         // LIB-ABI stage E hoist: the show's arming guard reads the PRE-call list
                         // and the TIGHTER mode==2 (0x004c7e8b) -- latch it, call, then store the
                         // unconditional prologue pair + the armed mode write.

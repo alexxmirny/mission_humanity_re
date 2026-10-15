@@ -4,6 +4,7 @@
 // draft.
 //
 #include "sim/sim_bldg_update_charge_pips.h"
+#include "sim/sim_building_tick.h" // hotfix rc9.4: bldg_pip_guard / bldg_pip_sanitize
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -62,6 +63,11 @@ void bldg_update_charge_pips(const sim_view &v, sim_store &own, const bldg_updat
     // `b.building_id`, the record's OWN field (the cfg TYPE id, named `bid` below) -- see the header
     // banner's addressing note.
     building &b = own.building_at(player, (int32_t)building_id);
+
+    // hotfix rc9.4 ([net] bldg_pip_guard): the order dispatcher (llm_unit_bldg_energy_refill_full) and a unit's
+    // deploy state (llm_strat_unit_state_deploy_to_building) reach this function for a building that has NOT been
+    // ticked yet this step, ahead of building_tick's own guard -- so the entry checks too (= the 0x00478ecb splice).
+    if (bldg_pip_guard()) bldg_pip_sanitize(v, b, (uint32_t)player, (int32_t)building_id, "update_charge_pips");
 
     // `cfg_buildings[bid]` -- bid = b.building_id (0x00478ee4, MOVZX word). Read-only cfg TYPE record
     // (sizeof(cfg_building) == 0x842, IMUL constant read off the asm); no writer anywhere in the sim

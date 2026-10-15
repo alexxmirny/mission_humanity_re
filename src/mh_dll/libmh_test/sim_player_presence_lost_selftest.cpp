@@ -332,6 +332,44 @@ void run_player_presence_lost_tests() {
         ck_eq((uint32_t)g_snd_ids.size(), 0u, "MP-CONTINUE8: NO fanfare for code 8");
     }
 
+    // ---- mp:U54-FW ([net] last_human_win_check) -- the last human with an ENEMY alive gets no "You have won" -------
+    // The same outcome-6/8 rosters as above. Fix ON + the AI an enemy: the outcome code (the dialog) is unchanged but
+    // neither the 0x7d text nor the 0xa5 fanfare is given. Fix ON + the AI a MUTUAL ally: no enemy left -> retail's
+    // text + fanfare. Fix OFF = MP-CONTINUE6 (retail, already checked above).
+    {
+        const mh::lockstep::reimpl_fixes saved = mh::lockstep::fixes();
+        mh::lockstep::reimpl_fixes       f     = saved;
+        f.last_human_win_check                 = true;
+        mh::lockstep::set_fixes(f);
+        auto arm = [&](bool allied, uint32_t mode) {
+            fx.reset();
+            fx.session_mode             = MP_LOCAL;
+            fx.player_side              = 0;
+            fx.profiles[0].status_flags = STATUS_ALIVE | STATUS_HUMAN;                            // me
+            fx.profiles[1].status_flags = mode == 0 ? STATUS_ALIVE | STATUS_HUMAN : STATUS_HUMAN; // the dropped human
+            fx.profiles[2].status_flags = STATUS_ALIVE;                                           // an AI
+            if (allied) {
+                fx.store().player_relation_at(0, 2) = 1;
+                fx.store().player_relation_at(2, 0) = 1;
+            }
+            run(fx, 1, mode);
+        };
+        arm(false, 0);
+        ck_eq((uint32_t)g_dialog_last, 6u, "U54-FW on, AI enemy: dialog code stays 6 (last player + Continue)");
+        ck_eq((uint32_t)g_queue_text.size(), 0u, "U54-FW on, AI enemy: NO 'You have won' text");
+        ck_eq((uint32_t)g_snd_ids.size(), 0u, "U54-FW on, AI enemy: NO victory fanfare");
+        arm(true, 0);
+        ck_eq((uint32_t)g_dialog_last, 6u, "U54-FW on, AI ally: dialog code 6");
+        ck(g_queue_text.size() == 1 && g_queue_text[0] == 0x7d, "U54-FW on, AI ally: no enemy alive -> victory text");
+        ck(g_snd_ids.size() == 1 && g_snd_ids[0] == 0xa5, "U54-FW on, AI ally: no enemy alive -> victory fanfare");
+        arm(false, 1);
+        ck_eq((uint32_t)g_dialog_last, 8u, "U54-FW on, forced, AI enemy: dialog code stays 8");
+        ck_eq((uint32_t)g_queue_text.size(), 0u, "U54-FW on, forced, AI enemy: NO 'You have won' text");
+        arm(true, 1); // retail: a forced removal never latches was_human, so no text either way
+        ck_eq((uint32_t)g_queue_text.size(), 0u, "U54-FW on, forced, AI ally: no text (retail, was_human is natural-only)");
+        mh::lockstep::set_fixes(saved);
+    }
+
     // ---- mp:U19h -- THE EXACT ROSTER eliminate_other_humans LEAVES BEHIND ---------------------------
     // The last link of the U19h chain (the first three are in lockstest's
     // test_u19h_leave_park_horizon_race). On a survivor, handle_peer_drop's DISAGREE arm runs

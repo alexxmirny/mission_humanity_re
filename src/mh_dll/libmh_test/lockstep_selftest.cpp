@@ -4064,6 +4064,66 @@ void test_tk_parked_machine() {
                       on_w.trigger_count == off_w.trigger_count);
         }
     }
+    // ---- U20b: stall_icon_delay_ms -- the icon waits until the parked wait has lasted the delay -------
+    //
+    // The wait is (SYNC_WAIT_ELAPSED - 1.0) / game_speed real seconds, read AFTER this frame's delta has been
+    // added (tick(100.001) from last = 100.0 adds 0.001 x speed). Same armed-stall shape as U20 above.
+    {
+        auto parked = [](tk_world &w, double elapsed, double speed) {
+            w.last         = 100.0;
+            w.total        = 100.0;
+            w.committed    = 100.0;
+            w.wait_active  = 1;
+            w.retry        = mh::lockstep::SYNC_RETRY_RELOAD;
+            w.wait_elapsed = elapsed;
+            w.speed        = speed;
+        };
+        mh::lockstep::reimpl_fixes fx;
+        fx.stall_icon_delay_ms = 1000;
+        {
+            g_tk.reset();
+            tk_world w;
+            parked(w, 1.0, 1.0); // ~1 ms parked
+            w.tick(100.001, fx);
+            check("U20b: a 1 ms wait still WANTS the icon (icon_calls counts it)", g_tk.overlay_wanted == 1);
+            check("U20b: ...but does not show it before stall_icon_delay_ms", g_tk.wait_overlays == 0);
+        }
+        {
+            g_tk.reset();
+            tk_world w;
+            parked(w, 1.0 + 0.998, 1.0); // 999 ms after this frame's delta -- still short
+            w.tick(100.001, fx);
+            check("U20b: 999 ms parked is still suppressed", g_tk.wait_overlays == 0);
+            g_tk.reset();
+            tk_world w2;
+            parked(w2, 1.0 + 0.999, 1.0); // exactly 1000 ms -> shown (>=, not >)
+            w2.tick(100.001, fx);
+            check("U20b: 1000 ms parked shows the icon", g_tk.wait_overlays == 1);
+        }
+        {
+            // game_speed 2: the accumulator runs at twice real time, so 1.5 game-s is 0.75 real s.
+            g_tk.reset();
+            tk_world w;
+            parked(w, 1.0 + 1.5, 2.0);
+            w.tick(100.001, fx);
+            check("U20b: the delay is REAL time -- 1.5 game-s at 2x speed is still short", g_tk.wait_overlays == 0);
+            g_tk.reset();
+            tk_world w2;
+            parked(w2, 1.0 + 2.2, 2.0);
+            w2.tick(100.001, fx);
+            check("U20b: ...and 2.2 game-s at 2x speed (1.1 s) shows it", g_tk.wait_overlays == 1);
+        }
+        {
+            g_tk.reset();
+            tk_world w;
+            parked(w, 1.0, 1.0);
+            w.tick(100.001); // default fixes: stall_icon_delay_ms = 0 = stock
+            check("U20b: delay 0 is stock -- the icon shows on the first wanted frame", g_tk.wait_overlays == 1);
+        }
+        check("U20b: stall_icon_due fails OPEN on a NaN accumulator / zero speed",
+              mh::lockstep::stall_icon_due(std::numeric_limits<double>::quiet_NaN(), 1.0, 1000) &&
+                  !mh::lockstep::stall_icon_due(1.0, 0.0, 1000) && mh::lockstep::stall_icon_due(3.0, 0.0, 1000));
+    }
     { // trap (7): the pacer. elapsed - (60 - countdown) must exceed 1.0.
         g_tk.reset();
         tk_world w;

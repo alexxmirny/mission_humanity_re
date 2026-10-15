@@ -947,6 +947,20 @@ struct Config {
     int pt3_at     = 0;   // first step the fixture may act (0 = off)
     int pt3_player = 0;   // player index whose helicopter is used
     int pt3_tail   = 300; // steps to observe after the order was deferred
+    // ---- hotfix rc9.4 [net] bldg_pip_guard: THE BAD-PIP FIXTURE (2026-10-15) ------------------------
+    // Field crashes 0x0047908b / 0x004793e1 (tmp/report_triage_2026-10-15/crash_7908b.md): a building whose
+    // pip_level[slot] holds garbage faults the first time retail indexes A_OGIEN with it. At step >= pip_at, once
+    // player pip_player's mother building stands (built_flags 3), plant pip_level[0] = pip_value (default
+    // 0xC384DE82, one of the field crash's candidates; negative, so update_charge_pips' reroll test accepts the
+    // slot), pip_active_count 0, and pending_damage = half its energy -- so that building's next tick runs
+    // apply_damage -> update_charge_pips with it, the 0x0047908b chain. Post-hash, the same write at the same step
+    // on every peer. Then `pip_tail` steps later one `; PIP DONE` line with the record's pip state. Key on: the
+    // guard zeroes it (`[pip] GUARD` in mh_net.log) and the match runs on; key off (retail): the process faults at
+    // 0x0047908b and DONE never comes. `; PIP ...` lines are read by tools/check_pip_guard.py. 0 = off.
+    int pip_at     = 0;                // first step the fixture may act (0 = off)
+    int pip_player = 0;                // player whose mother building is poked
+    int pip_value  = (int)0xC384DE82u; // the planted pip_level[0]
+    int pip_tail   = 300;              // steps after the poke before the DONE line
     // ---- patching:PT-FIX2: THE TURRET FIRE-RATE FIXTURE (2026-10-11) --------------------------------
     // Retail drains a turret's reload timer with a re-counted budget (llm_strat_bldg_turret_reload_tick's
     // argument), so the fire interval depends on the sim step: ~2-3x too fast at 10/20 ms. This fixture
@@ -1612,6 +1626,10 @@ void load_config() {
     g_cfg.pt3_at                  = mh_ini_get_int("harness", "pt3_at", g_cfg.pt3_at, g_ini_path);
     g_cfg.pt3_player              = mh_ini_get_int("harness", "pt3_player", g_cfg.pt3_player, g_ini_path);
     g_cfg.pt3_tail                = mh_ini_get_int("harness", "pt3_tail", g_cfg.pt3_tail, g_ini_path);
+    g_cfg.pip_at                  = mh_ini_get_int("harness", "pip_at", g_cfg.pip_at, g_ini_path);
+    g_cfg.pip_player              = mh_ini_get_int("harness", "pip_player", g_cfg.pip_player, g_ini_path);
+    g_cfg.pip_value               = mh_ini_get_int("harness", "pip_value", g_cfg.pip_value, g_ini_path);
+    g_cfg.pip_tail                = mh_ini_get_int("harness", "pip_tail", g_cfg.pip_tail, g_ini_path);
     g_cfg.pt2_at = mh_ini_get_int("harness", "pt2_at", g_cfg.pt2_at, g_ini_path);
     g_cfg.pt2_player = mh_ini_get_int("harness", "pt2_player", g_cfg.pt2_player, g_ini_path);
     g_cfg.pt2_target = mh_ini_get_int("harness", "pt2_target", g_cfg.pt2_target, g_ini_path);
@@ -7731,6 +7749,47 @@ void u49_tick() {
     }
 }
 
+// ---- hotfix rc9.4 [net] bldg_pip_guard: the bad-pip fixture (see the config block) ------------------
+// After the step's hash, outside the HASH-INPUT span; the same write at the same step on every peer.
+int      g_pip_phase = 0; // 0 = waiting for the mother, 1 = poked, 2 = done
+uint32_t g_pip_at    = 0;
+int      g_pip_bldg  = 0;
+
+void pip_tick() {
+    if (g_cfg.pip_at <= 0 || g_step < (uint32_t)g_cfg.pip_at || g_pip_phase >= 2) return;
+    const unsigned p = (unsigned)g_cfg.pip_player;
+    if (p >= 8) return;
+    auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    char           m[320];
+    if (planet >= 32) return;
+    if (g_pip_phase == 0) {
+        const int mb = prof[p].primary_mother_bldg[planet];
+        if (mb <= 0 || mb >= 100 || bl[mb].built_flags != 3 || !(bl[mb].energy > 0.0)) return; // not landed yet
+        auto &b            = bl[mb];
+        b.pip_level[0]     = (int32_t)g_cfg.pip_value;
+        b.pip_active_count = 0;
+        b.pending_damage   = b.energy * 0.5;
+        g_pip_bldg         = mb;
+        g_pip_at           = g_step;
+        g_pip_phase        = 1;
+        wsprintfA(m, "; PIP POKE step=%lu player %u building %d type %u: pip_level[0] = %ld (0x%08lX), active 0, "
+                     "pending_damage %ld (half the energy) -> its next tick runs apply_damage -> update_charge_pips\n",
+                  g_step, p, mb, (unsigned)b.building_id, (long)b.pip_level[0], (unsigned long)b.pip_level[0],
+                  (long)b.pending_damage);
+        append_line(g_log_path, m);
+        return;
+    }
+    if (g_step - g_pip_at < (uint32_t)g_cfg.pip_tail) return;
+    const auto &b = bl[g_pip_bldg];
+    wsprintfA(m, "; PIP DONE step=%lu building %d state %u pip_level {%ld,%ld,%ld,%ld} active %ld energy %ld\n", g_step,
+              g_pip_bldg, (unsigned)b.state, (long)b.pip_level[0], (long)b.pip_level[1], (long)b.pip_level[2],
+              (long)b.pip_level[3], (long)b.pip_active_count, (long)b.energy);
+    append_line(g_log_path, m);
+    g_pip_phase = 2;
+}
+
 // ---- patching:PT-FIX1: the turret-slot-reuse fixture (see the config block) ----------------------
 // After the step's hash, outside the HASH-INPUT span. It writes sim state (the kill, the arming), but
 // the same write at the same step on every peer, so the peers stay identical.
@@ -8798,6 +8857,7 @@ void on_sim_step() {
     pt1_tick();          // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
     pt3_tick();          // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
     pt2_tick();          // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)
+    pip_tick();          // hotfix rc9.4 bldg_pip_guard -- the bad-pip fixture (same placement)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
     // The clock track. `order_mode == 1` IMPLIES clock_record, so every recording path that predates

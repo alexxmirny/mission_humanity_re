@@ -1803,7 +1803,8 @@ enum {
     OP_W_CURPOS,        // RES6: `curpos <x> <y> [tol]` -- drawn, menu and DI cursor all within tol (default 2) of x,y
     OP_W_GZDONE,        // mp:Q2/Q3: `gzdone <N>` -- N recordings compressed by this process and none in flight
     OP_W_MAPSIZE,       // `mapsize <N>` -- the loaded map is N x N tiles (the torus's wrap width, 64 / 128 / 256)
-    OP_W_LAST = OP_W_MAPSIZE,
+    OP_W_MRING,         // mp:U44b: `mring <N>` -- the in-game mouse ring holds at most N undrained events
+    OP_W_LAST = OP_W_MRING,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
@@ -2151,6 +2152,13 @@ void parse_line(const char *line) {
         s->op = OP_W_GAMECLOCK;
         s->b  = (arg && *arg == '+') ? 1 : 0; // mp:Q2: `gameclock +MS` -- relative to this step's first look
         s->a  = (int)strtol(arg + s->b, nullptr, 0);
+    } else if (strcmp(op, "mring") == 0) {
+        // `mring [<N>]` -- mp:U44b. True while the game's mouse event ring (_G_LLM_INPUT_MOUSE_WRITE_IDX -
+        // _READ_IDX, mod 128) holds at most N events (default 0 = drained). The field lock this was added for
+        // left GAME_MODE 3 with no widget list and no dialog: nothing consumed the ring, so it filled to 127
+        // and every click was lost. `gamemode` alone cannot say "input is consumed" -- the ring can.
+        s->op = OP_W_MRING;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 0;
     } else if (strcmp(op, "stalled") == 0) {
         // stalled [<ms>] -- TL-UISTALL. True while MH_Lockstep_StallBindingPeer() >= 0 (the sim is
         // lockstep-blocked), optionally for at least <ms>. `gameclock` CANNOT gate a capture on a
@@ -2898,6 +2906,10 @@ bool wait_satisfied(const Step *s) {
             if (s->a == 3) return ov::query(ov::query_what::open) == 1 && ov::query(ov::query_what::want_mouse) == s->b;
             if (s->a == 4) return ov::query(ov::query_what::di_filtered) >= s->b; // PT-INPUT1: DI records withheld
             return ov::query(ov::query_what::swallowed_mouse) >= s->b;
+        }
+        case OP_W_MRING: { // mp:U44b: the mouse ring is drained to at most s->a events
+            const uint32_t depth = (*(volatile uint32_t *)WRITEIDX - *(volatile uint32_t *)READIDX) & 0x7f;
+            return depth <= (uint32_t)(s->a > 0 ? s->a : 0);
         }
         case OP_W_STALLED: { // TL-UISTALL: the sim IS lockstep-blocked right now, optionally >= s->a ms
             unsigned long blocked_ms = 0;

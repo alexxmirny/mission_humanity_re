@@ -53,6 +53,7 @@
 #include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
 #include "include/mh_workerclick_export.h"  // MH_WorkerClick_Install (ui_worker_click.cpp) -- RES8 the worker +/- buttons order one worker on every press
 #include "include/mh_minimapbox_export.h"   // MH_MinimapBox_Install (ui_minimap_box.cpp) -- RES9 the minimap viewport box drawn clipped to the minimap
+#include "include/mh_crewreminder_export.h" // MH_CrewReminder_Install (ui_crew_reminder.cpp) -- hotfix rc9.4 the garage crew-shortage reminder
 #include "include/mh_infoguard_export.h"    // MH_InfoGuard_Install (ui_info_guard.cpp) -- U73 an info screen is never opened for a blank/stale entity (no "Cannot find info text" modal)
 #include "include/mh_infoavi_export.h"      // MH_InfoAvi_Install (ui_info_avi.cpp) -- X2g an info screen whose AVI will not open shows without video, never IDIVs by 0
 #include "include/mh_uidrive_export.h"      // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
@@ -95,6 +96,8 @@
 #include "hook/export.h"                    // set_export_logger (P0-EXPORT arm reporting)
 #include "desync/desync_watch.h"            // D21: runtime desync detector (install / session_reset)
 #include "desync/world_sync.h"              // mp:X3c: world resync hooks (net_lockstep mirror, harness callback)
+#include "seams/door_watch.h"               // the garage-door watchdog (observe only) on the [desync] step
+#include "seams/replay_boundary.h"          // hotfix rc9.4: the state-replacement notes (segment seeds)
 #include "orders/order_queue.h"             // mp:X3c: promotion_active -- the admission tap lives in the promoted container
 #include "sim/sim_step.h"                   // ROOTS-LIVE: the promoted root D21 must chain onto
 #include "hook/patch.h"                     // patch_bytes_guarded (S7 browser-row format string)
@@ -844,9 +847,14 @@ void install_desync_watch() {
         wh.libmh_ok = +[]() -> bool { return MH_LibmhModule_IsBound() != 0 && mh::orders::promotion_active(); };
         mh::desync::world_sync::set_hooks(wh);
     }
+    // The field-report replay record's plug-ins (desync/replay_record.h) and the garage-door watchdog
+    // (seams/door_watch.cpp), which rides the same per-step hook. Both before install().
+    door_watch_install();
+    mh::desync::set_replay_plugins(+[]() -> int { return MH_LibmhModule_IsBound() != 0 ? 2 : 1; }, &door_watch_tick);
     const bool desync_armed = mh::desync::install(g_ini) != 0;
     install_order_record(desync_armed); // mp:Q3 -- silent unless [desync] order_record is on
     if (!desync_armed) return;          // it has already said why
+    replay_boundary_install();          // hotfix rc9.4 -- silent unless the replay record is on
     if (install_trampoline(ADDR_DESYNC_SIM_STEP, (void *)desync_sim_step_detour, &g_desync_tramp, 8,
                            mh::hook::entry_claim::exclusive,
                            "the D21 desync sampler's sim_step hook")) {
@@ -2313,6 +2321,7 @@ static int MH_Core_Arm(void) {
     MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
     MH_WorkerClick_Install();  // RES8: the worker +/- buttons order one worker on every press, the first one included (best-effort)
     MH_MinimapBox_Install();   // RES9: the minimap viewport box is drawn clipped to the 128x128 minimap (best-effort)
+    MH_CrewReminder_Install(); // hotfix rc9.4: a local vehicle waiting in its garage for crew re-shows the advisor text every 30 s (best-effort)
     MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)
     MH_InfoGuard_Install();    // U73: entity info screen entry guard + the storage panel's stale info-request consume (best-effort)
     MH_Overlay_Install();      // debug overlay: [debug] ini pages -> painted on present BEFORE capture reads (best-effort)

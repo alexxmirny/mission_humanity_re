@@ -231,14 +231,24 @@ const STAGE_UNCOMPRESSED_MAX: u64 = 512 * 1024 * 1024;
 /// already-compressed entries raw; only cut tails are compressed again.
 const FIT_ATTEMPTS: usize = 6;
 
-/// The replay inputs (`mp:SES7` match segment + the process recording). A cut replay input is
-/// not replayable, so these are kept whole or left out whole -- never tailed.
-const REPLAY_INPUTS: [&str; 5] = [
+/// The replay inputs (`mp:SES7` match segment + the process recording + mh.dll's own shipped
+/// recording: `mh_rec_orders/clock` from the order recording and `mh_rec_seed`, the step-1 state,
+/// each gzipped at the session close). A cut replay input is not replayable, so these are kept whole
+/// or left out whole -- never tailed -- and they go after plain binaries and cut text when the
+/// budget is short. (`mh_rec_hash.txt`, the hash checkpoints that judge a replay, is a small text
+/// log and rides as one.)
+const REPLAY_INPUTS: [&str; 11] = [
     "mh_match_orders.bin",
     "mh_match_clock.bin",
     "mh_match_seed.bin",
     "mh_orders.bin",
     "mh_clock.bin",
+    "mh_rec_orders.bin",
+    "mh_rec_orders.bin.gz",
+    "mh_rec_clock.bin",
+    "mh_rec_clock.bin.gz",
+    "mh_rec_seed.bin",
+    "mh_rec_seed.bin.gz",
 ];
 
 /// mp:D43. The state recordings (`docs/state-record.md` v1) -- unlike `REPLAY_INPUTS` a cut copy of
@@ -253,6 +263,24 @@ fn is_state_name(leaf: &str) -> bool {
     let stem = leaf.strip_suffix(".gz").unwrap_or(leaf);
     (stem.starts_with("mh_match_state") || stem.starts_with("mh_desync_state"))
         && stem.ends_with(".bin")
+}
+
+/// Hotfix rc9.4. The replay SEED a leaf is, by segment: `mh_rec_seed.bin[.gz]` (the session's step-1
+/// seed) is segment 0, `mh_rec_seed_<n>.bin[.gz]` (written at the first step after a save load, a
+/// planet transition, a tactical return or a new campaign -- `desync/replay_record.h` "SEGMENTS") is
+/// segment n. A seed is a replay input like the step-1 one; under a short budget the OLDEST segments
+/// are given up first, so a report keeps the seed nearest the crash.
+fn seed_segment(leaf: &str) -> Option<u32> {
+    let stem = leaf.strip_suffix(".gz").unwrap_or(leaf);
+    let stem = stem.strip_suffix(".bin")?;
+    if stem == "mh_rec_seed" {
+        return Some(0);
+    }
+    let n = stem.strip_prefix("mh_rec_seed_")?;
+    if n.is_empty() || !n.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    n.parse().ok()
 }
 
 /// mp:D46. The state file is a gzip member (`.gz`), not the raw v1 byte stream.
@@ -1374,7 +1402,7 @@ impl Set {
         }
         let kind = if is_text(&name) {
             Kind::Text
-        } else if REPLAY_INPUTS.contains(&leaf.as_str()) {
+        } else if REPLAY_INPUTS.contains(&leaf.as_str()) || seed_segment(&leaf).is_some() {
             Kind::Replay
         } else if is_state_name(&leaf) {
             Kind::State
@@ -1592,8 +1620,43 @@ fn shrink_group(items: &mut [Item], gi: usize, excess: u64) -> u64 {
     let excess = drop_largest(items, gi, Kind::Binary, excess);
     let excess = water_fill(items, gi, TEXT_TAIL_FLOOR, excess);
     let excess = shed_state_files(items, gi, excess);
-    let excess = drop_largest(items, gi, Kind::Replay, excess);
+    let excess = drop_replay_inputs(items, gi, excess);
     water_fill(items, gi, 0, excess)
+}
+
+/// The leaf of an entry name (`logs/<session>/<leaf>`).
+fn leaf_of(name: &str) -> &str {
+    name.rsplit(['/', '\\']).next().unwrap_or(name)
+}
+
+/// Give up replay inputs toward `excess`. Hotfix rc9.4: the segment seeds go first, OLDEST segment
+/// first (the newest -- the one nearest the crash -- is held back), then the other inputs largest
+/// first, then the newest seed. A seed without its orders/clock replays nothing, so the streams
+/// outrank every seed but the one a triage would start from.
+fn drop_replay_inputs(items: &mut [Item], gi: usize, mut excess: u64) -> u64 {
+    let live = |i: &Item| i.group == gi && i.kind == Kind::Replay && i.fate != Fate::Dropped;
+    let mut seeds: Vec<(u32, usize)> = (0..items.len())
+        .filter(|&i| live(&items[i]))
+        .filter_map(|i| seed_segment(leaf_of(&items[i].name)).map(|n| (n, i)))
+        .collect();
+    seeds.sort();
+    let newest = seeds.pop();
+    let mut order: Vec<usize> = seeds.into_iter().map(|(_, i)| i).collect();
+    let mut rest: Vec<usize> = (0..items.len())
+        .filter(|&i| live(&items[i]) && seed_segment(leaf_of(&items[i].name)).is_none())
+        .collect();
+    rest.sort_by_key(|&i| std::cmp::Reverse(items[i].comp));
+    order.extend(rest);
+    order.extend(newest.map(|(_, i)| i));
+    for i in order {
+        if excess == 0 {
+            break;
+        }
+        let c = entry_cost(&items[i]);
+        items[i].fate = Fate::Dropped;
+        excess = excess.saturating_sub(c);
+    }
+    excess
 }
 
 /// mp:D43. Give up `Kind::State` items toward `excess`, largest (live-size) first: each is marked
@@ -3601,6 +3664,106 @@ mod tests {
                 );
             }
         }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The shipped replay inputs (`mh_rec_seed.bin.gz` & co., mh.dll's own recording) rank as
+    /// replay inputs: under a short budget a plain binary goes first and the seed stays whole; the
+    /// hash checkpoints (`mh_rec_hash.txt`) ride along as text.
+    #[test]
+    fn a_shipped_seed_outranks_a_plain_binary() {
+        let dir = fresh("shipped_seed");
+        let name = "20261014T120000Z_0badf00d_0_host";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let seed = noise(1024 * 1024, 7);
+        std::fs::write(s.join("mh_rec_seed.bin.gz"), &seed).unwrap();
+        std::fs::write(s.join("mh_desync_snap_400.bin"), noise(1024 * 1024, 8)).unwrap();
+        let hashes = "; mh_rec_hash v1\n1 0123456789ABCDEF\n256 FEDCBA9876543210\n";
+        std::fs::write(s.join("mh_rec_hash.txt"), hashes).unwrap();
+        let zip = dir.join("out").join("report.zip");
+        let built = build_with_budget(
+            &zip,
+            &input_for(&dir, s.clone(), "garage door stuck"),
+            1600 * 1024,
+        )
+        .unwrap();
+        let entries = entries_of(&zip);
+        let got = |leaf: &str| {
+            entries
+                .iter()
+                .find(|(n, _)| n == &format!("logs/{name}/{leaf}"))
+                .map(|(_, b)| b.clone())
+        };
+        assert_eq!(
+            got("mh_rec_seed.bin.gz").as_deref(),
+            Some(&seed[..]),
+            "{}",
+            built.meta
+        );
+        assert!(got("mh_desync_snap_400.bin").is_none(), "{}", built.meta);
+        let h = got("mh_rec_hash.txt").expect("the hash checkpoints are carried");
+        assert!(String::from_utf8_lossy(&h).contains("256 FEDCBA9876543210"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Hotfix rc9.4: segment seeds (`mh_rec_seed_<n>.bin.gz`) are replay inputs, and under a short
+    /// budget the OLDEST segment goes first -- the newest seed and the order/clock streams stay.
+    #[test]
+    fn segment_seeds_shed_oldest_first() {
+        let dir = fresh("segment_seeds");
+        let name = "20261015T120000Z_0badf00d_0_solo";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let orders = noise(256 * 1024, 11);
+        std::fs::write(s.join("mh_rec_orders.bin.gz"), &orders).unwrap();
+        for n in 0..4u64 {
+            let leaf = if n == 0 {
+                "mh_rec_seed.bin.gz".to_string()
+            } else {
+                format!("mh_rec_seed_{n}.bin.gz")
+            };
+            std::fs::write(s.join(leaf), noise(300 * 1024, 20 + n)).unwrap();
+        }
+        let segs = "; mh_rec_segments v1\nsegment 0 step=1 kind=session_start\nsegment 3 step=900 kind=planet_transition\n";
+        std::fs::write(s.join("mh_rec_segments.txt"), segs).unwrap();
+        let zip = dir.join("out").join("report.zip");
+        let built = build_with_budget(
+            &zip,
+            &input_for(&dir, s.clone(), "crash after a planet change"),
+            1000 * 1024,
+        )
+        .unwrap();
+        let entries = entries_of(&zip);
+        let has = |leaf: &str| {
+            entries
+                .iter()
+                .any(|(n, _)| n == &format!("logs/{name}/{leaf}"))
+        };
+        assert!(
+            has("mh_rec_seed_3.bin.gz"),
+            "the newest segment seed stays: {}",
+            built.meta
+        );
+        assert!(
+            has("mh_rec_orders.bin.gz"),
+            "the order stream stays: {}",
+            built.meta
+        );
+        assert!(
+            !has("mh_rec_seed.bin.gz"),
+            "the oldest seed goes first: {}",
+            built.meta
+        );
+        assert!(
+            has("mh_rec_segments.txt"),
+            "the segments table rides as text: {}",
+            built.meta
+        );
+        assert_eq!(seed_segment("mh_rec_seed_12.bin"), Some(12));
+        assert_eq!(seed_segment("mh_rec_seed.bin.gz"), Some(0));
+        assert_eq!(seed_segment("mh_rec_seed_x.bin"), None);
+        assert_eq!(seed_segment("mh_rec_seeds.bin"), None);
         std::fs::remove_dir_all(&dir).ok();
     }
 

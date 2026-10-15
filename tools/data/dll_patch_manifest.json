@@ -71,7 +71,7 @@
    ],
    "knob": "icon_count",
    "carrier": "none:diagnostic",
-   "note": "P4 de-sync-icon counter. RE-KEYED FROM defang_tt_wait BY C8-e (2026-07-30): the defang was dropped as a scope decision, but the PATCH AT THIS SITE SURVIVES because it was never solely the defang's -- install_overlay_gate() fired on `defang_tt_wait == 2 || (defang_tt_wait == 0 && icon_count)`, and [net] icon_count is an unrelated diagnostic that is DEFAULT ON. With the defang gone icon_count is the whole condition and the thunk is a pure pass-through counter (g_icon_gate is permanently 0; the thunk's gate branch is left in place, dead, because deleting hand-written asm does not belong in a knob retirement). carrier `none:diagnostic`: this counts, it does not fix, so there is nothing for a reimplementation to carry -- under promotion the call site never executes and the run's log says the counters are UNAVAILABLE, not zero."
+   "note": "P4 de-sync-icon counter. RE-KEYED FROM defang_tt_wait BY C8-e (2026-07-30): the defang was dropped as a scope decision, but the PATCH AT THIS SITE SURVIVES because it was never solely the defang's -- install_overlay_gate() fired on `defang_tt_wait == 2 || (defang_tt_wait == 0 && icon_count)`, and [net] icon_count is an unrelated diagnostic that is DEFAULT ON. With the defang gone icon_count is the whole condition and the thunk is a pure pass-through counter (g_icon_gate is permanently 0; the thunk's gate branch is left in place, dead, because deleting hand-written asm does not belong in a knob retirement). carrier `none:diagnostic`: this counts, it does not fix, so there is nothing for a reimplementation to carry -- under promotion the call site never executes and the run's log says the counters are UNAVAILABLE, not zero. mp:U20b (2026-10-14): the thunk's dead countdown branch now carries [net] stall_icon_delay_ms (default 1000, 0 = pass-through): it forwards to wait_player_overlay_show only once (SYNC_WAIT_ELAPSED - 1.0) / game_speed has reached the delay; installed when icon_count, overlay_dialog_guard or the delay is set. The promoted time_tick carries the same predicate (reimpl_fixes::stall_icon_delay_ms)."
   },
   {
    "id": "defang_xui",
@@ -975,6 +975,44 @@
    "note": "patching:PT-FIX1 (2026-10-10): call-splice the 5 bytes `CALL llm_strat_bldg_turret_reload_tick` (E8 A9 C7 00 00 -> 0x0047c60b) at 0x0046fe5d into a stub that tail-jumps to the original only when turrets[player][building.sub_id].b_index == the ticking building's own index, else RET 8. A destroyed turret's rubble (state 4, <= 20 s) keeps its sub_id, its slot is freed (unmap_footprint) and re-used (map_CreateBuilding), and the rubble's growing tick budget drains the new turret's reload_timer every step (~4x fire rate). SIM-AFFECTING, default ON; the promoted building_tick carries the same rule (sim_building_tick.cpp, reimpl_fixes::turret_reload_owner_fix). The stub is SHARED with turret_reload_realtime_fix (PT-FIX2, same site, runtime flags). Offline oracle: simtest building_tick arm; rig: turret_slot_reuse / turret_slot_reuse_retail."
   },
   {
+   "id": "bldg_pip_guard_tick",
+   "sources": [
+    {
+     "file": "mh/seams/bldg_pip_guard.cpp",
+     "expr": "SITE_TICK"
+    }
+   ],
+   "addrs": [
+    "0x0046fe67"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_building_tick"
+   ],
+   "knob": "bldg_pip_guard",
+   "carrier": "migrated:bldg_pip_guard",
+   "note": "hotfix rc9.4 (2026-10-15; field crashes 0x0047908b / 0x004793e1, tmp/report_triage_2026-10-15/crash_7908b.md): call-splice the 5-byte `MOV EAX,[_G_LLM_STRAT_CUR_BUILDING]` (A1 DC 62 E1 00) that opens building_tick's pip-anim gate (fallthrough-only after CALL tick_animation_state @0x0046fe62) into a stub that (pushad) checks the CURRENT building's pip_level[0..3] in 0..4 and pip_active_count in 0..16 and, if not, zeroes the pip state as map_CreateBuilding does (frame 0, level 0, timer = GAME_CLOCK, active 0) and logs one `[pip] GUARD` line; then redoes the load. Ahead of tick_pip_anim (0x0046fe83) and apply_damage -> update_charge_pips (0x0046fef2), which index the 4-entry A_OGIEN table with pip_level. SIM-AFFECTING only on an already-illegal record, default ON; the promoted building_tick carries the same rule (sim_building_tick.cpp, reimpl_fixes::bldg_pip_guard). Offline oracle: simtest pip-guard arm; rig: bldg_pip_guard / bldg_pip_guard_retail."
+  },
+  {
+   "id": "bldg_pip_guard_charge",
+   "sources": [
+    {
+     "file": "mh/seams/bldg_pip_guard.cpp",
+     "expr": "SITE_CHARGE"
+    }
+   ],
+   "addrs": [
+    "0x00478ecb"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_update_charge_pips"
+   ],
+   "knob": "bldg_pip_guard",
+   "carrier": "migrated:bldg_pip_guard",
+   "note": "hotfix rc9.4 (2026-10-15; field crashes 0x0047908b / 0x004793e1, tmp/report_triage_2026-10-15/crash_7908b.md): call-splice the 6 bytes `MOV [EBP-0x14],EAX / MOV [EBP-0x1c],EDX` (89 45 EC 89 55 E4) right after update_charge_pips' prologue (EAX = player, EDX = building index) into a stub + NOP that applies the same check/zeroing to buildings[(uint16)player][index] (region base + the host's building cap) and redoes both stores. Covers the two callers that reach update_charge_pips for a building not yet ticked this step: llm_unit_bldg_energy_refill_full (order dispatch, before every tick) and llm_strat_unit_state_deploy_to_building (unit ticks precede the player's building ticks). The promoted update_charge_pips carries the same rule (sim_bldg_update_charge_pips.cpp)."
+  },
+  {
    "id": "turret_reload_realtime_fix",
    "sources": [
     {
@@ -1122,6 +1160,10 @@
     {
      "file": "mh/seams/net_lockstep.cpp",
      "expr": "ADDR_ODG_SHOW_TT"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_ODG_WAIT_FEG"
     }
    ],
    "addrs": [
@@ -1132,18 +1174,20 @@
     "0x0049833f",
     "0x004c7fae",
     "0x004c8620",
-    "0x0043f18d"
+    "0x0043f18d",
+    "0x004b82a8"
    ],
    "kind": "code",
    "owner": [
     "llm_strat_time_tick",
     "llm_strat_player_presence_lost",
     "llm_net_lockstep_sync_overlay_show",
-    "llm_net_mp_leave_reset_game_mode"
+    "llm_net_mp_leave_reset_game_mode",
+    "llm_menu_finish_enter_gameplay"
    ],
    "knob": "overlay_dialog_guard",
    "carrier": "migrated:overlay_dialog_guard",
-   "note": "mp:U74/U44 (2026-10-07): retail carrier of the stall-overlay dialog guard. Call-splices every retail call of llm_net_lockstep_overlay_dismiss (0x004c7d1c; 7 sites) and llm_net_lockstep_sync_overlay_show (0x004c7eea; 1 site) into odg::dismiss_thunk / show_thunk (net_lockstep.cpp), plus the wait_player site 0x0043f0fc through wait_overlay_gate_thunk's forward target (icon_count's entry above). The thunks are the libmh twin's overlay_hoist.cpp ledger over raw VAs: a dismiss only closes a screen lockstep armed (else the pre-call mode is put back), the kick modal stashes an open mode-3 dialog's UI state and restores it on dismiss, and a 3->* dismiss dirties the viewport. Per-site DISPLACED when promoted_owner_of(site) -- the twin carries the same rule from lockstep/overlay_hoist.cpp + host_event_sink.cpp (reimpl_fixes::overlay_dialog_guard); 0x004c8620 (inside the retail mp_leave callee, which the twin hoist wraps from outside) is spliced only when libmh does not run (absent, or mode=original). UI-only, no sim hash impact. Rig: dialog_stall_original / dialog_stall_off_original."
+   "note": "mp:U74/U44 (2026-10-07): retail carrier of the stall-overlay dialog guard. Call-splices every retail call of llm_net_lockstep_overlay_dismiss (0x004c7d1c; 7 sites) and llm_net_lockstep_sync_overlay_show (0x004c7eea; 1 site) into odg::dismiss_thunk / show_thunk (net_lockstep.cpp), plus the wait_player site 0x0043f0fc through wait_overlay_gate_thunk's forward target (icon_count's entry above). The thunks are the libmh twin's overlay_hoist.cpp ledger over raw VAs: a dismiss only closes a screen lockstep armed (else the pre-call mode is put back), the kick modal stashes an open mode-3 dialog's UI state and restores it on dismiss, and a 3->* dismiss dirties the viewport. Per-site DISPLACED when promoted_owner_of(site) -- the twin carries the same rule from lockstep/overlay_hoist.cpp + host_event_sink.cpp (reimpl_fixes::overlay_dialog_guard); 0x004c8620 (inside the retail mp_leave callee, which the twin hoist wraps from outside) is spliced only when libmh does not run (absent, or mode=original). UI-only, no sim hash impact. Rig: dialog_stall_original / dialog_stall_off_original. mp:U44b (2026-10-14): + 0x004b82a8 (llm_menu_finish_enter_gameplay: a dialog closed during a stall re-arms the wait icon itself) into odg::wait_thunk, so lockstep ledgers the icon it shows there. Unledgered, the next dismiss restored mode 3 over the closed dialog and input died for the rest of the match (field report 01M4XZJER40J6TBCFCYR8KW9RN). Retail UI code, never promoted; the twin carries the fix through the dismiss safety net instead. The third caller (0x004c85e8, extend_ui_enter) is left unrouted on caution: ledgering its icon lets a later dismiss rewrite the mode-8 barrier, and the routed build went red on dialog_stall_c1_retail's third stall (2/2, on a shared box -- a lead, not a proof); the safety net covers it. Dev values: overlay_dialog_guard=2 skips the splice and the safety net (the rc9.3 reproduction arm), 3 skips only the splice. Rig: dialog_stall* arm (d)."
   },
   {
    "id": "team_seed",
@@ -1374,6 +1418,44 @@
    "note": "mp:U54: call-splice the `CALL llm_strat_order_stage_scheduled` of llm_strat_order_dispatch's replicated lane to a stub that drops the order (returns 0, RET 8) when its owner is a SPECTATOR (ALIVE and HUMAN off, GONE on): dropped BEFORE it is staged, because a local-only queued order is a desync. Configuration (1) carrier of order_queue.cpp's spectator gate; displaced by promotion."
   },
   {
+   "id": "lastwin_text",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_LASTWIN_TEXT_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00498319"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "last_human_win_check",
+   "carrier": "migrated:last_human_win_check",
+   "note": "mp:U54-FW (2026-10-14): jump-splice the 7-byte `JZ 0x00498325; MOV EAX,0x7d` of the survivor's 'no other human alive' arm (outcome 6/8) to a stub that repeats the JZ (dead player not human -> no text) and otherwise gives the 'You have won! Congratulations' text (0x7d -> CALL 0x00498320) only when mh_spectate.h's no_enemy_alive says no enemy of the local side is alive; with an enemy alive it skips the CALL (0x00498325) and, for outcome 6, tells the fanfare site below to stay silent. The outcome code, the session downgrade and every roster write are untouched: DISPLAY-ONLY. Configuration (1) carrier of sim_player_presence_lost.cpp's mute_win; displaced by promotion."
+  },
+  {
+   "id": "lastwin_fanfare",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_LASTWIN_SND_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0049878d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_player_presence_lost"
+   ],
+   "knob": "last_human_win_check",
+   "carrier": "migrated:last_human_win_check",
+   "note": "mp:U54-FW (2026-10-14): jump-splice the 5-byte `MOV EDX,0x64` that opens the victory-fanfare call (0xa5, outcome 3/5/6) to a stub that, when the text site above muted an outcome-6 evaluation (an enemy alive), clears that one-shot flag and skips to the outcome dialog (0x0049879c); otherwise repeats the MOV -> 0x00498792. DISPLAY-ONLY. Configuration (1) carrier of sim_player_presence_lost.cpp's mute_win; displaced by promotion."
+  },
+  {
    "id": "lang_pack_mh_ex",
    "sources": [
     {
@@ -1469,6 +1551,25 @@
    "note": "RES8 mode 2 ([ui] worker_click_fix=2): the apply's two order CALLs (assign E8 A8 AA 05 00, unassign E8 2F AB 05 00) -> CALL a thunk that zeroes the record's pending_worker_amount (EBX already holds it) and tail-jumps to the order, so a press orders exactly one worker and the remaining frames of the press order 0; past 200 ms the hold branch rewrites the amount every frame, so the stock auto-repeat is unchanged"
   },
   {
+   "id": "crew_shortage_reminder",
+   "sources": [
+    {
+     "file": "mh/seams/ui_crew_reminder.cpp",
+     "expr": "SITE"
+    }
+   ],
+   "addrs": [
+    "0x0047f2d7"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_exit_wait"
+   ],
+   "knob": "ui.crew_shortage_reminder_s",
+   "carrier": "migrated:crew_shortage_reminder_s",
+   "note": "hotfix rc9.4 (garage report 01a13bb6): jump-splice the 10-byte `MOV dword ptr [_G_LLM_STRAT_TICK_BUDGET],0` that opens exit_wait's 'still can't exit' arm to a stub that (pushad) re-shows retail's crew-shortage advisor text -- llm_strat_race_alert_text_emit, text 0x7f human / 0xb0 alien, retail shows it once at exit_storage_begin -- when the CURRENT unit is the local side's (PlayerSide), carries no soldiers and idle population + shuttle-reserved passengers < Unit[proto].human, once [ui] crew_shortage_reminder_s (default 30) game-clock seconds have passed since the text was last shown -- by us or by retail (the emitter stamp 0x005202b4 moving forward restarts the period) -- and never inside the emitter cooldown 0x005001ae (a due reminder waits for a later tick; mh_crew_reminder.h throttle, reset when the clock goes backwards); then repeats the MOV and returns to 0x0047f2e1. DISPLAY-ONLY: the emitter's plain statics + the print queue, no hashed write, no RNG. Configuration (2) carrier: sim_unit_state_exit.cpp's exit_wait twin (reimpl_fixes::crew_shortage_reminder_s); displaced by promotion. 0 = retail."
+  },
+  {
    "id": "minimap_box_clip",
    "sources": [
     {
@@ -1486,6 +1587,33 @@
    "knob": "ui.minimap_box_clip",
    "carrier": null,
    "note": "RES9: the entry's MOV EDI,[0x00603b00] (8B 3D 00 3B 60 00) -> JMP rel32 + NOP to a thunk that draws the viewport box clipped to the 128x128 minimap (stock pixels whenever the box fits); at heights >= 1152 in zoom mode 4 the stock loop writes above the side-panel surface. minimap_box_clip=2 runs the stock body behind the same thunk, measured"
+  },
+  {
+   "id": "replay_boundary_notes",
+   "sources": [
+    {
+     "file": "mh/seams/replay_boundary.cpp",
+     "expr": "s.site"
+    }
+   ],
+   "addrs": [
+    "0x004bb74c",
+    "0x0044cece",
+    "0x0044d418",
+    "0x004b8528",
+    "0x004c64ed"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_menu_loadgame_confirm",
+    "SwitchToPlanet",
+    "llm_tact_mission_end_return_to_strategic",
+    "llm_menu_campaign_start_and_enter",
+    "llm_menu_campaign_start_confirm_cb"
+   ],
+   "knob": "desync.seed_record",
+   "carrier": "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash",
+   "note": "hotfix rc9.4 (crash triage 7908b: both crashes followed planet changes; a replay could not cross them): five CALL rel32 retargets, E8 -> E8 to a pushad thunk that calls replay_rec::note_boundary (state hash + game clock + the source file's size/FNV-1a 64, BEFORE the callee replaces the state) and tail-jumps to the original callee: llm_menu_loadgame_confirm -> llm_game_load (save_load, EAX = name, file save\\<name>.sav), SwitchToPlanet -> map_SavePlanetToDisk(old,1) after the production drain (planet_transition, target = [EBP-0x20], file save\\temp\\save%02d.dat unless G_PLANET_STATUS[target]==0 = generated), llm_tact_mission_end_return_to_strategic -> map_LoadPlanetFromDisk (tact_return), llm_menu_campaign_start_and_enter / llm_menu_campaign_start_confirm_cb -> llm_strat_planet_session_begin (new_game, EDX = reset flag). The first sim step after a note writes mh_rec_seed_<n>.bin(.gz) + a mh_rec_segments.txt line. OBSERVE ONLY: no game memory written, callee registers and return address unchanged."
   }
  ]
 }

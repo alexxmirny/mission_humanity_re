@@ -33,6 +33,25 @@ const building_tick_calls &live_building_tick_calls();
 void set_turret_reload_owner_fix(bool on);
 bool turret_reload_owner_fix();
 
+// hotfix rc9.4 -- `[net] bldg_pip_guard` (field crashes 0x0047908b / 0x004793e1, triage
+// tmp/report_triage_2026-10-15/crash_7908b.md). Retail indexes the 4-entry fire-animation table A_OGIEN
+// (0x00c3873c + level*4) with a building's pip_level[slot] in llm_strat_bldg_update_charge_pips and
+// llm_strat_bldg_tick_pip_anim, with no range check. Legal: every pip_level[i] in 0..4 and pip_active_count in
+// 0..16 (pip_slot_count <= 4 slots x 4 levels). A record holding anything else (source not identified; suspected
+// a planet/save restore) faults on the next damage or animation chain restart. With the key on, building_tick
+// (before the pip-anim gate, = the 0x0046fe67 splice) and update_charge_pips (on entry, = the 0x00478ecb splice)
+// zero the pip state exactly as map_CreateBuilding does (frame 0, level 0, timer = GAME_CLOCK, active 0) and log
+// one line. SIM-AFFECTING only when the state is already illegal, the same on every peer. Default false = retail.
+// Set from reimpl_fixes::bldg_pip_guard by lockstep::set_fixes.
+inline constexpr int32_t BLDG_PIP_LEVEL_MAX  = 4;
+inline constexpr int32_t BLDG_PIP_ACTIVE_MAX = 16;
+void                     set_bldg_pip_guard(bool on);
+bool                     bldg_pip_guard();
+bool                     bldg_pip_state_is_bad(const building &b);
+// When the state is illegal: zero it (map_CreateBuilding's values, timer = `now`), log one line naming `site`, and
+// return true. A legal state is untouched (false). Runs regardless of the key -- callers test bldg_pip_guard().
+bool bldg_pip_sanitize(const sim_view &v, building &b, uint32_t player, int32_t index, const char *site);
+
 // patching:PT-FIX4 -- `[net] turret_clip_fix`: map_CreateBuilding's turret boot sets ammo = Weapon[weapon_id].ammo and
 // resupply_cycles_remaining = -1 (retail leaves both 0 / stale), and llm_strat_bldg_turret_reload_tick refills
 // when ammo <= 0 (retail: == 0), so the magazine and the long reload engage and a negative-ammo turret heals.

@@ -1467,6 +1467,10 @@ int hash_mode(const char *path, uint32_t from, uint32_t to, bool regions) {
 
 } // namespace
 
+// replay_rec_selftest.cpp -- hotfix rc9.4: the replay record's segments + the seed sanity scan. Rides
+// this suite (same instrument family, same gate row) rather than adding a roster entry.
+int run_replayrectest();
+
 int run_staterectest(int argc, char **argv) {
     const char *write_to = nullptr, *hash_file = nullptr, *write_ring = nullptr;
     uint32_t    from = 0, to = 0xffffffffu;
@@ -1500,7 +1504,10 @@ int run_staterectest(int argc, char **argv) {
     test_ring_core();
     test_ring_live(write_ring);
 
+    const int rr_fail = run_replayrectest();
+
     rm_tree(root);
-    printf("=== staterectest: %d checks, %d failures ===\n", g_checks, g_fails);
-    return g_fails ? 1 : 0;
+    printf("=== staterectest: %d checks, %d failures (+ replayrectest %s) ===\n", g_checks, g_fails,
+           rr_fail ? "FAILED" : "ok");
+    return (g_fails || rr_fail) ? 1 : 0;
 }

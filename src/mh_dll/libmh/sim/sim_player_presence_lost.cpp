@@ -106,7 +106,8 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
         return static_cast<uint32_t>(v.profiles[player].units_alive[planet]);
     }
 
-    uint8_t outcome = 0; // [EBP-0x14]: the E_GAME_OUTCOME code the fanfare/dialog tail consumes.
+    uint8_t outcome  = 0;     // [EBP-0x14]: the E_GAME_OUTCOME code the fanfare/dialog tail consumes.
+    bool    mute_win = false; // mp:U54-FW: a "last player" outcome with an enemy alive -- no victory text/fanfare
 
     if (*v.session_mode == SESSION_SP) {
         // ==== 0x00498349: SP CAMPAIGN PATH ==========================================================
@@ -339,7 +340,12 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
                 if (!no_other_human) return ret;         // another human still playing
                 if (!was_human && mode == 0) return ret; // a non-human natural loss: nothing to show
                 outcome = (mode == 0) ? 6 : 8;           // continue: natural (6) vs forced (8)
-                if (was_human) c.print_queue_text_id(TEXT_VICTORY);
+                // mp:U54-FW ([net] last_human_win_check): "You have won" + the fanfare only when no ENEMY is alive.
+                // The outcome code stays (the dialog: "last player" + Continue). Display-only (no sim write).
+                // (was_human is only ever set by a natural loss, so in practice this is outcome 6.)
+                if (was_human && mh::lockstep::fixes().last_human_win_check)
+                    mute_win = !mh::spectate::no_enemy_alive(mh::spectate::evaluate(spectate_roster(v, own), me));
+                if (was_human && !mute_win) c.print_queue_text_id(TEXT_VICTORY);
             }
         }
 
@@ -358,7 +364,7 @@ uint32_t player_presence_lost(const sim_view &v, sim_store &own, const player_pr
     if (outcome >= 4) {
         if (outcome == 4)
             c.snd_play(SND_LOSS, SND_VOL);
-        else if (outcome <= 6)
+        else if (outcome <= 6 && !mute_win) // mp:U54-FW: no fanfare for a "last player" with an enemy alive
             c.snd_play(SND_WIN, SND_VOL);
     } else if (outcome == 3) {
         c.snd_play(SND_WIN, SND_VOL);

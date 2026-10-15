@@ -516,6 +516,13 @@ inline bool status_line_due(int64_t samples_reported) {
 // Wire the module's log sink (the seam layer passes seam_log -> mh_net.log), before install().
 void set_logger(void (*fn)(const char *));
 
+// The replay record's plug-ins (replay_record.h), both set by the seam layer BEFORE install():
+//   config_fn -- the configuration this process runs in (1 = no libmh spine, 2 = libmh bound); written
+//                into mh_rec_hash.txt's header so a replay runs in the same one.
+//   observer  -- called every sim step this module sees, with the replay record's match step (0 when no
+//                session folder is open). Read-only by contract: the door watch (seams/door_watch.cpp).
+void set_replay_plugins(int (*config_fn)(), void (*observer)(uint32_t match_step));
+
 // Read [desync] from `ini_path` (mh_net.ini), bind the manifest, register the FLAG_HASH handler.
 // Returns 1 if armed. Idempotent-ish; call once from the seam arm.
 int install(const char *ini_path);

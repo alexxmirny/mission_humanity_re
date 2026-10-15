@@ -65,6 +65,9 @@
 #include "include/mh_net_export.h"
 #include "include/mh_run_context.h"       // MH_RunDir (the snapshot lands next to the run's logs)
 #include "desync/order_capture.h"         // mp:Q3: the order recording rides this module's step hook
+#include "desync/replay_record.h"         // the field-report replay inputs (seed + hash checkpoints)
+#include "desync/seed_sanity.h"           // hotfix rc9.4: the off-thread range scan of every seed
+#include "mh_log_sink.h"                  // the seed blob goes to the async sink
 #include "include/mh_transport_present.h" // F3F: gate the SAMPLING (not the arm) on a live module
 #include "desync/desync_wire2.h"          // mp:D44: per-step comparison + live localisation (WIRE_VERSION 2)
 #include "desync/world_sync.h"            // mp:X3c: the host-authoritative world resync (action=1)
@@ -166,6 +169,11 @@ constexpr int LOC_HISTORY_KB = 2048;
 static_assert(TICK_BATCH >= 1 && TICK_BATCH <= v2::TICK_MAX_STEPS, "TICK_BATCH outside the wire's tick range");
 
 Config g_cfg;
+
+// The seam layer's two plug-ins for the replay record (set before install()): which configuration this
+// process runs in, and the per-step observer (the door watch) that rides the same step.
+int (*g_config_fn)()                    = nullptr;
+void (*g_step_observer)(uint32_t mstep) = nullptr;
 
 // ---- live manifest bindings ---------------------------------------------------------------------
 constexpr int N = mh::state::HASH_REGION_COUNT;
@@ -448,6 +456,61 @@ void snap_put(SnapBuf &b, const void *src, uint32_t n) {
     }
     memcpy(b.p + b.len, src, n);
     b.len += n;
+}
+
+// ---- the field-report replay inputs (replay_record.h): the binder's two callbacks -----------------
+// The seed: every hash slice in PERSIST mode, in manifest order -- byte-identical to the harness's
+// seed_dump_to, staged here in ONE buffer and handed to the sink as one create record, then freed.
+//
+// The sanity scan (seed_sanity.h, hotfix rc9.4): instead of freeing the staged buffer, hand it to the scan
+// thread together with the two small copies the scan needs that are not hash regions -- the unit/building
+// state-handler bitmaps and _G_LLM_STRAT_POP_STATS[8]. The sink has already copied the blob.
+uint64_t replay_seed_emit(const char *path, int segment, const char *label, unsigned long gen, uint32_t step,
+                          const char *segments_path) {
+    SnapBuf        b = {nullptr, 0, 0, false};
+    sanity::layout L;
+    for (int i = 0; i < N; ++i) {
+        if (i == mh::state::HIDX_BUILDINGS) L.buildings = b.len;
+        if (i == mh::state::HIDX_UNITS) L.units = b.len;
+        if (i == mh::state::HIDX_UNIT_STORAGE) L.unit_storage = b.len;
+        mh::state::fn_sink out(
+            mh::state::sink_mode::PERSIST,
+            [](void *ctx, const void *p, uint32_t n) { snap_put(*static_cast<SnapBuf *>(ctx), p, n); }, &b);
+        mh::state::emit_slice(i, out);
+        if (b.overflow) break;
+    }
+    uint64_t n = 0;
+    if (b.overflow) {
+        say("; [desync] SEED RECORD FAILED: out of memory staging the %lu-byte blob for %s\n", (unsigned long)b.len,
+            path);
+    } else {
+        mh_logq_create_bin(path, b.p, (int)b.len);
+        n = b.len;
+    }
+    if (n && sanity::enabled()) {
+        sanity::extras X;
+        const auto    *ufn = mh::state::ptr<const uint32_t>(mh::state::RID_STRAT_UNIT_STATE_FUNCS);
+        const auto    *bfn = mh::state::ptr<const uint32_t>(mh::state::RID_STRAT_BLDG_STATE_FUNCS);
+        for (int i = 0; i < 256; ++i) {
+            X.unit_state_ok[i] = (uint8_t)(i < 255 && ufn[i] != 0);
+            X.bldg_state_ok[i] = (uint8_t)(i < 255 && bfn[i] != 0);
+        }
+        X.have_states = true;
+        memcpy(X.pop, mh::state::ptr<const void>(mh::state::RID_STRAT_POP_STATS), sizeof(X.pop));
+        X.have_pop = true;
+        sanity::scan_async(b.p, b.len, L, X, gen, segment, label, step, segments_path); // frees b.p
+        b.p = nullptr;
+    }
+    if (b.p) HeapFree(GetProcessHeap(), 0, b.p);
+    return n;
+}
+
+// The checkpoint hash: hash_own's walk (the harness's default masks) without its cost counters, into a
+// local array so the detector's g_per is never touched between its own samples.
+uint64_t replay_state_hash() {
+    uint64_t per[N];
+    for (int i = 0; i < N; ++i) per[i] = mh::state::hash_slice(i, true, true);
+    return fold_state(per, g_excluded, N);
 }
 
 void do_snapshot(uint32_t step) {
@@ -1165,6 +1228,11 @@ void axis_tick() {
 
 void set_logger(void (*fn)(const char *)) { g_log = fn; }
 
+void set_replay_plugins(int (*config_fn)(), void (*observer)(uint32_t match_step)) {
+    g_config_fn     = config_fn;
+    g_step_observer = observer;
+}
+
 int install(const char *ini_path) {
     g_cfg.enabled      = mh_ini_get_int("desync", "enabled", g_cfg.enabled, ini_path);
     g_cfg.every        = mh_ini_get_int("desync", "every", g_cfg.every, ini_path);
@@ -1270,6 +1338,27 @@ int install(const char *ini_path) {
     if (g_cfg.dirty_probe && !g_dp_on) {
         dirty_probe_arm();
         if (g_dp_on) mh::desync::state_hub::add_listener(&g_dp_listener);
+    }
+    {
+        // The field-report replay inputs (replay_record.h): default ON, SP and MP alike, local keys.
+        const int         seed_on    = mh_ini_get_int("desync", "seed_record", 1, ini_path);
+        const int         hash_every = mh_ini_get_int("desync", "hash_record_every", replay_rec::HASH_EVERY_DEFAULT, ini_path);
+        replay_rec::hooks h          = {};
+        h.seed                       = &replay_seed_emit;
+        h.hash                       = &replay_state_hash;
+        h.configuration              = g_config_fn;
+        // hotfix rc9.4: the clock and the planet index, for the segment lines and the per-step poll
+        // that cuts a state replacement no seam saw (replay_record.h "SEGMENTS").
+        h.clock  = +[]() -> double { return *mh::state::ptr<const double>(mh::state::RID_STRAT_GAME_CLOCK); };
+        h.planet = +[]() -> int { return *mh::state::ptr<const int32_t>(mh::state::RID_G_PLANET_INDEX); };
+        replay_rec::configure(seed_on, hash_every, h, &say);
+        const int sanity_on = mh_ini_get_int("desync", "seed_sanity", 1, ini_path);
+        sanity::configure(seed_on && sanity_on, &say);
+        if (seed_on)
+            say("; [desync] SEED SANITY %s ([desync] seed_sanity=%d): every replay seed is range-checked off the "
+                "game thread (building pips, unit/building states, target/slot indices, storage doors, "
+                "population) -> mh_net.log + %s\n",
+                sanity::enabled() ? "armed" : "off", sanity_on, replay_rec::SEGMENTS_NAME);
     }
     mh::desync::recorder::set_compress(true);
     if (mh::desync::recorder::configure(g_cfg.state_record, STATE_KEYFRAME_EVERY, g_manifest_fp, &say)) {
@@ -1957,17 +2046,25 @@ namespace {
 void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool hashed_caller) {
     hitch::scope hs(hitch::STEP_TOTAL); // mp:Q4: the whole per-step hook, every step
     if (g_armed && mh::desync::recorder::enabled()) axis_tick();
-    if (g_armed && mh::desync::orders::enabled()) {
+    const bool ord = g_armed && mh::desync::orders::enabled();
+    const bool rr  = g_armed; // the replay record's axis: always (the door watch reads it), writes only when on
+    if (ord || rr) {
         // mp:Q3: the order recording's step tick, in SP and MP alike, before anything below can return.
         // The folder is read between two generation reads: a switch in between (none happens on this
-        // thread today) leaves the open/close decision to the next step.
+        // thread today) leaves the open/close decision to the next step. The replay record (seed + hash
+        // checkpoints) keeps its own copy of the same axis.
         const unsigned long g1  = MH_RunDirGeneration();
         const bool          act = MH_RunDir_SessionActive() != 0;
         char                dir[MAX_PATH];
         if (act) lstrcpynA(dir, MH_RunDir(), MAX_PATH);
         const bool settled = MH_RunDirGeneration() == g1;
-        mh::desync::orders::step(act ? dir : nullptr, g1, settled, game_clock_bits_now());
+        if (ord) mh::desync::orders::step(act ? dir : nullptr, g1, settled, game_clock_bits_now());
+        if (rr) {
+            hitch::scope hr(hitch::REPLAY_REC);
+            replay_rec::step(act ? dir : nullptr, g1, settled);
+        }
     }
+    if (g_armed && g_step_observer) g_step_observer(replay_rec::current_step());
     if (g_armed && g_solo && !g_running) {
         // mp:Q2: the solo session's own step counter, and the tracker asked ONLY for the recorder (the
         // v2 compare, the ring and the digest are lockstep instruments). state_hub::step consults every

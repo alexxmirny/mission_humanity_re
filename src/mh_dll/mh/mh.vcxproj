@@ -38,6 +38,7 @@
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="seams\ui_worker_click.cpp" />
     <ClCompile Include="seams\ui_minimap_box.cpp" />
+    <ClCompile Include="seams\ui_crew_reminder.cpp" />
     <ClCompile Include="seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="seams\sim_pioneer_refill.cpp" />
     <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp" />
@@ -81,6 +82,11 @@
     <ClCompile Include="desync\state_recorder.cpp" />
     <ClCompile Include="desync\state_compress.cpp" />
     <ClCompile Include="desync\order_capture.cpp" />
+    <ClCompile Include="desync\replay_record.cpp" />
+    <ClCompile Include="seams\door_watch.cpp" />
+    <ClCompile Include="seams\bldg_pip_guard.cpp" />
+    <ClCompile Include="desync\seed_sanity.cpp" />
+    <ClCompile Include="seams\replay_boundary.cpp" />
     <ClCompile Include="desync\state_miniz.c" />
     <ClCompile Include="desync\state_ring.cpp" />
     <ClCompile Include="desync\world_sync.cpp" />
@@ -161,6 +167,11 @@
     <ClInclude Include="desync\state_recorder.h" />
     <ClInclude Include="desync\state_compress.h" />
     <ClInclude Include="desync\order_capture.h" />
+    <ClInclude Include="desync\replay_record.h" />
+    <ClInclude Include="seams\door_watch.h" />
+    <ClInclude Include="seams\bldg_pip_guard.h" />
+    <ClInclude Include="desync\seed_sanity.h" />
+    <ClInclude Include="seams\replay_boundary.h" />
     <ClInclude Include="desync\state_miniz_config.h" />
     <ClInclude Include="desync\state_ring.h" />
     <ClInclude Include="desync\state_ring_core.h" />

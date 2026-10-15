@@ -11,6 +11,24 @@ is replayable only when the process's FIRST sim step was this match's first step
 match in that process ran a single step -- because the process seed is dumped at process step 1.
 The tool checks that off the session.json files and refuses otherwise, by name.
 
+A FIELD REPORT (mh.dll alone, no harness) carries mh.dll's own recording instead: mh_rec_orders.bin.gz +
+mh_rec_clock.bin.gz (desync/order_capture.h), mh_rec_seed.bin.gz (the step-1 seed, the harness's blob
+format) and mh_rec_hash.txt (the `state` hash every N match steps, desync/replay_record.h). Those are
+unpacked to tmp/replay_match/shipped/<leaf>/ and replayed the same way; the verdict is judged at the
+recorded checkpoints, and a divergence names the first bad checkpoint and the last good one. A complete
+harness segment wins over it; `--shipped` forces the shipped recording.
+
+SEGMENTS (hotfix rc9.4). A session that loaded a save, crossed a campaign planet transition, returned from a
+tactical mission or started a new campaign has one seed per state replacement: mh_rec_seed_<n>.bin.gz, and
+mh_rec_segments.txt names each segment's first step on the session axis (desync/replay_record.h).
+`--shipped --segment N` replays segment N alone: its seed, the orders/clock streams cut at its first step
+and renumbered from 1, judged at the recorded checkpoints inside it (the segment's first step carries
+one). The SCENE comes from a save, not the lobby: the map, the terrain and every unhashed table are
+whatever the game loads, and the seed then overwrites the hashed state. A save_load segment loads the
+very save it recorded (`--save NAME|PATH`, else the recorded name from the committed saves / the
+polygon), and its content hash must equal the recorded one; any other kind needs `--carrier-save` (a save
+on the same planet), and the verdict then also tests whether the unhashed state matters.
+
 HOW. A per-tree solo lane (the ui_test `solo=` machinery), the three inputs copied beside mh.exe as
 mh_orders.bin / mh_clock.bin / mh_harness_seed.bin, and a generated walk: host a network game on
 the recorded MAP (session.json `map`, picked by row in "Available maps"), seat the RECORDED ROSTER,
@@ -68,6 +86,8 @@ Usage:
     python tools/replay_match_segment.py <dir> --compare <replay_run_dir>    # no run, compare only
     python tools/replay_match_segment.py <client dir> --seat 1 --against <host dir>   # D37b oracle
         [--net-extra "pioneer_refill_fix=0"] [--map-file X.mpm] [--legacy-suppress] [--extra k=v]
+    python tools/replay_match_segment.py <session dir> --shipped --segment N [--save NAME|PATH]
+        [--carrier-save NAME|PATH]                                               # rc9.4 segment N
     python tools/replay_match_segment.py --selftest                          # offline, no rig
 """
 
@@ -99,6 +119,16 @@ PROC = {
     "clock": "mh_clock.bin",
     "seed": "mh_harness_seed.bin",
     "log": "mh_harness.log",
+}
+# The SHIPPED recording (mh.dll alone, no harness -- what a field report carries): the order recording
+# (desync/order_capture.h, gzipped at the session close), the step-1 seed and the hash checkpoints
+# (desync/replay_record.h). Each .bin may be raw or .gz.
+SHIP = {
+    "orders": "mh_rec_orders.bin",
+    "clock": "mh_rec_clock.bin",
+    "seed": "mh_rec_seed.bin",
+    "hash": "mh_rec_hash.txt",
+    "segments": "mh_rec_segments.txt",
 }
 LANE_NAME = {"orders": "mh_orders.bin", "clock": "mh_clock.bin", "seed": "mh_harness_seed.bin"}
 ORDERS_MAGIC_LEN = 8  # MHOR v1 header: u32 magic, u32 version
@@ -164,6 +194,280 @@ def parse_stream(text, base=0):
     return steps, regs
 
 
+HASH_HDR_RE = re.compile(r"every (\d+) steps.*?hash_kind=(\d).*?configuration \((\d)\)")
+
+
+def parse_hash_file(text):
+    """mh_rec_hash.txt (desync/replay_record.h) -> (meta, {match_step: (None, None, STATE)}).
+
+    The checkpoints carry only the state hash: the clock slot is None and compare() skips it."""
+    meta, steps = {}, {}
+    for ln in text.splitlines():
+        if ln.startswith(";"):
+            m = HASH_HDR_RE.search(ln)
+            if m:
+                meta = dict(every=int(m.group(1)), kind=int(m.group(2)), config=int(m.group(3)))
+            continue
+        p = ln.split()
+        if len(p) == 2 and p[0].isdigit() and re.fullmatch(r"[0-9A-Fa-f]{16}", p[1]):
+            steps[int(p[0])] = (None, None, p[1].upper())
+    return meta, steps
+
+
+SEG_LINE_RE = re.compile(r"^segment (\d+) (.*)$")
+SEG_KV_RE = re.compile(r'(\w+)=("[^"]*"|\S+)')
+
+
+def parse_segments(text):
+    """mh_rec_segments.txt (desync/replay_record.h) -> ({n: dict(step, kind, ...)}, [sanity lines]).
+
+    Values stay strings except `step` / `prev_step` (int); quoted values are unquoted."""
+    segs, sanity = {}, []
+    for ln in text.splitlines():
+        if ln.startswith("sanity "):
+            sanity.append(ln)
+            continue
+        m = SEG_LINE_RE.match(ln)
+        if not m:
+            continue
+        d = {}
+        for k, v in SEG_KV_RE.findall(m.group(2)):
+            d[k] = v[1:-1] if v.startswith('"') else v
+        for k in ("step", "prev_step"):
+            if k in d and d[k].isdigit():
+                d[k] = int(d[k])
+        segs[int(m.group(1))] = d
+    return segs, sanity
+
+
+def fnv1a64_file(path):
+    """The FNV-1a 64 of a file, as replay_record.cpp's file_fnv64 computes it (16 hex, upper)."""
+    h = 0xCBF29CE484222325
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(1 << 16)
+            if not chunk:
+                break
+            for c in chunk:
+                h = ((h ^ c) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return "%016X" % h
+
+
+def cut_streams(orders_src, clock_src, start, outdir):
+    """Cut the order + clock streams at session step `start` into `outdir` (SEG names), renumbering the
+    order records so recorded step `start` is replay step 1. -> (orders, clock, kept records)."""
+    import struct
+
+    os.makedirs(outdir, exist_ok=True)
+    off = start - 1
+    clock = os.path.join(outdir, SEG["clock"])
+    with open(clock_src, "rb") as fi, open(clock, "wb") as fo:
+        fi.seek(off * 8)
+        shutil.copyfileobj(fi, fo, 1 << 20)
+    orders = os.path.join(outdir, SEG["orders"])
+    kept = 0
+    with open(orders_src, "rb") as fi, open(orders, "wb") as fo:
+        fo.write(fi.read(ORDERS_MAGIC_LEN))
+        while True:
+            chunk = fi.read(ORDER_REC * 4096)
+            if not chunk:
+                break
+            for i in range(0, len(chunk), ORDER_REC):
+                (stp,) = struct.unpack_from("<I", chunk, i)
+                if stp >= start:
+                    fo.write(struct.pack("<I", stp - off) + chunk[i + 4 : i + ORDER_REC])
+                    kept += 1
+    return orders, clock, kept
+
+
+def slice_segment(rec, n, outdir):
+    """rc9.4: re-point a shipped recording at its segment `n`. -> the new rec dict: seed = segment n's
+    seed (unpacked), orders/clock cut at its first step, the checkpoints of [start, next start) renumbered
+    so the segment's first step is 1, `segment` = its parsed line. Raises Refusal by name."""
+    import gzip
+
+    segs = rec.get("segments") or {}
+    if n not in segs:
+        raise Refusal(
+            "no segment %d in %s (segments: %s)"
+            % (
+                n,
+                SHIP["segments"],
+                ", ".join(str(k) for k in sorted(segs)) or "none -- a pre-rc9.4 recording",
+            )
+        )
+    seg = segs[n]
+    start = seg.get("step")
+    if not isinstance(start, int) or start < 1:
+        raise Refusal("segment %d has no first step" % n)
+    leaf = seg.get("seed", "")
+    src = _ship_file(rec["dir"], leaf) if leaf.endswith(".bin") else None
+    if not src:
+        raise Refusal("segment %d has no seed file (seed=%s)" % (n, leaf or "?"))
+    os.makedirs(outdir, exist_ok=True)
+    seed = os.path.join(outdir, SEG["seed"])
+    if src.endswith(".gz"):
+        with gzip.open(src, "rb") as fi, open(seed, "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+    else:
+        shutil.copyfile(src, seed)
+    orders, clock, kept = cut_streams(rec["files"]["orders"], rec["files"]["clock"], start, outdir)
+    nxt = min(
+        [s["step"] for k, s in segs.items() if k > n and isinstance(s.get("step"), int)] or [0]
+    )
+    ref = {
+        s - (start - 1): v
+        for s, v in rec["ref_steps"].items()
+        if s >= start and (not nxt or s < nxt)
+    }
+    print(
+        "  segment %d: %s at session step %d%s, seed %s; %d order record(s) kept, %d checkpoint(s) in it"
+        % (
+            n,
+            seg.get("kind"),
+            start,
+            (" (next segment at %d)" % nxt) if nxt else " (the last)",
+            leaf,
+            kept,
+            len(ref),
+        )
+    )
+    return dict(
+        rec,
+        files=dict(rec["files"], seed=seed, orders=orders, clock=clock),
+        base=start - 1,
+        ref_steps=ref,
+        segment=seg,
+        segment_n=n,
+        segment_len=(nxt - start) if nxt else 0,
+    )
+
+
+def find_save(spec, recorded_name=None):
+    """A save to load in the replay lane: an existing PATH, else a NAME (no extension) from the committed
+    scenario saves or the polygon's save dir (ui_test.resolve_save). -> path or None."""
+    if spec and os.path.isfile(spec):
+        return spec
+    name = spec or recorded_name
+    if not name:
+        return None
+    import machine_config as machine
+    import ui_test
+
+    p = ui_test.resolve_save(name, os.path.join(machine.POLYGON, "save"))
+    return p if os.path.isfile(p) else None
+
+
+def segment_scene(rec, save_spec=None, carrier_spec=None, force=False):
+    """rc9.4: the save the replay lane loads for a segment replay. -> (path, note). A save_load segment
+    replays on the save it recorded, and the content hash must match; any other kind needs a carrier."""
+    seg = rec["segment"]
+    kind = seg.get("kind")
+    if kind == "save_load" and not carrier_spec:
+        want = seg.get("file_fnv")
+        path = find_save(save_spec, seg.get("source"))
+        if not path:
+            raise Refusal(
+                "segment %s loaded save %r (%s bytes, FNV %s): pass it with --save NAME|PATH"
+                % (rec["segment_n"], seg.get("source"), seg.get("file_bytes"), want)
+            )
+        got = fnv1a64_file(path)
+        if want and got != want.upper() and not force:
+            raise Refusal(
+                "save %s has content hash %s, the recording loaded %s -- not the same file (--force-save "
+                "replays it anyway)" % (path, got, want)
+            )
+        return path, "the recorded save (content hash %s %s)" % (
+            got,
+            "matches" if got == (want or "").upper() else "FORCED",
+        )
+    if not carrier_spec:
+        raise Refusal(
+            "segment %s is a %s boundary: there is no save that IS its scene -- pass --carrier-save NAME|PATH "
+            "(a save on planet %s; the seed overwrites the hashed state, the rest is the carrier's)"
+            % (rec["segment_n"], kind, seg.get("planet_after"))
+        )
+    path = find_save(carrier_spec)
+    if not path:
+        raise Refusal("--carrier-save %s: no such save" % carrier_spec)
+    return path, "CARRIER %s (the unhashed state is the carrier's, not the recording's)" % path
+
+
+def load_walk_script():
+    """rc9.4: the segment replay's walk -- main menu -> Load game (the deployed save is the newest, i.e.
+    the preselected row) -> in game; the harness injects the segment seed at its step 1."""
+    return (
+        "# GENERATED by tools/replay_match_segment.py (rc9.4 --segment): load the scene save, then the\n"
+        "# harness injects the segment seed at step 1 and replays the cut orders/clock.\n"
+        "settled value:108\nclickv 108\npresent Load game\nsettled Load game\nclickl Load game\n"
+        "absent Load game\ngamemode 2\n"
+        "log REPLAY in-game (segment), the harness owns the run from here\nend\n"
+    )
+
+
+def _ship_file(path, name):
+    """The shipped recording `name` in `path`: the raw file, else its .gz, else None."""
+    for cand in (name, name + ".gz"):
+        f = os.path.join(path, cand)
+        if os.path.isfile(f):
+            return f
+    return None
+
+
+def stage_shipped(path, outdir):
+    """Unpack a shipped recording's three replay inputs into `outdir` under the segment names.
+    -> {orders, clock, seed} paths. Raises Refusal naming what is missing."""
+    import gzip
+
+    found = {k: _ship_file(path, SHIP[k]) for k in ("orders", "clock", "seed")}
+    missing = [SHIP[k] + "[.gz]" for k, v in found.items() if not v]
+    if missing:
+        raise Refusal("shipped recording incomplete, missing %s" % ", ".join(missing))
+    os.makedirs(outdir, exist_ok=True)
+    out = {}
+    for k, src in found.items():
+        dst = os.path.join(outdir, SEG[k])
+        if src.endswith(".gz"):
+            with gzip.open(src, "rb") as fi, open(dst, "wb") as fo:
+                shutil.copyfileobj(fi, fo)
+        else:
+            shutil.copyfile(src, dst)
+        out[k] = dst
+    return out
+
+
+def resolve_shipped(path, sj=None):
+    """A session folder holding mh.dll's own recording (mh_rec_*) -> a resolve() dict whose reference
+    stream is the hash checkpoints (mh_rec_hash.txt), not a harness log."""
+    sj = sj if sj is not None else _session_json(path)
+    hp = _ship_file(path, SHIP["hash"])
+    meta, steps = parse_hash_file(_read_text(hp)) if hp else ({}, {})
+    sp = _ship_file(path, SHIP["segments"])
+    segs, sanity = parse_segments(_read_text(sp)) if sp else ({}, [])
+    files = stage_shipped(
+        path, os.path.join(REPO, "tmp", "replay_match", "shipped", os.path.basename(path))
+    )
+    return dict(
+        kind="shipped",
+        dir=path,
+        snap_dir=path,
+        files=files,
+        base=0,
+        map=(sj or {}).get("map"),
+        slot=(sj or {}).get("slot"),
+        lockstep=bool((sj or {}).get("lockstep_step_ms")),
+        role=(sj or {}).get("role"),
+        config=meta.get("config") or None,
+        arm={},
+        ref="",
+        ref_steps=steps,
+        hash_every=meta.get("every"),
+        hash_kind=meta.get("kind") or 1,
+        segments=segs,
+        sanity=sanity,
+    )
+
+
 def arm_flags(text):
     """The recorder's `; ==== mh replay harness armed: k=v ... ====` banner as a dict (last one)."""
     got = {}
@@ -221,15 +525,19 @@ def sessions_of_process(logs_dir, proc_leaf):
     return out
 
 
-def resolve(path):
+def resolve(path, shipped=False):
     """The recording in `path` -> dict(kind, files{orders,clock,seed,log}, base, map, config, ...).
 
-    Raises Refusal with the reason when the folder cannot be replayed."""
+    Precedence: a complete harness segment, then mh.dll's shipped recording (mh_rec_*; `shipped=True`
+    forces it), then a process recording. Raises Refusal with the reason when nothing replays."""
     path = os.path.abspath(path.rstrip("\\/"))
     if not os.path.isdir(path):
         raise Refusal("no such folder: %s" % path)
     logs_dir = os.path.dirname(path)
     sj = _session_json(path)
+    has_ship = all(_ship_file(path, SHIP[k]) for k in ("orders", "clock", "seed"))
+    if shipped:
+        return resolve_shipped(path, sj)  # stage_shipped names what is missing
     if os.path.isfile(os.path.join(path, SEG["log"])) or os.path.isfile(
         os.path.join(path, SEG["orders"])
     ):
@@ -237,6 +545,8 @@ def resolve(path):
         missing = [
             SEG[k] for k in ("orders", "clock", "seed", "log") if not os.path.isfile(files[k])
         ]
+        if missing and has_ship:
+            return resolve_shipped(path, sj)
         if missing:
             raise Refusal(
                 "segment incomplete, missing %s -- the recorder ran without order_mode=1 "
@@ -270,6 +580,8 @@ def resolve(path):
             # the process log's fingerprint line is the fallback.
             hash_kind=hash_kind_of(log, arm),
         )
+    if has_ship:
+        return resolve_shipped(path, sj)
     # a session folder without a segment (pre-SES7) -> its process folder
     if sj and sj.get("process_dir") and not os.path.isfile(os.path.join(path, PROC["orders"])):
         return resolve(os.path.join(logs_dir, sj["process_dir"]))
@@ -400,19 +712,22 @@ def excluded_columns():
 def compare(ref_steps, ref_regs, rep_steps, rep_regs, names=None, excluded=frozenset()):
     """-> dict(common, first, what, regions). `first` is None when every common step agrees."""
     common = sorted(set(ref_steps) & set(rep_steps))
-    first, what = None, None
+    first, what, last_ok = None, None, None
     for s in common:
         a, b = ref_steps[s], rep_steps[s]
-        if a[2] != b[2] or a[0] != b[0]:
+        # a shipped recording's checkpoints (mh_rec_hash.txt) carry no clock: None is not compared
+        clock_bad = a[0] is not None and b[0] is not None and a[0] != b[0]
+        if a[2] != b[2] or clock_bad:
             first = s
             what = "state" if a[2] != b[2] else "clock"
             break
+        last_ok = s
     regions = []
     if first is not None and first in ref_regs and first in rep_regs:
         for i, (x, y) in enumerate(zip(ref_regs[first], rep_regs[first])):
             if x != y and i not in excluded:
                 regions.append(names[i] if names and i < len(names) else "col%d" % i)
-    return dict(common=len(common), first=first, what=what, regions=regions)
+    return dict(common=len(common), first=first, what=what, regions=regions, last_ok=last_ok)
 
 
 def verdict_text(rec, res, min_steps):
@@ -425,8 +740,25 @@ def verdict_text(rec, res, min_steps):
                 min_steps,
             ),
         )
+    ship = (rec or {}).get("kind") == "shipped"
     if res["first"] is None:
+        if ship:
+            return True, (
+                "IDENTICAL: state agrees at all %d recorded hash checkpoint(s) (mh_rec_hash.txt)"
+                % res["common"]
+            )
         return True, "IDENTICAL: state + clock agree at all %d common step(s)" % res["common"]
+    if ship:
+        return False, (
+            "DIVERGED at hash checkpoint match step %d (state); the last agreeing checkpoint is %s "
+            "-- the divergence is in steps %s..%d (a field recording has no per-region hashes)"
+            % (
+                res["first"],
+                res["last_ok"] if res["last_ok"] is not None else "none",
+                (res["last_ok"] + 1) if res["last_ok"] is not None else 1,
+                res["first"],
+            )
+        )
     where = (
         " regions: %s" % ", ".join(res["regions"])
         if res["regions"]
@@ -522,6 +854,9 @@ def seed_players(seed_path):
                 flags=rec[6],
                 race=rec[0],
                 color=rec[1],
+                team=rec[
+                    7
+                ],  # the team byte (+7); no lobby hook seats it yet -- the seed carries it
                 name=rec[0x10:0x30].split(b"\0")[0].decode("latin-1"),
             )
         )
@@ -544,7 +879,9 @@ def roster_of(players):
             kind = "ai"
         else:
             continue
-        plan.append(dict(slot=p["slot"], kind=kind, race=p["race"], name=p["name"]))
+        plan.append(
+            dict(slot=p["slot"], kind=kind, race=p["race"], name=p["name"], team=p.get("team"))
+        )
     return plan
 
 
@@ -897,7 +1234,19 @@ def run_replay(
         )
     if map_file:
         lane_add_map(lane, map_file)
-    row, label = map_row(os.path.join(lane, "Maps"), rec.get("map"))
+    scene = rec.get("scene_save")
+    if scene:  # rc9.4 --segment: the scene is a save, not the lobby
+        import time
+
+        sd = os.path.join(lane, "save")
+        os.makedirs(sd, exist_ok=True)
+        dst = os.path.join(sd, os.path.basename(scene))
+        shutil.copyfile(scene, dst)
+        now = time.time() + 60  # the newest save = the Load dialog's preselected row
+        os.utime(dst, (now, now))
+        row, label = 0, None
+    else:
+        row, label = map_row(os.path.join(lane, "Maps"), rec.get("map"))
     if row is None:
         raise Refusal(
             "map %r is not in this lane's Maps\\ -- cannot load the recorded map (a downloaded "
@@ -906,12 +1255,16 @@ def run_replay(
     tmpd = os.path.join(REPO, "tmp", "replay_match")
     os.makedirs(tmpd, exist_ok=True)
     script = os.path.join(tmpd, "replay_walk.txt")
-    players = None if rec.get("legacy_roster") else seed_players(rec["files"]["seed"])
+    players = None if (rec.get("legacy_roster") or scene) else seed_players(rec["files"]["seed"])
     plan = roster_of(players) if players else None
-    if plan:
+    if scene:
+        print("  scene: %s" % rec.get("scene_note"))
+    elif plan:
         print(
             "  roster (from the seed): "
-            + ", ".join("%d=%s %r" % (p["slot"], p["kind"], p["name"]) for p in plan)
+            + ", ".join(
+                "%d=%s %r team %s" % (p["slot"], p["kind"], p["name"], p.get("team")) for p in plan
+            )
         )
         note = roster_note(plan, _session_json(rec.get("snap_dir") or rec["dir"]))
         if note:
@@ -921,7 +1274,7 @@ def run_replay(
             "  roster: legacy walk (one computer in slot 1): --legacy-roster or an unreadable seed"
         )
     with open(script, "w", encoding="ascii", newline="\n") as fh:
-        fh.write(walk_script(row, label, plan))
+        fh.write(load_walk_script() if scene else walk_script(row, label, plan))
     flags = replay_flags(rec, steps, seat, legacy_suppress, extra, session_mode)
     ident = make_lane.read_identity(lane)
     argv = [
@@ -1058,6 +1411,31 @@ def main(argv=None):
         help="do not hand the harness the recording's hash-point queue counts (the pre-"
         "TL-REPLAY-BM clock-window split of the dispatch snapshot) -- the negative arm",
     )
+    ap.add_argument(
+        "--shipped",
+        action="store_true",
+        help="replay mh.dll's own recording (mh_rec_orders/clock/seed + the mh_rec_hash.txt "
+        "checkpoints -- what a field report carries) even when a harness segment is present",
+    )
+    ap.add_argument(
+        "--segment",
+        type=int,
+        default=-1,
+        metavar="N",
+        help="rc9.4: replay segment N of a shipped recording (mh_rec_segments.txt): its seed, the "
+        "orders/clock cut at its first step, judged at the checkpoints inside it. Implies --shipped",
+    )
+    ap.add_argument(
+        "--save",
+        help="the save a save_load segment loaded (NAME or PATH; default: the recorded name); its "
+        "content hash must equal the recorded one",
+    )
+    ap.add_argument(
+        "--carrier-save",
+        help="a save that stands in for the scene of a non-save segment (planet transition, tactical "
+        "return, new game) -- or of a save_load one whose save is lost",
+    )
+    ap.add_argument("--force-save", action="store_true", help="replay on a save whose hash differs")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -1065,7 +1443,15 @@ def main(argv=None):
     if not a.dir:
         ap.error("a recording folder is required")
     try:
-        rec = resolve(a.dir)
+        rec = resolve(a.dir, shipped=a.shipped or a.segment >= 0)
+        if a.segment >= 0:
+            rec = slice_segment(
+                rec, a.segment, os.path.join(REPO, "tmp", "replay_match", "segment_%d" % a.segment)
+            )
+            scene, note = segment_scene(rec, a.save, a.carrier_save, a.force_save)
+            rec = dict(rec, scene_save=scene, scene_note=note)
+            for ln in rec.get("sanity") or ():
+                print("  recorded " + ln)
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
         return 2
@@ -1080,10 +1466,21 @@ def main(argv=None):
             print("replay_match_segment: REFUSED -- %s" % e)
             return 2
         rec = dict(rec, files=sl["files"], base=sl["base"], first_step=a.from_keyframe)
-    ref_steps, ref_regs = parse_stream(rec["ref"], rec["base"])
+    if rec["kind"] == "shipped":
+        ref_steps, ref_regs = dict(rec["ref_steps"]), {}
+    else:
+        ref_steps, ref_regs = parse_stream(rec["ref"], rec["base"])
     ref_steps = {s: v for s, v in ref_steps.items() if s >= 1}
     n_clock = clock_steps(rec["files"]["clock"])
-    last = min(max(ref_steps) if ref_steps else 0, n_clock)
+    if rec["kind"] == "shipped":
+        # checkpoints are sparse: replay every recorded step, judge at the checkpoints inside it
+        last = n_clock
+        if rec.get("segment_len"):
+            last = min(last, rec["segment_len"])
+        if not ref_steps:
+            print("  note: no mh_rec_hash.txt checkpoints -- the replay runs but cannot be judged")
+    else:
+        last = min(max(ref_steps) if ref_steps else 0, n_clock)
     if a.steps:
         last = min(last, a.steps)
     config = (rec["config"] or 1) if a.config == "auto" else int(a.config)
@@ -1093,6 +1490,8 @@ def main(argv=None):
         else int(a.seat)
     )
     smode = auto_session_mode(rec) if a.session_mode == "auto" else int(a.session_mode)
+    if rec.get("scene_save") and a.session_mode == "auto":
+        smode = -1  # a loaded save runs in its own SESSION_MODE (the campaign's 1)
     print(
         "recording: %s (%s), base=%d, %d hashed step(s), %d clock step(s), %d order record(s), "
         "map=%r, recorded in configuration (%s)"
@@ -1151,14 +1550,20 @@ def main(argv=None):
         return 2
     rep_steps, rep_regs = parse_stream(rep_text)
     if other:
-        ref_steps, ref_regs = parse_stream(other["ref"], other["base"])
+        if other["kind"] == "shipped":
+            ref_steps, ref_regs = dict(other["ref_steps"]), {}
+        else:
+            ref_steps, ref_regs = parse_stream(other["ref"], other["base"])
         ref_steps = {s: v for s, v in ref_steps.items() if s >= 1}
         rec = dict(rec, snap_dir=other.get("snap_dir"))
         print("  judged AGAINST %s (%d hashed step(s))" % (other["dir"], len(ref_steps)))
     ref_steps = {s: v for s, v in ref_steps.items() if s <= last}
     names, excluded = excluded_columns()
     res = compare(ref_steps, ref_regs, rep_steps, rep_regs, names, excluded)
-    ok, text = verdict_text(rec, res, min(a.min_steps, last))
+    # a shipped recording is judged at EVERY checkpoint the replay reached (at least one)
+    judged_rec = other or rec
+    need = max(1, len(ref_steps)) if judged_rec["kind"] == "shipped" else min(a.min_steps, last)
+    ok, text = verdict_text(judged_rec, res, need)
     print("  replay run: %s (seat %s, body session mode %s)" % (run, seat, smode))
     print(
         "  %s (recorded steps 1..%d, replayed %d; hash %s)"
@@ -1261,6 +1666,32 @@ def selftest():
     check(
         "too few common steps is REFUSED, not IDENTICAL",
         not verdict_text({}, compare(r1, rr1, r6, rr6), 50)[0],
+    )
+
+    # the shipped recording's checkpoints (mh_rec_hash.txt): state only, sparse, first bad named
+    hdr = (
+        "; mh_rec_hash v1: <match step> <state hash> every 20 steps, hash_kind=1 (the harness "
+        "`state` column), configuration (1)\n"
+    )
+    htxt = hdr + "".join("%d %s\n" % (s, st(s)) for s in (1, 20, 40, 60)) + "; end at step 60\n"
+    meta, hs = parse_hash_file(htxt)
+    check(
+        "mh_rec_hash.txt parses: header + 4 checkpoints, no clock",
+        meta == dict(every=20, kind=1, config=1)
+        and sorted(hs) == [1, 20, 40, 60]
+        and hs[20] == (None, None, st(20)),
+    )
+    ship = {"kind": "shipped"}
+    res = compare(hs, {}, r2, rr2)
+    check(
+        "checkpoints vs a matching replay -> IDENTICAL (clock not compared)",
+        res["common"] == 4 and verdict_text(ship, res, 4)[0],
+    )
+    res = compare(hs, {}, r3, rr3)
+    ok_s, txt_s = verdict_text(ship, res, 4)
+    check(
+        "a diverging replay names the first bad checkpoint and the last good one",
+        not ok_s and res["first"] == 40 and res["last_ok"] == 20 and "21..40" in txt_s,
     )
 
     # resolve(): a segment, an incomplete segment, and the two process-recording shapes
@@ -1662,6 +2093,123 @@ def selftest():
         check(
             "from-keyframe: a start step the state recording does not hold is REFUSED",
             _refused(lambda: slice_from_step(sl_rec, 9, os.path.join(tmp, "slice_bad"))),
+        )
+        # a SHIPPED recording (mh.dll alone): gzipped inputs + checkpoints; preferred over an
+        # incomplete harness segment (the rig's non-recording peer writes mh_match_harness.log only)
+        import gzip
+
+        sh = os.path.join(logs, "20260101T000500Z_ffff_1_join")
+        os.makedirs(sh)
+        put(sh, "session.json", json.dumps({"map": "y.mpm", "slot": 1, "lockstep_step_ms": 20}))
+        put(sh, "mh_match_harness.log", "; [match] segment OPEN x at process step 3: step_base=2\n")
+        for name, data in (
+            ("mh_rec_orders.bin.gz", b"MHOR\x01\0\0\0"),
+            ("mh_rec_clock.bin.gz", b"\0" * 24),
+            ("mh_rec_seed.bin.gz", b"S" * 32),
+        ):
+            with gzip.open(os.path.join(sh, name), "wb") as fh:
+                fh.write(data)
+        put(sh, "mh_rec_hash.txt", htxt)
+        got = resolve(sh)
+        with open(got["files"]["seed"], "rb") as fh:
+            seed_ok = fh.read() == b"S" * 32
+        check(
+            "resolve: a shipped recording (gz) beats an incomplete segment; inputs unpacked",
+            got["kind"] == "shipped"
+            and seed_ok
+            and clock_steps(got["files"]["clock"]) == 3
+            and got["config"] == 1
+            and sorted(got["ref_steps"]) == [1, 20, 40, 60]
+            and got["slot"] == 1,
+        )
+        # rc9.4 segments: a save_load segment at step 30 with its own seed; the cut + the renumbering
+        import struct
+
+        put(sh, "mh_rec_seed_1.bin", b"T" * 32)
+        recs = b"MHOR" + struct.pack("<I", 1)
+        for stp in (5, 29, 30, 31, 45):
+            recs += struct.pack("<I", stp) + bytes([stp]) * (ORDER_REC - 4)
+        with gzip.open(os.path.join(sh, "mh_rec_orders.bin.gz"), "wb") as fh:
+            fh.write(recs)
+        with gzip.open(os.path.join(sh, "mh_rec_clock.bin.gz"), "wb") as fh:
+            fh.write(struct.pack("<50d", *range(1, 51)))
+        put(
+            sh,
+            "mh_rec_hash.txt",
+            hdr + "".join("%d %s\n" % (s, st(s)) for s in (1, 20, 30, 40)),
+        )
+        put(
+            sh,
+            "mh_rec_segments.txt",
+            "; mh_rec_segments v1: x\nsegment 0 step=1 kind=session_start clock_after=0.000 planet_after=3 "
+            "seed=mh_rec_seed.bin\nsegment 1 step=30 kind=save_load prev_step=29 clock_before=9.000 "
+            'clock_after=4.000 planet_before=3 planet_after=5 planet=-1 hash_before=AAAA hash_after=BBBB '
+            'source="2-almost" file="save\\2-almost.sav" file_bytes=3 file_fnv=E71FA2190541574B '
+            "seed=mh_rec_seed_1.bin\nsanity NEW seg=1 step=30 boundary=save_load: buildings p0 i10\n",
+        )
+        got = resolve(sh, shipped=True)
+        check(
+            "segments: parsed (0 and 1, step/kind/source/fnv) + the sanity line",
+            sorted(got["segments"]) == [0, 1]
+            and got["segments"][1]["step"] == 30
+            and got["segments"][1]["source"] == "2-almost"
+            and got["segments"][1]["file_fnv"] == "E71FA2190541574B"
+            and len(got["sanity"]) == 1,
+        )
+        sg = slice_segment(got, 1, os.path.join(tmp, "seg_out"))
+        with open(sg["files"]["seed"], "rb") as fh:
+            seg_seed = fh.read()
+        with open(sg["files"]["clock"], "rb") as fh:
+            seg_clock = struct.unpack("<21d", fh.read())
+        seg_steps = [
+            struct.unpack_from(
+                "<I", open(sg["files"]["orders"], "rb").read(), ORDERS_MAGIC_LEN + i * ORDER_REC
+            )[0]
+            for i in range(order_records(sg["files"]["orders"]))
+        ]
+        check(
+            "segment 1: its own seed, clock from step 30, orders >= 30 renumbered from 1",
+            seg_seed == b"T" * 32
+            and seg_clock[0] == 30.0
+            and seg_steps == [1, 2, 16]
+            and sg["base"] == 29,
+        )
+        check(
+            "segment 1: checkpoints 30 and 40 become replay steps 1 and 11",
+            sorted(sg["ref_steps"]) == [1, 11] and sg["ref_steps"][11][2] == st(40),
+        )
+        check(
+            "a segment the table does not hold is REFUSED",
+            _refused(lambda: slice_segment(got, 7, tmp)),
+        )
+        abc = os.path.join(tmp, "abc.sav")
+        put(tmp, "abc.sav", b"abc")
+        check(
+            "fnv1a64_file matches mh.dll's file_fnv64 ('abc')",
+            fnv1a64_file(abc) == "E71FA2190541574B",
+        )
+        check(
+            "the scene of a save_load segment is the recorded save when the hash matches",
+            segment_scene(sg, abc)[0] == abc,
+        )
+        put(tmp, "abd.sav", b"abd")
+        check(
+            "...and a different save is REFUSED by its hash",
+            _refused(lambda: segment_scene(sg, os.path.join(tmp, "abd.sav"))),
+        )
+        sg2 = dict(sg, segment=dict(sg["segment"], kind="planet_transition"))
+        check(
+            "a planet_transition segment needs --carrier-save",
+            _refused(lambda: segment_scene(sg2)) and segment_scene(sg2, None, abc)[0] == abc,
+        )
+        check(
+            "the segment walk loads the save from the main menu",
+            "clickl Load game" in load_walk_script() and "gamemode 2" in load_walk_script(),
+        )
+        os.remove(os.path.join(sh, "mh_rec_seed.bin.gz"))
+        check(
+            "resolve: a shipped recording without its seed is REFUSED, by name",
+            _refused(lambda: resolve(sh, shipped=True)),
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

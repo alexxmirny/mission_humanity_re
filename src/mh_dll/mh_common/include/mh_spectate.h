@@ -76,6 +76,11 @@ inline bool decided(const roster &r, const verdict &v) {
 // The spectator's side won: the team rule is on and every player still alive is its mutual ally.
 inline bool side_won(const roster &r, const verdict &v) { return r.ally_rule && v.allied_with_me; }
 
+// mp:U54-FW ([net] last_human_win_check, the false-win fix): no ENEMY of `me` is alive -- every other alive player is its mutual ally (or none is
+// left). Retail's "no other human alive" branch of presence_lost (outcome 6/8) announces "You have won!" with the victory
+// fanfare without asking this; with enemy AI still alive that is a false victory. Display-only: it decides a text + a sound.
+inline bool no_enemy_alive(const verdict &v) { return v.alive == 0 || v.allied_with_me; }
+
 // Does a human `me` that has just lost its last presence (ALIVE already cleared) become a spectator?
 // `in_lockstep` = session mode 3; `natural` = presence_lost mode 0.
 inline bool becomes_spectator(const roster &r, int me, bool key_on, bool in_lockstep, bool natural) {

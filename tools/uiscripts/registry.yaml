@@ -657,6 +657,31 @@ tests:
     post_check_peers: true
     desc: 'PT-FIX1 negative arm: `[net] turret_reload_owner_fix=0` (retail) -- the rubble drains the new
       turret''s reload timer (ready in a fraction of the steps); both peers agree: no desync'
+  # hotfix rc9.4 [net] bldg_pip_guard: a building whose pip_level holds garbage crashed retail the first time
+  # update_charge_pips / tick_pip_anim indexed the 4-entry fire-animation table with it (field crashes
+  # 0x0047908b / 0x004793e1). The harness fixture (pip_*) plants pip_level[0] = 0xC384DE82 + half-energy damage
+  # into player 0's mother building on every peer at one step. Configuration (1) (no libmh.dll): the splices at
+  # 0x0046fe67 / 0x00478ecb are what is under test.
+  - name: bldg_pip_guard
+    budget_s: 46
+    budget_evidence: "measured 33 s and 33 s on the local rig 2026-10-15 (two runs) x 1.3"
+    kind: multi
+    host: mp_host_pip_guard.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: d35_buildclick_c1  # same configuration-(1) pair
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pip_at=100;pip_player=0;pip_tail=300
+    timeout: 420
+    post_check: [[tools/check_pip_guard.py, --expect, fixed]]
+    post_check_peers: true
+    post_check_session: true  # the GUARD line is match-time mh_net.log content (session dir)
+    desc: 'rc9.4 bldg_pip_guard: a garbage pip_level planted in a live building is zeroed (one `[pip] GUARD`
+      line per peer) and the match runs on; hashes stay IDENTICAL'
+  # No registered retail twin: with [net] bldg_pip_guard=0 both peers FAULT at 0x0047908b after the poke (measured
+  # 2026-10-15, crash markers on both lanes), and a walk whose process dies is red before any post_check runs. The
+  # reproduction is a manual run -- see tools/check_pip_guard.py's docstring (`--expect retail`).
   # patching:PT-FIX3: a helicopter in the path state (0x12) at microstep 31 with a stale facing_target that
   # receives an order is deferred by the dispatcher forever (move_path's ms==31 && order_queued early return
   # never reconciles the facing). The harness fixture (pt3_*) creates a helicopter, sends it east, and once it
@@ -2274,11 +2299,12 @@ tests:
   - name: dialog_stall
     # mp:U44 -- the building dialog vs the lockstep stall overlay: (a) short stall keeps the dialog, (b) a long
     # stall shows the kick modal with the dialog stashed, then restores it, (c) a second long stall with no
-    # dialog open shows only the modal. Three forced blackholes (0.8 s / 3.5 s / 3.5 s of parked sim) + a mother
-    # landing, so it is a ~110 s walk by construction.
-    budget_s: 146
-    budget_evidence: "measured 108-112 s over 3 local runs 2026-10-01 (dialog_stall alone) x 1.3 = 146"
-    long_why: "walk = lobby + landing (20 s of sim) + three forced stalls (each ~4.4 s lookahead + parked time) + 15 s resume holds; the stall durations are the thing under test and cannot be shortened below the modal threshold"
+    # dialog open shows only the modal, (d) mp:U44b: the dialog closed DURING a stall (the field's Sell) must leave
+    # live input -- mode 2, the HUD reopens it, the mouse ring drains. Four forced blackholes (0.8 s / 3.5 s / 3.5 s /
+    # 1.8 s of parked sim) + a mother landing, so it is a ~115 s walk by construction.
+    budget_s: 150
+    budget_evidence: "measured 115-118 s over 3 local runs 2026-10-14 (dialog_stall alone, with arm d) x 1.3 = 150"
+    long_why: "walk = lobby + landing (20 s of sim) + four forced stalls (each ~4.4 s lookahead + parked time) + 15 s resume holds; the stall durations are the thing under test and cannot be shortened below the modal threshold"
     kind: multi
     no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
     host: mp_host_dialog_stall.txt
@@ -2309,6 +2335,12 @@ tests:
     - cmd: blackhole off
       when:
       - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell end']
     timeout: 400
     desc: 'U44: a lockstep stall must not close the open building dialog (short stall), and the kick modal must stash/restore it (long stall) with its own buttons live'
   - name: dialog_stall_off
@@ -2357,9 +2389,9 @@ tests:
   # stays the per-session row, and the carrier's lint/selftest half rides the light gate.
   - name: dialog_stall_original
     tier: release
-    budget_s: 146
-    budget_evidence: "measured 109 s on the local rig 2026-10-07 (dialog_stall under rollback_original.ini) x 1.3 = 142, rounded up to the brokered row's 146"
-    long_why: "same walk as dialog_stall: lobby + landing + three forced stalls whose durations are the thing under test"
+    budget_s: 150
+    budget_evidence: "measured 115 s on the local rig 2026-10-14 (with arm d, alone) x 1.3 = 150"
+    long_why: "same walk as dialog_stall: lobby + landing + four forced stalls whose durations are the thing under test"
     kind: multi
     no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
     host: mp_host_dialog_stall.txt
@@ -2390,13 +2422,19 @@ tests:
     - cmd: blackhole off
       when:
       - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell end']
     timeout: 400
     desc: 'U74/U44: dialog_stall on the retail bodies ([config] mode=original) -- the odg:: call-site splices keep the dialog through a short stall and stash/restore it around the kick modal'
   - name: dialog_stall_c1_retail
     tier: release
-    budget_s: 146
-    budget_evidence: "seeded from dialog_stall_original (same walk, libmh.dll omitted)"
-    long_why: "same walk as dialog_stall: lobby + landing + three forced stalls whose durations are the thing under test"
+    budget_s: 150
+    budget_evidence: "measured 116 s on the local rig 2026-10-14 (with arm d, alone) x 1.3 = 150"
+    long_why: "same walk as dialog_stall: lobby + landing + four forced stalls whose durations are the thing under test"
     kind: multi
     no_hash_why: 'deliberate blackholes stall the host (the stalls under test); the U44 determinism clause is python tools/test_ui.py --determinism, not this row'
     host: mp_host_dialog_stall.txt
@@ -2428,6 +2466,12 @@ tests:
     - cmd: blackhole off
       when:
       - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: long2 end']
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST dlg_stall: sell end']
     timeout: 400
     desc: 'U74/U44: dialog_stall in configuration (1) (no libmh.dll) -- the same splices, the same frames'
   - name: dialog_stall_off_original

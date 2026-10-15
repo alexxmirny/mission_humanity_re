@@ -168,6 +168,7 @@ void run_bldg_state_deploy_start_tests();
 void run_bldg_state_to_unit_tests();
 void run_bldg_state_turret_scan_tests();
 void run_bldg_tick_turret_owner_tests();    // patching:PT-FIX1
+void run_bldg_pip_guard_tests();            // hotfix rc9.4 [net] bldg_pip_guard
 void run_bldg_tick_turret_rate_tests();     // patching:PT-FIX2
 void run_bldg_turret_clip_tests();          // patching:PT-FIX4
 void run_bldg_turret_poll_tests();          // patching:PT-FIX5
@@ -1823,6 +1824,7 @@ int run_simtest() {
     mh::sim::test::run_bldg_state_to_unit_tests();
     mh::sim::test::run_bldg_state_turret_scan_tests();
     mh::sim::test::run_bldg_tick_turret_owner_tests();    // patching:PT-FIX1
+    mh::sim::test::run_bldg_pip_guard_tests();            // hotfix rc9.4 [net] bldg_pip_guard
     mh::sim::test::run_bldg_tick_turret_rate_tests();     // patching:PT-FIX2
     mh::sim::test::run_bldg_turret_clip_tests();          // patching:PT-FIX4
     mh::sim::test::run_bldg_turret_poll_tests();          // patching:PT-FIX5

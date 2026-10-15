@@ -1,0 +1,61 @@
+# mp:U54-FW -- THE LAST HUMAN WITH AN ENEMY AI ALIVE (tools/det_arms.py --u54-lastwin*; check_u54_spectate.py reads the logs).
+# Topology = the --u53-* one. Team mode: host, client1, client2 on T1, an AI in slot 3 on T2 (the enemy).
+# The host's harness force-kills client2 at step ~300 (it becomes a SPECTATOR: two humans + an enemy AI remain) and then
+# client1 at ~600: the HOST is the last human with the enemy AI still alive. The host is the last human (not a client)
+# because the hub leads the step: the dying client's CTL_PLAYER_LEFT cannot overtake the host's own natural evaluation,
+# which is what makes it outcome 6 ("You are the last player !" + Continue game) and not the forced 8. With
+# [net] last_human_win_check=1 there is no "You have won! Congratulations" (nor fanfare); the -neg arm (=0) reproduces
+# retail's false win.
+# host: seats the AI (T2), its own team + the mode, Starts, issues both kills, then gets the last-player dialog.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+click 70 166
+present Computer
+occ 4
+click 221 166
+team 3 1
+click 221 166
+team 3 2
+click 221 115
+team 0 1
+click 501 370
+lobbymode 1
+awaitsignal c1team
+team 1 1
+awaitsignal c2team
+team 2 1
+team 3 2
+signal setup
+awaitsignal c1ready
+awaitsignal c2ready
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+present Continue game
+dump
+signal hostdone
+log host (the last human) reached its outcome dialog
+awaitsignal c1done
+awaitsignal c2done
+end

@@ -1,0 +1,54 @@
+# mp:U54-FW -- THE LAST HUMAN WITH ONLY AN ALLIED AI ALIVE (tools/det_arms.py --u54-lastwin-ally; check_u54_spectate.py).
+# The positive control of --u54-lastwin: FFA mode (no ally-victory rule), host, client1, client2 AND the AI (slot 3) all on
+# T1. Same two force-kills (client2 at ~300, client1 at ~600). The host is again the last human (outcome 6), but nobody
+# alive is its enemy, so "You have won! Congratulations" + the fanfare stay ([net] last_human_win_check=1 keeps retail).
+# host: seats the AI (T1), its own team, leaves the mode at FFA, Starts, issues both kills, gets the last-player dialog.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+click 70 166
+present Computer
+occ 4
+click 221 166
+team 3 1
+click 221 115
+team 0 1
+lobbymode 0
+awaitsignal c1team
+team 1 1
+awaitsignal c2team
+team 2 1
+team 3 1
+signal setup
+awaitsignal c1ready
+awaitsignal c2ready
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+present Continue game
+dump
+signal hostdone
+log host (the last human) reached its outcome dialog
+awaitsignal c1done
+awaitsignal c2done
+end

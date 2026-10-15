@@ -45,13 +45,15 @@ enum path : int {
     ORD_CLOSE,     // the order recording's session close
     SESSION_OPEN,  // a session folder's open (mp_session_open: directory, breadcrumb, record)
     SESSION_CLOSE, // a session's close on the game thread (all of it: rollups, record, directory switch)
+    REPLAY_REC,    // the replay record's step (the step-1 seed staging, a hash checkpoint every N steps)
     PATHS
 };
 
 inline const char *name(int p) {
     static const char *const N[PATHS] = {"step_total", "tracker", "rec_step", "ord_step",
                                          "ord_dispatch", "ring_step", "snapshot", "rec_close",
-                                         "ring_close", "ord_close", "session_open", "session_close"};
+                                         "ring_close", "ord_close", "session_open", "session_close",
+                                         "replay_rec"};
     return (p >= 0 && p < PATHS) ? N[p] : "?";
 }
 

@@ -1988,6 +1988,7 @@
     <ClCompile Include="sim_bldg_load_resource_tail_noop_selftest.cpp" />
     <ClCompile Include="sim_bldg_network_critical_selftest.cpp" />
     <ClCompile Include="sim_bldg_online_secondary_selftest.cpp" />
+    <ClCompile Include="sim_bldg_pip_guard_selftest.cpp" />
     <ClCompile Include="sim_bldg_placement_corner_by_type_selftest.cpp" />
     <ClCompile Include="sim_bldg_placement_corner_selftest.cpp" />
     <ClCompile Include="sim_bldg_power_network_selftest.cpp" />

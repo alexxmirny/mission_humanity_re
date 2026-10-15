@@ -47,9 +47,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 217,
+    "sites": 218,
     "distinct": 151,
-    "outward_sites": 156,
+    "outward_sites": 157,
     "outward_distinct": 114
    },
    "sim": {
@@ -985,9 +985,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },

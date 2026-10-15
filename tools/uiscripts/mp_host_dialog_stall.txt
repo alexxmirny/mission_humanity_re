@@ -106,5 +106,42 @@ gamemode 2
 absent Ok
 gameclock 60000
 capture after_long2
+
+# (d) mp:U44b -- CLOSE THE DIALOG DURING A STALL (field report 01M4XZJER40J6TBCFCYR8KW9RN: Sell mid-stall, input
+# dead for the rest of the match). Closing a dialog runs llm_menu_finish_enter_gameplay, which re-arms the wait
+# icon ITSELF (call 0x004b82a8) whenever WAIT_PLAYER_IDX >= 0 -- set by time_tick's wait-overlay call, i.e. once
+# the parked wait passes stall_icon_delay_ms (1 s). The rc9.3 guard never saw that arm, so the dismiss at the end of
+# the stall restored mode 3 with no list and no dialog: nothing consumed input again. Ok closes the dialog the
+# same way Sell does (llm_ui_dlg_close_cb) without spending the mother. 1800 sits past the 1 s icon delay and short
+# of the kick modal (~4 s parked).
+simclick 500 330
+gameclock +200
+simclick 882 271
+retry 1500 3 3 gamemode 3
+present Ok
+log HOST dlg_stall: sell start
+stalled 1800
+clickl Ok
+absent Ok
+# the icon re-armed by the close -- the path under test, taken while the sim is still parked
+gamemode 3
+log HOST dlg_stall: sell end
+gameclock +1500
+# fixed: the dismiss leaves the strategic screen (mode 2), not a dead mode 3. Bounded so the rc9.3 arm
+# (overlay_dialog_guard=2) goes red in seconds instead of spending the walk watchdog.
+retry 3000 1 1 gamemode 2
+absent Ok
+# ...and input is consumed again: the HUD's status button opens the dialog (only the mode-2 input pump reaches
+# it), the mouse ring drains, and Ok closes it.
+simclick 500 330
+gameclock +200
+simclick 882 271
+retry 1500 3 3 gamemode 3
+present Ok
+mring 0
+clickl Ok
+gamemode 2
+absent Ok
+mring 0
 signal hostdone
 end

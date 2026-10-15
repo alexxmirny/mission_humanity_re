@@ -138,6 +138,8 @@ MH_INI_KEY("net", "sim_step_ms", T_STRING, "20", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "sp_clock_log", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "spectate_after_defeat", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "spectate_mask", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "last_human_win_check", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "stall_icon_delay_ms", T_INT, "1000", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "storage_panel_purge_fix", T_BOOL, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "team_relations_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("net", "transport", T_STRING, "udp", C_FIXED, "", S_NONE, "", F_NONE)
@@ -145,6 +147,7 @@ MH_INI_KEY("net", "transport", T_STRING, "udp", C_FIXED, "", S_NONE, "", F_NONE)
 
 
 MH_INI_KEY("net", "turret_reload_owner_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("net", "bldg_pip_guard", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 
 MH_INI_KEY("net", "undock_reentry_fix", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 
@@ -243,6 +246,10 @@ MH_INI_KEY("desync", "per_step", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("desync", "snapshot", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("desync", "state_ring", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("desync", "verbose", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "seed_record", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "hash_record_every", T_INT, "256", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "door_watch", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("desync", "seed_sanity", T_INT, "1", C_DEV, "", S_NONE, "", F_NONE)
 
 // ---- [patch] (dev / fixed) ----
 MH_INI_KEY("patch", "dump", T_STRING, "", C_DEV, "", S_NONE, "", F_NONE)
@@ -340,6 +347,10 @@ MH_INI_KEY("harness", "pin_menu_clock", T_INT, "0", C_DEV, "", S_NONE, "", F_NON
 MH_INI_KEY("harness", "pin_rand", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("harness", "pin_strat_seed", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("harness", "pin_wallclock", T_BOOL, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pip_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pip_player", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pip_tail", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
+MH_INI_KEY("harness", "pip_value", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("harness", "profile_hz", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("harness", "pt1_at", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("harness", "pt1_player", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
@@ -440,3 +451,4 @@ MH_INI_KEY("harness", "vision_order_value", T_INT, "0", C_DEV, "", S_NONE, "", F
 MH_INI_KEY("harness", "world_capture", T_INT, "0", C_DEV, "", S_NONE, "", F_NONE)
 MH_INI_KEY("ui", "worker_click_fix", T_INT, "1", C_DEV, "", S_NONE, "0|1|2", F_NONE)
 MH_INI_KEY("ui", "minimap_box_clip", T_INT, "1", C_DEV, "", S_NONE, "0|1|2", F_NONE)
+MH_INI_KEY("ui", "crew_shortage_reminder_s", T_INT, "30", C_DEV, "", S_NONE, "0|30", F_NONE)

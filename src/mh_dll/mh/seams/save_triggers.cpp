@@ -20,12 +20,14 @@
 #include "save/save_live.h"
 
 #include "addr/mh_calls.gen.h"
+#include "seams/replay_boundary.h" // hotfix rc9.4: a load replaces the state -- the replay record cuts a segment
 
 #include <cstdint>
 
 namespace mh::save {
 
 unsigned loadgame_now(char *save_name) {
+    replay_boundary_note_save_load(save_name); // the menu's call site is not on this path
     return static_cast<unsigned>(mh::call::llm_game_load(save_name));
 }
 

@@ -141,6 +141,7 @@
     <ClCompile Include="world_sync_selftest.cpp" />
     <ClCompile Include="inc_state_selftest.cpp" />
     <ClCompile Include="state_record_selftest.cpp" />
+    <ClCompile Include="replay_rec_selftest.cpp" />
     <ClCompile Include="net_queue_selftest.cpp" />
     <ClCompile Include="session_id_selftest.cpp" />
     <ClCompile Include="session_dir_selftest.cpp" />
@@ -215,6 +216,11 @@
     <ClCompile Include="..\mh\desync\state_recorder.cpp" />
     <ClCompile Include="..\mh\desync\state_compress.cpp" />
     <ClCompile Include="..\mh\desync\order_capture.cpp" />
+    <ClCompile Include="..\mh\desync\replay_record.cpp" />
+    <ClCompile Include="..\mh\seams\door_watch.cpp" />
+    <ClCompile Include="..\mh\seams\bldg_pip_guard.cpp" />
+    <ClCompile Include="..\mh\desync\seed_sanity.cpp" />
+    <ClCompile Include="..\mh\seams\replay_boundary.cpp" />
     <ClCompile Include="..\mh\desync\state_miniz.c" />
     <ClCompile Include="..\mh\desync\state_ring.cpp" />
     <ClCompile Include="..\mh\desync\world_sync.cpp" />
@@ -2497,6 +2503,7 @@
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="..\mh\seams\ui_worker_click.cpp" />
     <ClCompile Include="..\mh\seams\ui_minimap_box.cpp" />
+    <ClCompile Include="..\mh\seams\ui_crew_reminder.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_netcrit_pure.cpp" />

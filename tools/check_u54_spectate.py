@@ -114,7 +114,90 @@ def check_team(det_dir, victim):
     return (not bad), out + ["FAIL: " + x for x in bad]
 
 
+LASTWIN_RACE = "RACE: forced removal first"
+FW_LINE = re.compile(r"; U54-FW outcome=(\d+) won_text_queued=(\d) enemies_alive=(\d+)")
+FW_RETAIL = re.compile(
+    r"; U54-FW last human: outcome=(\d+) .* -> (an ENEMY is alive|no enemy alive)"
+)
+FW_PATCHED = re.compile(r"; U52 retail carrier last-human (text|fanfare) @[0-9A-F]+: (\w+)")
+
+
+def check_lastwin(det_dir, arm):
+    """mp:U54-FW, the false "You have won": the host force-kills client2 (it spectates) and then client1, so the host is
+    the last human. It must get outcome 6 (the "last player" dialog). `lastwin`: an ENEMY AI is alive -> no win text
+    queued; `lastwin-neg` (fix off): the text IS queued (retail's false win); `lastwin-ally`: only an allied AI -> the
+    text stays. The retail carrier's own verdict line, when it ran, must agree (the fanfare follows the same decision)."""
+    out, bad = [], []
+    neg = "lastwin-neg" in arm
+    ally = "lastwin-ally" in arm
+    hnet = u53._read(os.path.join(det_dir, "host", "mh_net.log"))
+    hh = u53._read(os.path.join(det_dir, "host", "mh_harness.log"))
+    k1 = re.search(r"; CONQ step=(\d+) FORCE-KILL: order 0xf8 x\d+ against player 2", hh)
+    k2 = re.search(r"; CONQ step=(\d+) FORCE-KILL2: order 0xf8 x\d+ against player 1", hh)
+    out.append(
+        "host force-kills: client2 at %s, client1 at %s" % (k1 and k1.group(1), k2 and k2.group(1))
+    )
+    if not (k1 and k2):
+        bad.append("the host did not force-kill client2 and then client1")
+    c2net = u53._read(os.path.join(det_dir, "client2", "mh_net.log"))
+    if not (SPEC_LINE.search(c2net) or SPEC_RETAIL.search(c2net)):
+        bad.append(
+            "client2 never became a spectator (the shape needs it out of the humans but in the match)"
+        )
+    go = GAMEOVER.findall(hnet)
+    out.append("host on_gameover (sess, outcome, gclk, downgrade): %s" % go[:3])
+    if not any(g[1] == "6" for g in go):
+        if any(g[1] == "8" for g in go):
+            # client1's CTL_PLAYER_LEFT reached the host before the host's own sim stepped the elimination: the FORCED
+            # flavour (outcome 8), which never queues the win text in retail either -- the shape did not happen, not a
+            # verdict on the fix. Measured ~1 run in 4. det_arms.py re-runs the arm on this marker.
+            bad.append(
+                LASTWIN_RACE
+                + " -- client1's CTL_PLAYER_LEFT beat the host's own elimination step (outcome 8)"
+            )
+        else:
+            bad.append("the host (the last human) never got outcome 6 (the 'last player' dialog)")
+    fw = FW_LINE.findall(hnet)
+    out.append("host U54-FW evidence (outcome, won_text_queued, enemies_alive): %s" % fw[:3])
+    f6 = [x for x in fw if x[0] == "6"]
+    if not f6:
+        bad.append("no `; U54-FW outcome=6 ...` evidence line on the host")
+    else:
+        _, won, enemies = f6[0]
+        want_won = "1" if (neg or ally) else "0"
+        if won != want_won:
+            bad.append(
+                "won_text_queued=%s, expected %s (%s)"
+                % (
+                    won,
+                    want_won,
+                    "retail false win"
+                    if neg
+                    else "allied AI only"
+                    if ally
+                    else "an enemy AI is alive",
+                )
+            )
+        if ally and enemies != "0":
+            bad.append("positive arm: enemies_alive=%s, expected 0" % enemies)
+        if not ally and enemies == "0":
+            bad.append(
+                "the enemy AI was not alive when the last human's dialog opened (enemies_alive=0)"
+            )
+    out.append("host retail carriers: %s" % FW_PATCHED.findall(hnet))
+    rv = FW_RETAIL.findall(hnet)
+    if rv:
+        out.append("host retail carrier verdict: %s" % rv[:2])
+        if neg:
+            bad.append("the fix-off arm still ran the retail carrier")
+        elif (rv[0][1] == "no enemy alive") != ally:
+            bad.append("the retail carrier's verdict disagrees with the roster")
+    return (not bad), out + ["FAIL: " + x for x in bad]
+
+
 def check(det_dir, victim, arm="u54-client-spec", kill_step=300):
+    if "lastwin" in arm:
+        return check_lastwin(det_dir, arm)
     if "team" in arm:
         return check_team(det_dir, victim)
     out, bad = [], []

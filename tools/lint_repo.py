@@ -1411,6 +1411,10 @@ def declare_checks(args):
         [sys.executable, os.path.join(REPO, "tools", "check_pt1_turret_slot.py"), "--selftest"],
     )
     check(
+        "rc9.4 bldg_pip_guard -- the negative cases still fire (check_pip_guard --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_pip_guard.py"), "--selftest"],
+    )
+    check(
         "patching:PT-FIX4 turret clip -- the negative cases still fire (check_pt4_turret_clip --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_pt4_turret_clip.py"), "--selftest"],
     )

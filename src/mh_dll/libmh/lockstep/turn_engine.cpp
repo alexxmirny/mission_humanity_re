@@ -694,6 +694,7 @@ void                set_fixes(const reimpl_fixes &f) {
     mh::orders::set_admin_dedup_exempt(f.diplo_order_dedup_fix);                                // mp:U45
     mh::sim::set_undock_reentry_fix(f.undock_reentry_fix);                                      // mp:U49
     mh::sim::set_turret_reload_owner_fix(f.turret_reload_owner_fix);                            // PT-FIX1
+    mh::sim::set_bldg_pip_guard(f.bldg_pip_guard);                                              // hotfix rc9.4
     mh::sim::set_turret_reload_realtime(f.turret_reload_realtime_fix, f.turret_fire_rate_mult); // PT-FIX2
     mh::sim::set_turret_clip_fix(f.turret_clip_fix);                                            // PT-FIX4
     mh::sim::set_turret_fire_poll_fix(f.turret_fire_poll_fix);                                  // PT-FIX5

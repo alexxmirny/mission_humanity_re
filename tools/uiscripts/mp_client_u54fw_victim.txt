@@ -1,0 +1,39 @@
+# mp:U54-FW (tools/det_arms.py --u54-lastwin*; see mp_host_u54fw_lastwin.txt).
+# client1: on T1; force-killed second (step ~600) with only the host human left, so it does not spectate: its defeat
+# dialog, and its CTL_PLAYER_LEFT leaves the host as the last human.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+signal seated1
+click 221 132
+team 1 1
+signal c1team
+awaitsignal setup
+team 0 1
+team 1 1
+team 2 1
+signal c1ready
+
+absent Network players
+gamemode 2
+screen 0x00653dc3
+dump
+signal c1done
+log c1 reached its defeat dialog
+awaitsignal hostdone
+awaitsignal c2done
+end

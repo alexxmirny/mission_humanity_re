@@ -426,6 +426,17 @@ inline constexpr int32_t STALL_NAG_FLOOR       = 0x1e; // the nag counter decays
 inline constexpr int32_t LEAVE_CONSENSUS_MIN   = 2;    // > 2 active players -> broadcast, else remove
 inline constexpr uint8_t PEER_STATE_NONE       = 0;    // the value the timeout drop requires
 
+// MP U20b -- reimpl_fixes::stall_icon_delay_ms's predicate. SYNC_WAIT_ELAPSED is reloaded to 1.0 when a wait
+// ends and grows by GAME_TIME_DELTA (real dt x game_speed) on every parked frame, before the wait-overlay
+// call reads it, so (elapsed - 1.0) / speed is the real wait in seconds. Fails OPEN (NaN, speed <= 0 -> show).
+// net_lockstep.cpp's icon_delay_due is the retail carrier's copy of the same arithmetic.
+inline bool stall_icon_due(double sync_wait_elapsed, double game_speed, int32_t delay_ms) {
+    if (delay_ms <= 0) return true;
+    if (!(game_speed > 0.0)) game_speed = 1.0;
+    const double waited_ms = (sync_wait_elapsed - 1.0) * 1000.0 / game_speed;
+    return !(waited_ms < static_cast<double>(delay_ms));
+}
+
 // Everything time_tick calls out to. `get_current_time` is listed for completeness but is used by the
 // WRAPPER only -- if the body could call it, the split above would be pointless.
 struct timekeeper_calls {
@@ -569,6 +580,18 @@ struct reimpl_fixes {
     // Default false here = the faithful-stock rule (fixtures); the shipped ini default is 1.
     // overlay_hoist.cpp reads it; so does the host sink's viewport-dirty mark.
     bool overlay_dialog_guard = false;
+    // MP U44b: dev-only companion of the knob above (overlay_dialog_guard=2, the rc9.3 reproduction arm) --
+    // drop the dismiss SAFETY NET, i.e. restore a foreign mode 3 even when no dialog / widget list is left.
+    // Retail UI code (llm_menu_finish_enter_gameplay 0x004b82a8) arms the wait icon outside this ledger, so
+    // without the net the next dismiss put mode 3 back over a closed dialog and input died. False = net on.
+    bool overlay_guard_rc93 = false;
+
+    // [net] stall_icon_delay_ms -- MP U20b: show the de-sync corner icon (wait_player_overlay_show) only once
+    // the sim has been parked at the horizon this long: (SYNC_WAIT_ELAPSED - 1.0) / game_speed, the game's
+    // own wait accumulator in real seconds. 0 = stock (every wanted frame). Display-only like
+    // desync_icon_gate above (the call's return is discarded) and LOCAL (each peer may differ). The retail
+    // carrier is net_lockstep.cpp's wait_overlay_gate_thunk; the initialiser is stock, the ini default 1000.
+    int32_t stall_icon_delay_ms = 0;
 
     // [net] gone_peer_frame_guard -- MP U19e: keep the INCOMING datagram intact across the leader's
     // re-broadcast of a peer drop (rx_dispatch.cpp's dispatch_packet head, 0x0049c311), whose emitter
@@ -610,6 +633,13 @@ struct reimpl_fixes {
     // reload_timer every step (~4x fire rate). SIM-AFFECTING (shipped default 1, not negotiated). Byte
     // splice for the unpromoted tick: net_lockstep.cpp install_turret_reload_owner_fix. Initialiser = faithful stock.
     bool turret_reload_owner_fix = false;
+
+    // [net] bldg_pip_guard -- hotfix rc9.4 (field crashes 0x0047908b / 0x004793e1): building_tick (before the
+    // pip-anim gate) and update_charge_pips (on entry) zero a building's pip state when any pip_level is outside
+    // 0..4 or pip_active_count outside 0..16, instead of indexing the 4-entry A_OGIEN table with it. SIM-AFFECTING
+    // only on an already-illegal state (shipped default 1, not negotiated). Byte splices for the unpromoted bodies:
+    // seams/bldg_pip_guard.cpp. Initialiser = faithful stock.
+    bool bldg_pip_guard = false;
 
     // [net] turret_reload_realtime_fix + turret_fire_rate_mult -- PT-FIX2: building_tick hands the turret
     // reload tick dt * turret_fire_rate_mult (dt = GAME_TIME_DELTA, one step's real length) instead of the
@@ -665,6 +695,16 @@ struct reimpl_fixes {
     // the ini default is 1.
     bool spectate_after_defeat = false;
 
+    // [net] last_human_win_check -- MP U54-FW (the false win): retail presence_lost's "no other HUMAN alive" branch
+    // (outcome 6 "you are the last player" / 8) prints "You have won! Congratulations" (text 0x7d) and plays the
+    // victory fanfare (0xa5) without asking whether an ENEMY (AI) is still alive -- the last human of a team whose
+    // mates died or dropped "won" against a live AI. With the fix ON the text and the fanfare are given only when
+    // mh_spectate.h's no_enemy_alive says so; the outcome code (and so the dialog: "last player" + Continue) and
+    // every sim write are unchanged. DISPLAY-ONLY: neither the print queue nor a sound is hashed state. Carried
+    // for the unpromoted body by two byte patches (net_lockstep.cpp, install_last_human_win_check). Initialiser =
+    // faithful stock (off); the ini default is 1.
+    bool last_human_win_check = false;
+
     // [net] team_relations_fix -- MP U52: the lobby's TEAM column (slot +0x0c -> Players[].desc+7) and
     // MODE selector (host slot 0 +0x07) take effect. At MP match start, AFTER landing has reset the AI
     // relation mirror, every ordered pair of enabled players is set allied (same non-zero team) or enemy
@@ -691,6 +731,14 @@ struct reimpl_fixes {
     // PUSHED by the DLL's session-entry observer (the lobby slots are not a registered sim region, and
     // adding one would renumber every hash region id). Read only by the U52 seed.
     bool lobby_team_mode = false;
+
+    // [ui] crew_shortage_reminder_s -- hotfix rc9.4 (garage report 01a13bb6): while a LOCAL-player vehicle waits
+    // in EXIT_WAIT for lack of crew, exit_wait re-shows retail's "You have run out of people to drive vehicles"
+    // (race_alert_text_emit) at most once per this many game-clock seconds. Retail shows it once, at exit begin.
+    // DISPLAY-ONLY (the emitter's statics + the print queue; no hashed write). Carried by a splice for the retail
+    // body (seams/ui_crew_reminder.cpp); mh_crew_reminder.h holds the shared throttle. Initialiser = faithful
+    // stock (0 = off); the ini default is 30.
+    int crew_shortage_reminder_s = 0;
 
     // The three `defang_*` fields were HERE and were removed by C8-e (2026-07-30) as a scope
     // decision: all three were default-off and `resync_trigger_gate` supersedes them as the

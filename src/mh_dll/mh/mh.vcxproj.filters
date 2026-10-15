@@ -133,6 +133,9 @@
     <ClCompile Include="seams\ui_minimap_box.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_crew_reminder.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_bldg_build_probe.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -261,6 +264,21 @@
     </ClCompile>
     <ClCompile Include="desync\order_capture.cpp">
       <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\replay_record.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\door_watch.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\bldg_pip_guard.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\seed_sanity.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\replay_boundary.cpp">
+      <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="desync\state_miniz.c">
       <Filter>desync</Filter>
@@ -471,6 +489,21 @@
     </ClInclude>
     <ClInclude Include="desync\order_capture.h">
       <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\replay_record.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\door_watch.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\bldg_pip_guard.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="desync\seed_sanity.h">
+      <Filter>desync</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\replay_boundary.h">
+      <Filter>seams</Filter>
     </ClInclude>
     <ClInclude Include="desync\state_miniz_config.h">
       <Filter>desync</Filter>

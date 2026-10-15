@@ -372,6 +372,11 @@
       "why": "patching:PT-FIX2: the turret_rate* / turret_rate*_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT2 FIRE` shot lines (an unshared weapon-8 and weapon-21 turret vs an immobile target) and compares the mean fire interval with the attack-state model: realtime fix on = short_time/mult + the 0.05 s attack poll at every step size, off = the re-count model; both peers must agree, hashes IDENTICAL",
       "evidence": "invoked by the turret_rate* rows of tools/uiscripts/registry.yaml (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
+    "check_pip_guard.py": {
+      "class": "keep",
+      "why": "hotfix rc9.4 [net] bldg_pip_guard: the bldg_pip_guard UI scenario's cross-peer post_check -- reads the harness fixture's `; PIP` lines (plant pip_level[0] = 0xC384DE82 + half-energy damage into the mother building) and the `[pip] GUARD` net-log line: with the key on both peers zero the record, survive and stay IDENTICAL; --expect retail judges the hand-run reproduction (both peers fault at 0x0047908b)",
+      "evidence": "invoked by tools/test_ui.py's bldg_pip_guard TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
     "check_pt1_turret_slot.py": {
       "class": "keep",
       "why": "patching:PT-FIX1: the turret_slot_reuse / turret_slot_reuse_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT1` probe lines (build a turret, kill it, build a second into the freed slot while the rubble lives, arm a 1 s reload, count steps until ready): with `[net] turret_reload_owner_fix=1` the live turret reloads on its own budget (~100 steps); with =0 (retail) the rubble's budget collapses the timer. Both peers must agree, hashes IDENTICAL",
