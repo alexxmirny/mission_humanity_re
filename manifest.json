@@ -1,11 +1,11 @@
 {
   "schema": 1,
   "version": "0.2.0-rc7.1",
-  "issued_at": "2026-10-09T13:22:17Z",
+  "issued_at": "2026-10-17T14:30:08Z",
   "launcher": {
-    "version": "0.2.0-rc8",
-    "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/launcher-v0.2.0-rc8/mh_launcher.exe",
-    "sha256": "e7e3d3bc0b51f39af83cb8a282b433ff0c6fb62830d157329beba4a456ca9edd"
+    "version": "0.2.0",
+    "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/launcher-v0.2.0/mh_launcher.exe",
+    "sha256": "3f00b9b9383179237e621d72b7806938e2261a9d1bfd33d8865839f2d332805a"
   },
   "game": {
     "net": {
