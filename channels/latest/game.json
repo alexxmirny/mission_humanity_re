@@ -2,19 +2,19 @@
   "schema": 2,
   "kind": "game",
   "channel": "latest",
-  "version": "0.2.0-rc9.4",
-  "issued_at": "2026-10-15T10:17:55Z",
+  "version": "0.2.0",
+  "issued_at": "2026-10-17T14:27:20Z",
   "min_launcher": "0.2.0-rc8",
   "game": {
     "net": {
-      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0-rc9.4/mission_humanity_re-0.2.0-rc9.4-net.zip",
-      "sha256": "3145829831cb63d98a9d622ddd4907283043c1805be4080b0e667edc10b773a6",
-      "size": 1496440
+      "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/v0.2.0/mission_humanity_re-0.2.0-net.zip",
+      "sha256": "a220d87a9d674ea216eaa9cfbdf20d634722127656712ddabb2cd30ee594a26f",
+      "size": 1513337
     }
   },
   "relay": {
     "addr": "45.9.15.236:7100",
     "key": "d3dfaa5aee86d27f1a3a7868e9bf9af84f10b5057a6ad299055a6f7756ea49b9"
   },
-  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.0-rc9.4"
+  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.0"
 }
