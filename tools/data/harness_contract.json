@@ -131,6 +131,15 @@
    ]
   },
   {
+   "export": "?import_scene@desync@mh@@YAHPBXI@Z",
+   "mangled": "?import_scene@desync@mh@@YAHPBXI@Z",
+   "pretty": "int __cdecl mh::desync::import_scene(void const *,unsigned int)",
+   "slot": "mh_desync_import_scene",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "?loadgame_now@save@mh@@YAIPAD@Z",
    "mangled": "?loadgame_now@save@mh@@YAIPAD@Z",
    "pretty": "unsigned int __cdecl mh::save::loadgame_now(char *)",

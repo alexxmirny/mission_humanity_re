@@ -303,7 +303,49 @@ fn whats_new(app: &App, ui: &mut Ui) {
         ui,
         &trf("play.whats_new", &[("version", &app.accepted.version)]),
     );
-    ui.hyperlink_to(tr("play.full_notes"), url);
+    // Not `ui.hyperlink_to`: egui hands the click to eframe, which opens it only with its `links`
+    // feature (the `webbrowser` crate) -- built without it, the link did nothing but log "Cannot
+    // open url" (field report 2026-10-15). The shell opens it in the player's default browser.
+    let link = ui
+        .link(tr("play.full_notes"))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(url);
+    if link.clicked() {
+        open_in_browser(url);
+    }
+}
+
+/// `ShellExecuteW(open)` on an `https://` URL: the default browser, the way Explorer would. The
+/// caller has already refused anything that is not https.
+fn open_in_browser(url: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |s: &str| -> Vec<u16> {
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    };
+    let (verb, target) = (wide("open"), wide(url));
+    // SAFETY: both strings are NUL-terminated and outlive the call; the other pointers are null.
+    let r = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecuteW reports success as a value above 32.
+    if (r as isize) <= 32 {
+        crate::log::line(format!(
+            "play: cannot open {url} (ShellExecuteW {})",
+            r as isize
+        ));
+    }
 }
 
 /// The text for a finished run, in the player's language.

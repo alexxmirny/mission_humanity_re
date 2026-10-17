@@ -57,10 +57,16 @@
 
 namespace mh::desync::replay_rec {
 
-inline constexpr char SEED_NAME[]        = "mh_rec_seed.bin";
-inline constexpr char HASH_NAME[]        = "mh_rec_hash.txt";
-inline constexpr char SEGMENTS_NAME[]    = "mh_rec_segments.txt";
-inline constexpr int  HASH_EVERY_DEFAULT = 256;
+inline constexpr char SEED_NAME[]     = "mh_rec_seed.bin";
+inline constexpr char HASH_NAME[]     = "mh_rec_hash.txt";
+inline constexpr char SEGMENTS_NAME[] = "mh_rec_segments.txt";
+// The SCENE (field-report scene dump): the whole bound world (829 regions + the heap nav graph, the
+// libmh world blob, FORMAT 2) at the same instant as each seed, so a report replays without any save.
+// mh_rec_scene.bin(.gz) for segment 0, mh_rec_scene_<n>.bin(.gz) for segment n. ~8 MB raw, ~300 KB gzipped.
+inline constexpr char SCENE_NAME[] = "mh_rec_scene.bin";
+// Scenes per session (a boundary past the cap is logged `scene=none(cap)`): bounds a session at ~5 MB of scenes.
+inline constexpr int SCENES_MAX         = 16;
+inline constexpr int HASH_EVERY_DEFAULT = 256;
 // Segment seeds per session past the step-1 seed. A boundary past the cap is still logged (its line says
 // `seed=none (cap)`); ~100 KB gz each, so the cap bounds a session at ~6.4 MB of seeds.
 inline constexpr int SEGMENTS_MAX = 64;
@@ -90,12 +96,15 @@ struct hooks {
     // The strategic game clock (seconds) and the current planet index. May be null (then no poll).
     double (*clock)();
     int (*planet)();
+    // Write the scene blob to `path` through the sink (create). Returns bytes handed over, 0 = none. May be null.
+    uint64_t (*scene)(const char *path, uint32_t step);
 };
 
 // Install time. `seed_on` = [desync] seed_record, `hash_every` = [desync] hash_record_every (0 = off).
 void configure(int seed_on, int hash_every, const hooks &h, log_fn log);
 bool enabled();
-void set_compress(bool on); // tests: keep the raw files
+void set_compress(bool on);     // tests: keep the raw files
+void set_scene_record(bool on); // `[desync] scene_record` (default on)
 
 // Once per sim step at the PRE-BODY boundary -- the same arguments as orders::step.
 void step(const char *session_dir, unsigned long gen, bool settled);

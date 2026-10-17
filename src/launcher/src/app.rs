@@ -565,7 +565,7 @@ impl App {
             false,
             Some(&self.current_view_arg()),
         );
-        match update::commit_self_update(&staged, Some(&args)) {
+        match update::commit_self_update(&staged, Some(&args), Some(&self.layout)) {
             Ok(_) => {
                 self.auto.pending_restart = None;
                 self.update_say(
@@ -680,7 +680,7 @@ impl Drop for App {
     /// this executable's place now, without starting anything -- the next start runs it.
     fn drop(&mut self) {
         if let Some(staged) = self.auto.pending_restart.take() {
-            match update::commit_self_update(&staged, None) {
+            match update::commit_self_update(&staged, None, None) {
                 Ok(_) => log::line(format!(
                     "update: launcher {} is in place for the next start",
                     staged.version

@@ -66,6 +66,7 @@
 #include "include/mh_run_context.h"       // MH_RunDir (the snapshot lands next to the run's logs)
 #include "desync/order_capture.h"         // mp:Q3: the order recording rides this module's step hook
 #include "desync/replay_record.h"         // the field-report replay inputs (seed + hash checkpoints)
+#include "desync/scene_dump.h"            // the field-report scene dump (private copy of libmh's world snapshot)
 #include "desync/seed_sanity.h"           // hotfix rc9.4: the off-thread range scan of every seed
 #include "mh_log_sink.h"                  // the seed blob goes to the async sink
 #include "include/mh_transport_present.h" // F3F: gate the SAMPLING (not the arm) on a live module
@@ -503,6 +504,38 @@ uint64_t replay_seed_emit(const char *path, int segment, const char *label, unsi
     }
     if (b.p) HeapFree(GetProcessHeap(), 0, b.p);
     return n;
+}
+
+// The SCENE (replay_record.h SCENE_NAME): the libmh world blob (FORMAT 2: every bound region, the heap
+// nav graph as a trailer, the fixup trailer) of THIS process, captured by a private copy of libmh's
+// world-snapshot code (desync/scene_dump.cpp; scene_rename.h says why it is a copy). One ~8.5 MB buffer,
+// handed to the sink as one create record, then freed. ~100 ms on the sim thread, at a boundary only.
+// The nav graph's four live objects, for the scene dump AND the scene replay: this file is the only binder of
+// registry regions in mh/desync/ (check_sim_addresses).
+void bind_scene_views() {
+    static bool bound = false;
+    if (bound) return;
+    scene::nav_views v;
+    v.list_head = mh::state::ptr<void *>(mh::state::RID_MAP_REGION_LIST_HEAD);
+    v.free_head = mh::state::ptr<void *>(mh::state::RID_MAP_REGION_POOL_FREE_HEAD);
+    v.by_index  = mh::state::ptr<void *>(mh::state::RID_MAP_REGION_BY_INDEX);
+    v.grid      = mh::state::ptr<void>(mh::state::RID_MAP_REGION_GRID);
+    scene::set_nav_views(v);
+    bound = true;
+}
+
+uint64_t replay_scene_emit(const char *path, uint32_t step) {
+    bind_scene_views();
+    size_t   len  = 0;
+    int      rc   = 0;
+    uint8_t *blob = scene::capture(*mh::state::ptr<const double>(mh::state::RID_STRAT_GAME_CLOCK), step, &len, &rc);
+    if (!blob) {
+        say("; [desync] SCENE RECORD FAILED: capture rc=%d for %s\n", rc, path);
+        return 0;
+    }
+    mh_logq_create_bin(path, blob, (int)len);
+    scene::release(blob);
+    return len;
 }
 
 // The checkpoint hash: hash_own's walk (the harness's default masks) without its cost counters, into a
@@ -1345,8 +1378,10 @@ int install(const char *ini_path) {
         const int         hash_every = mh_ini_get_int("desync", "hash_record_every", replay_rec::HASH_EVERY_DEFAULT, ini_path);
         replay_rec::hooks h          = {};
         h.seed                       = &replay_seed_emit;
-        h.hash                       = &replay_state_hash;
-        h.configuration              = g_config_fn;
+        h.scene                      = &replay_scene_emit;
+        replay_rec::set_scene_record(mh_ini_get_int("desync", "scene_record", 1, ini_path) != 0);
+        h.hash          = &replay_state_hash;
+        h.configuration = g_config_fn;
         // hotfix rc9.4: the clock and the planet index, for the segment lines and the per-step poll
         // that cuts a state replacement no seam saw (replay_record.h "SEGMENTS").
         h.clock  = +[]() -> double { return *mh::state::ptr<const double>(mh::state::RID_STRAT_GAME_CLOCK); };
@@ -2180,5 +2215,21 @@ void on_order_dispatch() {
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state) { step_common(per, n, state, true); }
 
 bool detected() { return g_mismatches > 0 || g2_mismatches > 0; }
+
+// The scene REPLAY entry (mh_harness.dll's `world_in` in configuration (1), where libmh_import_world does not
+// exist): import a scene dump through this image's private copy of libmh's import, re-deriving with the
+// game's own functions. See desync/scene_dump.h.
+int import_scene(const void *blob, unsigned n) {
+    bind_scene_views();
+    scene::import_ops ops = {};
+    ops.pathfinder_init   = +[]() { mh::call::llm_strat_pathfinder_init(); };
+    ops.setup_dimensions  = +[]() { mh::call::llm_map_setup_dimensions(); };
+    ops.pool_reset        = +[]() { mh::call::llm_map_region_pool_reset(); };
+    ops.route_step_deltas = +[]() { mh::call::llm_map_init_region_route_step_deltas(); };
+    ops.alloc             = +[](uint32_t sz) -> void             *{ return mh::call::utils_malloc(sz); };
+    ops.release           = +[](void *p) { mh::call::utils_free(p); };
+    ops.log               = &say;
+    return scene::import_world(blob, n, ops);
+}
 
 } // namespace mh::desync

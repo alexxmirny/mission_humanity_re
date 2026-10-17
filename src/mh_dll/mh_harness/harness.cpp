@@ -273,6 +273,7 @@ struct Config {
     // with `order_mode=1` this is the paired fixture LIB-REF replays: recording + world + hashes,
     // all from one run so they cannot drift against each other. One-shot.
     int world_capture = 0;
+    int world_in      = 0; // replay: import mh_world_in.bin (a world blob) over the loaded scene at the seed step
 
     int seed_mode    = 0; // 0=dump, 1=inject, 2=off
     int stop_step    = 0; // step at which to write final report / exit (0 = run forever)
@@ -1482,6 +1483,7 @@ void load_config() {
     g_cfg.seed_mode           = mh_ini_get_int("harness", "seed_mode", g_cfg.seed_mode, g_ini_path);
     g_cfg.boot_snapshot       = mh_ini_get_int("harness", "boot_snapshot", g_cfg.boot_snapshot, g_ini_path);
     g_cfg.world_capture       = mh_ini_get_int("harness", "world_capture", g_cfg.world_capture, g_ini_path);
+    g_cfg.world_in            = mh_ini_get_int("harness", "world_in", g_cfg.world_in, g_ini_path);
     g_cfg.stop_step           = mh_ini_get_int("harness", "stop_step", g_cfg.stop_step, g_ini_path);
     g_cfg.exit_on_stop        = mh_ini_get_int("harness", "exit_on_stop", g_cfg.exit_on_stop, g_ini_path);
     g_cfg.close_on_stop       = mh_ini_get_int("harness", "close_on_stop", g_cfg.close_on_stop, g_ini_path);
@@ -1667,6 +1669,7 @@ void config1_refuse_spine_keys() {
     const field f[] = {
         {"boot_snapshot", &g_cfg.boot_snapshot},
         {"world_capture", &g_cfg.world_capture},
+        {"world_in", &g_cfg.world_in},
         {"snapshot_at", &g_cfg.snapshot_at},
         {"snapshot_import", &g_cfg.snapshot_import},
         {"loadgame_at", &g_cfg.loadgame_at},
@@ -1739,6 +1742,48 @@ void seed_dump() { seed_dump_to(g_seed_out); }
 // mp:D37b: the scoped body mode. -1 = off (the shipped path: sim_step_detour tail-jumps as always).
 long g_body_mode      = -1;
 long g_body_mode_save = 0;
+// SCENE REPLAY (field-report scene dump): import the recorded world blob (mh_world_in.bin beside mh.exe)
+// OVER whatever scene the replay lane loaded, before the seed. libmh_import_world is the full re-derive
+// (byte half + the seven fixups + the nav graph rebuilt from the blob's trailer); the session-begun latch
+// is lifted for the same reason the snapshot receiver lifts it (a world blob is captured mid-session).
+void world_in_import() {
+    char path[MAX_PATH];
+    wsprintfA(path, "%smh_world_in.bin", g_dir);
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    char   b[300];
+    if (h == INVALID_HANDLE_VALUE) {
+        append_line(g_log_path, "; [world_in] mh_world_in.bin not found -- NOT imported\n");
+        return;
+    }
+    const DWORD sz  = GetFileSize(h, nullptr);
+    uint8_t    *buf = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, sz));
+    DWORD       got = 0;
+    if (buf) ReadFile(h, buf, sz, &got, nullptr);
+    CloseHandle(h);
+    if (!buf || got != sz) {
+        append_line(g_log_path, "; [world_in] read failed -- NOT imported\n");
+        return;
+    }
+    wsprintfA(b, "; [world_in] importing %lu bytes at step %lu\n", (unsigned long)sz, (unsigned long)g_step);
+    append_line(g_log_path, b);
+    log_flush();
+    // Configuration (2) imports through libmh.dll. Configuration (1) -- libmh absent, which is how players run
+    // and so how a field report must replay -- imports through mh.dll's own copy of the same code
+    // (desync/scene_dump.cpp), re-deriving with the game's original functions.
+    int rc;
+    if (g_spine) {
+        mh::state::boot::reset_session_latch_for_test();
+        rc = libmh_import_world(buf, sz);
+    } else {
+        rc = mh::desync::import_scene(buf, sz);
+    }
+    wsprintfA(b, "; [world_in] %s(%lu bytes) rc=%d\n", g_spine ? "libmh_import_world" : "mh::desync::import_scene",
+              (unsigned long)sz, rc);
+    append_line(g_log_path, b);
+    log_flush();
+    HeapFree(GetProcessHeap(), 0, buf);
+}
+
 void seed_inject() {
     HANDLE h = CreateFileA(g_seed_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -3360,6 +3405,33 @@ void order_replay_inject_prefix() {
     }
 }
 
+// SOLO / FIELD-REPORT FIX: open sim_step's count gate for a step whose WHOLE snapshot is held back.
+// llm_strat_sim_step calls the queue dispatch only when order_queue_count > 0. The top-of-step inject
+// (above) writes the hash-point queue H(N), which is S(N) less the records the replay is expected to
+// regenerate (the AI tick's tail T). A human's order in a solo run is neither released from the wire
+// nor made by the replay's AI: when it is the step's ONLY content, H(N) is empty, the gate stays
+// shut, the dispatch-entry replace never runs and the order is never executed (the unit never moves;
+// MEASURED: unit 12's move at step 160 of a self-recorded shipped session, `units` diverging at the
+// next hash). The fix runs AFTER the hash is taken, so no hashed byte moves: with an empty queue and
+// a non-empty snapshot, write the snapshot's first record and count 1. The dispatch-entry replace
+// then sets the queue to the whole recorded snapshot, exactly as for any other step.
+uint32_t g_gate_opened = 0;
+void     order_replay_open_gate() {
+    int *cnt = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
+    if (*cnt != 0) return;
+    uint32_t i = g_replay_i;
+    while (i < g_replay_n && g_replay[i].step < g_step) ++i;
+    if (i >= g_replay_n || g_replay[i].step != g_step) return;
+    memcpy(reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE()), g_replay[i].order, ORDER_SIZE);
+    *cnt = 1;
+    ++g_gate_opened;
+    if (g_gate_opened <= 8) {
+        char b[128];
+        wsprintfA(b, "; [dispatch_inject] gate opened at step=%lu: the whole snapshot was held back\n", g_step);
+        append_line(g_log_path, b);
+    }
+}
+
 // ---- P0-SPDET: the deterministic wall clock ------------------------------------------------------
 // Advanced once per sim_tick (one per frame -- llm_strat_frame calls time_tick and sim_tick as
 // SIBLINGS, so time_tick reads the previous frame's value; that is a constant phase offset, not a
@@ -3734,6 +3806,21 @@ void on_sim_tick() {
     // steps completed; g_clock_trk[g_step] is the next step's recorded clock (track[0] = step 1). This
     // makes a real-time human recording replay faithfully. Falls through to the fixed pin past the end.
     if (g_clock_trk && g_step < g_clock_n) {
+        // SCENE REPLAY, before the first step: the scene import (world_in) has not happened yet, so the
+        // sim is still on the VEHICLE save's clock. The track's first value is the RECORDED scene's -- a
+        // new game's is ~0 s -- and a total below the vehicle's game clock never funds a step (the replay
+        // sat at 0 steps for 300 s). Fund step 1 from the vehicle's own clock; the import then replaces
+        // GAME_CLOCK/TOTAL_GAME_TIME with the recording's, before the body reads either.
+        if (g_cfg.world_in && g_step == 0) {
+            double gc, iv;
+            memcpy(&gc, reinterpret_cast<const void *>(ADDR_GAME_CLOCK), sizeof(gc));
+            memcpy(&iv, reinterpret_cast<const void *>(ADDR_SIM_INTERVAL()), sizeof(iv));
+            if (!(iv > 0.0)) iv = 0.1;
+            const double first = g_clock_trk[0];
+            const double tot   = first > gc ? first : gc + iv;
+            memcpy(reinterpret_cast<void *>(ADDR_TOTAL_TIME), &tot, sizeof(tot));
+            return;
+        }
         memcpy(reinterpret_cast<void *>(ADDR_TOTAL_TIME), &g_clock_trk[g_step], sizeof(double));
         return;
     }
@@ -8507,7 +8594,10 @@ void on_sim_step() {
     // seed dump/inject at the configured step, once
     if (!g_seed_done && g_cfg.seed_step && g_step == (uint32_t)g_cfg.seed_step && g_cfg.seed_mode != 2) {
         if (g_cfg.seed_mode == 0) seed_dump();
-        else seed_inject();
+        else {
+            if (g_cfg.world_in) world_in_import();
+            seed_inject();
+        }
         g_seed_done = true;
     }
     // mp:SES7: open/close the per-match segment. HERE, after the process's own seed block, so a
@@ -8912,6 +9002,9 @@ void on_sim_step() {
               (unsigned)(combined >> 32), (unsigned)combined,
               (unsigned)(state >> 32), (unsigned)state);
     append_line(g_log_path, line);
+
+    // Solo / field-report fix: see order_replay_open_gate. After the hash line, so no hashed byte moves.
+    if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay) order_replay_open_gate();
 
     // mp:X3: the SUB-DOMAIN trail, BEFORE the R row and from the same per[], so a step carrying
     // both has them describing one instant with the coarse row first -- which is also the order a

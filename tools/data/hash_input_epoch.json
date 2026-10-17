@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "9086775837f38568fc337aae4a9cdee3c19c4a20cece04416e8c973e9ebed482"
+   "sha256": "cdad1ca6550dd6ceff75007387f809779833f5f19d0e2c3b57d9a6bb60fa45aa"
   },
   {
    "id": "harness_hash_kind_step",
@@ -192,6 +192,15 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "ini-cut lane B: harness key removal (rng_trace/hash_cost_both/rdump window arms); hashed bytes for an unchanged world unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-17",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "field-report scene dump: harness world_in import + a clock-track funding clause at step 0, both replay-only (world_in=0 by default); the bytes fed to the hash for an unchanged world are unchanged"
   }
  ]
 }

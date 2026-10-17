@@ -23,6 +23,7 @@ EXPORTS
     ?entry_claim_at@hook@mh@@YA_NHPAIPAPBDPA_N@Z
     ?entry_claim_count@hook@mh@@YAHXZ
     ?entry_claimant_of@hook@mh@@YAPBDI@Z
+    ?import_scene@desync@mh@@YAHPBXI@Z
     ?loadgame_now@save@mh@@YAIPAD@Z
     ?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z
     ?promoted_owner_of@hook@mh@@YAPBDI@Z

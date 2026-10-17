@@ -47,6 +47,11 @@ pub enum StepSpec {
     Provision,
     /// dist RL4: the one-time migration of the game folder to user storage (`migrate::run`).
     Migrate,
+    /// Replace the launcher executable itself with the staged candidate for `version`, when the
+    /// launcher lives in a folder this token cannot write (Program Files). The child re-verifies
+    /// the candidate against the signed launcher manifest it keeps (`update::elevated_self_replace`)
+    /// -- the version is the only thing it takes from the parent.
+    SelfReplace { version: String },
 }
 
 impl StepSpec {
@@ -57,6 +62,7 @@ impl StepSpec {
             StepSpec::Uninstall => "uninstall".to_string(),
             StepSpec::Provision => "provision".to_string(),
             StepSpec::Migrate => "migrate".to_string(),
+            StepSpec::SelfReplace { version } => format!("self-replace:{version}"),
         }
     }
 
@@ -70,6 +76,13 @@ impl StepSpec {
         if text == "migrate" {
             return Ok(StepSpec::Migrate);
         }
+        if let Some(version) = text.strip_prefix("self-replace:") {
+            if !version.is_empty() && !version.contains(':') {
+                return Ok(StepSpec::SelfReplace {
+                    version: version.to_string(),
+                });
+            }
+        }
         if let Some(rest) = text.strip_prefix("install:") {
             // The version may itself carry a `-` (0.1.1-rc1) but never a `:`; the tag is last.
             if let Some((version, tag)) = rest.rsplit_once(':') {
@@ -82,7 +95,7 @@ impl StepSpec {
             }
         }
         Err(format!(
-            "--step wants install:<version>:<tag>, uninstall, provision or migrate, got {text:?}"
+            "--step wants install:<version>:<tag>, uninstall, provision, migrate or              self-replace:<version>, got {text:?}"
         ))
     }
 
@@ -92,6 +105,7 @@ impl StepSpec {
             StepSpec::Uninstall => "uninstall".to_string(),
             StepSpec::Provision => "provision the relay".to_string(),
             StepSpec::Migrate => "migrate the game folder to user storage".to_string(),
+            StepSpec::SelfReplace { version } => format!("replace the launcher with {version}"),
         }
     }
 }
@@ -251,8 +265,8 @@ fn spawn_runas_and_wait(exe: &Path, argv: &[String]) -> Result<u32, String> {
         if ShellExecuteExW(&mut info) == 0 {
             let err = GetLastError();
             return Err(if err == ERROR_CANCELLED {
-                "the elevation prompt was declined -- the game directory needs administrator \
-                 rights to install into, and nothing was changed"
+                "the elevation prompt was declined -- this folder needs administrator rights to \
+                 write into, and nothing was changed"
                     .to_string()
             } else {
                 format!("cannot start the elevated step (err {err})")
@@ -336,6 +350,7 @@ fn perform(layout: &Layout, game_dir: &Path, step: &StepSpec) -> Result<String, 
             crate::relay::provision_for_game(layout, game_dir, &plan).map(|p| p.summary())
         }
         StepSpec::Migrate => crate::migrate::run(layout, game_dir).map(|r| r.summary()),
+        StepSpec::SelfReplace { version } => crate::update::elevated_self_replace(layout, version),
     }
 }
 
@@ -399,6 +414,9 @@ mod tests {
             StepSpec::Uninstall,
             StepSpec::Provision,
             StepSpec::Migrate,
+            StepSpec::SelfReplace {
+                version: "0.2.0-rc9.5".into(),
+            },
         ] {
             assert_eq!(StepSpec::parse(&step.to_arg()).unwrap(), step);
         }
@@ -407,6 +425,8 @@ mod tests {
             "install:",
             "install:0.1.0",
             "install::net",
+            "self-replace:",
+            "self-replace:0.2.0:x",
             "launch",
             "",
         ] {

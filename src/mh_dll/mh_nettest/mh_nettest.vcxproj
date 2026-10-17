@@ -212,6 +212,7 @@
     <ClCompile Include="..\libmh\lockstep\overlay_hoist.cpp" />
     <ClCompile Include="..\libmh\lockstep\timekeeper.cpp" />
     <ClCompile Include="..\mh\desync\desync_watch.cpp" />
+    <ClCompile Include="..\mh\desync\scene_dump.cpp" />
     <ClCompile Include="..\mh\desync\state_tracker.cpp" />
     <ClCompile Include="..\mh\desync\state_recorder.cpp" />
     <ClCompile Include="..\mh\desync\state_compress.cpp" />

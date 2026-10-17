@@ -270,17 +270,27 @@ fn is_state_name(leaf: &str) -> bool {
 /// planet transition, a tactical return or a new campaign -- `desync/replay_record.h` "SEGMENTS") is
 /// segment n. A seed is a replay input like the step-1 one; under a short budget the OLDEST segments
 /// are given up first, so a report keeps the seed nearest the crash.
+///
+/// The SCENE DUMP rides with its seed (`mh_rec_scene.bin[.gz]` = segment 0, `mh_rec_scene_<n>.bin[.gz]` =
+/// segment n): the whole bound world at the same instant, which is what lets a report replay with no save
+/// (`desync/replay_record.h` SCENE_NAME). It is a replay input of the same segment, so it is kept whole
+/// or left out whole -- a left-out one is listed in `report.json`'s `dropped` with the generic reason,
+/// and the replay tool then asks for a carrier save for that segment, by name.
 fn seed_segment(leaf: &str) -> Option<u32> {
     let stem = leaf.strip_suffix(".gz").unwrap_or(leaf);
     let stem = stem.strip_suffix(".bin")?;
-    if stem == "mh_rec_seed" {
-        return Some(0);
+    for base in ["mh_rec_seed", "mh_rec_scene"] {
+        if stem == base {
+            return Some(0);
+        }
+        if let Some(n) = stem.strip_prefix(base).and_then(|r| r.strip_prefix('_')) {
+            if n.is_empty() || !n.bytes().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            return n.parse().ok();
+        }
     }
-    let n = stem.strip_prefix("mh_rec_seed_")?;
-    if n.is_empty() || !n.bytes().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    n.parse().ok()
+    None
 }
 
 /// mp:D46. The state file is a gzip member (`.gz`), not the raw v1 byte stream.
@@ -3764,6 +3774,87 @@ mod tests {
         assert_eq!(seed_segment("mh_rec_seed.bin.gz"), Some(0));
         assert_eq!(seed_segment("mh_rec_seed_x.bin"), None);
         assert_eq!(seed_segment("mh_rec_seeds.bin"), None);
+        assert_eq!(seed_segment("mh_rec_scene.bin.gz"), Some(0));
+        assert_eq!(seed_segment("mh_rec_scene_7.bin"), Some(7));
+        assert_eq!(seed_segment("mh_rec_scene_x.bin"), None);
+        assert_eq!(seed_segment("mh_rec_scenes.bin"), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The scene dump (`mh_rec_scene[_n].bin.gz`) is a replay input of its segment: it rides in the
+    /// zip beside the seed, and when the budget is short it is dropped WHOLE and named in `dropped`
+    /// (never silently, never tailed) -- oldest segment first, like the seeds.
+    #[test]
+    fn scene_dumps_ride_with_their_seed_and_a_dropped_one_is_named() {
+        let dir = fresh("scene_dumps");
+        let name = "20261016T120000Z_0badf00d_0_solo";
+        let s = dir.join("logs").join(name);
+        std::fs::create_dir_all(&s).unwrap();
+        let scene0 = noise(300 * 1024, 31);
+        std::fs::write(s.join("mh_rec_orders.bin.gz"), noise(64 * 1024, 30)).unwrap();
+        std::fs::write(s.join("mh_rec_seed.bin.gz"), noise(50 * 1024, 32)).unwrap();
+        std::fs::write(s.join("mh_rec_scene.bin.gz"), &scene0).unwrap();
+        std::fs::write(
+            s.join("mh_rec_segments.txt"),
+            "; mh_rec_segments v1
+segment 0 step=1 kind=session_start seed=mh_rec_seed.bin scene=mh_rec_scene.bin
+",
+        )
+        .unwrap();
+        // roomy budget: everything, byte for byte
+        let zip = dir.join("out").join("roomy.zip");
+        let built =
+            build_with_budget(&zip, &input_for(&dir, s.clone(), "scene"), 2000 * 1024).unwrap();
+        let entries = entries_of(&zip);
+        let got = |leaf: &str| {
+            entries
+                .iter()
+                .find(|(n, _)| n == &format!("logs/{name}/{leaf}"))
+                .map(|(_, b)| b.clone())
+        };
+        assert_eq!(
+            got("mh_rec_scene.bin.gz").as_deref(),
+            Some(&scene0[..]),
+            "the scene rides whole: {}",
+            built.meta
+        );
+        // add more segments than the budget holds: the oldest scene goes, and is named
+        for n in 1..4u64 {
+            std::fs::write(
+                s.join(format!("mh_rec_seed_{n}.bin.gz")),
+                noise(50 * 1024, 40 + n),
+            )
+            .unwrap();
+            std::fs::write(
+                s.join(format!("mh_rec_scene_{n}.bin.gz")),
+                noise(300 * 1024, 50 + n),
+            )
+            .unwrap();
+        }
+        let zip2 = dir.join("out").join("tight.zip");
+        let built2 =
+            build_with_budget(&zip2, &input_for(&dir, s.clone(), "scene"), 700 * 1024).unwrap();
+        let entries2 = entries_of(&zip2);
+        let has2 = |leaf: &str| {
+            entries2
+                .iter()
+                .any(|(n, _)| n == &format!("logs/{name}/{leaf}"))
+        };
+        assert!(
+            has2("mh_rec_scene_3.bin.gz"),
+            "the newest scene stays: {}",
+            built2.meta
+        );
+        assert!(
+            !has2("mh_rec_scene.bin.gz"),
+            "the oldest scene goes first: {}",
+            built2.meta
+        );
+        assert!(
+            built2.meta.contains("mh_rec_scene.bin.gz"),
+            "a dropped scene is named in report.json's dropped list: {}",
+            built2.meta
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

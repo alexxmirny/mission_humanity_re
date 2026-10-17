@@ -250,7 +250,12 @@ def close_job(job):
 # ---- TL-SUITE-TEARDOWN: name the holder of a locked provisioning file, don't just raise ----------
 
 
-def find_process_under(dir_path, proc_name=None, timeout=10):
+# Why the last find_process_under call found nothing -- carried into copy_or_refuse's refusal so a
+# lookup that failed on a CI runner says how (timeout, empty answer, or the paths it did see).
+LAST_LOOKUP = ""
+
+
+def find_process_under(dir_path, proc_name=None, timeout=60):
     """Best-effort: (pid, executable_path) of a RUNNING process whose own executable lies inside
     `dir_path` (optionally restricted to `proc_name`), or None.
 
@@ -262,6 +267,7 @@ def find_process_under(dir_path, proc_name=None, timeout=10):
     tools/requirements.txt today) could answer the stronger question directly via
     Process.open_files(); this is the documented fallback for when it is not installed.
     """
+    global LAST_LOOKUP
     filt = " -Filter \"Name='%s'\"" % proc_name.replace("'", "''") if proc_name else ""
     try:
         r = subprocess.run(
@@ -277,26 +283,39 @@ def find_process_under(dir_path, proc_name=None, timeout=10):
             text=True,
             timeout=timeout,
         )
-    except Exception:
+    except Exception as e:
+        LAST_LOOKUP = "process query failed: %s" % e
         return None
     out = (r.stdout or "").strip()
     if not out:
+        LAST_LOOKUP = "process query returned nothing (rc %s, stderr %r)" % (
+            r.returncode,
+            (r.stderr or "").strip()[:200],
+        )
         return None
     try:
         rows = json.loads(out)
     except ValueError:
+        LAST_LOOKUP = "process query output is not JSON: %r" % out[:200]
         return None
     if isinstance(rows, dict):
         rows = [rows]
-    dir_abs = os.path.normcase(os.path.abspath(dir_path)) + os.sep
+    # realpath, not abspath: it expands 8.3 short names (a CI runner's TEMP is a short RUNNER~1 path),
+    # so a lane path and the long ExecutablePath CIM reports for the same folder compare equal.
+    dir_abs = os.path.normcase(os.path.realpath(dir_path)) + os.sep
     for row in rows:
         exe = row.get("ExecutablePath") or ""
         if not exe:
             continue
-        if os.path.normcase(os.path.abspath(exe)).startswith(dir_abs):
+        if os.path.normcase(os.path.realpath(exe)).startswith(dir_abs):
             pid = row.get("ProcessId")
             if pid is not None:
                 return int(pid), exe
+    LAST_LOOKUP = "%d process(es) seen, none under %s: %s" % (
+        len(rows),
+        dir_abs,
+        "; ".join(str(row.get("ExecutablePath")) for row in rows[:4]),
+    )
     return None
 
 
@@ -344,8 +363,8 @@ def copy_or_refuse(src, dst, lane_dir, proc_name="mh.focus.exe"):
         raise SystemExit(
             "REFUSED: cannot provision %s (%s) -- could not identify the holder: no running %s has "
             "an executable under %s, and psutil (which could answer this by file handle instead of "
-            "by process location) is not installed. Check `Get-Process %s` by hand."
-            % (dst, e, proc_name, lane_dir, os.path.splitext(proc_name)[0])
+            "by process location) is not installed. Check `Get-Process %s` by hand. [lookup: %s]"
+            % (dst, e, proc_name, lane_dir, os.path.splitext(proc_name)[0], LAST_LOOKUP)
         ) from e
 
 

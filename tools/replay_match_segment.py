@@ -312,6 +312,18 @@ def slice_segment(rec, n, outdir):
     else:
         shutil.copyfile(src, seed)
     orders, clock, kept = cut_streams(rec["files"]["orders"], rec["files"]["clock"], start, outdir)
+    world = None
+    sleaf = seg.get("scene", "")
+    ssrc = _ship_file(rec["dir"], sleaf) if sleaf.endswith(".bin") else None
+    if (
+        ssrc
+    ):  # the scene dump (desync/replay_record.h SCENE_NAME): the whole bound world at this boundary
+        world = os.path.join(outdir, "mh_world_in.bin")
+        if ssrc.endswith(".gz"):
+            with gzip.open(ssrc, "rb") as fi, open(world, "wb") as fo:
+                shutil.copyfileobj(fi, fo)
+        else:
+            shutil.copyfile(ssrc, world)
     nxt = min(
         [s["step"] for k, s in segs.items() if k > n and isinstance(s.get("step"), int)] or [0]
     )
@@ -337,6 +349,7 @@ def slice_segment(rec, n, outdir):
         files=dict(rec["files"], seed=seed, orders=orders, clock=clock),
         base=start - 1,
         ref_steps=ref,
+        world_blob=world,
         segment=seg,
         segment_n=n,
         segment_len=(nxt - start) if nxt else 0,
@@ -358,11 +371,93 @@ def find_save(spec, recorded_name=None):
     return p if os.path.isfile(p) else None
 
 
+_SAVES = os.path.join(REPO, "tools", "uiscripts", "saves")
+DEFAULT_VEHICLE_SAVE = os.path.join(_SAVES, "5-kofu-c.sav")
+# The stock campaign save to LOAD for a scene replay, by the segment's planet. The scene overwrites every
+# bound region and the heap nav graph, but NOT the AI's private heap state (built when the planet session
+# begins): a vehicle on the SAME planet starts the AI from the same private state, one on another planet
+# leaves it the vehicle's. MEASURED (2026-10-16): a new campaign on Nortus replays IDENTICAL over
+# nortus-pre-c and DIVERGES at step 64 (the first AI order) over 5-kofu-c / 2-almost; a planet-7 session
+# replays IDENTICAL over 5-kofu-c for 2800 steps (its AI never reaches a decision the private state
+# changes). So: same-planet vehicle when the repo has one, else the default; --carrier-save overrides.
+VEHICLE_BY_PLANET = {
+    1: os.path.join(_SAVES, "nortus-pre-c.sav"),
+    2: os.path.join(_SAVES, "2-almost.sav"),
+    5: os.path.join(_SAVES, "5-kofu-c.sav"),
+    18: os.path.join(_SAVES, "ayy30.sav"),
+}
+
+
+def pick_vehicle(seg):
+    """The stock vehicle save for a segment (see VEHICLE_BY_PLANET)."""
+    try:
+        planet = int(seg.get("planet_after"))
+    except (TypeError, ValueError):
+        planet = None
+    path = VEHICLE_BY_PLANET.get(planet)
+    return path if path and os.path.isfile(path) else DEFAULT_VEHICLE_SAVE
+
+
+def scene_build_mismatch(blob_path, lane):
+    """A scene dump carries the identity (PE timestamp + image size) of the recording build's own
+    modules in its fixup trailer; libmh refuses the import (rc -23, 'mixed-build pair') when the lane's
+    copy of one of them is a different build, because the dump's rebased pointers only fit that image.
+    -> a message naming the first mismatching module, or None. Unreadable/absent trailer -> None
+    (libmh then judges it)."""
+    import struct
+
+    try:
+        with open(blob_path, "rb") as fh:
+            b = fh.read()
+    except OSError:
+        return None
+    i = b.rfind(b"MHFX")
+    if i < 0 or i + 32 > len(b):
+        return None
+    _magic, _ver, mc, _ec = struct.unpack_from("<IHHI", b, i)
+    for k in range(min(mc, 16)):
+        o = i + 32 + k * 40
+        if o + 40 > len(b):
+            return None
+        name = b[o : o + 28].split(b"\x00")[0].decode("ascii", "replace")
+        tds, soi, flags = struct.unpack_from("<III", b, o + 28)
+        if not flags & 1:  # FIXUP_MOD_OURS
+            continue
+        f = os.path.join(lane, name)
+        try:
+            with open(f, "rb") as fh:
+                hd = fh.read(4096)
+            pe = struct.unpack_from("<I", hd, 0x3C)[0]
+            ts = struct.unpack_from("<I", hd, pe + 8)[0]
+            sz = struct.unpack_from("<I", hd, pe + 24 + 56)[0]
+        except (OSError, struct.error):
+            continue
+        if (ts, sz) != (tds, soi):
+            return (
+                "the scene dump was recorded by a different build: its %s is stamp %08X / size %X, "
+                "this replay's is %08X / %X. A dump replays only with the build that recorded it "
+                "(libmh refuses the import: fixup trailer rc -23); use that build's replay tool."
+                % (name, tds, soi, ts, sz)
+            )
+    return None
+
+
 def segment_scene(rec, save_spec=None, carrier_spec=None, force=False):
     """rc9.4: the save the replay lane loads for a segment replay. -> (path, note). A save_load segment
     replays on the save it recorded, and the content hash must match; any other kind needs a carrier."""
     seg = rec["segment"]
     kind = seg.get("kind")
+    if rec.get("world_blob") and not carrier_spec and not (kind == "save_load" and save_spec):
+        # SELF-CONTAINED REPORT: the recording carries its own scene (the whole bound world, imported over
+        # whatever scene the lane loads), so ANY stock campaign save is only the vehicle that gets the game
+        # into a session -- the carrier's map, units and tables are all overwritten.
+        path = pick_vehicle(seg)
+        if not os.path.isfile(path):
+            raise Refusal("the stock vehicle save %s is missing" % path)
+        return path, (
+            "the recording's own SCENE DUMP (mh_rec_scene, %d bytes) imported over the stock vehicle save %s"
+            % (os.path.getsize(rec["world_blob"]), os.path.basename(path))
+        )
     if kind == "save_load" and not carrier_spec:
         want = seg.get("file_fnv")
         path = find_save(save_spec, seg.get("source"))
@@ -436,6 +531,13 @@ def stage_shipped(path, outdir):
     return out
 
 
+def _segments_config(path):
+    """The `configuration (N)` the recorder wrote into mh_rec_segments.txt's header line, or None."""
+    head = (_read_text(path) if path else "").splitlines()[:1]
+    m = re.search(r"configuration \((\d)\)", head[0] if head else "")
+    return int(m.group(1)) if m else None
+
+
 def resolve_shipped(path, sj=None):
     """A session folder holding mh.dll's own recording (mh_rec_*) -> a resolve() dict whose reference
     stream is the hash checkpoints (mh_rec_hash.txt), not a harness log."""
@@ -457,7 +559,7 @@ def resolve_shipped(path, sj=None):
         slot=(sj or {}).get("slot"),
         lockstep=bool((sj or {}).get("lockstep_step_ms")),
         role=(sj or {}).get("role"),
-        config=meta.get("config") or None,
+        config=meta.get("config") or _segments_config(sp),
         arm={},
         ref="",
         ref_steps=steps,
@@ -523,6 +625,69 @@ def sessions_of_process(logs_dir, proc_leaf):
         if j and j.get("process_dir") == proc_leaf:
             out.append((os.path.basename(d), j))
     return out
+
+
+def is_shipped_only(path):
+    """True for a folder that holds mh.dll's own recording and no harness stream."""
+    path = os.path.abspath(path)
+    has_ship = all(_ship_file(path, SHIP[k]) for k in ("orders", "clock", "seed"))
+    has_harness = any(
+        os.path.isfile(os.path.join(path, n))
+        for n in (
+            SEG["orders"],
+            PROC["orders"],
+        )  # a harness ORDER stream; a bare log is only a hash trail
+    )
+    return has_ship and not has_harness
+
+
+def locate_recording(path, session=None):
+    """A field report (the folder the launcher built, or its .zip) or a session folder -> (the session
+    folder to replay, a note). A zip is unpacked once under tmp/replay_match/unzip/. A report holds its
+    sessions at logs/<session>/; the one replayed is --session, else the newest that carries a recording
+    (every session is listed so a different one can be named)."""
+    import zipfile
+
+    p = os.path.abspath(path.rstrip("\\/"))
+    note = ""
+    if os.path.isfile(p) and p.lower().endswith(".zip"):
+        dst = os.path.join(
+            REPO, "tmp", "replay_match", "unzip", os.path.splitext(os.path.basename(p))[0]
+        )
+        if os.path.isdir(dst):
+            shutil.rmtree(dst)
+        os.makedirs(dst)
+        with zipfile.ZipFile(p) as z:
+            z.extractall(dst)
+        note = "  unpacked %s -> %s" % (p, dst)
+        p = dst
+    if not os.path.isdir(p):
+        return path, note  # resolve() names it
+    if _ship_file(p, SHIP["seed"]) or os.path.isfile(os.path.join(p, SEG["orders"])):
+        return p, note
+    logs = os.path.join(p, "logs")
+    if not os.path.isdir(logs):
+        return p, note
+    cands = sorted(
+        d
+        for d in os.listdir(logs)
+        if os.path.isdir(os.path.join(logs, d)) and _ship_file(os.path.join(logs, d), SHIP["seed"])
+    )
+    if session:
+        cands = [d for d in cands if session in d]
+    if not cands:
+        return p, note
+    pick = cands[-1]
+    if len(cands) > 1:
+        note += (
+            "\n  report holds %d recorded sessions (%s); replaying %s -- --session picks another"
+            % (
+                len(cands),
+                ", ".join(cands),
+                pick,
+            )
+        )
+    return os.path.join(logs, pick), note
 
 
 def resolve(path, shipped=False):
@@ -1211,10 +1376,25 @@ def run_replay(
     hqueue=True,
 ):
     import make_lane
+    import ui_test
 
     lane = provision_lane(config)
     for k, dst in LANE_NAME.items():
         shutil.copyfile(rec["files"][k], os.path.join(lane, dst))
+    # field-report scene dump: a recorded world blob is imported over the carrier scene at the seed step
+    wb_dst = os.path.join(lane, "mh_world_in.bin")
+    if os.path.isfile(wb_dst):
+        os.remove(wb_dst)
+    if rec.get("world_blob"):
+        shutil.copyfile(rec["world_blob"], wb_dst)
+        extra = list(extra or []) + ["world_in=1"]
+        ui_test.refresh_satellites(
+            lane
+        )  # the lane's copies are what the launch will deploy: compare THOSE
+        why = scene_build_mismatch(wb_dst, lane)
+        if why:
+            print("replay_match_segment: REFUSED -- " + why)
+            sys.exit(2)
     hq_dst = os.path.join(lane, "mh_hqueue.bin")
     if os.path.isfile(hq_dst):
         os.remove(
@@ -1436,6 +1616,11 @@ def main(argv=None):
         "return, new game) -- or of a save_load one whose save is lost",
     )
     ap.add_argument("--force-save", action="store_true", help="replay on a save whose hash differs")
+    ap.add_argument(
+        "--session",
+        help="a field report or zip holding several sessions: the session folder (or a substring of "
+        "its name) to replay; default the newest one that carries a recording",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -1443,6 +1628,15 @@ def main(argv=None):
     if not a.dir:
         ap.error("a recording folder is required")
     try:
+        a.dir, a_note = locate_recording(a.dir, a.session)
+        if a_note:
+            print(a_note)
+        if not a.shipped and a.segment < 0 and is_shipped_only(a.dir):
+            a.shipped = (
+                True  # a field report's session folder: mh.dll's own recording is all there is
+            )
+        if a.shipped and a.segment < 0 and _ship_file(a.dir, SHIP["segments"]):
+            a.segment = 0  # a report replays from its start with no further argument
         rec = resolve(a.dir, shipped=a.shipped or a.segment >= 0)
         if a.segment >= 0:
             rec = slice_segment(
@@ -1484,6 +1678,22 @@ def main(argv=None):
     if a.steps:
         last = min(last, a.steps)
     config = (rec["config"] or 1) if a.config == "auto" else int(a.config)
+    if rec.get("world_blob"):
+        # A scene dump imports in the configuration it was recorded in: configuration (1) -- mh.dll alone, libmh
+        # absent, how players run -- through mh.dll's own copy of the import (desync/scene_dump.cpp), and
+        # configuration (2) through libmh.dll. Replaying a configuration-(1) recording in (2) would displace
+        # every mh.dll gameplay byte patch inside the promoted sim (no libmh twin: G362), so it is not done.
+        if a.config == "auto":
+            config = rec["config"] or 1
+        print(
+            "  scene dump: replaying in configuration (%d)%s"
+            % (
+                config,
+                " -- the recording's own"
+                if config == (rec["config"] or 1)
+                else " (recorded in (%s): --config overrides)" % (rec["config"] or "?"),
+            )
+        )
     seat = (
         (rec.get("slot") if rec.get("slot") is not None else -1)
         if a.seat == "auto"
@@ -2205,6 +2415,79 @@ def selftest():
         check(
             "the segment walk loads the save from the main menu",
             "clickl Load game" in load_walk_script() and "gamemode 2" in load_walk_script(),
+        )
+        # the scene dump (desync/replay_record.h SCENE_NAME): the segment line names it, slice_segment unpacks it,
+        # and a recording that carries it needs NO save (the stock vehicle stands in, config forced to 2 by main)
+        put(
+            sh,
+            "mh_rec_segments.txt",
+            "; mh_rec_segments v1: x\nsegment 0 step=1 kind=session_start clock_after=0.000 planet_after=3 "
+            "seed=mh_rec_seed.bin scene=mh_rec_scene.bin\nsegment 1 step=30 kind=planet_transition prev_step=29 "
+            "planet_before=3 planet_after=5 planet=5 source=\"planet 5\" file=\"\" "
+            "seed=mh_rec_seed_1.bin scene=mh_rec_scene_1.bin\n",
+        )
+        with gzip.open(os.path.join(sh, "mh_rec_scene.bin.gz"), "wb") as fh:
+            fh.write(b"W0" * 16)
+        put(sh, "mh_rec_scene_1.bin", b"W1" * 16)  # a raw (uncompressed) scene is accepted too
+        got = resolve(sh, shipped=True)
+        sc0 = slice_segment(got, 0, os.path.join(tmp, "scene_seg0"))
+        sc1 = slice_segment(got, 1, os.path.join(tmp, "scene_seg1"))
+        with open(sc0["world_blob"], "rb") as fh:
+            w0 = fh.read()
+        with open(sc1["world_blob"], "rb") as fh:
+            w1 = fh.read()
+        check(
+            "scene: slice_segment unpacks each segment's own scene (gz and raw)",
+            w0 == b"W0" * 16 and w1 == b"W1" * 16 and sc0["segment"]["scene"] == "mh_rec_scene.bin",
+        )
+        vp, vnote = segment_scene(sc1)
+        check(
+            "scene: a planet_transition segment WITH a scene needs no carrier (the stock vehicle + the dump)",
+            vp == DEFAULT_VEHICLE_SAVE and "SCENE DUMP" in vnote,
+        )
+        check(
+            "scene: the vehicle follows the segment's planet (Nortus -> nortus-pre-c), unknown planets use the default",
+            pick_vehicle({"planet_after": "1"}).endswith("nortus-pre-c.sav")
+            and pick_vehicle({"planet_after": "7"}) == DEFAULT_VEHICLE_SAVE
+            and pick_vehicle({}) == DEFAULT_VEHICLE_SAVE,
+        )
+        check(
+            "scene: ...and a segment without one still demands --carrier-save",
+            _refused(lambda: segment_scene(dict(sc1, world_blob=None))),
+        )
+        check(
+            "scene: an explicit --carrier-save still wins over the vehicle",
+            segment_scene(sc1, None, abc)[0] == abc,
+        )
+        # report layout: a report folder (logs/<session>/) and its zip are located with no extra argument
+        import zipfile
+
+        rep = os.path.join(tmp, "report_x")
+        sess = os.path.join(rep, "logs", "20261016T120000Z_aaaa_planet7_campaign")
+        os.makedirs(sess)
+        for f in os.listdir(sh):
+            if f.startswith("mh_rec_") or f == "session.json":
+                shutil.copyfile(os.path.join(sh, f), os.path.join(sess, f))
+        os.makedirs(os.path.join(rep, "logs", "20261016T110000Z_bbbb_menu_solo"))
+        found, note = locate_recording(rep)
+        check(
+            "locate: a report folder resolves to its recorded session (the menu-only one has none)",
+            os.path.normcase(found) == os.path.normcase(sess) and not note,
+        )
+        zp = os.path.join(tmp, "report_x.zip")
+        with zipfile.ZipFile(zp, "w") as z:
+            for root, _, files in os.walk(rep):
+                for f in files:
+                    full = os.path.join(root, f)
+                    z.write(full, os.path.relpath(full, rep))
+        zfound, znote = locate_recording(zp)
+        check(
+            "locate: a report .zip is unpacked and resolves the same way",
+            os.path.isfile(os.path.join(zfound, "mh_rec_seed.bin.gz")) and "unpacked" in znote,
+        )
+        check(
+            "locate: a session folder is returned as it is; is_shipped_only sees a field report",
+            locate_recording(sess)[0] == os.path.abspath(sess) and is_shipped_only(sess),
         )
         os.remove(os.path.join(sh, "mh_rec_seed.bin.gz"))
         check(

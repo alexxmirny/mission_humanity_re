@@ -32,6 +32,7 @@ mod crash;
 mod discord;
 mod elevate;
 mod i18n;
+mod icon;
 mod install;
 mod launch;
 mod log;
@@ -708,6 +709,14 @@ pub fn restart_argv(
     out
 }
 
+/// dist LA19: the title-bar / taskbar icon (the exe's own icon resource is embedded by build.rs).
+fn with_window_icon(vp: egui::ViewportBuilder) -> egui::ViewportBuilder {
+    match icon::window_icon() {
+        Some(i) => vp.with_icon(i),
+        None => vp,
+    }
+}
+
 /// Open the window, trying each renderer in turn.
 ///
 /// WGPU FIRST, GLOW SECOND. eframe's own default is the other way round, and on a desktop with a
@@ -740,7 +749,7 @@ fn run_window(
         };
         let options = eframe::NativeOptions {
             renderer,
-            viewport: egui::ViewportBuilder::default()
+            viewport: with_window_icon(egui::ViewportBuilder::default())
                 .with_inner_size(size)
                 // 800x600 is the smaller of the two sizes dist LA1 has to render at, so nothing may
                 // be laid out assuming more room than that.

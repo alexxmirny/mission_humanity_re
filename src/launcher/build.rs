@@ -14,7 +14,20 @@
 // A baked report token or CA certificate that is one release out of date is not a cosmetic drift:
 // the launcher pins TLS against BAKED_CA_PEM and authenticates with BAKED_TOKEN, so a stale pair
 // means bug reports silently stop uploading.
+//
+// dist LA19: the same file also embeds the launcher icon. `rerun-if-changed` on the .ico is what makes
+// swapping the artwork rebuild the resource instead of relinking the old one. The window/taskbar icon
+// is a separate path (src/icon.rs include_bytes! the SAME file), so the two cannot drift.
 fn main() {
+    println!("cargo:rerun-if-changed=assets/mh_launcher.ico");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon("assets/mh_launcher.ico");
+        if let Err(e) = res.compile() {
+            // Fail loudly: a silent skip would ship an exe with the generic icon.
+            panic!("embedding assets/mh_launcher.ico failed (needs the Windows SDK rc.exe): {e}");
+        }
+    }
     for var in [
         "MH_LAUNCHER_VERSION", // src/version.rs   -- the shipped version string
         "MH_UPDATE_BASE_URL",  // src/update.rs    -- where self-update looks for manifest.json

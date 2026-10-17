@@ -2041,19 +2041,54 @@ pub fn stage_self_update_with(
 /// `restart_args` the replacement is started with them (Restart now -- `crate::restart_argv`
 /// composes the `--view <current>` list); with `None` nothing is started (Later: the launcher is
 /// already closing, and the next start simply runs the new version).
+///
+/// `elevate_with`: the state layout, when this call may ask for administrator rights. A launcher in
+/// a folder this token cannot write (Program Files -- field report 2026-10-15: the rc9.4 update
+/// failed there with "cannot replace", and only "Run as administrator" got it through) re-runs
+/// itself elevated for exactly the replace (`elevate::StepSpec::SelfReplace`), the way a game
+/// install already does. `None` (the window is closing) never prompts: the replace is tried
+/// as-is, and a refusal leaves the old launcher, which stages the update again on its next start.
 pub fn commit_self_update(
     staged: &StagedLauncher,
     restart_args: Option<&[String]>,
+    elevate_with: Option<&Layout>,
 ) -> Result<SelfUpdate, String> {
     let running = std::env::current_exe()
         .map_err(|e| format!("cannot find this executable's own path ({e})"))?;
+    let exe_dir = running.parent().map(Path::to_path_buf).unwrap_or_default();
     commit_self_update_with(
         staged,
         restart_args,
         &running,
         &|candidate| {
-            self_replace::self_replace(candidate)
-                .map_err(|e| format!("cannot replace {} ({e})", running.display()))
+            let elevated = |layout: &Layout| {
+                let step = elevate::StepSpec::SelfReplace {
+                    version: staged.version.clone(),
+                };
+                elevate::run_step_elevated(layout, &exe_dir, &step).map(|_| ())
+            };
+            if let Some(layout) = elevate_with {
+                if elevate::needs_elevation(&exe_dir) {
+                    return elevated(layout);
+                }
+            }
+            match self_replace::self_replace(candidate) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => match elevate_with {
+                    Some(layout) => {
+                        log::line(format!(
+                            "update: replacing {} was refused ({e}) -- retrying elevated",
+                            running.display()
+                        ));
+                        elevated(layout)
+                    }
+                    None => Err(format!(
+                        "cannot replace {} ({e}); it needs administrator rights, which a closing                          window does not ask for -- the next start offers the update again",
+                        running.display()
+                    )),
+                },
+                Err(e) => Err(format!("cannot replace {} ({e})", running.display())),
+            }
         },
         &|exe, args| {
             Command::new(exe)
@@ -2063,6 +2098,99 @@ pub fn commit_self_update(
                 .map_err(|e| format!("replaced the launcher but cannot start it ({e})"))
         },
     )
+}
+
+/// The elevated child's half of `StepSpec::SelfReplace`: put the staged launcher `version` in
+/// place of this executable. It takes NOTHING from the un-elevated parent but the version: the
+/// candidate's size and SHA-256 are checked against the signed launcher manifest this state
+/// directory keeps (`accepted\<channel>\launcher.json`, signature re-verified on load), and the
+/// version must be that manifest's and newer than this launcher. So the prompt can only ever put
+/// the file the project signed in place -- never whatever sits in the user-writable update folder.
+pub fn elevated_self_replace(layout: &Layout, version: &str) -> Result<String, String> {
+    let (cfg, _) = crate::config::Config::load(&layout.config());
+    let channel = cfg.channel();
+    let load = || -> Result<LauncherManifest, String> {
+        match load_accepted_doc(layout, channel, KIND_LAUNCHER, PUBLIC_KEY) {
+            Some(a) => a.into_launcher(),
+            None => Err(format!(
+                "no verified launcher manifest for the {channel} channel under {} -- refusing to                  replace the launcher with a file nothing signed",
+                layout.root.display()
+            )),
+        }
+    };
+    let running = std::env::current_exe()
+        .map_err(|e| format!("cannot find this executable's own path ({e})"))?;
+    elevated_self_replace_with(
+        layout,
+        version,
+        crate::version::VERSION,
+        &load,
+        &|candidate| {
+            sweep_relocated(&running);
+            self_replace::self_replace(candidate)
+                .map_err(|e| format!("cannot replace {} ({e})", running.display()))?;
+            Ok(running.display().to_string())
+        },
+    )
+}
+
+/// `elevated_self_replace` with the signed-manifest load, this launcher's version and the replace
+/// injectable (a test cannot replace the test binary, nor sign with the release key). Every check
+/// runs BEFORE `replace`; `replace` returns what was replaced, for the summary.
+pub fn elevated_self_replace_with(
+    layout: &Layout,
+    version: &str,
+    mine: &str,
+    load: &dyn Fn() -> Result<LauncherManifest, String>,
+    replace: &dyn Fn(&Path) -> Result<String, String>,
+) -> Result<String, String> {
+    let manifest = load()?;
+    if manifest.version != version {
+        return Err(format!(
+            "asked for launcher {version}, but the signed manifest offers {}",
+            manifest.version
+        ));
+    }
+    check_launcher_install(version, mine)?;
+    let candidate = layout
+        .root
+        .join("update")
+        .join(format!("mh_launcher-{version}.exe"));
+    let bytes = std::fs::read(&candidate)
+        .map_err(|e| format!("cannot read {} ({e})", candidate.display()))?;
+    if bytes.len() as u64 != manifest.size {
+        return Err(format!(
+            "{R_DIGEST}: {} is {} B and the signed manifest says {} B",
+            candidate.display(),
+            bytes.len(),
+            manifest.size
+        ));
+    }
+    check_digest("the staged launcher", &bytes, &manifest.sha256)?;
+    let what = replace(&candidate)?;
+    Ok(format!(
+        "{what} replaced with launcher {version} (digest matches the signed manifest)"
+    ))
+}
+
+/// `self_replace` renames the running executable aside (`*.__relocated__*.exe`) and deletes it once
+/// the process exits -- which fails while the UN-elevated parent still has that image mapped, so an
+/// elevated replace can leave one behind in a folder only an administrator can clean. The next
+/// elevated replace removes earlier leftovers (best effort, errors ignored).
+fn sweep_relocated(running: &Path) {
+    let Some(dir) = running.parent() else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.contains(".__relocated__") || name.contains(".__selfdelete__") {
+            match std::fs::remove_file(entry.path()) {
+                Ok(()) => log::line(format!("update: removed a leftover {name}")),
+                Err(e) => log::line(format!("update: cannot remove the leftover {name} ({e})")),
+            }
+        }
+    }
 }
 
 /// The spawn half of a restart: start `exe` with `args`.
@@ -2123,7 +2251,7 @@ pub fn self_update(
     };
     match stage_self_update(layout, fetch, launcher, crate::version::VERSION, base_url)? {
         SelfStage::NotNeeded(msg) => Ok(SelfUpdate::NotNeeded(msg)),
-        SelfStage::Staged(staged) => commit_self_update(&staged, Some(restart_args)),
+        SelfStage::Staged(staged) => commit_self_update(&staged, Some(restart_args), Some(layout)),
     }
 }
 
@@ -2864,6 +2992,73 @@ mod tests {
             .replace("2026-10-02T00:00:00Z", "2030-01-01T00:00:00Z");
         std::fs::write(layout.accepted_manifest("latest", KIND_GAME), edited).unwrap();
         assert_eq!(load_floor(&layout, "latest", KIND_GAME, &key), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Field report 2026-10-15 (Program Files): the elevated self-replace takes only a version from
+    /// the un-elevated parent and refuses, BEFORE replacing anything, a version the signed manifest
+    /// does not offer, a downgrade, a missing candidate and a candidate whose size or digest is
+    /// not the signed one.
+    #[test]
+    fn the_elevated_self_replace_puts_only_the_signed_launcher_in_place() {
+        let root = std::env::temp_dir().join("mh_launcher_test_elevated_self_replace");
+        let _ = std::fs::remove_dir_all(&root);
+        let layout = Layout::rooted(&root);
+        let good = b"the signed launcher bytes".to_vec();
+        let manifest = |version: &str, bytes: &[u8]| LauncherManifest {
+            schema: 2,
+            kind: KIND_LAUNCHER.into(),
+            channel: "latest".into(),
+            version: version.into(),
+            issued_at: "2026-10-15T00:00:00Z".into(),
+            url: "https://example.invalid/mh_launcher.exe".into(),
+            sha256: sha256_bytes(bytes),
+            size: bytes.len() as u64,
+            notes_url: String::new(),
+        };
+        let replaced = std::cell::Cell::new(0);
+        let replace = |_: &Path| {
+            replaced.set(replaced.get() + 1);
+            Ok("mh_launcher.exe".to_string())
+        };
+        let run = |version: &str, mine: &str, signed: LauncherManifest| {
+            elevated_self_replace_with(&layout, version, mine, &|| Ok(signed.clone()), &replace)
+        };
+        let candidate = root.join("update").join("mh_launcher-0.2.0-rc9.5.exe");
+
+        // No candidate staged yet.
+        let e = run("0.2.0-rc9.5", "0.2.0-rc9.4", manifest("0.2.0-rc9.5", &good)).unwrap_err();
+        assert!(e.contains("cannot read"), "{e}");
+        std::fs::create_dir_all(candidate.parent().unwrap()).unwrap();
+        std::fs::write(&candidate, &good).unwrap();
+        // Not the version the signed manifest offers.
+        let e = run("0.2.0-rc9.5", "0.2.0-rc9.4", manifest("0.2.0-rc9.6", &good)).unwrap_err();
+        assert!(e.contains("signed manifest offers 0.2.0-rc9.6"), "{e}");
+        // Never down, never sideways.
+        assert!(run("0.2.0-rc9.5", "0.2.0-rc9.5", manifest("0.2.0-rc9.5", &good)).is_err());
+        // The bytes in the user-writable update folder are not the signed ones.
+        std::fs::write(&candidate, b"something else entirely!").unwrap();
+        let e = run("0.2.0-rc9.5", "0.2.0-rc9.4", manifest("0.2.0-rc9.5", &good)).unwrap_err();
+        assert!(e.contains(R_DIGEST), "{e}");
+        std::fs::write(&candidate, b"short").unwrap();
+        let e = run("0.2.0-rc9.5", "0.2.0-rc9.4", manifest("0.2.0-rc9.5", &good)).unwrap_err();
+        assert!(e.contains(R_DIGEST), "{e}");
+        // A failed manifest load refuses too.
+        let e = elevated_self_replace_with(
+            &layout,
+            "0.2.0-rc9.5",
+            "0.2.0-rc9.4",
+            &|| Err("no verified launcher manifest".to_string()),
+            &replace,
+        )
+        .unwrap_err();
+        assert!(e.contains("no verified"), "{e}");
+        assert_eq!(replaced.get(), 0, "nothing was replaced on any refusal");
+        // The signed bytes: replaced, once.
+        std::fs::write(&candidate, &good).unwrap();
+        let ok = run("0.2.0-rc9.5", "0.2.0-rc9.4", manifest("0.2.0-rc9.5", &good)).unwrap();
+        assert!(ok.contains("replaced with launcher 0.2.0-rc9.5"), "{ok}");
+        assert_eq!(replaced.get(), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 

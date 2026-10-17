@@ -90,6 +90,23 @@
     <ClCompile Include="desync\state_miniz.c" />
     <ClCompile Include="desync\state_ring.cpp" />
     <ClCompile Include="desync\world_sync.cpp" />
+    <ClCompile Include="desync\scene_dump.cpp">
+      <ForcedIncludeFiles>$(ProjectDir)desync\scene_rename.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <PreprocessorDefinitions>MH_NAV_CAPTURE_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\world_snapshot.cpp">
+      <ForcedIncludeFiles>$(ProjectDir)desync\scene_rename.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\nav_trailer.cpp">
+      <ForcedIncludeFiles>$(ProjectDir)desync\scene_rename.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+      <PreprocessorDefinitions>MH_NAV_CAPTURE_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\world_fixup.cpp">
+      <ForcedIncludeFiles>$(ProjectDir)desync\scene_rename.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\boot_snapshot.cpp">
+      <ForcedIncludeFiles>$(ProjectDir)desync\scene_rename.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
     <!-- THE x87 FLAG POLICY LEFT THIS PROJECT AT FORK F4D and the roster's files left it at F5O.
          mh.vcxproj compiles no roster TU any more, so there is nothing here to flag: the sim's
          /arch:IA32 /fp:precise requirement (the sim is x87 and MSVC x86 emits SSE2 by default,

@@ -93,10 +93,21 @@ size_t body_bytes(uint32_t node_count) {
 
 // ---- capture -------------------------------------------------------------------------------------
 
-int capture(void *buf, size_t cap, size_t *out_len) {
+namespace {
+// What the walk reads, through the sim_store-shaped accessors it was written against.
+struct live_views {
+    llm_map_region     **list_head;
+    llm_map_region     **free_head;
+    llm_map_region     **by_index;
+    llm_map_region_cell *grid; // MAP_GRID_DIM x MAP_GRID_DIM, row-major by x
+    llm_map_region     *&region_list_head_mut() { return *list_head; }
+    llm_map_region     *&region_pool_free_head() { return *free_head; }
+    llm_map_region     **region_by_index() { return by_index; }
+    llm_map_region_cell &region_cell_at(int32_t x, int32_t y) { return grid[x * mh::sim::MAP_GRID_DIM + y]; }
+};
+
+int capture_walk(void *buf, size_t cap, size_t *out_len, live_views &own) {
     if (buf == nullptr || out_len == nullptr) return NAV_ERR_ARG;
-    mh::sim::sim_state  st  = mh::sim::state();
-    mh::sim::sim_store &own = st.own;
 
     // (1) ENUMERATE THE POOL, assigning slots in traversal order. Walking the active list first and
     //     the free list second makes the slot space the pool's own contents and records both list
@@ -223,10 +234,21 @@ int capture(void *buf, size_t cap, size_t *out_len) {
     *out_len = sizeof(trailer_header) + at;
     return NAV_OK;
 }
+} // namespace
+
+int capture_with(void *buf, size_t cap, size_t *out_len, const capture_views &v) {
+    live_views lv;
+    lv.list_head = reinterpret_cast<llm_map_region **>(v.list_head);
+    lv.free_head = reinterpret_cast<llm_map_region **>(v.free_head);
+    lv.by_index  = reinterpret_cast<llm_map_region **>(v.by_index);
+    lv.grid      = static_cast<llm_map_region_cell *>(v.grid);
+    return capture_walk(buf, cap, out_len, lv);
+}
 
 // ---- import ---------------------------------------------------------------------------------------
 
-int import(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c) {
+namespace {
+int import_walk(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c, live_views &own) {
     if (buf == nullptr) return NAV_ERR_ARG;
     if (n < sizeof(trailer_header)) return NAV_ERR_TRUNCATED;
 
@@ -268,9 +290,7 @@ int import(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c
         if (v != GRID_PENDING && !slot_ok(v)) return NAV_ERR_BAD_SLOT;
     }
 
-    mh::sim::sim_state  st  = mh::sim::state();
-    mh::sim::sim_store &own = st.own;
-    llm_map_region     *by_slot[MAX_NODES];
+    llm_map_region *by_slot[MAX_NODES];
     for (uint32_t s = 0; s < h.node_count; ++s) {
         by_slot[s] = static_cast<llm_map_region *>(c.malloc_(sizeof(llm_map_region)));
         if (by_slot[s] == nullptr) {
@@ -347,6 +367,47 @@ int import(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c
     return NAV_OK;
 }
 
+} // namespace
+
+int import_with(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c, const capture_views &v) {
+    live_views lv;
+    lv.list_head = reinterpret_cast<llm_map_region **>(v.list_head);
+    lv.free_head = reinterpret_cast<llm_map_region **>(v.free_head);
+    lv.by_index  = reinterpret_cast<llm_map_region **>(v.by_index);
+    lv.grid      = static_cast<llm_map_region_cell *>(v.grid);
+    return import_walk(buf, n, c, lv);
+}
+
+#ifdef MH_NAV_CAPTURE_ONLY
+// mh.dll (the field-report scene dump / scene replay) links no sim tree: nav::capture and nav::import(buf, n)
+// are defined by its binder (desync/scene_dump.cpp) over capture_with / import_with and the four live objects
+// desync_watch.cpp hands in.
+const import_stats &last_import() {
+    return g_last;
+}
+#else
+int capture(void *buf, size_t cap, size_t *out_len) {
+    mh::sim::sim_state  st  = mh::sim::state();
+    mh::sim::sim_store &own = st.own;
+    capture_views       v;
+    v.list_head = reinterpret_cast<void **>(&own.region_list_head_mut());
+    v.free_head = reinterpret_cast<void **>(&own.region_pool_free_head());
+    v.by_index  = reinterpret_cast<void **>(own.region_by_index());
+    v.grid      = &own.region_cell_at(0, 0);
+    return capture_with(buf, cap, out_len, v);
+}
+
+int import(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c) {
+    mh::sim::sim_state  st  = mh::sim::state();
+    mh::sim::sim_store &own = st.own;
+    capture_views       v;
+    v.list_head = reinterpret_cast<void **>(&own.region_list_head_mut());
+    v.free_head = reinterpret_cast<void **>(&own.region_pool_free_head());
+    v.by_index  = reinterpret_cast<void **>(own.region_by_index());
+    v.grid      = &own.region_cell_at(0, 0);
+    return import_with(buf, n, c, v);
+}
+
 // THE GAME'S ALLOCATOR, not new/malloc: llm_map_region_pool_reset calls utils_free on every node it
 // drains, and a cross-allocator free is a crash a long way from its cause. This is the same
 // `utils_malloc(0x420)` llm_map_load_regions @0x00424a68 itself performs.
@@ -357,5 +418,6 @@ int import(const void *buf, size_t n) {
 const import_stats &last_import() {
     return g_last;
 }
+#endif // MH_NAV_CAPTURE_ONLY
 
 } // namespace mh::state::nav

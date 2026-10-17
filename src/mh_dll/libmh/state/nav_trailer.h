@@ -179,6 +179,23 @@ enum nav_err : int {
 // bytes written. Runs in the recording process, at the same instant as the block capture.
 int capture(void *buf, size_t cap, size_t *out_len);
 
+// The four live objects capture walks, as plain addresses, so the walk has ONE body whether it is reached
+// through libmh's sim view (nav::capture above) or from mh.dll's field-report scene dump, which links no
+// sim tree and so binds them itself (desync/desync_watch.cpp, the only binder of registry regions in mh.dll;
+// there `nav::capture` itself is not built -- MH_NAV_CAPTURE_ONLY). `grid` is the MAP_REGION_GRID base
+// (256 x 256 cells, 8 bytes each, row-major by x); the others are the head pointers' own addresses.
+struct capture_views {
+    void **list_head; // &MAP_REGION_LIST_HEAD
+    void **free_head; // &MAP_REGION_POOL_FREE_HEAD
+    void **by_index;  // MAP_REGION_BY_INDEX[BY_INDEX_N]
+    void  *grid;      // MAP_REGION_GRID
+};
+int capture_with(void *buf, size_t cap, size_t *out_len, const capture_views &v);
+
+// The import's twin of capture_with: the same body over the same four live objects, so mh.dll's scene replay
+// (desync/scene_dump.cpp) rebuilds the pool without a sim tree. `c` is the allocator (see import() below).
+int import_with(const void *buf, size_t n, const mh::sim::lt_map_region_pool_calls &c, const capture_views &v);
+
 // ---- import (standalone or hosted) --------------------------------------------------------------
 //
 // Rebuilds the pool from `buf` through the GAME'S OWN ALLOCATOR, relinks both lists, refills

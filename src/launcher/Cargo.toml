@@ -181,3 +181,10 @@ minidump = "0.27.0"
 # the Settings page is a picture of what ships. `snapshot` writes and diffs the PNGs. Dev-only:
 # nothing of this reaches the release binary.
 egui_kittest = { version = "0.36.2", default-features = false, features = ["wgpu", "snapshot"] }
+
+[build-dependencies]
+# dist LA19: the exe's RT_GROUP_ICON resource (Explorer, shortcuts, taskbar). Exact pin: a build
+# dependency runs arbitrary code at build time. It writes a one-line .rc and drives the Windows SDK's
+# rc.exe, which the MSVC toolchain and the windows-2022 runner both carry (found via the registry,
+# no PATH needed); MIT, its only extra dependency is `toml`, already in the lockfile.
+winresource = "=0.1.34"

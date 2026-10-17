@@ -45,6 +45,9 @@
     <Filter Include="libmh\orders\issue">
       <UniqueIdentifier>{5B809BC8-567A-5FF1-80B1-1D7DC4719B54}</UniqueIdentifier>
     </Filter>
+    <Filter Include="libmh\state">
+      <UniqueIdentifier>{BCA90837-53CC-5AA1-97BB-5420B4692A96}</UniqueIdentifier>
+    </Filter>
     <Filter Include="patch">
       <UniqueIdentifier>{34BFEC4A-FF69-59B5-9FEB-C2C64934B4B4}</UniqueIdentifier>
     </Filter>
@@ -288,6 +291,21 @@
     </ClCompile>
     <ClCompile Include="desync\world_sync.cpp">
       <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="desync\scene_dump.cpp">
+      <Filter>desync</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\world_snapshot.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\nav_trailer.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\world_fixup.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\boot_snapshot.cpp">
+      <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="seams\video.cpp">
       <Filter>seams</Filter>

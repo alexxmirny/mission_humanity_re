@@ -262,6 +262,9 @@
     <ClCompile Include="..\mh\desync\desync_watch.cpp">
       <Filter>mh\desync</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\desync\scene_dump.cpp">
+      <Filter>mh\desync</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\desync\state_tracker.cpp">
       <Filter>mh\desync</Filter>
     </ClCompile>

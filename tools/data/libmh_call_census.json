@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 153,
+  "distinct_callees": 158,
   "config_measures": {
    "hosted": {
     "sites": 1561,
@@ -36,10 +36,16 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 113,
-   "translated": 38
+   "original": 114,
+   "translated": 42
   },
   "modules": {
+   "desync": {
+    "sites": 6,
+    "distinct": 6,
+    "outward_sites": 2,
+    "outward_distinct": 2
+   },
    "lockstep": {
     "sites": 2,
     "distinct": 1,
@@ -517,6 +523,28 @@
    }
   },
   {
+   "name": "llm_map_init_region_route_step_deltas",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "desync": 1
+   }
+  },
+  {
+   "name": "llm_map_region_pool_reset",
+   "status": "translated",
+   "domain": "lib_trans",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "desync": 1
+   }
+  },
+  {
    "name": "llm_map_set_minimap_zoom_for_size",
    "status": "original",
    "domain": null,
@@ -539,6 +567,17 @@
     "seams": 1
    },
    "adjudication": "event-channel:event"
+  },
+  {
+   "name": "llm_map_setup_dimensions",
+   "status": "translated",
+   "domain": "lib_trans",
+   "tier": "T3",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "desync": 1
+   }
   },
   {
    "name": "llm_menu_build_placement_pending_clear",
@@ -941,6 +980,17 @@
    "sites": 1,
    "modules": {
     "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_pathfinder_init",
+   "status": "translated",
+   "domain": "sim_resid",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "desync": 1
    }
   },
   {
@@ -1799,9 +1849,22 @@
    "domain": null,
    "tier": null,
    "promoted": false,
+   "sites": 2,
+   "modules": {
+    "desync": 1,
+    "seams": 1
+   },
+   "adjudication": "crt"
+  },
+  {
+   "name": "utils_malloc",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
    "sites": 1,
    "modules": {
-    "seams": 1
+    "desync": 1
    },
    "adjudication": "crt"
   },

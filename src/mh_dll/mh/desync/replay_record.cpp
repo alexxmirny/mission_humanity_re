@@ -18,6 +18,8 @@ hooks  g_h          = {};
 bool   g_seed_on    = false;
 int    g_hash_every = 0;
 bool   g_compress   = true;
+bool   g_scene_on   = true;
+int    g_scenes     = 0; // scenes written to the open file
 
 #define RLOG(...)                      \
     do {                               \
@@ -91,6 +93,7 @@ void open_file(const char *dir, unsigned long gen) {
     g_hashes    = 0;
     g_hash_step = 0;
     g_segments  = 0;
+    g_scenes    = 0;
     g_poll_have = false;
     lstrcpynA(g_dir, dir, MAX_PATH);
     _snprintf_s(g_seed_path, sizeof(g_seed_path), _TRUNCATE, "%s%s", dir, SEED_NAME);
@@ -133,6 +136,25 @@ uint64_t write_seed(const char *path, int segment, const char *label) {
     return n;
 }
 
+// The scene beside a seed (the whole bound world, see SCENE_NAME). -> true if one was written.
+bool write_scene(const char *path) {
+    if (!g_scene_on || !g_h.scene || g_scenes >= SCENES_MAX) return false;
+    LARGE_INTEGER t0, t1, hz;
+    QueryPerformanceCounter(&t0);
+    const uint64_t n = g_h.scene(path, g_step);
+    QueryPerformanceCounter(&t1);
+    const double ms = QueryPerformanceFrequency(&hz) && hz.QuadPart
+                          ? (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)hz.QuadPart
+                          : 0.0;
+    RLOG("; [desync] SCENE RECORD -> %s: step %lu, %llu bytes (the whole bound world + nav graph), %.2f ms on the "
+         "sim thread; gzipped next (replay input, tools/replay_match_segment.py)\n",
+         path, (unsigned long)g_step, (unsigned long long)n, ms);
+    if (!n) return false;
+    ++g_scenes;
+    if (g_compress) gz::compress_async(path, g_log, mh_logq_ticket(), "SCENE RECORD");
+    return true;
+}
+
 // Match step 1: the segments file's header + segment 0, the seed, then (with the hash on) the hash
 // file's header.
 void first_step() {
@@ -146,9 +168,9 @@ void first_step() {
                     cfg);
         mh_logq_create_bin(g_seg_path, line, lstrlenA(line));
         _snprintf_s(line, sizeof(line), _TRUNCATE,
-                    "segment 0 step=1 kind=%s clock_after=%.3f planet_after=%d seed=%s\n",
+                    "segment 0 step=1 kind=%s clock_after=%.3f planet_after=%d seed=%s scene=%s\n",
                     boundary_name(boundary::session_start), now_clock(), now_planet(),
-                    g_seed_on ? SEED_NAME : "none");
+                    g_seed_on ? SEED_NAME : "none", g_scene_on && g_h.scene ? SCENE_NAME : "none");
         seg_line(line);
     }
     if (g_hash_every > 0) {
@@ -160,6 +182,9 @@ void first_step() {
         mh_logq_create_bin(g_hash_path, line, lstrlenA(line));
     }
     write_seed(g_seed_path, 0, boundary_name(boundary::session_start));
+    char scene_path[MAX_PATH];
+    _snprintf_s(scene_path, sizeof(scene_path), _TRUNCATE, "%s%s", g_dir, SCENE_NAME);
+    write_scene(scene_path);
 }
 
 // The first step after a boundary: segment n's seed, its line, its checkpoint.
@@ -170,10 +195,16 @@ void start_segment(const pending_t &p) {
     const uint64_t h_after = g_h.hash ? g_h.hash() : 0;
     char           seed_leaf[48];
     char           seed_path[MAX_PATH];
-    uint64_t       nbytes = 0;
+    char           scene_leaf[48];
+    char           scene_path[MAX_PATH];
+    bool           scene_ok = false;
+    uint64_t       nbytes   = 0;
     _snprintf_s(seed_leaf, sizeof(seed_leaf), _TRUNCATE, "mh_rec_seed_%d.bin", n);
     _snprintf_s(seed_path, sizeof(seed_path), _TRUNCATE, "%s%s", g_dir, seed_leaf);
     if (n <= SEGMENTS_MAX) nbytes = write_seed(seed_path, n, boundary_name(p.kind));
+    _snprintf_s(scene_leaf, sizeof(scene_leaf), _TRUNCATE, "mh_rec_scene_%d.bin", n);
+    _snprintf_s(scene_path, sizeof(scene_path), _TRUNCATE, "%s%s", g_dir, scene_leaf);
+    if (n <= SEGMENTS_MAX) scene_ok = write_scene(scene_path);
     char hb[24], fh[160];
     if (p.hash_known)
         _snprintf_s(hb, sizeof(hb), _TRUNCATE, "%08X%08X", (unsigned)(p.hash_before >> 32), (unsigned)p.hash_before);
@@ -189,10 +220,11 @@ void start_segment(const pending_t &p) {
     char line[1024];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
                 "segment %d step=%lu kind=%s prev_step=%lu clock_before=%.3f clock_after=%.3f planet_before=%d "
-                "planet_after=%d planet=%d hash_before=%s hash_after=%08X%08X source=\"%s\" file=\"%s\"%s seed=%s\n",
+                "planet_after=%d planet=%d hash_before=%s hash_after=%08X%08X source=\"%s\" file=\"%s\"%s seed=%s scene=%s\n",
                 n, (unsigned long)g_step, boundary_name(p.kind), (unsigned long)p.step_before, p.clock_before, clk,
                 p.planet_before, pl, p.planet, hb, (unsigned)(h_after >> 32), (unsigned)h_after, p.what, p.file, fh,
-                n > SEGMENTS_MAX ? "none(cap)" : (g_seed_on && nbytes ? seed_leaf : "none"));
+                n > SEGMENTS_MAX ? "none(cap)" : (g_seed_on && nbytes ? seed_leaf : "none"),
+                scene_ok ? scene_leaf : (g_scene_on && g_h.scene ? "none(cap)" : "none"));
     seg_line(line);
     RLOG("; [desync] SEGMENT %s", line);
     if (g_hash_every > 0 && g_h.hash) {
@@ -267,6 +299,7 @@ void configure(int seed_on, int hash_every, const hooks &h, log_fn log) {
 
 bool     enabled() { return g_seed_on || g_hash_every > 0; }
 void     set_compress(bool on) { g_compress = on; }
+void     set_scene_record(bool on) { g_scene_on = on; }
 uint32_t current_step() { return g_open ? g_step : 0; }
 int      segments() { return g_segments; }
 

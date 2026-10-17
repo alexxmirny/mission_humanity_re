@@ -585,6 +585,10 @@ void on_sim_step();
 // loudly, if the offered manifest is not ours.
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state);
 
+// Scene replay without libmh.dll (desync/scene_dump.h): import a recorded scene dump into this process.
+// -> 0 or a negative world/fixup/nav code (-23 = the dump was recorded by a different build).
+int import_scene(const void *blob, unsigned n);
+
 // True once the current match has seen at least one mismatching sample.
 bool detected();
 
