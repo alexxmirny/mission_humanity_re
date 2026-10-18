@@ -1,0 +1,19 @@
+# mods:M1N -- a frame of one nudge / swap / claim case on the loaded 5-kofu-c save. A probe, NOT a registered [uitest] row.
+# The case itself is the harness's nd_* probe: --harness-extra "synth_move=0;pin_wallclock=1;nd_case=<1|2|3>;nd_at=1500" with
+# --net-extra "improved_movement=1;<the key>" and --omit-satellite libmh.dll, --backend d3d11 (a frame needs a renderer).
+# camto = the TOP-LEFT tile of the view. The `gameclock` value is the ABSOLUTE game clock (ms) of the moment to capture; the
+# values that showed the slide on this save with pin_wallclock=1 (read them off the `; ND C clk=` lines): swap 4809200,
+# nudge 4810843, claim 4807994. Edit the line below per case.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 30 31
+gameclock 4809200
+capture m1n_frame
+log m1n: frame captured
+end

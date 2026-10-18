@@ -72,6 +72,7 @@ pub fn game_running_here(dir: &Path) -> bool {
 
 /// Every process named `mh.exe` right now, with its image path where it can be read.
 pub fn snapshot() -> Result<Vec<ProcInfo>, String> {
+    let _p = crate::watchdog::phase("process snapshot (toolhelp)");
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,

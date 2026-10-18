@@ -40,6 +40,10 @@ namespace detail {
 
 // ---- llm_strat_new_game_init @0x00455df0 -----------------------------------------------------------
 void new_game_init(const sim_view &v, sim_store &own, const new_game_init_calls &c) {
+    // mods:G17 -- the host's cfg-table restore, BEFORE the baseline-column copies below read them.
+    // Not a game instruction (no address): a registered callback, null in every offline suite.
+    fire_new_game_init_observer();
+
     // 0x00455e08.
     c.clear_available_projects();
 
@@ -106,6 +110,17 @@ void new_game_init(const sim_view &v, sim_store &own, const new_game_init_calls 
 }
 
 } // namespace detail
+
+// ---- the new-game observer (mods:G17) -- see the header ------------------------------------------
+namespace {
+void (*g_ngi_observer)() = nullptr;
+} // namespace
+
+void set_new_game_init_observer(void (*fn)()) { g_ngi_observer = fn; }
+void (*new_game_init_observer())() { return g_ngi_observer; }
+void fire_new_game_init_observer() {
+    if (g_ngi_observer) g_ngi_observer();
+}
 
 // ---- the public wrapper --------------------------------------------------------------------------
 

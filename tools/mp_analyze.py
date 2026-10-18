@@ -1326,6 +1326,21 @@ def diff_peers(a, b, name_a, name_b, truncate_at=None):
         res["first_mismatch"]["state_only_regions"] = [
             r for r in diverged if r not in STATE_EXCLUDED
         ]
+    # mp:D47: a REBASED pair whose very first common step already disagrees in the CLOCK column is not
+    # two sims that diverged -- the two match axes are not on the same grid (a wrong or missing
+    # step_base). Say so, instead of the DESYNC that a process-keyed oracle used to print for it.
+    if (
+        (a.get("step_base") or b.get("step_base"))
+        and s0 == common[0]
+        and sa[s0]["clock"] != sb[s0]["clock"]
+    ):
+        res["misaligned"] = True
+        res["verdict"] = (
+            "MISALIGNED: match step %d differs in the clock column (step_base a=%s b=%s) -- the "
+            "peers' match axes are not on one grid; not read as a desync"
+            % (s0, a.get("step_base", 0), b.get("step_base", 0))
+        )
+        return res
     res["verdict"] = "DESYNC: state-hash first differs at step %d" % s0
     return res
 
@@ -2238,6 +2253,98 @@ def menu_phase_net(path):
     return parse_events(fp)
 
 
+SEG_OPEN_RE = re.compile(r"segment OPEN .*?\(step_base=(\d+)\)")
+SEG_CLOSE_RE = re.compile(r"segment CLOSE at process step (\d+)")
+
+
+def match_session_log(process_dir):
+    """mp:D47. The `mh_match_harness.log` of the FIRST host/client session a PROCESS directory owns, or None.
+
+    The suite (test_ui hash_check, the check_*.py post-checks) hands mp_analyze each peer's PROCESS dir,
+    whose mh_harness.log carries every step of the process -- single-player included. The sessions that
+    hang off it name it in session.json `process_dir`; a `campaign` (single-player) session is not the
+    match. With several matches in one process the first is the one paired (the same match on both
+    peers); a later match needs its session dir handed over directly."""
+    parent = os.path.dirname(os.path.abspath(process_dir))
+    leaf = os.path.basename(os.path.abspath(process_dir))
+    found = []
+    try:
+        names = sorted(os.listdir(parent))
+    except OSError:
+        return None
+    for nm in names:
+        d = os.path.join(parent, nm)
+        sj = read_session_json(d) if os.path.isdir(d) else None
+        if not sj or sj.get("process_dir") != leaf or sj.get("mode") not in ("host", "client"):
+            continue
+        fp = os.path.join(d, "mh_match_harness.log")
+        if os.path.isfile(fp):
+            found.append(fp)
+    return found[0] if found else None
+
+
+def segment_window(path):
+    """mp:D47. (step_base, close_step) from a session's `mh_match_harness.log`, or None.
+
+    The harness numbers every hash row by the PROCESS step (g_step, never reset per match), so a peer that
+    played K single-player steps before the match writes its match step 1 as row K+1. The segment's
+    `; [match] segment OPEN ... (step_base=K)` line is the harness's own statement of that offset; the
+    CLOSE line (if the match ended) bounds the last process step that belongs to the match. `path` is a
+    session folder or the match log itself. None = no segment line (a legacy run, a menu/solo folder):
+    the caller keeps the process numbering, exactly as before D47."""
+    if os.path.isdir(path):
+        fp = os.path.join(path, "mh_match_harness.log")
+        if not os.path.isfile(fp):
+            fp = match_session_log(path)  # a PROCESS dir: the suite hands those over
+            if fp is None:
+                return None
+    else:
+        fp = path
+    if not os.path.isfile(fp):
+        return None
+    base = close = None
+    try:
+        with open(fp, "r", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith(";"):
+                    continue
+                m = SEG_OPEN_RE.search(line)
+                if m:
+                    base, close = int(m.group(1)), None  # the LAST OPEN wins (a reopened file)
+                    continue
+                m = SEG_CLOSE_RE.search(line)
+                if m and base is not None:
+                    close = int(m.group(1))
+    except OSError:
+        return None
+    return None if base is None else (base, close)
+
+
+def rebase_harness(seg, base, close=None):
+    """mp:D47. Re-key a parse_harness() segment from process steps to MATCH steps (process - base).
+
+    Rows at or before the base (the single-player steps) and after `close` are not the match and are
+    dropped. step_base 0 with no close is the identity. SNAPCAP/SNAPIMP stay as printed: both peers key
+    them by the capturing peer's step, which is already a shared axis."""
+    seg["step_base"] = base
+    if base == 0 and close is None:
+        return seg
+    hi = None if close is None else close - base
+
+    def keep(k):
+        return k > base and (close is None or k <= close)
+
+    for key in ("steps", "regions", "rd"):
+        seg[key] = {k - base: v for k, v in seg[key].items() if keep(k)}
+    if seg.get("poke"):
+        st, idx, nm = seg["poke"]
+        seg["poke"] = (st - base, idx, nm)
+    if seg.get("hold_step") is not None:
+        seg["hold_step"] -= base
+    seg["match_steps"] = hi
+    return seg
+
+
 def load_peer(path):
     logs = discover(path)
     peer = {"path": path, "logs": logs}
@@ -2247,6 +2354,10 @@ def load_peer(path):
         peer["session"] = read_session_json(path)
     if "harness" in logs:
         peer["harness"] = parse_harness(logs["harness"])
+        # mp:D47: key the hashes on MATCH steps when the session states its step_base.
+        win = segment_window(path)
+        if win is not None:
+            rebase_harness(peer["harness"], win[0], win[1])
     if "lockstep" in logs:
         peer["lockstep_rows"] = parse_lockstep(logs["lockstep"])
     if "net" in logs:
@@ -2901,6 +3012,146 @@ def selftest():
             0,
             "NOT COMPARED",
         )
+
+        # ---- mp:D47: process-step keying -------------------------------------------------------------
+        # A client that played K single-player steps before the match numbers its match step 1 as row K+1
+        # (the harness step counter is the PROCESS'S). Three arms over the same pair: no segment line
+        # (the old keying: DESYNC at step 1), the segment's own step_base (IDENTICAL, R rows included),
+        # and a WRONG step_base (the match axes are off the clock grid: MISALIGNED, not a desync).
+        def _d47_arm(slug, name, base, want_rc, want_text, k=4, check_regions=False):
+            nonlocal bad
+            d = os.path.join(root, "d47_" + slug)
+            dirs = []
+            for role in ("host", "client1"):
+                p = os.path.join(d, role)
+                _fx_peer(p, role=role, steps=50, interval=0.01)
+                if role != "host":
+                    hp = os.path.join(p, "mh_harness.log")
+                    lines = open(hp).read().splitlines()
+                    banner, rows = lines[0], lines[1:]
+                    sp = [
+                        "%d %016X %016X %016X" % (i, 0x3000 + i, 0xDEAD0000 + i, 0xBEEF0000 + i)
+                        for i in range(1, k + 1)
+                    ]
+                    out = [banner] + sp
+                    for ln in rows:
+                        t = ln.split()
+                        t[0] = str(int(t[0]) + k)
+                        out.append(" ".join(t))
+                        if int(t[0]) - k == 25:  # a periodic R row, sampled on the MATCH step
+                            out.append("R %d %s" % (int(t[0]), "AAAA0000AAAA0000 BBBB0000BBBB0000"))
+                    open(hp, "w").write("\n".join(out) + "\n")
+                else:
+                    with open(os.path.join(p, "mh_harness.log"), "a") as f:
+                        f.write("R 25 AAAA0000AAAA0000 BBBB0000BBBB0000\n")
+                if base is not None and role != "host":
+                    with open(os.path.join(p, "mh_match_harness.log"), "w") as f:
+                        f.write(
+                            "; [match] segment OPEN x at process step %d: match step k = process "
+                            "step %d+k (step_base=%d). Hash lines below carry PROCESS step numbers\n"
+                            % (base + 1, base, base)
+                        )
+                dirs.append(p)
+            ns = argparse.Namespace(
+                paths=dirs,
+                freeze_ms=200,
+                min_common=1,
+                json=os.path.join(d, "out.json"),
+                selftest=False,
+                allow_mismatch=False,
+            )
+            buf, keep = io.StringIO(), sys.stdout
+            sys.stdout = buf
+            try:
+                rc = analyse(ns)
+            finally:
+                sys.stdout = keep
+            ok = (rc or 0) == want_rc and want_text in buf.getvalue()
+            if check_regions:
+                cl = load_peer(dirs[1])["harness"]
+                hs = load_peer(dirs[0])["harness"]
+                ok = ok and cl["regions"].get(25) == hs["regions"].get(25) and cl["step_base"] == k
+            print("   %-64s %s" % (name, "ok" if ok else "FAIL -- rc=%s" % (rc,)))
+            bad += 0 if ok else 1
+
+        _d47_arm(
+            "old",
+            "D47 K SP steps, no segment line (old keying) -> DESYNC at step 1",
+            None,
+            1,
+            "DESYNC",
+        )
+        _d47_arm(
+            "new",
+            "D47 same pair, segment step_base=K -> IDENTICAL on match steps (R row too)",
+            4,
+            0,
+            "ALL PAIRS IDENTICAL",
+            check_regions=True,
+        )
+        _d47_arm(
+            "off",
+            "D47 wrong step_base -> MISALIGNED, not DESYNC",
+            1,
+            1,
+            "MISALIGNED",
+        )
+
+        # The suite hands mp_analyze each peer's PROCESS dir; the match is the host/client session that names
+        # it in session.json `process_dir`. A single-player (`campaign`) session in the same process is not it.
+        d = os.path.join(root, "d47_proc")
+        dirs = []
+        for role, k in (("host", 0), ("client1", 4)):
+            pd = os.path.join(d, role, "2026-10-13T00-00-00Z_menu_solo")
+            _fx_peer(pd, role=role, steps=50, interval=0.01)
+            if k:
+                hp = os.path.join(pd, "mh_harness.log")
+                lines = open(hp).read().splitlines()
+                sp = [
+                    "%d %016X %016X %016X" % (i, 0x3000 + i, 0xDEAD0000 + i, 0xBEEF0000 + i)
+                    for i in range(1, k + 1)
+                ]
+                body = [
+                    " ".join([str(int(ln.split()[0]) + k)] + ln.split()[1:]) for ln in lines[1:]
+                ]
+                open(hp, "w").write("\n".join([lines[0]] + sp + body) + "\n")
+            for nm, mode, base in (
+                ("2026-10-13T00-00-01Z_aa_planet_campaign", "campaign", 0),
+                ("2026-10-13T00-00-02Z_bb_map_" + role, "client" if k else "host", k),
+            ):
+                sd = os.path.join(d, role, nm)
+                os.makedirs(sd)
+                with open(os.path.join(sd, "session.json"), "w") as f:
+                    json.dump({"mode": mode, "process_dir": os.path.basename(pd)}, f)
+                with open(os.path.join(sd, "mh_match_harness.log"), "w") as f:
+                    f.write(
+                        "; [match] segment OPEN x at process step %d: match step k = process step "
+                        "%d+k (step_base=%d).\n" % (base + 1, base, base)
+                    )
+            dirs.append(pd)
+        ns = argparse.Namespace(
+            paths=dirs,
+            freeze_ms=200,
+            min_common=1,
+            json=os.path.join(d, "out.json"),
+            selftest=False,
+            allow_mismatch=False,
+        )
+        buf, keep = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            rc = analyse(ns)
+        finally:
+            sys.stdout = keep
+        ok = (rc or 0) == 0 and "ALL PAIRS IDENTICAL" in buf.getvalue()
+        print(
+            "   %-64s %s"
+            % (
+                "D47 process dirs: the host/client session's step_base is used",
+                "ok" if ok else "FAIL -- rc=%s" % (rc,),
+            )
+        )
+        bad += 0 if ok else 1
 
         # ---- mp:D29: the manifest-fingerprint refusal ---------------------------------------------
         # Two clean peers with identical hashes; only the harness's configuration line varies. The

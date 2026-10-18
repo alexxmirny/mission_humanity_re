@@ -12,11 +12,18 @@
 #include "lockstep/lt_peer_timing_reset.h"
 #include "lockstep/lt_player_by_side_id.h"
 #include "lockstep/lt_reload_snapshot_resync.h"
-#include "lockstep/lt_time_query.h"       // NET-SESSION: install_seam_session_globals_reset / _wait_screen_frame
-#include "sim/sim_order_dispatch.h"       // mp:U49 set_undock_reentry_fix
-#include "sim/sim_building_tick.h"        // PT-FIX1 set_turret_reload_owner_fix
-#include "sim/sim_unit_state_move_path.h" // PT-FIX3 set_air_order_facing_fix
-#include "orders/order_queue.h"           // ST1: the order counts come from their OWNER, not a second binding
+#include "lockstep/lt_time_query.h"                       // NET-SESSION: install_seam_session_globals_reset / _wait_screen_frame
+#include "sim/sim_order_dispatch.h"                       // mp:U49 set_undock_reentry_fix
+#include "sim/sim_building_tick.h"                        // PT-FIX1 set_turret_reload_owner_fix
+#include "sim/sim_unit_state_move_path.h"                 // PT-FIX3 set_air_order_facing_fix
+#include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h" // mods:A2 set_project_gate_fix
+#include "sim/sim_mother_free.h"                          // mods:A1 set_mother_free_build
+#include "sim/sim_path_group_steps.h"                     // mods:M1X set_move_attack_heading_fix
+#include "sim/sim_unit_state_squad_merge.h"               // mods:M1C set_move_squad_merge_fix
+#include "sim/sim_projectile_facing.h"                    // mods:M1C set_projectile_facing_fix
+#include "sim/sim_merge_goal.h"                           // mods:M1X set_move_merge_goal_fix
+#include "sim/sim_attack_range_footprint.h"               // mods:M1C set_attack_range_footprint
+#include "orders/order_queue.h"                           // ST1: the order counts come from their OWNER, not a second binding
 
 #include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE / the entry-thunk shapes
 #include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
@@ -377,11 +384,17 @@ void sim_tick(const engine_state &st, const game_calls &calls, const reimpl_fixe
     // on. See its declaration for why, and for the order-release check that says it is safe here.
     if (*st.session_mode == SESSION_MP_LOCKSTEP || fx.rig_fixed_step_loop) {
         // `FCOMP`/`JA`: unordered EXITS the loop, and `<=` in C++ is likewise false on NaN. Same.
+        int32_t steps_run = 0;
         while (*st.game_clock_w + *st.sim_step_interval <= *st.total_game_time) {
             *st.game_time_delta = *st.sim_step_interval;
             *st.game_clock_w    = *st.sim_step_interval + *st.game_clock_w;
             if (*st.order_pending_count != 0) calls.order_release_due(*st.game_clock_w);
             calls.sim_step();
+            // The single-player catch-up cap (reimpl_fixes::sp_step_cap): drop the rest of a long stall.
+            if (fx.sp_step_cap > 0 && *st.session_mode != SESSION_MP_LOCKSTEP && ++steps_run >= fx.sp_step_cap) {
+                *const_cast<double *>(st.total_game_time) = *st.game_clock_w; // a real mutable global, see engine_state
+                break;
+            }
         }
     } else {
         *st.game_time_delta = *st.total_game_time - *st.game_clock_w;
@@ -699,6 +712,13 @@ void                set_fixes(const reimpl_fixes &f) {
     mh::sim::set_turret_clip_fix(f.turret_clip_fix);                                            // PT-FIX4
     mh::sim::set_turret_fire_poll_fix(f.turret_fire_poll_fix);                                  // PT-FIX5
     mh::sim::set_air_order_facing_fix(f.air_order_facing_fix);                                  // PT-FIX3
+    mh::sim::set_project_gate_fix(f.project_gate_fix);                                          // mods:A2
+    mh::sim::set_mother_free_build(f.mother_free_build, f.mother_free_build_ai);                // mods:A1
+    mh::sim::set_move_attack_heading_fix(f.move_attack_heading_fix);                            // mods:M1X
+    mh::sim::set_move_squad_merge_fix(f.move_squad_merge_fix);                                  // mods:M1C
+    mh::sim::set_move_merge_goal_fix(f.move_merge_goal_fix);                                    // mods:M1X
+    mh::sim::set_projectile_facing_fix(f.projectile_facing_fix);                                // mods:M1C
+    mh::sim::set_attack_range_footprint(f.attack_range_footprint);                              // mods:M1C
 }
 
 // The seam vocabulary `lockstep_seams=` may name. The first nine are install_promotion's table in the

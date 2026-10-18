@@ -46,6 +46,7 @@ inline constexpr uint32_t PROLOGUE = mh::hook::WATCOM_PROLOGUE;
 // peers), which is what lets the controller be purely local. Strings because the knobs are atof'd.
 #define SHIP_LOOKAHEAD_MS "100"                     // [net] lockstep_step_ms  -- horizon lookahead / input latency
 #define SHIP_SIM_STEP_MS  "20"                      // [net] sim_step_ms       -- strategic sim sub-step (50 Hz)
+inline constexpr int SHIP_HITCH_MS          = 100;  // [net] hitch_ms -- frame-hitch log + mid-frame stack sample; 0 = off (single-player and multiplayer)
 inline constexpr int SHIP_FRAME_WATCHDOG_MS = 1000; // mp:P17 [net] frame_watchdog_ms -- 0 = off; MP matches only
 inline constexpr int SHIP_HEARTBEAT_MS      = 50;   // [net] horizon_heartbeat_ms -- off-frame advertisement
 inline constexpr int SHIP_ADAPTIVE          = 1;    // [net] lockstep_adaptive    -- auto-tune the lookahead
@@ -298,6 +299,11 @@ void install_exit_witness();         // D15: run-before witness on utils_abort +
 // mp:P17 -- main-thread frame watchdog + focus tap (net_diag.cpp). beat: main thread, once per present.
 // start: from lazy_start. [net] frame_watchdog_ms / focus_log / frame_watchdog_inject_ms.
 void frame_watchdog_beat();
+// [net] hitch_ms stack sampler (net_diag.cpp). Main thread calls; the watchdog thread samples the main thread MID-FRAME.
+void hitch_sample_tt(long long qpc);               // a strategic frame's time_tick ran at `qpc` (marks "in game")
+void hitch_sample_beat(long long qpc);             // a present completed at `qpc` (a new frame begins)
+void hitch_sample_emit(long long frame_start_qpc); // print the sample(s) taken during the frame that just ended; call right after its [hitch] line
+void hitch_inject_poll(long long qpc);             // [net] hitch_inject_ms test arm: one Sleep on the main thread, ~3 s into a game
 void frame_watchdog_start();
 
 // ---- cross-TU surface of reimpl_probe.cpp (P0-EXPORT proof) ----------------------------------
@@ -338,6 +344,40 @@ int  mh_set_turret_reload_realtime(int on);
 void mh_set_turret_fire_rate_mult(double m);
 int  mh_set_turret_clip_fix(int on);
 int  mh_set_turret_fire_poll_fix(int on);
+int  mh_set_mother_free_build(int on);       // mods:A1
+int  mh_set_mother_free_build_ai(int on);    // mods:A1
+bool mh_mother_free_covers(uint32_t player); // mods:A1: the rule opens the primary-mother gate for this player
+// mods:M1P: the movement-prototype setters (gameplay apply hooks). The int ones answer 1 = in force, 0 = refused (splice MISMATCHED/DISPLACED).
+int  mh_set_move_centroid_wrap_fix(int on);
+int  mh_set_move_detour_slot_guard(int on);
+int  mh_set_move_attack_heading_fix(int on); // mods:M1X (move_proto_blocked.cpp)
+int  mh_set_move_flood_queue_guard(int on);
+void mh_set_route_cost_mode(int mode);
+void mh_set_route_cost_base(int v);
+void mh_set_route_cost_ring(int which, int v); // which = 4 / 8 / 16
+void mh_set_route_gap_wave_full(int n);        // the LAST route-cost row: logs the whole set
+void mh_set_route_corridor_mode(int mode);     // mods:M1C: 0 retail / 1 corridor+adjacent / 2 all regions / 3 measure only
+// mods:M1X lane B (seams/move_proto_blocked.cpp): the blocked-unit protocol splice + its setters.
+void install_move_proto_blocked();
+void mh_set_move_block_wait_ms(int ms);
+void mh_set_move_keep_sidestep(int on);
+void mh_set_move_repath_cooldown_ms(int ms);
+// mods:M1N (seams/move_proto_nudge.cpp): nudge an idle blocker / claim a turning leader's tile / head-on swap by stepping.
+void install_move_proto_nudge();             // called from install_move_proto_blocked
+int  mh_set_move_nudge_idle(int on);         // 1 = in force, 0 = refused
+int  mh_set_move_claim_leader(int on);       // 1 = in force, 0 = refused
+int  mh_set_move_swap_headon(int on);        // 1 = in force, 0 = refused
+int  mh_set_move_route_through_idle(int on); // mods:M1N 3e-5: 1 = in force, 0 = refused (needs move_nudge_idle=1 at plan time)
+void install_move_proto_arrival();           // mods:M1X arrival (seams/move_proto_arrival.cpp), from install_move_proto
+int  mh_set_move_distinct_goals(int on);     // mods:M1X 2a
+int  mh_set_move_near_enough(int r);         // mods:M1X 2b: R tiles, 0 = retail
+int  mh_set_move_merge_goal_fix(int on);     // mods:M1X: 1 = in force (or carried by the libmh twin), 0 = refused
+void install_move_proto_speed();             // mods:M1X lane C (move_proto_speed.cpp), called from install_move_proto
+int  mh_set_move_group_speed(int on);        // mods:M1X: 1 = in force, 0 = refused
+void install_combat_proto();                 // mods:M1C (seams/combat_proto.cpp), called from install_move_proto
+int  mh_set_move_squad_merge_fix(int on);    // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
+int  mh_set_attack_range_footprint(int on);  // mods:M1C: 1 = in force, 0 = refused
+int  mh_set_projectile_facing_fix(int on);   // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
 
 // ---- cross-TU surface of net_discovery.cpp (synth session / browser / S2-S4 discovery+join) --
 void mp_host_advertise_session(); // S2: build + broadcast the host's SESSION_INFO (~1 Hz)

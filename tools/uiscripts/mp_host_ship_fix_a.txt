@@ -1,0 +1,208 @@
+# ship_fix_a HOST walk -- SIX in-match rows of the SHIPPED configuration (mh.dll without libmh.dll) folded into ONE match
+# (tooling:TL-SUITE-FOLD step 3). Pair with mp_client_idle.txt. Each fixture is a harness knob set keyed to an ABSOLUTE
+# sim step, read once at boot and identical on both peers, so they share a match by staggering the steps (the row's
+# harness_extra): the d38 build+dock fixture runs from step 100, its kill waits for the end of the info-screen segment,
+# then the turret (pt1) and bad-pip (pip) fixtures take their turns, and the build click goes LAST (it
+# arms placement mode and nothing cancels it).
+#
+#   segment                 old row            what it does here
+#   landing                 -                  land the mothership (shift+right-click), the shared pre-landing frames
+#   info_guard_u73          info_guard_u73     select the barracks, 4 right-clicks on the docked row (mp_host_u73_info_guard.txt)
+#   d38_storage_purge       d38_storage_purge  keep the barracks selected across the fixture's kill (step 3800) and the sim's purge
+#   turret_slot_reuse       turret_slot_reuse  pt1: the fixture builds / kills / re-builds a turret; this walk only waits
+#   bldg_pip_guard          bldg_pip_guard     pip: the fixture plants a garbage pip_level in the mother; this walk only waits
+#   d37_relay_chain         d37_relay_chain    two relays, R1 dismantled, R2 / R2b selected with the HUD network panel up
+#   d35_buildclick_c1       d35_buildclick_c1  land capture, the build tab, the Academy icon (arms placement, places nothing)
+#
+# Every capture is named <old row>__<name> so a red frame names the row it replaced. Baselines are the old rows' PNGs where
+# the frame is unchanged (registry comment lists the re-baselined ones). The assertions are the post_checks.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click; order 0x10 move + 0x18 deploy). The two pre-landing frames
+# (bldg_pip_guard / air_order_deadlock) are the same frame; the pt1 frame is a flight frame, still before any fixture acts
+# (re-baselined: the two captures before the click land the pioneer a step or two later than turret_slot_reuse's own walk did).
+absent Network players
+gameclock 3000
+mark landing
+capture bldg_pip_guard__pip_start
+simrclick 480 330 shift
+gameclock 4500
+capture turret_slot_reuse__pt1_landed
+
+# ===== segment info_guard_u73 (was row info_guard_u73: mp_host_u73_info_guard.txt)
+# The d38 fixture (both peers, from step 100) builds a barracks beside the landed mother and docks one soldier; the
+# kill is d38_kill_at (step 3800), after this segment. Three right-clicks on the storage panel's first docked row, one
+# per arm (the knobs are the row's net_extra, rig-only): 1. no corruption -> the info screen opens (mode 4), Esc closes
+# it; 2. info_guard_test_row=2 -> the 2nd request is pushed past the list and DROPPED; 3. info_guard_test_entry=2 -> the
+# 2nd call that reaches the ENTRY is the blank UNIT 0 and is REFUSED; 4. a fourth, uncorrupted click still opens it.
+gameclock 22000
+mark info_guard_u73
+log u73 select barracks
+simclick 305 345
+retry 1500 1 3 bldgsel any
+gameclock 24000
+capture info_guard_u73__selected
+capture d38_storage_purge__selected
+
+log u73 rclick docked row -- valid request
+simrclick 940 340
+retry 1500 1 3 gamemode 4
+screensettled
+log u73 valid info screen up
+key 0x01
+retry 1500 1 3 gamemode 2
+screensettled
+log u73 valid info screen closed
+gameclock 28000
+
+log u73 rclick docked row -- stale request
+simrclick 940 340
+gameclock 30000
+retry 1500 1 3 gamemode 2
+screensettled
+capture info_guard_u73__after_stale_row
+log u73 stale request dropped
+
+log u73 rclick docked row -- blank entity
+simrclick 940 340
+gameclock 32000
+retry 1500 1 3 gamemode 2
+screensettled
+capture info_guard_u73__after_blank_entity
+log u73 blank entity refused
+
+log u73 rclick docked row -- valid again
+simrclick 940 340
+retry 1500 1 3 gamemode 4
+screensettled
+log u73 valid again up
+key 0x01
+retry 1500 1 3 gamemode 2
+screensettled
+log u73 done
+gameclock 36000
+
+# ===== segment d38_storage_purge (was row d38_storage_purge: mp_host_d38_storage_purge.txt)
+# The fixture kills the docked soldier at step 3800 (d38_kill_at) on both peers while the host holds the barracks SELECTED;
+# the sim's own purge follows within 5 s. Re-select (the info screens may have dropped the selection), hold through both.
+mark d38_storage_purge
+log d38 select barracks
+simclick 305 345
+retry 1500 1 3 bldgsel any
+gameclock 46000
+log d38 done
+
+# ===== segment turret_slot_reuse (was row turret_slot_reuse: mp_host_pt1_turret.txt)
+# pt1_at=4600: the fixture builds turret #1, kills it, builds turret #2 into the freed slot while the rubble lives, arms it
+# with a 1 s reload and counts the steps until it is ready (measured: verdict ~110 steps after the order).
+mark turret_slot_reuse
+log pt1 begin
+gameclock 48000
+log pt1 done
+
+# ===== segment bldg_pip_guard (was row bldg_pip_guard: mp_host_pip_guard.txt)
+# pip_at=4800: the fixture plants pip_level[0] = 0xC384DE82 + half-energy damage into the mother building; `; PIP DONE`
+# follows pip_tail (300) steps later.
+mark bldg_pip_guard
+log pip begin
+gameclock 52000
+log pip done
+
+# ===== segment d37_relay_chain (was row d37_relay_chain: mp_host_d37_relay_chain.txt, every clock +8000)
+# Select an own network building while the sim's connectivity flags are STALE: place R1 inside the mother's network window and
+# R2 reachable only through R1, order R1 dismantled, then select R2 and hold. (The old walk waited to 45000 for a possibly far
+# landing; the mother has been down for 50 s of game time already.) Deselect first: the purge segment left the barracks selected.
+mark d37_relay_chain
+simclick 300 650
+gameclock 53000
+capture d37_relay_chain__landed
+
+# R1: a relay 11 tiles south of the mother (inside the mother's +-15-tile network window)
+simclick 890 215
+gameclock 54000
+simclick 905 428
+gameclock 54600
+log d37 place R1
+simclick 495 700
+gameclock 56000
+# let R1 finish and go online (~18 s build)
+gameclock 78000
+# camera 10 tiles south (minimap), so R1 sits mid-screen and its sight shows what lies past it
+simclick 932 88
+gameclock 79000
+# R2 / R2b: ~17-18 tiles south of the mother -- OUTSIDE the mother's window, reachable only through R1.
+# Two of them because an in-game placement click is occasionally lost under load (the row needs only
+# one; a second relay fed through R1 is the same shape).
+simclick 890 215
+gameclock 80000
+simclick 905 428
+gameclock 80600
+log d37 place R2
+simclick 575 610
+gameclock 82000
+simclick 890 215
+gameclock 83000
+simclick 905 428
+gameclock 83600
+log d37 place R2b
+simclick 470 640
+gameclock 85000
+# select R1 and DISMANTLE it (status icon -> "disassemble building?" -> Sell it = order 0x6b). R1 is
+# R2's only link to power. A dismantling building stops conducting at once, but the sim recomputes
+# the network only when the footprint is unmapped at dismantle_finish -- until then R2 stays marked
+# connected. `disassemble` is the dialog text's own label ("No" and value:110 also match other lists).
+log d37 select R1
+simclick 530 385
+gameclock 86000
+simclick 882 271
+retry 1500 2 3 settled disassemble
+# Sell it (widget [1], center 434,421); a lost click leaves the dialog up -- retry it
+click 433 421
+retry 1500 1 3 absent disassemble
+gameclock 87500
+# THE TRIGGER: select R2, then R2b (the HUD network panel recomputes the power network every frame)
+log d37 select R2
+simclick 560 615
+gameclock 88500
+gameclock 92000
+log d37 select R2b
+simclick 455 650
+gameclock 93000
+gameclock 96000
+
+# ===== segment d35_buildclick_c1 (was row d35_buildclick_c1: mp_host_buildclick.txt)
+# The build tab, then the Academy icon: arms placement mode and places nothing, so the ONLY state the click can touch is
+# what the affordability probe writes. Last in the match: nothing cancels the armed placement.
+mark d35_buildclick_c1
+capture d35_buildclick_c1__landed
+simclick 890 215
+gameclock 97000
+capture d35_buildclick_c1__build_menu
+log bp click
+simclick 905 480
+gameclock 98000
+capture d35_buildclick_c1__academy_armed
+gameclock 106000
+end

@@ -55,6 +55,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "selftest_dispatch.h"
 #include "../mh_net_udp/udp_endpoint.h"
 
 // The delay relay's sockets need the same ICMP-reset suppression the endpoint's do (udp_endpoint.cpp
@@ -1005,18 +1006,18 @@ int run_udploopbacktest(int argc, char **argv) {
     // Distinct port bases per scenario: a UDP socket lingers for no time at all, but a datagram in
     // flight from the previous scenario reaching the next one's host would be an invisible source of
     // "malformed" counts, and this suite asserts that count is zero.
-    scenario("clean", 39560, 0, 400, 40);
-    scenario("5% loss", 39570, 50, 400, 40);
-    scenario("5% loss, FRAGMENTED records (456 B = 2 segments)", 39580, 50, 120, 456);
-    wrong_key_arm(39590);
+    scenario("clean", selftest_port(39560), 0, 400, 40);
+    scenario("5% loss", selftest_port(39570), 50, 400, 40);
+    scenario("5% loss, FRAGMENTED records (456 B = 2 segments)", selftest_port(39580), 50, 120, 456);
+    wrong_key_arm(selftest_port(39590));
     // mp:T4b / mp:T5 -- 39650.. is clear of every other suite's range (udprelinktest takes the
     // default port + 100 = 39600..39603, udpbulktest +200). The game runs under timeBeginPeriod(1)
     // (mh.dll's hires_clock); these arms time a relay and a drainer, so they do too.
     timeBeginPeriod(1);
-    burst_arm(39650);
-    stall_arm(39660);
-    stops_acking_arm(39670);
-    ring_full_arm(39695); // 39695..39697: stops_acking takes 39670..39692, udpbulktest 39700..
+    burst_arm(selftest_port(39650));
+    stall_arm(selftest_port(39660));
+    stops_acking_arm(selftest_port(39670));
+    ring_full_arm(selftest_port(39695)); // 39695..39697: stops_acking takes 39670..39692, udpbulktest 39700..
     timeEndPeriod(1);
     // mp:U59 (HM-M1) -- the end-to-end exactly-once layer: pure layer, the 3- and 4-endpoint hub-kill
     // arms at 5% loss, the skip-reconcile mutation, the version gate. Ports 39800..39835.
@@ -1048,7 +1049,7 @@ int run_udploopbacktest(int argc, char **argv) {
 // Endpoint::queue_match_boundary()'s `m_lanes.reset_counters()` call (or the `++epoch_` inside
 // lane_queue::reset_counters() itself) and the two epoch checks below red; nothing about the flood's
 // timing or size can make them pass by accident.
-int run_uqmatchtest() {
+int run_uqmatchtest(int port) {
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
     printf("=== uqmatchtest: two matches over one live udp link (mp:U41e) ===\n");
@@ -1057,8 +1058,11 @@ int run_uqmatchtest() {
     new (&host) Endpoint();
     new (&c1) Endpoint();
     Config ch, cc;
-    fill_cfg(ch, 0, 39710, 0, (unsigned short)39710); // clear of every other suite's fixed range
-    fill_cfg(cc, 1, 39710, 1, (unsigned short)39711);
+    // The suite's own band (default argument 39500 -> 39710, the number this suite always used), so a
+    // parallel copy handed another argument does not bind this one's ports.
+    const int base = port + 210;
+    fill_cfg(ch, 0, base, 0, (unsigned short)base);
+    fill_cfg(cc, 1, base, 1, (unsigned short)(base + 1));
     host.set_log(ep_log, nullptr);
     c1.set_log(ep_log, nullptr);
     checkf(host.start(ch, TEST_PSK, true), "uqmatch: host started");
@@ -1099,6 +1103,30 @@ int run_uqmatchtest() {
     checkf(overflowed, "uqmatch: match 1's flood actually overflowed lane H (evicted %ld) -- otherwise "
                        "the rollup's evicted count below would be untested",
            e);
+    // TL-TEST-UQMATCH-LOAD: `e > 0` is the FIRST eviction, not the end of the flood. The client's
+    // sender and the host's receive thread are both scheduled threads, so on a loaded box the tail of
+    // the flood is still in flight when the poll above wakes -- and the boundary below then resets
+    // the counters while the stragglers keep evicting, which is the "(9/0)" the post-boundary check
+    // read as a missing restart. Every frame past the cap evicts exactly one, so the flood is fully
+    // ingested when evicted == FLOOD - cap; wait for THAT. (UDP may genuinely lose a datagram, so a
+    // counter that has not moved for a full second also ends the wait -- the assertion that follows
+    // the boundary then still holds, because nothing is left in flight to evict.)
+    {
+        const long all        = (long)FLOOD - (long)mh::netudp::QUEUE_CAP_H;
+        long       last       = -1;
+        DWORD      moved_tick = GetTickCount();
+        wait_for(
+            [&] {
+                host.queue_counters_for_test(&d, &h, &e, &r, nullptr);
+                if (e >= all) return true;
+                if (e != last) {
+                    last       = e;
+                    moved_tick = GetTickCount();
+                }
+                return GetTickCount() - moved_tick >= 1000;
+            },
+            20000);
+    }
     host.queue_counters_for_test(&d, &h, &e, &r, nullptr);
     printf("[uqmatch] match 1: depth %d high-water %d evicted %ld refused %ld\n", d, h, e, r);
     // high-water saturates AT the cap (eviction keeps depth <= cap by construction) -- `evicted > 0`

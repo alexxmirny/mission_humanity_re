@@ -20,6 +20,12 @@ run directories, the HOST first (the registry rows set post_check_session + post
                       owned-d3d11 result recorded by the rig run.
   --expect-frozen     (with --alttab) FAIL unless the host DID freeze (a capture line exists) -- the
                       documented retail-ish behaviour a rig run recorded.
+  --hitch             read the `[hitch]` frame lines and their MID-FRAME stack samples (single-player; [net] hitch_ms) and print them
+                      SYMBOLIZED: an exe offset (`mh.exe+0xOFF` / `mh.focus.exe+0xOFF`, image base 0x400000) becomes the EN VA and the
+                      function that contains it (tools/data/en_functions.json); `mh.dll+0xOFF` is kept (no map ships).
+  --expect-hitch-inject N   (with --hitch) the run set `[net] hitch_inject_ms=N`: there must be the `[hitch] INJECT Sleep(N)` line, a
+                      `[hitch] frame` of at least 0.9*N ms, and a sample under that frame whose ebp-chain / stack-ret holds an
+                      address in the same module within 0x60 bytes past hitch_inject_sleep -- i.e. the sample NAMES the Sleep site.
   --selftest          planted logs, every negative RED.
 """
 
@@ -53,6 +59,119 @@ DDRAW = re.compile(r"; \[video\] loaded ddraw\.dll=(?P<path>.*?) d3d11\.dll=(?P<
 STALL = re.compile(
     STAMP + r"; \[netind\] stall waiting_for=(?P<who>\S+) peer=(?P<peer>-?\d+) ms=(?P<ms>\d+)"
 )
+
+
+HITCH_INJECT = re.compile(
+    STAMP
+    + r"; \[hitch\] INJECT Sleep\((?P<ms>\d+)\) from hitch_inject_sleep=(?P<mod>[^+ ]+)\+0x(?P<off>[0-9A-Fa-f]+)"
+)
+HITCH_FRAME = re.compile(
+    STAMP + r"; \[hitch\] frame (?P<ms>[\d.]+) ms \(>= (?P<thr>\d+)\): (?P<rest>.*)"
+)
+HITCH_EIP = re.compile(
+    r"; \[hitch\]   eip=(?P<eip>\S+) .*?\(sample (?P<n>\d+), (?P<ms>\d+) ms into the frame\)"
+)
+HITCH_CHAIN = re.compile(r"; \[hitch\]   (?P<kind>ebp-chain|stack-ret):(?P<body>.*)")
+MODOFF = re.compile(r"([^\s@]+)\+0x([0-9A-Fa-f]+)")
+EXE_BASE = 0x400000
+FUNCS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "en_functions.json")
+_funcs = None
+
+
+def load_funcs():
+    """Sorted [(entry, end, name)] of the EN program's functions (the committed Ghidra dump)."""
+    global _funcs
+    if _funcs is None:
+        import json
+
+        with open(FUNCS_JSON, encoding="utf-8") as fh:
+            d = json.load(fh)
+        _funcs = sorted((int(f["entry"], 16), int(f["end"], 16), f["name"]) for f in d["functions"])
+    return _funcs
+
+
+def symbolize(tok):
+    """`mh.exe+0xOFF` / `mh.focus.exe+0xOFF` -> `tok[VA function+0xDELTA]`; anything else is returned unchanged."""
+    m = MODOFF.fullmatch(tok)
+    if not m or not m.group(1).lower().endswith(".exe"):
+        return tok
+    import bisect
+
+    va = EXE_BASE + int(m.group(2), 16)
+    fs = load_funcs()
+    i = bisect.bisect_right([f[0] for f in fs], va) - 1
+    if i >= 0 and fs[i][0] <= va <= fs[i][1]:
+        return "%s[0x%08X %s+0x%X]" % (tok, va, fs[i][2], va - fs[i][0])
+    return "%s[0x%08X ?]" % (tok, va)
+
+
+def parse_hitch(lines):
+    """{'inject': {...}|None, 'frames': [{'ms','rest','samples':[{'n','ms','eip','refs','raw'}]}]} from `[hitch]` lines."""
+    r = {"inject": None, "frames": []}
+    for ln in lines:
+        m = HITCH_INJECT.search(ln)
+        if m:
+            r["inject"] = {
+                "ms": int(m.group("ms")),
+                "mod": m.group("mod"),
+                "off": int(m.group("off"), 16),
+            }
+            continue
+        m = HITCH_FRAME.search(ln)
+        if m:
+            r["frames"].append({"ms": float(m.group("ms")), "rest": m.group("rest"), "samples": []})
+            continue
+        m = HITCH_EIP.search(ln)
+        if m and r["frames"]:
+            r["frames"][-1]["samples"].append(
+                {
+                    "n": int(m.group("n")),
+                    "ms": int(m.group("ms")),
+                    "eip": m.group("eip"),
+                    "refs": [],
+                    "raw": [],
+                }
+            )
+            continue
+        m = HITCH_CHAIN.search(ln)
+        if m and r["frames"] and r["frames"][-1]["samples"]:
+            smp = r["frames"][-1]["samples"][-1]
+            smp["refs"].extend((a, int(b, 16)) for a, b in MODOFF.findall(m.group("body")))
+            smp["raw"].append((m.group("kind"), m.group("body").split()))
+    return r
+
+
+def check_hitch_inject(h, n):
+    if not h["inject"]:
+        return [
+            "no `[hitch] INJECT Sleep(%d)` line (hitch_inject_ms not set, or no strategic frame ran for 3 s)"
+            % n
+        ]
+    inj = h["inject"]
+    fails = [] if inj["ms"] == n else ["INJECT Sleep(%d), expected %d" % (inj["ms"], n)]
+    slow = [f for f in h["frames"] if f["ms"] >= 0.9 * n]
+    if not slow:
+        return fails + ["no `[hitch] frame` of >= %d ms" % int(0.9 * n)]
+    for f in slow:
+        for smp in f["samples"]:
+            for mod, off in smp["refs"]:
+                if mod == inj["mod"] and 0 <= off - inj["off"] <= 0x60:
+                    return fails
+    return fails + [
+        "no sample under the slow frame names %s+0x%X..0x%X (the Sleep call site)"
+        % (inj["mod"], inj["off"], inj["off"] + 0x60)
+    ]
+
+
+def print_hitch(h):
+    for f in h["frames"]:
+        print("[hitch] frame %.1f ms | %s" % (f["ms"], f["rest"]))
+        for smp in f["samples"]:
+            print("    sample %d (%d ms in): eip=%s" % (smp["n"], smp["ms"], symbolize(smp["eip"])))
+            for kind, toks in smp["raw"]:
+                print("      %s:" % kind)
+                for t in toks:
+                    print("        %s" % symbolize(t))
 
 
 class Refusal(Exception):
@@ -180,7 +299,17 @@ def report(r, tag):
         )
 
 
+def run_hitch(args):
+    if not args.dirs:
+        raise Refusal("no run directories given")
+    h = parse_hitch(read_log(args.dirs[0]))
+    print_hitch(h)
+    return check_hitch_inject(h, args.expect_hitch_inject) if args.expect_hitch_inject else []
+
+
 def run(args):
+    if getattr(args, "hitch", False):
+        return run_hitch(args)
     if not args.dirs:
         raise Refusal("no run directories given")
     peers = [parse(read_log(d)) for d in args.dirs]
@@ -246,6 +375,8 @@ def selftest():
                 expect_frozen=False,
                 expect_no_freeze=False,
                 max_client_stall_ms=None,
+                hitch=False,
+                expect_hitch_inject=0,
             )
             for k, v in kw.items():
                 setattr(ns, k, v)
@@ -298,6 +429,53 @@ def selftest():
         one([l for l in good if "no present" not in l], alttab=True, expect_no_freeze=True),
         False,
     )
+    hitch_good = [
+        "[10:00:03.000] ; [hitch] INJECT Sleep(700) from hitch_inject_sleep=mh.dll+0x2C530 (its Sleep call returns within +0x60)",
+        "[10:00:03.700] ; [hitch] frame 703.2 ms (>= 100): pre-time_tick 700.4 | sim 2.3 (10 steps, slowest 0.5) | x",
+        "[10:00:03.700] ; [hitch]   eip=ntdll.dll+0x7662C esp=000EE1FC ebp=000EE218 (sample 1, 105 ms into the frame)",
+        "[10:00:03.700] ; [hitch]   ebp-chain: KERNELBASE.dll+0x1796DC mh.dll+0x2C581 mh.focus.exe+0x4E59A",
+        "[10:00:03.700] ; [hitch]   stack-ret: ntdll.dll+0x916F9@0 mh.dll+0x2C581@39",
+    ]
+    expect("hitch inject ok", one(hitch_good, hitch=True, expect_hitch_inject=700), False)
+    expect(
+        "hitch wrong call site",
+        one(
+            [l.replace("mh.dll+0x2C581", "mh.dll+0x9999") for l in hitch_good],
+            hitch=True,
+            expect_hitch_inject=700,
+        ),
+        True,
+    )
+    expect(
+        "hitch no sample",
+        one(
+            [
+                l
+                for l in hitch_good
+                if "eip=" not in l and "ebp-chain" not in l and "stack-ret" not in l
+            ],
+            hitch=True,
+            expect_hitch_inject=700,
+        ),
+        True,
+    )
+    expect("hitch no inject line", one(hitch_good[1:], hitch=True, expect_hitch_inject=700), True)
+    expect(
+        "hitch frame too short",
+        one(
+            [l.replace("frame 703.2", "frame 120.0") for l in hitch_good],
+            hitch=True,
+            expect_hitch_inject=700,
+        ),
+        True,
+    )
+    sym = symbolize("mh.focus.exe+0xD2A81")
+    ok = sym.startswith("mh.focus.exe+0xD2A81[0x004D2A81 ") and "?]" not in sym
+    print("selftest %-34s %s" % ("symbolize exe offset", "ok" if ok else "WRONG (%s)" % sym))
+    bad += 0 if ok else 1
+    ok = symbolize("mh.dll+0x2C581") == "mh.dll+0x2C581"
+    print("selftest %-34s %s" % ("symbolize leaves a dll alone", "ok" if ok else "WRONG"))
+    bad += 0 if ok else 1
     return 1 if bad else 0
 
 
@@ -310,6 +488,8 @@ def main():
     ap.add_argument("--expect-frozen", action="store_true")
     ap.add_argument("--expect-no-freeze", action="store_true")
     ap.add_argument("--max-client-stall-ms", type=int, default=None)
+    ap.add_argument("--hitch", action="store_true")
+    ap.add_argument("--expect-hitch-inject", type=int, default=0)
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:

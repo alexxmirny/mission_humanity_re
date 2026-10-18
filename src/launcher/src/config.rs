@@ -69,6 +69,25 @@ pub struct Config {
     /// button ignores it. Empty = no pin.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub rollback_skip: String,
+    /// The Settings page's Compact / Detailed switch: true = row descriptions inline, false (the
+    /// default) = on hover only. A per-viewer convenience, so an unreadable value is read as
+    /// compact rather than failing the whole file (`lenient_bool`).
+    #[serde(
+        skip_serializing_if = "std::ops::Not::not",
+        deserialize_with = "lenient_bool"
+    )]
+    pub settings_detailed: bool,
+}
+
+/// A bool that never fails a load: anything but a TOML boolean (or `"true"`) reads as false.
+fn lenient_bool<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let v = toml::Value::deserialize(d)?;
+    Ok(match v {
+        toml::Value::Boolean(b) => b,
+        toml::Value::String(s) => s.trim().eq_ignore_ascii_case("true"),
+        toml::Value::Integer(i) => i != 0,
+        _ => false,
+    })
 }
 
 /// dist RL20: the project's Discord application (registered by the maintainer, 2026-10-09). Its Rich
@@ -104,6 +123,7 @@ impl Default for Config {
             relay_mode: String::new(),
             relay_custom: String::new(),
             rollback_skip: String::new(),
+            settings_detailed: false,
         }
     }
 }
@@ -306,12 +326,27 @@ mod tests {
             relay_mode: "custom".into(),
             relay_custom: "relay.example.org:7100".into(),
             rollback_skip: "0.3.0".into(),
+            settings_detailed: true,
         };
         c.save(&p).unwrap();
         let (back, note) = Config::load(&p);
         assert!(note.is_none());
         assert_eq!(c, back);
         std::fs::remove_file(&p).ok();
+    }
+
+    /// The Compact / Detailed switch: absent = compact, and a junk value is compact rather than a
+    /// failed load of the whole file.
+    #[test]
+    fn the_settings_view_switch_never_fails_a_load() {
+        let (c, note) = Config::load_str("game_dir = 'C:/g'\n");
+        assert!(note.is_none() && !c.settings_detailed);
+        let (c, note) = Config::load_str("game_dir = 'C:/g'\nsettings_detailed = true\n");
+        assert!(note.is_none() && c.settings_detailed);
+        let (c, note) = Config::load_str("game_dir = 'C:/g'\nsettings_detailed = [1, 2]\n");
+        assert!(note.is_none(), "{note:?}");
+        assert!(!c.settings_detailed);
+        assert_eq!(c.game_dir, "C:/g", "the rest of the file still loads");
     }
 
     /// dist LA8: the tag the update path installs is the picker's, then the installed one, then

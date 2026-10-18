@@ -1,0 +1,33 @@
+# R2 CLIENT 1 (tooling:TL-SUITE-FOLD step 5) -- the relay_match walk: join the host by typed server address with force_relay pinned, wait
+# for Start, enter the match. Pair with mp_host_relay_xfer.txt (see its header for the three-peer shape).
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+# client 2 (the first-browser joiner) takes the first seat: the lobby's slot order is join order, so a fixed order keeps the frames
+# deterministic
+settled Join game
+awaitsignal lobby_b
+clickl Join game
+
+# joined lobby: wait for the host's Start -> the lobby screen goes away when the match launches
+present Network players
+signal lobby_a
+settled Cancel
+occ 3
+capture relay_match__m2_lobby
+absent Network players
+gameclock 6000
+capture relay_match__m3_launched
+log CLIENT entered the match through the relay
+end

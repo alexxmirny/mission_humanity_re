@@ -15,7 +15,7 @@ namespace {
 
 using mh::hook::install_trampoline;
 
-constexpr int MAX_FNS = 4;
+constexpr int MAX_FNS = 6;
 
 mh::seams::pre_input_fn g_fns[MAX_FNS];
 int                     g_n      = 0;

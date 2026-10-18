@@ -1,0 +1,39 @@
+# bigmap_orders_off -- mods:MM4C, a screen_seq step with [ui] bigmap_orders=0 (ini/bigmap_orders_off.ini): the right click on the big map
+# is swallowed and nothing happens, as before MM4C. 2-almost: unit 5 drag-selected, Tab held, the overlay right clicked on the tile the
+# bigmap_orders step orders it to (pixel (407,357) = tile (54,62)). The verdict is tools/check_bigmap.py --orders-off: no
+# `; BIGMAP: order at` line, the unit's goal unchanged, and the click did not reach the world (the selection is the same).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +600
+cursorhold 650 400 10
+presshold 650 400
+cursorhold 650 400 6
+cursorhold 790 520 12
+release 790 520
+gameclock +100
+logsel selected
+loggoal selected
+hotkeydown Tab
+cursorhold 407 357 10
+screensettled
+simrclick 407 357
+cursorhold 407 357 10
+capture bigmap_orders_off__a_held
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +6000
+logsel after
+loggoal after
+screensettled
+capture bigmap_orders_off__b_after
+end

@@ -2165,6 +2165,23 @@ fn collect(
     if let Some(dmp) = input.minidump {
         set.file(dump, dmp, "minidump.dmp".to_string());
     }
+    // The UI-freeze watchdog's dump of the launcher itself (watchdog.rs), beside launcher.log --
+    // only a recent one: an old freeze is not what a report filed today is about.
+    if let Some(fd) = input
+        .launcher_log
+        .as_deref()
+        .and_then(Path::parent)
+        .map(|d| d.join(crate::watchdog::DUMP_FILE))
+        .filter(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age < std::time::Duration::from_secs(7 * 24 * 3600))
+        })
+    {
+        set.file(dump, &fd, "launcher/ui_freeze.dmp".to_string());
+    }
 
     set.shed_order.extend(optional_groups.iter().rev());
     set.shed_order.extend(protected_groups.iter().rev());
@@ -3020,7 +3037,7 @@ mod tests {
         let mut out = Vec::new();
         for i in 0..a.len() {
             let mut e = a.by_index(i).unwrap();
-            let name = e.name().to_string();
+            let name = e.name().unwrap().into_owned();
             let mut buf = Vec::new();
             std::io::Read::read_to_end(&mut e, &mut buf).unwrap();
             out.push((name, buf));

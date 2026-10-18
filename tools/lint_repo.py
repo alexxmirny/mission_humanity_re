@@ -1302,7 +1302,7 @@ def declare_checks(args):
         "SES1b session-rollover post-check -- the negative cases still fire (check_session_rollover --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_session_rollover.py"), "--selftest"],
     )
-    # mp:L1. The player-visible connection indicator's post_check (tools/test_ui.py's net_hud entry)
+    # mp:L1. The player-visible connection indicator's post_check (the net_hud_scroll row, which absorbed net_hud)
     # only runs when the rig does, so its own negatives are gated here off planted logs: an indicator
     # that armed but never reached a drawn frame, one whose link was never measured, a command-latency
     # number that has stopped being lookahead+step, a bar outside its own range, and an anonymous
@@ -1336,7 +1336,7 @@ def declare_checks(args):
         "mp:F3c codepage post-check -- the negative cases still fire (check_codepage_adopt --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_codepage_adopt.py"), "--selftest"],
     )
-    # mp:RM1. The rematch-residue post_check (tools/test_ui.py's rematch_play entry) runs only with
+    # mp:RM1. The rematch-residue post_check (the host_rematch registry row) runs only with
     # the rig; its negatives -- a host game 2 entering with the previous match's residue + a step-50
     # desync, a joiner that never entered lockstep (p54bc=0, no sample), first samples that disagree
     # across the peers, a detector that sampled nothing (no game-1 rollup), a lane that never reached
@@ -1407,6 +1407,14 @@ def declare_checks(args):
         [sys.executable, os.path.join(REPO, "tools", "check_pt3_air_order.py"), "--selftest"],
     )
     check(
+        "mods:A2 conquered-planet research -- the negative cases still fire (check_a2_progress --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_a2_progress.py"), "--selftest"],
+    )
+    check(
+        "mods:A1 build without a mothership -- the negative cases still fire (check_a1_mother_free --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_a1_mother_free.py"), "--selftest"],
+    )
+    check(
         "patching:PT-FIX1 turret slot reuse -- the negative cases still fire (check_pt1_turret_slot --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_pt1_turret_slot.py"), "--selftest"],
     )
@@ -1441,6 +1449,18 @@ def declare_checks(args):
     check(
         "mp:D28 cancel-task post-check -- the negative cases still fire (check_cancel_task --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cancel_task.py"), "--selftest"],
+    )
+    # mods:M1N field fix. The m1n_marshal_* post-check runs only with the rig; its negatives -- the probe never finishing, the order
+    # stalled or given up, the swap line missing or naming other units, a fix-off arm that arrives -- are gated here off planted logs.
+    check(
+        "mods:M1N marshal post-check -- the negative cases still fire (check_mv_marshal --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_mv_marshal.py"), "--selftest"],
+    )
+    # mp:D47. The positive-control post-check (cfg_newgame_mp_poke) runs only with the rig; its clauses --
+    # the poke's match step, its region, a late poke -- are gated here off planted logs.
+    check(
+        "mp:D47 poke post-check -- the negative cases still fire (check_d47_poke --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_d47_poke.py"), "--selftest"],
     )
     # mp:D35. The configuration-(1) build-click rows run only with the rig; their clauses -- the
     # seam armed/kept banner, the per-click probe line, hash identical/diverged-and-stayed in
@@ -1606,7 +1626,7 @@ def declare_checks(args):
         "mp:R4b relay-restart post-check -- the negative cases still fire (check_relay_restart --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_relay_restart.py"), "--selftest"],
     )
-    # mp:R6. The relay-rooms post_check (relay_match / relay_browse) runs only with the rig; its
+    # mp:R6. The relay-rooms post_check (relay_xfer / relay_seq) runs only with the rig; its
     # negatives -- a host whose room IS its port, a host that never minted (a pre-R6 build), two
     # hosts in one room, a client that only ever came up in the directory room, a relay log with a
     # room_busy or a non-zero register_refused -- are gated here off planted corpora.
@@ -1624,7 +1644,7 @@ def declare_checks(args):
     )
     # mp:R7a. The two dial-mode post-checks are mirror images: check_direct_dial fails when the client
     # contacted the relay on an *Internet server* dial (direct_dial_with_relay_set), check_relay_leg
-    # fails when a first-browser join did NOT go through the relay (relay_browse_local). Both run only
+    # fails when a first-browser join did NOT go through the relay (relay_seq client 1). Both run only
     # when the rig does, so their own negatives are gated here off planted logs.
     check(
         "mp:R7a direct-dial post-check -- the negative cases still fire (check_direct_dial --selftest)",
@@ -2343,6 +2363,10 @@ def declare_checks(args):
     check(
         "release-tier rows: skipped bare, run with --release-tier, run when named (test_ui --release-tier-selftest)",
         [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--release-tier-selftest"],
+    )
+    check(
+        "solo_steps rows: merge / save sweep / satellite toggle, every named script exists (test_ui --solo-steps-selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "test_ui.py"), "--solo-steps-selftest"],
     )
     # tooling:TL-SUITE-LOADRED (b). A capture/assertion step or a peer-dependent shim trigger whose
     # only synchronization is a wall/game-clock offset (TL-P9W-TRIGGER's fixed t+50s blackhole,

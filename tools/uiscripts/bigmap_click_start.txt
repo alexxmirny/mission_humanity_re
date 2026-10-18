@@ -1,0 +1,37 @@
+# bigmap_click_start -- mods:MM4B, the click on the big map under a fixed centre: a screen_seq step run twice, with
+# ini/bigmap_start.ini (centre on the landing spot) and ini/bigmap_map.ini (centre on the true middle of the map). 2-almost, 1024x768,
+# camera pinned with camto. The overlay does not move with the camera in these two modes: a click moves the camera box inside it
+# and the world behind it, nothing else.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 24 38
+gameclock +100
+cursorhold 600 400 6
+screensettled
+logsel before
+hotkeydown Tab
+cursorhold 300 200 10
+screensettled
+capture bigmap_click_start__a_held
+simclick 300 200
+cursorhold 300 200 10
+screensettled
+logsel after_click
+capture bigmap_click_start__b_clicked
+hotkeyup Tab
+cursorhold 600 400 10
+screensettled
+logsel released
+capture bigmap_click_start__c_released
+simclick 100 650
+cursorhold 100 650 10
+screensettled
+logsel control_world_click
+end

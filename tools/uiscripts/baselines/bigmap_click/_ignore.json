@@ -1,0 +1,59 @@
+{
+  "_why_minimap": "mods:MM4B: the side-panel minimap [865,0,159,140] is masked (minimap_plus changes it and its unit dots move); the overlay and the world behind it are what these frames test.",
+  "capture_bigmap_click__a_held_cursor.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__b_clicked.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__c_rclicked.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__d_released.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__e_wrapped_held.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__f_wrapped_clicked.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ],
+  "capture_bigmap_click__g_dragged.png": [
+    [
+      865,
+      0,
+      159,
+      140
+    ]
+  ]
+}

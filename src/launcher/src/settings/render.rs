@@ -16,15 +16,23 @@
 //!
 //! Labels, hints and option names come from the string table (`setting.<label>[.hint|.opt.<v>]`),
 //! so adding a setting is a registry row plus strings. Badges: `experimental` -> alert pill,
-//! `restart` -> dim pill, `pending` (debug builds only) -> dim pill. A value the row does not list
-//! gets an extra `<v> (custom)` segment/entry and is preserved until the player picks another.
+//! `pending` (debug builds only) -> dim pill. `restart` has no per-row badge (user 2026-10-14: on
+//! every row it was noise): a page with any restart row says it ONCE, in the bar above the rows.
+//! A value the row does not list gets an extra `<v> (custom)` segment/entry and is preserved until
+//! the player picks another.
+//!
+//! COMPACT BY DEFAULT (user 2026-10-14). A row's description (`.hint`, and the host-dictated note)
+//! is a hover tooltip over the whole row -- label and control -- unless the bar's Compact /
+//! Detailed switch (`RenderState::detailed`, remembered in launcher.toml) asks for it inline. The
+//! label column is as wide as the page's widest label in the current font, so values line up
+//! without the fixed 150 px column wrapping long Russian labels.
 //!
 //! The renderer edits `Model` only; Apply/Revert are returned from `footer` as an `Action` for the
 //! page to carry out (it owns the launcher store and the ini path).
 
-use egui::{Button, ComboBox, Event, Grid, Key, RichText, TextEdit, Ui};
+use egui::{Align, Button, ComboBox, Event, Grid, Key, Layout, RichText, Sense, TextEdit, Ui};
 
-use super::model::{parse_hotkey, Model, Problem};
+use super::model::{hotkey_named, parse_hotkey_named, Model, Problem};
 use super::schema::{Control, Kind, Row};
 use crate::i18n::{humanise, tr, tr_opt, trf};
 use crate::theme;
@@ -37,6 +45,8 @@ pub struct RenderState {
     pub subtab: String,
     /// The hotkey row currently waiting for a key press.
     pub capturing: Option<String>,
+    /// Row descriptions inline (true) or on hover only (false, the default).
+    pub detailed: bool,
 }
 
 /// What the footer asks the page to do. The launcher's pages use the shell's save bar instead; this
@@ -119,19 +129,110 @@ pub fn show_settings(ui: &mut Ui, model: &mut Model, state: &mut RenderState) {
         state.capturing = None;
     }
     ui.add_space(4.0);
-    let rows: Vec<Row> = model
+    let groups: Vec<(String, Vec<Row>)> = model
         .schema()
-        .rows_in_subtab(&state.subtab)
-        .filter(|r| model.is_visible(r))
-        .cloned()
+        .groups_in_subtab(&state.subtab)
+        .into_iter()
+        .map(|(g, rows)| (g, rows.into_iter().cloned().collect()))
         .collect();
-    show_rows(
-        ui,
-        model,
-        state,
-        &rows,
-        &format!("settings_{}", state.subtab),
-    );
+    let id = format!("settings_{}", state.subtab);
+    show_grouped(ui, model, state, &groups, &id);
+}
+
+/// A page of rows under their group headers: the bar (restart note, Compact / Detailed), the
+/// `[Host]` legend when a shown row is host-dictated, then one headed grid per group. One label
+/// column serves the whole page, so the values of every group line up. A group with no shown row
+/// (its rows hidden by `visible_if`) draws nothing.
+fn show_grouped(
+    ui: &mut Ui,
+    model: &mut Model,
+    state: &mut RenderState,
+    groups: &[(String, Vec<Row>)],
+    id: &str,
+) {
+    let shown: Vec<(&String, Vec<Row>)> = groups
+        .iter()
+        .map(|(g, rows)| {
+            (
+                g,
+                rows.iter()
+                    .filter(|r| model.is_visible(r))
+                    .cloned()
+                    .collect::<Vec<Row>>(),
+            )
+        })
+        .filter(|(_, rows)| !rows.is_empty())
+        .collect();
+    let all: Vec<Row> = shown.iter().flat_map(|(_, rows)| rows.clone()).collect();
+    if all.is_empty() {
+        return;
+    }
+    view_bar(ui, state, all.iter().any(|r| r.restart));
+    if all.iter().any(|r| r.host) {
+        widgets::hint(ui, tr("settings.host_note"));
+    }
+    let label_w = label_width(ui, &all);
+    for (i, (group, rows)) in shown.iter().enumerate() {
+        // A group of nothing but experimental rows says so once, on its header, not on every row.
+        let all_experimental = !group.is_empty() && rows.iter().all(|r| r.experimental);
+        if !group.is_empty() {
+            group_header(ui, tr(&format!("group.{group}")), all_experimental);
+            if let Some(h) = tr_opt(&format!("group.{group}.hint")) {
+                widgets::hint(ui, h);
+            }
+            ui.add_space(2.0);
+        }
+        show_rows(
+            ui,
+            model,
+            state,
+            rows,
+            &format!("{id}_{group}_{i}"),
+            label_w,
+            all_experimental,
+        );
+    }
+}
+
+/// A group header: the plain rule + heading, plus the EXPERIMENTAL pill when the whole group is.
+fn group_header(ui: &mut Ui, text: &str, experimental: bool) {
+    if !experimental {
+        widgets::group_header(ui, text);
+        return;
+    }
+    ui.add_space(4.0);
+    ui.separator();
+    ui.horizontal(|ui| {
+        widgets::heading(ui, text);
+        widgets::pill(ui, tr("badge.experimental"), theme::ALERT);
+    });
+}
+
+/// The line above the rows: the page's one "applies at the next game start" note (when it has a
+/// restart row) on the left, the Compact / Detailed switch on the right.
+fn view_bar(ui: &mut Ui, state: &mut RenderState, restart: bool) {
+    ui.horizontal(|ui| {
+        if restart {
+            widgets::hint(ui, tr("settings.restart_note"));
+        }
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().button_padding = egui::vec2(8.0, 1.0);
+            // Right to left: the last-drawn button is the leftmost.
+            for (detailed, key) in [
+                (true, "settings.view.detailed"),
+                (false, "settings.view.compact"),
+            ] {
+                let b = Button::new(RichText::new(tr(key)).size(11.0))
+                    .wrap_mode(egui::TextWrapMode::Extend)
+                    .selected(state.detailed == detailed);
+                if ui.add(b).clicked() {
+                    state.detailed = detailed;
+                }
+            }
+        });
+    });
+    ui.add_space(2.0);
 }
 
 /// The Diagnostics page's setting rows, grouped by the schema's `group`.
@@ -142,41 +243,65 @@ pub fn show_diagnostics(ui: &mut Ui, model: &mut Model, state: &mut RenderState)
         .into_iter()
         .map(|(g, rows)| (g, rows.into_iter().cloned().collect()))
         .collect();
-    for (i, (group, rows)) in groups.iter().enumerate() {
-        let rows: Vec<Row> = rows
-            .iter()
-            .filter(|r| model.is_visible(r))
-            .cloned()
-            .collect();
-        if rows.is_empty() {
-            continue;
-        }
-        if !group.is_empty() {
-            let key = format!("diag.group.{group}");
-            widgets::group_header(ui, tr(&key));
-        }
-        show_rows(ui, model, state, &rows, &format!("diag_{group}_{i}"));
-        if !group.is_empty() {
-            if let Some(h) = tr_opt(&format!("diag.group.{group}.hint")) {
-                widgets::hint(ui, h);
-            }
-        }
+    show_grouped(ui, model, state, &groups, "diag");
+}
+
+/// Narrowest label column.
+const LABEL_MIN: f32 = 80.0;
+/// Room after the widest label, so it never touches its control.
+const LABEL_PAD: f32 = 6.0;
+/// The controls keep at least this much of the row (a 200 px combo and its reset arrow); a label
+/// longer than what is left wraps.
+const CTRL_MIN: f32 = 210.0;
+/// ...and the label column never takes more than this share of a wide row; a longer label wraps
+/// (user 2026-10-14: cap rather than squeeze the controls of the long Russian labels).
+const LABEL_MAX_SHARE: f32 = 0.55;
+/// Space between grid columns.
+const COL_GAP: f32 = 10.0;
+/// Width of a row's description tooltip.
+const TIP_W: f32 = 360.0;
+/// How far a dependent row (one with a `visible_if`) is pushed in under its parent.
+const DEPENDENT_INDENT: f32 = 16.0;
+
+/// Left indent of a row's label: dependent rows sit under the row they depend on.
+fn indent_of(row: &Row) -> f32 {
+    if row.visible_if.is_some() {
+        DEPENDENT_INDENT
+    } else {
+        0.0
     }
 }
 
-/// Width of the label column.
-const LABEL_W: f32 = 150.0;
-/// Space between grid columns.
-const COL_GAP: f32 = 10.0;
+/// The label column's width for `rows`: the widest label, measured in the font the label is drawn
+/// with and in the current language, plus padding -- capped so the controls keep most of the row.
+pub fn label_width(ui: &Ui, rows: &[Row]) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let widest = rows
+        .iter()
+        .map(|r| {
+            ui.painter()
+                .layout_no_wrap(tr(&r.label_key()).to_string(), font.clone(), theme::TEXT)
+                .size()
+                .x
+                + indent_of(r)
+        })
+        .fold(0.0, f32::max);
+    let avail = ui.available_width();
+    let cap = (avail - CTRL_MIN)
+        .min(avail * LABEL_MAX_SHARE)
+        .max(LABEL_MIN);
+    (widest.ceil() + LABEL_PAD).clamp(LABEL_MIN, cap)
+}
 
-/// The pills a row carries, as (text, colour), in the order they are drawn.
-fn badge_list(row: &Row) -> Vec<(&'static str, egui::Color32)> {
+/// The pills a row carries, as (text, colour), in the order they are drawn. `group_flagged`: the
+/// group header already carries the EXPERIMENTAL pill, so the row does not repeat it.
+fn badge_list(row: &Row, group_flagged: bool) -> Vec<(&'static str, egui::Color32)> {
     let mut v = Vec::new();
-    if row.experimental {
-        v.push((tr("badge.experimental"), theme::ALERT));
+    if row.host {
+        v.push((tr("badge.host"), theme::LINK));
     }
-    if row.restart {
-        v.push((tr("badge.restart"), theme::TEXT_DIM));
+    if row.experimental && !group_flagged {
+        v.push((tr("badge.experimental"), theme::ALERT));
     }
     if row.pending {
         v.push((tr("badge.pending"), theme::TEXT_DIM));
@@ -184,23 +309,40 @@ fn badge_list(row: &Row) -> Vec<(&'static str, egui::Color32)> {
     v
 }
 
-/// Draw `rows` as a grid: label | control group + reset arrow + badges, then the hint.
+/// A row's description: its hint. Empty = none. (The host-dictated note is the Host pill's hover
+/// text and the page legend, not a line under every row.)
+fn description(row: &Row) -> Vec<&'static str> {
+    tr_opt(&row.hint_key()).into_iter().collect()
+}
+
+/// Draw `rows` as a grid: label | control group + reset arrow + badges, then (detailed view) the
+/// description; in the compact view the description is a tooltip over the whole row.
 ///
 /// THE ARROW AND THE PILLS BELONG TO THEIR ROW, so they are drawn straight after the row's last
 /// control, in the same wrapping line, vertically centred on it. (They used to sit in a column of
 /// their own at the far right edge, detached from a narrow control and, with long Russian option
 /// groups, a line away from the control they described.) A control group that wraps takes the
 /// arrow and the pills with it: they follow the LAST control of the row.
-pub fn show_rows(ui: &mut Ui, model: &mut Model, state: &mut RenderState, rows: &[Row], id: &str) {
-    let ctrl_w = (ui.available_width() - LABEL_W - COL_GAP).max(140.0);
+pub fn show_rows(
+    ui: &mut Ui,
+    model: &mut Model,
+    state: &mut RenderState,
+    rows: &[Row],
+    id: &str,
+    label_w: f32,
+    group_flagged: bool,
+) {
+    let ctrl_w = (ui.available_width() - label_w - COL_GAP).max(140.0);
+    let row_gap = if state.detailed { 8.0 } else { 6.0 };
     Grid::new(id)
         .num_columns(2)
-        .spacing([COL_GAP, 8.0])
-        .min_col_width(LABEL_W)
+        .spacing([COL_GAP, row_gap])
+        .min_col_width(label_w)
         .show(ui, |ui| {
             for row in rows {
-                label_cell(ui, model, row);
-                ui.vertical(|ui| {
+                let desc = description(row);
+                let label_rect = label_cell(ui, model, row, label_w);
+                let ctrl = ui.vertical(|ui| {
                     ui.set_max_width(ctrl_w);
                     ui.horizontal_wrapped(|ui| {
                         control(ui, model, state, row);
@@ -211,8 +353,11 @@ pub fn show_rows(ui: &mut Ui, model: &mut Model, state: &mut RenderState, rows: 
                                 model.reset_row(&row.id);
                             }
                         }
-                        for (text, color) in badge_list(row) {
-                            widgets::pill(ui, text, color);
+                        for (text, color) in badge_list(row, group_flagged) {
+                            let r = widgets::pill(ui, text, color);
+                            if row.host && text == tr("badge.host") {
+                                r.on_hover_text(tr("setting.host_dictated"));
+                            }
                         }
                     });
                     if row.control == Control::Relay {
@@ -225,13 +370,29 @@ pub fn show_rows(ui: &mut Ui, model: &mut Model, state: &mut RenderState, rows: 
                                 .color(theme::ALERT),
                         );
                     }
-                    if let Some(h) = tr_opt(&row.hint_key()) {
-                        widgets::hint(ui, h);
-                    }
-                    if row.host {
-                        widgets::hint(ui, tr("setting.host_dictated"));
+                    if state.detailed {
+                        for d in &desc {
+                            widgets::hint(ui, d);
+                        }
                     }
                 });
+                if !state.detailed && !desc.is_empty() {
+                    // A hover-only area over the whole row, registered AFTER its widgets so egui
+                    // counts it as on top: it is hovered together with the button under the
+                    // pointer and takes no clicks or focus from it.
+                    let rect = label_rect.union(ctrl.response.rect);
+                    ui.interact(rect, ui.id().with(("row_tip", &row.id)), Sense::hover())
+                        .on_hover_ui(|ui| {
+                            ui.set_max_width(TIP_W);
+                            for (i, d) in desc.iter().enumerate() {
+                                let mut t = RichText::new(*d);
+                                if i > 0 {
+                                    t = t.size(11.0).color(theme::TEXT_DIM);
+                                }
+                                ui.label(t);
+                            }
+                        });
+                }
                 ui.end_row();
             }
         });
@@ -247,17 +408,20 @@ fn problem_for_row(model: &Model, row: &Row) -> Option<Problem> {
     })
 }
 
-fn label_cell(ui: &mut Ui, model: &Model, row: &Row) {
+fn label_cell(ui: &mut Ui, model: &Model, row: &Row, label_w: f32) -> egui::Rect {
     ui.vertical(|ui| {
-        ui.set_max_width(LABEL_W);
+        ui.set_max_width(label_w);
         ui.horizontal_wrapped(|ui| {
+            ui.add_space(indent_of(row));
             let mut text = RichText::new(tr(&row.label_key()));
             if model.is_edited(&row.id) {
                 text = text.color(theme::TEXT_HI);
             }
             ui.label(text);
         });
-    });
+    })
+    .response
+    .rect
 }
 
 /// The control for one row. Returns nothing; edits go through `model.set`.
@@ -352,7 +516,8 @@ fn combo(ui: &mut Ui, model: &mut Model, row: &Row, mut opts: Vec<(String, Strin
     let shown = sel.map_or_else(|| tr("combo.pick").to_string(), |i| opts[i].1.clone());
     ComboBox::from_id_salt(("settings_combo", &row.id))
         .selected_text(shown)
-        .width(200.0)
+        // Leave room for the reset arrow on the same line (a wide label column narrows the controls).
+        .width(200.0_f32.min(ui.available_width() - 64.0).max(120.0))
         .show_ui(ui, |ui| {
             for (i, (value, label)) in opts.iter().enumerate() {
                 if ui.selectable_label(sel == Some(i), label).clicked() {
@@ -422,7 +587,7 @@ fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
     let shown = if capturing {
         tr("hotkey.capture").to_string()
     } else {
-        match parse_hotkey(&cur) {
+        match parse_hotkey_named(&cur, hotkey_named(row)) {
             Ok(Some(h)) => h.format(),
             Ok(None) => tr("value.none").to_string(),
             Err(()) => cur.clone(),
@@ -461,7 +626,7 @@ fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
                     s.push_str("Shift+");
                 }
                 s.push_str(key.name());
-                if let Ok(Some(h)) = parse_hotkey(&s) {
+                if let Ok(Some(h)) = parse_hotkey_named(&s, hotkey_named(row)) {
                     model.set(&id, &h.format());
                     state.capturing = None;
                     break;
@@ -469,7 +634,11 @@ fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
             }
         }
     }
-    if parse_hotkey(&cur).ok().flatten().is_some() && ui.small_button(tr("hotkey.clear")).clicked()
+    if parse_hotkey_named(&cur, hotkey_named(row))
+        .ok()
+        .flatten()
+        .is_some()
+        && ui.small_button(tr("hotkey.clear")).clicked()
     {
         model.set(&id, "none");
         state.capturing = None;

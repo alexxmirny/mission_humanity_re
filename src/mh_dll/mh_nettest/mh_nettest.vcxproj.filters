@@ -123,6 +123,7 @@
     <ClCompile Include="panel_rows_selftest.cpp" />
     <ClCompile Include="res_list_selftest.cpp" />
     <ClCompile Include="map_zoom_selftest.cpp" />
+    <ClCompile Include="wheel_list_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
@@ -2207,6 +2208,12 @@
     <ClCompile Include="..\mh\seams\gameplay_hooks.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\move_proto_blocked.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\move_proto_nudge.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\config\gameplay.cpp">
       <Filter>mh\config</Filter>
     </ClCompile>
@@ -2244,10 +2251,19 @@
     <ClCompile Include="..\mh\seams\ui_minimap_box.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_minimap_plus.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_bigmap.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\ui_crew_reminder.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_bldg_rearm.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp">
@@ -2280,6 +2296,18 @@
     <ClCompile Include="..\mh\seams\ui_keyrepeat.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\snd_trace.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\move_proto_arrival.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\move_proto_speed.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\combat_proto.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\ui_pause.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
@@ -2287,6 +2315,9 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_map_zoom.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_wheel.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\view_wrap.cpp">
@@ -2320,6 +2351,9 @@
       <Filter>mh\gfx</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\gfx\map_zoom.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\wheel_list.cpp">
       <Filter>mh\gfx</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\gfx\ddraw_own.cpp">

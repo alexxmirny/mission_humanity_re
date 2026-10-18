@@ -98,6 +98,20 @@ def find_log(target):
     return cands[0]
 
 
+def before_first_stall(text):
+    """The log text up to (not including) its first `; [netind] stall` line, or all of it when none."""
+    m = STALL_RE.search(text)
+    return text[: m.start()] if m else text
+
+
+def first_stall(text):
+    """The peer NAME of the log's FIRST `; [netind] stall` line, or None when it logged no stall. A multi-segment
+    walk (net_hud_scroll) cannot ask "was there ANY stall" -- the forced stalls of its later segments would answer for
+    the one under test -- but the segment under test is the first stall of the match, so the first line is its own."""
+    m = STALL_RE.search(text)
+    return m.group(1).strip() if m else None
+
+
 # ---- the negative arm --------------------------------------------------------------------------
 #
 # This checker only ever runs when the rig does, so its own failure paths would otherwise never be
@@ -147,6 +161,15 @@ def selftest():
         ("stall expected, none logged", GOOD, ["--expect-stall"], 1),
         ("stall expected, one named", GOOD + STALL_NAMED, ["--expect-stall"], 0),
         ("stall logged but nameless", GOOD + STALL_BLANK, ["--expect-stall"], 1),
+        # tooling:TL-SUITE-FOLD: the FIRST stall line (what a later segment's stalls cannot answer for)
+        ("first stall expected, none logged", GOOD, ["--expect-first-stall", "0"], 1),
+        ("first stall expected, one named", GOOD + STALL_NAMED, ["--expect-first-stall", "0"], 0),
+        (
+            "first stall expected, it is nameless",
+            GOOD + STALL_BLANK + STALL_NAMED,
+            ["--expect-first-stall", "0"],
+            1,
+        ),
         # mp:L1c
         ("resolved name accepted", GOOD, ["--reject-placeholder-name"], 0),
         (
@@ -159,8 +182,40 @@ def selftest():
     # Multi-target cases (mp:L1c) -- a SECOND log with a placeholder name must fail the run even
     # though the FIRST one is clean, which is the exact shape net_hud's post_check_peers produces:
     # the host's log always resolved fine, so a single-target check never saw the client's bug.
+    STALLED_PLACEHOLDER = GOOD + STALL_NAMED + GOOD.replace("name=host", "name=PLAYER 3")
     multi_cases = [
+        (
+            "multi: placeholder only AFTER the first stall, scoped",
+            [GOOD, STALLED_PLACEHOLDER],
+            ["--reject-placeholder-name", "--names-before-first-stall"],
+            0,
+        ),
+        (
+            "multi: placeholder after a stall, unscoped",
+            [GOOD, STALLED_PLACEHOLDER],
+            ["--reject-placeholder-name"],
+            1,
+        ),
+        (
+            "multi: placeholder BEFORE the first stall, scoped",
+            [GOOD, GOOD.replace("name=host", "name=PLAYER 3") + STALL_NAMED],
+            ["--reject-placeholder-name", "--names-before-first-stall"],
+            1,
+        ),
         ("multi: both resolved", [GOOD, GOOD], ["--reject-placeholder-name"], 0),
+        # --expect-first-stall N judges target N ONLY: a stall on the other peer does not answer for it
+        (
+            "multi: stall on the named target",
+            [GOOD, GOOD + STALL_NAMED],
+            ["--expect-first-stall", "1"],
+            0,
+        ),
+        (
+            "multi: stall only on the OTHER target",
+            [GOOD + STALL_NAMED, GOOD],
+            ["--expect-first-stall", "1"],
+            1,
+        ),
         (
             "multi: second target has placeholder",
             [GOOD, GOOD.replace("name=host", "name=PLAYER 0")],
@@ -245,6 +300,21 @@ def main():
         help="require at least one stall line, with a non-empty peer NAME",
     )
     ap.add_argument(
+        "--names-before-first-stall",
+        action="store_true",
+        help="tooling:TL-SUITE-FOLD: --reject-placeholder-name judges only the samples each log printed BEFORE "
+        "its first stall line -- the clean-link half net_hud always asserted. A walk that forces stalls "
+        "first and asks this question later reads the post-stall fallback names too",
+    )
+    ap.add_argument(
+        "--expect-first-stall",
+        type=int,
+        metavar="N",
+        help="tooling:TL-SUITE-FOLD: the Nth target's log (0 = the first = the host) must contain a stall, and "
+        "its FIRST stall line must carry a non-empty peer NAME. For a walk whose later segments force stalls "
+        "of their own, where --expect-stall would be satisfied by them",
+    )
+    ap.add_argument(
         "--reject-placeholder-name",
         action="store_true",
         help="mp:L1c -- fail if any measured sample's name= is the unresolved `PLAYER <n>` "
@@ -263,9 +333,12 @@ def main():
         print("REFUSED: no mh_net.log at or under %s" % ", ".join(a.targets))
         return 2
     text = ""
+    clean_samples = []  # samples read BEFORE each log's first stall (--names-before-first-stall)
     for p in logs:
         with open(p, "r", encoding="utf-8", errors="replace") as f:
-            text += f.read()
+            body = f.read()
+        text += body
+        clean_samples += SAMPLE_RE.findall(before_first_stall(body))
         if text and not text.endswith("\n"):
             text += "\n"
     log = ", ".join(logs)
@@ -351,18 +424,40 @@ def main():
         else:
             print("  stall named %r (peer %s, %s ms)" % (named[0][0], named[0][1], named[0][2]))
 
+    if a.expect_first_stall is not None:
+        if not 0 <= a.expect_first_stall < len(a.targets):
+            fails.append(
+                "--expect-first-stall %d but %d target(s) given"
+                % (a.expect_first_stall, len(a.targets))
+            )
+        else:
+            p = find_log(a.targets[a.expect_first_stall])
+            who = None
+            if p:
+                with open(p, "r", encoding="utf-8", errors="replace") as fh:
+                    who = first_stall(fh.read())
+            if not who:
+                fails.append(
+                    "--expect-first-stall %d: that peer's first stall line is %s"
+                    % (a.expect_first_stall, "nameless" if who == "" else "missing")
+                )
+            else:
+                print("  target %d: first stall waits for %r" % (a.expect_first_stall, who))
+
     if a.reject_placeholder_name:
-        bad = [s for s in measured if re.match(r"^PLAYER \d+$", s[1])]
+        pool = (
+            [s for s in clean_samples if int(s[2]) >= 0] if a.names_before_first_stall else measured
+        )
+        bad = [s for s in pool if re.match(r"^PLAYER \d+$", s[1])]
         if bad:
             fails.append(
                 "--reject-placeholder-name: %d/%d measured samples carry the unresolved `PLAYER <n>` "
                 "name (e.g. peer%s name=%s) -- the transport-id-to-strategic-slot resolution (mp:L1c) "
-                "did not find a real name" % (len(bad), len(measured), bad[0][0], bad[0][1])
+                "did not find a real name" % (len(bad), len(pool), bad[0][0], bad[0][1])
             )
         else:
             print(
-                "  name resolution: %d measured samples, none fell back to `PLAYER <n>`"
-                % len(measured)
+                "  name resolution: %d measured samples, none fell back to `PLAYER <n>`" % len(pool)
             )
 
     for f in fails:

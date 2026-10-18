@@ -47,6 +47,7 @@ mod theme;
 mod update;
 mod upload;
 mod version;
+mod watchdog;
 mod widgets;
 
 use std::path::{Path, PathBuf};
@@ -739,6 +740,8 @@ fn run_window(
     view: View,
     startup: Startup,
 ) -> Result<(), String> {
+    // The UI-thread freeze watchdog: one log line per stall, and a dump of the first (watchdog.rs).
+    watchdog::start(layout.logs());
     let mut attempts: Vec<String> = Vec::new();
     // The app takes ownership of all three, so the second attempt needs its own copy; cloning
     // before each `run_native` is what keeps the retry a retry rather than a half-configured run.

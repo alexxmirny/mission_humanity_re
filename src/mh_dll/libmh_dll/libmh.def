@@ -78,6 +78,7 @@ EXPORTS
     ?set_logger@lockstep@mh@@YAXP6AXPBD@Z@Z
     ?set_logger@orders@mh@@YAXP6AXPBD@Z@Z
     ?set_logger@save@mh@@YAXP6AXPBD@Z@Z
+    ?set_new_game_init_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_session_begin_multi_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_sim_step_pre_hook@sim@mh@@YAHP6AXXZ@Z
     ?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z

@@ -332,6 +332,26 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > suite and runs them; naming a row (`test_ui.py <name>`, the light smoke's change-aware rows) always
 > runs it. Run `--release` before a release. A skipped row's budget does not count toward the cost rules.
 >
+> **THE RELEASE GATE'S RIG UNITS (tooling:TL-RELGATE-FOLD, user 2026-10-17; 64.8 min before).** `--release` adds
+> the host-migration / elimination arms to the full gate. They run in two places. **The VM chain** (one after
+> another, the `vm` slot; every VM unit is `first` and `det` leads it, so the chain starts the instant the slot frees):
+> `det`, `u19j_gpfg3`, `x2a_map_variant`, `u58_gs2` (the 3-peer GS2 arm), `hm_crash` (the direct crash failover,
+> `--u63-crash`, no negative arm), `hm_u64_newhub` and `hm_u64_part` (partition + heal: the shim's control port 6699 is
+> a singleton, so those two cannot be local). **The all-local batch `hm_local`**: `tools/rig_parallel.py --parallel 3 --preset hm_local`,
+> ten det_arms children on three parallel slots (`lane_alloc` block `par`, no VM): the crash variants (relay,
+> configuration (1), both), the planned-handover arms (`--u62-host-quit`, `--u62-host-exit`, `--u62-neg`), the two
+> eliminations (`--u53-host-elim`, `--u53-client-elim`) and the 4-peer `--u64 elect4 / double` (`--u64 newhub` stays on the VM chain as `hm_u64_newhub`: 4 of 8 local runs passed under load, 1 of 1 on the VM). The local arms
+> are the SAME children with the SAME checkers (`check_u62/u63/u53/u64`), so the verdicts and thresholds are the VM
+> arms'; what a local arm gives up is the independent CPU / FP environment of the VM pair, which `hm_crash` (direct),
+> `det`, `u19j_gpfg3` and `x2a_map_variant` keep. `U53_STEPS` is 2400 (was 4000): the binding arm is the elimination
+> (force-kill at step 300 + `check_u53_elim.MIN_POST` 1500), the crash / exit arms need 600 + 1000. The
+> `hub_migration=0` negative is run once, as `--u62-neg` (graceful leaver): its abrupt twin `--u63-neg` is no longer in
+> the gate because `udp_mesh_selftest.cpp` `failover_arm` mode 4 (`:1430`) asserts the abrupt case at the transport
+> (no failover, no hub change on any survivor), whereas the graceful case's offline arm (`handover_arm` mode 2,
+> `:1177`) only checks the leaver's return code. Mutation hooks for these arms: `det_arms.py --net-extra
+> hub_migration=0` (a positive arm must go red) and `--harness-extra-peer N:rng_perturb_slot=1;rng_perturb_step=1200`
+> (a survivor diverges: "IDENTICAL" must go red).
+>
 > * **light, always:** build (plain selftest exes only), `det` + `spdet` (both determinism oracles),
 >   `abc_tutorial` + `abc_spcamp` (the soak/campaign replays), `inmem`, `lint`, the PLAIN selftest
 >   pass (`selftests_plain` = `run_selftests.py --no-asan`) and a UI `smoke` of `menu_walk` +

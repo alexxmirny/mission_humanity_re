@@ -136,10 +136,19 @@
     <ClCompile Include="seams\ui_minimap_box.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_minimap_plus.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_bigmap.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_crew_reminder.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_bldg_build_probe.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_bldg_rearm.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\sim_pioneer_refill.cpp">
@@ -169,6 +178,24 @@
     <ClCompile Include="seams\ui_keyrepeat.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\snd_trace.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\move_proto_blocked.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\move_proto_nudge.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\move_proto_arrival.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\move_proto_speed.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\combat_proto.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_pause.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -176,6 +203,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_map_zoom.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_wheel.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\view_wrap.cpp">
@@ -332,6 +362,9 @@
       <Filter>gfx</Filter>
     </ClCompile>
     <ClCompile Include="gfx\map_zoom.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\wheel_list.cpp">
       <Filter>gfx</Filter>
     </ClCompile>
     <ClCompile Include="gfx\ddraw_own.cpp">

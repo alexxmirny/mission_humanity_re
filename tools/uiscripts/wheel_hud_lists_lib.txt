@@ -1,0 +1,140 @@
+# wheel_hud_lists_lib (D15) -- the strategic side-panel list wheel segment of ship_walk.txt (segment wheel_hud_lists), run with
+# libmh.dll BOUND (the spine live, promotions active): the draw wrapper and the pre-input pump coexist with the promoted bodies.
+# Re-created by tooling:TL-SUITE-FOLD step 8: tooling:TL-SUITE-FOLD step 2 folded wheel_hud_lists.txt into ship_walk.txt and left this row
+# pointing at the deleted script. The walk is that segment unchanged except that the lane holds ONE save (ayy30, the preselected
+# Load row, so no list scrolling), and the captures are named wheel_hud_lists_lib__<name> (the frames equal ship_walk's
+# wheel_hud_lists__<name>: baselines/wheel_hud_lists_lib/ holds copies of them).
+# wheel_hud_lists (D15): the mouse wheel scrolls the strategic side-panel list under the pointer.
+# ayy30.sav (the only deployed save, so the preselected Load row): 21 available buildings, 74 units in groups of 5 / 18 / 51.
+# 1024x768 (video_1024.ini): the panel starts at x = 864 (G_WIN_W), the available list's rows are 52 px from y 248 (10 rows shown).
+# HUD list descriptors (llm_ui_scroll_list_descriptor): BLDG_AVAILABLE 0x00510115 (rows 52 px), SELECTION 0x005100b3 and
+# SELECTION_CTRLGRP 0x005100e4 (rows 16 px: three rows a notch); `hudtop <desc> <N>` reads desc+0x29, the top row.
+# The strategic input pump runs once per sim step, so every wheel is followed by `gameclock +N` (the pinned wall clock does not
+# step the sim on its own). The wheel verb moves the game's cursor back to the DirectInput position, so each is preceded by cursorhold.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+# ayy30 is the only deployed save here, so it is the preselected (top) Load row: no scrolling to its row, just load it
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+capture wheel_hud_lists_lib__a_start
+# over the available-buildings list: one notch back = one 52 px row
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 1
+cursorhold 904 300 10
+capture wheel_hud_lists_lib__b_one_row
+# a second notch, then forward twice (clamped at the first row)
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 2
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 1
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 0
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 0
+# the owned-buildings tab (the second row's right tab): the same 52 px rows, its own descriptor BLDG_OWNED 0x00510146
+cursorhold 980 209 10
+simclick 980 209
+gameclock +300
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510146 1
+cursorhold 904 300 10
+capture wheel_hud_lists_lib__c_owned_list
+# the map panel (top row, right tab) has no list: the wheel over it does nothing and does not zoom
+cursorhold 995 180 10
+simclick 995 180
+gameclock +300
+cursorhold 904 400 10
+rawmouse wheel -120
+gameclock +300
+zoom 100
+# back to the build panel: switching panels / tabs puts a list back on its first row (retail, llm_ui_group_tab_on_click)
+cursorhold 885 180 10
+simclick 885 180
+gameclock +300
+cursorhold 885 209 10
+simclick 885 209
+gameclock +300
+cursorhold 904 300 10
+hudtop 0x00510115 0
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510115 1
+# a wheel over the panel does not zoom the map
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 2
+zoom 100
+# the control group 3 key (51 Crusaders) opens the unit panel: its member list (UNIT_UNASSIGNED 0x00510082, 46 px rows) scrolls a row
+key 0x04
+gameclock +300
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510082 1
+cursorhold 904 300 10
+capture wheel_hud_lists_lib__d_unit_panel
+# the assign view (the panel's second tab, then the '51' group tab): two 16 px columns, three rows a notch, and ONLY the column under
+# the pointer scrolls -- the left (selection) column is empty here, so a wheel over it leaves the control-group column where it was
+cursorhold 980 209 10
+simclick 980 209
+gameclock +300
+cursorhold 913 233 10
+simclick 913 233
+gameclock +300
+cursorhold 990 400 10
+hudtop 0x005100e4 0
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+cursorhold 990 400 10
+capture wheel_hud_lists_lib__e_group_column
+cursorhold 900 400 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+hudtop 0x005100b3 0
+cursorhold 990 400 10
+rawmouse wheel 120
+gameclock +300
+hudtop 0x005100e4 0
+cursorhold 990 400 10
+# the wheel over the map zooms it and leaves the lists where they were
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+cursorhold 500 300 10
+rawmouse wheel 120
+gameclock +300
+zoom ge 120
+hudtop 0x005100e4 3
+cursorhold 500 300 10
+capture wheel_hud_lists_lib__g_zoomed_lists_kept
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+

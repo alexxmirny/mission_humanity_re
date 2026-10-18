@@ -240,6 +240,35 @@ def check_state_masks(exe):
     return False
 
 
+HEAD_LINES = 40
+TAIL_LINES = 3
+
+
+def failure_report(out):
+    """The lines worth showing for a failing suite's output (TL-SELFTEST-TAIL).
+
+    The head alone (the old `splitlines()[:40]`) is the suite's setup chatter on a chatty suite --
+    a staterectest red once printed 40 lines of state-record progress and not the check that failed.
+    So: the head, then EVERY line past the head that reports a failure (`FAIL`, case-sensitive: the
+    suites print `FAIL:`/`[x] FAIL`/`... N failures`), then the last few lines (the summary).
+    """
+    lines = out.splitlines()
+    if len(lines) <= HEAD_LINES + TAIL_LINES:
+        return lines
+    shown = lines[:HEAD_LINES]
+    tail_from = len(lines) - TAIL_LINES
+    mid = [
+        f"[{i + 1}] {ln}"
+        for i, ln in enumerate(lines[HEAD_LINES:tail_from], start=HEAD_LINES)
+        if "FAIL" in ln or "failure" in ln or "Assertion" in ln or "ERROR" in ln
+    ]
+    skipped = (tail_from - HEAD_LINES) - len(mid)
+    shown.append(
+        f"... {skipped} line(s) omitted; {len(mid)} failure line(s) below, with their line numbers ..."
+    )
+    return shown + mid + lines[tail_from:]
+
+
 def run_suite(exe, suite, tag):
     """Run one suite once. Returns True on a clean exit. Never parses output for a verdict."""
     r = subprocess.run([exe, suite], capture_output=True, text=True, cwd=REPO)
@@ -252,7 +281,7 @@ def run_suite(exe, suite, tag):
     kind = "CRASH" if (r.returncode < 0 or r.returncode > 255) else "failed check(s)"
     print(f"[FAIL] {tag} {suite}: exit {r.returncode} ({kind})")
     if out:
-        print("      " + "\n      ".join(out.splitlines()[:40]))
+        print("      " + "\n      ".join(failure_report(out)))
     elif kind == "CRASH":
         print(
             "      (no output -- stdout is lost on abnormal exit, which is what a crash looks like)"

@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "selftest_dispatch.h"
 #include "../mh_net_udp/udp_endpoint.h"
 #include "../mh_net_udp/udp_relay.h"
 
@@ -201,7 +202,19 @@ bool rehome_arm(const char *name, int clients, int base, int mode, bool dial_fir
         if ((r % 8) == 7) Sleep(1);
     }
     for (int k = 0; k < 40; ++k) Sleep(10); // whatever is still in flight to a survivor has arrived
-
+    // TL-TEST-LOAD: ...is what 400 ms buys on an idle box. With 5% loss a hole near the start of the held
+    // window keeps EVERY later frame of that origin behind it until the sender's retransmit lands, and on
+    // a loaded box that is longer than the sleep: the lane then reads empty and the NON-VACUOUS check
+    // below ("frames were QUEUED for the game at the switch") fired on a premise that was only late.
+    // Wait for the premise itself -- every survivor holds queued frames -- with a generous deadline; if
+    // it never comes the same check below still reds.
+    wait_for(
+        [&] {
+            for (int i = 0; i < clients; ++i)
+                if (queue_depth(g_r[1 + i]) <= 0) return false;
+            return true;
+        },
+        10000);
     // ---- BEFORE: the state rehome must keep -------------------------------------------------------
     osq::Report rep0[3];
     uint32_t    target0[osq::ORIGINS] = {0};
@@ -320,7 +333,9 @@ bool rehome_arm(const char *name, int clients, int base, int mode, bool dial_fir
         g_f[1].counters(fk1);
         checkf(fk0.hs_done >= 1 && fk1.hs_done >= 1, "%s: NON-VACUOUS -- both foreign dialers really completed the handshake first", name);
         checkf(told, "%s: ...and each foreign dialer was told (its conn dropped)", name);
-        check("...and neither holds a seat on the hub", nh.peer_count() == clients - 1);
+        // The hub drops a refused dialer on ITS side after it has told it, so `told` (the dialers' view) can
+        // be read a few ms before the hub's own table settles -- a single sample raced it under load.
+        check("...and neither holds a seat on the hub", wait_for([&] { return nh.peer_count() == clients - 1; }, 5000));
         int       ids[8];
         const int n    = nh.active_peer_ids(ids, 8);
         bool      has5 = false, has_own = false;
@@ -631,11 +646,11 @@ int run_rehome_relay_role(int argc, char **argv) {
 int run_rehome_arms() {
     const int fails0 = g_fails;
     printf("  -- mp:U60 rehome: the id-keeping hub change + reconcile\n");
-    rehome_arm("3-endpoint rehome", 2, 39840, 0, false);
-    rehome_arm("4-endpoint rehome (survivors dial first)", 3, 39870, 0, true);
-    const bool restart_held = rehome_arm("mutation C1", 2, 39910, 1, false);
+    rehome_arm("3-endpoint rehome", 2, selftest_port(39840), 0, false);
+    rehome_arm("4-endpoint rehome (survivors dial first)", 3, selftest_port(39870), 0, true);
+    const bool restart_held = rehome_arm("mutation C1", 2, selftest_port(39910), 1, false);
     check("MUTATION C1: a stop()+start() restart is DETECTED (lanes/ids/layer/sequences do not survive it)", !restart_held);
-    const bool noreconcile_held = rehome_arm("mutation C2", 2, 39930, 2, false);
+    const bool noreconcile_held = rehome_arm("mutation C2", 2, selftest_port(39930), 2, false);
     check("MUTATION C2: a rehome with the reconcile skipped is DETECTED (the sequences differ)", !noreconcile_held);
     printf("     rehome: %d checks so far, %d failures in this block\n", g_checks, g_fails - fails0);
     return g_fails - fails0;

@@ -859,6 +859,187 @@ key 0x01
 gamemode 2
 gameclock +600
 
+# ---- bigmap (mods:MM4): the big minimap drawn over the strategic view while its key (default Tab) is held. Held =
+# `hotkeydown Tab` (the harness table the DLL ORs into its GetAsyncKeyState read), released = `hotkeyup Tab`. Sizes: 1024x768,
+# 640x480 (eight clicks on from 1024x768 round the list; the dialog is drawn at the CURRENT size) and 2560x1440, then back to
+# the stock 1024x768, so res_hud below starts where it did. a/c: the view before and after the hold must match (modulo
+# animated sprites: tol 0.0005 here and the sprites are the only difference, tools/check_bigmap.py proves the rest).
+mark bigmap
+camto 24 38
+gameclock +100
+cursorhold 600 400 6
+screensettled
+capture bigmap__a_1024_before
+hotkeydown Tab
+cursorhold 600 400 10
+screensettled
+capture bigmap__b_1024_held
+hotkeyup Tab
+cursorhold 600 400 10
+screensettled
+capture bigmap__c_1024_after
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 300 300 6
+screensettled
+hotkeydown Tab
+cursorhold 300 300 10
+screensettled
+capture bigmap__d_640_held
+hotkeyup Tab
+cursorhold 300 300 10
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 600 6
+screensettled
+hotkeydown Tab
+cursorhold 1000 600 10
+screensettled
+capture bigmap__e_2560_held
+hotkeyup Tab
+cursorhold 1000 600 10
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1258 717
+click 1258 717
+click 1258 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+# mods:MM4B: a click on the overlay at each of the three sizes (1024 -> 640 -> 2560 -> 1024), AFTER every frame above so the camera move
+# and the extra game time cannot disturb them. The overlay is camera-centred here; check_bigmap.py re-derives each click's tile and camera.
+cursorhold 300 200 6
+screensettled
+hotkeydown Tab
+cursorhold 300 200 10
+screensettled
+simclick 300 200
+cursorhold 300 200 10
+screensettled
+capture bigmap__f_1024_clicked
+hotkeyup Tab
+cursorhold 300 200 10
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 300 300 6
+screensettled
+hotkeydown Tab
+cursorhold 300 300 10
+screensettled
+simclick 300 300
+cursorhold 300 300 10
+screensettled
+capture bigmap__g_640_clicked
+hotkeyup Tab
+cursorhold 300 300 10
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+click 298 237
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 600 6
+screensettled
+hotkeydown Tab
+cursorhold 1000 600 10
+screensettled
+simclick 1000 600
+cursorhold 1000 600 10
+screensettled
+capture bigmap__h_2560_clicked
+hotkeyup Tab
+cursorhold 1000 600 10
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 1258 717
+click 1258 717
+click 1258 717
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+
 # ---- res_hud: the strategic HUD reached through the real menu -> lobby -> launch (single peer: the host seats an AI
 # in slot 1 and clicks Start alone). w1 is a MENU screen (always drawn at 640x480) and w3 the GAMEPLAY HUD at 1024x768.
 key 0x01
@@ -943,4 +1124,41 @@ gameclock 90000
 simclick 900 500
 gameclock 91500
 capture res_land_hud__c_selected_ship_panel
+
+# ---- minimap_plus (mods:MM1-MM3): the minimap's widest zoom keeps its resources, its corners and its view box. LAST in the
+# walk on purpose: every segment adds game clock and the strip frames before it show animation phases (a segment inserted
+# earlier moved res_strip_resize and galaxy_native_2048x1152__after). ESC > Quit game > Yes, then the Load row of ayy30
+# (the same clicks as before res_panel_rows_ayy30_1440), at the 2048x1152 this segment inherits. ayy30 is a 128-tile map at
+# zoom 2 as loaded (64 tiles across the 128 px); "-" is zoom 1 = the whole map = the flag the stock renderer answers with no
+# resource markers, a round mask and no box. The panel starts at x = 1888, so "-" is at (1934,154) and "+" at (1907,154).
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+screensettled
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+mark minimap_plus
+simclick 1934 154
+gameclock +300
+cursorhold 900 600 4
+capture minimap_plus__a_128_z1
+simclick 1907 154
+gameclock +300
+cursorhold 900 600 4
+capture minimap_plus__b_128_z2
 end

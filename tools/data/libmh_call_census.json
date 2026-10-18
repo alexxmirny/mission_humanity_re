@@ -2,14 +2,14 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 158,
+  "distinct_callees": 185,
   "config_measures": {
    "hosted": {
-    "sites": 1561,
+    "sites": 1562,
     "distinct": 746
    },
    "hosted_gates_off": {
-    "sites": 1561,
+    "sites": 1562,
     "distinct": 746
    },
    "hosted_ship": {
@@ -22,7 +22,7 @@
     "distinct": 2
    },
    "config_dependent": {
-    "sites": 1438,
+    "sites": 1439,
     "distinct": 714
    },
    "vendored_crt": {
@@ -36,8 +36,8 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 114,
-   "translated": 42
+   "original": 119,
+   "translated": 64
   },
   "modules": {
    "desync": {
@@ -53,10 +53,10 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 218,
-    "distinct": 151,
-    "outward_sites": 157,
-    "outward_distinct": 114
+    "sites": 301,
+    "distinct": 178,
+    "outward_sites": 182,
+    "outward_distinct": 119
    },
    "sim": {
     "sites": 1,
@@ -172,9 +172,31 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "game_SetEvent",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
    "sites": 1,
    "modules": {
     "seams": 1
+   }
+  },
+  {
+   "name": "game_UpdateProgress",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
    }
   },
   {
@@ -481,9 +503,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 5,
+   "sites": 6,
    "modules": {
-    "seams": 5
+    "seams": 6
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -493,9 +515,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 3,
+   "sites": 5,
    "modules": {
-    "seams": 3
+    "seams": 5
    },
    "adjudication": "event-channel:event"
   },
@@ -505,9 +527,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 3,
+   "sites": 5,
    "modules": {
-    "seams": 3
+    "seams": 5
    },
    "adjudication": "event-channel:event"
   },
@@ -577,6 +599,76 @@
    "sites": 1,
    "modules": {
     "desync": 1
+   }
+  },
+  {
+   "name": "llm_map_tile_find_enemy_of_type",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 4,
+   "modules": {
+    "seams": 4
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_map_tile_find_own_of_type",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_map_tile_has_enemy",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_map_tile_has_own",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_map_wrap_delta_x",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_map_wrap_delta_y",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
    }
   },
   {
@@ -826,6 +918,17 @@
    }
   },
   {
+   "name": "llm_strat_bldg_get_coords",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_bldg_is_network_critical",
    "status": "translated",
    "domain": "sim_resid",
@@ -848,7 +951,29 @@
    }
   },
   {
-   "name": "llm_strat_group_issue_move_order",
+   "name": "llm_strat_facing24_to_delta",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
+   "name": "llm_strat_fow_remove_sight",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_get_vehicle_building_sub_id",
    "status": "original",
    "domain": null,
    "tier": null,
@@ -858,6 +983,62 @@
     "seams": 1
    },
    "adjudication": null
+  },
+  {
+   "name": "llm_strat_group_issue_attack_order",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_group_issue_enter_building_order",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_group_issue_move_order",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 5,
+   "modules": {
+    "seams": 5
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_confirmed",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_group_issue_move_order_deferred",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 12,
+   "modules": {
+    "seams": 12
+   }
   },
   {
    "name": "llm_strat_offscreen_fx_scale",
@@ -889,9 +1070,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 5,
+   "sites": 10,
    "modules": {
-    "seams": 5
+    "seams": 10
    }
   },
   {
@@ -977,6 +1158,28 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_path_free_slot",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
+   "name": "llm_strat_path_make_single_step",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T2",
+   "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -1077,11 +1280,33 @@
    }
   },
   {
+   "name": "llm_strat_storage_exit_tile_is_clear",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_storage_purge_dead_docked",
    "status": "translated",
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_target_release_ref",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -1096,6 +1321,28 @@
    "sites": 1,
    "modules": {
     "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_turret_order_target_building",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_turret_order_target_unit",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
    }
   },
   {
@@ -1115,6 +1362,17 @@
    "domain": "sim",
    "tier": "T3",
    "promoted": true,
+   "sites": 9,
+   "modules": {
+    "seams": 9
+   }
+  },
+  {
+   "name": "llm_strat_unit_notify_status",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -1173,6 +1431,28 @@
    "sites": 2,
    "modules": {
     "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_unit_set_state_of",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_soldiers_set_heading",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
    }
   },
   {
@@ -1756,11 +2036,22 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 8,
    "modules": {
-    "seams": 2
+    "seams": 8
    },
    "adjudication": null
+  },
+  {
+   "name": "llm_unit_set_order_param",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_view_set_size_mode",
@@ -1801,6 +2092,17 @@
    "status": "translated",
    "domain": "(pre-ledger)",
    "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "map_fow_UpdateFoWPlus",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
    "promoted": false,
    "sites": 2,
    "modules": {

@@ -1,0 +1,4 @@
+# net_hud_scroll (tooling:TL-SUITE-FOLD step 7). Every stall in the row is forced by the registry's shim_triggers off the host's log lines
+# (net_hud's `blackhole s2c` then `blackhole off`; scroll_stall's `blackhole c2s` then `blackhole off`). This line is only the fallback that
+# lifts a blackhole whose release trigger never fired. There is NO timed s2c fallback: net_hud's old 300 s one would land mid-walk on a slow run.
+600000  blackhole off

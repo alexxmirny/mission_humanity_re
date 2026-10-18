@@ -1,0 +1,6 @@
+# link_death_seq (tooling:TL-SUITE-FOLD step 7): segment 1's R-live timeline (the old rlive_link_death.txt); offsets are from the FIRST
+# connection. Segment 2's cut is a registry shim_trigger on a SIM moment (the old txdeath_ingame fallback at t+150 s is dropped: it would
+# land inside a slow run's match). The blackhole below is lifted by the `link death segment done` trigger, not by this file.
+30000   stall on          # quiet, but alive
+38000   stall off         # ...and back. Expect NO drop line from either peer.
+60000   blackhole on      # gone, without a close. Expect the rx-timeout drop on BOTH peers ~10 s later.

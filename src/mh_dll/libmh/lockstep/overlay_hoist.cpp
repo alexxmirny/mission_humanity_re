@@ -4,6 +4,7 @@
 //
 #include "lockstep/overlay_hoist.h"
 #include "lockstep/turn_engine.h" // fixes(): [net] overlay_dialog_guard
+#include "sim/sim_mother_free.h"  // mods:A1 mother_free_covers
 
 #include "addr/mh_addrs.gen.h"
 #include "addr/mh_structs.gen.h" // the player profile the panel-page hoist indexes
@@ -60,8 +61,10 @@ void outcome_dialog_panel_hoist() {
     const auto   *profiles                                      = mh::state::ptr<const mh::game::mh_llm_strat_player_profile>(RID_STRAT_PLAYERS);
     const int16_t side                                          = *mh::state::ptr<const int16_t>(RID_PLAYERSIDE);
     const int32_t planet                                        = *mh::state::ptr<const int32_t>(RID_G_PLANET_INDEX);
-    *mh::state::ptr<int32_t>(RID_STRAT_UI_PANEL_PAGE) =
-        (profiles[side].primary_mother_bldg[planet] == 0) ? 1 : 0;
+    // mods:A1: the same gate the sim sites read -- open when [net] mother_free_build covers the local player.
+    const auto *players                               = mh::state::ptr<const mh::game::mh_game_player_data>(RID_PLAYER_DATA);
+    const bool  open                                  = profiles[side].primary_mother_bldg[planet] != 0 || mh::sim::mother_free_covers(players[side & 7].ai_enabled != 0);
+    *mh::state::ptr<int32_t>(RID_STRAT_UI_PANEL_PAGE) = open ? 0 : 1;
 }
 
 namespace {

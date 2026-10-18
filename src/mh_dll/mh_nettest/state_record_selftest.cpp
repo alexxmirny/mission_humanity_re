@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "selftest_dispatch.h"
 #include "addr/mh_regions.gen.h"
 #include "desync/order_capture.h"
 #include "desync/state_compress.h"
@@ -679,7 +680,7 @@ void test_live(const char *write_to) {
         }
         const size_t paths_before = g_log_paths.size();
         rec::match_end();
-        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(SELFTEST_WAIT_IDLE_MS));
         (void)paths_before;
         // After match_end nothing is recorded (a "Continue game"): the tracker is skipped.
         live_mutate(STEPS + 1);
@@ -777,9 +778,9 @@ void test_live(const char *write_to) {
         }
         const size_t n_paths = g_log_paths.size();
         rec::match_end();
-        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(SELFTEST_WAIT_IDLE_MS));
         check("match 3: the recorder logged its file", g_log_paths.size() == 3);
-        check("match 3: the background compression finished", gzmod::wait_idle(60000));
+        check("match 3: the background compression finished", gzmod::wait_idle(SELFTEST_WAIT_IDLE_MS));
         if (n_paths == 3 || g_log_paths.size() == 3) {
             const std::string raw = g_log_paths.back();
             const std::string gz  = raw + ".gz";
@@ -816,7 +817,7 @@ void test_live(const char *write_to) {
             hub::step(s);
         }
         rec::match_end();
-        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(SELFTEST_WAIT_IDLE_MS));
         check("match 4: a name whose .gz exists is taken (mh_match_state.bin skipped -> _2)",
               g_log_paths.size() == 4 && g_log_paths.back().find("mh_match_state_2.bin") != std::string::npos);
     }
@@ -840,7 +841,7 @@ void test_live(const char *write_to) {
             truth.push_back(live_hash());
         }
         rec::match_end();
-        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(10000));
+        check("mp:Q4: match_end returned at once; the writer closes the file in the background", rec::wait_idle(SELFTEST_WAIT_IDLE_MS));
         check("solo: the recorder states the SOLO step axis, once", g_solo_axis_lines == 1);
         check("solo: no session_begin_multi axis line for a solo session", g_mp_axis_lines == mp_before);
         check("solo: the recorder logged its file", g_log_paths.size() == 5);
@@ -980,7 +981,7 @@ void test_order_capture() {
     ord_truth  tC;
     ord_session(dC, 300, 75, tC);
     oc::session_close("test close");
-    check("C: the background compression finished", gzmod::wait_idle(60000));
+    check("C: the background compression finished", gzmod::wait_idle(SELFTEST_WAIT_IDLE_MS));
     check("C: both files compressed (gz::completed counts them)", gzmod::completed() == done0 + 2);
     check("C: only the .gz files are left",
           !exists(dC + oc::ORDERS_NAME) && !exists(dC + oc::CLOCK_NAME) &&

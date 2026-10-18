@@ -6,6 +6,7 @@
 // carry-over defect that is preserved deliberately, and the two ways the three commit passes differ.
 //
 #include "sim/sim_unit_group_step_ground.h"
+#include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -346,8 +347,13 @@ void unit_group_step_ground(const sim_view &v, sim_store &own,
                 c.unit_set_state_order(UNIT_STATE_IDLE_SCATTER, UNIT_STATE_IDLE_SCATTER);
                 return;
             }
-            c.bldg_get_coords(static_cast<uint16_t>(target_owner), target_index, &u.target_fine_x,
-                              &u.target_fine_y);
+            // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's STEP splice at 0x004831c0):
+            // goal + target_fine = the footprint tile nearest this unit instead of the centre.
+            if (!(attack_range_footprint() &&
+                  footprint_aim_of_view(v, u, player, static_cast<uint32_t>(target_owner), target_index, &u.target_fine_x,
+                                        &u.target_fine_y)))
+                c.bldg_get_coords(static_cast<uint16_t>(target_owner), target_index, &u.target_fine_x,
+                                  &u.target_fine_y);
             u.goal_x = static_cast<uint8_t>(ground_fine_to_tile(u.target_fine_x));
             u.goal_y = static_cast<uint8_t>(ground_fine_to_tile(u.target_fine_y));
         }

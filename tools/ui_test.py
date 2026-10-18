@@ -7,8 +7,8 @@ report `; [script] COMPLETE` (or `TIMEOUT`) in mh_uidrive.log, pulls the per-scr
 took (capture_<name>.bmp -> PNG), and diffs each against a committed baseline -> per-capture pass/fail.
 
 Single-peer (local host, no network):
-    python tools/ui_test.py mp_menu_walk.txt
-    python tools/ui_test.py mp_menu_walk.txt --update-baselines   # (re)generate the baselines
+    python tools/ui_test.py solo_walk.txt
+    python tools/ui_test.py solo_walk.txt --update-baselines   # (re)generate the baselines
 
 Multi-peer (reuses mp_run's ssh/scp plumbing). The host may be the local dev box OR a VM (`ip:script`);
 clients are VMs. The host launches first; once it is LISTENING (its lobby is up) each client is pointed at
@@ -18,7 +18,7 @@ join, so we don't wait for host COMPLETE up front):
     python tools/ui_test.py --host mp_host_start.txt --client <peerA>:mp_client_start.txt
     # both peers on VMs -> the dev box stays free (e.g. for a parallel mp_run lockstep run):
     python tools/ui_test.py --host <peerA>:mp_host_start.txt --client <peerB>:mp_client_start.txt
-    python tools/ui_test.py --host mp_menu_walk.txt \
+    python tools/ui_test.py --host solo_walk.txt \
         --client <peerA>:mp_client_join.txt --client <peerB>:mp_client_join.txt
 
 Baselines live in tools/uiscripts/baselines/<peer-label>/<capture>.png and are committed. The diff is
@@ -295,7 +295,13 @@ def harness_extra_lines():
     precisely because there is no second peer to differ from. Symmetric by construction, so unlike
     the host-only flag it cannot accidentally create the asymmetry a determinism run is measuring.
     """
-    return "".join(kv.strip() + "\n" for kv in (HARNESS_EXTRA or "").split(";") if kv.strip())
+    # `@UISCRIPTS@` = this tree's tools/uiscripts, so a registry row can name a file the game process opens by path (mv_replay's CSV)
+    # without hardcoding a checkout: a worktree and the main tree each resolve their own copy.
+    return "".join(
+        kv.strip().replace("@UISCRIPTS@", UISCRIPTS.replace("\\", "/")) + "\n"
+        for kv in (HARNESS_EXTRA or "").split(";")
+        if kv.strip()
+    )
 
 
 def harness_extra_host_lines():
@@ -1078,12 +1084,21 @@ def local_launch(host_dir, script_src, script_name, timeout_frames, harness_step
         # One name, or a comma list. The Load dialog lists saves newest-first and opens with the top
         # row selected, so a list is deployed in DIALOG ORDER: the first name is the newest (the
         # preselected row), each later one a minute older than the one before it.
-        names = [n for n in DEPLOY_SAVE.split(",") if n]
+        # `name*N` (D15): N copies of one save, `name`, `name_02` .. `name_NN`, for a Load list that must
+        # outgrow its 8 visible rows (the wheel scroll rows).
+        names = []
+        sources = {}
+        for tok in [n for n in DEPLOY_SAVE.split(",") if n]:
+            base, _, count = tok.partition("*")
+            for k in range(int(count) if count else 1):
+                nm = base if k == 0 else "%s_%02d" % (base, k + 1)
+                names.append(nm)
+                sources[nm] = base
         dst_dir = os.path.join(host_dir, "save")
         os.makedirs(dst_dir, exist_ok=True)
         now = time.time()
         for i, name in enumerate(names):
-            src = resolve_save(name, os.path.join(machine.POLYGON, "save"))
+            src = resolve_save(sources[name], os.path.join(machine.POLYGON, "save"))
             if not os.path.isfile(src):
                 raise SystemExit(
                     "--deploy-save: no such save: %s (not in tools/uiscripts/saves/ either)" % src
@@ -2815,7 +2830,9 @@ def load_ignore(base_dir):
     """Optional baselines/<label>/_ignore.json: {"capture_x.png":[[x,y,w,h],...], "*":[...]} -> per-capture
     ignore rects (machine-specific regions like the on-screen host IP). Missing/broken file -> no masking.
     Keys starting with "_" are options, not captures: "_why" (prose), "_only" (compare ONLY a rect,
-    optionally colour-blind -- see diff_capture)."""
+    optionally colour-blind -- see diff_capture), "_tol" (a {"capture_x.png": fraction} map: a per-capture
+    tolerance that REPLACES the run's --tol for that one capture -- a multi-segment walk keeps the strict
+    row tol for its menu frames and loosens only the animated in-game frames; tooling:TL-SUITE-FOLD)."""
     path = os.path.join(base_dir, "_ignore.json")
     if not os.path.isfile(path):
         return {}
@@ -2922,8 +2939,9 @@ def collect_and_check(label, png_dir, args):
         rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
         # `_only` (see diff_capture): {"capture_x.png": {"rect": [x, y, w, h], "mode": "ink"}}
         only = (ignore.get("_only") or {}).get(name)
+        cap_tol = (ignore.get("_tol") or {}).get(name, args.tol)
         passed, frac, note = diff_capture(
-            c, os.path.join(base_dir, name), args.pixdelta, args.tol, rects, only
+            c, os.path.join(base_dir, name), args.pixdelta, cap_tol, rects, only
         )
         tag = "PASS" if passed else "FAIL"
         print(
@@ -4023,6 +4041,28 @@ def main():
         "by its script reaching COMPLETE. Its terminal PROCESS-GONE counts toward the overall PASS "
         "only when exit_witness confirms a SELF-DRIVEN exit. Repeatable.",
     )
+    # tooling:TL-SUITE-FOLD step 4: ONE host session, a SEQUENCE of joining clients.
+    ap.add_argument(
+        "--client-sequence",
+        action="store_true",
+        help="run the --client peers ONE AFTER ANOTHER against the one host: client N+1 launches only "
+        "once client N's script has reached a terminal marker (COMPLETE / TIMEOUT / ABORT) and the "
+        "RUNNER has ended its process -- standing in for the player quitting, so each joiner leaves "
+        "before the next arrives. Implies --client-after-exit N:N-1 for every client. A client "
+        "whose process dies without a marker is a red (PROCESS-GONE), never a wait: the gate is "
+        "bounded by --timeout.",
+    )
+    ap.add_argument(
+        "--client-cfg",
+        action="append",
+        default=[],
+        metavar="N:KEY=VALUE",
+        help="per-client configuration for --client #N (1-based), overriding the row-wide value for "
+        "that client only. KEY: extra_ini (a fragment path, replaces --extra-ini-client), no_ip (1 = this client's server-address MRU is CLEARED, like --no-client-ip for it alone), dead_ip "
+        "(1 = this client gets --client-dead-ip's MRU; when any client names it, the others get the "
+        "live IP only), tol (this client's capture tolerance, replaces --tol). Repeatable. A "
+        "per-client [net] knob is --net-extra-peer N:K=V.",
+    )
     ap.add_argument(
         "--no-pin",
         action="store_true",
@@ -4408,6 +4448,30 @@ def main():
             )
         args.client_after_exit_map[cidx] = pidx
 
+    # tooling:TL-SUITE-FOLD step 4 -- per-client cfg + the sequence chain, parsed once, eagerly.
+    args.client_cfg_map = {}
+    for spec in args.client_cfg:
+        try:
+            cidx_s, kv = spec.split(":", 1)
+            key, val = kv.split("=", 1)
+            cidx = int(cidx_s)
+        except ValueError:
+            ap.error("--client-cfg wants N:KEY=VALUE (N an integer), got %r" % spec)
+        if cidx < 1 or cidx > len(args.client):
+            ap.error(
+                "--client-cfg %s: N must be 1..%d (the --client count)" % (spec, len(args.client))
+            )
+        if key not in ("extra_ini", "dead_ip", "no_ip", "tol"):
+            ap.error(
+                "--client-cfg %s: unknown KEY %r (extra_ini, dead_ip, no_ip, tol)" % (spec, key)
+            )
+        if key in ("dead_ip", "no_ip"):
+            val = "1" if val.strip().lower() in ("1", "true", "yes") else "0"
+        args.client_cfg_map.setdefault(cidx, {})[key] = val
+    if args.client_sequence:
+        for cidx in range(2, len(args.client) + 1):
+            args.client_after_exit_map.setdefault(cidx, cidx - 1)
+
     global \
         DEFANG_OVERLAY, \
         EXTRA_NET, \
@@ -4416,6 +4480,7 @@ def main():
         EXTRA_INI, \
         EXTRA_INI_HOST, \
         EXTRA_INI_CLIENT, \
+        CUR_CLIENT_INDEX, \
         SHIP_PACING, \
         ORDER_MODE, \
         ORDER_LOG, \
@@ -4535,6 +4600,17 @@ def main():
             EXTRA_INI_CLIENT = fh.read()
         _refuse_net_fragment(EXTRA_INI_CLIENT, args.extra_ini_client, "--extra-ini-client")
         print("[cfg] CLIENT-ONLY ini fragment: %s" % args.extra_ini_client)
+    # tooling:TL-SUITE-FOLD step 4: per-client fragments (--client-cfg N:extra_ini=PATH), same refusals.
+    CLIENT_INI_PEERS = {}
+    for _cidx, _cfg in sorted(args.client_cfg_map.items()):
+        if "extra_ini" in _cfg:
+            _path = _cfg["extra_ini"]
+            if not os.path.isabs(_path):
+                _path = os.path.join(REPO, _path)
+            with open(_path, "r", encoding="utf-8") as fh:
+                CLIENT_INI_PEERS[_cidx] = fh.read()
+            _refuse_net_fragment(CLIENT_INI_PEERS[_cidx], _cfg["extra_ini"], "--extra-ini-client")
+            print("[cfg] client %d ini fragment: %s" % (_cidx, _cfg["extra_ini"]))
 
     # PREFLIGHT: does the pinned view even fit the desktop? Refuse LOUDLY rather than let the run
     # reproduce G35 -- see view_exceeds_desktop for what that looks like (it looks like a sim hang).
@@ -4792,10 +4868,20 @@ def main():
         # and a walk that rendezvouses by `signal`/`awaitsignal` before the earlier peer exits (the
         # d36_rematch_seed host waits on client1's `lobby`) deadlocked when the ferry only started in
         # the unified wait loop -- measured: host parked on `awaitsignal lobby`, client1 never exited.
+        EXTRA_INI_CLIENT_ROW = (
+            EXTRA_INI_CLIENT  # the row-wide client fragment (per-client ones override)
+        )
         delivered = set()
+        seq_status = {}  # --client-sequence: peer key -> terminal status, ended by the runner
         for ci, p in enumerate(peers[1:]):
             client_idx = ci + 1  # 1-based, matches --client-after-exit's CLIENTIDX
-            cname = args.client_name if ci == 0 else "%s%d" % (args.client_name, ci + 1)
+            # --client-sequence: only ONE client is ever present, so each is "client" (the name the
+            # old single-client rows' lobby frames show)
+            cname = (
+                args.client_name
+                if (ci == 0 or args.client_sequence)
+                else "%s%d" % (args.client_name, ci + 1)
+            )
             # mp:GS1(b) -- the PROCESS-EXIT relaunch shape: this client's launch is gated on an
             # EARLIER peer's process having actually exited (not merely finished its script), so a
             # fresh process joins where the old one left off, exactly like the field's crash/relaunch.
@@ -4812,6 +4898,37 @@ def main():
                 exited = False
                 while time.time() < exit_deadline:
                     pump_signals(args, [pp for pp in peers if pp.get("run")], delivered)
+                    if args.client_sequence and wait_pidx >= 1:
+                        # tooling:TL-SUITE-FOLD step 4: the predecessor is a SEQUENCE client. Its
+                        # terminal marker is the cue; the runner ends the process (the player quitting).
+                        # A process that died with NO marker is recorded and the sequence moves on --
+                        # the row reds on that peer at the end, it does not wait out the budget.
+                        st = peer_status(args, target["ip"], target["run"])
+                        if st:
+                            seq_status[target["key"]] = st
+                            print(
+                                "[%s] script %s -- ending its process (sequence)"
+                                % (target["key"], st)
+                            )
+                            peer_kill(args, target["ip"], target["run"])
+                            exited = True
+                            break
+                        if report_dead_peer(target["key"], target["run"]):
+                            # The row is RED already, and the host's walk usually depends on this client
+                            # (a `peers`/`occ` gate): letting the sequence go on parks the host on a
+                            # predicate nobody will satisfy until the 240 s progress watchdog. End now.
+                            print(
+                                "[%s] died with NO terminal marker -- the sequence row is RED; "
+                                "ending every peer now instead of waiting for the host's walk to stall"
+                                % target["key"]
+                            )
+                            for pp in peers:
+                                if pp.get("run"):
+                                    peer_kill(args, pp.get("ip"), pp.get("run"))
+                            shim_stop(shim)
+                            return 1
+                        time.sleep(1)
+                        continue
                     alive, _lines = peer_liveness(target.get("run"))
                     if alive is False:
                         exited = True
@@ -4842,12 +4959,21 @@ def main():
             # mp:R7a: --no-client-ip CLEARS the server-address MRU (an empty list, not None -- None would
             # keep the template's saved IP), so the client has no saved server. That is what makes the
             # FIRST browser probe the relay (R7's "no saved/typed address" case); a saved IP leaves it quiet.
-            if args.no_client_ip:
+            ccfg = args.client_cfg_map.get(client_idx, {})
+            dead_for_this = args.client_dead_ip and (
+                ccfg.get("dead_ip") == "1"
+                or not any(c.get("dead_ip") == "1" for c in args.client_cfg_map.values())
+            )
+            if args.no_client_ip or ccfg.get("no_ip") == "1":
                 ip_val = []
-            elif args.client_dead_ip:
+            elif dead_for_this:
                 ip_val = [args.client_dead_ip, connect_ip]
             else:
                 ip_val = connect_ip
+            # per-client launch state read by make_ini: the fragment and the [net] --net-extra-peer
+            # key set (CUR_CLIENT_INDEX), restored after the launch so nothing leaks to the next peer.
+            EXTRA_INI_CLIENT = CLIENT_INI_PEERS.get(client_idx, EXTRA_INI_CLIENT_ROW)
+            CUR_CLIENT_INDEX = client_idx
             cgame = None
             if args.client_game_name:
                 cgame = (
@@ -4856,10 +4982,12 @@ def main():
             pin_setup(args, p["ip"], ip_val=ip_val, name=cname, game=cgame, pdir=p.get("dir"))
             print("[client %s] launching %s ..." % (p["key"], os.path.basename(p["src"])))
             p["run"] = peer_launch(args, p["ip"], p["src"], args.timeout_frames, pdir=p.get("dir"))
+            EXTRA_INI_CLIENT = EXTRA_INI_CLIENT_ROW
+            CUR_CLIENT_INDEX = 0
 
         # unified wait: every peer to reach COMPLETE / TIMEOUT
-        results = {}
-        pending = {p["key"] for p in peers if p.get("run")}
+        results = dict(seq_status)
+        pending = {p["key"] for p in peers if p.get("run")} - set(seq_status)
         last_live = time.time()
         shim_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
         trig_t0 = time.time()
@@ -4903,6 +5031,18 @@ def main():
                     if report_dead_peer(p["key"], p["run"]):
                         results[p["key"]] = "PROCESS-GONE"
                         pending.discard(p["key"])
+                        if not p.get("expect_exit") and pending:
+                            # tooling:TL-SUITE-FOLD step 5: a peer that died with no marker (and was not
+                            # designed to exit) makes the row RED whatever the others do, and in a
+                            # several-client row the others usually wait on it (`peers`/`occ` gates) until
+                            # the 240 s progress watchdog. End the wait; every peer is still collected.
+                            print(
+                                "[%s] died with NO terminal marker -- the row is RED; not waiting for "
+                                "%d other peer(s) that may depend on it" % (p["key"], len(pending))
+                            )
+                            for k in sorted(pending):
+                                results[k] = "ABANDONED"
+                            pending.clear()
             pump_shim_triggers(shim, shim_triggers, peers, trig_t0)
         for k in pending:
             results[k] = "TIMED-OUT"
@@ -4944,7 +5084,11 @@ def main():
                         and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
                     )
                 )
-                overall_ok &= collect_and_check(p["label"], png, args) and status_ok
+                _pargs = args
+                _ptol = args.client_cfg_map.get(peers.index(p), {}).get("tol")
+                if _ptol is not None:  # --client-cfg N:tol=X -- this client's own capture tolerance
+                    _pargs = argparse.Namespace(**dict(vars(args), tol=float(_ptol)))
+                overall_ok &= collect_and_check(p["label"], png, _pargs) and status_ok
             else:
                 print("  [%s] no run dir -- launch failed" % p["key"])
                 overall_ok = False

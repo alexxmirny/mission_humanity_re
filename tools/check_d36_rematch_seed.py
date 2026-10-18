@@ -238,7 +238,64 @@ def read_seed(folder, total):
     return blob
 
 
-def check(run_dirs, expect="identical", sp_first=False):
+def match1_hash_verdict(host_session, cli_rd):
+    """mp:D47. The lockstep state-hash verdict for MATCH 1 of an sp_first run: the host's first match
+    session against the client session (in the client lane's logs/) that carries the same match_id.
+
+    The row cannot use the suite's default compare: the host process holds two matches and client 2
+    reuses client 1's lane, so a process-dir pairing is ambiguous. The host loaded a savegame first, so
+    its harness step counter is ahead of the client's; mp_analyze.load_peer keys both on MATCH steps
+    from each session's step_base (D47), which is what makes this comparison possible at all.
+    Returns (overlap, mismatch_count, first_mismatch_step, last_common_step)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mp_analyze
+
+    def sj(d):
+        try:
+            with open(os.path.join(d, "session.json"), encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            return {}
+
+    mid = sj(host_session).get("match_id")
+    if not mid:
+        raise Refusal("%s has no match_id in session.json" % host_session)
+    logs = os.path.dirname(os.path.abspath(cli_rd))
+    peers = [
+        d
+        for d in glob.glob(os.path.join(logs, "*"))
+        if os.path.isdir(d) and sj(d).get("match_id") == mid and sj(d).get("mode") == "client"
+    ]
+    if len(peers) != 1:
+        raise Refusal(
+            "want exactly one client session with match_id %s in %s, found %d"
+            % (mid, logs, len(peers))
+        )
+    a, b = mp_analyze.load_peer(host_session), mp_analyze.load_peer(peers[0])
+    if "harness" not in a or "harness" not in b:
+        raise Refusal("match 1: a peer has no harness log (the row needs the hash compare armed)")
+    d = mp_analyze.diff_peers(a["harness"], b["harness"], "host", "client")
+    steps = sorted(set(a["harness"]["steps"]) & set(b["harness"]["steps"]))
+    fm = d.get("first_mismatch") or {}
+    print(
+        "  match 1 hash (host %s vs client %s): %s [base host %s client %s]"
+        % (
+            os.path.basename(host_session),
+            os.path.basename(peers[0]),
+            d.get("verdict") or d.get("note"),
+            a["harness"].get("step_base"),
+            b["harness"].get("step_base"),
+        )
+    )
+    return (
+        d.get("overlap", 0),
+        d.get("mismatch_count", 0),
+        fm.get("step"),
+        steps[-1] if steps else 0,
+    )
+
+
+def check(run_dirs, expect="identical", sp_first=False, match1_hash=False):
     """sp_first (mp:D45): the host process LOADED A SINGLE-PLAYER SAVEGAME before hosting, so its first
     MP entry is NOT a fresh process -- (a) it may own more than two session directories (the SP game
     may have opened one; the LAST two are the matches), (b) its first entry's player_data is allowed
@@ -347,6 +404,18 @@ def check(run_dirs, expect="identical", sp_first=False):
             "  %-6s match-2 [desync]: first sample %s, %d DESYNC line(s)%s"
             % (role, first, len(des), (" first step=%d %s" % des[0]) if des else "")
         )
+
+    if match1_hash and sp_first and expect == "identical":
+        ov, nmis, first, last = match1_hash_verdict(hs[0], cli_rd)
+        if ov < 300:
+            fails.append(
+                "match 1 hash: only %d overlapping step(s) -- the match was not measured" % ov
+            )
+        elif nmis:
+            fails.append(
+                "match 1 hash: %d mismatching step(s), first at match step %s of %d -- the loaded "
+                "host and the fresh client disagree" % (nmis, first, last)
+            )
 
     if expect == "identical":
         for name, runs in diffs.items():
@@ -685,7 +754,9 @@ def main(argv):
             return 2
     dirs = [a for a in argv if not a.startswith("--") and a not in ("identical", "diverge")]
     try:
-        return check(dirs, expect, sp_first="--sp-first" in argv)
+        return check(
+            dirs, expect, sp_first="--sp-first" in argv, match1_hash="--match1-hash" in argv
+        )
     except Refusal as e:
         print("[REFUSED] %s" % e)
         return 2

@@ -27,9 +27,24 @@ struct unit_state_squad_merge_calls {
     void (*unit_change_proto_and_energy)(uint16_t player, int32_t unit_idx, int16_t proto_delta,
                                          int32_t unused, double energy_delta); // @0x00489521
     void (*unit_set_state)(uint16_t new_state);                                // @0x004866c9
+    // mods:M1C [net] move_squad_merge_fix only (never called with the fix off): the release the attack states use.
+    void (*target_release_ref)(uint32_t player_idx, int32_t unit_idx, uint32_t mode); // @0x004dac44
 };
 
 const unit_state_squad_merge_calls &live_unit_state_squad_merge_calls();
+
+// [net] move_squad_merge_fix (mods:M1C) -- set by lockstep::set_fixes. Off = faithful stock: step 3b refuses any target
+// not in state 1. On = a target SETTLED on its tile (move_microstep >= 0x1f) in an attack state (0x1a/0x1b/0x1c) that
+// would pass steps 3c/3d/3e is released (target_release_ref mode 1, target_ref/index 0, state = order = 1) first, so the
+// merge proceeds. Retail carrier: mh/seams/combat_proto.cpp's splice at 0x0047ebe1. Header-only inline static.
+namespace squad_merge_detail {
+inline bool &attack_fix() {
+    static bool on = false;
+    return on;
+}
+} // namespace squad_merge_detail
+inline void set_move_squad_merge_fix(bool on) { squad_merge_detail::attack_fix() = on; }
+inline bool move_squad_merge_fix() { return squad_merge_detail::attack_fix(); }
 
 namespace detail {
 

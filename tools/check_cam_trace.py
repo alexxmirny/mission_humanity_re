@@ -147,6 +147,36 @@ def select_segment(samples, quiet_idx, markers, boundary_text, which):
     return seg_samples, seg_quiet
 
 
+def window(samples, quiet_idx, markers, from_text, to_text):
+    """tooling:TL-SUITE-FOLD: narrow the run to the lines BETWEEN the first `; [script] LOG:` line containing
+    `from_text` and the first one (after it) containing `to_text` -- the walk segment a multi-segment walk
+    (solo_walk.txt) gave this probe, so the other segments' own trace lines cannot reach its verdict. Either
+    bound may be None (open). A named bound with no marker line REFUSES, same absence-is-a-failure rule."""
+    lo, hi = -1, None
+    if from_text:
+        hits = [ln for ln, msg in markers if from_text in msg]
+        if not hits:
+            raise Refusal(
+                "no `; [script] LOG:` line containing %r -- the walk never reached that segment"
+                % from_text
+            )
+        lo = hits[0]
+    if to_text:
+        hits = [ln for ln, msg in markers if to_text in msg and ln > lo]
+        if not hits:
+            raise Refusal(
+                "no `; [script] LOG:` line containing %r after the segment start" % to_text
+            )
+        hi = hits[0]
+    keep = lambda ln: ln > lo and (hi is None or ln < hi)
+    samples = [s for s in samples if keep(s["line"])]
+    quiet_idx = [ln for ln in quiet_idx if keep(ln)]
+    markers = [(ln, m) for ln, m in markers if keep(ln)]
+    if not samples:
+        raise Refusal("zero [mtrace] samples inside the --from-text/--to-text window")
+    return samples, quiet_idx, markers
+
+
 def di_lines(run_dir):
     """Every `; [input] di_keyboard=` line in this run's mh_net.log (U25 step 1)."""
     p = os.path.join(run_dir, NET_LOG)
@@ -319,6 +349,10 @@ def report(a, di):
 
 def check(run_dir, args):
     samples, quiet_idx, markers = parse(run_dir)
+    if getattr(args, "from_text", None) or getattr(args, "to_text", None):
+        samples, quiet_idx, markers = window(
+            samples, quiet_idx, markers, args.from_text, getattr(args, "to_text", None)
+        )
     segment = getattr(args, "segment", None)
     if segment:
         boundary = getattr(args, "boundary", None)
@@ -615,6 +649,61 @@ def selftest():
             rc |= 1
         except Refusal:
             print("  selftest %-58s ok" % "segment requested, no boundary marker refuses")
+    # --from-text/--to-text: a verdict is made about its own walk segment only
+    with tempfile.TemporaryDirectory() as td:
+        d = os.path.join(td, "win")
+        os.makedirs(d)
+        stuck = [
+            (1 + i, (639, 240), "-R--", 1) for i in range(5)
+        ]  # a clean pinned run with the camera moving: PASSES if it is in scope
+        rows = _rows(stuck) + ["[ 5.000] ; [script] LOG: seg_a start\n"]
+        rows += _rows([(100 + i, (320, 240), "----", 0) for i in range(4)])
+        rows += ["[ 9.000] ; [script] LOG: seg_b start\n"] + _rows(stuck)
+        with open(os.path.join(d, UIDRIVE_LOG), "w", encoding="utf-8") as fh:
+            fh.write("".join(rows))
+        with open(os.path.join(d, NET_LOG), "w", encoding="utf-8") as fh:
+            fh.write("; [input] di_keyboard=1 dev=0x0066155c -- DirectInput keyboard live\n")
+
+        class _W(object):
+            expect_pinned = 3
+            expect_rise_fall = False
+            max_lines_per_frame = None
+            expect_di = False
+            from_text = "seg_a start"
+            to_text = "seg_b start"
+
+        got_in = check(
+            d, _W()
+        )  # the window holds only an unlatched run: the pinned clause finds nothing -> FAIL (1)
+        _W.from_text, _W.to_text = None, None
+        got_all = check(d, _W())  # no window: the pinned run outside it is judged -> PASS (0)
+        ok = got_in == 1 and got_all == 0
+        rc |= 0 if ok else 1
+        print(
+            "  selftest %-58s got=(%d,%d) %s"
+            % ("window judges only its own segment", got_in, got_all, "ok" if ok else "MISMATCH")
+        )
+    # --peer: a post_check_peers row hands every checker every peer's dir; --peer N judges the Nth only
+    with tempfile.TemporaryDirectory() as td:
+        pinned = [(1 + i, (639, 240), "-R--", 1) for i in range(5)]
+        calm = [(1 + i, (320, 240), "----", 0) for i in range(5)]
+        for name, seq in (("p0", pinned), ("p1", calm)):
+            _write(os.path.join(td, name), _rows(seq))
+        argv0 = sys.argv
+        try:
+            got = []
+            for peer in ("0", "1"):
+                sys.argv = ["x", os.path.join(td, "p0"), os.path.join(td, "p1"), "--peer", peer]
+                sys.argv += ["--expect-pinned", "3"]
+                got.append(main())
+        finally:
+            sys.argv = argv0
+        ok = got == [0, 1]
+        rc |= 0 if ok else 1
+        print(
+            "  selftest %-58s got=%s %s"
+            % ("--peer judges only the peer it names", got, "ok" if ok else "MISMATCH")
+        )
     print("check_cam_trace --selftest: %s" % ("PASS" if rc == 0 else "FAIL"))
     return rc
 
@@ -622,7 +711,18 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
-        "run_dir", nargs="?", help="a run folder (…/logs/<stamp>_<role>) or a LANE folder"
+        "run_dir",
+        nargs="*",
+        help="a run folder (…/logs/<stamp>_<role>) or a LANE folder; several (a post_check_peers row) "
+        "are allowed -- --peer picks the one to judge (default the first)",
+    )
+    ap.add_argument(
+        "--peer",
+        type=int,
+        default=0,
+        metavar="N",
+        help="tooling:TL-SUITE-FOLD: which of the given run dirs to judge (0 = the first = the host); "
+        "a multi-checker row hands every checker every peer's dir",
     )
     ap.add_argument(
         "--expect-pinned",
@@ -679,6 +779,20 @@ def main():
         help="--segment: the substring of the `log <text>` line that separates the two probes",
     )
     ap.add_argument(
+        "--from-text",
+        default=None,
+        metavar="TEXT",
+        help="tooling:TL-SUITE-FOLD: judge only the lines after the first `log` line containing TEXT "
+        "(the start of this probe's segment in a multi-segment walk)",
+    )
+    ap.add_argument(
+        "--to-text",
+        default=None,
+        metavar="TEXT",
+        help="--from-text: ... and before the first `log` line containing TEXT after it (the next "
+        "segment's start); omit when the probe's segment is the last to trace",
+    )
+    ap.add_argument(
         "--label",
         default=None,
         metavar="NAME",
@@ -691,8 +805,10 @@ def main():
         return selftest()
     if not args.run_dir:
         ap.error("give a run or lane directory (or --selftest)")
+    if not 0 <= args.peer < len(args.run_dir):
+        ap.error("--peer %d but %d run dir(s) given" % (args.peer, len(args.run_dir)))
     try:
-        return check(newest_run(args.run_dir), args)
+        return check(newest_run(args.run_dir[args.peer]), args)
     except Refusal as e:
         print("check_cam_trace REFUSED: %s" % e)
         return 2

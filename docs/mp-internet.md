@@ -404,6 +404,7 @@ Read the joiner's `logs\<timestamp>_client\mh_net.log` — the failure is named 
 | `bad HELLO (magic/version N, expected M)` | Build skew — the two sides speak different handshake versions. |
 | `mh_key.txt is unreadable/corrupt` | Fix or delete the file (delete = a fresh key is minted; a launcher install rewrites it on the next launch). |
 | the lobby bounces you back with `Refused: old client cp N` / `old host cp N` | One side runs a build from before `mp:MP-LANG` (2026-09-29), whose chat is 8-bit codepage text instead of UTF-8. Update the older side. Local `[input] codepage` values no longer need to match. |
+| the lobby bounces you back with `Host runs X, you run Y: update` or `Gameplay settings differ (…/…): update` | All players must run the same release. The host refuses a joiner with a different release string, and one whose host-set gameplay settings digest differs. 0.2.1 added `mother_free_build` / `mother_free_build_ai` to that digest, so 0.2.0 and 0.2.1 cannot play together. Update the older side in the launcher (it installs the current release). |
 
 On a directly dialled host, `handshake from <ip> -- no HELLO within 5000 ms (scan/probe?)` is
 background noise from the internet, not a problem.

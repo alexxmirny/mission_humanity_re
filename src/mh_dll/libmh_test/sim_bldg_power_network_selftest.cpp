@@ -29,7 +29,9 @@
 //  tmp/decomp/llm_strat_bldg_power_network_recompute_00491c76.asm), cross-checked against the two
 // translations' header banners -- NOT read off the .cpp bodies alone.
 //
+#include "sim/sim_bldg_link_to_network.h"
 #include "sim/sim_bldg_power_network_recompute.h"
+#include "sim/sim_mother_free.h" // mods:A1
 #include "sim/sim_bldg_propagate_network_connectivity.h"
 
 #include <vector>
@@ -375,6 +377,73 @@ void run_bldg_power_network_tests() {
     detail::power_network_recompute(fx.view(), g_drv_calls, 0);
     ck_eq((uint32_t)g_setconn.size(), 0,
           "recompute B4: mother/production in CONSTRUCTION state are not force-marked");
+
+    // ================================================================================================
+    // PART C -- mods:A1 ([net] mother_free_build): a power PLANT roots the network while its owner has no primary mother on
+    // the planet (link_to_network floods from it like from a mother; the recompute seeds it before it is online).
+    // ================================================================================================
+    {
+        struct c_case {
+            const char *what;
+            bool        on, ai_opt, owner_is_ai;
+            int32_t     mother;
+            uint8_t     type;
+            int16_t     online;
+            int         want_link; // link_to_network floods from the building (1) or finds nothing to link to (0)
+            int         want_seed; // recompute pass (2) seeds it
+        };
+        const c_case cases[] = {
+            {"key off, plant, no mother (retail)", false, false, false, 0, BUILDING_TYPE_A_PLANT, 0, 0, 0},
+            {"key on, plant, no mother", true, false, false, 0, BUILDING_TYPE_A_PLANT, 0, 1, 1},
+            {"key on, H plant, no mother", true, false, false, 0, BUILDING_TYPE_H_PLANT, 0, 1, 1},
+            {"key on, plant, mother present: unchanged", true, false, false, 9, BUILDING_TYPE_A_PLANT, 0, 0, 0},
+            {"key on, plant, AI owner, _ai off", true, false, true, 0, BUILDING_TYPE_A_PLANT, 0, 0, 0},
+            {"key on, plant, AI owner, _ai on", true, true, true, 0, BUILDING_TYPE_A_PLANT, 0, 1, 1},
+            {"key on, non-plant (production), no mother", true, false, false, 0, BUILDING_TYPE_A_PRODUCTION, 0, 0, 0},
+            {"key off, ONLINE plant seeds as in retail", false, false, false, 0, BUILDING_TYPE_A_PLANT, 1, 0, 1},
+        };
+        for (const c_case &c : cases) {
+            // -- link_to_network: a lone building on an empty map; the only way to the flood call is the root rule.
+            fx.reset();
+            fx.geom.width_mask                    = 0xff;
+            fx.geom.height_mask                   = 0xff;
+            fx.planet_index                       = 3;
+            fx.profiles[0].primary_mother_bldg[3] = c.mother;
+            fx.players[0].ai_enabled              = c.owner_is_ai ? 1 : 0;
+            seed_conduit(fx, 1, 70, c.type, 50, 50, 10.0);
+            fx.b(0, 1).online_state = c.online;
+            set_mother_free_build(c.on, c.ai_opt);
+            static std::vector<int32_t> flooded;
+            flooded.clear();
+            static const bldg_link_to_network_calls lc = {
+                [](uint16_t, int32_t) {},
+                [](uint16_t, int32_t i) { flooded.push_back(i); },
+            };
+            detail::bldg_link_to_network_if_adjacent(fx.view(), lc, 0, 1);
+            char msg[160];
+            snprintf(msg, sizeof(msg), "A1 link_to_network: %s -> %s", c.what, c.want_link ? "floods from it" : "no flood");
+            ck_eq((uint32_t)flooded.size(), (uint32_t)c.want_link, msg);
+
+            // -- recompute pass (2): the seed selection.
+            fx.reset();
+            fx.planet_index                       = 3;
+            fx.profiles[0].primary_mother_bldg[3] = c.mother;
+            fx.players[0].ai_enabled              = c.owner_is_ai ? 1 : 0;
+            fx.b(0, 0).index                      = 0;
+            fx.b(0, 0).energy                     = 1.0;
+            building &b                           = fx.b(0, 1);
+            b.building_id                         = 71;
+            b.energy                              = 8.0;
+            b.online_state                        = c.online;
+            fx.cfg_buildings[71].type             = c.type;
+            set_mother_free_build(c.on, c.ai_opt);
+            drv_reset();
+            detail::power_network_recompute(fx.view(), g_drv_calls, 0);
+            snprintf(msg, sizeof(msg), "A1 recompute seed: %s -> %s", c.what, c.want_seed ? "seeded" : "not seeded");
+            ck_eq((uint32_t)g_prop.size(), (uint32_t)c.want_seed, msg);
+        }
+        set_mother_free_build(false, false);
+    }
 }
 
 } // namespace mh::sim::test

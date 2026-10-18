@@ -1,0 +1,529 @@
+# ship_orig_walk -- the ORIGINAL-configuration twin of ship_walk: the same process shape (mh.dll without libmh.dll) with
+# [config] mode=original (ini/rollback_original.ini), so every promoted body runs as the retail one. It walks the four
+# segments of ship_walk that had an `_orig` row: shift_rearm_build, res_drag_box, res_drag_wide, wheel_hud_lists. Captures are
+# named <old _orig row>__<name> and diff against the SAME frames ship_walk's segments do (copied into baselines/ship_orig_walk/):
+# the claim of an _orig row is that the original code draws what the shipped code draws. The segment order, the in-game size
+# reset between the drag segments and the 12-entry Load list (`2-almost*11,ayy30`, the HUD segment picks the last row) are
+# ship_walk's; see its header.
+
+# ===== segment shift_rearm_build_orig (was row shift_rearm_build_orig: shift_rearm_build.txt)
+mark shift_rearm_build_orig
+# shift_rearm_build (mods:D11) -- Shift+click keeps the just-placed building type armed
+# 2-almost.sav (Aman: the landed mothership, a Relay already built, enough stock for a chain of Relays; the
+# second stock line is the scarce one: 1215 at the start, 200 per Relay). The Relay is the 4th icon of the HUD's
+# place-building tab. Every click is a `simclick` (a held button: raw press/release drops under suite load);
+# `logbuild <label>` writes `; [build] <label> armed= type= shift= placed=` (the armed building type, the type
+# the walk is placing, the Shift latch, the local player's buildings of that type) and tools/check_shift_rearm.py
+# reads those lines, the seam's own `; D11:` lines and mh_rec_orders.bin. Segments, in this order (each leaves the
+# stock the next one needs):
+#   A  arm, Shift-place three Relays (armed after each), a plain fourth (disarmed): 4 orders, 4 buildings
+#   C  arm, Shift+right-click: the cancel wins
+#   D  arm, Shift-click on an existing building: no order, the type stays armed (stock retail)
+#   B  from D's armed state Shift-place until the scarce stock runs out: the click whose own payment leaves less than
+#      one more Relay costs (215 -> 15 here) is the last -- the chain stops THERE (the order has paid by the LMB-up, so
+#      the affordability read sees the stock net of this copy) and the refusal text shows
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+logbuild start
+
+# the place-building tab, the Relay icon
+simclick 890 215
+gameclock +100
+simclick 905 430
+gameclock +100
+logbuild a_armed
+
+# ---- A: three Shift places and a plain one
+simclick 300 200 shift
+gameclock +200
+logbuild a_shift1
+simclick 420 200 shift
+gameclock +200
+logbuild a_shift2
+simclick 540 200 shift
+gameclock +200
+logbuild a_shift3
+capture shift_rearm_build_orig__a_shift3
+simclick 300 330
+gameclock +300
+logbuild a_plain
+
+# ---- C: Shift + right-click cancels
+simclick 905 430
+gameclock +100
+logbuild c_armed
+simrclick 650 300 shift
+gameclock +100
+logbuild c_cancel
+
+# ---- D: Shift-click on an existing building (not a clear footprint)
+simclick 905 430
+gameclock +100
+logbuild d_armed
+simclick 490 230 shift
+gameclock +200
+logbuild d_invalid
+
+# ---- B: Shift-place until the scarce stock cannot pay for the next copy
+simclick 180 200 shift
+gameclock +200
+logbuild b_shift1
+simclick 100 200 shift
+gameclock +200
+logbuild b_shift2
+capture shift_rearm_build_orig__b_stopped
+gameclock +200
+logbuild b_end
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment res_drag_box_orig (was row res_drag_box_orig: res_drag_box.txt)
+mark res_drag_box_orig
+# res_drag_box (RES12) -- the wide arm, the crash row and the parity differential
+# The SAME drags (the body below is identical in res_drag_stock.txt and res_drag_box.txt) run in two processes:
+#   res_drag_stock: 1024x768, view 864 px < half the 2048 px map, the wrap splice OFF ([video] wrap_window=0): the game's own
+#                   corner conversion -- the vanilla reference. Its result is committed as tools/data/drag_box_vanilla.json.
+#   res_drag_box:   this script's in-game size change to 1920x1056 (K = 288), the splice and the drag-box fix ON.
+# Both start from 2-almost.sav with the camera at world 1440,1696, so the same screen coordinates are the same world
+# coordinates (every coordinate stays inside the 864 x 736 stock view). Each drag logs `; [sel] <label> ...` (the selection)
+# and the draw logs `; [drag_box] ...` (the world box and the outline it was drawn at) to mh_video.log; the order the last
+# selection is given lands in mh_rec_orders.bin. tools/check_drag_box.py compares them with the oracle.
+# A drag is HELD: `presshold` makes the cursor moves carry the left button, as a hand-held mouse's do (a plain `press`
+# followed by `cursorhold` releases the button on the first move). The camera scrolls with a held arrow key (0x4d right, 0x4b
+# left, 0x48 up, 0x50 down), ~11 px per frame.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+logsel start
+
+# ---- d1_inside: a box wholly inside the view; both insect groups (units 2 and 5) are in it.
+cursorhold 600 350 10
+presshold 600 350
+cursorhold 600 350 6
+cursorhold 800 700 12
+logsel d1_dragging
+capture res_drag_box_orig__d1_dragging
+release 800 700
+gameclock +100
+logsel d1_inside
+
+# ---- d2_reversed: the same box dragged from its bottom-right to its top-left.
+cursorhold 800 700 10
+presshold 800 700
+cursorhold 800 700 6
+cursorhold 600 350 12
+logsel d2_dragging
+release 600 350
+gameclock +100
+logsel d2_reversed
+
+# ---- d3_small: a small box round the upper group only.
+cursorhold 650 400 10
+presshold 650 400
+cursorhold 650 400 6
+cursorhold 790 520 12
+logsel d3_dragging
+release 790 520
+gameclock +100
+logsel d3_small
+
+# ---- d4_seam: a box whose left edge is across the wrap seam (world x = 1440 + screen x wraps at 2048: screen x 608).
+cursorhold 500 400 10
+presshold 500 400
+cursorhold 500 400 6
+cursorhold 780 520 12
+logsel d4_dragging
+release 780 520
+gameclock +100
+logsel d4_seam
+
+# ---- order: the units the seam box selected are ordered to move (right click on the ground); the order lands in mh_rec_orders.bin.
+cursorhold 700 250 10
+simrclick 700 250
+gameclock +200
+logsel order
+
+# ---- d5_anchor_left: the anchor scrolled ~700 px off the LEFT edge of the view (more than K = 288) while the button is held,
+# the cursor at x 500: the stock outline runs from the left edge to x 500.
+cursorhold 300 300 10
+presshold 300 300
+cursorhold 300 300 6
+keyhold 0x4d 64
+cursorhold 500 650 12
+logsel d5_dragging
+capture res_drag_box_orig__d5_anchor_left
+release 500 650
+gameclock +100
+logsel d5_anchor_left
+
+# ---- d6_anchor_right: the anchor scrolled ~700 px off the RIGHT edge (keyhold 0x4b scrolls the camera left).
+cursorhold 300 300 10
+presshold 300 300
+cursorhold 300 300 6
+keyhold 0x4b 64
+cursorhold 400 700 12
+logsel d6_dragging
+capture res_drag_box_orig__d6_anchor_right
+release 400 700
+gameclock +100
+logsel d6_anchor_right
+
+# ---- d7_anchor_up: the anchor scrolled ~1000 px off the TOP (keyhold 0x50 scrolls the camera down), cursor near the top.
+cursorhold 400 40 10
+presshold 400 40
+cursorhold 400 40 6
+keyhold 0x50 96
+cursorhold 500 100 12
+logsel d7_dragging
+capture res_drag_box_orig__d7_anchor_up
+release 500 100
+gameclock +100
+logsel d7_anchor_up
+
+# ---- d8_anchor_down: the anchor scrolled ~700 px off the BOTTOM (keyhold 0x48 scrolls the camera up).
+cursorhold 400 600 10
+presshold 400 600
+cursorhold 400 600 6
+keyhold 0x48 64
+cursorhold 500 650 12
+logsel d8_dragging
+capture res_drag_box_orig__d8_anchor_down
+release 500 650
+gameclock +100
+logsel d8_anchor_down
+
+
+
+
+# -- back to the main menu
+# the size change persists across games: ESC > Options > Screen size, six clicks from [6] 1920x1056 round to [2] 1024x768
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+clickl Ok
+absent Screen size
+present &Options
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment res_drag_wide_orig (was row res_drag_wide_orig: res_drag_wide.txt)
+mark res_drag_wide_orig
+# res_drag_wide (RES13) -- a drag-select wider than half the map, on screen
+# The game orders a drag by the SHORTER arc between the anchor and the cursor (outline AND the selection walk), which is the
+# on-screen order only while the two are less than half a map apart: always at a retail size (<= 864 px against 1024), not at
+# 1920x1056 on the 64-tile map. mh.dll's drag_dir_fix orders by the screen when both ends are on screen.
+# Camera at world 1440,1696 (as res_drag_box), so a screen point is world = camera + screen (mod 2048).
+#   d9_wide_tlbr   anchor (100,300) -> cursor (1500,700): 1400 px wide, anchor left. Must select what the screen box holds
+#                  (both insect groups, ids 2 and 5, are in x 600..800), outline 100,300..1500,700.
+#   d10_wide_brtl  the reverse drag (anchor (1500,700) -> cursor (100,300)): the same box, the same ids.
+#   (No vertical analogue: the map pane at 1920x1056 is shorter than half the 2048 px map, so a drag taller than 1024 px cannot be
+#   made on screen; the row arithmetic is covered by res_list_selftest `drag dir`.)
+#   d11_scroll_x   RES14: anchor (500,300), then RIGHT held 64 presents (~704 px: the anchor scrolls off the left to ~-204), then the
+#                  cursor to (1500,700): a ~1700 px drag made by scrolling. The stock shorter-arc rule flips it at ANY view size
+#                  (vanilla too); the fix orders by the anchor's tracked position.
+#   d12_scroll_y   RES14: the vertical one -- the camera back first (LEFT 64), anchor (550,100), DOWN held 64 presents (~704 px,
+#                  the anchor to ~-604), cursor (850,850): a ~1450 px tall drag. Both drags' boxes hold the d1 units (ids 2, 5).
+#   (A scroll of more than half the map is not used: the camera step's sign is then ambiguous to the checker.)
+# tools/check_drag_box.py --wide asserts all of it; the fix-off twin ([video] drag_dir_fix=0) draws and selects the complement arc.
+
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+click 490 381
+click 490 381
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +600
+logsel start
+
+
+# ---- d9_wide_tlbr
+cursorhold 100 300 10
+presshold 100 300
+cursorhold 100 300 6
+cursorhold 1500 700 24
+logsel d9_dragging
+capture res_drag_wide_orig__d9_dragging
+release 1500 700
+gameclock +100
+logsel d9_wide_tlbr
+
+# ---- d10_wide_brtl
+cursorhold 1500 700 10
+presshold 1500 700
+cursorhold 1500 700 6
+cursorhold 100 300 24
+logsel d10_dragging
+capture res_drag_wide_orig__d10_dragging
+release 100 300
+gameclock +100
+logsel d10_wide_brtl
+
+# ---- d11_scroll_x (RES14): the anchor scrolled off the left mid-drag by the RIGHT arrow
+cursorhold 500 300 10
+logsel d11_press
+presshold 500 300
+cursorhold 500 300 6
+keyhold 0x4d 64
+cursorhold 1500 700 24
+logsel d11_dragging
+capture res_drag_wide_orig__d11_dragging
+release 1500 700
+gameclock +100
+logsel d11_scroll_x
+
+# ---- d12_scroll_y (RES14): the camera back, then the anchor scrolled off the top mid-drag by the DOWN arrow
+cursorhold 960 500 10
+keyhold 0x4b 64
+cursorhold 550 100 10
+logsel d12_press
+presshold 550 100
+cursorhold 550 100 6
+keyhold 0x50 64
+cursorhold 850 850 24
+logsel d12_dragging
+capture res_drag_wide_orig__d12_dragging
+release 850 850
+gameclock +100
+logsel d12_scroll_y
+# -- back to the main menu
+# the size change persists across games: ESC > Options > Screen size, six clicks from [6] 1920x1056 round to [2] 1024x768
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+click 938 525
+clickl Ok
+absent Screen size
+present &Options
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment wheel_hud_lists_orig (was row wheel_hud_lists_orig: wheel_hud_lists.txt)
+mark wheel_hud_lists_orig
+# wheel_hud_lists (D15): the mouse wheel scrolls the strategic side-panel list under the pointer.
+# ayy30.sav (the only deployed save, so the preselected Load row): 21 available buildings, 74 units in groups of 5 / 18 / 51.
+# 1024x768 (video_1024.ini): the panel starts at x = 864 (G_WIN_W), the available list's rows are 52 px from y 248 (10 rows shown).
+# HUD list descriptors (llm_ui_scroll_list_descriptor): BLDG_AVAILABLE 0x00510115 (rows 52 px), SELECTION 0x005100b3 and
+# SELECTION_CTRLGRP 0x005100e4 (rows 16 px: three rows a notch); `hudtop <desc> <N>` reads desc+0x29, the top row.
+# The strategic input pump runs once per sim step, so every wheel is followed by `gameclock +N` (the pinned wall clock does not
+# step the sim on its own). The wheel verb moves the game's cursor back to the DirectInput position, so each is preceded by cursorhold.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+# ayy30 is the 12th and last row: scroll the list to its bottom (two notches = 6 rows, clamped at 4), hover and pick the row
+cursorhold 310 180 10
+rawmouse wheel -120
+listtop 0x00651073 3
+cursorhold 310 180 5
+rawmouse wheel -120
+listtop 0x00651073 4
+cursorhold 310 229 10
+cursor 310 229
+press 310 229
+release 310 229
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+capture wheel_hud_lists_orig__a_start
+# over the available-buildings list: one notch back = one 52 px row
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 1
+cursorhold 904 300 10
+capture wheel_hud_lists_orig__b_one_row
+# a second notch, then forward twice (clamped at the first row)
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 2
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 1
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 0
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+hudtop 0x00510115 0
+# the owned-buildings tab (the second row's right tab): the same 52 px rows, its own descriptor BLDG_OWNED 0x00510146
+cursorhold 980 209 10
+simclick 980 209
+gameclock +300
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510146 1
+cursorhold 904 300 10
+capture wheel_hud_lists_orig__c_owned_list
+# the map panel (top row, right tab) has no list: the wheel over it does nothing and does not zoom
+cursorhold 995 180 10
+simclick 995 180
+gameclock +300
+cursorhold 904 400 10
+rawmouse wheel -120
+gameclock +300
+zoom 100
+# back to the build panel: switching panels / tabs puts a list back on its first row (retail, llm_ui_group_tab_on_click)
+cursorhold 885 180 10
+simclick 885 180
+gameclock +300
+cursorhold 885 209 10
+simclick 885 209
+gameclock +300
+cursorhold 904 300 10
+hudtop 0x00510115 0
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510115 1
+# a wheel over the panel does not zoom the map
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+hudtop 0x00510115 2
+zoom 100
+# the control group 3 key (51 Crusaders) opens the unit panel: its member list (UNIT_UNASSIGNED 0x00510082, 46 px rows) scrolls a row
+key 0x04
+gameclock +300
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x00510082 1
+cursorhold 904 300 10
+capture wheel_hud_lists_orig__d_unit_panel
+# the assign view (the panel's second tab, then the '51' group tab): two 16 px columns, three rows a notch, and ONLY the column under
+# the pointer scrolls -- the left (selection) column is empty here, so a wheel over it leaves the control-group column where it was
+cursorhold 980 209 10
+simclick 980 209
+gameclock +300
+cursorhold 913 233 10
+simclick 913 233
+gameclock +300
+cursorhold 990 400 10
+hudtop 0x005100e4 0
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+cursorhold 990 400 10
+capture wheel_hud_lists_orig__e_group_column
+cursorhold 900 400 10
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+hudtop 0x005100b3 0
+cursorhold 990 400 10
+rawmouse wheel 120
+gameclock +300
+hudtop 0x005100e4 0
+cursorhold 990 400 10
+# the wheel over the map zooms it and leaves the lists where they were
+rawmouse wheel -120
+gameclock +300
+hudtop 0x005100e4 3
+cursorhold 500 300 10
+rawmouse wheel 120
+gameclock +300
+zoom ge 120
+hudtop 0x005100e4 3
+cursorhold 500 300 10
+capture wheel_hud_lists_orig__g_zoomed_lists_kept
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+end

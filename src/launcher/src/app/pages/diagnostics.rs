@@ -46,6 +46,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         }
         if widgets::gbtn(ui, tr("diag.copy")).clicked() {
             let text = debug_info(app);
+            // The clipboard write itself happens in eframe after the frame (phase `between
+            // frames`); this only queues it.
             ui.ctx().copy_text(text);
             app.last_copied = Some(std::time::Instant::now());
             app.say_t("msg.debug_copied", &[], false);
@@ -237,11 +239,14 @@ fn advanced(app: &mut App, ui: &mut Ui) {
         let installed = app.game_dir().as_deref().and_then(install::read_manifest);
         ui.horizontal_wrapped(|ui| {
             if widgets::gbtn(ui, tr("diag.choose_zip")).clicked() {
-                if let Some(p) = rfd::FileDialog::new()
-                    .add_filter("zip", &["zip"])
-                    .set_title(tr("diag.choose_zip"))
-                    .pick_file()
-                {
+                let picked = {
+                    let _p = crate::watchdog::phase("modal: zip dialog");
+                    rfd::FileDialog::new()
+                        .add_filter("zip", &["zip"])
+                        .set_title(tr("diag.choose_zip"))
+                        .pick_file()
+                };
+                if let Some(p) = picked {
                     app.zip_edit = p.display().to_string();
                 }
             }

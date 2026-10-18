@@ -623,6 +623,20 @@ struct Config {
     // enqueue never reaches the recorder's snapshot, so under the neuter it is simply lost. See
     // order_replay_dispatch_replace.
     int replay_dispatch_inject = 0;
+    // replay diagnostics: how many differing dispatch entries to log (default 16), and whether to dump
+    // the live (pre-replace) and recorded records of each logged entry -- the replay's own AI orders vs
+    // the recording's, the first-AI-order-mismatch oracle of a seedless field recording.
+    int dinj_log_max = 16;
+    // storage-exit probe (observe-only): every `garage_probe_every` steps in [from,to], log player
+    // `garage_probe_player`'s storage slot `garage_probe_slot`: door mutex/waiters, the building's
+    // online/built/eff, the player's population ledger (llm_strat_pop_stats, not hashed) and
+    // llm_strat_storage_exit_tile_is_clear -- the inputs of llm_strat_storage_can_exit.
+    int garage_probe_player = -1;
+    int garage_probe_slot   = 0;
+    int garage_probe_from   = 0;
+    int garage_probe_to     = 0;
+    int garage_probe_every  = 50;
+    int dinj_log_orders     = 0;
     // mp:D37b. replay only: the local player slot (PlayerSide) the replay plays as, written right
     // after the step-1 seed inject. -1 = leave whatever the replay's own lobby walk seated (slot 0).
     // PlayerSide is not in any hash region, so the seed cannot carry it: a recording made on slot 1
@@ -751,6 +765,17 @@ struct Config {
     // ONE-SHOT, not a cadence: this is a property of the loaded save, not a time series, and a
     // per-step version would bury the answer in thousands of duplicate lines.
     int aistate_probe_at = 0; // step at which to emit "; AISTATE" (0 = off)
+    // mods:A2: emit one "; PROGRESS" line at progress_probe_at and again at progress_probe2_at (tech-tree
+    // state of the local player: current planet's invention + acquired flag, PROJECT entries by
+    // dependency / availability). progress_conquer_at calls game_UpdateProgress(PlayerSide,
+    // Planets[G_PLANET_INDEX].invention_index) -- the exact call conquest makes -- at that step.
+    int progress_probe_at   = 0;
+    int progress_probe2_at  = 0;
+    int progress_conquer_at = 0;
+    // progress_acquire_at: at that step call game_UpdateProgress(PlayerSide, id) for each id in the
+    // '.'-separated progress_acquire_ids (stands in for "the lab finished building").
+    int  progress_acquire_at      = 0;
+    char progress_acquire_ids[64] = {};
     // ---- D2: units[].ctrl_group_id ---------------------------------------------------------------
     // mask_ctrl_group is the FIX (see mh::state::emit_units); default on. Settable to 0 so ONE build can run
     // both arms of the A/B -- an unmasked arm that stays green would prove the mask does nothing.
@@ -975,13 +1000,89 @@ struct Config {
     //   (3) every step: top up the target's energy; a shot = the turret's reload_timer rose or its ready
     //       flag fell. Done at pt2_shots shots per turret (or pt2_tail steps): `; PT2 VERDICT ...`.
     // Read by tools/check_pt2_turret_rate.py. 0 = off.
-    int pt2_at     = 0;  // first step the fixture may act (0 = off)
-    int pt2_player = 0;  // player index whose turrets are used
-    int pt2_target = 1;  // player index that owns the immobile target
-    int pt2_w1     = 8;  // first turret's weapon id (BRON_LASER_14mm_bunkier2, short_time 0.2)
-    int pt2_w2     = 21; // second turret's weapon id (BRON_RAKIETA_ALFA_wieza, short_time 1.75)
-    int pt2_shots  = 24; // shots to record per turret
+    int pt2_at     = 0;    // first step the fixture may act (0 = off)
+    int pt2_player = 0;    // player index whose turrets are used
+    int pt2_target = 1;    // player index that owns the immobile target
+    int pt2_w1     = 8;    // first turret's weapon id (BRON_LASER_14mm_bunkier2, short_time 0.2)
+    int pt2_w2     = 21;   // second turret's weapon id (BRON_RAKIETA_ALFA_wieza, short_time 1.75)
+    int pt2_shots  = 24;   // shots to record per turret
     int pt2_tail   = 6000; // steps after the target stands before the verdict (timeout)
+    // ---- mods:A1: THE MOTHER LIFT-OFF FIXTURE (2026-10-13) --------------------------------------------
+    // A match starts with every mothership airborne and ends up with a MOTHER-LESS planet only after one has landed (the stock
+    // comes with the landing) and lifted off again. This fixture makes that deterministic on every peer: once a player of
+    // `a1_mask` has a landed mother (primary_mother_bldg[planet] != 0) and step >= a1_at, every live mother building of that player
+    // gets state TO_UNIT (0x7c) -- the game's own lift-off path ("Spaceship has taken off"; primary_mother_bldg -> 0, slot freed).
+    // The write is made on EVERY peer at the same step from sim state alone, after the hash like the other fixtures.
+    // `a1_need` N: wait until the player also owns N finished non-mother buildings (a player with none is out of the game).
+    // `; A1 step=<n> player <p> mother slot <s> -> TO_UNIT` lines in mh_harness.log. 0 = off.
+    int a1_at   = 0;    // first step the fixture may act (0 = off)
+    int a1_mask = 0xff; // bit p = player p's mother lifts off
+    int a1_need = 0;    // ... once that player owns this many FINISHED non-mother buildings (a player with no building at all is out of the game)
+    // ---- mods:M1 S0: THE GROUND PATH-TRACE PROBE (2026-10-13) ---------------------------------------
+    // Observe-only measurement of ground-unit routing in the ORIGINAL game: once player pf_player's mother has
+    // landed, dump the passable plane (value histogram + hex rows), pick a start tile and a target (pf_pick 1 = the
+    // worst 8-neighbour BFS detour ratio at a straight distance in [pf_dmin, pf_dmax], 2 = the farthest reachable
+    // tile, or pf_tx/pf_ty), create pf_n ground units (order 0xeb) and give them the player's own group move
+    // (ctrl group 9 + llm_strat_group_issue_move_order). Then every step: dump each unit's path slot whenever it
+    // changes (legs decoded through llm_strat_facing24_to_delta: end tile, first terrain-blocked tile), the
+    // group's region route, a sample every pf_sample steps, a STALL line after pf_stall steps without a tile
+    // change in a moving state, and a VERDICT per unit (remaining BFS distance) at pf_tail or when all are idle.
+    // `; PF ...` lines in mh_harness.log. 0 = off.
+    int pf_at         = 0;  // first step the probe may act (0 = off)
+    int pf_player     = 0;  // player whose units are created and moved
+    int pf_n          = 1;  // units in the group (1..16)
+    int pf_proto      = 0;  // cfg Unit index to create (0 = first move_op_code 0xf class without crew)
+    int pf_pick       = 1;  // target pick: 1 = worst detour ratio, 2 = farthest reachable
+    int pf_dmin       = 12; // pick 1: straight (Chebyshev) distance band
+    int pf_dmax       = 40;
+    int pf_sx         = -1; // explicit start tile (-1 = near the landing site)
+    int pf_sy         = -1;
+    int pf_tx         = -1; // explicit target tile (-1 = pf_pick)
+    int pf_ty         = -1;
+    int pf_tail       = 3000; // steps to observe after the order
+    int pf_sample     = 25;   // sample cadence (steps)
+    int pf_stall      = 100;  // steps without a tile change, in a moving state, that count as a stall
+    int pf_reveal     = 0;    // CONTROL ARM: 1 = mark the whole map discovered for pf_player before the order
+    int pf_deferred   = 0;    // 1 = the PLAYER's plain right-click (llm_strat_group_issue_move_order_deferred, id 0x8000|seq) instead of id 0
+    int pf_spread     = 1;    // multiplier on the start ring offsets (1 = compact 3x3 ring; 3 = a spread-out start group)
+    int pf_park       = 0;    // 1 = also create ONE extra unit on pf_park_x/y that is never ordered (a parked blocker); 2 = create it pf_park_delay steps AFTER the order, so it parks on the planned route
+    int pf_park_delay = 60;
+    int pf_park_x     = -1;
+    int pf_park_y     = -1;
+    // ---- mods:M1R: the recorded-move replay probe. After a save has loaded, issue the 20 recorded player moves of
+    // mv_replay (csv: step,units,x,y; units are indices into player mv_player's unit table, '|' separated) at the
+    // load-relative step, exactly as a plain right-click does (llm_strat_group_issue_move_order_deferred, group id
+    // 0x8000|seq, on ctrl group 0), and trace every tracked unit. Observe-only. `; MV ...` lines in mh_harness.log.
+    char mv_replay[260] = "";
+    int  mv_player      = 0;
+    int  mv_sample      = 25;   // sample cadence (steps)
+    int  mv_deferred    = 1;    // 1 = deferred/0x8000 (the plain click), 0 = llm_strat_group_issue_move_order (id 0)
+    int  mv_stall       = 50;   // steps without a tile change, dispatched and unsettled, that open a stall episode
+    int  mv_tail        = 3000; // steps to observe after the last order
+    int  mv_oob         = 1;    // scan the path buffers every step for writes into slots no unit owns (lead: slot 0xff splice)
+    int  mv_oob_fill    = 0;    // FORCED-PRECONDITION arm: fill player (mv_player+2)'s slot 55 (where a slot-0xff path index lands) with (heading,1) legs of this heading, so an out-of-bounds read yields a valid heading
+    int  mv_oob_poke    = 0;    // POSITIVE CONTROL: after this many scans flip one byte in player 7's unused slot 99 for 2 scans, so the scan must report it (0 = off)
+    // ---- mods:M1D: the detour probe's additions (still observe-only): every tile change (`MV T`), the class map + router cost
+    // plane at each order (`MV MAP`/`MV COST`), and a read-only exit hook on llm_strat_group_move_order_pathfind that logs every
+    // wave (`MV WAVE`/`MV WAVEM`: members, centroid, the centroid route, each member's destination tile and written legs).
+    int  mv_waves     = 1;  // arm the pathfind exit observer (only when mv_replay is set)
+    char mv_field[64] = ""; // comma list of order numbers whose waves also dump the router's flood field (`MV FLD`)
+    // ---- mods:M1 merge/fx probe (2026-10-14): csv atk_p = -2 issues that row through llm_strat_group_issue_move_order (the
+    // Shift-click squad merge), -3 through the plain deferred click; mv_fx=1 logs every projectile of player mv_player
+    // (`MV PRJ+` at spawn, `MV PRJ-` at impact) and every new fx anim whose frame is mv_fx_frame (`MV FX`). Observe-only.
+    int mv_fx       = 0;
+    int mv_fx_frame = 2051;
+    // ---- mods:M1N: the nudge / claim / swap case probe (nd_tick): nd_case 1 = nudge an idle blocker, 2 = head-on swap in a
+    // one-tile corridor, 3 = claim a turning leader's tile. Starts at step nd_at once nd_player has landed. `; ND ...` lines.
+    int nd_case   = 0;
+    int nd_at     = 0;   // first step the probe may act (0 = off)
+    int nd_player = 0;   // player whose units are created and moved
+    int nd_proto  = 0;   // cfg Unit index (0 = the fastest plain ground class)
+    int nd_x      = -1;  // explicit anchor tile (-1 = a clear rectangle near the landing site)
+    int nd_y      = -1;
+    int nd_delay  = 100; // case 1: steps after the order before the idle blocker appears
+    int nd_len    = 4;   // case 2: corridor length in tiles (1..12)
+    int nd_tail   = 2500; // steps to observe after the order
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -1065,8 +1166,8 @@ constexpr int PT1_T2_DX           = 10; // second turret (the slot-reuser)
 constexpr int PT1_T2_DY           = 6;
 constexpr int PT3_TIMEOUT         = 3000; // steps a PT-FIX3 phase may wait for its precondition before FAIL
 constexpr int PT3_FAR             = 25;   // tiles the helicopter is first sent east
-constexpr int CTRL_GROUP_ID       = 1; // the control group the conquest workload puts its attackers in
-constexpr int TACT_SYNTH_OWNER    = 0; // the `owner` byte that marks a PLAYER unit in the tactical synth
+constexpr int CTRL_GROUP_ID       = 1;    // the control group the conquest workload puts its attackers in
+constexpr int TACT_SYNTH_OWNER    = 0;    // the `owner` byte that marks a PLAYER unit in the tactical synth
 
 char g_dir[MAX_PATH]; // exe directory, trailing backslash
 char g_log_path[MAX_PATH];
@@ -1129,11 +1230,16 @@ bool     g_clock_open = false;   // mp:LOG2: record-mode clock stream created (t
 double  *g_clock_trk  = nullptr; // replay clock track (VirtualAlloc)
 uint32_t g_clock_n    = 0;
 
-uint32_t g_step            = 0;     // sim step counter (increments before hashing; first hashed step = 1)
-bool     g_ws_rehash       = false; // mp:X3c: a world resync import replaced the world under this step's already-taken hash
-uint32_t g_ws_replay_until = 0;     // mp:X3c: the workloads already ran for steps <= this before the import rewound g_step
-bool     g_active          = true;  // logging enabled (HSTOP/HGO toggle via console)
-bool     g_seed_done       = false;
+uint32_t g_step = 0; // sim step counter (increments before hashing; first hashed step = 1)
+// mp:D47: process steps before the open match segment's step 1 (0 = no segment open). Every step-KEYED
+// trigger and sampling cadence reads mstep() so a peer that played single-player first is on the same grid
+// as its opponent; with no segment (or step_base 0) mstep() == g_step and nothing changes.
+uint32_t        g_match_base = 0;
+inline uint32_t mstep() { return g_step - g_match_base; }
+bool            g_ws_rehash       = false; // mp:X3c: a world resync import replaced the world under this step's already-taken hash
+uint32_t        g_ws_replay_until = 0;     // mp:X3c: the workloads already ran for steps <= this before the import rewound g_step
+bool            g_active          = true;  // logging enabled (HSTOP/HGO toggle via console)
+bool            g_seed_done       = false;
 
 // TACT-PREP: the tactical cadence's own counter. DELIBERATELY SEPARATE from g_step rather than
 // sharing it -- the two count different things (sim steps vs tactical frames), they never advance in
@@ -1541,6 +1647,12 @@ void load_config() {
                                 g_cfg.loadgame_name, sizeof(g_cfg.loadgame_name), g_ini_path);
     g_cfg.aistate_probe_at =
         mh_ini_get_int("harness", "aistate_probe_at", g_cfg.aistate_probe_at, g_ini_path);
+    g_cfg.progress_probe_at   = mh_ini_get_int("harness", "progress_probe_at", g_cfg.progress_probe_at, g_ini_path);
+    g_cfg.progress_probe2_at  = mh_ini_get_int("harness", "progress_probe2_at", g_cfg.progress_probe2_at, g_ini_path);
+    g_cfg.progress_conquer_at = mh_ini_get_int("harness", "progress_conquer_at", g_cfg.progress_conquer_at, g_ini_path);
+    g_cfg.progress_acquire_at = mh_ini_get_int("harness", "progress_acquire_at", g_cfg.progress_acquire_at, g_ini_path);
+    mh::config::read_ini_string("harness", "progress_acquire_ids", g_cfg.progress_acquire_ids,
+                                g_cfg.progress_acquire_ids, sizeof(g_cfg.progress_acquire_ids), g_ini_path);
     g_cfg.load_at                 = mh_ini_get_int("harness", "load_at", g_cfg.load_at, g_ini_path);
     g_cfg.snapshot_at             = mh_ini_get_int("harness", "snapshot_at", g_cfg.snapshot_at, g_ini_path);
     g_cfg.snapshot_to             = mh_ini_get_int("harness", "snapshot_to", g_cfg.snapshot_to, g_ini_path);
@@ -1553,6 +1665,13 @@ void load_config() {
     g_cfg.replay_ai_off           = mh_ini_get_int("harness", "replay_ai_off", g_cfg.replay_ai_off, g_ini_path);
     g_cfg.replay_suppress_enqueue = mh_ini_get_int("harness", "replay_suppress_enqueue", g_cfg.replay_suppress_enqueue, g_ini_path);
     g_cfg.replay_dispatch_inject  = mh_ini_get_int("harness", "replay_dispatch_inject", g_cfg.replay_dispatch_inject, g_ini_path);
+    g_cfg.dinj_log_max            = mh_ini_get_int("harness", "dinj_log_max", g_cfg.dinj_log_max, g_ini_path);
+    g_cfg.garage_probe_player     = mh_ini_get_int("harness", "garage_probe_player", g_cfg.garage_probe_player, g_ini_path);
+    g_cfg.garage_probe_slot       = mh_ini_get_int("harness", "garage_probe_slot", g_cfg.garage_probe_slot, g_ini_path);
+    g_cfg.garage_probe_from       = mh_ini_get_int("harness", "garage_probe_from", g_cfg.garage_probe_from, g_ini_path);
+    g_cfg.garage_probe_to         = mh_ini_get_int("harness", "garage_probe_to", g_cfg.garage_probe_to, g_ini_path);
+    g_cfg.garage_probe_every      = mh_ini_get_int("harness", "garage_probe_every", g_cfg.garage_probe_every, g_ini_path);
+    g_cfg.dinj_log_orders         = mh_ini_get_int("harness", "dinj_log_orders", g_cfg.dinj_log_orders, g_ini_path);
     g_cfg.replay_seat             = mh_ini_get_int("harness", "replay_seat", g_cfg.replay_seat, g_ini_path);
     g_cfg.replay_session_mode     = mh_ini_get_int("harness", "replay_session_mode", g_cfg.replay_session_mode, g_ini_path);
     g_cfg.replay_drop_net_issue   = mh_ini_get_int("harness", "replay_drop_net_issue", g_cfg.replay_drop_net_issue, g_ini_path);
@@ -1632,20 +1751,66 @@ void load_config() {
     g_cfg.pip_player              = mh_ini_get_int("harness", "pip_player", g_cfg.pip_player, g_ini_path);
     g_cfg.pip_value               = mh_ini_get_int("harness", "pip_value", g_cfg.pip_value, g_ini_path);
     g_cfg.pip_tail                = mh_ini_get_int("harness", "pip_tail", g_cfg.pip_tail, g_ini_path);
-    g_cfg.pt2_at = mh_ini_get_int("harness", "pt2_at", g_cfg.pt2_at, g_ini_path);
-    g_cfg.pt2_player = mh_ini_get_int("harness", "pt2_player", g_cfg.pt2_player, g_ini_path);
-    g_cfg.pt2_target = mh_ini_get_int("harness", "pt2_target", g_cfg.pt2_target, g_ini_path);
-    g_cfg.pt2_w1 = mh_ini_get_int("harness", "pt2_w1", g_cfg.pt2_w1, g_ini_path);
-    g_cfg.pt2_w2 = mh_ini_get_int("harness", "pt2_w2", g_cfg.pt2_w2, g_ini_path);
-    g_cfg.pt2_shots = mh_ini_get_int("harness", "pt2_shots", g_cfg.pt2_shots, g_ini_path);
-    g_cfg.pt2_tail = mh_ini_get_int("harness", "pt2_tail", g_cfg.pt2_tail, g_ini_path);
-    g_cfg.conq_phase_timeout      = mh_ini_get_int("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
-    g_cfg.all_ai                  = mh_ini_get_int("harness", "all_ai", g_cfg.all_ai, g_ini_path);
-    g_cfg.all_ai_observer         = mh_ini_get_int("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
-    g_cfg.gameover_step           = mh_ini_get_int("harness", "gameover_step", g_cfg.gameover_step, g_ini_path);
-    g_cfg.gameover_stop           = mh_ini_get_int("harness", "gameover_stop", g_cfg.gameover_stop, g_ini_path);
-    g_cfg.exit_process_at_step    = mh_ini_get_int("harness", "exit_process_at_step", g_cfg.exit_process_at_step, g_ini_path);
-    g_cfg.exit_process_mode       = mh_ini_get_int("harness", "exit_process_mode", g_cfg.exit_process_mode, g_ini_path);
+    g_cfg.a1_at                   = mh_ini_get_int("harness", "a1_at", g_cfg.a1_at, g_ini_path);
+    g_cfg.a1_mask                 = mh_ini_get_int("harness", "a1_mask", g_cfg.a1_mask, g_ini_path);
+    g_cfg.a1_need                 = mh_ini_get_int("harness", "a1_need", g_cfg.a1_need, g_ini_path);
+    g_cfg.pt2_at                  = mh_ini_get_int("harness", "pt2_at", g_cfg.pt2_at, g_ini_path);
+    g_cfg.pt2_player              = mh_ini_get_int("harness", "pt2_player", g_cfg.pt2_player, g_ini_path);
+    g_cfg.pt2_target              = mh_ini_get_int("harness", "pt2_target", g_cfg.pt2_target, g_ini_path);
+    g_cfg.pt2_w1                  = mh_ini_get_int("harness", "pt2_w1", g_cfg.pt2_w1, g_ini_path);
+    g_cfg.pt2_w2                  = mh_ini_get_int("harness", "pt2_w2", g_cfg.pt2_w2, g_ini_path);
+    g_cfg.pt2_shots               = mh_ini_get_int("harness", "pt2_shots", g_cfg.pt2_shots, g_ini_path);
+    g_cfg.pt2_tail                = mh_ini_get_int("harness", "pt2_tail", g_cfg.pt2_tail, g_ini_path);
+    g_cfg.pf_at                   = mh_ini_get_int("harness", "pf_at", g_cfg.pf_at, g_ini_path);
+    g_cfg.pf_player               = mh_ini_get_int("harness", "pf_player", g_cfg.pf_player, g_ini_path);
+    g_cfg.pf_n                    = mh_ini_get_int("harness", "pf_n", g_cfg.pf_n, g_ini_path);
+    g_cfg.pf_proto                = mh_ini_get_int("harness", "pf_proto", g_cfg.pf_proto, g_ini_path);
+    g_cfg.pf_pick                 = mh_ini_get_int("harness", "pf_pick", g_cfg.pf_pick, g_ini_path);
+    g_cfg.pf_dmin                 = mh_ini_get_int("harness", "pf_dmin", g_cfg.pf_dmin, g_ini_path);
+    g_cfg.pf_dmax                 = mh_ini_get_int("harness", "pf_dmax", g_cfg.pf_dmax, g_ini_path);
+    g_cfg.pf_sx                   = mh_ini_get_int("harness", "pf_sx", g_cfg.pf_sx, g_ini_path);
+    g_cfg.pf_sy                   = mh_ini_get_int("harness", "pf_sy", g_cfg.pf_sy, g_ini_path);
+    g_cfg.pf_tx                   = mh_ini_get_int("harness", "pf_tx", g_cfg.pf_tx, g_ini_path);
+    g_cfg.pf_ty                   = mh_ini_get_int("harness", "pf_ty", g_cfg.pf_ty, g_ini_path);
+    g_cfg.pf_tail                 = mh_ini_get_int("harness", "pf_tail", g_cfg.pf_tail, g_ini_path);
+    g_cfg.pf_sample               = mh_ini_get_int("harness", "pf_sample", g_cfg.pf_sample, g_ini_path);
+    g_cfg.pf_stall                = mh_ini_get_int("harness", "pf_stall", g_cfg.pf_stall, g_ini_path);
+    g_cfg.pf_reveal               = mh_ini_get_int("harness", "pf_reveal", g_cfg.pf_reveal, g_ini_path);
+    g_cfg.pf_deferred             = mh_ini_get_int("harness", "pf_deferred", g_cfg.pf_deferred, g_ini_path);
+    g_cfg.pf_spread               = mh_ini_get_int("harness", "pf_spread", g_cfg.pf_spread, g_ini_path);
+    g_cfg.pf_park                 = mh_ini_get_int("harness", "pf_park", g_cfg.pf_park, g_ini_path);
+    g_cfg.pf_park_delay           = mh_ini_get_int("harness", "pf_park_delay", g_cfg.pf_park_delay, g_ini_path);
+    g_cfg.pf_park_x               = mh_ini_get_int("harness", "pf_park_x", g_cfg.pf_park_x, g_ini_path);
+    g_cfg.pf_park_y               = mh_ini_get_int("harness", "pf_park_y", g_cfg.pf_park_y, g_ini_path);
+    mh::config::read_ini_string("harness", "mv_replay", g_cfg.mv_replay, g_cfg.mv_replay, sizeof(g_cfg.mv_replay), g_ini_path);
+    g_cfg.mv_player   = mh_ini_get_int("harness", "mv_player", g_cfg.mv_player, g_ini_path);
+    g_cfg.mv_sample   = mh_ini_get_int("harness", "mv_sample", g_cfg.mv_sample, g_ini_path);
+    g_cfg.mv_deferred = mh_ini_get_int("harness", "mv_deferred", g_cfg.mv_deferred, g_ini_path);
+    g_cfg.mv_stall    = mh_ini_get_int("harness", "mv_stall", g_cfg.mv_stall, g_ini_path);
+    g_cfg.mv_tail     = mh_ini_get_int("harness", "mv_tail", g_cfg.mv_tail, g_ini_path);
+    g_cfg.mv_oob      = mh_ini_get_int("harness", "mv_oob", g_cfg.mv_oob, g_ini_path);
+    g_cfg.mv_oob_poke = mh_ini_get_int("harness", "mv_oob_poke", g_cfg.mv_oob_poke, g_ini_path);
+    g_cfg.mv_oob_fill = mh_ini_get_int("harness", "mv_oob_fill", g_cfg.mv_oob_fill, g_ini_path);
+    g_cfg.mv_waves    = mh_ini_get_int("harness", "mv_waves", g_cfg.mv_waves, g_ini_path);
+    mh::config::read_ini_string("harness", "mv_field", g_cfg.mv_field, g_cfg.mv_field, sizeof(g_cfg.mv_field), g_ini_path);
+    g_cfg.mv_fx                = mh_ini_get_int("harness", "mv_fx", g_cfg.mv_fx, g_ini_path);
+    g_cfg.mv_fx_frame          = mh_ini_get_int("harness", "mv_fx_frame", g_cfg.mv_fx_frame, g_ini_path);
+    g_cfg.nd_case              = mh_ini_get_int("harness", "nd_case", g_cfg.nd_case, g_ini_path);
+    g_cfg.nd_at                = mh_ini_get_int("harness", "nd_at", g_cfg.nd_at, g_ini_path);
+    g_cfg.nd_player            = mh_ini_get_int("harness", "nd_player", g_cfg.nd_player, g_ini_path);
+    g_cfg.nd_proto             = mh_ini_get_int("harness", "nd_proto", g_cfg.nd_proto, g_ini_path);
+    g_cfg.nd_x                 = mh_ini_get_int("harness", "nd_x", g_cfg.nd_x, g_ini_path);
+    g_cfg.nd_y                 = mh_ini_get_int("harness", "nd_y", g_cfg.nd_y, g_ini_path);
+    g_cfg.nd_len               = mh_ini_get_int("harness", "nd_len", g_cfg.nd_len, g_ini_path);
+    g_cfg.nd_delay             = mh_ini_get_int("harness", "nd_delay", g_cfg.nd_delay, g_ini_path);
+    g_cfg.nd_tail              = mh_ini_get_int("harness", "nd_tail", g_cfg.nd_tail, g_ini_path);
+    g_cfg.conq_phase_timeout   = mh_ini_get_int("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
+    g_cfg.all_ai               = mh_ini_get_int("harness", "all_ai", g_cfg.all_ai, g_ini_path);
+    g_cfg.all_ai_observer      = mh_ini_get_int("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
+    g_cfg.gameover_step        = mh_ini_get_int("harness", "gameover_step", g_cfg.gameover_step, g_ini_path);
+    g_cfg.gameover_stop        = mh_ini_get_int("harness", "gameover_stop", g_cfg.gameover_stop, g_ini_path);
+    g_cfg.exit_process_at_step = mh_ini_get_int("harness", "exit_process_at_step", g_cfg.exit_process_at_step, g_ini_path);
+    g_cfg.exit_process_mode    = mh_ini_get_int("harness", "exit_process_mode", g_cfg.exit_process_mode, g_ini_path);
 }
 
 // ---- mp:D29: configuration (1) -- refuse the spine-only keys BY NAME, keep hashing ---------------
@@ -2305,7 +2470,7 @@ void snapshot_send_now(const uint64_t *per, uint64_t combined, uint64_t state, u
     static int  attempts = 0;
     if (done) return;
     // The first attempt is ON the armed step; the rest are every 25 steps after it, up to 20 tries.
-    if (attempts > 0 && ((g_step - (uint32_t)g_cfg.snapshot_at) % 25u) != 0u) return;
+    if (attempts > 0 && ((mstep() - (uint32_t)g_cfg.snapshot_at) % 25u) != 0u) return;
     if (++attempts >= 20) done = true;
 
     char line[420];
@@ -2420,7 +2585,7 @@ void snapshot_poll_now(void) {
     const int ready = MH_Net_SnapshotPoll(dst, &len, &state);
 
     if (!ready) {
-        if (g_cfg.snapshot_log > 0 && (g_step % (uint32_t)g_cfg.snapshot_log) == 0 &&
+        if (g_cfg.snapshot_log > 0 && (mstep() % (uint32_t)g_cfg.snapshot_log) == 0 &&
             state != MH_SNAP_IDLE) {
             MH_NetSnapshotStatus st;
             MH_Net_SnapshotStatus(&st);
@@ -2611,12 +2776,14 @@ void seg_close(const char *why) {
     seg_mirror(line, (DWORD)lstrlenA(line));
     g_seg_log_open = false;                // the sink owns (and closes, on idle) the file; nothing to release here
     g_seg_rec_on = g_seg_clock_on = false; // the sink's idle-close releases the files
+    g_match_base                  = 0;
     g_seg_dir[0]                  = '\0';
 }
 
 void seg_open(const char *dir) {
     lstrcpynA(g_seg_dir, dir, MAX_PATH);
     g_seg_base     = g_step - 1; // called after ++g_step: THIS step is match step 1
+    g_match_base   = g_seg_base;
     g_seg_orders_n = 0;
     wsprintfA(g_seg_log, "%smh_match_harness.log", dir);
     wsprintfA(g_seg_orders, "%smh_match_orders.bin", dir);
@@ -3184,6 +3351,79 @@ void emit_aistate() {
     }
 }
 
+// mods:A2 "; PROGRESS" probe. Reads only. Layout (EN, read off propagate_unlocks 0x00440cb5):
+//   progress[side][idx] = 3 bytes {available, acquired, f3} at 0x00c38750 + side*900 + idx*3
+//   Progress[idx] (cfg) stride 0x67: depend u16[16] at +0 (0-terminated), type at +0x20 (3 = PROJECT)
+//   Planets[idx] stride 0x427, invention_index at +0.
+// `hidden` = PROJECT entries whose depend[] are all acquired by the local player but are neither
+// available nor f3: exactly what the gate at 0x00440dd7 withholds.
+void emit_progress(const char *tag) {
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(mh::addr::PlayerSide);
+    const unsigned planet = *reinterpret_cast<const uint16_t *>(mh::addr::G_PLANET_INDEX);
+    const unsigned inv    = *reinterpret_cast<const uint16_t *>(mh::addr::Planets + (uintptr_t)planet * 0x427u);
+    const auto    *prog   = reinterpret_cast<const uint8_t *>(0x00c38750u + (uintptr_t)side * 900u);
+    int            total = 0, depmet = 0, avail = 0, hidden = 0;
+    char           ids[96], cand[160];
+    ids[0]   = 0;
+    cand[0]  = 0;
+    int nids = 0, ncand = 0;
+    for (int i = 1; i < 300; ++i) {
+        const uint8_t *cfg = reinterpret_cast<const uint8_t *>(0x00e162e4u + (uintptr_t)i * 0x67u);
+        if (cfg[0x20] != 3) continue;
+        ++total;
+        bool ok = true;
+        for (int d = 0; d < 16; ++d) {
+            const unsigned dep = *reinterpret_cast<const uint16_t *>(cfg + d * 2);
+            if (dep == 0) break;
+            if (dep >= 300 || !prog[dep * 3 + 1]) {
+                ok = false;
+                break;
+            }
+        }
+        // candidates: PROJECT entries naming the current planet's invention in depend[]; print
+        // id:avail:first-unmet-dep so a lab-gated project is visible before its lab exists.
+        for (int d = 0; d < 16 && ncand < 8; ++d) {
+            const unsigned dep = *reinterpret_cast<const uint16_t *>(cfg + d * 2);
+            if (dep == 0) break;
+            if (dep == inv) {
+                unsigned unmet = 0;
+                for (int e = 0; e < 16; ++e) {
+                    const unsigned q = *reinterpret_cast<const uint16_t *>(cfg + e * 2);
+                    if (q == 0) break;
+                    if (q < 300 && !prog[q * 3 + 1]) {
+                        unmet = q;
+                        break;
+                    }
+                }
+                char t[24];
+                wsprintfA(t, "%d:%d:%u,", i, prog[i * 3], unmet);
+                lstrcatA(cand, t);
+                ++ncand;
+                break;
+            }
+        }
+        if (!ok) continue;
+        ++depmet;
+        if (prog[i * 3]) ++avail;
+        else if (!prog[i * 3 + 2]) {
+            ++hidden;
+            if (nids < 8) {
+                char t[12];
+                wsprintfA(t, "%d,", i);
+                lstrcatA(ids, t);
+                ++nids;
+            }
+        }
+    }
+    char line[640];
+    wsprintfA(line,
+              "; PROGRESS tag=%s side=%u planet=%u inv=%u inv_acquired=%d inv_available=%d proj_total=%d "
+              "proj_depmet=%d proj_avail=%d proj_hidden=%d hidden_ids=%s cand=%s\n",
+              tag, side, planet, inv, inv < 300 ? prog[inv * 3 + 1] : -1, inv < 300 ? prog[inv * 3] : -1,
+              total, depmet, avail, hidden, ids[0] ? ids : "-", cand[0] ? cand : "-");
+    append_line(g_log_path, line);
+}
+
 // Replay inject: called from on_sim_step (ALWAYS runs; dispatch is count-gated so we can't rely on it).
 // Overwrite QUEUE with this step's recorded snapshot + set COUNT; sim_step's `if(COUNT!=0)` then fires
 // dispatch to execute them. The snapshot already contains deferred re-appearances, so a per-step
@@ -3277,11 +3517,14 @@ uint32_t g_issue_passed  = 0;
 void order_replay_dispatch_replace() {
     uint32_t i = g_replay_i;
     while (i < g_replay_n && g_replay[i].step < g_step) ++i;
-    uint8_t  *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int      *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
-    const int live = *cnt;
-    int       n    = 0;
-    bool      same = true;
+    uint8_t       *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
+    int           *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
+    const int      live = *cnt;
+    int            n    = 0;
+    bool           same = true;
+    static uint8_t live_copy[ORDER_QCAP * ORDER_SIZE];
+    const int      live_n = live < 0 ? 0 : (live > ORDER_QCAP ? ORDER_QCAP : live);
+    if (g_cfg.dinj_log_orders) memcpy(live_copy, q, (size_t)live_n * ORDER_SIZE);
     for (uint32_t j = i; j < g_replay_n && g_replay[j].step == g_step && n < ORDER_QCAP; ++j, ++n) {
         uint8_t *slot = q + (size_t)n * ORDER_SIZE;
         if (n >= live || memcmp(slot, g_replay[j].order, ORDER_SIZE) != 0) {
@@ -3295,12 +3538,25 @@ void order_replay_dispatch_replace() {
     g_dinj_last_step = g_step;
     if (!same) {
         ++g_dinj_differ;
-        if (g_dinj_logged < 16) {
+        if (g_dinj_logged < (uint32_t)g_cfg.dinj_log_max) {
             ++g_dinj_logged;
             char b[128];
             wsprintfA(b, "; [dispatch_inject] step=%lu live_count=%d recorded=%d -> replaced\n", g_step,
                       live, n);
             append_line(g_log_path, b);
+            if (g_cfg.dinj_log_orders) { // bytes +0x08..+0x2c: unit, owner|kind, param0, code, args
+                for (int side = 0; side < 2; ++side) {
+                    const int cntv = side ? n : live_n;
+                    for (int k = 0; k < cntv; ++k) {
+                        const uint8_t *r = side ? q + (size_t)k * ORDER_SIZE : live_copy + (size_t)k * ORDER_SIZE;
+                        char           l[200];
+                        int            o = wsprintfA(l, "; [dinj] step=%lu %c%d ", g_step, side ? 'R' : 'L', k);
+                        for (int x = 8; x < 0x2c; ++x) o += wsprintfA(l + o, "%02x", r[x]);
+                        lstrcpyA(l + o, "\n");
+                        append_line(g_log_path, l);
+                    }
+                }
+            }
         }
     }
 }
@@ -3330,13 +3586,13 @@ void order_replay_dispatch_replace() {
 // tools/replay_match_segment.py from the recording's state file.
 uint32_t *g_hq   = nullptr;
 uint32_t  g_hq_n = 0;
-void hqueue_load() {
+void      hqueue_load() {
     char path[MAX_PATH];
     wsprintfA(path, "%smh_hqueue.bin", g_dir);
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return;
     DWORD sz = GetFileSize(h, nullptr), got = 0;
-    g_hq     = static_cast<uint32_t *>(VirtualAlloc(nullptr, (size_t)sz + 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    g_hq = static_cast<uint32_t *>(VirtualAlloc(nullptr, (size_t)sz + 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (g_hq) {
         ReadFile(h, g_hq, sz, &got, nullptr);
         g_hq_n = got / sizeof(uint32_t);
@@ -3958,7 +4214,7 @@ void synth_move_issue() {
         g_synth_failed = true;
         return;
     }
-    const uint32_t h  = synth_mix(static_cast<uint32_t>(g_cfg.synth_seed) ^ (g_step * 2654435761U) ^
+    const uint32_t h  = synth_mix(static_cast<uint32_t>(g_cfg.synth_seed) ^ (mstep() * 2654435761U) ^
                                   (side * 40503U));
     const int      tx = static_cast<int>(h % mw); // torus: no clamp, uniform over the map
     const int      ty = static_cast<int>(synth_mix(h) % mh_);
@@ -4120,8 +4376,8 @@ struct HostilePair {
 HostilePair g_hostile[2];
 
 void hostile_probe() {
-    if (g_cfg.hostile_probe_at <= 0 || g_step < (uint32_t)g_cfg.hostile_probe_at) return;
-    const uint32_t d      = g_step - (uint32_t)g_cfg.hostile_probe_at;
+    if (g_cfg.hostile_probe_at <= 0 || mstep() < (uint32_t)g_cfg.hostile_probe_at) return;
+    const uint32_t d      = mstep() - (uint32_t)g_cfg.hostile_probe_at;
     const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
     if (planet >= 32) return;
     const auto *prof  = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
@@ -4207,8 +4463,31 @@ void hostile_probe() {
 //   ENEMY hit : victim hit_enemy_v, aggressor hit_enemy_a: the mirror is zeroed first (so the control shows the
 //               stamp), and the hit MUST flip it to -1 -- the guard must not blunt a real enemy hit.
 // Both lines log before/after on every peer (RELDUMP-style, host-vs-client diffable).
+void garage_probe() {
+    const int p = g_cfg.garage_probe_player;
+    if (p < 0 || p > 7 || g_cfg.garage_probe_every <= 0) return;
+    const uint32_t m = mstep();
+    if (m < (uint32_t)g_cfg.garage_probe_from || m > (uint32_t)g_cfg.garage_probe_to) return;
+    if ((m % (uint32_t)g_cfg.garage_probe_every) != 0) return;
+    const int      sl  = g_cfg.garage_probe_slot;
+    const uint8_t *st  = reinterpret_cast<const uint8_t *>(0x00c727c0u) + (size_t)(p * 25 + sl) * 0xf4;
+    const int32_t *sti = reinterpret_cast<const int32_t *>(st);
+    const int      bi  = sti[0];
+    const uint8_t *bl  = reinterpret_cast<const uint8_t *>(0x00c3d2a0u) + (size_t)(p * 100 + bi) * 0x111;
+    const int32_t *ps  = reinterpret_cast<const int32_t *>(0x00c3a370u + (size_t)p * 0x34);
+    const int      ex = *reinterpret_cast<const int32_t *>(st + 0xe4), ey = *reinterpret_cast<const int32_t *>(st + 0xe8);
+    const uint32_t clear = mh::call::llm_strat_storage_exit_tile_is_clear((uint16_t)p, sl);
+    char           b[300];
+    wsprintfA(b, "; GPROBE step=%lu p=%d slot=%d b=%d docked=%d mutex=%d waiters=%d built=%u online=%d workers=%u "
+                 "pop_total=%d employed=%d in_field=%d idle_human=%d exit=(%d,%d) exit_clear=%u\n",
+              m, p, sl, bi, sti[1], *reinterpret_cast<const int32_t *>(st + 0xd4),
+              *reinterpret_cast<const int32_t *>(st + 0xd8), (unsigned)bl[4], (int)*reinterpret_cast<const int16_t *>(bl + 0x17),
+              (unsigned)*reinterpret_cast<const uint16_t *>(bl + 0x31), ps[0], ps[1], ps[2], ps[3], ex, ey, clear);
+    append_line(g_log_path, b);
+}
+
 void hit_probe() {
-    if (g_cfg.hit_probe_at <= 0 || g_step != (uint32_t)g_cfg.hit_probe_at) return;
+    if (g_cfg.hit_probe_at <= 0 || mstep() != (uint32_t)g_cfg.hit_probe_at) return;
     auto *const pd                                                             = reinterpret_cast<mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA);
     *mh::state::ptr<int32_t>(mh::state::RID_STRAT_AI_FOREIGN_BLDG_CHANGE_FLAG) = 1;
     char msg[200];
@@ -4353,7 +4632,7 @@ void conq_issue() {
     char           msg[256];
     const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
     const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
-    const uint32_t d      = g_step - (uint32_t)g_cfg.conq_at;
+    const uint32_t d      = mstep() - (uint32_t)g_cfg.conq_at;
 
     // ---- step 0: resolve, and REFUSE to proceed on anything unresolved -------------------------
     // Every one of these is a condition under which the workload would issue orders that do nothing,
@@ -8038,7 +8317,7 @@ enum { PT3_CREATE = 0,
        PT3_MEASURE,
        PT3_FINISHED,
        PT3_FAILED };
-int      g_pt3_phase = PT3_CREATE;
+int      g_pt3_phase     = PT3_CREATE;
 uint32_t g_pt3_wait_from = 0, g_pt3_mark = 0, g_pt3_queued_at = 0;
 bool     g_pt3_issued = false;
 int      g_pt3_unit = 0, g_pt3_cfg = 0, g_pt3_tx = 0, g_pt3_ty = 0, g_pt3_qx = 0, g_pt3_qy = 0;
@@ -8084,7 +8363,7 @@ void pt3_tick() {
     const auto    *ms_tbl = reinterpret_cast<const mh::game::mh_llm_strat_move_microstep *>(mh::addr::_G_LLM_STRAT_MOVE_MICROSTEPS);
     const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
     const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
-    const uint32_t mw     = synth_map_w(), mh_ = synth_map_h();
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
     char           m[256];
     if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
     if (g_pt3_wait_from == 0) g_pt3_wait_from = g_step;
@@ -8208,12 +8487,12 @@ enum { PT2_BUILD1 = 0,
        PT2_MEASURE,
        PT2_FINISHED,
        PT2_FAILED };
-int      g_pt2_phase = PT2_BUILD1;
+int      g_pt2_phase     = PT2_BUILD1;
 uint32_t g_pt2_wait_from = 0, g_pt2_start = 0;
 bool     g_pt2_issued = false;
 int      g_pt2_bld[2] = {0, 0}, g_pt2_slot[2] = {0, 0}, g_pt2_cfg[2] = {0, 0}, g_pt2_unit = 0, g_pt2_ucfg = 0;
-int      g_pt2_shots[2] = {0, 0};
-uint8_t  g_pt2_prev_flag[2] = {1, 1};
+int      g_pt2_shots[2]      = {0, 0};
+uint8_t  g_pt2_prev_flag[2]  = {1, 1};
 double   g_pt2_prev_timer[2] = {0.0, 0.0};
 
 void pt2_fail(const char *why) {
@@ -8235,14 +8514,45 @@ int pt2_find_turret(unsigned p, int weapon) {
     return 0;
 }
 
+// mods:A1 -- see the a1_at banner in the config struct.
+void a1_tick() {
+    static bool s_done[8];
+    if (g_cfg.a1_at <= 0 || g_step < (uint32_t)g_cfg.a1_at) return;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *B      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    if (planet >= 32) return;
+    for (unsigned p = 0; p < 8; ++p) {
+        if (s_done[p] || !((g_cfg.a1_mask >> p) & 1) || prof[p].primary_mother_bldg[planet] <= 0) continue;
+        auto *bl   = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+        int   done = 0;
+        for (int i = 1; i < 100; ++i) {
+            if (bl[i].building_id == 0 || bl[i].energy <= 0.0) continue;
+            const unsigned t = B[bl[i].building_id].type;
+            if (t != 0x06u && t != 0x1au && bl[i].built_flags == 3 && bl[i].state != 100) ++done;
+        }
+        if (done < g_cfg.a1_need) continue;
+        for (int i = 1; i < 100; ++i) {
+            if (bl[i].building_id == 0 || bl[i].energy <= 0.0) continue;
+            const unsigned t = B[bl[i].building_id].type;
+            if (t != 0x06u && t != 0x1au) continue;
+            char m[160];
+            wsprintfA(m, "; A1 step=%lu player %u mother slot %d (state %d) -> TO_UNIT\n", g_step, p, i, (int)bl[i].state);
+            append_line(g_log_path, m);
+            bl[i].state = 0x7c;
+        }
+        s_done[p] = true;
+    }
+}
+
 void pt2_tick() {
     if (g_cfg.pt2_at <= 0 || g_step < (uint32_t)g_cfg.pt2_at || g_pt2_phase >= PT2_FINISHED) return;
     const unsigned p  = (unsigned)g_cfg.pt2_player;
     const unsigned tp = (unsigned)g_cfg.pt2_target;
     if (p >= 8 || tp >= 8) return pt2_fail("pt2_player / pt2_target out of range");
-    auto *bl = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
-    auto *tu = reinterpret_cast<mh::game::mh_map_object_turret *>(mh::state::hash_base(mh::state::HIDX_TURRETS)) + p * 32u;
-    auto *un = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + tp * 100u;
+    auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    auto          *tu     = reinterpret_cast<mh::game::mh_map_object_turret *>(mh::state::hash_base(mh::state::HIDX_TURRETS)) + p * 32u;
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + tp * 100u;
     const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
     const auto    *B      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
     const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
@@ -8347,7 +8657,7 @@ void pt2_tick() {
             for (int k = 0; k < 2; ++k) {
                 const auto &t = tu[g_pt2_slot[k]];
                 if (t.b_index != (int16_t)g_pt2_bld[k]) return pt2_fail("a turret lost its slot");
-                const bool fired = (t.reload_ready_flag == 0) && (g_pt2_prev_flag[k] != 0 || t.reload_timer > g_pt2_prev_timer[k]);
+                const bool fired    = (t.reload_ready_flag == 0) && (g_pt2_prev_flag[k] != 0 || t.reload_timer > g_pt2_prev_timer[k]);
                 g_pt2_prev_flag[k]  = t.reload_ready_flag;
                 g_pt2_prev_timer[k] = t.reload_timer;
                 if (fired && g_pt2_shots[k] < g_cfg.pt2_shots) {
@@ -8369,6 +8679,1756 @@ void pt2_tick() {
         }
         default: return;
     }
+}
+
+// ---- mods:M1 S0: the ground path-trace probe (see the config block) -----------------------------
+// After the step's hash, outside the HASH-INPUT span. OBSERVE-ONLY apart from the replicated create /
+// group-move orders the owner peer issues: it reads passable / tile_objects / the units roster / the
+// path buffers and never writes sim state. `; PF ...` lines in mh_harness.log.
+enum { PF_CREATE = 0,
+       PF_FIND,
+       PF_SETTLE,
+       PF_WATCH,
+       PF_FINISHED,
+       PF_FAILED };
+constexpr int PF_MAX_UNITS   = 16;
+int           g_pf_phase     = PF_CREATE;
+uint32_t      g_pf_wait_from = 0, g_pf_mark = 0, g_pf_order_at = 0;
+int           g_pf_cfg = 0, g_pf_sx = 0, g_pf_sy = 0, g_pf_tx = 0, g_pf_ty = 0, g_pf_n = 0;
+int           g_pf_unit[PF_MAX_UNITS];
+int           g_pf_park_unit = 0;
+void          mv_oob_scan(); // M1R: the path-buffer write scan (defined with the replay probe below)
+struct pf_track {
+    int      slot, cursor, x, y, replans, stalls;
+    uint8_t  leg0[2];
+    uint32_t last_move;
+    bool     stalled;
+};
+pf_track g_pf_tr[PF_MAX_UNITS];
+bool     g_pf_existed[100];
+int16_t  g_pf_ds[65536]; // 8-neighbour BFS distance from the start tile (-1 = unreached)
+int16_t  g_pf_dt[65536]; // ... from the target tile
+uint32_t g_pf_q[65536];
+
+void pf_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; PF FAIL step=%lu phase=%d: %s\n", g_step, g_pf_phase, why);
+    append_line(g_log_path, m);
+    g_pf_phase = PF_FAILED;
+}
+
+inline const uint8_t                           *pf_passable() { return reinterpret_cast<const uint8_t *>(mh::addr::passable); }
+inline const mh::game::mh_map_tile_object_data *pf_tobj() {
+    return reinterpret_cast<const mh::game::mh_map_tile_object_data *>(mh::state::live_base(mh::state::RID_TILE_OBJECTS));
+}
+// A tile the terrain lets a ground unit stand on: passable != 0, OR it is 0 only because a UNIT is parked on it
+// (move_walker zeroes passable under a unit at microstep 31; class 0x80 in tile_objects names the unit).
+inline bool pf_walkable(uint32_t idx) {
+    if (pf_passable()[idx] != 0) return true;
+    return (pf_tobj()[idx].class_owner & 0xf0u) == 0x80u;
+}
+inline int pf_max(int a, int b) { return a > b ? a : b; }
+inline int pf_wrapd(int d, int n) {
+    d %= n;
+    if (d < 0) d += n;
+    return d > n / 2 ? n - d : d;
+}
+// Plain 8-neighbour BFS on the torus over pf_walkable tiles (no corner rule, unit cost) -- a lower bound on any
+// route's tile count, not a model of the game's own metric.
+void pf_bfs(int sx, int sy, int16_t *d, uint32_t mw, uint32_t mh_) {
+    for (int i = 0; i < 65536; ++i) d[i] = -1;
+    uint32_t       r = 0, w = 0;
+    const uint32_t s = ((uint32_t)sx << 8) | (uint32_t)sy;
+    d[s]             = 0;
+    g_pf_q[w++]      = s;
+    while (r < w) {
+        const uint32_t c  = g_pf_q[r++];
+        const int      cx = (int)(c >> 8), cy = (int)(c & 0xff);
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dy = -1; dy <= 1; ++dy) {
+                if (!dx && !dy) continue;
+                const uint32_t nx = (uint32_t)(cx + dx + (int)mw) % mw, ny = (uint32_t)(cy + dy + (int)mh_) % mh_;
+                const uint32_t n = (nx << 8) | ny;
+                if (d[n] >= 0 || !pf_walkable(n)) continue;
+                d[n]        = (int16_t)(d[c] + 1);
+                g_pf_q[w++] = n;
+            }
+    }
+}
+
+// Decode a unit's path slot by walking its (heading, run) legs from (x, y) through the game's own
+// llm_strat_facing24_to_delta, from the CURRENT cursor on: end tile, tiles, and the first leg tile the
+// terrain blocks (passable 0 with no unit on it).
+void pf_dump_path(int k, const mh::game::mh_map_object_unit &u, unsigned p, uint32_t mw, uint32_t mh_, const char *why) {
+    const auto *pb = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::addr::_G_LLM_STRAT_PATH_BUFFERS);
+    char        m[1024];
+    if (u.path_slot_id == 0xff) {
+        wsprintfA(m, "; PF PATH step=%lu k=%d unit=%d %s slot=none xy=%d,%d state=0x%02x\n", g_step, k, g_pf_unit[k], why,
+                  (int)u.x, (int)u.y, (unsigned)u.state);
+        append_line(g_log_path, m);
+        return;
+    }
+    const mh::game::mh_llm_strat_path_waypoint *wp = pb + p * 30000u + (unsigned)u.path_slot_id * 300u;
+    int                                         x = u.x, y = u.y, tiles = 0, legs = 0, blk_x = -1, blk_y = -1, blk_v = -1;
+    int                                         n = wsprintfA(m, "; PF PATH step=%lu k=%d unit=%d %s slot=%d cur=%d xy=%d,%d goal=%d,%d legs=", g_step, k, g_pf_unit[k],
+                                                              why, (int)u.path_slot_id, (int)u.path_cursor, (int)u.x, (int)u.y, (int)u.goal_x, (int)u.goal_y);
+    for (int c = u.path_cursor; c < 300; ++c) {
+        const unsigned h = wp[c].heading, r = wp[c].run_length;
+        if (h == 0) break;
+        if (r == 0) continue;
+        ++legs;
+        if (n < 900) n += wsprintfA(m + n, "%u/%u ", h, r);
+        if (h > 24) break;
+        int32_t dx = 0, dy = 0;
+        mh::call::llm_strat_facing24_to_delta(h, &dx, &dy);
+        for (unsigned s = 0; s < r; ++s) {
+            x = (int)((uint32_t)(x + dx + (int)mw) % mw);
+            y = (int)((uint32_t)(y + dy + (int)mh_) % mh_);
+            ++tiles;
+            const uint32_t idx = ((uint32_t)x << 8) | (uint32_t)y;
+            if (blk_x < 0 && !pf_walkable(idx)) {
+                blk_x = x;
+                blk_y = y;
+                blk_v = pf_passable()[idx];
+            }
+        }
+    }
+    const uint32_t end = ((uint32_t)x << 8) | (uint32_t)y;
+    wsprintfA(m + n, "| end=%d,%d tiles=%d nlegs=%d end_to_target=%d first_block=%d,%d(v%d)\n", x, y, tiles, legs,
+              (int)g_pf_dt[end], blk_x, blk_y, blk_v);
+    append_line(g_log_path, m);
+}
+
+void pf_tick() {
+    if (g_cfg.mv_oob && g_pf_phase == PF_WATCH) mv_oob_scan();
+    if (g_cfg.pf_at <= 0 || g_step < (uint32_t)g_cfg.pf_at || g_pf_phase >= PF_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.pf_player;
+    if (p >= 8) return pf_fail("pf_player out of range");
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    const uint8_t *pas = pf_passable();
+    char           m[512];
+    if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_pf_wait_from == 0) g_pf_wait_from = g_step;
+    if (g_pf_phase != PF_WATCH && (int)(g_step - g_pf_wait_from) > 3000) return pf_fail("phase timeout");
+    switch (g_pf_phase) {
+        case PF_CREATE: {
+            const int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100) return; // not landed yet
+            // (1) the passable plane: value histogram, and per value how many tiles carry a unit / a building /
+            // a decoration in tile_objects -- the decode of what the values mean.
+            {
+                uint32_t hist[256] = {0}, hu[256] = {0}, hb[256] = {0}, hd[256] = {0};
+                for (uint32_t x = 0; x < mw; ++x)
+                    for (uint32_t y = 0; y < mh_; ++y) {
+                        const uint32_t i = (x << 8) | y;
+                        const uint8_t  v = pas[i], c = (uint8_t)(pf_tobj()[i].class_owner & 0xf0u);
+                        ++hist[v];
+                        if (c == 0x80) ++hu[v];
+                        if (c == 0x40) ++hb[v];
+                        if (c == 0x10) ++hd[v];
+                    }
+                for (int v = 0; v < 256; ++v)
+                    if (hist[v]) {
+                        wsprintfA(m, "; PF PASSHIST v=%d tiles=%lu unit=%lu bldg=%lu deco=%lu\n", v, hist[v], hu[v], hb[v], hd[v]);
+                        append_line(g_log_path, m);
+                    }
+                // The whole plane, one hex row per column x (index (x<<8)|y), for offline analysis.
+                for (uint32_t x = 0; x < mw; ++x) {
+                    char row[600];
+                    int  n = wsprintfA(row, "; PF PASSROW x=%lu ", (unsigned long)x);
+                    for (uint32_t y = 0; y < mh_; ++y) {
+                        const uint8_t v = pas[(x << 8) | y];
+                        row[n++]        = "0123456789abcdef"[v >> 4];
+                        row[n++]        = "0123456789abcdef"[v & 15];
+                    }
+                    row[n++] = '\n';
+                    row[n]   = 0;
+                    append_line(g_log_path, row);
+                }
+            }
+            // (2) the ground unit proto: pf_proto (cfg index) or the first move_op_code 0xf class with no crew.
+            // Default: the FASTEST such class (lowest step_speed for this player) -- a slow one spends ~100 steps a tile.
+            g_pf_cfg = g_cfg.pf_proto;
+            if (g_pf_cfg == 0) {
+                double best = 1e30;
+                for (int k = 1; k < 512; ++k)
+                    if (U[k].move_op_code == 0x0f && U[k].soldier_count == 0 && U[k].type >= 1 && U[k].type <= 0x0e &&
+                        U[k].step_speed[p] > 0.0 && U[k].step_speed[p] < best) {
+                        best     = U[k].step_speed[p];
+                        g_pf_cfg = k;
+                    }
+            }
+            if (g_pf_cfg <= 0) return pf_fail("no ground proto (move_op_code 0xf, no crew) in the cfg");
+            // (3) start tile: pf_sx/pf_sy, else the first 3x3-clear tile spiralling out from landing+(4,4).
+            g_pf_sx = g_cfg.pf_sx;
+            g_pf_sy = g_cfg.pf_sy;
+            if (g_pf_sx < 0) {
+                const int lx = (int)prof[p].landing_x[planet] + 4, ly = (int)prof[p].landing_y[planet] + 4;
+                for (int rad = 0; rad < 40 && g_pf_sx < 0; ++rad)
+                    for (int dx = -rad; dx <= rad && g_pf_sx < 0; ++dx)
+                        for (int dy = -rad; dy <= rad && g_pf_sx < 0; ++dy) {
+                            if ((dx < 0 ? -dx : dx) != rad && (dy < 0 ? -dy : dy) != rad) continue;
+                            bool ok = true;
+                            for (int a = -1; a <= 1 && ok; ++a)
+                                for (int b = -1; b <= 1 && ok; ++b) {
+                                    const uint32_t i = ((uint32_t)(lx + dx + a + (int)mw) % mw << 8) |
+                                                       ((uint32_t)(ly + dy + b + (int)mh_) % mh_);
+                                    ok = pas[i] != 0 && pf_tobj()[i].class_owner == 0;
+                                }
+                            if (ok) {
+                                g_pf_sx = (int)((uint32_t)(lx + dx + (int)mw) % mw);
+                                g_pf_sy = (int)((uint32_t)(ly + dy + (int)mh_) % mh_);
+                            }
+                        }
+                if (g_pf_sx < 0) return pf_fail("no 3x3-clear start tile within 40 of the landing site");
+            }
+            // (4) target: explicit, or picked from the start's BFS field. pick 1 = the worst detour ratio at a
+            // straight distance in [pf_dmin, pf_dmax]; pick 2 = the farthest reachable tile.
+            pf_bfs(g_pf_sx, g_pf_sy, g_pf_ds, mw, mh_);
+            g_pf_tx = g_cfg.pf_tx;
+            g_pf_ty = g_cfg.pf_ty;
+            if (g_pf_tx < 0) {
+                int best = -1;
+                for (uint32_t x = 0; x < mw; ++x)
+                    for (uint32_t y = 0; y < mh_; ++y) {
+                        const uint32_t i = (x << 8) | y;
+                        if (g_pf_ds[i] < 0 || pas[i] == 0) continue;
+                        const int c = pf_max(pf_wrapd((int)x - g_pf_sx, (int)mw), pf_wrapd((int)y - g_pf_sy, (int)mh_));
+                        int       score;
+                        if (g_cfg.pf_pick == 2) score = g_pf_ds[i];
+                        else {
+                            if (c < g_cfg.pf_dmin || c > g_cfg.pf_dmax) continue;
+                            score = g_pf_ds[i] * 100 / c;
+                        }
+                        if (score > best) {
+                            best    = score;
+                            g_pf_tx = (int)x;
+                            g_pf_ty = (int)y;
+                        }
+                    }
+                if (g_pf_tx < 0) return pf_fail("no target candidate");
+            }
+            pf_bfs(g_pf_tx, g_pf_ty, g_pf_dt, mw, mh_);
+            {
+                const uint32_t ti  = ((uint32_t)g_pf_tx << 8) | (uint32_t)g_pf_ty;
+                const uint8_t *fog = reinterpret_cast<const uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
+                const int      c   = pf_max(pf_wrapd(g_pf_tx - g_pf_sx, (int)mw), pf_wrapd(g_pf_ty - g_pf_sy, (int)mh_));
+                wsprintfA(m, "; PF SETUP step=%lu map=%lux%lu player=%u proto=%d type=0x%x start=%d,%d target=%d,%d cheb=%d bfs=%d "
+                             "target_pass=%d target_fog=0x%02x pick=%d n=%d step_speed=%d/1000\n",
+                          g_step, (unsigned long)mw, (unsigned long)mh_, p, g_pf_cfg, (unsigned)U[g_pf_cfg].type, g_pf_sx, g_pf_sy,
+                          g_pf_tx, g_pf_ty, c, (int)g_pf_ds[ti], (int)pas[ti], (unsigned)fog[ti], g_cfg.pf_pick, g_cfg.pf_n, (int)(U[g_pf_cfg].step_speed[p] * 1000.0));
+                append_line(g_log_path, m);
+            }
+            if (g_cfg.pf_reveal) {
+                // CONTROL ARM, not observation: mark every tile DISCOVERED for player p (fog_of_war.discovered, bit p),
+                // so group_move_order_pathfind's goal-visibility gate (find_closer_visible_tile) cannot clamp the goal.
+                uint8_t *disc = reinterpret_cast<uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
+                for (uint32_t x = 0; x < mw; ++x)
+                    for (uint32_t y = 0; y < mh_; ++y) disc[(x << 8) | y] |= (uint8_t)(1u << p);
+                append_line(g_log_path, "; PF REVEAL every tile marked discovered for the player (control arm)\n");
+            }
+            for (int i = 0; i < 100; ++i) g_pf_existed[i] = un[i].energy > 0.0;
+            // (5) create pf_n units on the start tile and its ring (the order places each; FIND scans for them).
+            const int n    = g_cfg.pf_n < 1 ? 1 : (g_cfg.pf_n > PF_MAX_UNITS ? PF_MAX_UNITS : g_cfg.pf_n);
+            g_pf_park_unit = 0;
+            if (side == p && g_cfg.pf_park == 1 && g_cfg.pf_park_x >= 0) // M1R lead check: a unit that is never ordered, created FIRST
+                mh::call::llm_strat_order_create_unit_debug((uint32_t)g_cfg.pf_park_x, (uint32_t)g_cfg.pf_park_y, (uint32_t)(g_pf_cfg + 1), p);
+            const int spread = g_cfg.pf_spread < 1 ? 1 : g_cfg.pf_spread;
+            if (side == p)
+                for (int i = 0; i < n; ++i) {
+                    const int ox = i == 0 ? 0 : ((i - 1) % 3) - 1, oy = i == 0 ? 0 : ((i - 1) / 3) % 3 - 1;
+                    mh::call::llm_strat_order_create_unit_debug((uint32_t)((g_pf_sx + spread * ox * (1 + (i - 1) / 9) + (int)mw) % (int)mw),
+                                                                (uint32_t)((g_pf_sy + spread * oy * (1 + (i - 1) / 9) + (int)mh_) % (int)mh_),
+                                                                (uint32_t)(g_pf_cfg + 1), p);
+                }
+            g_pf_phase     = PF_FIND;
+            g_pf_wait_from = 0;
+            return;
+        }
+        case PF_FIND: {
+            const int want  = g_cfg.pf_n < 1 ? 1 : (g_cfg.pf_n > PF_MAX_UNITS ? PF_MAX_UNITS : g_cfg.pf_n);
+            const int parks = (g_cfg.pf_park == 1 && g_cfg.pf_park_x >= 0) ? 1 : 0;
+            int       found = 0, first = 0;
+            g_pf_n = 0;
+            for (int i = 1; i < 100 && found < want + parks; ++i)
+                if (!g_pf_existed[i] && un[i].energy > 0.0 &&
+                    ((int)un[i].unit_proto_id == g_pf_cfg || (int)un[i].unit_proto_id == g_pf_cfg + 1)) {
+                    if (parks && found == 0) first = i;
+                    else g_pf_unit[g_pf_n++] = i;
+                    ++found;
+                }
+            if (found < want + parks) return;
+            g_pf_park_unit = first;
+            if (first) {
+                wsprintfA(m, "; PF PARK unit=%d xy=%d,%d (never ordered)\n", first, (int)un[first].x, (int)un[first].y);
+                append_line(g_log_path, m);
+            }
+            for (int k = 0; k < g_pf_n; ++k) {
+                const auto &u = un[g_pf_unit[k]];
+                wsprintfA(m, "; PF UNIT k=%d unit=%d xy=%d,%d state=0x%02x\n", k, g_pf_unit[k], (int)u.x, (int)u.y, (unsigned)u.state);
+                append_line(g_log_path, m);
+            }
+            g_pf_phase     = PF_SETTLE;
+            g_pf_mark      = g_step;
+            g_pf_wait_from = 0;
+            return;
+        }
+        case PF_SETTLE: {
+            if (g_step < g_pf_mark + 30) return;
+            // The player's own group move: put the units in a control group, select it, right-click order.
+            if (side == p) {
+                for (int k = 0; k < g_pf_n; ++k) mh::call::llm_strat_unit_ctrl_group_assign(g_pf_unit[k], 9);
+                mh::call::llm_unit_ctrl_group_activate(9);
+                if (g_cfg.pf_deferred) mh::call::llm_strat_group_issue_move_order_deferred(g_pf_tx, g_pf_ty, 0x8000);
+                else mh::call::llm_strat_group_issue_move_order((uint32_t)g_pf_tx, (uint32_t)g_pf_ty);
+            }
+            for (int k = 0; k < g_pf_n; ++k) {
+                const auto &u = un[g_pf_unit[k]];
+                g_pf_tr[k]    = pf_track{-2, -1, (int)u.x, (int)u.y, 0, 0, {0, 0}, g_step, false};
+            }
+            wsprintfA(m, "; PF ORDER step=%lu n=%d -> %d,%d (ctrl group 9, %s) %s\n", g_step, g_pf_n,
+                      g_pf_tx, g_pf_ty, g_cfg.pf_deferred ? "group_issue_move_order_deferred 0x8000" : "group_issue_move_order id 0", side == p ? "issued here" : "the owner peer issues it");
+            append_line(g_log_path, m);
+            g_pf_order_at  = g_step;
+            g_pf_phase     = PF_WATCH;
+            g_pf_wait_from = 0;
+            return;
+        }
+        case PF_WATCH: {
+            const auto *pb   = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::addr::_G_LLM_STRAT_PATH_BUFFERS);
+            const int   el   = (int)(g_step - g_pf_order_at);
+            bool        busy = false;
+            if (g_cfg.pf_park == 2 && g_cfg.pf_park_x >= 0) {
+                // M1R lead 6: the blocker appears on the planned route AFTER the group set off (the planner treats a settled unit as a
+                // wall, so only a unit that parks later is walked into). Created like the walkers, then found as the new roster entry.
+                static bool created = false, found = false;
+                if (!created && el >= g_cfg.pf_park_delay) {
+                    created = true;
+                    for (int i = 0; i < 100; ++i) g_pf_existed[i] = un[i].energy > 0.0;
+                    if (side == p) mh::call::llm_strat_order_create_unit_debug((uint32_t)g_cfg.pf_park_x, (uint32_t)g_cfg.pf_park_y, (uint32_t)(g_pf_cfg + 1), p);
+                    append_line(g_log_path, "; PF PARK blocker creation ordered\n");
+                } else if (created && !found) {
+                    for (int i = 1; i < 100; ++i)
+                        if (!g_pf_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_pf_cfg || (int)un[i].unit_proto_id == g_pf_cfg + 1)) {
+                            found          = true;
+                            g_pf_park_unit = i;
+                            wsprintfA(m, "; PF PARK step=%lu blocker unit=%d xy=%d,%d st=0x%02x slot=%d (never ordered)\n", g_step, i, (int)un[i].x, (int)un[i].y, (unsigned)un[i].state,
+                                      (int)un[i].path_slot_id);
+                            append_line(g_log_path, m);
+                            break;
+                        }
+                }
+            }
+            for (int k = 0; k < g_pf_n; ++k) {
+                const auto &u = un[g_pf_unit[k]];
+                pf_track   &t = g_pf_tr[k];
+                if (!(u.energy > 0.0)) continue;
+                const uint8_t *l0      = u.path_slot_id == 0xff ? nullptr
+                                                                : &pb[p * 30000u + (unsigned)u.path_slot_id * 300u].heading;
+                const bool     newpath = (int)u.path_slot_id != t.slot || u.path_cursor < t.cursor ||
+                                     (l0 && u.path_cursor == 0 && (l0[0] != t.leg0[0]));
+                if (newpath) {
+                    if (t.slot != -2) ++t.replans;
+                    pf_dump_path(k, u, p, mw, mh_, t.slot == -2 ? "first" : "replan");
+                    if (k == 0) {
+                        // the group's region route (_G_LLM_STRAT_GROUP_ROUTE_STEPS, the last group pathfind) + its goal
+                        const auto *rs = reinterpret_cast<const uint8_t *>(mh::addr::_G_LLM_STRAT_GROUP_ROUTE_STEPS);
+                        int         n  = wsprintfA(m, "; PF ROUTE step=%lu goal=%d,%d centroid=%d,%d steps=", g_step,
+                                                   *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_X),
+                                                   *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_Y),
+                                                   *reinterpret_cast<const int *>(mh::addr::_G_LLM_STRAT_GROUP_CENTROID_X),
+                                                   *reinterpret_cast<const int *>(mh::addr::_G_LLM_STRAT_GROUP_CENTROID_Y));
+                        int         i  = 0;
+                        for (; i < 256 && rs[i * 2 + 1] != 0 && n < 480; ++i) n += wsprintfA(m + n, "%u/%u ", rs[i * 2], rs[i * 2 + 1]);
+                        wsprintfA(m + n, "(n=%d)\n", i);
+                        append_line(g_log_path, m);
+                    }
+                }
+                t.slot   = (int)u.path_slot_id;
+                t.cursor = u.path_cursor;
+                if (l0) {
+                    t.leg0[0] = l0[0];
+                    t.leg0[1] = l0[1];
+                }
+                if ((int)u.x != t.x || (int)u.y != t.y) {
+                    t.x         = u.x;
+                    t.y         = u.y;
+                    t.last_move = g_step;
+                    t.stalled   = false;
+                }
+                const bool moving_state = u.state == 0x0f || u.state == 0x0a || u.state == 0x0c;
+                if (moving_state) busy = true;
+                if (moving_state && !t.stalled && g_step - t.last_move >= (uint32_t)g_cfg.pf_stall) {
+                    t.stalled = true;
+                    ++t.stalls;
+                    wsprintfA(m, "; PF STALL step=%lu k=%d unit=%d xy=%d,%d state=0x%02x order=0x%02x retry=%d slot=%d cur=%d no_move=%lu "
+                                 "remain_bfs=%d\n",
+                              g_step, k, g_pf_unit[k], (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order,
+                              (int)u.path_blocked_retry_count, (int)u.path_slot_id, (int)u.path_cursor,
+                              (unsigned long)(g_step - t.last_move), (int)g_pf_dt[((uint32_t)u.x << 8) | u.y]);
+                    append_line(g_log_path, m);
+                    pf_dump_path(k, u, p, mw, mh_, "at-stall");
+                }
+                if (el % g_cfg.pf_sample == 0) {
+                    wsprintfA(m, "; PF S step=%lu k=%d xy=%d,%d st=0x%02x or=0x%02x ms=%d slot=%d cur=%d retry=%d goal=%d,%d remain_bfs=%d\n",
+                              g_step, k, (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order, (int)u.move_microstep,
+                              (int)u.path_slot_id, (int)u.path_cursor, (int)u.path_blocked_retry_count, (int)u.goal_x,
+                              (int)u.goal_y, (int)g_pf_dt[((uint32_t)u.x << 8) | u.y]);
+                    append_line(g_log_path, m);
+                }
+            }
+            if (el < g_cfg.pf_tail && (busy || el < 50)) return;
+            for (int k = 0; k < g_pf_n; ++k) {
+                const auto    &u = un[g_pf_unit[k]];
+                const uint32_t i = ((uint32_t)u.x << 8) | u.y;
+                const int      c = pf_max(pf_wrapd((int)u.x - g_pf_tx, (int)mw), pf_wrapd((int)u.y - g_pf_ty, (int)mh_));
+                wsprintfA(m, "; PF VERDICT k=%d unit=%d alive=%d xy=%d,%d state=0x%02x order=0x%02x cheb_to_target=%d remain_bfs=%d "
+                             "start_bfs=%d last_move_after=%lu replans=%d stalls=%d steps=%d\n",
+                          k, g_pf_unit[k], u.energy > 0.0 ? 1 : 0, (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order, c,
+                          (int)g_pf_dt[i], (int)g_pf_dt[((uint32_t)g_pf_sx << 8) | (uint32_t)g_pf_sy],
+                          (unsigned long)(g_pf_tr[k].last_move - g_pf_order_at), g_pf_tr[k].replans, g_pf_tr[k].stalls, el);
+                append_line(g_log_path, m);
+            }
+            g_pf_phase = PF_FINISHED;
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- mods:M1N: the nudge / claim / swap case probe (see the config block) ----------------------------------------
+// Builds ONE tiny scripted case on open ground near player nd_player's landing site and traces the units through it, so the
+// three M1N keys (move_nudge_idle / move_claim_leader / move_swap_headon) can be compared on/off on identical input:
+//   nd_case=1 NUDGE  unit A walks east along a row; an idle friendly unit B stands on that row between A and its goal.
+//   nd_case=2 SWAP   a one-tile corridor (the rows beside it are made impassable, passable plane poked on every peer at the same
+//                    step) with unit U1 west of it going east and unit U2 east of it going west: they meet head-on inside it.
+//   nd_case=3 CLAIM  leader L stands on the row facing north, follower F one tile west of it facing east; both get one group
+//                    move to the east: L must turn 90 degrees before it can step, F is ready at once.
+// The units are created by the OWNER peer (replicated), the rectangle is marked discovered and the corridor poked on EVERY peer
+// (same value, same step), facings of case 3 are written on every peer. Orders go through ctrl group assign/activate and the
+// plain right-click path (llm_strat_group_issue_move_order_deferred, group id 0x8000). After the step's hash, outside the
+// HASH-INPUT span. `; ND ...` lines in mh_harness.log:
+//   ND SETUP   the chosen site and proto          ND UNIT   a created unit (index, tile)     ND ORDER   an order issued
+//   ND C       a change line: a unit's tile / state / order / retry byte changed (xy st or ms retry face cur slot)
+//   ND VERDICT per unit: arrival step (-1 = not), tiles stepped, replans (entries into state 0xa after the first), wait steps
+//              (steps in state 0xf, settled, retry byte > 0), max retry byte; ND TOTAL the case summary
+enum { ND_PREP = 0, ND_FIND, ND_ORDER, ND_WATCH, ND_FINISHED, ND_FAILED };
+constexpr int ND_MAX_U = 4;
+int           g_nd_phase = ND_PREP;
+uint32_t      g_nd_from = 0, g_nd_mark = 0, g_nd_order_at = 0;
+int           g_nd_cfg = 0, g_nd_ax = 0, g_nd_ay = 0, g_nd_n = 0, g_nd_live = 0, g_nd_bx = 0, g_nd_by = 0, g_nd_bstate = 0;
+int           g_nd_unit[ND_MAX_U], g_nd_gx[ND_MAX_U], g_nd_gy[ND_MAX_U];
+bool          g_nd_existed[100];
+struct nd_track {
+    int      x, y, state, order, retry, tiles, replans, wait_steps, max_retry, arrived;
+    bool     seen_marshal;
+};
+nd_track g_nd_tr[ND_MAX_U];
+
+void nd_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; ND FAIL step=%lu phase=%d: %s\n", g_step, g_nd_phase, why);
+    append_line(g_log_path, m);
+    g_nd_phase = ND_FAILED;
+}
+
+// A clear w x h rectangle (passable == 1, nothing on the tile) with its top-left at (x0, y0), wrapping.
+bool nd_clear_rect(int x0, int y0, int w, int h, uint32_t mw, uint32_t mh_) {
+    const uint8_t *pas = pf_passable();
+    for (int a = 0; a < w; ++a)
+        for (int b = 0; b < h; ++b) {
+            const uint32_t i = ((uint32_t)(x0 + a + (int)mw) % mw << 8) | ((uint32_t)(y0 + b + (int)mh_) % mh_);
+            if (pas[i] != 1 || pf_tobj()[i].class_owner != 0) return false;
+        }
+    return true;
+}
+
+void nd_tick() {
+    if (g_cfg.nd_case <= 0 || g_cfg.nd_at <= 0 || g_step < (uint32_t)g_cfg.nd_at || g_nd_phase >= ND_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.nd_player;
+    if (p >= 8) return nd_fail("nd_player out of range");
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    char           m[512];
+    if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_nd_from == 0) g_nd_from = g_step;
+    if (g_nd_phase != ND_WATCH && (int)(g_step - g_nd_from) > 3000) return nd_fail("phase timeout");
+    const int kcase = g_cfg.nd_case;
+    switch (g_nd_phase) {
+        case ND_PREP: {
+            // (no mother gate: a loaded save has its world already; nd_at must be after the load)
+            // the fastest plain ground class (lowest step_speed for this player), as the pf probe picks it
+            g_nd_cfg = g_cfg.nd_proto;
+            if (g_nd_cfg == 0) {
+                double best = 1e30;
+                for (int k = 1; k < 512; ++k)
+                    if (U[k].move_op_code == 0x0f && U[k].soldier_count == 0 && U[k].type >= 1 && U[k].type <= 0x0e && U[k].step_speed[p] > 0.0 &&
+                        U[k].step_speed[p] < best) {
+                        best     = U[k].step_speed[p];
+                        g_nd_cfg = k;
+                    }
+            }
+            if (g_nd_cfg <= 0) return nd_fail("no ground proto in the cfg");
+            // the rectangle: nd_len is the corridor length (case 2); width covers both goals
+            const int len = g_cfg.nd_len < 1 ? 1 : (g_cfg.nd_len > 12 ? 12 : g_cfg.nd_len);
+            const int w   = kcase == 2 ? len + 10 : 14;
+            const int h   = 5;
+            g_nd_ax = g_cfg.nd_x;
+            g_nd_ay = g_cfg.nd_y;
+            if (g_nd_ax < 0) {
+                const int lx = (int)prof[p].landing_x[planet] + 4, ly = (int)prof[p].landing_y[planet] + 4;
+                for (int rad = 0; rad < 60 && g_nd_ax < 0; ++rad)
+                    for (int dx = -rad; dx <= rad && g_nd_ax < 0; ++dx)
+                        for (int dy = -rad; dy <= rad && g_nd_ax < 0; ++dy) {
+                            if ((dx < 0 ? -dx : dx) != rad && (dy < 0 ? -dy : dy) != rad) continue;
+                            if (nd_clear_rect(lx + dx, ly + dy - 2, w, h, mw, mh_)) {
+                                g_nd_ax = (int)((uint32_t)(lx + dx + (int)mw) % mw);
+                                g_nd_ay = (int)((uint32_t)(ly + dy + (int)mh_) % mh_);
+                            }
+                        }
+                if (g_nd_ax < 0) return nd_fail("no clear rectangle near the landing site");
+            }
+            // layout: row g_nd_ay is the lane; all x are g_nd_ax + offset
+            const int ax = g_nd_ax, ay = g_nd_ay;
+            auto wrapx = [&](int x) { return (int)((uint32_t)(x + (int)mw) % mw); };
+            auto wrapy = [&](int y) { return (int)((uint32_t)(y + (int)mh_) % mh_); };
+            int  cx[ND_MAX_U], cy[ND_MAX_U];
+            if (kcase == 1) { // A, B (idle)
+                g_nd_n = 2;
+                cx[0] = wrapx(ax + 1), cy[0] = ay;
+                cx[1] = wrapx(ax + 5), cy[1] = ay;
+                g_nd_bx = wrapx(ax + 7), g_nd_by = ay; // B appears here AFTER the order (the planner treats a settled unit as a wall)
+                g_nd_gx[0] = wrapx(ax + 11), g_nd_gy[0] = ay;
+                g_nd_gx[1] = -1, g_nd_gy[1] = -1;
+            } else if (kcase == 2) { // U1 west going east, U2 east going west
+                g_nd_n = 2;
+                cx[0] = wrapx(ax + 2), cy[0] = ay;
+                cx[1] = wrapx(ax + 5 + len), cy[1] = ay;
+                g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                g_nd_gx[1] = wrapx(ax + 0), g_nd_gy[1] = ay;
+                for (int a = 0; a < len; ++a) { // the corridor walls: the rows beside the lane
+                    *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4 + a) << 8) | (uint32_t)wrapy(ay - 1)]) = 0;
+                    *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4 + a) << 8) | (uint32_t)wrapy(ay + 1)]) = 0;
+                }
+            } else { // 3: F (follower, west) and L (leader, east of it), one group move east
+                g_nd_n = 2;
+                cx[0] = wrapx(ax + 2), cy[0] = ay; // F
+                cx[1] = wrapx(ax + 3), cy[1] = ay; // L
+                g_nd_gx[0] = g_nd_gx[1] = wrapx(ax + 11);
+                g_nd_gy[0] = g_nd_gy[1] = ay;
+            }
+            {   // fog: the whole rectangle (and the corridor surroundings) discovered for the player, so no goal gets clamped
+                uint8_t *disc = reinterpret_cast<uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
+                for (int a = 0; a < w; ++a)
+                    for (int b = 0; b < h; ++b) disc[((uint32_t)wrapx(ax + a) << 8) | (uint32_t)wrapy(ay - 2 + b)] |= (uint8_t)(1u << p);
+            }
+            wsprintfA(m, "; ND SETUP step=%lu case=%d map=%lux%lu player=%u proto=%d type=0x%x anchor=%d,%d len=%d n=%d\n", g_step, kcase, (unsigned long)mw,
+                      (unsigned long)mh_, p, g_nd_cfg, (unsigned)U[g_nd_cfg].type, ax, ay, len, g_nd_n);
+            append_line(g_log_path, m);
+            for (int i = 0; i < 100; ++i) g_nd_existed[i] = un[i].energy > 0.0;
+            g_nd_live = kcase == 1 ? 1 : g_nd_n;
+            if (side == p)
+                for (int k = 0; k < g_nd_live; ++k) mh::call::llm_strat_order_create_unit_debug((uint32_t)cx[k], (uint32_t)cy[k], (uint32_t)(g_nd_cfg + 1), p);
+            g_nd_phase = ND_FIND;
+            g_nd_from  = 0;
+            return;
+        }
+        case ND_FIND: {
+            int found = 0;
+            for (int i = 1; i < 100 && found < g_nd_live; ++i)
+                if (!g_nd_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_nd_cfg || (int)un[i].unit_proto_id == g_nd_cfg + 1)) g_nd_unit[found++] = i;
+            if (found < g_nd_live) return;
+            for (int k = 0; k < g_nd_live; ++k) {
+                const auto &u = un[g_nd_unit[k]];
+                wsprintfA(m, "; ND UNIT k=%d unit=%d xy=%d,%d state=0x%02x order=0x%02x\n", k, g_nd_unit[k], (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order);
+                append_line(g_log_path, m);
+            }
+            g_nd_phase = ND_ORDER;
+            g_nd_mark  = g_step;
+            g_nd_from  = 0;
+            return;
+        }
+        case ND_ORDER: {
+            if (g_step < g_nd_mark + 40) return; // let the created units settle (state 1)
+            if (kcase == 3) { // the leader faces north, the follower east: heading numbers 13 / 19 of the 24-compass
+                un[g_nd_unit[1]].facing_target = un[g_nd_unit[1]].facing_current = 13;
+                un[g_nd_unit[0]].facing_target = un[g_nd_unit[0]].facing_current = 19;
+            }
+            if (side == p) {
+                if (kcase == 1) {
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                } else if (kcase == 2) {
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[1], 8);
+                    mh::call::llm_unit_ctrl_group_activate(8);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[1], g_nd_gy[1], 0x8000);
+                } else {
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[1], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                }
+            }
+            for (int k = 0; k < g_nd_live; ++k) {
+                const auto &u = un[g_nd_unit[k]];
+                g_nd_tr[k]    = nd_track{(int)u.x, (int)u.y, (int)u.state, (int)u.order, (int)u.path_blocked_retry_count, 0, 0, 0, 0, -1, false};
+                wsprintfA(m, "; ND ORDER step=%lu k=%d unit=%d xy=%d,%d goal=%d,%d %s\n", g_step, k, g_nd_unit[k], (int)u.x, (int)u.y, g_nd_gx[k], g_nd_gy[k],
+                          g_nd_gx[k] < 0 ? "(never ordered)" : (side == p ? "issued here" : "the owner peer issues it"));
+                append_line(g_log_path, m);
+            }
+            g_nd_order_at = g_step;
+            g_nd_phase    = ND_WATCH;
+            g_nd_from     = 0;
+            return;
+        }
+        case ND_WATCH: {
+            const int el   = (int)(g_step - g_nd_order_at);
+            bool      busy = false;
+            if (kcase == 1 && g_nd_live == 1) { // the late idle blocker
+                if (g_nd_bstate == 0 && el >= g_cfg.nd_delay) {
+                    g_nd_bstate = 1;
+                    for (int i = 0; i < 100; ++i) g_nd_existed[i] = un[i].energy > 0.0;
+                    if (side == p) mh::call::llm_strat_order_create_unit_debug((uint32_t)g_nd_bx, (uint32_t)g_nd_by, (uint32_t)(g_nd_cfg + 1), p);
+                    append_line(g_log_path, "; ND blocker creation ordered\n");
+                } else if (g_nd_bstate == 1) {
+                    for (int i = 1; i < 100; ++i)
+                        if (!g_nd_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_nd_cfg || (int)un[i].unit_proto_id == g_nd_cfg + 1)) {
+                            g_nd_unit[1] = i;
+                            g_nd_live    = 2;
+                            const auto &u = un[i];
+                            g_nd_tr[1]    = nd_track{(int)u.x, (int)u.y, (int)u.state, (int)u.order, (int)u.path_blocked_retry_count, 0, 0, 0, 0, -1, false};
+                            wsprintfA(m, "; ND UNIT k=1 unit=%d xy=%d,%d state=0x%02x order=0x%02x step=%lu (idle blocker)\n", i, (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order, g_step);
+                            append_line(g_log_path, m);
+                            break;
+                        }
+                }
+            }
+            for (int k = 0; k < g_nd_live; ++k) {
+                const auto &u = un[g_nd_unit[k]];
+                nd_track   &t = g_nd_tr[k];
+                const bool  moved = (int)u.x != t.x || (int)u.y != t.y;
+                if (moved) ++t.tiles;
+                if (u.state == 0x0a && !t.seen_marshal) t.seen_marshal = true;
+                else if (u.state == 0x0a && t.state != 0x0a) ++t.replans;
+                if (u.state == 0x0f && u.move_microstep >= 0x1f && !moved && u.path_blocked_retry_count > 0) ++t.wait_steps;
+                if ((int)u.path_blocked_retry_count > t.max_retry) t.max_retry = (int)u.path_blocked_retry_count;
+                if (g_nd_gx[k] >= 0 && t.arrived < 0 && (int)u.x == g_nd_gx[k] && (int)u.y == g_nd_gy[k] && u.state != 0x0f && u.state != 0x0a && u.state != 0x0c) t.arrived = el;
+                if (moved || (int)u.state != t.state || (int)u.order != t.order || (int)u.path_blocked_retry_count != t.retry) {
+                    wsprintfA(m, "; ND C clk=%d step=%lu el=%d k=%d unit=%d xy=%d,%d st=0x%02x or=0x%02x ms=%d retry=%d face=%d/%d slot=%d cur=%d goal=%d,%d\n", (int)(*reinterpret_cast<const double *>(mh::state::hash_base(IDX_CLOCK)) * 1000.0), g_step, el, k, g_nd_unit[k],
+                              (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order, (int)u.move_microstep, (int)u.path_blocked_retry_count, (int)u.facing_target,
+                              (int)u.facing_current, (int)u.path_slot_id, (int)u.path_cursor, (int)u.goal_x, (int)u.goal_y);
+                    append_line(g_log_path, m);
+                }
+                t.x = u.x;
+                t.y = u.y;
+                t.state = u.state;
+                t.order = u.order;
+                t.retry = u.path_blocked_retry_count;
+                if (u.state == 0x0f || u.state == 0x0a || u.state == 0x0c || u.state == 0x36) busy = true;
+            }
+            if (el < g_cfg.nd_tail && (busy || el < 60 || g_nd_live < g_nd_n)) return;
+            int tiles = 0, waits = 0, repl = 0;
+            for (int k = 0; k < g_nd_live; ++k) {
+                const auto &u = un[g_nd_unit[k]];
+                const nd_track &t = g_nd_tr[k];
+                wsprintfA(m, "; ND VERDICT case=%d k=%d unit=%d xy=%d,%d goal=%d,%d arrived_el=%d tiles=%d replans=%d wait_steps=%d max_retry=%d state=0x%02x\n", kcase, k, g_nd_unit[k],
+                          (int)u.x, (int)u.y, g_nd_gx[k], g_nd_gy[k], t.arrived, t.tiles, t.replans, t.wait_steps, t.max_retry, (unsigned)u.state);
+                append_line(g_log_path, m);
+                tiles += t.tiles;
+                waits += t.wait_steps;
+                repl += t.replans;
+            }
+            wsprintfA(m, "; ND TOTAL case=%d steps=%d tiles=%d replans=%d wait_steps=%d\n", kcase, el, tiles, repl, waits);
+            append_line(g_log_path, m);
+            g_nd_phase = ND_FINISHED;
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- mods:M1R: the recorded-move replay probe (see the config block) ------------------------------
+// Same placement and rules as pf_tick: after the step's hash, outside the HASH-INPUT span, OBSERVE-ONLY apart from
+// the replicated player-gesture orders it issues. `; MV ...` lines in mh_harness.log:
+//   MV TRACK/ROSTER   the units the recorded orders name, and the player's whole unit table at the base step
+//   MV ORDER          an order issued (ctrl group 0 read back), with each unit's start tile
+//   MV S / MV C       a per-unit sample (every mv_sample steps) / a per-unit state-change line
+//   MV DISPATCH       the step the order reached the unit (move_group_id changed) and its first state
+//   MV STALL/STALLEND >= mv_stall steps without a tile change in a moving state, with the blocker at the next tile
+//   MV PARKFRONT      a walking tracked unit whose next tile holds a PARKED unit (the lead-6 precondition)
+//   MV OOBW           a path-buffer slot that changed while no unit of that player owns it (lead 6 effect)
+//   MV VERDICT/ORDERSUM  per unit-order and per order
+constexpr int MV_MAX_ORD = 64, MV_PER = 12, MV_MAX_U = 16;
+struct mv_order {
+    uint32_t step;
+    int      n, unit[MV_PER], gx, gy;
+    int      atk_p, atk_i; // M1 attack probe: optional csv columns 5/6 (target building owner, index); -1 = a move order
+};
+mv_order g_mv_ord[MV_MAX_ORD];
+int      g_mv_nord = 0, g_mv_next = 0;
+bool     g_mv_loaded = false, g_mv_done = false, g_mv_based = false;
+uint32_t g_mv_base = 0;
+
+struct mv_osum {
+    int      open, n, arrived, formation, shortf, gaveup, interrupted, dead, stalls, kinds[8], spread;
+    uint32_t t_first, t_last;
+    bool     issued;
+};
+mv_osum g_mv_os[MV_MAX_ORD];
+
+struct mv_unit {
+    int      idx;
+    bool     alive;
+    int      x, y;
+    uint16_t state, order;
+    int      retry, slot, mgid, ms, fc, mx, my;
+    uint32_t last_move;
+    // the open record
+    int      cur;
+    uint32_t iss_step;
+    int      mgid0, sx, sy, tiles, maxret_a, maxret_f, replans, marshal_entries, stalls, nonmoving;
+    uint32_t disp_step, longest_stall;
+    bool     disp, stall_open, pf_logged;
+    uint32_t stall_from;
+    uint32_t pf_step;
+    int      pslot, pcursor, paths, fp_ex, fp_ey, fp_tiles, fp_disc, fp_gx, fp_gy, pk, pretry;
+    char     pdesc[96];
+    bool     fp_done, detour_seen;
+    uint32_t lh;      // M1D: hash of the path slot's heading sequence (a splice changes it)
+    int      lh_slot; // M1D: the slot lh was taken from
+};
+mv_unit g_mv_u[MV_MAX_U];
+int     g_mv_nu = 0;
+uint8_t g_mv_pbshadow[8 * 30000 * 2];
+bool    g_mv_pb_init = false;
+uint8_t g_mv_owned_prev[8 * 100];
+int     g_mv_oob_lines = 0, g_mv_oob_total = 0, g_mv_parkfront = 0;
+
+const char *const MV_KIND[8] = {"self-marshal-wait", "walking-unit", "parked-unit", "building", "terrain", "none", "regrouping-unit", "x"};
+
+inline bool mv_is_moving(unsigned st) { return st == 0x0a || st == 0x0c || st == 0x0f; }
+
+void mv_load() {
+    g_mv_loaded = true;
+    HANDLE h    = CreateFileA(g_cfg.mv_replay, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    static char buf[16384];
+    DWORD       got = 0;
+    ReadFile(h, buf, sizeof(buf) - 1, &got, nullptr);
+    CloseHandle(h);
+    buf[got] = 0;
+    char *q  = buf;
+    while (*q && g_mv_nord < MV_MAX_ORD) {
+        char *e = q;
+        while (*e && *e != '\n') ++e;
+        const char saved = *e;
+        *e               = 0;
+        if (*q >= '0' && *q <= '9') {
+            mv_order &o = g_mv_ord[g_mv_nord];
+            o.n         = 0;
+            o.step      = (uint32_t)atoi(q);
+            char *c1    = q;
+            while (*c1 && *c1 != ',') ++c1;
+            if (*c1 == ',') {
+                ++c1;
+                char *c2 = c1;
+                while (*c2 && *c2 != ',') ++c2;
+                const bool more = (*c2 == ',');
+                *c2             = 0;
+                for (char *t = c1; *t && o.n < MV_PER;) {
+                    o.unit[o.n++] = atoi(t);
+                    while (*t && *t != '|') ++t;
+                    if (*t == '|') ++t;
+                }
+                if (more) {
+                    char *c3 = c2 + 1;
+                    o.gx     = atoi(c3);
+                    while (*c3 && *c3 != ',') ++c3;
+                    o.gy    = (*c3 == ',') ? atoi(c3 + 1) : 0;
+                    o.atk_p = o.atk_i = -1;
+                    if (*c3 == ',') {
+                        char *c4 = c3 + 1;
+                        while (*c4 && *c4 != ',') ++c4;
+                        if (*c4 == ',') {
+                            o.atk_p  = atoi(c4 + 1);
+                            char *c5 = c4 + 1;
+                            while (*c5 && *c5 != ',') ++c5;
+                            o.atk_i = (*c5 == ',') ? atoi(c5 + 1) : -1;
+                            if (o.atk_i < 0 || o.atk_p < -3) o.atk_p = -1;
+                        }
+                    }
+                    ++g_mv_nord;
+                }
+            }
+        }
+        *e = saved;
+        q  = saved ? e + 1 : e;
+    }
+}
+
+mv_unit *mv_find(int idx) {
+    for (int i = 0; i < g_mv_nu; ++i)
+        if (g_mv_u[i].idx == idx) return &g_mv_u[i];
+    return nullptr;
+}
+
+// The tile a walking unit steps onto next, from its path slot (leg at the cursor).
+bool mv_next_tile(const mh::game::mh_map_object_unit &u, unsigned p, uint32_t mw, uint32_t mh_, int *nx, int *ny) {
+    if (u.path_slot_id == 0xff) return false;
+    const auto *pb = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
+    const auto *wp = pb + p * 30000u + (unsigned)u.path_slot_id * 300u;
+    for (int c = u.path_cursor; c >= 0 && c < 300; ++c) {
+        const unsigned h = wp[c].heading, r = wp[c].run_length;
+        if (h == 0 || h > 24) return false;
+        if (r == 0) continue;
+        int32_t dx = 0, dy = 0;
+        mh::call::llm_strat_facing24_to_delta(h, &dx, &dy);
+        *nx = (int)((uint32_t)(u.x + dx + (int)mw) % mw);
+        *ny = (int)((uint32_t)(u.y + dy + (int)mh_) % mh_);
+        return true;
+    }
+    return false;
+}
+
+// The tile a unit's CURRENT path slot ends on (legs walked from the cursor) and its tile count.
+void mv_path_end(const mh::game::mh_map_object_unit &u, unsigned p, uint32_t mw, uint32_t mh_, int *ex, int *ey, int *tiles) {
+    const auto *pb = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
+    const auto *wp = pb + p * 30000u + (unsigned)u.path_slot_id * 300u;
+    int         x = u.x, y = u.y, n = 0;
+    for (int c = u.path_cursor; c >= 0 && c < 300; ++c) {
+        const unsigned h = wp[c].heading, r = wp[c].run_length;
+        if (h == 0 || h > 24) break;
+        if (r == 0) continue;
+        int32_t dx = 0, dy = 0;
+        mh::call::llm_strat_facing24_to_delta(h, &dx, &dy);
+        for (unsigned k = 0; k < r; ++k) {
+            x = (int)((uint32_t)(x + dx + (int)mw) % mw);
+            y = (int)((uint32_t)(y + dy + (int)mh_) % mh_);
+            ++n;
+        }
+    }
+    *ex    = x;
+    *ey    = y;
+    *tiles = n;
+}
+inline int mv_discovered(int x, int y, unsigned p) {
+    const uint8_t *d = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_FOG_OF_WAR)) + 256u * 256u * 8u;
+    return (d[((uint32_t)x << 8) | (uint32_t)y] >> p) & 1;
+}
+inline int mv_visible(int x, int y, unsigned p) {
+    return reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_FOG_OF_WAR))[(size_t)p * 65536u + (((uint32_t)x << 8) | (uint32_t)y)] != 0;
+}
+
+// What stands on tile (x,y): kind index into MV_KIND (1 moving unit, 2 parked unit, 3 building, 4 terrain/decoration,
+// 5 nothing), plus the occupant description.
+int mv_classify(int x, int y, char *desc, size_t dn) {
+    const uint32_t idx = ((uint32_t)x << 8) | (uint32_t)y;
+    const uint8_t  pv  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[idx];
+    const auto    &to  = pf_tobj()[idx];
+    const unsigned cls = to.class_owner & 0xf0u, own = to.class_owner & 0x0fu;
+    desc[0] = 0;
+    if (cls == 0x80u) {
+        const auto *all = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units));
+        if (own < 8 && to.building < 100) {
+            const auto &o = all[own * 100u + to.building];
+            wsprintfA(desc, "unit p%u/%u st=0x%02x or=0x%02x slot=%d", own, (unsigned)to.building, (unsigned)o.state, (unsigned)o.order, (int)o.path_slot_id);
+            return o.state == 0x0f ? 1 : (o.state == 0x0a || o.state == 0x0c) ? 6
+                                                                              : 2;
+        }
+        wsprintfA(desc, "unit ?");
+        return 2;
+    }
+    if (cls == 0x40u) {
+        wsprintfA(desc, "building p%u/%u", own, (unsigned)to.building);
+        return 3;
+    }
+    if (pv == 0 || cls == 0x10u) {
+        wsprintfA(desc, "pass=%u cls=0x%02x", (unsigned)pv, cls);
+        return 4;
+    }
+    return 5;
+}
+inline int mv_cheb(int ax, int ay, int bx, int by, uint32_t mw, uint32_t mh_) {
+    return pf_max(pf_wrapd(ax - bx, (int)mw), pf_wrapd(ay - by, (int)mh_));
+}
+
+void mv_stall_end(mv_unit &t, const mh::game::mh_map_object_unit &u, const char *why) {
+    if (!t.stall_open) return;
+    char           m[256];
+    const uint32_t dur = g_step - t.stall_from;
+    if (dur > t.longest_stall) t.longest_stall = dur;
+    wsprintfA(m, "; MV STALLEND step=%lu u=%d xy=%d,%d dur=%lu why=%s st=0x%02x retry=%d\n", g_step, t.idx, (int)u.x, (int)u.y, (unsigned long)dur, why,
+              (unsigned)u.state, (int)u.path_blocked_retry_count);
+    append_line(g_log_path, m);
+    t.stall_open = false;
+}
+
+void mv_order_sum(int oi) {
+    mv_osum &s = g_mv_os[oi];
+    char     m[400];
+    wsprintfA(m,
+              "; MV ORDERSUM ord=%d goal=%d,%d units=%d arrived=%d near=%d stopped_short=%d gave_up=%d interrupted=%d dead=%d "
+              "t_first_arrive=%ld t_last_settle=%ld max_spread=%d stalls=%d (self_marshal=%d walking=%d parked=%d bldg=%d terrain=%d none=%d regrouping=%d)\n",
+              oi, g_mv_ord[oi].gx, g_mv_ord[oi].gy, s.n, s.arrived, s.formation, s.shortf, s.gaveup, s.interrupted, s.dead,
+              s.t_first == 0xffffffffu ? -1L : (long)s.t_first, (long)s.t_last, s.spread, s.stalls, s.kinds[0], s.kinds[1], s.kinds[2], s.kinds[3],
+              s.kinds[4], s.kinds[5], s.kinds[6]);
+    append_line(g_log_path, m);
+}
+
+// Close a unit's open record. why: "settled" | "interrupted" | "dead" | "tail"
+void mv_close(mv_unit &t, const mh::game::mh_map_object_unit &u, const char *why, uint32_t mw, uint32_t mh_) {
+    if (t.cur < 0) return;
+    const int oi = t.cur;
+    mv_stall_end(t, u, why);
+    mv_osum    &s      = g_mv_os[oi];
+    const int   dclick = mv_cheb(u.x, u.y, g_mv_ord[oi].gx, g_mv_ord[oi].gy, mw, mh_);
+    const int   dgoal  = mv_cheb(u.x, u.y, u.goal_x, u.goal_y, mw, mh_);
+    const int   dstart = mv_cheb(t.sx, t.sy, g_mv_ord[oi].gx, g_mv_ord[oi].gy, mw, mh_);
+    const char *verdict;
+    if (!lstrcmpA(why, "dead")) {
+        verdict = "DEAD";
+        ++s.dead;
+    } else if (!lstrcmpA(why, "interrupted") || !lstrcmpA(why, "tail")) {
+        verdict = !t.disp ? "NEVER-DISPATCHED" : (!lstrcmpA(why, "tail") ? "STILL-MOVING-AT-END" : "INTERRUPTED");
+        ++s.interrupted;
+    } else if (dclick == 0) {
+        verdict = "ARRIVED";
+        ++s.arrived;
+    } else if (dclick <= 2 && t.maxret_a < 3) {
+        verdict = "ARRIVED-NEAR";
+        ++s.formation;
+    } else if (t.maxret_a >= 3) {
+        verdict = "GAVE-UP";
+        ++s.gaveup;
+    } else {
+        verdict = "STOPPED-SHORT";
+        ++s.shortf;
+    }
+    const uint32_t now = g_step - g_mv_base;
+    if (!lstrcmpA(why, "settled")) {
+        if (dclick <= 2 && t.maxret_a < 3) {
+            const uint32_t ta = g_step - t.iss_step;
+            if (ta < s.t_first) s.t_first = ta;
+        }
+        const long dt = (long)now - (long)g_mv_ord[oi].step;
+        if (dt > (long)s.t_last) s.t_last = (uint32_t)dt;
+    }
+    char m[520];
+    wsprintfA(m,
+              "; MV VERDICT ord=%d u=%d %s step=%lu rel=%lu start=%d,%d end=%d,%d click=%d,%d goal=%d,%d d_click=%d d_goal=%d straight=%d tiles=%d "
+              "dispatch_after=%ld settle_after=%ld replans=%d marshal_entries=%d max_marshal_retry=%d max_walk_wait=%d stalls=%d longest_stall=%lu "
+              "first_path_end=%d,%d first_path_tiles=%d first_path_end_to_click=%d first_path_end_discovered=%d group_goal=%d,%d detour_seen=%d\n",
+              oi, t.idx, verdict, g_step, (unsigned long)now, t.sx, t.sy, (int)u.x, (int)u.y, g_mv_ord[oi].gx, g_mv_ord[oi].gy, (int)u.goal_x, (int)u.goal_y,
+              dclick, dgoal, dstart, t.tiles, t.disp ? (long)(t.disp_step - t.iss_step) : -1L, (long)(g_step - t.iss_step), t.replans, t.marshal_entries,
+              t.maxret_a, t.maxret_f, t.stalls, (unsigned long)t.longest_stall, t.fp_ex, t.fp_ey, t.fp_tiles,
+              t.fp_done ? mv_cheb(t.fp_ex, t.fp_ey, g_mv_ord[oi].gx, g_mv_ord[oi].gy, mw, mh_) : -1, t.fp_disc, t.fp_gx, t.fp_gy, t.detour_seen ? 1 : 0);
+    append_line(g_log_path, m);
+    t.cur = -1;
+    if (--s.open == 0) mv_order_sum(oi);
+}
+
+// M1 attack probe: the HP of the unit's target building (-1 = no building target).
+int mv_target_bhp(const mh::game::mh_map_object_unit &u) {
+    const unsigned r = (unsigned)(uint16_t)u.target_ref;
+    if ((r & 0x40u) == 0 || (r & 0xfu) >= 8u || (unsigned)u.target_index >= 100u) return -1;
+    const auto *B = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::live_base(mh::state::RID_BUILDINGS));
+    return (int)B[(r & 0xfu) * 100u + (unsigned)u.target_index].energy;
+}
+void mv_line(const char *tag, const mv_unit &t, const mh::game::mh_map_object_unit &u, unsigned p, uint32_t mw, uint32_t mh_) {
+    char m[640], d[160];
+    int  nx = -1, ny = -1, npas = -1, nkind = 5;
+    d[0] = 0;
+    if (mv_next_tile(u, p, mw, mh_, &nx, &ny)) {
+        npas  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)nx << 8) | (uint32_t)ny];
+        nkind = mv_classify(nx, ny, d, sizeof(d));
+    }
+    const int      tp   = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)u.x << 8) | u.y];
+    const uint8_t *pbp  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
+    unsigned       leg0 = 0, leg1 = 0;
+    if (u.path_slot_id != 0xff && u.path_cursor >= 0 && u.path_cursor < 300) {
+        const uint8_t *w = pbp + ((size_t)p * 30000u + (size_t)u.path_slot_id * 300u + (size_t)u.path_cursor) * 2u;
+        leg0             = w[0];
+        leg1             = w[1];
+    }
+    wsprintfA(m,
+              "; MV %s step=%lu rel=%lu u=%d xy=%d,%d ms=%d fc=%d ft=%d hd=%d st=0x%02x or=0x%02x mg=0x%x goal=%d,%d slot=%d pc=%d leg=%u/%u retry=%d "
+              "pas=%d nx=%d,%d npas=%d nk=%s [%s] ord=%d hp=%d scale=%d/1000 lag=%dms tref=0x%x/%d oq=%d bhp=%d\n",
+              tag, g_step, (unsigned long)(g_step - g_mv_base), t.idx, (int)u.x, (int)u.y, (int)u.move_microstep, (int)u.facing_current,
+              (int)u.facing_target, (int)u.move_heading, (unsigned)u.state, (unsigned)u.order, (unsigned)u.move_group_id, (int)u.goal_x, (int)u.goal_y,
+              (int)u.path_slot_id, (int)u.path_cursor, leg0, leg1, (int)u.path_blocked_retry_count, tp, nx, ny, npas, MV_KIND[nkind], d, t.cur,
+              (int)u.energy, (int)(u.move_step_speed_scale * 1000.0),
+              (int)((*reinterpret_cast<const double *>(ADDR_GAME_CLOCK) - u.activity_clock) * 1000.0), (unsigned)(uint16_t)u.target_ref,
+              (int)u.target_index, (int)u.order_queued, mv_target_bhp(u));
+    append_line(g_log_path, m);
+}
+
+// Lead 6: every step, any path-buffer slot that changed while no unit of that player owns it.
+void mv_oob_scan() {
+    const uint8_t *pb = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
+    if (!pb) return;
+    constexpr size_t SLOT = 300u * 2u, TOTAL = sizeof(g_mv_pbshadow);
+    if (g_cfg.mv_oob_poke > 0) {
+        static int scans = 0;
+        uint8_t   *w     = const_cast<uint8_t *>(pb) + (7u * 30000u + 99u * 300u) * 2u;
+        if (++scans == g_cfg.mv_oob_poke) {
+            *w ^= 0xff;
+            append_line(g_log_path, "; MV OOBPOKE positive control: flipped one byte of player 7 slot 99 (unused)\n");
+        } else if (scans == g_cfg.mv_oob_poke + 2) {
+            *w ^= 0xff;
+            append_line(g_log_path, "; MV OOBPOKE restored\n");
+        }
+    }
+    const auto *all = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units));
+    char        m[300];
+    // Ownership THIS step, so a slot a unit freed (or took) in this very step is not mistaken for an unowned one: only a
+    // slot that is unowned both before AND after the step counts.
+    uint8_t owned_now[8 * 100];
+    memset(owned_now, 0, sizeof(owned_now));
+    for (unsigned p = 0; p < 8; ++p)
+        for (unsigned i = 0; i < 100; ++i) {
+            const unsigned sl = all[p * 100u + i].path_slot_id;
+            if (sl < 100) owned_now[p * 100u + sl] = 1;
+        }
+    struct owned_save {
+        uint8_t       *prev;
+        const uint8_t *now;
+        ~owned_save() { memcpy(prev, now, 8 * 100); }
+    } owned_save_guard{g_mv_owned_prev, owned_now};
+    if (!g_mv_pb_init) {
+        if (g_cfg.mv_oob_fill > 0) {
+            uint8_t *w = const_cast<uint8_t *>(pb) + (((size_t)((g_cfg.mv_player + 2) & 7)) * 30000u + 55u * 300u) * 2u;
+            for (int i = 0; i < 300; ++i) {
+                w[i * 2]     = (uint8_t)g_cfg.mv_oob_fill;
+                w[i * 2 + 1] = 1;
+            }
+            wsprintfA(m, "; MV OOBFILL player %d slot 55 filled with %d/1 legs (forced precondition; no unit owns that slot)\n", (g_cfg.mv_player + 2) & 7, g_cfg.mv_oob_fill);
+            append_line(g_log_path, m);
+        }
+        memcpy(g_mv_pbshadow, pb, TOTAL);
+        g_mv_pb_init = true;
+        return;
+    }
+    if (!memcmp(g_mv_pbshadow, pb, TOTAL)) return;
+    for (unsigned p = 0; p < 8; ++p)
+        for (unsigned s = 0; s < 100; ++s) {
+            const size_t off = ((size_t)p * 30000u + (size_t)s * 300u) * 2u;
+            if (!memcmp(g_mv_pbshadow + off, pb + off, SLOT)) continue;
+            const bool owned = owned_now[p * 100u + s] || g_mv_owned_prev[p * 100u + s];
+            if (!owned) {
+                ++g_mv_oob_total;
+                if (g_mv_oob_lines < 200) {
+                    ++g_mv_oob_lines;
+                    unsigned first = 0, nz = 0;
+                    for (size_t b = 0; b < SLOT; ++b) {
+                        if (pb[off + b] != g_mv_pbshadow[off + b]) {
+                            if (!nz) first = (unsigned)b;
+                            ++nz;
+                        }
+                    }
+                    wsprintfA(m, "; MV OOBW step=%lu player=%u slot=%u UNOWNED changed_bytes=%u first_off=%u new=%02x%02x\n", g_step, p, s, nz, first,
+                              pb[off + (first & ~1u)], pb[off + (first | 1u)]);
+                    append_line(g_log_path, m);
+                }
+            }
+            memcpy(g_mv_pbshadow + off, pb + off, SLOT);
+        }
+    memcpy(g_mv_pbshadow, pb, TOTAL); // the rest (slots >= 100 never exist; a stray write past them is copied too)
+}
+
+
+// ---- mods:M1D helpers ------------------------------------------------------------------------------
+// wsprintfA truncates at 1024 bytes; route and path lines are longer, so they are built with this.
+struct mv_buf {
+    char buf[12288];
+    int  n;
+    void reset() {
+        n      = 0;
+        buf[0] = 0;
+    }
+    void add(const char *f, ...) {
+        char    t[600];
+        va_list ap;
+        va_start(ap, f);
+        const int k = wvsprintfA(t, f, ap);
+        va_end(ap);
+        if (k > 0 && n + k < (int)sizeof(buf) - 2) {
+            memcpy(buf + n, t, (size_t)k);
+            n += k;
+            buf[n] = 0;
+        }
+    }
+    void flush() {
+        if (n == 0 || buf[n - 1] != '\n') add("\n");
+        append_line(g_log_path, buf);
+        reset();
+    }
+};
+mv_buf g_mv_b;
+
+inline char mv_tilechar(int x, int y) {
+    const uint32_t idx = ((uint32_t)x << 8) | (uint32_t)y;
+    const uint8_t  pv  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[idx];
+    const unsigned cls = pf_tobj()[idx].class_owner & 0xf0u;
+    if (cls == 0x80u) return pv == 5 ? 'm' : 'u'; // a unit walking in / a settled (parked) unit
+    if (cls == 0x40u) return 'B';
+    if (cls == 0x10u) return 't';
+    if (cls != 0) return 'X';
+    if (pv == 0) return '#';
+    return pv == 1 ? '.' : '?';
+}
+// The tile classes the planner sees at this instant, one row per y (x across): '#' cliff/water/rock, 'B' building, 't' tree,
+// 'u' settled unit, 'm' unit stepping in, '.' open.
+void mv_map_dump(int ord, uint32_t mw, uint32_t mh_) {
+    char row[300];
+    for (uint32_t y = 0; y < mh_; ++y) {
+        int n = wsprintfA(row, "; MV MAP ord=%d y=%02lu ", ord, (unsigned long)y);
+        for (uint32_t x = 0; x < mw; ++x) row[n++] = mv_tilechar((int)x, (int)y);
+        row[n++] = '\n';
+        row[n]   = 0;
+        append_line(g_log_path, row);
+    }
+}
+uint8_t g_mv_cost0[256 * 256];
+bool    g_mv_cost_init = false;
+// The router's per-tile cost: the low byte of region_cell.terrain_flags (passable bit + obstacle-proximity rings), dumped at the
+// base and again at an order only if it changed since the base.
+void mv_cost_dump(int ord, uint32_t mw, uint32_t mh_, const char *tag) {
+    const auto *rc = reinterpret_cast<const mh::game::mh_llm_map_region_cell *>(mh::state::live_base(mh::state::RID_MAP_REGION_GRID));
+    char        row[400];
+    for (uint32_t y = 0; y < mh_; ++y) {
+        int n = wsprintfA(row, "; MV %s ord=%d y=%02lu ", tag, ord, (unsigned long)y);
+        for (uint32_t x = 0; x < mw; ++x) {
+            const uint8_t v = (uint8_t)(rc[(x << 8) | y].terrain_flags & 0xffu);
+            row[n++]        = "0123456789abcdef"[v >> 4];
+            row[n++]        = "0123456789abcdef"[v & 15];
+        }
+        row[n++] = '\n';
+        row[n]   = 0;
+        append_line(g_log_path, row);
+    }
+}
+void mv_cost_check(int ord, uint32_t mw, uint32_t mh_) {
+    const auto *rc      = reinterpret_cast<const mh::game::mh_llm_map_region_cell *>(mh::state::live_base(mh::state::RID_MAP_REGION_GRID));
+    int         changed = 0;
+    for (uint32_t x = 0; x < mw; ++x)
+        for (uint32_t y = 0; y < mh_; ++y) {
+            const uint8_t v = (uint8_t)(rc[(x << 8) | y].terrain_flags & 0xffu);
+            if (!g_mv_cost_init) g_mv_cost0[(x << 8) | y] = v;
+            else if (g_mv_cost0[(x << 8) | y] != v) ++changed;
+        }
+    char m[160];
+    if (!g_mv_cost_init) {
+        g_mv_cost_init = true;
+        mv_cost_dump(-1, mw, mh_, "COST");
+        return;
+    }
+    wsprintfA(m, "; MV COSTSUM ord=%d cells_changed_vs_base=%d\n", ord, changed);
+    append_line(g_log_path, m);
+    if (changed) mv_cost_dump(ord, mw, mh_, "COST");
+}
+uint32_t mv_head_hash(const mh::game::mh_map_object_unit &u, unsigned p) {
+    if (u.path_slot_id == 0xff) return 0;
+    const auto *wp = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS)) + p * 30000u +
+                     (unsigned)u.path_slot_id * 300u;
+    uint32_t h = 2166136261u;
+    for (int c = 0; c < 300; ++c) {
+        if (wp[c].heading == 0) break;
+        h = (h ^ wp[c].heading) * 16777619u;
+    }
+    return h;
+}
+// The unit's slot as "heading/run" (spent legs read run 0 and are skipped when from_cursor).
+void mv_legs_str(mv_buf &b, const mh::game::mh_map_object_unit &u, unsigned p, bool from_cursor) {
+    if (u.path_slot_id == 0xff) return;
+    const auto *wp = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS)) + p * 30000u +
+                     (unsigned)u.path_slot_id * 300u;
+    for (int c = from_cursor ? u.path_cursor : 0; c >= 0 && c < 300; ++c) {
+        if (wp[c].heading == 0) break;
+        if (wp[c].run_length == 0 && from_cursor) continue;
+        b.add("%u/%u ", (unsigned)wp[c].heading, (unsigned)wp[c].run_length);
+    }
+}
+
+void mv_issue(int oi, unsigned p) {
+    mv_order &o  = g_mv_ord[oi];
+    auto     *un = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    auto     *cg = reinterpret_cast<mh::game::mh_llm_strat_ctrl_group *>(mh::state::live_base(mh::state::RID_STRAT_CTRL_GROUPS));
+    char      m[512];
+    // The selection: park whoever sits in the scratch group 9 in group 8, put exactly this order's units into 9, activate it.
+    uint16_t old[200];
+    int      nold = cg[9].count < 0 ? 0 : (cg[9].count > 200 ? 200 : cg[9].count);
+    for (int i = 0; i < nold; ++i) old[i] = cg[9].unit_ids[i];
+    for (int i = 0; i < nold; ++i) mh::call::llm_strat_unit_ctrl_group_assign(old[i], 8);
+    for (int i = 0; i < o.n; ++i) mh::call::llm_strat_unit_ctrl_group_assign(o.unit[i], 9);
+    mh::call::llm_unit_ctrl_group_activate(9);
+    mv_map_dump(oi, synth_map_w(), synth_map_h());
+    mv_cost_check(oi, synth_map_w(), synth_map_h());
+    int n0 = wsprintfA(m, "; MV ORDER ord=%d step=%lu rel=%lu goal=%d,%d via=%s sel0(n=%d)=", oi, g_step, (unsigned long)(g_step - g_mv_base), o.gx, o.gy,
+                       g_cfg.mv_deferred ? "deferred/0x8000" : "id0", (int)cg[0].count);
+    for (int i = 0; i < cg[0].count && i < 20; ++i) n0 += wsprintfA(m + n0, "%u ", (unsigned)cg[0].unit_ids[i]);
+    wsprintfA(m + n0, "\n");
+    append_line(g_log_path, m);
+    wsprintfA(m, "; MV CLICKFOG ord=%d click=%d,%d discovered=%d visible_now=%d passable=%d\n", oi, o.gx, o.gy, mv_discovered(o.gx, o.gy, p), mv_visible(o.gx, o.gy, p),
+              (int)reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)o.gx << 8) | (uint32_t)o.gy]);
+    append_line(g_log_path, m);
+    if (o.atk_p >= 0) {
+        // M1 attack probe: the right-click on an enemy BUILDING (selector 0x40 -> attack_building_reposition per member).
+        wsprintfA(m, "; MV ATTACK ord=%d target building p%d/%d\n", oi, o.atk_p, o.atk_i);
+        append_line(g_log_path, m);
+        mh::call::llm_strat_group_issue_attack_order((uint32_t)o.atk_i, (uint32_t)o.atk_p, 0x40);
+    } else if (o.atk_p == -2) {
+        append_line(g_log_path, "; MV MERGE (llm_strat_group_issue_move_order, the Shift-click on an own soldier)\n");
+        mh::call::llm_strat_group_issue_move_order((uint32_t)o.gx, (uint32_t)o.gy);
+    } else if (o.atk_p == -3) mh::call::llm_strat_group_issue_move_order_deferred(o.gx, o.gy, 0x8000);
+    else if (g_cfg.mv_deferred) mh::call::llm_strat_group_issue_move_order_deferred(o.gx, o.gy, 0x8000);
+    else mh::call::llm_strat_group_issue_move_order((uint32_t)o.gx, (uint32_t)o.gy);
+    mv_osum &s        = g_mv_os[oi];
+    s                 = mv_osum{};
+    s.t_first         = 0xffffffffu;
+    s.issued          = true;
+    s.n               = o.n;
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    for (int i = 0; i < o.n; ++i) {
+        mv_unit *t = mv_find(o.unit[i]);
+        if (!t) continue;
+        const auto &u = un[t->idx];
+        if (t->cur >= 0) mv_close(*t, u, "interrupted", mw, mh_);
+        t->cur      = oi;
+        t->iss_step = g_step;
+        t->mgid0    = (int)u.move_group_id;
+        t->sx       = u.x;
+        t->sy       = u.y;
+        t->tiles = t->maxret_a = t->maxret_f = t->replans = t->marshal_entries = t->stalls = t->nonmoving = 0;
+        t->disp_step = t->longest_stall = 0;
+        t->disp = t->stall_open = false;
+        t->pslot                = -2;
+        t->pcursor              = -1;
+        t->paths = t->fp_ex = t->fp_ey = t->fp_tiles = t->fp_gx = t->fp_gy = 0;
+        t->fp_disc                                                         = -1;
+        t->fp_done = t->detour_seen = false;
+        t->last_move                = g_step;
+        ++s.open;
+        wsprintfA(m, "; MV START ord=%d u=%d xy=%d,%d st=0x%02x mg=0x%x straight=%d\n", oi, t->idx, (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.move_group_id,
+                  mv_cheb(u.x, u.y, o.gx, o.gy, mw, mh_));
+        append_line(g_log_path, m);
+    }
+}
+
+// mods:M1 fx probe: projectiles of player p (spawn + impact) and new fx anims of frame mv_fx_frame. Observe-only.
+uint8_t  g_mvf_prj[1500];
+double   g_mvf_fx_ts[10000];
+int32_t  g_mvf_fx_live[10000];
+uint32_t g_mvf_lines = 0, g_mvf_tick_lines = 0;
+int32_t  g_mvf_face[1500], g_mvf_loop[1500];
+void     mv_fx_scan(unsigned p) {
+    if (!g_cfg.mv_fx || g_mvf_lines > 20000) return;
+    auto *P  = reinterpret_cast<const mh::game::mh_llm_strat_projectile *>(mh::state::live_base(mh::state::RID_STRAT_PROJECTILE_POOL));
+    auto *F  = reinterpret_cast<const mh::game::mh_llm_strat_fx_anim *>(mh::state::live_base(mh::state::RID_STRAT_FX_ANIMS));
+    auto *un = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units));
+    char  m[400];
+    if (P) {
+        for (int s = 1; s < 1500; ++s) {
+            const auto   &q   = P[s];
+            const uint8_t now = q.active ? 1 : 0;
+            if (now && now == g_mvf_prj[s] && (q.shooter_ref & 0xfu) == p && g_mvf_tick_lines < 4000 &&
+                (q.facing != g_mvf_face[s] || q.anim_loop_frame != g_mvf_loop[s])) {
+                // M1 projectile facing probe: a per-tick FACING or LOOP-BASE change of a live shot (the in-flight sprite base).
+                wsprintfA(m, "; MV PRJT step=%lu slot=%d at=%u,%u facing %d->%d frame=%d loop %d->%d dst=%u,%u\n", g_step, s, (unsigned)q.x, (unsigned)q.y,
+                              g_mvf_face[s], q.facing, q.anim_frame, g_mvf_loop[s], q.anim_loop_frame, (unsigned)q.dst_x, (unsigned)q.dst_y_vis);
+                append_line(g_log_path, m);
+                ++g_mvf_tick_lines;
+            }
+            if (now) {
+                g_mvf_face[s] = q.facing;
+                g_mvf_loop[s] = q.anim_loop_frame;
+            }
+            if (now == g_mvf_prj[s]) continue;
+            g_mvf_prj[s] = now;
+            if ((q.shooter_ref & 0xfu) != p) continue;
+            const int   ui = q.shooter_unit;
+            const auto *u  = (ui > 0 && ui < 100) ? &un[p * 100u + ui] : nullptr;
+            if (now) {
+                wsprintfA(m, "; MV PRJ+ step=%lu slot=%d w=%d u=%d utile=%d,%d src=%u,%u(vis %u) dst=%u,%u(vis %u) dst_tile=%u,%u scat=%d,%d tref=0x%x/%d tfine=%d,%d st=0x%02x facing=%d frame=%d loop=%d\n",
+                              g_step, s, q.weapon_id, ui, u ? (int)u->x : -1, u ? (int)u->y : -1, (unsigned)q.src_x, (unsigned)q.src_y_ground,
+                              (unsigned)q.src_y_vis, (unsigned)q.dst_x, (unsigned)q.dst_y_ground, (unsigned)q.dst_y_vis, (unsigned)q.dst_x >> 5,
+                              (unsigned)q.dst_y_ground >> 5, q.scatter_x, q.scatter_y, u ? (unsigned)(uint16_t)u->target_ref : 0u, u ? (int)u->target_index : -1,
+                          u ? u->target_fine_x : 0, u ? u->target_fine_y : 0, u ? (unsigned)u->state : 0u, q.facing, q.anim_frame, q.anim_loop_frame);
+            } else {
+                wsprintfA(m, "; MV PRJ- step=%lu slot=%d w=%d u=%d end=%u,%u end_tile=%u,%u\n", g_step, s, q.weapon_id, ui, (unsigned)q.x, (unsigned)q.y,
+                              (unsigned)q.x >> 5, (unsigned)q.y >> 5);
+            }
+            append_line(g_log_path, m);
+            ++g_mvf_lines;
+        }
+    }
+    if (F) {
+        for (int s = 1; s < 10000; ++s) {
+            const auto &f = F[s];
+            if (!f.live) {
+                g_mvf_fx_live[s] = 0;
+                continue;
+            }
+            if (g_mvf_fx_live[s] && g_mvf_fx_ts[s] == f.timestamp) continue;
+            const bool fresh = !g_mvf_fx_live[s];
+            g_mvf_fx_live[s] = 1;
+            g_mvf_fx_ts[s]   = f.timestamp;
+            if (!fresh || (g_cfg.mv_fx_frame >= 0 && f.anim_frame != g_cfg.mv_fx_frame)) continue;
+            wsprintfA(m, "; MV FX step=%lu slot=%d frame=%d at=%u,%u tile=%u,%u layer=%u\n", g_step, s, f.anim_frame, (unsigned)f.x, (unsigned)f.y,
+                          (unsigned)f.x >> 5, (unsigned)f.y >> 5, (unsigned)f.layer);
+            append_line(g_log_path, m);
+            ++g_mvf_lines;
+        }
+    }
+}
+
+void mv_tick() {
+    if (!g_cfg.mv_replay[0] || g_mv_done) return;
+    const unsigned p      = (unsigned)g_cfg.mv_player;
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    char           m[512];
+    if (p >= 8 || planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_cfg.mv_oob) mv_oob_scan();
+    auto       *un = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto *U  = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    if (!g_mv_loaded) {
+        mv_load();
+        if (g_mv_nord == 0) {
+            append_line(g_log_path, "; MV FAIL no orders parsed from mv_replay\n");
+            g_mv_done = true;
+            return;
+        }
+    }
+    if (side != p) return; // only the owner peer issues
+    if (!g_mv_based) {
+        g_mv_based = true;
+        g_mv_base  = g_step - 1; // this is load-relative step 1
+        for (int o = 0; o < g_mv_nord; ++o)
+            for (int i = 0; i < g_mv_ord[o].n; ++i)
+                if (!mv_find(g_mv_ord[o].unit[i]) && g_mv_nu < MV_MAX_U && g_mv_ord[o].unit[i] > 0 && g_mv_ord[o].unit[i] < 100) {
+                    mv_unit &t = g_mv_u[g_mv_nu++];
+                    t          = mv_unit{};
+                    t.idx      = g_mv_ord[o].unit[i];
+                    t.cur      = -1;
+                }
+        wsprintfA(m, "; MV BEGIN step=%lu base=%lu map=%lux%lu player=%u planet=%u side=%u orders=%d tracked=%d sample=%d stall=%d tail=%d via=%s\n", g_step,
+                  (unsigned long)g_mv_base, (unsigned long)mw, (unsigned long)mh_, p, planet, side, g_mv_nord, g_mv_nu, g_cfg.mv_sample, g_cfg.mv_stall,
+                  g_cfg.mv_tail, g_cfg.mv_deferred ? "deferred/0x8000" : "id0");
+        append_line(g_log_path, m);
+        {
+            // The terrain as the planner sees it at load: one hex row per column x (value of passable[(x<<8)|y], y = 0..h-1)
+            // and one row of discovered bits for this player ('1' discovered).
+            const uint8_t *pas = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE));
+            for (uint32_t x = 0; x < mw; ++x) {
+                char row[600], drow[320];
+                int  n = wsprintfA(row, "; MV PASSROW x=%lu ", (unsigned long)x), nd = wsprintfA(drow, "; MV DISCROW x=%lu ", (unsigned long)x);
+                for (uint32_t y = 0; y < mh_; ++y) {
+                    const uint8_t v = pas[(x << 8) | y];
+                    row[n++]        = "0123456789abcdef"[v >> 4];
+                    row[n++]        = "0123456789abcdef"[v & 15];
+                    drow[nd++]      = mv_discovered((int)x, (int)y, p) ? '1' : '0';
+                }
+                row[n++]   = '\n';
+                row[n]     = 0;
+                drow[nd++] = '\n';
+                drow[nd]   = 0;
+                append_line(g_log_path, row);
+                append_line(g_log_path, drow);
+            }
+        }
+        mv_map_dump(-1, mw, mh_);
+        mv_cost_check(-1, mw, mh_);
+        for (int i = 1; i < 100; ++i) {
+            const auto &u = un[i];
+            if (!(u.energy > 0.0) || u.unit_proto_id >= 512) continue;
+            const auto &c = U[u.unit_proto_id];
+            wsprintfA(m, "; MV ROSTER u=%d proto=%u type=0x%x move_op=0x%x xy=%d,%d st=0x%02x or=0x%02x mg=0x%x ctrl=%d step_speed=%d/1000 hp=%d%s\n", i,
+                      (unsigned)u.unit_proto_id, (unsigned)c.type, (unsigned)c.move_op_code, (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order,
+                      (unsigned)u.move_group_id, (int)u.ctrl_group_id, (int)(c.step_speed[p] * 1000.0), (int)u.energy, mv_find(i) ? " TRACKED" : "");
+            append_line(g_log_path, m);
+        }
+        {
+            // M1 attack probe: every live building of the players the attack rows name (the target roster).
+            const auto *B = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::live_base(mh::state::RID_BUILDINGS));
+            for (int tp = 0; tp < 8; ++tp) {
+                for (int i = 0; i < 100; ++i) {
+                    const auto &b = B[tp * 100 + i];
+                    if (!(b.energy > 0.0)) continue;
+                    const auto *CB = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+                    const int   bw = CB ? (int)CB[b.building_id].width : -1, bh = CB ? (int)CB[b.building_id].height : -1;
+                    wsprintfA(m, "; MV BROSTER p=%d b=%d id=%u xy=%d,%d wh=%dx%d st=%u hp=%d\n", tp, i, (unsigned)b.building_id, (int)b.x, (int)b.y, bw,
+                              bh, (unsigned)b.state, (int)b.energy);
+                    append_line(g_log_path, m);
+                }
+            }
+        }
+        for (int k = 0; k < g_mv_nu; ++k) {
+            mv_unit    &t = g_mv_u[k];
+            const auto &u = un[t.idx];
+            t.alive       = u.energy > 0.0;
+            t.x           = u.x;
+            t.y           = u.y;
+            t.state       = u.state;
+            t.order       = u.order;
+            t.last_move   = g_step;
+            if (!t.alive) {
+                wsprintfA(m, "; MV WARN tracked unit %d is not alive in the loaded save (energy=%d)\n", t.idx, (int)u.energy);
+                append_line(g_log_path, m);
+            }
+        }
+    }
+    const uint32_t rel = g_step - g_mv_base;
+    // 1. issue the orders that are due (the click lands 1 step before the order shows in the queue)
+    while (g_mv_next < g_mv_nord && rel + 1 >= g_mv_ord[g_mv_next].step) mv_issue(g_mv_next++, p);
+    mv_fx_scan(p);
+    // 2. observe every tracked unit this step
+    for (int k = 0; k < g_mv_nu; ++k) {
+        mv_unit    &t     = g_mv_u[k];
+        const auto &u     = un[t.idx];
+        const bool  alive = u.energy > 0.0;
+        if (t.alive && !alive) {
+            mv_line("DEAD", t, u, p, mw, mh_);
+            t.alive = false;
+            if (t.cur >= 0) mv_close(t, u, "dead", mw, mh_);
+            continue;
+        }
+        if (!alive) continue;
+        bool changed = false;
+        if (u.state != t.state || u.order != t.order) {
+            if (t.cur >= 0 && t.disp) {
+                if (u.state == 0x0a && t.state != 0x0a) {
+                    ++t.marshal_entries;
+                    if (t.state == 0x0f) {
+                        ++t.replans;
+                        // Why did a walking unit fall back to the marshal? A retry byte at/over 0xc0 = the 201-try wait ran out; a
+                        // blocker ahead with the byte far below it = the detour path forced it (sidestep splice, then replan); neither =
+                        // the path ended off-goal (or the blocker cleared).
+                        const char *why = t.pretry >= 0xc0 ? "wait-exhausted(201)" : ((t.pk >= 1 && t.pk <= 4) || t.pk == 6) ? "detour-forced(blocker ahead)"
+                                                                                                                             : "path-end-or-cleared";
+                        wsprintfA(m, "; MV REPLAN step=%lu ord=%d u=%d xy=%d,%d reason=%s prev_retry=%d prev_blocker=%s [%s]\n", g_step, t.cur, t.idx, (int)u.x, (int)u.y, why, t.pretry,
+                                  MV_KIND[t.pk], t.pdesc);
+                        append_line(g_log_path, m);
+                    }
+                }
+            }
+            changed = true;
+        }
+        if ((int)u.x != t.x || (int)u.y != t.y) {
+            if (t.cur >= 0 && t.disp) ++t.tiles;
+            if (t.cur >= 0) {
+                wsprintfA(m, "; MV T step=%lu u=%d ord=%d d=%d xy=%d,%d\n", g_step, t.idx, t.cur, t.disp ? 1 : 0, (int)u.x, (int)u.y);
+                append_line(g_log_path, m);
+            }
+            t.x = u.x;
+            t.y = u.y;
+        }
+        // "motion" = any change of tile, sub-tile microstep or facing. A unit is STALLED only when none of the three
+        // moves: a tile takes ~62 steps at step_speed 0.02 s/microstep, so "no tile change for 50 steps" is just walking.
+        if ((int)u.move_microstep != t.ms || (int)u.facing_current != t.fc || (int)u.x != t.mx || (int)u.y != t.my) {
+            t.ms        = (int)u.move_microstep;
+            t.fc        = (int)u.facing_current;
+            t.mx        = u.x;
+            t.my        = u.y;
+            t.last_move = g_step;
+            mv_stall_end(t, u, "moved");
+        }
+        if (t.cur >= 0) {
+            if (t.cur >= 0 && !t.disp && (int)u.move_group_id != t.mgid0) {
+                t.disp      = true;
+                t.disp_step = g_step;
+                t.last_move = g_step;
+                changed     = true;
+                wsprintfA(m, "; MV DISPATCH ord=%d u=%d step=%lu after=%lu mg=0x%x st=0x%02x or=0x%02x goal=%d,%d\n", t.cur, t.idx, g_step,
+                          (unsigned long)(g_step - t.iss_step), (unsigned)u.move_group_id, (unsigned)u.state, (unsigned)u.order, (int)u.goal_x, (int)u.goal_y);
+                append_line(g_log_path, m);
+            }
+            if (t.disp) {
+                if (u.state == 0x0a && (int)u.path_blocked_retry_count > t.maxret_a) t.maxret_a = u.path_blocked_retry_count;
+                if (u.state == 0x0f && (int)u.path_blocked_retry_count > t.maxret_f) t.maxret_f = u.path_blocked_retry_count;
+                if (u.path_blocked_retry_count >= 0xc9 && !t.detour_seen) {
+                    t.detour_seen = true;
+                    wsprintfA(m, "; MV DETOUR? step=%lu ord=%d u=%d retry=%d st=0x%02x -- the retry byte reads >= 201 (walk wait exhausted or a sidestep splice forced it)\n", g_step, t.cur,
+                              t.idx, (int)u.path_blocked_retry_count, (unsigned)u.state);
+                    append_line(g_log_path, m);
+                }
+                if (u.path_slot_id != 0xff && ((int)u.path_slot_id != t.pslot || u.path_cursor < t.pcursor)) {
+                    int ex, ey, tl;
+                    mv_path_end(u, p, mw, mh_, &ex, &ey, &tl);
+                    const int ggx = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_X), ggy = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_Y);
+                    ++t.paths;
+                    if (!t.fp_done) {
+                        t.fp_done  = true;
+                        t.fp_ex    = ex;
+                        t.fp_ey    = ey;
+                        t.fp_tiles = tl;
+                        t.fp_disc  = mv_discovered(ex, ey, p);
+                        t.fp_gx    = ggx;
+                        t.fp_gy    = ggy;
+                    }
+                    // The centroid the game used (the minimap-blip global) against the torus-correct mean of this order's dispatched
+                    // members, both from member positions NOW. A mismatch is the 0x80-for-map_width wrap bug (lead: pipeline.md section 2).
+                    int tcx = u.x, tcy = u.y, nmem = 0;
+                    {
+                        int ax = 0, ay = 0, rx = -1, ry = -1;
+                        for (int k2 = 0; k2 < g_mv_nu; ++k2)
+                            if (g_mv_u[k2].cur == t.cur && g_mv_u[k2].disp) {
+                                const auto &o2 = un[g_mv_u[k2].idx];
+                                if (rx < 0) {
+                                    rx = o2.x;
+                                    ry = o2.y;
+                                } else {
+                                    int dx = (int)o2.x - rx, dy = (int)o2.y - ry;
+                                    if (dx > (int)mw / 2) dx -= (int)mw;
+                                    if (dx < -(int)mw / 2) dx += (int)mw;
+                                    if (dy > (int)mh_ / 2) dy -= (int)mh_;
+                                    if (dy < -(int)mh_ / 2) dy += (int)mh_;
+                                    ax += dx;
+                                    ay += dy;
+                                }
+                                ++nmem;
+                            }
+                        if (nmem > 0) {
+                            tcx = (int)((uint32_t)(ax / nmem + rx + (int)mw) % mw);
+                            tcy = (int)((uint32_t)(ay / nmem + ry + (int)mh_) % mh_);
+                        }
+                    }
+                    const int gcx = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_CENTROID_X), gcy = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_CENTROID_Y);
+                    char      legs[300];
+                    legs[0] = 0;
+                    {
+                        const auto *pbw = reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS)) +
+                                          p * 30000u + (unsigned)u.path_slot_id * 300u;
+                        int nl = 0;
+                        for (int c = u.path_cursor; c >= 0 && c < 300 && nl < 270; ++c) {
+                            if (pbw[c].heading == 0) break;
+                            if (pbw[c].run_length == 0) continue;
+                            nl += wsprintfA(legs + nl, "%u/%u ", (unsigned)pbw[c].heading, (unsigned)pbw[c].run_length);
+                        }
+                    }
+                    wsprintfA(m, "; MV PATH step=%lu ord=%d u=%d n=%d slot=%d xy=%d,%d goal=%d,%d end=%d,%d tiles=%d end_to_click=%d end_discovered=%d group_goal=%d,%d click_discovered=%d centroid=%d,%d true_centroid=%d,%d members=%d centroid_err=%d legs=%s\n",
+                              g_step, t.cur, t.idx, t.paths, (int)u.path_slot_id, (int)u.x, (int)u.y, (int)u.goal_x, (int)u.goal_y, ex, ey, tl,
+                              mv_cheb(ex, ey, g_mv_ord[t.cur].gx, g_mv_ord[t.cur].gy, mw, mh_), mv_discovered(ex, ey, p), ggx, ggy,
+                              mv_discovered(g_mv_ord[t.cur].gx, g_mv_ord[t.cur].gy, p), gcx, gcy, tcx, tcy, nmem, mv_cheb(gcx, gcy, tcx, tcy, mw, mh_), legs);
+                    append_line(g_log_path, m);
+                }
+                {
+                    const uint32_t lh = mv_head_hash(u, p);
+                    if (t.lh_slot == (int)u.path_slot_id && t.lh && lh != t.lh) {
+                        g_mv_b.add("; MV REPATH step=%lu ord=%d u=%d xy=%d,%d slot=%d pc=%d retry=%d legs=", g_step, t.cur, t.idx, (int)u.x, (int)u.y,
+                                   (int)u.path_slot_id, (int)u.path_cursor, (int)u.path_blocked_retry_count);
+                        mv_legs_str(g_mv_b, u, p, false);
+                        g_mv_b.flush();
+                    }
+                    t.lh      = lh;
+                    t.lh_slot = (int)u.path_slot_id;
+                }
+                t.pslot   = (int)u.path_slot_id;
+                t.pcursor = u.path_cursor;
+                if (!mv_is_moving(u.state)) ++t.nonmoving;
+                else t.nonmoving = 0;
+                // lead-6 precondition: a walking unit facing a PARKED unit on its next tile
+                if (u.state == 0x0f) {
+                    int nx, ny;
+                    if (mv_next_tile(u, p, mw, mh_, &nx, &ny)) {
+                        char d[160];
+                        if (mv_classify(nx, ny, d, sizeof(d)) == 2 && (!t.pf_logged || g_step - t.pf_step >= 50)) {
+                            t.pf_logged = true;
+                            t.pf_step   = g_step;
+                            ++g_mv_parkfront;
+                            wsprintfA(m, "; MV PARKFRONT step=%lu ord=%d u=%d xy=%d,%d next=%d,%d %s retry=%d\n", g_step, t.cur, t.idx, (int)u.x, (int)u.y, nx, ny, d,
+                                      (int)u.path_blocked_retry_count);
+                            append_line(g_log_path, m);
+                        }
+                    }
+                }
+                if (t.nonmoving >= 2) {
+                    mv_close(t, u, "settled", mw, mh_);
+                } else if (mv_is_moving(u.state) && !t.stall_open && g_step - t.last_move >= (uint32_t)g_cfg.mv_stall) {
+                    t.stall_open = true;
+                    t.stall_from = t.last_move;
+                    ++t.stalls;
+                    int  nx, ny, kind = 0;
+                    char d[160];
+                    d[0] = 0;
+                    if (u.state == 0x0f && mv_next_tile(u, p, mw, mh_, &nx, &ny)) kind = mv_classify(nx, ny, d, sizeof(d));
+                    else if (u.state == 0x0f) kind = 5;
+                    mv_osum &s = g_mv_os[t.cur];
+                    ++s.stalls;
+                    ++s.kinds[kind];
+                    wsprintfA(m, "; MV STALL step=%lu ord=%d u=%d xy=%d,%d st=0x%02x retry=%d no_motion=%lu blocker=%s [%s]\n", g_step, t.cur, t.idx, (int)u.x,
+                              (int)u.y, (unsigned)u.state, (int)u.path_blocked_retry_count, (unsigned long)(g_step - t.last_move), MV_KIND[kind], d);
+                    append_line(g_log_path, m);
+                }
+            }
+        }
+        if (changed) mv_line("C", t, u, p, mw, mh_);
+        else if (t.cur >= 0 && (rel % (uint32_t)g_cfg.mv_sample) == 0) mv_line("S", t, u, p, mw, mh_);
+        t.state  = u.state;
+        t.order  = u.order;
+        t.retry  = u.path_blocked_retry_count;
+        t.pretry = u.path_blocked_retry_count;
+        if (u.state == 0x0f) {
+            int nx2, ny2;
+            t.pk       = 5;
+            t.pdesc[0] = 0;
+            if (mv_next_tile(u, p, mw, mh_, &nx2, &ny2)) t.pk = mv_classify(nx2, ny2, t.pdesc, sizeof(t.pdesc));
+        }
+    }
+    // 3. group spread per open order (max pairwise Chebyshev distance among dispatched, unsettled members)
+    for (int o = 0; o < g_mv_next; ++o) {
+        if (g_mv_os[o].open <= 0) continue;
+        int xs[MV_PER], ys[MV_PER], nn = 0;
+        for (int k = 0; k < g_mv_nu && nn < MV_PER; ++k)
+            if (g_mv_u[k].cur == o && g_mv_u[k].disp) {
+                xs[nn] = un[g_mv_u[k].idx].x;
+                ys[nn] = un[g_mv_u[k].idx].y;
+                ++nn;
+            }
+        for (int a = 0; a < nn; ++a)
+            for (int b = a + 1; b < nn; ++b) {
+                const int d = mv_cheb(xs[a], ys[a], xs[b], ys[b], mw, mh_);
+                if (d > g_mv_os[o].spread) g_mv_os[o].spread = d;
+            }
+    }
+    // 4. the end: every order issued and every record closed, or the tail ran out
+    const uint32_t last = g_mv_ord[g_mv_nord - 1].step;
+    bool           open = false;
+    for (int k = 0; k < g_mv_nu; ++k)
+        if (g_mv_u[k].cur >= 0) open = true;
+    if (g_mv_next >= g_mv_nord && (!open || rel >= last + (uint32_t)g_cfg.mv_tail)) {
+        for (int k = 0; k < g_mv_nu; ++k)
+            if (g_mv_u[k].cur >= 0) mv_close(g_mv_u[k], un[g_mv_u[k].idx], "tail", mw, mh_);
+        wsprintfA(m, "; MV DONE step=%lu rel=%lu oob_unowned_slot_changes=%d parkfront_events=%d\n", g_step, (unsigned long)rel, g_mv_oob_total, g_mv_parkfront);
+        append_line(g_log_path, m);
+        g_mv_done = true;
+    }
+}
+
+
+// ---- mods:M1D: the READ-ONLY exit observer on llm_strat_group_move_order_pathfind (0x0041ca37) ------------
+// One call = one wave (the nearest unclaimed member plus everything within its wave radius), and every wave of a marshal is planned
+// inside the same game tick, so the step hook only ever sees the LAST wave's globals. This observer runs when each wave's planning
+// has just finished -- the members, the centroid, the centroid route and each member's written legs are all in place -- and only
+// READS them. The function takes (mode in EAX, target_mask in EDX) and returns nothing; the detour swaps the return address for
+// mv_pf_after, lets the original run (stolen 8-byte prologue + jump back), then calls the observer and returns to the real caller
+// with every register and flag intact. Armed only with mv_replay set and mv_waves=1; refused (logged) if the entry bytes differ.
+extern "C" void __cdecl mv_wave_observe();
+uint32_t g_mv_pf_ret = 0, g_mv_pf_a0 = 0, g_mv_pf_a1 = 0;
+void    *g_mv_pf_tramp = nullptr;
+int      g_mv_wave_n = 0, g_mv_fld_budget = 14;
+uint64_t g_mv_field_mask = 0;
+
+__declspec(naked) void mv_pf_after() {
+    __asm {
+        pushad
+        pushfd
+        call mv_wave_observe
+        popfd
+        popad
+        push dword ptr [g_mv_pf_ret]
+        mov  dword ptr [g_mv_pf_ret], 0
+        ret
+    }
+}
+__declspec(naked) void mv_pf_detour() {
+    __asm {
+        cmp  dword ptr [g_mv_pf_ret], 0
+        jne  passthru
+        mov  dword ptr [g_mv_pf_a0], eax
+        mov  dword ptr [g_mv_pf_a1], edx
+        pop  dword ptr [g_mv_pf_ret]
+        push offset mv_pf_after
+    passthru:
+        jmp  dword ptr [g_mv_pf_tramp]
+    }
+}
+
+extern "C" void __cdecl mv_wave_observe() {
+    if (!g_mv_based || g_mv_done) return;
+    const unsigned p = (unsigned)g_cfg.mv_player;
+    if (*mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_OWNER) != (int32_t)p) return;
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    const int      cnt = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_MEMBER_COUNT);
+    if (cnt <= 0 || cnt > 100) return;
+    const auto    *gm  = reinterpret_cast<const mh::game::mh_llm_strat_group_member *>(mh::state::live_base(mh::state::RID_STRAT_GROUP_MEMBERS));
+    const uint8_t *mt  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_GROUP_MEMBER_TILE));
+    const auto    *rs  = reinterpret_cast<const mh::game::mh_llm_strat_route_step *>(mh::state::live_base(mh::state::RID_STRAT_GROUP_ROUTE_STEPS));
+    const auto    *un  = reinterpret_cast<const mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    int            ord = -1;
+    for (int i = 0; i < cnt; ++i)
+        if (const mv_unit *t = mv_find((int)gm[i].unit_handle))
+            if (t->cur >= 0) {
+                ord = t->cur;
+                break;
+            }
+    const int32_t gx = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_X), gy = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ORDER_GOAL_Y);
+    const int32_t ax = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ANCHOR_X), ay = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_ANCHOR_Y);
+    const int32_t cx = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_CENTROID_X), cy = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_GROUP_CENTROID_Y);
+    ++g_mv_wave_n;
+    const int wn     = g_mv_wave_n;
+    int       rtiles = 0;
+    for (int i = 0; i < 256 && rs[i].run_length != 0; ++i) rtiles += rs[i].run_length;
+    g_mv_b.add("; MV WAVE n=%d step=%lu rel=%lu ord=%d mode=%d tmask=%d members=%d centroid=%d,%d goal=%d,%d anchor=%d,%d route_tiles=%d route=", wn, g_step,
+               (unsigned long)(g_step - g_mv_base), ord, (int)g_mv_pf_a0, (int)(g_mv_pf_a1 & 0xff), cnt, cx, cy, gx, gy, ax, ay, rtiles);
+    for (int i = 0; i < 256 && rs[i].run_length != 0; ++i) g_mv_b.add("%u/%u ", (unsigned)rs[i].dir_code, (unsigned)rs[i].run_length);
+    g_mv_b.flush();
+    for (int i = 0; i < cnt; ++i) {
+        const unsigned h = gm[i].unit_handle;
+        if (h >= 100) continue;
+        const auto &u  = un[h];
+        int         ex = u.x, ey = u.y, tl = 0;
+        if (u.path_slot_id != 0xff) mv_path_end(u, p, mw, mh_, &ex, &ey, &tl);
+        g_mv_b.add("; MV WAVEM n=%d ord=%d u=%u from=%d,%d tile=%d,%d slot=%d end=%d,%d tiles=%d legs=", wn, ord, h, (int)gm[i].cur_col, (int)gm[i].cur_row,
+                   (int)mt[i * 2], (int)mt[i * 2 + 1], (int)u.path_slot_id, ex, ey, tl);
+        mv_legs_str(g_mv_b, u, p, false);
+        g_mv_b.flush();
+    }
+    if (ord >= 0 && ord < 64 && ((g_mv_field_mask >> ord) & 1u) && g_mv_fld_budget > 0) {
+        --g_mv_fld_budget;
+        const auto *rc = reinterpret_cast<const mh::game::mh_llm_map_region_cell *>(mh::state::live_base(mh::state::RID_MAP_REGION_GRID));
+        char        row[600];
+        for (uint32_t y = 0; y < mh_; ++y) {
+            int n = wsprintfA(row, "; MV FLD n=%d ord=%d y=%02lu", wn, ord, (unsigned long)y);
+            for (uint32_t x = 0; x < mw; ++x) {
+                const uint32_t v = rc[(x << 8) | y].terrain_flags >> 8;
+                if (v == 0) n += wsprintfA(row + n, "    .");
+                else if (v == 0xffffffu) n += wsprintfA(row + n, "    #");
+                else n += wsprintfA(row + n, " %4u", (unsigned)v);
+            }
+            row[n++] = '\n';
+            row[n]   = 0;
+            append_line(g_log_path, row);
+        }
+    }
+}
+
+void mv_arm_waves() {
+    for (const char *q = g_cfg.mv_field; *q;) {
+        if (*q >= '0' && *q <= '9') {
+            const int o = atoi(q);
+            if (o >= 0 && o < 64) g_mv_field_mask |= (uint64_t)1 << o;
+            while (*q >= '0' && *q <= '9') ++q;
+        } else
+            ++q;
+    }
+    // The detour's trampoline (stolen prologue + jump back) comes from the named hook point; the interlock logs any refusal.
+    if (!mh::hook::arm_observer(mh::hook::point::group_pathfind, reinterpret_cast<void *>(mv_pf_detour), &g_mv_pf_tramp))
+        append_line(g_log_path, "; MV WAVES NOT armed: the group_pathfind hook point was refused (see the [interlock] summary in mh_net.log)\n");
+    else append_line(g_log_path, "; MV WAVES ARMED: read-only exit observer on llm_strat_group_move_order_pathfind\n");
 }
 
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
@@ -8609,9 +10669,9 @@ void on_sim_step() {
     // is staged on the same step on every peer; it takes effect later via the scheduled lockstep lane.
     // A catch-up after a world resync REPLAYS steps whose orders this peer already issued live (they are in
     // the admission log and staged back); re-issuing them would double every order and pile them in PENDING.
-    if (g_synth_armed && !g_synth_failed && g_cfg.synth_at > 0 && g_step >= (uint32_t)g_cfg.synth_at &&
+    if (g_synth_armed && !g_synth_failed && g_cfg.synth_at > 0 && mstep() >= (uint32_t)g_cfg.synth_at &&
         g_step > g_ws_replay_until) {
-        const uint32_t d = g_step - (uint32_t)g_cfg.synth_at;
+        const uint32_t d = mstep() - (uint32_t)g_cfg.synth_at;
         if (d == 0 || (g_cfg.synth_every > 0 && (d % (uint32_t)g_cfg.synth_every) == 0))
             synth_move_issue();
     }
@@ -8644,16 +10704,17 @@ void on_sim_step() {
 
     // U32: the conquest workload. BEFORE the hash, like synth_move, so every order is staged on the
     // same step on every peer and takes effect later through the scheduled lockstep lane.
-    if (g_conq_armed && !g_conq_failed && g_cfg.conq_at > 0 && g_step >= (uint32_t)g_cfg.conq_at)
+    if (g_conq_armed && !g_conq_failed && g_cfg.conq_at > 0 && mstep() >= (uint32_t)g_cfg.conq_at)
         conq_issue();
-    if (g_conq_armed && g_cfg.conq_probe_every > 0 && (g_step % (uint32_t)g_cfg.conq_probe_every) == 0)
+    if (g_conq_armed && g_cfg.conq_probe_every > 0 && (mstep() % (uint32_t)g_cfg.conq_probe_every) == 0)
         conq_probe();
-    if ((g_cfg.relation_dump_step > 0 && g_step == (uint32_t)g_cfg.relation_dump_step) ||
-        (g_cfg.relation_dump_step2 > 0 && g_step == (uint32_t)g_cfg.relation_dump_step2))
+    if ((g_cfg.relation_dump_step > 0 && mstep() == (uint32_t)g_cfg.relation_dump_step) ||
+        (g_cfg.relation_dump_step2 > 0 && mstep() == (uint32_t)g_cfg.relation_dump_step2))
         relation_dump(); // mp:U52
     hit_probe();         // mp:U52
+    garage_probe();      // observe-only storage-exit probe
     hostile_probe();     // mp:U52
-    if (g_cfg.relation_order_at > 0 && g_step == (uint32_t)g_cfg.relation_order_at &&
+    if (g_cfg.relation_order_at > 0 && mstep() == (uint32_t)g_cfg.relation_order_at &&
         (g_cfg.relation_order_side < 0 ||
          (unsigned)g_cfg.relation_order_side == *reinterpret_cast<const uint16_t *>(ADDR_SIDE))) { // mp:U52: the dialog's own order call
         const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
@@ -8665,7 +10726,7 @@ void on_sim_step() {
                                                       (uint8_t)g_cfg.relation_order_value);
     }
 
-    if (g_cfg.vision_order_at > 0 && g_step == (uint32_t)g_cfg.vision_order_at &&
+    if (g_cfg.vision_order_at > 0 && mstep() == (uint32_t)g_cfg.vision_order_at &&
         (g_cfg.vision_order_side < 0 || (unsigned)g_cfg.vision_order_side == *reinterpret_cast<const uint16_t *>(ADDR_SIDE))) {
         const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
         char           vm[160];
@@ -8699,7 +10760,26 @@ void on_sim_step() {
     // arm and every build agree without touching the queue.
 
     // The save-state index probe: one "; AISTATE" line per player, once. See aistate_probe_at.
-    if (g_cfg.aistate_probe_at > 0 && g_step == (uint32_t)g_cfg.aistate_probe_at) emit_aistate();
+    if (g_cfg.aistate_probe_at > 0 && mstep() == (uint32_t)g_cfg.aistate_probe_at) emit_aistate();
+    if (g_cfg.progress_probe_at > 0 && g_step == (uint32_t)g_cfg.progress_probe_at) emit_progress("a");
+    if (g_cfg.progress_conquer_at > 0 && g_step == (uint32_t)g_cfg.progress_conquer_at) {
+        const unsigned pl = *reinterpret_cast<const uint16_t *>(mh::addr::G_PLANET_INDEX);
+        mh::call::game_UpdateProgress(*reinterpret_cast<const uint16_t *>(mh::addr::PlayerSide),
+                                      *reinterpret_cast<const uint16_t *>(mh::addr::Planets + (uintptr_t)pl * 0x427u));
+    }
+    if (g_cfg.progress_acquire_at > 0 && g_step == (uint32_t)g_cfg.progress_acquire_at) {
+        unsigned    id = 0;
+        const char *c  = g_cfg.progress_acquire_ids;
+        for (;; ++c) {
+            if (*c >= '0' && *c <= '9') id = id * 10 + (unsigned)(*c - '0');
+            else {
+                if (id) mh::call::game_UpdateProgress(*reinterpret_cast<const uint16_t *>(mh::addr::PlayerSide), (uint16_t)id);
+                id = 0;
+                if (!*c) break;
+            }
+        }
+    }
+    if (g_cfg.progress_probe2_at > 0 && g_step == (uint32_t)g_cfg.progress_probe2_at) emit_progress("b");
 
     // All-AI: prove the conversion took effect, once, from the first step after landing. Placed here
     // rather than at the end of the landing hook because spawn_ai_base runs INSIDE the function we
@@ -8709,7 +10789,7 @@ void on_sim_step() {
 
     // Has the match resolved? Cheap (8 dword reads), but on a cadence anyway -- a soak runs tens of
     // thousands of steps and this answers a question that changes at most a handful of times.
-    if (g_cfg.gameover_step > 0 && (g_step % (uint32_t)g_cfg.gameover_step) == 0) gameover_check();
+    if (g_cfg.gameover_step > 0 && (mstep() % (uint32_t)g_cfg.gameover_step) == 0) gameover_check();
 
     // mp:U55: pinned process exit (ships OFF; see exit_process_at_step).
     if (g_cfg.exit_process_at_step > 0 && g_step >= (uint32_t)g_cfg.exit_process_at_step) {
@@ -8730,7 +10810,7 @@ void on_sim_step() {
     }
 
     // D10 anti-vacuity probe: prove the AI subsystem is RUNNING, on a cadence.
-    if (g_cfg.ai_probe_step > 0 && (g_step % (uint32_t)g_cfg.ai_probe_step) == 0) {
+    if (g_cfg.ai_probe_step > 0 && (mstep() % (uint32_t)g_cfg.ai_probe_step) == 0) {
         const uint32_t ai_on = *mh::state::ptr<const uint32_t>(mh::state::RID_STRAT_AI_ENABLED);
         const uint32_t nplay =
             *reinterpret_cast<const uint32_t *>(mh::addr::_G_LLM_STRAT_AI_ACTIVE_PLAYER_COUNT);
@@ -8831,7 +10911,7 @@ void on_sim_step() {
     // `region_poke_only` narrows that to a single index -- see its declaration for why the range is
     // wrong for a per-module red arm.
     if (g_cfg.region_poke_at > 0 && (g_cfg.region_poke_min >= 0 || g_cfg.region_poke_only >= 0) &&
-        g_step == (uint32_t)g_cfg.region_poke_at) {
+        mstep() == (uint32_t)g_cfg.region_poke_at) {
         const int lo = g_cfg.region_poke_only >= 0 ? g_cfg.region_poke_only : g_cfg.region_poke_min;
         const int hi = g_cfg.region_poke_only >= 0 ? g_cfg.region_poke_only + 1 : N_REGIONS;
         for (int i = lo; i < hi && i < N_REGIONS; ++i) {
@@ -8856,7 +10936,7 @@ void on_sim_step() {
     // D3 negative test: flip one PRNG slot on this peer only, once. Done BEFORE the hash so the very
     // step named in the ini is the step the divergence is reported at (no off-by-one to argue about).
     if (g_cfg.rng_perturb_slot >= 0 && g_cfg.rng_perturb_slot < 4 && g_cfg.rng_perturb_step > 0 &&
-        g_step == (uint32_t)g_cfg.rng_perturb_step) {
+        mstep() == (uint32_t)g_cfg.rng_perturb_step) {
         uint32_t      *rng          = reinterpret_cast<uint32_t *>(mh::state::hash_base(IDX_RNG));
         const uint32_t before       = rng[g_cfg.rng_perturb_slot];
         rng[g_cfg.rng_perturb_slot] = (before ^ 0x1234u) & 0xffffu; // stay in the PRNG's 16-bit domain
@@ -8947,6 +11027,10 @@ void on_sim_step() {
     pt1_tick();          // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
     pt3_tick();          // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
     pt2_tick();          // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)
+    a1_tick();           // mods:A1 -- the mother lift-off fixture (same placement)
+    pf_tick();           // mods:M1 S0 -- the ground path-trace probe (same placement)
+    mv_tick();           // mods:M1R -- the recorded-move replay probe (same placement)
+    nd_tick();           // mods:M1N -- the nudge / claim / swap case probe (same placement)
     pip_tick();          // hotfix rc9.4 bldg_pip_guard -- the bad-pip fixture (same placement)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
@@ -8980,7 +11064,7 @@ void on_sim_step() {
     // mp:X1b -- the live snapshot verbs, HERE for world_snapshot_capture's reason one line up: the
     // blob and the per-region hashes it must reproduce are taken from the same `per[]`/`combined`/
     // `state` this block just computed, so there is no window between them for state to move.
-    if (g_cfg.snapshot_at > 0 && g_step >= (uint32_t)g_cfg.snapshot_at)
+    if (g_cfg.snapshot_at > 0 && mstep() >= (uint32_t)g_cfg.snapshot_at)
         snapshot_send_now(per, combined, state, clock);
     if (g_cfg.snapshot_import) {
         // mp:X3c: `[desync] action=1` (the world resync) polls channel C from the desync step hook, and only one
@@ -9009,14 +11093,14 @@ void on_sim_step() {
     // mp:X3: the SUB-DOMAIN trail, BEFORE the R row and from the same per[], so a step carrying
     // both has them describing one instant with the coarse row first -- which is also the order a
     // reader wants them in (which subsystem, then which region inside it).
-    if (g_cfg.domain_hash_step > 0 && (g_step % (uint32_t)g_cfg.domain_hash_step) == 0) {
+    if (g_cfg.domain_hash_step > 0 && (mstep() % (uint32_t)g_cfg.domain_hash_step) == 0) {
         subdomain_map_emit(); // one-shot; a compare per row after the first
         subdomain_row(per);
     }
 
     // Phase 1a: per-region hash line every N steps -- "R <step> <h0> <h1> ... <hN>". mp_analyze.py
     // reads this to localize the (step, region) of a cross-peer desync without re-running.
-    if (g_cfg.region_hash_step > 0 && (g_step % (uint32_t)g_cfg.region_hash_step) == 0) {
+    if (g_cfg.region_hash_step > 0 && (mstep() % (uint32_t)g_cfg.region_hash_step) == 0) {
         // Capacity is DERIVED from N_REGIONS, never a round number. This was `char rl[512]` and it
         // overflowed the moment D11 took the manifest from 23 regions to 41: each region appends
         // exactly 17 chars (" %08X%08X"), so 41 needs ~711 and 23 needed ~405 -- it had been fitting
@@ -9036,8 +11120,8 @@ void on_sim_step() {
     // The RAW REGION DUMP (rdump_*), at the SAME sample point as the `R` line above so a byte here and
     // a hash there describe the same instant. See the config block for what it is for and its one
     // caveat. Read-only: it copies bytes out and touches nothing.
-    if (g_cfg.rdump_hi >= g_cfg.rdump_lo && g_step >= (uint32_t)g_cfg.rdump_lo &&
-        g_step <= (uint32_t)g_cfg.rdump_hi) {
+    if (g_cfg.rdump_hi >= g_cfg.rdump_lo && mstep() >= (uint32_t)g_cfg.rdump_lo &&
+        mstep() <= (uint32_t)g_cfg.rdump_hi) {
         // THE FP ENVIRONMENT, at the same sample point, so the two arms' control words are comparable
         // instant-for-instant with the bytes above. One line per dumped step; see mh::fp::raw_x87_cw.
         {
@@ -10127,6 +12211,9 @@ extern "C" int MH_Harness_Init(void) {
             }
         }
     }
+
+    // mods:M1D: the read-only wave observer of the movement probe
+    if (g_cfg.mv_replay[0] && g_cfg.mv_waves) mv_arm_waves();
 
     // Phase 2 order record/replay. Record hooks order_queue_dispatch (same Watcom prologue, guarded);
     // replay needs no hook (it injects from on_sim_step) -- just load the file.

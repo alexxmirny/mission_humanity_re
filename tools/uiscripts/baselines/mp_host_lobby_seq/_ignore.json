@@ -1,0 +1,136 @@
+{
+ "capture_lobby_team__t1_host_ffa.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t2_host_team.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t3_host_after_client.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t4_host_retaken.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t5_host_ffa.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_leave_frees_slot__h1_client_seated.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_leave_frees_slot__h2_slot_freed.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_host_recreate__h1_lobby.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_host_recreate__h2_rejoined.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_s7_occ_cap__lobby_open.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_s7_occ_cap__lobby_s2_ai.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_s7_occ_cap__lobby_s2_closed.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ],
+ "capture_s7_occ_cap__lobby_final.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ]
+ ]
+}

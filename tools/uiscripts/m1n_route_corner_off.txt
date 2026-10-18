@@ -1,0 +1,20 @@
+# mods:M1N follow-up 2, the fix-off negative control (move_route_through_idle=0): retail ends in the dead-end pocket. Load the corner save 7-abigan-5-1 and let the harness's
+# mv_replay probe order unit 1 (idle at (14,106)) to (7,93). Its only way out is the x=14 corridor, where unit 12 stands idle at
+# (14,96). Retail: the route planner treats unit 12's tile as a wall, cuts the goal short to the dead-end pocket at (12,99) and the
+# order is given up. The verdict is NOT a frame: tools/check_mv_marshal.py --case corner reads the `; MV ORDERSUM` /
+# `; M1N route-through` lines (the row's post_check); the captures are the start and the end state, a second witness.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 6 91
+gameclock +1500
+capture m1n_route_corner_off_start
+gameclock +22000
+capture m1n_route_corner_off_end
+log m1n_route_corner_off: order issued, probe finished
+end

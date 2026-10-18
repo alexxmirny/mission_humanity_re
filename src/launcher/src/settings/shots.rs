@@ -6,9 +6,10 @@
 //!   through its accessibility tree: rows appear under their sub-tab, a click dirties the model,
 //!   a synthetic registry row shows up with no code change (the RL13 done_when, end to end);
 //! * `review_screenshots` renders PNGs through wgpu (D3D/WARP, the launcher's own fallback path) and
-//!   runs only when `MH_UI_REVIEW_DIR` names a directory, which it fills: every Settings sub-tab and
-//!   the Diagnostics page in English and Russian, an error state, the widget kit in a frame, and a
-//!   modal. Those are what the user reviews (UI-layout rule); nothing is auto-diffed against a
+//!   runs only when `MH_UI_REVIEW_DIR` names a directory, which it fills: every Settings sub-tab
+//!   (compact and detailed, `standin_*` -- the real shell's own shots, app/pages/shots.rs, take the
+//!   plain `settings_*` names) and the Diagnostics page in English and Russian, a row's hover
+//!   description, an error state, the widget kit in a frame, and a modal. Those are what the user reviews (UI-layout rule); nothing is auto-diffed against a
 //!   baseline yet because WU-C owns the page layout this stands in for.
 //!
 //! The stand-in launcher window below (menu column + game frame) is test scaffolding for exactly
@@ -240,7 +241,6 @@ fn window(ui: &mut Ui, fx: &mut Fx) {
                 widgets::group_header(ui, "Pills and buttons");
                 ui.horizontal_wrapped(|ui| {
                     widgets::pill(ui, tr("badge.experimental"), theme::ALERT);
-                    widgets::pill(ui, tr("badge.restart"), theme::TEXT_DIM);
                     widgets::pill(ui, tr("report.outcome.desync"), theme::ALERT);
                     widgets::pill(ui, tr("report.outcome.finished"), theme::TEXT);
                 });
@@ -336,7 +336,7 @@ fn sub_tabs_swap_the_rows() {
     assert!(h.query_by_label("Window").is_none());
     // The ini's own [net] relay is never offered.
     assert!(h.query_by_label("Relay address").is_none());
-    h.get_by_label("Updates & logs").click();
+    h.get_by_label("Updates").click();
     h.run();
     assert!(h.query_by_label("Update channel").is_some());
     assert!(h.query_by_label("Discord status").is_some());
@@ -435,6 +435,76 @@ fn a_new_registry_row_renders_with_no_launcher_change() {
 }
 
 #[test]
+fn descriptions_are_compact_by_default_and_inline_when_detailed() {
+    i18n::set_locale(Locale::En);
+    let hint = tr("setting.video.fps_limit.hint");
+    let mut h = harness(fixture(Schema::builtin()));
+    h.run();
+    assert!(!h.state().state.detailed);
+    assert!(
+        h.query_by_label(hint).is_none(),
+        "compact: no inline description"
+    );
+    // The display page has restart rows: the one note above the rows says so.
+    assert!(h
+        .query_by_label("Changes apply at the next game start.")
+        .is_some());
+    h.get_by_label("Detailed").click();
+    h.run();
+    assert!(h.state().state.detailed);
+    assert!(h.query_by_label(hint).is_some(), "detailed: inline");
+    h.get_by_label("Compact").click();
+    h.run();
+    assert!(h.query_by_label(hint).is_none());
+    assert!(
+        !h.state().model.is_dirty(),
+        "the view switch is not a setting edit"
+    );
+}
+
+#[test]
+fn the_label_column_fits_the_widest_label_and_values_line_up() {
+    for loc in [Locale::En, Locale::Ru] {
+        i18n::set_locale(loc);
+        let mut fx = fixture(Schema::builtin());
+        fx.state.subtab = "gameplay".into();
+        let mut h = harness(fx);
+        h.run();
+        // Every row's first "Off" segment starts at the same x, right of the widest label.
+        let offs: Vec<egui::Rect> = h
+            .query_all_by_label(tr("value.off"))
+            .map(|n| n.rect())
+            .collect();
+        assert!(offs.len() >= 5, "{loc:?}: {} Off segments", offs.len());
+        let x0 = offs[0].left();
+        assert!(
+            offs.iter().all(|r| (r.left() - x0).abs() < 1.0),
+            "{loc:?}: values not aligned: {offs:?}"
+        );
+        let labels: Vec<String> = h
+            .state()
+            .model
+            .schema()
+            .rows_in_subtab("gameplay")
+            .filter(|r| h.state().model.is_visible(r))
+            .map(|r| tr(&r.label_key()).to_string())
+            .collect();
+        for label in labels {
+            let l = h.get_by_label(&label).rect();
+            assert!(
+                l.right() < x0,
+                "{loc:?}: label {l:?} overlaps the values at {x0}"
+            );
+            // English gameplay labels all fit on one line at 800x600.
+            if loc == Locale::En {
+                assert!(l.height() < 24.0, "{label}: wrapped: {l:?}");
+            }
+        }
+    }
+    i18n::set_locale(Locale::En);
+}
+
+#[test]
 fn russian_relabels_the_page() {
     i18n::set_locale(Locale::Ru);
     let mut h = harness(fixture(Schema::builtin()));
@@ -472,12 +542,35 @@ fn review_screenshots() {
     for loc in Locale::ALL {
         i18n::set_locale(loc);
         let code = loc.code();
-        for tab in ["display", "language", "multiplayer", "gameplay", "updates"] {
-            let mut fx = fixture(Schema::builtin());
-            fx.state.subtab = tab.into();
-            let mut h = harness_wgpu(fx);
-            save(&mut h, &dir, &format!("settings_{tab}_{code}"));
+        for tab in ["display", "gameplay", "multiplayer", "updates"] {
+            for detailed in [false, true] {
+                let mut fx = fixture(Schema::builtin());
+                fx.state.subtab = tab.into();
+                fx.state.detailed = detailed;
+                let mut h = harness_wgpu(fx);
+                let view = if detailed { "detailed" } else { "compact" };
+                save(
+                    &mut h,
+                    &dir,
+                    &format!("standin_settings_{tab}_{view}_{code}"),
+                );
+            }
         }
+        // The compact view's description, as a tooltip over a hovered row.
+        let mut fx = fixture(Schema::builtin());
+        fx.state.subtab = "gameplay".into();
+        let mut h = harness_wgpu(fx);
+        h.run();
+        h.get_by_label(tr("setting.net.improved_movement")).hover();
+        for _ in 0..30 {
+            h.step();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        save(
+            &mut h,
+            &dir,
+            &format!("standin_settings_gameplay_hover_{code}"),
+        );
         let mut h = harness_wgpu(fixture(Schema::builtin()));
         h.state_mut().page = Pg::Diagnostics;
         save(&mut h, &dir, &format!("diagnostics_{code}"));

@@ -8,6 +8,7 @@
 #include "sim/sim_bldg_power_network_recompute.h"
 
 #include "sim/sim_order_enqueue.h" // BUILDING_TYPE_* constants (this closure's cfg_building.type gates)
+#include "sim/sim_mother_free.h"   // mods:A1 mother_free_plant_root
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -106,7 +107,9 @@ void power_network_recompute(const sim_view &v, const power_network_recompute_ca
                 const bool    is_plant  = (type == BUILDING_TYPE_H_PLANT) || (type == BUILDING_TYPE_A_PLANT);
                 const bool    call_it =
                     (is_mother && (prof.primary_mother_bldg[planet] == slot || b.online_state == 0)) ||
-                    (is_plant && b.online_state != 0);
+                    // mods:A1 ([net] mother_free_build): a plant also seeds while it is not online yet, when its owner has no
+                    // primary mother here (retail splice: net_lockstep.cpp mother_free_seed_stub at 0x00491eac).
+                    (is_plant && (b.online_state != 0 || mother_free_plant_root(v, player, planet)));
                 if (call_it) {
                     gc.bldg_propagate_network_connectivity(player, slot);
                 }

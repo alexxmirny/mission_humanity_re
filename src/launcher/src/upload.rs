@@ -439,7 +439,16 @@ pub fn prepare(zip: &Path, destination: &str) -> Result<Prepared, String> {
         let e = archive
             .by_index(i)
             .map_err(|e| format!("{R_ZIP}: entry {i} of {}: {e}", zip.display()))?;
-        entries.push((e.name().to_string(), e.size()));
+        let name = e
+            .name()
+            .map_err(|err| {
+                format!(
+                    "{R_ZIP}: entry {i} of {}: unreadable name: {err}",
+                    zip.display()
+                )
+            })?
+            .into_owned();
+        entries.push((name, e.size()));
     }
     let description = read_entry(&mut archive, "description.txt")?;
     let meta = read_entry(&mut archive, "report.json")?;

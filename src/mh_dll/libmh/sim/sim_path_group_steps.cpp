@@ -202,7 +202,10 @@ int32_t pathfind_build_steps(const sim_view &v, sim_store &own, const path_group
                                        *v.path_wrap_mask);
 
         own.path_buffer_at(player, path_slot_index, write_idx).run_length = 1;
-        own.path_buffer_at(player, path_slot_index, write_idx).heading    = static_cast<uint8_t>(dir_code);
+        // [net] move_attack_heading_fix (mods:M1X): the heading of the step actually taken. Off = the original's
+        // `MOV AL,[EBP-0x20]` (dir_code); on = [EBP-0x1c] (candidate), the retail carrier's one-byte flip at 0x0041ec1f.
+        own.path_buffer_at(player, path_slot_index, write_idx).heading =
+            static_cast<uint8_t>(move_attack_heading_fix() ? candidate : dir_code);
         ++write_idx;
 
         // 0x0041ec26-0x0041ecd0: close enough now, AND the new tile is passable and building-free?

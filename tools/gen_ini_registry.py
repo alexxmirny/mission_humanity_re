@@ -77,8 +77,9 @@ FLAGS = {
     "F_RESTART": "restart",
     "F_PENDING": "pending",
     "F_HOSTSYNC": "host",
+    "F_LOCAL": "local",
 }
-SUBTAB_ORDER = ["display", "language", "multiplayer", "gameplay", "diagnostics", "updates"]
+SUBTAB_ORDER = ["display", "gameplay", "multiplayer", "language", "diagnostics", "updates"]
 
 # PT-SET1: F_HOSTSYNC rows are read ONLY through the X-macro in this header, and each one needs exactly
 # one apply hook entry {"sec","key",[](...)...} in HOOKS_FILE.
@@ -285,8 +286,13 @@ def validate_row(r):
                     e.append("[%s] %s: float default outside its range" % (r.section, r.key))
             except ValueError:
                 e.append("[%s] %s: float default must be a number" % (r.section, r.key))
-    if r.subtab == "gameplay" and "host" not in r.flags:
-        e.append("[%s] %s: a gameplay sub-tab row requires F_HOSTSYNC" % (r.section, r.key))
+    if r.subtab == "gameplay" and ("host" in r.flags) == ("local" in r.flags):
+        e.append(
+            "[%s] %s: a gameplay sub-tab row requires exactly one of F_HOSTSYNC / F_LOCAL"
+            % (r.section, r.key)
+        )
+    if "local" in r.flags and r.subtab != "gameplay":
+        e.append("[%s] %s: F_LOCAL is for gameplay sub-tab rows only" % (r.section, r.key))
     if "host" in r.flags and r.type not in ("bool", "int", "float"):
         e.append("[%s] %s: F_HOSTSYNC requires a bool/int/float row" % (r.section, r.key))
     if r.type == "enum":
@@ -694,7 +700,12 @@ def selftest():
             "a float row with an inverted range is RED", rc == 1 and "valid options range" in out
         )
         rc, out = run(def_t=hdef.replace("F_HOSTSYNC", "F_NONE"))
-        expect("S_GAMEPLAY without F_HOSTSYNC is RED", rc == 1 and "requires F_HOSTSYNC" in out)
+        expect("S_GAMEPLAY without F_HOSTSYNC is RED", rc == 1 and "exactly one of" in out)
+        rc, out = run(def_t=hdef.replace("F_HOSTSYNC", "F_HOSTSYNC|F_LOCAL"))
+        expect(
+            "S_GAMEPLAY with both F_HOSTSYNC and F_LOCAL is RED",
+            rc == 1 and "exactly one of" in out,
+        )
         rc, out = run(
             def_t=_DEF_OK
             + 'MH_INI_KEY("net", "s", T_STRING, "", C_DEV, "", S_NONE, "", F_HOSTSYNC)\n'

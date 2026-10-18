@@ -576,6 +576,126 @@ def sp_mode_refusal(mode_a, mode_b, na, nb):
     return (None, "arms: %s=%s vs %s=%s -- different configurations" % (na, mode_a, nb, mode_b))
 
 
+def _sp_fixed_hashes(lane_dir):
+    """{match step: (clock, state hash)} from the newest match segment's per-step lines. The `combined` column (3rd) folds in
+    wall-dependent regions and differs between any two unpinned runs, so it is NOT compared; clock + state are the channels."""
+    segs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*_host")), key=os.path.getmtime)
+    path = os.path.join(segs[-1], "mh_match_harness.log") if segs else None
+    out = {}
+    if not path or not os.path.isfile(path):
+        return out
+    with open(path, encoding="utf-8", errors="ignore") as fh:
+        for line in fh:
+            f = line.split()
+            if len(f) == 4 and f[0].isdigit():
+                out[int(f[0])] = (f[1], f[3])
+    return out
+
+
+def run_sp_fixed_determinism(args, cfg):
+    """The FIXED-STEP single-player determinism check (2026-10-16): the same scripted run three times on the SHIPPED
+    config with NO pin_wallclock -- idle, under CPU load, idle again -- and the per-step (clock, state) hashes must be
+    identical at `sp_sim_step_ms=20`. The control is the same pair at `sp_sim_step_ms=0` (retail's variable step), which
+    MUST differ: without it a vacuous comparison (nothing recorded, hashes constant) would read as a pass."""
+    import multiprocessing
+
+    lane = "ui_sp_det_fixed"
+    lane_dir = os.path.join(make_lane.LANE_ROOT, lane)
+    r = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "make_lane.py"),
+            "--name",
+            lane,
+            "--lane",
+            str(lane_alloc.lane("sp_det_fixed", 0)),
+            "--port",
+            str(LOCAL_PORT_BASE + lane_alloc.lane("sp_det_fixed", 0)),
+            "--headless",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        print("lane FAILED: %s" % (r.stderr or r.stdout).strip()[:300])
+        return 1
+    seed = str(args.sp_seed or 424242)
+    hextra = (
+        "fixed_step=0;region_hash_step=1;synth_seed=" + seed
+    )  # NO pin_wallclock: the clock is the wall clock
+
+    def one(sp_ms, loaded):
+        procs = []
+        if loaded:
+            procs = [
+                multiprocessing.Process(target=_burn_cpu, daemon=True)
+                for _ in range(os.cpu_count() or 4)
+            ]
+            for p in procs:
+                p.start()
+        try:
+            argv = build_scenario_argv(
+                cfg=cfg,
+                script=SP_SCRIPT,
+                harness=True,
+                steps=args.steps,
+                harness_extra=hextra,
+                host_dir=lane_dir,
+                timeout_frames=LOCAL_TIMEOUT_FRAMES,
+                timeout=max(args.timeout, 180 + args.steps),
+                headless=True,
+                net_extra="sp_sim_step_ms=%d" % sp_ms,
+            )
+            print(
+                "\n=== sp_sim_step_ms=%d %s ===" % (sp_ms, "UNDER CPU LOAD" if loaded else "idle")
+            )
+            run_ui_test(argv, max(args.per_test_timeout, 240 + args.steps))
+        finally:
+            for p in procs:
+                p.terminate()
+        return _sp_fixed_hashes(lane_dir)
+
+    def diff(a, b):
+        ks = sorted(set(a) & set(b))
+        bad = [k for k in ks if a[k] != b[k]]
+        return len(ks), len(bad), (bad[0] if bad else None)
+
+    res = {}
+    for sp_ms in (20, 0):
+        a = one(sp_ms, False)
+        b = one(sp_ms, True)
+        res[sp_ms] = (diff(a, b), len(a), len(b))
+        if sp_ms == 20:
+            c = one(20, False)
+            res["idle2"] = diff(a, c)
+    print("\n" + "=" * 78 + "\nSP-FIXED-DETERMINISM verdict (no pin_wallclock)\n" + "=" * 78 + "\n")
+    (n20, bad20, first20), la, lb = res[20]
+    print(
+        "  sp_sim_step_ms=20 idle vs loaded : compared %d steps, %d differ (first %s); recorded %d / %d"
+        % (n20, bad20, first20, la, lb)
+    )
+    n2, bad2, first2 = res["idle2"]
+    print(
+        "  sp_sim_step_ms=20 idle vs idle   : compared %d steps, %d differ (first %s)"
+        % (n2, bad2, first2)
+    )
+    (n0, bad0, first0), _, _ = res[0]
+    print(
+        "  CONTROL sp_sim_step_ms=0 idle vs loaded : compared %d steps, %d differ (first %s) -- must differ"
+        % (n0, bad0, first0)
+    )
+    ok = (
+        n20 >= args.steps * 0.9 and bad20 == 0 and bad2 == 0 and n2 >= args.steps * 0.9 and bad0 > 0
+    )
+    print("\nSP-FIXED-DETERMINISM: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+def _burn_cpu():
+    while True:
+        pass
+
+
 def run_sp_determinism(args, cfg):
     """P0-SPDET: run the SP oracle. Returns a process exit code."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -620,7 +740,14 @@ def run_sp_determinism(args, cfg):
     # REQUESTED here and then VERIFIED from each arm's own log below, never assumed from the request.
     # Pushed through --net-extra, which OVERRIDES the key in place; a second ini fragment carrying its
     # own [net] block would be the duplicate-section trap ini_merge_fragment exists for.
-    net_extra = "game_speed_pct=%d" % args.sp_game_speed if args.sp_game_speed else None
+    #
+    # BOTH ARMS RUN AT THE VARIABLE STEP (`sp_sim_step_ms=0`, 2026-10-16). Single-player's shipped default is now a fixed
+    # 20 ms step, which `[config] mode=original` (the baseline arm) does not carry -- so without this pin the two arms would
+    # integrate differently from step 1 and the oracle would go red for a reason that is not the engine. With it the oracle
+    # still proves ship == retail at the variable step; the fixed step has its own check (--sp-fixed-determinism).
+    net_extra = "sp_sim_step_ms=0" + (
+        ";game_speed_pct=%d" % args.sp_game_speed if args.sp_game_speed else ""
+    )
     arms = [("baseline", False), ("promoted", True)]
     if args.sp_selftest:
         # (1) of done_when: the SAME build twice. If this is not identical the oracle is not
@@ -1820,11 +1947,24 @@ def run_u19b_quit3(args, cfg, config1=False):
 # the mothership too. The phase machine runs alongside with no landing, so it only queues a debug
 # academy order before the kill (conq_at=60, kill at step conq_at+U53_KILL_D).
 U53_KILL_D = 240
-# stop_step: the elimination lands at ~step 304 (the kill order executes ~4 steps after issue), so this
-# leaves ~3700 steps of play-on. NOT args.steps: its default (8000) made the first run 145 s long.
-# gameover_step=100000 on purpose: conq arms it at 50 when 0, and mp_analyze (D26) TRUNCATES the hash
-# comparison at the deliberate gameover step, which left 49 comparable steps in the first run.
-U53_STEPS = 4000
+# stop_step: the elimination lands at ~step 304 (the kill order executes ~4 steps after issue). NOT args.steps: its
+# default (8000) made the first run 145 s long. gameover_step=100000 on purpose: conq arms it at 50 when 0, and
+# mp_analyze (D26) TRUNCATES the hash comparison at the deliberate gameover step, which left 49 comparable steps in
+# the first run.
+#
+# U53_STEPS = 2400 (tooling:TL-RELGATE-FOLD, was 4000). DERIVED from each step-bound arm's incident step plus the
+# MIN_POST its checker demands (the measured 2026-10-15 logs; incident steps are pinned by the harness knobs, not
+# by wall time):
+#   host-elim / client-elim  force-kill at step 300 (60 + U53_KILL_D), check_u53_elim.MIN_POST = 1500 -> 1800 needed
+#   u62-host-exit, u63-crash exit_process_at_step = U55_EXIT_STEP = 600, MIN_POST = 1000            -> 1600 needed
+#   u62-host-quit            ESC-quit script, leaver's last hashed step 352 (measured), MIN_POST = 1000 -> ~1352 needed
+#   u62-neg                  not step-bound: the survivors stall at 600 and end on U55's outcome 8 at +58 s
+# The binding arm is the elimination (1800); 2400 leaves a 600-step (~6 s of game time) margin on it and 800 / 1000+
+# on the crash / quit arms. Post-incident drift is still compared over >= 1000 (1500 for eliminations) IDENTICAL
+# steps; what shrinks is only the extra tail beyond the checkers' own floors (3400 -> 1800 past the crash).
+U53_STEPS = 2400
+# the u54-* (spectate) arms keep their original length: their checker's windows were never re-derived.
+U54_STEPS = 4000
 # mp:U55: absolute sim step at which the host process is ended (the defeat lands at ~304).
 U55_EXIT_STEP = 600
 U53_ARMS = {
@@ -2076,7 +2216,7 @@ def run_u53(args, cfg, arm, config1=False):
     if arm.startswith("u54-probe"):
         # mp:U54 mutation arm: the host orders 0xf8 AGAIN against the defeated spectator (an order OWNED BY it) at step ~660
         conq += ";conq_spectator_probe_at=600"
-    steps = U53_STEPS
+    steps = U54_STEPS if u54 else U53_STEPS
     relay_cm = (
         RelayProc(RELAY_PORT, os.path.join(rig_phases.scratch_dir(), "relay_u55.log"))
         if relayed
@@ -2134,6 +2274,8 @@ def run_u53(args, cfg, arm, config1=False):
             ),
             harness_extra_host=host_extra if host_extra else (conq if victim != "host" else None),
             harness_extra_client=conq if (victim == "host" and base_arm != "host-quit") else None,
+            harness_extra_peer=list(getattr(args, "harness_extra_peer", None) or ()),
+            net_extra_peer=list(getattr(args, "net_extra_peer", None) or ()),
             omit_satellite=["libmh.dll"] if config1 else (),
         )
         det_clear(det_dir)
@@ -2705,7 +2847,7 @@ def run_u58(args, cfg, config1=False):
 
 # mp:X2a -- THE OPEN-REDIRECT, WITNESSED FOR REAL, on the two independent rig VMs.
 #
-# WHY THE EXISTING X2 SCENARIOS (map_absent/map_conflict, TESTS registry) DO NOT CLOSE THIS. Every
+# WHY THE EXISTING X2 SCENARIOS (map_xfer, TESTS registry) DO NOT CLOSE THIS. Every
 # local lane's `Maps` is a SYMLINK to the one shared game image (make_lane.py), so those scenarios
 # stage the client's starting state with a net-only knob (`[net] map_test_pretend=none|other`) that
 # "moves no file" -- the client's OWN base file IS the host's real content the whole time. A broken
@@ -2803,7 +2945,7 @@ def run_x2a_map_variant(args, cfg):
             return False, lines + ["      FAIL: could not push the variant to the client VM"]
 
         # THE VM'S mh_dl\ IS PERSISTENT (unlike a local lane, which is fresh per test), so an
-        # earlier run's download of this exact content (map_absent/map_conflict/a previous X2a run
+        # earlier run's download of this exact content (map_xfer/a previous X2a run
         # -- the real host content is the same file every time) leaves `resolve()` a Resolve::Stored
         # candidate it can satisfy WITHOUT a transfer -- measured first run: host never armed a
         # transfer, Start never gated, and the redirect fired off a STALE cache instead of THIS
@@ -3382,6 +3524,13 @@ def add_args(ap):
         "2-peer MP and cannot see single-player paths, where C2 measured NINE promoted seams as LIVE.",
     )
     ap.add_argument(
+        "--sp-fixed-determinism",
+        action="store_true",
+        help="the FIXED-STEP single-player check: the shipped config (sp_sim_step_ms=20), no pin_wallclock, the same scripted "
+        "run idle / under CPU load / idle -- per-step clock + state hashes must be identical; the control at "
+        "sp_sim_step_ms=0 must differ.",
+    )
+    ap.add_argument(
         "--sp-selftest",
         action="store_true",
         help="--sp-determinism clause (1): run the SAME (unpromoted) build twice. If this is not "
@@ -3495,6 +3644,22 @@ def add_args(ap):
         action="store_true",
         help="with --u53-host-exit: the host ends via ExitProcess (exit_process_mode=1) instead of "
         "the abrupt TerminateProcess.",
+    )
+    ap.add_argument(
+        "--harness-extra-peer",
+        action="append",
+        default=[],
+        metavar="N:K=V;K=V",
+        help="--u53-*/--u62-*/--u63-*/--u64 arms: extra [harness] keys for ONE client (1-based), repeatable. The MUTATION "
+        "hook of tooling:TL-RELGATE-FOLD: `--harness-extra-peer 2:rng_perturb_slot=1;rng_perturb_step=1200` flips one "
+        "peer's RNG so an arm that claims 'survivors IDENTICAL' MUST go red.",
+    )
+    ap.add_argument(
+        "--net-extra-peer",
+        action="append",
+        default=[],
+        metavar="N:K=V;K=V",
+        help="--u53-*/--u62-*/--u63-*/--u64 arms: extra [net] keys for ONE client (1-based), repeatable.",
     )
     ap.add_argument(
         "--u55-relay",
@@ -3756,6 +3921,13 @@ def add_args(ap):
         "ALL PAIRS IDENTICAL because zoom, crop origin and camera are view state.",
     )
     ap.add_argument(
+        "--det-bigmap",
+        action="store_true",
+        help="--determinism: mods:MM4 -- the HOST peer alone holds the big-map key (mp_host_start_bigmap.txt: Tab held through "
+        "the harness chord table, three holds with the sim running between them) while the client runs the stock walk; the "
+        "overlay is render and input only, so the lockstep hash must stay ALL PAIRS IDENTICAL.",
+    )
+    ap.add_argument(
         "--det-drag",
         action="store_true",
         help="--determinism: RES12 -- the HOST peer alone drag-selects at 1920x1056 (mp_host_start_drag.txt: boxes in the "
@@ -3898,6 +4070,8 @@ def main(argv=None, lenient=False):
         return det_standard_selftest()
     if args.sp_determinism:
         return run_sp_determinism(args, cfg)
+    if args.sp_fixed_determinism:
+        return run_sp_fixed_determinism(args, cfg)
     # mp:L1f -- a LOBBY shape, so it is dispatched before the determinism block rather than inside
     # it: there is no sim in this walk to compare and no harness to arm.
     if args.l1f_ping3:
@@ -4169,6 +4343,11 @@ def _run_determinism(args, cfg):
         # lockstep match runs; the client is the stock walk. The hash must still agree: zoom is view state.
         host_script = "mp_host_start_wheel.txt"
         chat_ini = dict(extra_ini_host="tools/uiscripts/ini/map_zoom_det_host.ini")
+    if args.det_bigmap:
+        # mods:MM4: the HOST alone holds the big-map key during the match. mods:MM4C: it also selects its Pioneer and right-clicks
+        # the overlay twice (the side minimap's order); the client is the stock walk plus a read of that unit's goal in its own sim.
+        host_script = "mp_host_start_bigmap.txt"
+        client_script = "mp_client_start_bigmap.txt"
     if args.det_drag:
         # RES12: the HOST alone drag-selects in the wide view (corners placed by the biased window, the box derived from
         # them, the anchor scrolled off); the client is the stock walk. The hash must still agree.
@@ -4239,7 +4418,7 @@ def _run_determinism(args, cfg):
     else:
         where = dict(
             host="%s:%s" % (args.vms[0], host_script),
-            clients=["%s:mp_client_start.txt" % args.vms[1]],
+            clients=["%s:%s" % (args.vms[1], client_script)],
             connect_ip=args.vms[0],
             # TL-HARN17: the host's `peers 1` wait is counted in FRAMES; 240 s at the blit floor.
             timeout_frames=frames_for_seconds(240, BLIT_LOCAL_FPS_FLOOR),
@@ -4284,7 +4463,32 @@ def _run_determinism(args, cfg):
         if down:
             print("determinism SKIP -- VM(s) unreachable: %s" % ", ".join(down))
             return 0
-    return run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
+    rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
+    if rc == 0 and args.det_bigmap and args.det_local:
+        rc = det_bigmap_orders_check(names)
+    return rc
+
+
+def det_bigmap_orders_check(lane_names):
+    """mods:MM4C: the host's right clicks on the big map ordered its Pioneer on BOTH peers (the logs of the local pair)."""
+    dirs = []
+    for lane in lane_names:
+        logs = os.path.join(make_lane.LANE_ROOT, lane, "logs")
+        menus = sorted(d for d in os.listdir(logs) if "_menu_" in d) if os.path.isdir(logs) else []
+        if not menus:
+            print("[det] --det-bigmap: no peer log dir under %s" % logs)
+            return 1
+        dirs.append(os.path.join(logs, menus[-1]))
+    r = subprocess.run(
+        [sys.executable, os.path.join(REPO, "tools", "check_bigmap.py"), "--orders-mp"] + dirs,
+        capture_output=True,
+        text=True,
+    )
+    print(r.stdout.strip())
+    if r.returncode:
+        print(r.stderr.strip())
+        print("[det] --det-bigmap: the orders did not land on both peers")
+    return r.returncode
 
 
 if __name__ == "__main__":

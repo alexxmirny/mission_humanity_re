@@ -5,6 +5,7 @@
 // unbacked-enum literal derivation.
 //
 #include "sim/sim_unit_state_move_walker.h"
+#include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -239,7 +240,13 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
         if (u.state == MOVE_WALKER_STATE_ATTACK_BUILDING || u.state == MOVE_WALKER_STATE_ATTACK_UNIT) {
             int32_t fine_x, fine_y;
             if (u.state == MOVE_WALKER_STATE_ATTACK_BUILDING) {
-                c.bldg_get_coords(player, unit_index, &fine_x, &fine_y);
+                // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's WALK splice at
+                // 0x0047d016): the unit's REAL target and its nearest footprint tile. Off = the original's
+                // (player, unit_index) arguments, a building index that is the attacker's own unit index.
+                if (!(attack_range_footprint() && u.target_ref != 0 &&
+                      footprint_aim_of_view(v, u, player, ref_owner(static_cast<uint32_t>(u.target_ref)),
+                                            static_cast<int32_t>(static_cast<uint16_t>(u.target_index)), &fine_x, &fine_y)))
+                    c.bldg_get_coords(player, unit_index, &fine_x, &fine_y);
             } else {
                 fine_x = u.target_fine_x;
                 fine_y = u.target_fine_y;
@@ -261,6 +268,12 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
             // u.target_fine_x/y are plain int32_t struct fields ([fine_coord], mh_structs.gen.h),
             // used as int32_t everywhere else; bldg_footprint_random_offset's committed out-params
             // are uint32_t * (TACT1-P C6, 2026-09-04) -- same 32-bit quantity, cast at this site.
+            // attack_range_footprint: the jitter spreads the aim around the CENTRE, as retail (retail carrier: the
+            // JITTER splice at 0x0047d114) -- target_fine holds the aim tile here, so put it back first.
+            if (attack_range_footprint())
+                c.bldg_get_coords(static_cast<uint16_t>(target_owner),
+                                  static_cast<int32_t>(static_cast<uint16_t>(u.target_index)), &u.target_fine_x,
+                                  &u.target_fine_y);
             c.bldg_footprint_random_offset(player, static_cast<uint32_t>(unit_index), target_owner,
                                            static_cast<int32_t>(static_cast<uint16_t>(u.target_index)),
                                            reinterpret_cast<uint32_t *>(&u.target_fine_x),

@@ -5,6 +5,7 @@
 //
 #include "sim/resid/sim_bldg_try_begin_placement.h"
 
+#include "sim/sim_mother_free.h"    // mods:A1 mother_gate_open
 #include "sim/sim_bldg_pay_costs.h" // bldg_can_afford_build_cost: the side-effect-free probe (mp:D25)
 #include "state/host_api.h"
 #include "state/host_events.h"
@@ -28,7 +29,7 @@ int bldg_try_begin_placement(const sim_view &v, sim_store &own, const bldg_try_b
     // See the header's "THE ADDRESSING" note for the offset derivation (0xcff274 - 0x214 = base of
     // _G_LLM_STRAT_PLAYERS). Read-only here -- this function never writes the profile table, so the
     // const `profiles` view is the right half, not sim_store::profile_at().
-    if (v.profiles[player_idx].primary_mother_bldg[*v.planet_index] == 0) {
+    if (!mother_gate_open(v, player_idx, *v.planet_index)) { // mods:A1: open under [net] mother_free_build
         // 0x00448c44-0x00448c4d: no mothership on this planet -- refuse silently, no message.
         return 0;
     }

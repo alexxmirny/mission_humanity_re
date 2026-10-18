@@ -16,7 +16,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     app.ensure_model();
     render::show_settings(ui, &mut app.model, &mut app.settings_state);
     ui.add_space(6.0);
-    footer(app, ui, &ini, source, true);
+    let detailed = app.settings_state.detailed; // the file path is detail (user 2026-10-14)
+    footer(app, ui, &ini, source, detailed);
 }
 
 /// The last Apply's result and where the file is. Shared with the Diagnostics page, whose rows are

@@ -8,7 +8,7 @@ publish.workspace = true
 
 # THE ONE FIELD THIS CRATE DOES NOT INHERIT, and it is a statement of fact rather than a preference.
 # The workspace declares 1.74 -- what the two placeholder crates needed -- and `eframe 0.36.2` itself
-# declares `rust-version = "1.95"` (zip 8.6 says 1.88). A launcher that kept claiming 1.74 would be
+# declares `rust-version = "1.95"` (zip 9.0 says 1.88). A launcher that kept claiming 1.74 would be
 # claiming an MSRV no toolchain could honour, and `cargo clippy`'s `incompatible_msrv` lint would be
 # measuring this crate's code against a floor its own dependency tree already broke. Raise this when
 # a dependency raises its own; the relay stays on the workspace value.
@@ -57,7 +57,7 @@ rfd = { version = "0.17.2", default-features = false }
 # The release zip. Only DEFLATE: that is what tools/release_package.py writes
 # (`zipfile.ZIP_DEFLATED`), and a reader that also understands bzip2/zstd/lzma would be accepting
 # archives this project cannot produce.
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 
 # mp:D46. The state recording arrives as `mh_match_state.bin.gz` (a gzip member written by mh.dll). When
 # it must be tailed at a keyframe the report packer has to read it, so this is the gzip READER only --

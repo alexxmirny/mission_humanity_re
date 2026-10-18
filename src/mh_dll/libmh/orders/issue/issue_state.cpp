@@ -61,6 +61,7 @@ const issue_view &live_view() {
         v.units        = ptr<mh::game::mh_map_object_unit>(RID_UNITS); // WRITTEN by one row -- see the header
         v.caps         = live_roster_caps();                           // SB-BIND T2: derived row capacities
         v.cfg_units    = ptr<const mh::game::mh_cfg_final_struct_Unit>(RID_UNIT);
+        v.cfg_weapons  = ptr<const mh::game::mh_cfg_final_struct_Weapon>(RID_WEAPON); // mods:M1C attack_range_footprint
         v.unit_storage = ptr<const mh::game::mh_map_object_unit_storage>(RID_UNIT_STORAGE);
         v.geom         = ptr<const mh::game::mh_llm_strat_map_geom>(RID_GENERAL);
         v.ctrl_groups  = ptr<const mh::game::mh_llm_strat_ctrl_group>(RID_STRAT_CTRL_GROUPS);

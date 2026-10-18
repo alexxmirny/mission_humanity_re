@@ -1387,7 +1387,14 @@ static int run_udprelinktest(int port) {
              (int)cl.started(), cl.peer_count());
 
     // ---- 3. THE RULE: re-init on a started transport RESTARTS it ----------------------------------
-    ur_cfg(cc, 1, base, (unsigned short)(base + 1), -1, -1);
+    // The RE-DIAL KEEPS ITS LINK ALIVE (TL-RELINK-FLAKE): only the FIRST link had to be mute, to let
+    // the host watchdog retire it (section 2). This second link must survive until section 4 sends its
+    // PING, and a mute client plus the host's 1.5 s timeout is a race against the scheduler -- any
+    // stall of this thread > 1.5 s (a loaded box, an ASan runner) let the host retire a perfectly
+    // good link, and the PING then went to nobody. A client ping (answered by the host's PONG from
+    // inside its receive path) is the keep-alive; it runs on the endpoint threads, so it holds across
+    // a stalled test thread. Measured: a 2.5 s stall here reproduced both FAILs 2/2 before this.
+    ur_cfg(cc, 1, base, (unsigned short)(base + 1), 250, -1);
     const bool re = cl.start(cc, UR_PSK, true);
     ur_check(re, "the re-dial was accepted on an ALREADY-STARTED transport (the T1b rule)");
     ur_check(cl.peer_count() == 0, "...and the restart dropped the old connection table (peers=%d)",
@@ -3413,6 +3420,7 @@ int run_dinputconvtest();                       // dinput_convert_selftest.cpp -
 int run_bgscaletest();                          // bg_scale_selftest.cpp -- the mode-change guards (D13)
 int run_reslisttest();                          // res_list_selftest.cpp -- the generated resolution list (RES3)
 int run_mapzoomtest();                          // map_zoom_selftest.cpp -- the strategic map zoom (RES2)
+int run_wheellisttest();                        // wheel_list_selftest.cpp -- the D15 wheel list scrolling arithmetic
 int run_runctxtest(int argc, char **argv);      // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
@@ -3428,7 +3436,7 @@ int run_udpwiretest(int argc, char **argv);
 // that say WHY a lossy run completed (redundancy covered N, the retransmit covered M, the
 // reassembler stalled K times) rather than only that it did.
 int run_udploopbacktest(int argc, char **argv);
-int run_uqmatchtest(); // mp:U41e, udp_loopback_selftest.cpp
+int run_uqmatchtest(int port); // mp:U41e, udp_loopback_selftest.cpp
 // udp_bulk_selftest.cpp -- mp:T2: CHANNEL C, the bulk reliable chunk transfer above that transport.
 // A mebibyte crossing hash-verified at 5% injected loss, a receiver KILLED mid-transfer resuming
 // from its last acknowledged chunk (mp:T1b's restart), and the never-evictable chunk lane refusing
@@ -3671,6 +3679,7 @@ static const suite_row SUITE_TABLE[] = {
     // torus minimum), the cursor map, the wheel accumulator, and the resampler against the shared filter
     // kernels (all four filters, both pixel formats). Pure: no device, no game memory.
     {"mapzoomtest",     true, adapt_void<run_mapzoomtest>},
+    {"wheellisttest",   true, adapt_void<run_wheellisttest>},
     // PT-INPUT1. The owned DirectInput's element conversion (mh/input/dinput_convert.h): scan code ->
     // DIK, DI5 repeat filtering + the focus-loss release set, the relative remainder carry, and the
     // absolute -> exact-delta walk against the game's own IDIV / doubling / clamp for every divisor
@@ -3695,7 +3704,7 @@ static const suite_row SUITE_TABLE[] = {
     // over: T1 proves the byte stream, this proves the inbound-queue rollup + match-boundary epoch
     // mh_net.dll's TCP transport has carried since mp:U41/U41d. Fixed ports (39710..), clear of
     // udploopbacktest's own 39560..39697 range and udprelinktest/udpbulktest/udpsnaptest's.
-    {"uqmatchtest",    true, adapt_void<run_uqmatchtest>},
+    {"uqmatchtest",    true, adapt_port<run_uqmatchtest>},
     // mp:T2. Next to the loopback suite because it drives the same object on the same loopback with
     // the same loss dial, one channel over: T1 owns the byte stream on channel A, this owns the
     // chunk transfer on channel C. It takes the port argument plus 200, so the two never collide.
@@ -3738,6 +3747,21 @@ int main(int argc, char **argv) {
     // unrelated to the roster (a host-table version skew below would exit 3, and the assertion would
     // read that as "the exe lists nothing").
     if (strcmp(mode, "--list-suites") == 0) return selftest_list_suites(SUITE_TABLE, SUITE_COUNT);
+
+    // TL-RELINK-FLAKE / TL-TEST-UQMATCH-LOAD / TL-MESHTEST-LOAD: THE LIVE-UDP SUITES ASSUME THEY GET
+    // THE CPU WHEN THEIR TIMERS FIRE. They run real endpoint threads against real clocks (a 1.5 s link
+    // watchdog, a /8-scaled failover timeline whose suspicion window is 250 ms, a 400 ms straggler
+    // gap), and the gate runs them beside builds, the UI rig and other selftests: measured 2026-10-17,
+    // meshtest went 0/8 red alone and 8/8 red with eight CPU burners beside it (every red a timer
+    // window missed by a descheduled thread, not a protocol fault). The cause is contention, so the
+    // process asks the scheduler not to lose it to ordinary-priority work -- ABOVE_NORMAL, not
+    // REALTIME: the suites sleep nearly all the time, so they cannot starve anything. Set
+    // MH_SELFTEST_NO_BOOST=1 to measure a suite without it.
+    {
+        char probe[4];
+        if (GetEnvironmentVariableA("MH_SELFTEST_NO_BOOST", probe, sizeof(probe)) == 0)
+            SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+    }
 
     const suite_args a = selftest_args(argc, argv);
 

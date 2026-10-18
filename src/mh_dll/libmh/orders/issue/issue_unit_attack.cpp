@@ -26,6 +26,7 @@
 // when the callee's own parameter type is already uint16_t and would narrow it regardless).
 //
 #include "orders/issue/issue_unit_attack.h"
+#include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 
 
 namespace mh::orders::issue {
@@ -292,6 +293,15 @@ void detail::unit_order_attack_building_reposition(const issue_view &v, const or
     // requires and reinterpreted for the first (TACT1-P C6, 2026-09-04).
     c.bldg_get_coords((uint16_t)target_player, target_bldg_idx, reinterpret_cast<int32_t *>(&target_x),
                       reinterpret_cast<int32_t *>(&target_y));
+    // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's ISSUE splice at 0x0046bfca): the goal,
+    // target_fine and the in-range test below use the footprint tile nearest the attacker (sim_attack_range_footprint.h).
+    int32_t aim_x = 0, aim_y = 0;
+    if (mh::sim::attack_range_footprint() &&
+        mh::sim::footprint_aim_of_view(v, unit_at(v, attacker_player, attacker_unit_idx), (uint32_t)(uint16_t)attacker_player,
+                                       (uint32_t)(uint16_t)target_player, target_bldg_idx, &aim_x, &aim_y)) {
+        target_x = (uint32_t)aim_x;
+        target_y = (uint32_t)aim_y;
+    }
 
     if (weapon == 0xffffffffu) {
         weapon = c.unit_select_weapon((uint16_t)attacker_player, attacker_unit_idx, 1u);
@@ -320,6 +330,11 @@ void detail::unit_order_attack_building_reposition(const issue_view &v, const or
             // param_1/param_2 of the sibling are dead in ITS body (see issue_bldg_footprint.h) --
             // passed through as the original does (attacker_player, attacker_unit_idx) for
             // documentation fidelity, not because either value is read on the other side.
+            // attack_range_footprint: the in-range jitter spreads the aim around the CENTRE, as retail (JITTER splice
+            // at 0x0046c19e) -- put the point back first.
+            if (mh::sim::attack_range_footprint())
+                c.bldg_get_coords((uint16_t)target_player, target_bldg_idx, reinterpret_cast<int32_t *>(&target_x),
+                                  reinterpret_cast<int32_t *>(&target_y));
             detail::bldg_footprint_random_point(v, s, c, attacker_player,
                                                 (uint32_t)attacker_unit_idx, target_player,
                                                 target_bldg_idx, &target_x, &target_y);

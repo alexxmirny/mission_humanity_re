@@ -1,0 +1,92 @@
+# link_death_seq HOST (tooling:TL-SUITE-FOLD step 7): the lobby link-death row and the in-game transport-death row in ONE host session,
+# with two clients one after another (client_sequence). Replaces link_death (mp_host_linkdeath.txt / mp_client_linkdeath.txt) and
+# txdeath_ingame (mp_host_txdeath.txt / mp_client_txdeath.txt); their RE background (R-live, U19f, G270) is in those scripts' git history
+# and in tools/check_transport_death.py.
+#
+#   segment 1 (R-live, client 1, shim delay 100 ms one-way = 200 ms rtt): the host takes client 1 into its lobby, the shim's timeline stalls
+#     the link 8 s (no drop expected) and then blackholes it; the host must notice (`peers <1`), free the slot (`occ <2`) and grey Start.
+#     The row's trigger then lifts the blackhole and drops the shim delay to 0 on this script's `link death segment done` marker.
+#   segment 2 (U19f, client 2, delay 0, link_death's TCP transport): the SAME lobby takes a fresh client 2 and Start launches a match; at
+#     gameclock 45000 on both peers the row's trigger `cut`s the link (a real FIN close), and the survivor must reach the below-quorum dialog.
+#     It is LAST because the cut ends the match.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# in the lobby, waiting for the client
+present Network players
+settled Start
+peers 1
+capture link_death__hl1_lobby_linked
+log HOST in lobby with 1 connected peer -- waiting for the transport to lose it
+
+# assertion 1: the transport noticed
+peers <1
+log HOST transport reports 0 peers -- the drop was DETECTED
+
+# assertion 2 (R-live-start): and the dead peer's lobby slot was freed, so Start cannot begin a match
+# against a player who is not there
+occ <2
+log HOST freed the dead peer's lobby slot (occ < 2)
+
+# assertion 3: and Start REFUSES. This is the user-visible half of the 2026-07-26 failure -- the host
+# started a 2-player game against a peer that had been gone 90 s, then starved every lockstep frame
+# (120/120) until the presence timeout ended it. The protection is retail, not ours: `enabled Start` is
+# the game's own "ready to launch" signal (see mp_host_start.txt), which goes false again the moment
+# the slot count drops. So once R-live frees the slot, the button greys itself.
+disabled Start
+capture link_death__hl2_after_link_death
+log HOST freed the dead peer's slot; Start greyed out -- a doomed match cannot be launched
+log HOST link_death_seq: link death segment done
+
+# ---- segment 2: the in-game transport death (client 2 joins the same lobby) ----
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# ---- in the match --------------------------------------------------------------------------------
+absent Network players
+gamemode 2
+# Reach a known sim moment well before the shim's scheduled blackhole (tools/uiscripts/shim/
+# txdeath_ingame.txt fires at t+50000 ms from the first connection) -- the same 3000 convention
+# graceful_quit uses, purely to get off the entry frame; the real wait is the widget predicate below.
+gameclock 3000
+# Gate diet block 2 (2026-09-24): the link is cut by a shim TRIGGER on the log line below (the
+# registry row's shim_triggers), at a SIM moment -- not by the timeline's t+50 s, which is now only
+# the fallback. The dialog capture shows the world behind it and the host's mothership drifts
+# across that view with sim time, so a wall-clock cut made the frame load-dependent (measured: 5.7 %
+# off the baseline in a loaded run, 0.9 % alone; a cut at gameclock 3000 / 20000 read 16-20 % / 5-18 %).
+# 45000 is past where the t+50 s cut landed on an idle box (~gameclock 43 s), i.e. the baseline's frame.
+gameclock 45000
+log HOST past gameclock 45000 in the match -- the shim trigger may cut the link now
+
+# THE SURVIVOR CLAUSE. False until the below-quorum drop has actually been applied here, and reached
+# ONLY once the shim's blackhole has run long enough past the link watchdog (rx_timeout_ms, ship
+# default 10 s) for the fast-drop path (U17(b)) to fire. DO NOT replace this with a bigger `gameclock`
+# target -- see the header.
+present Continue game
+# G270: this is the SAME dialog/wording a graceful quit reaches (mp_host_gquit.txt) -- outcome=8,
+# "you are the last player !" -- because presence_lost is unconditional about how the peer left.
+# `absent` here is the negative control: the framing-bug wording must NOT appear (it would mean the
+# U19e frame guard regressed); the log-based post_check (check_transport_death.py) carries the real
+# positive proof (fast-drop line + outcome=8 + no outcome 7 + no garbled + no U19d correction).
+absent Connection to server lost
+settled Continue game
+dump
+capture txdeath_ingame__ingame_txdeath_dialog
+log SURVIVOR watched the peer's transport die mid-match and reached the same below-quorum dialog a graceful quit uses, via the fast-drop route
+end

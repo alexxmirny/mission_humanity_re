@@ -1,4 +1,5 @@
 #include "sim/sim_group_move_order_pathfind.h"
+#include "sim/sim_merge_goal.h"  // mods:M1X [net] move_merge_goal_fix
 #include "sim/sim_stack_guard.h" // LIFT-TABLE S5: the stack probe is libmh-internal, not a host service
 
 #include "addr/mh_calls.gen.h" // typed callables for the ORIGINAL functions this closure still calls out to
@@ -162,7 +163,31 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
                                                        static_cast<int32_t>(goal_y_wrapped));
         goal_hidden            = (owner_bit_mask & fog_byte) == 0;
     }
-    if (goal_impassable || goal_hidden) {
+    // [net] move_merge_goal_fix (mods:M1X; retail carrier: move_proto_arrival.cpp's splice of the CALL at 0x0041cc69): a
+    // wave whose units carry the squad-merge order 0x33 aims at the nearest REACHABLE tile next to the target soldier
+    // (sim/sim_merge_goal.h); none found = the original's pick below.
+    bool merge_goal_done = false;
+    if ((goal_impassable || goal_hidden) && move_merge_goal_fix() && member_count >= 1) {
+        const uint32_t mi = v.group_members[0].unit_handle;
+        if (mi < static_cast<uint32_t>(v.caps.units) &&
+            v.units[static_cast<int32_t>(owner) * v.caps.units + static_cast<int32_t>(mi)].order == MERGE_GOAL_ORDER) {
+            uint32_t tx = 0, ty = 0;
+            merge_goal_done = merge_goal_search(
+                static_cast<uint32_t>(centroid_col), static_cast<uint32_t>(centroid_row),
+                static_cast<uint32_t>(own.group_order_goal_x_mut()), static_cast<uint32_t>(own.group_order_goal_y_mut()),
+                static_cast<uint32_t>(*v.map_width), static_cast<uint32_t>(*v.map_height),
+                [&v](uint32_t t) { return v.passable[t] != 0; },
+                [&own, owner_bit_mask](uint32_t t) {
+                    return (own.fog_discovered_at(static_cast<int32_t>(t >> 8), static_cast<int32_t>(t & 0xffu)) & owner_bit_mask) != 0;
+                },
+                &tx, &ty);
+            if (merge_goal_done) {
+                own.group_order_goal_x_mut() = static_cast<int32_t>(tx);
+                own.group_order_goal_y_mut() = static_cast<int32_t>(ty);
+            }
+        }
+    }
+    if ((goal_impassable || goal_hidden) && !merge_goal_done) {
         // group_order_goal_{x,y}_mut() is a plain int32_t field (sim_state.h) used as int32_t
         // everywhere else in this file; find_closer_visible_tile's committed out-params are
         // uint32_t* (TACT1-P C6, 2026-09-04) -- same 32-bit quantity, cast at this minority site.

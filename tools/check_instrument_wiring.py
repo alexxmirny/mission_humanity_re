@@ -154,6 +154,8 @@ CHANNEL_OWNERS = {
     "mh_temporal.log": ("telemetry", {"mh.dll"}),
     "mh_trace.log": ("telemetry", {"mh.dll"}),
     "mh_launch.log": ("telemetry", {"mh.dll"}),
+    # [log] snd_trace=1: one line per sound request + the focus changes (seams/snd_trace.cpp). Per SESSION.
+    "mh_snd.log": ("telemetry", {"mh.dll"}),
     # mp:SES7: the per-SESSION streams split out of two process-scoped channels. mh_mtrace.log is the
     # `[input] mouse_trace` rows (mh_uidrive.log keeps a copy only under [uitest], for the rig);
     # mh_match_harness.log is the harness's per-match mirror of mh_harness.log -- composed INSIDE

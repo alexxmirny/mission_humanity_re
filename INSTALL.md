@@ -455,6 +455,13 @@ executable on first run (the launcher writes the relay's key into it instead). E
 must hold the same key, and a peer with the wrong one is refused rather than desynchronised; without
 the launcher, the host shares its file with its players.
 
+**All players must run the same release.** The host compares release versions and its host-set
+gameplay settings (the settings digest) when a player joins, and a different one is refused.
+0.2.1 adds `mother_free_build` and `mother_free_build_ai` to that digest, so a 0.2.0 player cannot
+join a 0.2.1 host, or the other way round. The lobby shows `Host runs X, you run Y: update` (or
+`Gameplay settings differ (host/yours): update`). Press **Update** in the launcher on the older
+side; it installs the current release.
+
 ## 8. What is bring-your-own-game
 
 The full correctness gate for this project is larger than §3 and its remainder cannot run without a

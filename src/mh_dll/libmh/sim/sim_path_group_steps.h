@@ -16,6 +16,18 @@ struct path_group_steps_calls {
 
 const path_group_steps_calls &live_path_group_steps_calls();
 
+// [net] move_attack_heading_fix (mods:M1X) -- set by lockstep::set_fixes. Off = faithful stock: pathfind_build_steps
+// records the blocked direct heading; on = the heading of the step it actually took (see write_step). Header-only
+// inline static, one per module, same shape as sim_mother_free.h.
+namespace path_group_steps_detail {
+inline bool &attack_heading_fix() {
+    static bool on = false;
+    return on;
+}
+} // namespace path_group_steps_detail
+inline void set_move_attack_heading_fix(bool on) { path_group_steps_detail::attack_heading_fix() = on; }
+inline bool move_attack_heading_fix() { return path_group_steps_detail::attack_heading_fix(); }
+
 namespace detail {
 
 // llm_strat_unit_path_queue_splice @0x00421758. `unit_index` is the PATH SLOT ID (see header banner) --

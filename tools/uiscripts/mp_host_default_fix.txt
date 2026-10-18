@@ -1,0 +1,144 @@
+# default_fix HOST walk -- THREE in-match rows of the DEFAULT configuration (libmh.dll bound) folded into ONE match
+# (tooling:TL-SUITE-FOLD step 3). Pair with mp_client_idle.txt. Segments open with `mark <old row>`, captures are <old row>__<name>:
+#
+#   segment                 old row               what it does here
+#   landing                 -                     land the mothership (shift+right-click)
+#   info_avi_absent         info_avi_absent       (mp:X2g) the place-building tab, a right-click on the Academy row with the clip made
+#                                                 absent ([net] info_avi_test_absent=*): the info screen opens WITHOUT video, Esc closes it
+#   d37a_relanding_c2       d37a_relanding_c2     (mp:D37a) the pioneer lifts off EMPTY and re-lands (libmh's promoted body is under test)
+#   u45_diplo_control       u45_diplo_control     (mp:U45) tick allied AND the second box for the client in ONE diplomacy Apply (orders
+#                                                 0xf4 + 0xf5), reopen, Cancel, leave the menu
+#
+# The diplomacy Apply goes LAST: the second box it ticks is SHARED VISION (the client's sight then reveals fog on the host's map,
+# ~2% of every later frame), and the dialog is modal (the host's sim stalls while it is open). Everything before it keeps the old
+# rows' absolute clocks (landed frames at 20000, the info screen 21000..32000; the pioneer segment is the old walk +13000), so
+# their baselines are the old rows' PNGs. The assertions are the post_checks (check_u45_diplo.py reads the recorded order streams
+# -- order_mode=1 is the row's harness knob; check_info_avi.py takes --clock-window for its stall clause so the modal dialog's
+# stall is not charged to the info screen; check_pioneer_refill.py).
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the airborne mothership (shift+right-click; order 0x10 move + 0x18 deploy); it lands well before 20000.
+absent Network players
+gameclock 3000
+mark landing
+simrclick 480 330 shift
+gameclock 20000
+capture d37a_relanding_c2__landed
+capture info_avi_absent__landed
+
+# ===== segment info_avi_absent (was row info_avi_absent: mp_host_info_avi.txt)
+# The clip is made unavailable by the TEST KNOB `[net] info_avi_test_absent=*` (the row's net_extra): the info screen's opens are
+# redirected to res\NOT.AVI, so nothing in the shared Res directory is touched. RIGHT-click the Academy row's text (HUD widget
+# 0x5b+, x 80..160 in the panel -- the icon itself is the left-click select widget): that raises the building's info screen.
+# Fixed: it opens WITHOUT video (game mode 4, text pages), no modal appears, and Esc closes it; the match keeps running.
+mark info_avi_absent
+simclick 890 215
+gameclock 21000
+capture info_avi_absent__build_menu
+
+log X2G open info
+simrclick 975 478
+retry 1500 1 3 gamemode 4
+screensettled
+capture info_avi_absent__info_novideo
+dump
+log X2G info screen up without video
+
+# rows on both sides while the screen is up, then leave it the way its status line says: Esc
+gameclock 26000
+capture info_avi_absent__info_novideo_later
+key 0x01
+retry 1500 1 3 gamemode 2
+screensettled
+capture info_avi_absent__back_on_map
+log X2G info screen closed
+gameclock 32000
+
+# ===== segment d37a_relanding_c2 (was row d37a_relanding_c2: mp_host_pioneer_relanding.txt, every clock +13000)
+# llm_strat_bldg_completion_dispatch's mothership arm credited the TEMPLATE stock on a re-landing when `player != PlayerSide`, a
+# per-peer predicate. Lift off EMPTY, re-land on the same spot. Both HUD clicks are gated with `retry` on `bldgsel`: the select
+# must leave a building selected, the take-off must take it off the map (the unmap clears the selection once the fold finishes).
+mark d37a_relanding_c2
+gameclock 33000
+simclick 490 345
+retry 1500 1 3 bldgsel any
+gameclock 36000
+simclick 945 284
+retry 9000 1 3 bldgsel none
+# the airborne pioneer drifts while it climbs, and WHERE it drifts depends on the sim's random state -- which differs in a match that
+# ran other segments first. So select it with a drag box over the whole view (it is the only own unit) instead of a click on its
+# sprite, then land it on the same spot (the RE-landing).
+gameclock 46500
+cursorhold 100 100 10
+presshold 100 100
+cursorhold 100 100 6
+cursorhold 800 700 12
+release 800 700
+gameclock 47000
+simrclick 480 330 shift
+gameclock 83000
+capture d37a_relanding_c2__relanded
+# prove it is really back on the ground: the landing spot selects a building again
+simclick 490 345
+retry 1500 1 3 bldgsel any
+gameclock 93000
+
+# ===== segment u45_diplo_control (was row u45_diplo_control: mp_host_diplomacy_both.txt, clocks from 94000)
+# One diplomacy Apply issues set_player_relation (order 0xf4) and set_player_control_mode (0xf5) in the same frame; retail's
+# release_due dedup let the higher code win on EVERY peer. The dialog is MODAL (dlg_flags "mouse loop ARMED"): the host's sim stalls
+# while it is open, so the local write and the order both happen at Ok. The client's row is widget [2] 'client' (the ALLIED
+# checkbox), [3] the second box, Ok is [5]. The HUD "Menu" button is a `simclick` (held across sim steps); `retry` re-sends it if
+# the sim runs 1.5 s without the menu.
+mark u45_diplo_control
+gameclock 94000
+capture u45_diplo_control__ingame
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+dump
+capture u45_diplo_control__diplomacy_open
+
+# THE TRIGGER: tick "allied" AND the second box for the client, then Ok -- ONE Apply.
+clicki 2
+clicki 3
+settled Ok
+capture u45_diplo_control__both_ticked
+clickl Ok
+absent Ok
+log HOST applied allied=1 + control=1 for the client in ONE diplomacy Apply
+
+# After the commit (well past the ~4-step window) the reopened dialog must show BOTH boxes TICKED, seeded from the cells the two
+# order handlers wrote -- on retail's dedup only the control box is.
+gameclock 99000
+simclick 972 150
+retry 1500 1 3 settled value:100
+clickv 100
+absent value:113
+capture u45_diplo_control__reopened_after_commit
+clickl Cancel
+absent Cancel
+gameclock 103000
+end

@@ -1,0 +1,17 @@
+# mods:M1R -- replay the user's 20 recorded move orders on the loaded 'Unit movement test' save (5-kofu-c).
+# Deploy the save with --deploy-save 5-kofu-c; the orders are tools/uiscripts/m1_moves.csv, fed to the harness with
+# [harness] mv_replay=<abs path> (see m1_pf_save.txt for the load; this is the same hand-off). The verdict is the
+# `; MV ...` lines in mh_harness.log, not a frame. A probe, NOT a registered [uitest] row.
+# Run with --timeout-frames 2000000 and --harness-extra "synth_move=0;mv_replay=<abs csv>" (--harness defaults synth_move=1,
+# which sends random orders to unit 4); the +330000 wait covers the 20 orders' clocks.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +330000
+log mv: save loaded, handing the run to the harness's mv_replay probe
+end

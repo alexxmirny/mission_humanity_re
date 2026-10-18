@@ -38,8 +38,11 @@
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="seams\ui_worker_click.cpp" />
     <ClCompile Include="seams\ui_minimap_box.cpp" />
+    <ClCompile Include="seams\ui_minimap_plus.cpp" />
+    <ClCompile Include="seams\ui_bigmap.cpp" />
     <ClCompile Include="seams\ui_crew_reminder.cpp" />
     <ClCompile Include="seams\ui_bldg_build_probe.cpp" />
+    <ClCompile Include="seams\ui_bldg_rearm.cpp" />
     <ClCompile Include="seams\sim_pioneer_refill.cpp" />
     <ClCompile Include="seams\ui_bldg_netcrit_pure.cpp" />
     <ClCompile Include="seams\ui_storage_panel_purge.cpp" />
@@ -49,9 +52,16 @@
     <ClCompile Include="seams\save_triggers.cpp" />
     <ClCompile Include="seams\ui_drive.cpp" />
     <ClCompile Include="seams\ui_keyrepeat.cpp" />
+    <ClCompile Include="seams\snd_trace.cpp" />
+    <ClCompile Include="seams\move_proto_blocked.cpp" />
+    <ClCompile Include="seams\move_proto_nudge.cpp" />
+    <ClCompile Include="seams\move_proto_arrival.cpp" />
+    <ClCompile Include="seams\move_proto_speed.cpp" />
+    <ClCompile Include="seams\combat_proto.cpp" />
     <ClCompile Include="seams\ui_pause.cpp" />
     <ClCompile Include="seams\strat_pre_input.cpp" />
     <ClCompile Include="seams\ui_map_zoom.cpp" />
+    <ClCompile Include="seams\ui_wheel.cpp" />
     <ClCompile Include="seams\view_wrap.cpp" />
     <ClCompile Include="seams\launch.cpp" />
     <ClCompile Include="seams\mp_menu.cpp" />
@@ -122,6 +132,7 @@
     <ClCompile Include="gfx\panel_rows.cpp" />
     <ClCompile Include="gfx\zoom_scale.cpp" />
     <ClCompile Include="gfx\map_zoom.cpp" />
+    <ClCompile Include="gfx\wheel_list.cpp" />
     <ClCompile Include="gfx\ddraw_own.cpp" />
     <ClCompile Include="input\dinput_own.cpp" />
     <ClCompile Include="input\dinput_convert.cpp" />

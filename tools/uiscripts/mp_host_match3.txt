@@ -1,0 +1,49 @@
+# match3 HOST (tooling:TL-SUITE-FOLD step 6) -- ONE host, TWO clients, one three-peer TCP match. Replaces three 2-peer rows:
+#   mixed_race     client A picks Alien while the host stays Human; the race reaches the host before Start (U28/D19)
+#   race_inflight  client B's slot is poked to Alien WITHOUT a push; the host's array wins at Start (U28)
+#   chat_relay     the host types a Cyrillic line in-game; BOTH clients receive the same code points (F3 / MP-LANG)
+# Client A joins first (B holds at `awaitsignal lobby_a` before its Join click), so A is slot 1 and B slot 2 whatever the load.
+# Pair with mp_client_match3_a.txt / mp_client_match3_b.txt. Both clients and the host pin cp1251 (input_cp1251.ini).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+peers 2
+awaitsignal lobby_a
+awaitsignal lobby_b
+occ 3
+race 1 2
+race 2 1
+race 0 1
+enabled Start
+settled Start
+capture mixed_race__r2_lobby_alien
+capture race_inflight__i1_host_sees_human
+capture chat_relay__h_lobby
+clickl Start
+absent Network players
+gameclock 6000
+capture mixed_race__r3_launched
+capture race_inflight__i2_launched
+log HOST launched with MIXED races (host Human, client A Alien) and client B's slot poked (host array must win)
+# the in-game chat line (chat_relay): Enter opens the field, type on the Russian layout, Enter sends
+gamemode 2
+key 0x1c
+layout 00000419
+type Привет
+field chat hex:d09fd180d0b8d0b2d0b5d182
+key 0x1c
+layout default
+signal chatsent
+log F3 HOST: sent a UTF-8 Cyrillic chat line (d0 9f d1 80 d0 b8 d0 b2 d0 b5 d1 82, MP-LANG)
+end

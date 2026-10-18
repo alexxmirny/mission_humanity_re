@@ -711,6 +711,8 @@ def build_scenario_argv(
     signal_touch=None,
     client_after_exit=(),
     client_expect_exit=(),
+    client_sequence=False,
+    client_cfg=(),
     host_dir=None,
     omit_satellite=(),
     ai_probe=None,
@@ -771,6 +773,8 @@ def build_scenario_argv(
     argv += ["--signal-touch", signal_touch] if signal_touch else []
     argv += [a for c, p in client_after_exit for a in ("--client-after-exit", "%d:%d" % (c, p))]
     argv += [a for c in client_expect_exit for a in ("--client-expect-exit", str(c))]
+    argv += ["--client-sequence"] if client_sequence else []
+    argv += [a for x in client_cfg for a in ("--client-cfg", x)]  # "N:key=value"
     argv += ["--host-dir", host_dir] if host_dir else []
     argv += [a for s in omit_satellite for a in ("--omit-satellite", s)]
     argv += ["--ai-probe", str(ai_probe)] if ai_probe else []
@@ -862,6 +866,68 @@ def _walk_log_fingerprint(run_dir):
         return None
 
 
+_THREAD_PS = (
+    "$ErrorActionPreference='SilentlyContinue';"
+    "foreach($p in Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and "
+    "$_.ExecutablePath.StartsWith('%s', 'OrdinalIgnoreCase') }){"
+    "'PID '+$p.ProcessId+' '+$p.ExecutablePath;"
+    "$q=Get-Process -Id $p.ProcessId;"
+    "'  cpu_s='+$q.TotalProcessorTime.TotalSeconds+' ws_mb='+[int]($q.WorkingSet64/1MB)+' threads='+$q.Threads.Count;"
+    "foreach($t in $q.Threads){'  tid '+$t.Id+' '+$t.ThreadState+' '+$t.WaitReason+' cpu_s='+$t.TotalProcessorTime.TotalSeconds}}"
+)
+
+
+def stall_evidence(run_dirs, archive_name="stall"):
+    """TL-GATE (LOAD-RED hunt): what a WALK-STALLED watchdog kill leaves behind. Before the kill
+    destroys the lane, archive each run dir's text logs under tmp/ui_test/postmortem/ and print the
+    live game process's thread table twice, 3 s apart: a thread whose cpu_s moves is spinning, one
+    that sits in Wait/<reason> is blocked -- the difference between a livelock and a deadlock, which
+    the log silence alone cannot give. Best effort: a diagnostic never fails the run."""
+    lines = []
+    for d in run_dirs:
+        try:
+            if (
+                not d
+                or not os.path.isdir(d)
+                or os.path.basename(os.path.dirname(os.path.abspath(d))) != "logs"
+            ):
+                continue  # only a real lane's logs/<run>
+            lane = os.path.dirname(os.path.dirname(os.path.abspath(d)))
+            dst = os.path.join(
+                REPO,
+                "tmp",
+                "ui_test",
+                "postmortem",
+                "%s__%s_%s" % (os.path.basename(lane), os.path.basename(d), archive_name),
+            )
+            os.makedirs(dst, exist_ok=True)
+            for f in glob.glob(os.path.join(d, "*.log")) + glob.glob(os.path.join(d, "*.txt")):
+                with open(f, "rb") as src:
+                    src.seek(0, 2)
+                    size = src.tell()
+                    src.seek(max(0, size - 512 * 1024))
+                    data = src.read()
+                with open(os.path.join(dst, os.path.basename(f)), "wb") as out:
+                    out.write(data)
+            lines.append("    [stall] logs archived to %s" % dst)
+            for n in (1, 2):
+                r = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", _THREAD_PS % lane.replace("'", "''")],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                lines.append(
+                    "    [stall] threads of lane %s (sample %d):" % (os.path.basename(lane), n)
+                )
+                lines += ["      " + x for x in r.stdout.splitlines()]
+                if n == 1:
+                    time.sleep(3)
+        except Exception as e:  # noqa: BLE001
+            lines.append("    [stall] evidence capture failed: %s" % e)
+    return lines
+
+
 def _run_watched(cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5, banner=None):
     """Run `cmd` (a full argv, not just ui_test.py's tail), killing it EARLY -- before `backstop` --
     only once NONE of `run_dirs_fn()`'s directories has an mh_uidrive.log that changed in the last
@@ -907,12 +973,20 @@ def _run_watched(cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5,
             kill_why = "no lane's mh_uidrive.log advanced for %ds" % stall_s
             break
     if kill_why:
+        ev = []
+        if stall_s and "advanced" in kill_why:
+            try:
+                ev = stall_evidence(list(run_dirs_fn()))
+            except Exception:  # noqa: BLE001
+                ev = []
         proc.kill()
         try:
             out, _ = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             pass  # best-effort drain; win_job's kill-on-close job still reaps the peer processes
         msg = "    !! PROGRESS WATCHDOG: %s" % kill_why
+        if ev:
+            msg += "\n" + "\n".join(ev)
         if not capture:
             print(msg)
         tail = ((banner + "\n") if capture and banner else "") + (out or "") + "\n" + msg

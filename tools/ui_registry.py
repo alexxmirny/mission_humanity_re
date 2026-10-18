@@ -31,6 +31,68 @@ REGISTRY = os.path.join(REPO, "tools", "uiscripts", "registry.yaml")
 # mapping checked against RECORDS[NAME]), and "A|B" unions. int never accepts bool; float never
 # accepts int (0 and 0.0 are different registry values).
 RECORDS = {
+    # tooling:TL-SUITE-FOLD step 8: one process of a solo_steps row. `name` is the old row's name (it
+    # labels the step; the committed baselines keep the script basename as their label). The other keys
+    # are row keys a step sets for itself. A Ref cannot live inside a nested mapping, so `requires` is
+    # the NAME of a precondition in ui_suite_common (test_ui.solo_requires looks it up).
+    "solo_step": {
+        "required": {"name": "str", "script": "str"},
+        "optional": {
+            "extra_ini": "str|list[str]",
+            "harness_extra": "str",
+            "net_extra": "str",
+            "omit_satellite": "list[str]",
+            "tol": "float",
+            "post_check": "list[str]|list[list[str]]",
+            "post_check_session": "bool",
+            "deploy_save": "str",
+            "launch_args": "str",
+            "requires": "str",
+            "timeout": "int",
+            "timeout_frames": "int",
+        },
+    },
+    # tooling:TL-SUITE-FOLD step 9: one match of a multi_steps row -- the multi-peer analogue of solo_step.
+    # `name` is the old row's name; host/clients name the step's own scripts (so its own baseline labels).
+    # The other keys are row keys a step sets for itself (the boot-time settings that made it a row of
+    # its own): [net] knobs per side, the harness knobs, the shim's delay/triggers, tol, timeouts, the
+    # post_check and whether the step hashes.
+    "multi_step": {
+        "required": {"name": "str", "host": "str", "clients": "list[str]"},
+        "optional": {
+            "extra_ini": "str|list[str]",
+            "harness_extra": "str",
+            "harness_extra_host": "str",
+            "harness_extra_client": "str",
+            "net_extra": "str",
+            "net_extra_client": "str",
+            "no_hash_why": "str",
+            "omit_satellite": "list[str]",
+            "post_check": "list[str]|list[list[str]]",
+            "post_check_peers": "bool",
+            "post_check_session": "bool",
+            "shim_delay": "int",
+            "shim_timeline": "str",
+            "shim_triggers": "list[record:shim_trigger]",
+            "ship_pacing": "bool",
+            "timeout": "int",
+            "timeout_frames": "int",
+            "tol": "float",
+        },
+    },
+    # tooling:TL-SUITE-FOLD step 4: one client's own configuration in a client_sequence row. A Ref
+    # cannot live inside a nested mapping, so dead_ip is a flag: "this client gets the row's
+    # client_dead_ip".
+    "client_cfg": {
+        "required": {},
+        "optional": {
+            "extra_ini": "str",
+            "net_extra": "str",
+            "dead_ip": "bool",
+            "no_ip": "bool",
+            "tol": "float",
+        },
+    },
     "shim_trigger": {
         "required": {"cmd": "str", "when": "list[list[str]]"},
         "optional": {"fast": "bool"},
@@ -42,6 +104,9 @@ SCHEMA = {
         "required": {"name": "str", "kind": "str", "desc": "str", "budget_s": "int"},
         "optional": {
             "client_after_exit": "dict[int,int]",
+            "client_cfg": "dict[int,record:client_cfg]",
+            "client_sequence": "bool",
+            "hash_skip_clients": "list[int]",
             "client_dead_ip": "str",
             "client_expect_exit": "list[int]",
             "client_game_name": "str",
@@ -80,6 +145,8 @@ SCHEMA = {
             "script": "str",
             "share_lanes": "str|list[str]",
             "shim": "bool",
+            "solo_steps": "list[record:solo_step]",
+            "multi_steps": "list[record:multi_step]",
             "shim_delay": "int",
             "shim_timeline": "str",
             "shim_triggers": "list[record:shim_trigger]",
@@ -143,10 +210,17 @@ RARE_KEYS = {
     "relay_restart_on": "relay_restart's redeploy-survives-the-match proof (mp:R4b, done)",
     "relay_args": "relay_stale_notice needs a lowered --advertise-level on the relay (mp:R4a, done)",
     "client_dead_ip": "ip_retry's typo'd-IP-is-retryable shape (mp:S8, done)",
+    # TL-SUITE-FOLD step 9: the two boot-setting sequences.
+    "ship_pacing": "shim_seq (both steps) and resync_seq's p13 step: the shipped adaptive pacing instead of the rig's pinned lookahead (mp:P13, tooling:TL-SUITE-FOLD)",
+    "multi_steps": "resync_seq / shim_seq: one match per step on the row's lanes, relaunched with that step's boot-time [net]/shim settings (tooling:TL-SUITE-FOLD)",
+    # TL-SUITE-FOLD step 4: the lobby_seq row's mechanism -- one host session, clients joining one
+    # after another, each with its own configuration.
+    "client_sequence": "lobby_seq: client N+1 launches after the runner ended client N's process (tooling:TL-SUITE-FOLD)",
+    "hash_skip_clients": "map_tcp: the refused sequence client never reaches a match, so its lane has no hashes to pair (tooling:TL-SUITE-FOLD)",
+    "client_cfg": "lobby_seq: per-client ini fragment / [net] knob / dead-IP flag / tol (tooling:TL-SUITE-FOLD)",
     # Generic, cross-cutting mechanisms that happen to be narrow today because few rows need them
     # yet -- not bespoke branches, so not candidates for deletion.
     "budget_evidence": "generic --check-budgets evidence field; 1 row raised its budget_s recently (tooling:TL-SUITE-TIMEOUT-CLASS, done)",
-    "expect_red": "generic XFAIL declaration; narrow today because most red-prone rows got fixed instead",
     "extra_ini_host": "generic per-side ini fragment (parallels extra_ini); codepage_adopt/codepage_refused use it (mp:F3c, done)",
     "extra_ini_client": "generic per-side ini fragment (parallels extra_ini); codepage_adopt/codepage_refused use it (mp:F3c, done)",
     "requires": "generic opt-in precondition hook; font_merged/chat_glyphs are its first users (mp:F2b, done)",
@@ -171,7 +245,18 @@ def rare_key_problems(rows):
     core = set(SCHEMA["tests"]["required"])
     counts = Counter()
     for row in rows:
-        for k in row:
+        # a key a solo step sets for itself counts as the row using it (once per row)
+        used = (
+            set(row)
+            | {k for st in row.get("solo_steps", ()) for k in st if k not in ("name", "script")}
+            | {
+                k
+                for st in row.get("multi_steps", ())
+                for k in st
+                if k not in ("name", "host", "clients")
+            }
+        )
+        for k in used:
             if k not in core:
                 counts[k] += 1
     probs = [
@@ -382,10 +467,59 @@ def validate(data, refs=None, lint=True):
                 row[k] = v
             for key, by in schema.get("requires_by", {}).items():
                 for need in by.get(row.get(key), ()):
+                    # a solo row names its processes in solo_steps instead of one script
+                    if need == "script" and "solo_steps" in row:
+                        continue
+                    # a multi row names its matches in multi_steps instead of one host/clients pair
+                    if need in ("host", "clients") and "multi_steps" in row:
+                        continue
                     if need not in row:
                         raise RegistryError(
                             "%s: %s=%s needs key %r" % (where, key, row.get(key), need)
                         )
+            if reg == "tests" and "solo_steps" in row:
+                steps = row["solo_steps"]
+                names_ = [s["name"] for s in steps]
+                if row.get("kind") != "solo":
+                    raise RegistryError("%s: solo_steps on a %s row" % (where, row.get("kind")))
+                if "script" in row:
+                    raise RegistryError(
+                        "%s: both script and solo_steps (name the scripts in the steps)" % where
+                    )
+                if len(steps) < 2:
+                    raise RegistryError("%s: solo_steps with one step is just a script" % where)
+                if len(set(names_)) != len(names_):
+                    raise RegistryError("%s: duplicate solo_steps name" % where)
+            if reg == "tests" and "multi_steps" in row:
+                steps = row["multi_steps"]
+                names_ = [s_["name"] for s_ in steps]
+                if row.get("kind") != "multi":
+                    raise RegistryError("%s: multi_steps on a %s row" % (where, row.get("kind")))
+                if "host" in row or "clients" in row:
+                    raise RegistryError(
+                        "%s: both host/clients and multi_steps (name the scripts in the steps)"
+                        % where
+                    )
+                if len(steps) < 2:
+                    raise RegistryError("%s: multi_steps with one step is just a row" % where)
+                if len(set(names_)) != len(names_):
+                    raise RegistryError("%s: duplicate multi_steps name" % where)
+                if len({len(s_["clients"]) for s_ in steps}) != 1:
+                    raise RegistryError(
+                        "%s: every multi_steps step needs the same number of clients (the row's "
+                        "lanes are provisioned once)" % where
+                    )
+                # the row's lane plan, ports and peer count read host/clients: they are the first
+                # step's (the steps only differ in which scripts run on those lanes)
+                row["host"] = steps[0]["host"]
+                row["clients"] = list(steps[0]["clients"])
+                if lint:
+                    for s_ in steps:
+                        probs = hash_problems(merge_step(row, s_, "multi_steps"))
+                        if probs:
+                            raise RegistryError(
+                                "%s step %s: %s" % (where, s_["name"], "; ".join(probs))
+                            )
             if reg == "tests" and lint:
                 probs = hash_problems(row)
                 if probs:
@@ -442,6 +576,29 @@ def harness_merge(base, over):
     m = harness_kv(base)
     m.update(harness_kv(over))
     return ";".join("%s=%s" % kv for kv in m.items())
+
+
+def merge_step(row, step, key="solo_steps"):
+    """The registry row ONE process / match of a `solo_steps` / `multi_steps` row runs as.
+
+    The step's own keys win over the row's, except extra_ini (the row's fragments come first, the
+    step's after -- a later [section] key wins in the ini) and harness_extra (merged by key). The
+    result is a plain row, so build_argv / post_check / the baselines behave exactly as for the old
+    stand-alone row: the committed baselines keep their script-basename label."""
+    out = {k: v for k, v in row.items() if k != key}
+    for k, v in step.items():
+        if k == "name":
+            continue
+        if k == "extra_ini":
+            base = row.get("extra_ini")
+            base = [base] if isinstance(base, str) else list(base or [])
+            out[k] = base + ([v] if isinstance(v, str) else list(v))
+        elif k == "harness_extra":
+            out[k] = harness_merge(row.get("harness_extra"), v)
+        else:
+            out[k] = v
+    out["step"] = step["name"]
+    return out
 
 
 def hash_problems(row):
@@ -618,6 +775,27 @@ _NEGATIVES = [
         ["'ok_multi'", "missing required key 'desc'"],
     ),
     ("kind-dependent key", _plant("    script: s.txt\n", ""), ["'ok_solo'", "'script'"]),
+    (
+        "solo_steps with a script",
+        _plant(
+            "    script: s.txt\n",
+            "    script: s.txt\n    solo_steps: [{name: a, script: a.txt}, {name: b, script: b.txt}]\n",
+        ),
+        ["'ok_solo'", "both script and solo_steps"],
+    ),
+    (
+        "solo_steps step key",
+        _plant(
+            "    script: s.txt\n",
+            "    solo_steps: [{name: a, script: a.txt}, {name: b, script: b.txt, bogus: 1}]\n",
+        ),
+        ["'ok_solo'", "'solo_steps'"],
+    ),
+    (
+        "solo_steps one step",
+        _plant("    script: s.txt\n", "    solo_steps: [{name: a, script: a.txt}]\n"),
+        ["'ok_solo'", "one step"],
+    ),
     ("bad enum", _plant("kind: multi", "kind: trio"), ["'ok_multi'", "'kind'"]),
     ("tuple element type", _plant("rungs: [200, 2000]", "rungs: [200, '2k']"), ["'u'", "'rungs'"]),
     (

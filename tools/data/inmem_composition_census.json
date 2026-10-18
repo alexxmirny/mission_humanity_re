@@ -6,12 +6,12 @@
   "orphan_sites": 468,
   "promotable_bodies": 403,
   "verified_bodies": 953,
-  "detour_target_addrs": 79,
-  "detour_target_bodies": 79,
+  "detour_target_addrs": 85,
+  "detour_target_bodies": 85,
   "unresolved_install_sites": 16,
   "sites_in_promotable_body": 10127,
-  "sites_in_detour_target": 4471,
-  "sites_in_either": 11067,
+  "sites_in_detour_target": 4491,
+  "sites_in_either": 11087,
   "sites_in_verified_not_promotable": 26412,
   "sites_in_entry_window_of_claimed_body": 93,
   "top_claimed_bodies": [
@@ -658,6 +658,11 @@
   ],
   "registered_patch_collisions": [
     {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "manifest": "soldiers_relocate"
+    },
+    {
       "patch": "resync_wait_fix",
       "addr": "0x0049c044",
       "manifest": "net_resync_wait_fix_EN"
@@ -712,8 +717,12 @@
     "llm_net_transport_recv",
     "llm_net_transport_send",
     "llm_rand",
+    "llm_snd_play",
     "llm_str_ansi_to_wide",
+    "llm_strat_group_move_order_pathfind",
+    "llm_strat_group_order_ack_voice",
     "llm_strat_input_update",
+    "llm_strat_new_game_init",
     "llm_strat_order_dispatch",
     "llm_strat_order_enqueue",
     "llm_strat_order_queue_dispatch",
@@ -741,7 +750,9 @@
     "llm_ui_menu_state_tick",
     "llm_ui_modal_key_pump",
     "llm_ui_outcome_dialog",
+    "llm_ui_scroll_icon_list_draw",
     "llm_ui_text_wrap_find_break_ansi",
+    "llm_ui_widget_input_tick",
     "llm_view_set_size_mode",
     "llm_wnd_on_destroy",
     "llm_wnd_on_devicechange",

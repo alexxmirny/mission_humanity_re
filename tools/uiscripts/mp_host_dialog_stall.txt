@@ -13,7 +13,7 @@
 # parks at the horizon). `stalled <ms>` proves each stall was really in force for that long.
 #
 # THE DIALOG is the selected building's status dialog (the red X in the HUD panel's icon column, the same
-# opener mp_host_canceltask.txt uses). An idle mother offers Sell / Close -- NEVER click Sell here.
+# opener the retired d28_canceltask_local walk used). An idle mother offers Sell / Close -- NEVER click Sell here.
 # Pair with mp_client_dialog_stall.txt.
 
 settled value:110

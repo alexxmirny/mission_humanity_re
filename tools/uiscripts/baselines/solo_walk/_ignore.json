@@ -1,0 +1,61 @@
+{
+  "_only": {
+    "capture_esc_menu__k2_escmenu.png": {
+      "mode": "rgb",
+      "rect": [
+        45,
+        87,
+        390,
+        306
+      ]
+    },
+    "capture_stats_panel__s1_stats.png": {
+      "rect": [
+        482,
+        276,
+        156,
+        92
+      ]
+    }
+  },
+  "_tol": {
+    "capture_cam_latch__s0_menu.png": 0.02,
+    "capture_campaign_planet_switch__switched.png": 0.02,
+    "capture_cfg_newgame_fresh__newgame.png": 1.0,
+    "capture_cfg_newgame_restore__newgame.png": 1.0,
+    "capture_esc_menu__k2_escmenu.png": 0.02,
+    "capture_menu_walk__w1_menu.png": 0.02,
+    "capture_menu_walk__w2_playername.png": 0.02,
+    "capture_menu_walk__w3_browser.png": 0.02,
+    "capture_menu_walk__w4_gamename.png": 0.02,
+    "capture_menu_walk__w5_mappick.png": 0.02
+  },
+  "_why": {
+    "esc_menu": "tooling:TL-HARN8 (2026-09-25). The claim is that ESC opened the in-game menu, so the capture compares ONLY the menu panel (origin 45,87, size 390x306 from the dump). The match keeps simulating behind the menu, and under harness pacing the world around the panel differs run to run -- measured 0.81%/3.96%/6.40% full-frame, every differing pixel OUTSIDE the panel (top-left playfield and the bottom strip). A settle predicate on the panel's own widget (value:103) was tried and changed nothing: the panel is not what moves.",
+    "stats_panel": "The E stats panel's value column is the claim (U+0087 pads drawn blank, not '?'). The map view behind it animates, so only the panel's text block is compared."
+  },
+  "capture_ai_closed_start__a1_host_kept_slot0.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_ai_closed_start__a2_lobby_ai_plus_closed.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_menu_walk__w6_lobby.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ]
+}

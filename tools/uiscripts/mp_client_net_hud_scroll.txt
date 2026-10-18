@@ -1,0 +1,44 @@
+# net_hud_scroll CLIENT (tooling:TL-SUITE-FOLD step 7). Pair with mp_host_net_hud_scroll.txt, which explains the three segments.
+# Replaces mp_client_hud.txt (net_hud) and mp_client_scroll_stall.txt. The client captures its own `WAITING FOR host`
+# frame in segment 2, then plays along through the host's forced stalls.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+
+# segment 1 (net_hud L1/L1c): the client's indicator on a clean link. The client's single connection carries player_id -1, so this is the
+# peer that needs the live_peer_slot() resolution to name "host" -- and it must still show a real ping.
+gameclock 20000
+capture net_hud__n1_hud
+log CLIENT captured the net indicator in a live udp match
+signal hudcap
+
+# segment 2 (TL-UISTALL): the host blackholes host -> client; `stalled` gates the capture on the SIM actually being frozen (>= 400 ms, the
+# indicator's own STALL_SHOW_MS) rather than on a wall-clock guess. The host lifts the blackhole once this peer has captured.
+stalled 400
+capture net_hud__n1_stall
+log CLIENT captured WAITING FOR host under a shim blackhole (TL-UISTALL)
+signal stallcap
+
+# segment 3 (U48): the host forces its own stall while it holds LEFT; the client stays in the match.
+gameclock +1000
+capture scroll_stall__c1_ingame
+awaitsignal hostdone
+log CLIENT stayed in the match until the host's probes finished
+end

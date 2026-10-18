@@ -1,0 +1,59 @@
+# mp:X2b HOST (tooling:TL-SUITE-FOLD step 5) -- over TCP (no channel C), ONE host lobby serves two joiners one after
+# another. Folds the old map_refuse_tcp and map_have_tcp rows.
+#
+#   segment 1  map_refuse_tcp  the joiner holds DIFFERENT bytes of the map (map_test_pretend=other): the host CLICKS Start --
+#                              the forbidden act -- and it is refused by name. A click and not `disabled Start`, because retail
+#                              re-derives Start's 0x40 bit every lobby frame so the greyed look never holds long enough for a
+#                              predicate (dead-ends G291); an absolute `click` is used, not `clickl`, which skips a widget whose
+#                              bit happens to be set that frame. The runner then ends that client.
+#   segment 2  map_have_tcp    a joiner holding the SAME map starts normally: no refusal, nothing armed (mp_host_start.txt's
+#                              walk, with mp_client_start.txt as the joiner).
+#
+# Pair with mp_client_map_refuse.txt (segment 1) + mp_client_start.txt (segment 2). The row sets client_sequence, so client 2
+# launches only after the runner has ended client 1; tools/check_map_transfer.py --client N judges each segment against only the
+# host lines logged during that client's lifetime.
+
+settled value:110
+capture map_have_tcp__m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# ---- segment 1: the mismatching joiner is seated, Start is clicked and refused
+present Network players
+peers 1
+occ 2
+settled Start
+click 501 294
+cursorhold 10 10 120
+present Network players
+capture map_refuse_tcp__x1_start_refused
+log HOST: Start REFUSED -- the joiner holds a different copy of the map and TCP cannot carry it
+
+# ---- the runner ends client 1 (the player quitting): its seat frees, then a matching joiner arrives
+occ 1
+log HOST: client 1 gone -- the lobby is open again
+
+# ---- segment 2: a joiner holding the same map is seated and Start launches the match
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture map_have_tcp__m2_lobby_ready
+clickl Start
+
+absent Network players
+gameclock 6000
+capture map_have_tcp__m3_launched
+log HOST launched the match (the matching joiner connected)
+end

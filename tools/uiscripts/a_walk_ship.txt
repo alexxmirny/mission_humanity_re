@@ -1,0 +1,178 @@
+# a_walk_ship -- ONE process walks the mods:A2 / mods:A1 rows that used to boot separately (a2_project_gate_shipped + a1_mother_free_shipped + a1_ai_on_shipped; libmh.dll omitted).
+# tooling:TL-SUITE-FOLD step 3 (user 2026-10-15). Segments open with `mark <old row>`, captures are <old row>__<name>.
+#
+# THE ORDER IS FIXED BY THE HARNESS. The a2 fixture (progress_probe_at / progress_conquer_at / progress_acquire_at) is keyed to
+# ABSOLUTE harness steps 200..240 and the step counter keeps counting across games, so a2 must be the FIRST game of the process
+# (it plays the conquest of Nortus in the campaign save nortus-pre-c, the newest save of the lane); it then deletes that save, and the
+# Load list opens on 2-almost for the a1 segments. The lane's net knobs (project_gate_fix=1;mother_free_build=1...) are all ON for the
+# whole process: each is a rule that only acts in its own segment's situation (a conquered planet's research; a mother-less planet).
+# The video ini is a1's (shift_rearm_build.ini: 1024x768, own input backend); a2's one capture is re-baselined at that size.
+
+# ===== segment a2_project_gate_shipped (was row a2_project_gate_shipped: a2_project_gate.txt)
+# mods:A2: conquered planets do not surface research (the PROJECT gate in llm_progress_propagate_unlocks,
+# 0x00440dd0 CMP / 0x00440dd7 JZ). The committed campaign save nortus-pre-c (Nortus, saved right before its
+# conquest) is loaded from the main menu; the HARNESS then plays the conquest and the lab:
+#   progress_conquer_at   game_UpdateProgress(PlayerSide, Planets[G_PLANET_INDEX].invention_index) -- the call the
+#                         conquest makes (llm_strat_player_presence_lost)
+#   progress_acquire_at   game_UpdateProgress for the inventions the research projects need besides the planet
+#                         (20 = what the lab provides, 49), so propagate_unlocks runs the way it does when the lab
+#                         finishes building
+# and emits `; PROGRESS` probe lines (before / after). The post_check (tools/check_a2_progress.py) reads them: with
+# [net] project_gate_fix=1 no PROJECT is left hidden after the conquest; at the default (0, retail) the projects the
+# lab unlocks stay hidden. The script itself only loads the save and lets the sim run.
+settled value:108
+mark a2_project_gate
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +6000
+capture a2_project_gate__a2_loaded
+log A2: save loaded, sim ran past the harness probes
+# the next segment's `Load game` must find 2-almost on top of the list: the campaign save goes
+delsave nortus-pre-c
+# leave the game: ESC menu -> Quit game -> Yes -> the main menu (the next segment's first line is `settled value:108`)
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+
+# ===== segment a1_mother_free_shipped (was row a1_mother_free_shipped: a1_mother_free.txt)
+# mods:A1 -- build without a mothership ([net] mother_free_build=1). 2-almost.sav (Aman: a landed mother, a base of ~28
+# connected buildings, stock). The `liftoff` op sends the mother up through the game's own TO_UNIT state ("Spaceship has taken
+# off": primary_mother_bldg 1 -> 0); the base stays connected through its online plants. Map coordinates: `camto col row` is the
+# top-left tile of the view (32 px per tile), `reveal col row n` ORs the local sight bit into an n x n square (placement needs
+# visible tiles; there is no scout). Every click is a `simclick` (a held button). `logbldgs <label> 29` writes `; [a1]` lines for
+# the building slots from 29 (the first free ones: P1, R, P2) and tools/check_a1_mother_free.py reads them. Segments:
+#   A  lone Reactor P1 at tile (27,47), 20 tiles from every connected building: it must be CONNECTED at placement
+#      (built_flags 3, the plant roots the network), build, go online and generate power (retail: built_flags 2, inert forever)
+#   B  a Relay R five tiles east of P1: connects through the online plant, builds, goes online
+#   C  a second lone Reactor P2 at (20,25); then a building REMOVAL (R, state DISMANTLE_FINISH -> unmap_footprint ->
+#      power_network_recompute, which clears every connection bit and re-seeds only online plants): P2, still under
+#      construction, must stay connected and finish
+#   D  save, quit to the menu, load it again: P1 / P2 / the power are as they were
+delsave a1_mf
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark a1_mother_free
+logbldgs start 10 15 36 50
+liftoff
+gameclock +1500
+logbldgs lifted 10 15 36 50
+
+# ---- A: the lone Reactor
+camto 24 38
+reveal 18 34 20
+simclick 890 215
+gameclock +200
+logbuild tab
+simclick 905 275
+gameclock +100
+logbuild a_armed
+capture a1_mother_free__a_armed
+simclick 110 300
+gameclock +300
+logbldgs a_placed 10 15 36 50
+gameclock +20000
+logbldgs a_built 10 15 36 50
+capture a1_mother_free__a_built
+
+# ---- B: a Relay next to it
+simclick 905 430
+gameclock +100
+simclick 240 300
+gameclock +300
+logbldgs b_placed 10 15 36 50
+gameclock +20000
+logbldgs b_built 10 15 36 50
+capture a1_mother_free__b_built
+
+# ---- C: a second lone Reactor, then a removal while it is still under construction
+camto 14 18
+reveal 12 14 18
+simclick 905 275
+gameclock +100
+simclick 175 190
+gameclock +300
+logbldgs c_placed 10 15 36 50
+removebldg 31 47
+gameclock +400
+logbldgs c_removed 10 15 36 50
+gameclock +20000
+logbldgs c_built 10 15 36 50
+capture a1_mother_free__c_built
+
+# ---- D: save, quit to the menu, load it back
+savegame a1_mf
+gameclock +200
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+logbldgs d_loaded 10 15 36 50
+gameclock +20000
+logbldgs d_later 10 15 36 50
+capture a1_mother_free__d_loaded
+delsave a1_mf
+# leave the game: ESC menu -> Quit game -> Yes -> the main menu (the next segment's first line is `settled value:108`)
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+
+# ===== segment a1_ai_on_shipped (was row a1_ai_on_shipped: a1_mother_free_ai.txt)
+# mods:A1 -- B+AI: the AI player (player 1 on 2-almost.sav: a landed H mother, a building under construction, stock) loses its
+# mother (the lift-off path) and keeps going for a minute of game time. [net] mother_free_build_ai=1: the AI's build orders
+# are accepted without a mother (and its plants root the network); =0 (default): the dispatcher refuses them exactly as retail.
+# tools/check_a1_mother_free.py --ai on|off reads the `; [a1]` lines (the AI's building count / construction progress).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark a1_mother_free_ai
+watch 1
+logbldgs ai_start
+liftoff
+gameclock +1500
+logbldgs ai_lifted
+capture a1_ai_on_shipped__ai_lifted
+gameclock +30000
+logbldgs ai_t30
+gameclock +30000
+logbldgs ai_t60
+end

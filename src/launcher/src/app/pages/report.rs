@@ -316,9 +316,12 @@ fn what_goes_in(app: &mut App, ui: &mut Ui) {
     let session = app.chosen_session_dir();
     match session.as_ref() {
         Some(dir) => {
-            let count = std::fs::read_dir(dir)
-                .map(|r| r.flatten().count())
-                .unwrap_or(0);
+            let count = {
+                let _p = crate::watchdog::phase("report page: count session files");
+                std::fs::read_dir(dir)
+                    .map(|r| r.flatten().count())
+                    .unwrap_or(0)
+            };
             ui.add(
                 egui::Label::new(
                     RichText::new(format!(
@@ -341,7 +344,11 @@ fn what_goes_in(app: &mut App, ui: &mut Ui) {
         .as_deref()
         .and_then(|d| Some((d.parent()?.to_path_buf(), d)))
     {
-        for m in report::markers_for_session(&root, dir) {
+        let markers = {
+            let _p = crate::watchdog::phase("report page: crash markers");
+            report::markers_for_session(&root, dir)
+        };
+        for m in markers {
             ui.label(
                 RichText::new(trf(
                     "report.crash_marker",
@@ -395,6 +402,7 @@ fn build_row(app: &mut App, ui: &mut Ui, have_description: bool) {
                 // `explorer` rather than a shell association: the target is a folder, and a
                 // launcher that opened the zip itself would hand it to whatever the player has
                 // associated with .zip, which is not what "show me" means.
+                let _p = crate::watchdog::phase("explorer spawn");
                 let _ = std::process::Command::new("explorer").arg(dir).spawn();
             }
         }

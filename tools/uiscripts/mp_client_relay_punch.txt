@@ -3,7 +3,7 @@
 # relay while the pair keeps playing.
 #
 # WHY THE FIRST BROWSER, and why relay_punch moved here at R7a. relay_punch has NO force_relay (it is
-# the twin of relay_match with the pin OFF, so the pair PUNCHES). Since R7a the SESSION browser's
+# the twin of relay_xfer (force_relay pinned) with the pin OFF, so the pair PUNCHES). Since R7a the SESSION browser's
 # *Internet server* + Connect is a genuine DIRECT dial -- so a no-force_relay client that walked that
 # path would connect directly and never put the relay in the path, and there would be no punch to
 # observe. The FIRST browser is the relay-DISCOVERY screen (mp:R7): a dial from it is relayed even

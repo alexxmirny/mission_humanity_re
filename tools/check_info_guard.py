@@ -59,7 +59,7 @@ STORAGE_CALLER = (
     "00417971"  # the instruction after `CALL llm_ui_entity_info_screen_open` at 0x0041796c
 )
 
-# The walk's own `log` markers, in order (tools/uiscripts/mp_host_u73_info_guard.txt).
+# The walk's own `log` markers, in order (its segment of tools/uiscripts/mp_host_ship_fix_a.txt, was row info_guard_u73).
 WALK_MARKS = [
     "u73 valid info screen up",
     "u73 valid info screen closed",

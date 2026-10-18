@@ -289,6 +289,11 @@ mod tests {
             if !en(&r.label_key()) {
                 missing.push(r.label_key());
             }
+            if let Some(g) = r.group.as_deref().filter(|_| !r.hidden) {
+                if !en(&format!("group.{g}")) {
+                    missing.push(format!("group.{g}"));
+                }
+            }
             let wants_options =
                 r.provider.is_none() && matches!(r.kind, Kind::Enum | Kind::Int) && !r.hidden;
             if wants_options {

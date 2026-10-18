@@ -6,7 +6,7 @@ download, the client's own file unchanged), then adds the ONE line X2a exists to
 
     ; [map] client resolve stored mh_dl\\<stem>.<16 hex>.<ext> -- redirecting <base> to it
 
-WHY THIS IS A SEPARATE ASSERTION FROM --expect-gate's. On a local lane (map_absent/map_conflict)
+WHY THIS IS A SEPARATE ASSERTION FROM --expect-gate's. On a local lane (map_xfer)
 the client's `Maps\\<base>` IS the host's real content -- make_lane.py symlinks `Maps` to the one
 shared game image -- so a broken open-redirect (map_transfer.cpp's `utils_open_file` replacement)
 would still open MATCHING bytes and every other line in check_map_transfer.py would still read

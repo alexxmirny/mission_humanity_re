@@ -78,6 +78,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 }
 
 fn open_in_explorer(dir: &std::path::Path) {
+    let _p = crate::watchdog::phase("explorer spawn");
     let _ = std::process::Command::new("explorer").arg(dir).spawn();
 }
 

@@ -16,15 +16,13 @@
 #include "config/config.h"       // mh::config::mode() -- mode=original keeps the retail probe
 #include "hook/patch.h"          // patch_bytes_guarded
 #include "hook/promoted.h"       // promoted_owner_of
+#include "bldg_afford.h"         // can_afford_build_cost (shared with the D11 re-arm)
 #include "net_internal.h"        // seam_log; g_ini
 #include "en_guard.h"            // EN-only build gate
 
 namespace {
 
-constexpr int CALL_LEN         = 5;
-constexpr int RESOURCE_SLOTS   = 7;   // cfg_building.resource[7] (CFG_RESOURCE_SLOTS)
-constexpr int INVENTIONS       = 300; // progress[8][300], 0x384 bytes per player
-constexpr int RESOURCES_PER_PL = 10;  // player_resources int[8][10], 0x28 bytes per player
+constexpr int CALL_LEN = 5;
 
 // The exact 5 bytes at each site (EN v406 disassembly of llm_strat_bldg_try_begin_placement).
 const uint8_t PAY_CALL_EXPECT[CALL_LEN]   = {0xE8, 0x56, 0xA2, 0x04, 0x00}; // CALL 0x00492eb1 from 0x00448c5b
@@ -33,42 +31,10 @@ const uint8_t NOPS[CALL_LEN]              = {0x90, 0x90, 0x90, 0x90, 0x90};
 
 bool g_armed = false;
 
-// llm_bldg_pay_build_cost's PASS 1 (0x00492ecb-0x00492f8e), read-only. Mirrors libmh's
-// bldg_can_afford_build_cost instruction for instruction, including the id-read-before-bound-check
-// order: resource[7].id is read (into build_time_2's low bytes, inside the record) before `i < 7`
-// ends the walk, which is provably inert -- i reaches 7 only when slots 0..6 were all defined, and
-// the bound check then exits whatever the id holds.
-int32_t can_afford_build_cost(uint32_t player, int32_t building_type_id) {
-    using mh::game::mh_cfg_final_struct_Building;
-    using mh::game::mh_game_progress;
-    const auto    &lv = mh::state::live();
-    const uint32_t p  = player & 0xffffu; // MOVZX word at every use site (0x00492edf / 0x00492f43)
-
-    const auto *cb = reinterpret_cast<const mh_cfg_final_struct_Building *>(
-        lv.base[mh::state::RID_BUILDING] + (uint32_t)building_type_id * sizeof(mh_cfg_final_struct_Building));
-    const auto *progress = reinterpret_cast<const mh_game_progress *>(lv.base[mh::state::RID_PROGRESS]);
-    const auto *stock    = reinterpret_cast<const int32_t *>(lv.base[mh::state::RID_PLAYER_RESOURCES]);
-
-    // 0x00492ece-0x00492efb: the prerequisite invention gate, before any resource is looked at.
-    if (progress[p * INVENTIONS + cb->invention].available == 0) return 0x13;
-
-    // 0x00492f0e-0x00492f80: every slot, no short-circuit; first shortage id+0x89, any later 0x89.
-    int32_t error = 0;
-    for (int32_t i = 0;; ++i) {
-        const uint32_t id = cb->resource[i].id;                       // 0x00492f1d
-        if (id == 0) break;                                           // 0x00492f2a: UNDEFINED
-        if (!(i < RESOURCE_SLOTS)) break;                             // 0x00492f30: bound check, evaluated second
-        if (stock[p * RESOURCES_PER_PL + id] < cb->resource[i].val) { // 0x00492f52-0x00492f5e (signed JGE)
-            error = (error == 0) ? (int32_t)(id + 0x89u) : 0x89;
-        }
-    }
-    return error; // 0 = affordable; pass 2 (game_SpendResource per slot) is deliberately absent
-}
-
 // __cdecl bridge for the thunk below. One line per click (a human's click rate): the evidence that
 // the click reached the charge-free probe, read by tools/check_build_probe.py.
 int32_t probe(uint32_t player, int32_t building_type_id) {
-    const int32_t verdict = can_afford_build_cost(player, building_type_id);
+    const int32_t verdict = mh::seam::can_afford_build_cost(player, building_type_id);
     char          m[160];
     wsprintfA(m, "; D35: build-click probe player %u building %d -> verdict 0x%X, nothing charged\n",
               (unsigned)(player & 0xffffu), (int)building_type_id, (unsigned)verdict);

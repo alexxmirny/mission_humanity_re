@@ -1,0 +1,285 @@
+{
+  "_why_minimap": "tooling:TL-SUITE-FOLD step 9: the wheel_hud_lists captures mask the strategic minimap [869,5,132,132] (unit dots and the fog edge move between runs: 0.24-0.36% of the frame against a 0.3% tol, and ship_walk's c_owned_list failed at 0.312/0.356%). Outside the minimap the frames are pixel-identical to the baselines (checked on all six captures except 44 px of d_unit_panel's list, inside its 0.6% tol); the lists under test are all below y 140.",
+  "_tol": {
+    "capture_res_drag_box__a_start.png": 0.003,
+    "capture_res_drag_box__b_dragging.png": 0.003,
+    "capture_res_drag_box__c_selected.png": 0.003,
+    "capture_res_drag_box__d1_dragging.png": 0.003,
+    "capture_res_drag_box__d5_anchor_left.png": 0.003,
+    "capture_res_drag_box__d6_anchor_right.png": 0.003,
+    "capture_res_drag_box__d7_anchor_up.png": 0.003,
+    "capture_res_drag_box__d8_anchor_down.png": 0.003,
+    "capture_res_drag_wide__d10_dragging.png": 0.003,
+    "capture_res_drag_wide__d11_dragging.png": 0.003,
+    "capture_res_drag_wide__d12_dragging.png": 0.003,
+    "capture_res_drag_wide__d9_dragging.png": 0.003,
+    "capture_shift_rearm_build__a_shift3.png": 0.01,
+    "capture_shift_rearm_build__b_stopped.png": 0.01,
+    "capture_wheel_hud_lists__a_start.png": 0.003,
+    "capture_wheel_hud_lists__b_one_row.png": 0.003,
+    "capture_wheel_hud_lists__c_owned_list.png": 0.003,
+    "capture_wheel_hud_lists__d_unit_panel.png": 0.006,
+    "capture_wheel_hud_lists__e_group_column.png": 0.006,
+    "capture_wheel_hud_lists__g_zoomed_lists_kept.png": 0.006,
+    "capture_wheel_info_pages__a_page0.png": 0.02,
+    "capture_wheel_info_pages__b_page1.png": 0.02,
+    "capture_wheel_info_pages__c_page0_again.png": 0.02
+  },
+  "capture_wheel_hud_lists__a_start.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists__b_one_row.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists__c_owned_list.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists__d_unit_panel.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists__e_group_column.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists__g_zoomed_lists_kept.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_info_pages__a_page0.png": [
+    [
+      0,
+      0,
+      1024,
+      455
+    ],
+    [
+      0,
+      455,
+      195,
+      127
+    ],
+    [
+      650,
+      455,
+      374,
+      127
+    ],
+    [
+      0,
+      582,
+      1024,
+      186
+    ]
+  ],
+  "capture_wheel_info_pages__b_page1.png": [
+    [
+      0,
+      0,
+      1024,
+      455
+    ],
+    [
+      0,
+      455,
+      195,
+      127
+    ],
+    [
+      650,
+      455,
+      374,
+      127
+    ],
+    [
+      0,
+      582,
+      1024,
+      186
+    ]
+  ],
+  "capture_wheel_info_pages__c_page0_again.png": [
+    [
+      0,
+      0,
+      1024,
+      455
+    ],
+    [
+      0,
+      455,
+      195,
+      127
+    ],
+    [
+      650,
+      455,
+      374,
+      127
+    ],
+    [
+      0,
+      582,
+      1024,
+      186
+    ]
+  ],
+  "capture_wheel_lobby_log__a_bottom.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_wheel_lobby_log__b_scrolled_back.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_wheel_lobby_log__c_snapped_to_bottom.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "_why_bigmap": "mods:MM4: the world under the big map is not pixel-stable at this point of ship_walk (sprites, the lit circle / fog edge around the camera and the map's own fog/unit colours move between runs: 0.014% to 1.7% of the frame), so the five bigmap captures mask the whole strategic view [0,0,864,736] and the side-panel minimap (minimap_plus changes it); what is compared is the panel, the bottom strip and the frame size. What the segment asserts is tools/check_bigmap.py --ship on the frames themselves (held differs from before over >= 30% of the view, after-release matches before except sprites with no residue tile, chat open + Tab draws nothing). The overlay's own pixels are gated in res_walk's bigmap segment and the bigmap_start / bigmap_map steps of screen_seq.",
+  "capture_bigmap__a_before.png": [
+    [
+      0,
+      0,
+      864,
+      736
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_bigmap__c_after.png": [
+    [
+      0,
+      0,
+      864,
+      736
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_bigmap__d_chat_open.png": [
+    [
+      0,
+      0,
+      864,
+      736
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_bigmap__e_chat_open_tab_held.png": [
+    [
+      0,
+      0,
+      864,
+      736
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_bigmap__b_held.png": [
+    [
+      0,
+      0,
+      864,
+      736
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ]
+}

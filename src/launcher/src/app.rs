@@ -503,6 +503,7 @@ impl App {
     /// RL4: move the legacy files out of the game folder, once. Never while the game runs from it,
     /// elevating only when the folder needs it, and not again after a declined prompt this run.
     fn migrate_legacy(&mut self) {
+        let _p = crate::watchdog::phase("migrate_legacy");
         if self.auto.migrate_failed {
             return;
         }
@@ -695,6 +696,7 @@ impl Drop for App {
 
 impl App {
     pub fn new(layout: Layout, config: Config, view: View, startup: Startup) -> Self {
+        let detailed = config.settings_detailed;
         Self {
             game_dir_edit: config.game_dir.clone(),
             zip_edit: String::new(),
@@ -741,7 +743,10 @@ impl App {
             report_job: None,
             exit_after_report_job: false,
             model: Model::new(Schema::builtin()),
-            settings_state: RenderState::default(),
+            settings_state: RenderState {
+                detailed,
+                ..RenderState::default()
+            },
             model_for: None,
             settings_note: None,
             start_prompt: false,
@@ -945,6 +950,7 @@ impl App {
             return;
         }
         self.matches_at = Some(std::time::Instant::now());
+        let _p = crate::watchdog::phase("refresh_matches");
         self.matches = report::match_rows(&self.log_roots(), self.session.is_some());
     }
 
@@ -1199,7 +1205,11 @@ impl App {
         let dest = self
             .reports_dir()
             .join(format!("{}_{}.dmp", stamp_for_file(), marker.pid));
-        match crash::write_dump(&marker, &marker_path, &dest) {
+        let dumped = {
+            let _p = crate::watchdog::phase("game: crash dump of the game");
+            crash::write_dump(&marker, &marker_path, &dest)
+        };
+        match dumped {
             Ok(_) => {
                 self.dump = Some(dest);
                 self.include_dump = true;
@@ -1215,13 +1225,21 @@ impl App {
 
     /// One poll of the running child. Returns true when the launcher should close itself.
     fn poll_session(&mut self) -> bool {
-        self.poll_crash();
+        {
+            let _p = crate::watchdog::phase("game: crash check");
+            self.poll_crash();
+        }
         let Some(session) = self.session.as_mut() else {
             return false;
         };
-        match session.poll() {
+        let polled = {
+            let _p = crate::watchdog::phase("game: poll exit");
+            session.poll()
+        };
+        match polled {
             Ok(None) => false,
             Ok(Some(finished)) => {
+                let _p = crate::watchdog::phase("game-exit: drop session");
                 // dist LA10: read back where the game itself said its logs went, BEFORE dropping
                 // the session (its `exe` path is game_dir\mh.exe, and this is the one place that
                 // still has it) -- see `launch::resolved_log_root`'s doc comment for why every
@@ -1230,7 +1248,9 @@ impl App {
                 self.session = None;
                 self.presence = None;
                 self.channel = None;
+                drop(_p);
                 if let Some(dir) = game_dir.as_deref() {
+                    let _p = crate::watchdog::phase("game-exit: read log root");
                     // dist LA13: the breadcrumb is INSIDE the launcher-owned root now.
                     let log_root = self.layout.game_log_root(dir);
                     match launch::resolved_log_root(&log_root) {
@@ -1245,7 +1265,10 @@ impl App {
                 }
                 let text = finished.outcome.describe();
                 let is_err = finished.outcome.is_crash();
-                self.note_first_run(&finished);
+                {
+                    let _p = crate::watchdog::phase("game-exit: note_first_run (update prune)");
+                    self.note_first_run(&finished);
+                }
                 self.last_run = Some(finished);
                 self.refresh_matches(true);
                 self.say(text, is_err);
@@ -1502,6 +1525,7 @@ impl App {
             log::line(format!("update: {e}"));
             return;
         }
+        let _p = crate::watchdog::phase("update prune");
         update::prune(&self.layout, &version);
     }
 
@@ -2021,7 +2045,15 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // The freeze watchdog's heartbeat (watchdog.rs). HERE rather than in `show`, which the
+        // kittest harness drives: the idle repaint keeps a visible window beating once a second so
+        // a stall between frames is distinguishable from an idle window.
+        crate::watchdog::frame_begin();
         self.show(ui);
+        let minimized = ui.ctx().input(|i| i.viewport().minimized.unwrap_or(false));
+        ui.ctx()
+            .request_repaint_after(crate::watchdog::IDLE_REPAINT);
+        crate::watchdog::frame_end(minimized);
     }
 }
 
@@ -2047,12 +2079,15 @@ impl App {
             self.startup_done = true;
             self.run_startup_actions();
         }
-        self.poll_upload();
-        if self.poll_session()
-            || self.poll_job()
-            || self.poll_startup_report()
-            || self.poll_report()
         {
+            let _p = crate::watchdog::phase("poll_upload");
+            self.poll_upload();
+        }
+        let close = self.poll_session() || {
+            let _p = crate::watchdog::phase("poll_job / poll_startup_report / poll_report");
+            self.poll_job() || self.poll_startup_report() || self.poll_report()
+        };
+        if close {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         // Closing the window with unsaved settings asks first (Apply / Discard / Cancel) instead of
@@ -2064,7 +2099,10 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.close_prompt = true;
         }
-        self.tick_auto_update(&ctx); // RL9
+        {
+            let _p = crate::watchdog::phase("tick_auto_update");
+            self.tick_auto_update(&ctx); // RL9
+        }
         if self.report_job.is_some() {
             // dist LA17: the build is on a thread; keep painting so the progress line moves and the
             // result is noticed, and so Windows never sees a window that has stopped pumping.
@@ -2087,7 +2125,18 @@ impl App {
             self.refresh_matches(false);
             ctx.request_repaint_after(Duration::from_secs(2));
         }
-        shell::show(self, ui);
+        {
+            let _p = crate::watchdog::phase("page draw");
+            shell::show(self, ui);
+        }
+        // The Settings page's Compact / Detailed switch is remembered in launcher.toml. Saved
+        // directly, not through `persist`, which would also commit a half-typed game folder.
+        if self.settings_state.detailed != self.config.settings_detailed {
+            self.config.settings_detailed = self.settings_state.detailed;
+            if let Err(e) = self.config.save(&self.layout.config()) {
+                log::line(format!("config: {e}"));
+            }
+        }
     }
 
     // ---- the Start game button (dist RL14) ---------------------------------------------------
@@ -2249,7 +2298,11 @@ impl App {
         if let Some(d) = start {
             dlg = dlg.set_directory(d);
         }
-        if let Some(picked) = dlg.pick_folder() {
+        let picked = {
+            let _p = crate::watchdog::phase("modal: folder dialog");
+            dlg.pick_folder()
+        };
+        if let Some(picked) = picked {
             self.game_dir_edit = picked.display().to_string();
             self.persist();
             let ok = self.game_dir_ok();

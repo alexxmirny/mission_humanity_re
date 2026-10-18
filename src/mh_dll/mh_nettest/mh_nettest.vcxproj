@@ -157,6 +157,7 @@
     <ClCompile Include="panel_rows_selftest.cpp" />
     <ClCompile Include="res_list_selftest.cpp" />
     <ClCompile Include="map_zoom_selftest.cpp" />
+    <ClCompile Include="wheel_list_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
@@ -2491,6 +2492,8 @@
     <ClCompile Include="..\mh\seams\map_transfer.cpp" />
     <ClCompile Include="..\mh\seams\net_lockstep.cpp" />
     <ClCompile Include="..\mh\seams\gameplay_hooks.cpp" />
+    <ClCompile Include="..\mh\seams\move_proto_blocked.cpp" />
+    <ClCompile Include="..\mh\seams\move_proto_nudge.cpp" />
     <ClCompile Include="..\mh\config\gameplay.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
     <ClCompile Include="..\mh\seams\lang_pack.cpp" />
@@ -2504,8 +2507,11 @@
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="..\mh\seams\ui_worker_click.cpp" />
     <ClCompile Include="..\mh\seams\ui_minimap_box.cpp" />
+    <ClCompile Include="..\mh\seams\ui_minimap_plus.cpp" />
+    <ClCompile Include="..\mh\seams\ui_bigmap.cpp" />
     <ClCompile Include="..\mh\seams\ui_crew_reminder.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp" />
+    <ClCompile Include="..\mh\seams\ui_bldg_rearm.cpp" />
     <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_netcrit_pure.cpp" />
     <ClCompile Include="..\mh\seams\ui_storage_panel_purge.cpp" />
@@ -2521,9 +2527,14 @@
          Same arrangement as module_bind_compiled_in.cpp one satellite over. -->
     <ClCompile Include="..\mh\seams\core_arm.cpp" />
     <ClCompile Include="..\mh\seams\ui_keyrepeat.cpp" />
+    <ClCompile Include="..\mh\seams\snd_trace.cpp" />
+    <ClCompile Include="..\mh\seams\move_proto_arrival.cpp" />
+    <ClCompile Include="..\mh\seams\move_proto_speed.cpp" />
+    <ClCompile Include="..\mh\seams\combat_proto.cpp" />
     <ClCompile Include="..\mh\seams\ui_pause.cpp" />
     <ClCompile Include="..\mh\seams\strat_pre_input.cpp" />
     <ClCompile Include="..\mh\seams\ui_map_zoom.cpp" />
+    <ClCompile Include="..\mh\seams\ui_wheel.cpp" />
     <ClCompile Include="..\mh\seams\view_wrap.cpp" />
     <ClCompile Include="..\mh\seams\launch.cpp" />
     <ClCompile Include="..\mh\seams\video.cpp" />
@@ -2535,6 +2546,7 @@
     <ClCompile Include="..\mh\gfx\panel_rows.cpp" />
     <ClCompile Include="..\mh\gfx\zoom_scale.cpp" />
     <ClCompile Include="..\mh\gfx\map_zoom.cpp" />
+    <ClCompile Include="..\mh\gfx\wheel_list.cpp" />
     <ClCompile Include="..\mh\gfx\ddraw_own.cpp" />
     <ClCompile Include="..\mh\input\dinput_own.cpp" />
     <ClCompile Include="..\mh\input\dinput_convert.cpp" />

@@ -1,0 +1,106 @@
+{
+  "_why_minimap": "tooling:TL-SUITE-FOLD step 9: the wheel_hud_lists captures mask the strategic minimap [869,5,132,132] (unit dots and the fog edge move between runs: 0.24-0.36% of the frame against a 0.3% tol, and ship_walk's c_owned_list failed at 0.312/0.356%). Outside the minimap the frames are pixel-identical to the baselines (checked on all six captures except 44 px of d_unit_panel's list, inside its 0.6% tol); the lists under test are all below y 140.",
+  "_tol": {
+    "capture_res_drag_box_orig__d1_dragging.png": 0.003,
+    "capture_res_drag_box_orig__d5_anchor_left.png": 0.003,
+    "capture_res_drag_box_orig__d6_anchor_right.png": 0.003,
+    "capture_res_drag_box_orig__d7_anchor_up.png": 0.003,
+    "capture_res_drag_box_orig__d8_anchor_down.png": 0.003,
+    "capture_res_drag_wide_orig__d10_dragging.png": 0.003,
+    "capture_res_drag_wide_orig__d11_dragging.png": 0.003,
+    "capture_res_drag_wide_orig__d12_dragging.png": 0.003,
+    "capture_res_drag_wide_orig__d9_dragging.png": 0.003,
+    "capture_shift_rearm_build_orig__a_shift3.png": 0.01,
+    "capture_shift_rearm_build_orig__b_stopped.png": 0.01,
+    "capture_wheel_hud_lists_orig__a_start.png": 0.003,
+    "capture_wheel_hud_lists_orig__b_one_row.png": 0.003,
+    "capture_wheel_hud_lists_orig__c_owned_list.png": 0.003,
+    "capture_wheel_hud_lists_orig__d_unit_panel.png": 0.006,
+    "capture_wheel_hud_lists_orig__e_group_column.png": 0.006,
+    "capture_wheel_hud_lists_orig__g_zoomed_lists_kept.png": 0.006
+  },
+  "capture_wheel_hud_lists_orig__a_start.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists_orig__b_one_row.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists_orig__c_owned_list.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists_orig__d_unit_panel.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists_orig__e_group_column.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ],
+  "capture_wheel_hud_lists_orig__g_zoomed_lists_kept.png": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ]
+}

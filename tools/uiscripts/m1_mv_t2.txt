@@ -1,0 +1,17 @@
+# mods:M1R -- replay the user's two recorded move orders (the 2026-10-13 playtest: 5 units to 32,0 then 15,0) on the loaded 'Unit movement test' save (5-kofu-c).
+# Deploy the save with --deploy-save 5-kofu-c; the orders are tools/uiscripts/m1_moves_t2.csv, fed to the harness with
+# [harness] mv_replay=<abs path> (see m1_pf_save.txt for the load; this is the same hand-off). The verdict is the
+# `; MV ...` lines in mh_harness.log, not a frame. A probe, NOT a registered [uitest] row.
+# Run it with --timeout-frames 2000000 --host-dir <a lane without libmh.dll>: the 80000-frame per-wait watchdog ends the long clock wait near step 4450.
+# The two orders need ~9300 steps (tail 3000 after order 2), hence the +100000 wait; [dev] unlock=1 in --extra-ini for the route_* keys.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +100000
+log mv: save loaded, handing the run to the harness's mv_replay probe
+end

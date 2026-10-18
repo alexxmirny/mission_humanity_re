@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "selftest_dispatch.h"
 #include "desync/replay_record.h"
 #include "desync/seed_sanity.h"
 #include "addr/mh_structs.gen.h"
@@ -260,7 +261,7 @@ void test_sanity() {
         uint8_t *copy = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, t.b.size()));
         memcpy(copy, t.b.data(), t.b.size());
         sn::scan_async(copy, (uint32_t)t.b.size(), t.L, X, round < 2 ? 5 : 6, round, "save_load", 100 + round, "");
-        check("the scan finishes", sn::wait_idle(5000));
+        check("the scan finishes", sn::wait_idle(SELFTEST_WAIT_IDLE_MS));
         if (round == 0) check("first seed of a session: 4 NEW", sn::last_findings() == 4 && sn::last_new() == 4);
         if (round == 1) check("second seed, same session: 4 found, 0 new", sn::last_findings() == 4 && sn::last_new() == 0);
         if (round == 2) check("a new session reports them NEW again", sn::last_new() == 4);

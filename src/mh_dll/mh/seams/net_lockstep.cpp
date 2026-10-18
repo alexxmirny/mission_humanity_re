@@ -32,6 +32,7 @@
 // include, not beside it: this path is one character longer than the block's longest, and a trailing
 // comment here would re-align every other line in it.
 #include "include/mh_fontguard_export.h"
+#include "include/mh_bigmap_export.h"  // mods:MM4 MH_BigMap_OnPresent -- the big minimap overlay (seams/ui_bigmap.cpp)
 #include "seams/ui_net_indicator.h"    // mp:L1 MH_NetIndicator_OnPresent -- the player-visible indicator
 #include "seams/gone_peer_guard.h"     // mp:U19i gone_peer_frame_guard's byte-patch carrier
 #include "seams/bldg_pip_guard.h"      // hotfix rc9.4 bldg_pip_guard's byte-patch carriers
@@ -336,11 +337,17 @@ int  g_undock_reentry_fix    = 1; // [net] undock_reentry_fix -- MP U49; body + 
 // PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are F_HOSTSYNC
 // registry rows -- their values come ONLY from the gameplay apply path (config/gameplay.cpp -> seams/gameplay_hooks.cpp
 // -> mh_set_turret_*), never from a direct ini read here.
-int g_turret_reload_owner_fix = 1; // [net] turret_reload_owner_fix -- PT-FIX1; body + byte patch, DEFAULT ON, sim-affecting
-int g_bldg_pip_guard          = 1; // [net] bldg_pip_guard -- hotfix rc9.4; body + byte patches, DEFAULT ON, sim-affecting on illegal state only
-int g_air_order_facing_fix    = 1; // [net] air_order_facing_fix -- PT-FIX3; body + byte patch, DEFAULT ON, sim-affecting
-int g_diplo_order_dedup_fix   = 1; // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
-int g_defang_xui              = 0; // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
+int    g_turret_reload_owner_fix = 1;   // [net] turret_reload_owner_fix -- PT-FIX1; body + byte patch, DEFAULT ON, sim-affecting
+int    g_sp_step_cap             = 0;   // max fixed steps one sim_tick call may run in single-player (0 = uncapped); set with g_sp_sim_step
+int    g_sp_steps                = 0;   // steps run since the last time_tick (reset in on_time_tick), read by sp_step_cap_stub
+double g_sp_sim_step             = 0.0; // [net] sp_sim_step_ms / 1000 -- the SINGLE-PLAYER fixed sim step the user asked for (0 = retail variable step).
+                                        // Set only when the carrier is live (the byte patch landed, or libmh's sim_tick is promoted); on_time_tick pins
+                                        // SIM_STEP_INTERVAL to it whenever SESSION_MODE != 3. MP keeps g_sim_step.
+int g_project_gate_fix      = 0;        // [net] project_gate_fix -- mods:A2; twin + 2-byte NOP, DEFAULT OFF, campaign-only (not host-synced)
+int g_bldg_pip_guard        = 1;        // [net] bldg_pip_guard -- hotfix rc9.4; body + byte patches, DEFAULT ON, sim-affecting on illegal state only
+int g_air_order_facing_fix  = 1;        // [net] air_order_facing_fix -- PT-FIX3; body + byte patch, DEFAULT ON, sim-affecting
+int g_diplo_order_dedup_fix = 1;        // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
+int g_defang_xui            = 0;        // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
 int g_resync_trigger_gate =
     0; // 1 = gate both RESYNC_TRIGGER_COUNT increments on SYNC_RETRY_COUNTDOWN<0x38 (option c; count only genuine silence)
 int g_resync_count_init =
@@ -542,7 +549,10 @@ int             g_spectate_mask     = 1;        // [net] spectate_mask (default 
 bool            g_spec_menu_reached = false;    // mp:U54: a spectator that chose Exit match is back at the idle main menu (the retail flag is not set on that route)
 void            spectator_tick();               // mp:U54/U71 -- defined with the retail spectate carriers below
 
+void hitch_on_present();   // [net] hitch_ms -- defined with the sim_step stubs
+void hitch_on_time_tick(); // ditto
 void on_present() {
+    hitch_on_present(); // [net] hitch_ms -- before anything below adds its own time to this frame
     // THE MODULE BIND USED TO HAVE A SECOND ARM HERE (F4A's MH_ModuleBind_OnPresent, mechanism B:
     // off the loader lock, on the first rendered frame). F4B deleted it with the spike it armed --
     // mh_net.dll must be bound before MH_Core_Arm_Early, so the DllMain arm is the only one with a
@@ -564,6 +574,7 @@ void on_present() {
     fo_match_tick();               // mp:U63: tell the transport whether a match is running (arms the crash failover)
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
     MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture
+    MH_BigMap_OnPresent();         // mods:MM4: the big minimap while its key is held (before the indicator + debug overlay)
     MH_NetIndicator_OnPresent();   // mp:L1: the player-visible net indicator, through the GAME font path
     MH_Overlay_OnPresent();        // debug overlay: paint BEFORE capture reads, so captured frames include it
     MH_Capture_OnPresent();        // UI capture harness: grab the composed frame if a trigger fired (cheap when idle)
@@ -2763,6 +2774,8 @@ void hub_notice_tick() {
 }
 
 void on_time_tick() {
+    g_sp_steps = 0; // sp_step_cap_stub counts steps per frame
+    hitch_on_time_tick();
     hub_notice_tick(); // mp:U62: a hub change this peer went through -> the HUD line
     if (g_spec_msg_pending && local_is_spectator()) {
         // mp:U54: the defeat dialog was answered with Continue and the match is back on screen -- one fading line.
@@ -2824,10 +2837,13 @@ void on_time_tick() {
     adaptive_tick();                                                                        // may move g_lockstep_step; the pin below applies it the same frame
     if (g_lockstep_step > 0.0) monotone_pin();                                              // mp:D30: STEP_SIZE = max(target, max_sent - clock)
     if (g_game_speed > 0.0) memcpy((void *)ADDR_GAME_SPEED, &g_game_speed, sizeof(double)); // pin before time_tick reads it
-    if (g_sim_step > 0.0) memcpy((void *)ADDR_SIM_STEP_INT(), &g_sim_step, sizeof(double)); // pin sub-step granularity (both time_tick's arm-gate + sim_tick's loop read it)
-    if (g_rx_spin && *(const uint8_t *)ADDR_SESSION_MODE == 3) rx_spin_until_horizon();     // (b) Step 2: drain RX off-frame during a stall
-    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) lateness_post_spin_tick();                // mp:P15 -- a spin that funded the step ends the episode
-    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) adaptive_post_spin_tick();                // mp:P15 -- starved AFTER the spin
+    // pin sub-step granularity (both time_tick's arm-gate + sim_tick's loop read it). Single-player has its own value
+    // (sp_sim_step_ms, the fixed SP step); every session mode but 3 is "single-player" to sim_tick's own branch.
+    if (g_sp_sim_step > 0.0 && *(const uint8_t *)ADDR_SESSION_MODE != 3) memcpy((void *)ADDR_SIM_STEP_INT(), &g_sp_sim_step, sizeof(double));
+    else if (g_sim_step > 0.0) memcpy((void *)ADDR_SIM_STEP_INT(), &g_sim_step, sizeof(double));
+    if (g_rx_spin && *(const uint8_t *)ADDR_SESSION_MODE == 3) rx_spin_until_horizon(); // (b) Step 2: drain RX off-frame during a stall
+    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) lateness_post_spin_tick();            // mp:P15 -- a spin that funded the step ends the episode
+    if (*(const uint8_t *)ADDR_SESSION_MODE == 3) adaptive_post_spin_tick();            // mp:P15 -- starved AFTER the spin
     if (*(const uint8_t *)ADDR_SESSION_MODE == 3) {
         // U17 (b) fast hard-drop: a client's transport died -> broadcast removal. Guards: dead>=0
         // excludes a client's host-conn (-1) so this is host-only (client-death only); the roster
@@ -4128,6 +4144,727 @@ void install_air_order_facing_fix() {
     char b[220];
     wsprintfA(b, "; air order facing fix: %s (PT-FIX3)\n", what);
     seam_log(b);
+}
+
+// mods:A2 -- `project_gate_fix`'s BYTE-PATCH CARRIER (2-byte NOP).
+// llm_progress_propagate_unlocks (0x00440cb5) offers a research PROJECT whose depend[] are all acquired only while
+// `progress[PlayerSide][Planets[G_PLANET_INDEX].invention_index].acquired != 1`: `CMP byte [EAX+0xc38751],1` at
+// 0x00440dd0 then `JZ 0x00440de2` (gate = 0) at 0x00440dd7. Conquering a planet acquires that invention, so on every
+// conquered planet the lab's research is never offered ("lab built, no research"). NOPing the JZ makes the gate
+// always 1. A multiplayer/skirmish session sits on pseudo planet 0x1f (invention_index 0, never acquired), where the
+// gate is open already -- the splice is a no-op there, so the key is not host-synced. The twin is
+// sim_lt_progress_unlock_fixpoint.cpp (mh::sim::set_project_gate_fix).
+constexpr uintptr_t ADDR_PROJECT_GATE_SITE  = 0x00440dd0;
+const uint8_t       PROJECT_GATE_EXPECT[9]  = {0x80, 0xB8, 0x51, 0x87, 0xC3, 0x00, 0x01, 0x74, 0x09};
+const uint8_t       PROJECT_GATE_REPLACE[9] = {0x80, 0xB8, 0x51, 0x87, 0xC3, 0x00, 0x01, 0x90, 0x90};
+
+void install_project_gate_fix() {
+    const char *what;
+    if (mh::hook::promoted_owner_of(ADDR_PROJECT_GATE_SITE)) {
+        what = "DISPLACED by promotion -- the promoted propagate_unlocks's own rule carries it";
+    } else if (patch_bytes_guarded(ADDR_PROJECT_GATE_SITE, PROJECT_GATE_EXPECT, PROJECT_GATE_REPLACE, 9)) {
+        what = "PATCHED -- the PROJECT gate's JZ at 00440DD7 is NOPed";
+    } else {
+        what = "MISMATCHED";
+        refuse_uncarried_fix("project_gate_fix", ADDR_PROJECT_GATE_SITE, "llm_progress_propagate_unlocks");
+    }
+    char b[220];
+    wsprintfA(b, "; project gate fix: %s (mods:A2)\n", what);
+    seam_log(b);
+}
+
+// [net] sp_sim_step_ms -- SINGLE-PLAYER FIXED SIM STEP, the retail carrier (2-byte NOP).
+// llm_strat_sim_tick (0x0043f3eb) branches on SESSION_MODE: `CMP dword [0x00e58344],3 / JNZ 0x0043f464` (0x0043f403..0x0043f40a).
+// Mode 3 (multiplayer lockstep) runs the FIXED-quantum catch-up loop (as many whole SIM_STEP_INTERVALs as fit under
+// TOTAL_GAME_TIME); every other mode takes ONE VARIABLE step straight to TOTAL_GAME_TIME, so the same single-player run
+// integrates differently under load. NOPing the JNZ (75 58) sends single-player down the mode-3 loop too. SIM_STEP_INTERVAL
+// is then pinned to the SP value by on_time_tick (which runs first in every frame that reaches sim_tick: llm_strat_frame*,
+// SwitchToPlanet), so a load / planet switch / new game that session_state_reset resets to 0.1 is re-pinned the next frame.
+// The loop also calls llm_strat_order_release_due (0x0046652e) when ORDER_PENDING_COUNT != 0 -- stock single-player never
+// does; see the reimpl_fixes::rig_fixed_step_loop comment for the check that it cannot double-release. The twin is
+// turn_engine.cpp sim_tick (reimpl_fixes::rig_fixed_step_loop, set from the same knob).
+constexpr uintptr_t ADDR_SP_FIXED_SITE  = 0x0043f403;
+const uint8_t       SP_FIXED_EXPECT[9]  = {0x83, 0x3D, 0x44, 0x83, 0xE5, 0x00, 0x03, 0x75, 0x58};
+const uint8_t       SP_FIXED_REPLACE[9] = {0x83, 0x3D, 0x44, 0x83, 0xE5, 0x00, 0x03, 0x90, 0x90};
+
+// CATCH-UP CAP (retail carrier). The fixed loop runs as many whole steps as fit under TOTAL_GAME_TIME, and retail has no dt cap
+// (a 20 s stall is one 20 s step), so after a stall the loop would run ~1000 steps in ONE frame. The call to
+// llm_strat_sim_step inside the loop (`CALL 0x0043f512` at 0x0043f45b) becomes a call to this stub: it runs the step, and in
+// every session mode but 3 counts steps since the last time_tick (on_time_tick zeroes the count); at the cap it DROPS the rest
+// by setting TOTAL_GAME_TIME := GAME_CLOCK, so the loop's own test (clock + interval <= TOTAL) fails and exits. The twin is
+// turn_engine.cpp sim_tick (reimpl_fixes::sp_step_cap).
+constexpr uintptr_t ADDR_SP_CAP_SITE = 0x0043f45b; // the call inside the fixed-step loop
+constexpr uintptr_t ADDR_SP_VAR_SITE = 0x0043f48f; // the call on the one-variable-step branch (retail single-player)
+const uint8_t       SP_CAP_EXPECT[5] = {0xE8, 0xB2, 0x00, 0x00, 0x00};
+const uint8_t       SP_VAR_EXPECT[5] = {0xE8, 0x7E, 0x00, 0x00, 0x00};
+
+// ---- hitch watch ([net] hitch_ms) -----------------------------------------------------------------------------------------
+// Observe-only. A frame is present-to-present; the stamps are QPC reads at on_present (frame end), on_time_tick (the strategic
+// frame's first call) and around each llm_strat_sim_step (sim_step_stub / sp_step_cap_stub). A frame at or over the threshold
+// logs ONE line splitting it into pre-time_tick (the previous present's return, input, UI, message pump), sim (steps, their
+// total and the slowest one) and the rest (time_tick + sim_tick bookkeeping + render up to present). Costs 3 QPC reads per frame
+// plus 2 per step; nothing is logged below the threshold. 0 = off (the stubs then skip the reads).
+int      g_hitch_ms = 0;
+LONGLONG g_h_prev = 0, g_h_tt = 0, g_h_t0 = 0, g_h_sim = 0, g_h_sim_max = 0;
+int      g_h_steps = 0, g_h_lines = 0, g_h_total = 0;
+double   g_h_clk0 = 0.0;
+LONGLONG h_now() {
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return t.QuadPart;
+}
+extern "C" void __cdecl hitch_sim_begin() {
+    if (g_hitch_ms) g_h_t0 = h_now();
+}
+extern "C" void __cdecl hitch_sim_end() {
+    if (!g_hitch_ms) return;
+    const LONGLONG d = h_now() - g_h_t0;
+    g_h_sim += d;
+    if (d > g_h_sim_max) g_h_sim_max = d;
+    ++g_h_steps;
+}
+void hitch_on_time_tick() {
+    if (!g_hitch_ms) return;
+    g_h_tt = h_now();
+    hitch_sample_tt(g_h_tt);
+    g_h_sim = g_h_sim_max = 0;
+    g_h_steps             = 0;
+    memcpy(&g_h_clk0, (const void *)ADDR_GAME_CLOCK, sizeof(double));
+}
+void hitch_on_present() {
+    if (!g_hitch_ms) return;
+    static LONGLONG freq = 0;
+    if (!freq) {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        freq = f.QuadPart;
+    }
+    const LONGLONG now = h_now();
+    if (g_h_prev && g_h_tt > g_h_prev) { // a strategic frame (time_tick ran inside it)
+        ++g_h_total;
+        const LONGLONG frame = now - g_h_prev;
+        if (frame * 1000 >= (LONGLONG)g_hitch_ms * freq && g_h_lines < 300) {
+            ++g_h_lines;
+            double clk1;
+            memcpy(&clk1, (const void *)ADDR_GAME_CLOCK, sizeof(double));
+            const int u_frame = (int)(frame * 10000 / freq), u_pre = (int)((g_h_tt - g_h_prev) * 10000 / freq);
+            const int u_sim = (int)(g_h_sim * 10000 / freq), u_max = (int)(g_h_sim_max * 10000 / freq);
+            const int u_rest = (int)((now - g_h_tt) * 10000 / freq) - u_sim;
+            char      b[320];
+            wsprintfA(b,
+                      "; [hitch] frame %d.%d ms (>= %d): pre-time_tick %d.%d | sim %d.%d (%d steps, slowest %d.%d) | time_tick+render-to-present %d.%d | game clock +%d ms, mode %d, speed %d/100"
+                      "\n",
+                      u_frame / 10, u_frame % 10, g_hitch_ms, u_pre / 10, u_pre % 10, u_sim / 10, u_sim % 10, g_h_steps, u_max / 10, u_max % 10,
+                      u_rest / 10, u_rest % 10, (int)((clk1 - g_h_clk0) * 1000.0 + 0.5), (int)*(const uint8_t *)ADDR_SESSION_MODE,
+                      (int)(*(const double *)ADDR_GAME_SPEED * 100.0 + 0.5));
+            seam_log(b);
+            hitch_sample_emit(g_h_prev); // the mid-frame stack the watchdog thread took while THIS frame was still running
+        }
+    }
+    g_h_prev = now;
+    hitch_sample_beat(now); // a new frame begins: the sampler times it from here
+    hitch_inject_poll(now); // test arm
+}
+
+// clang-format off
+__declspec(naked) void sim_step_stub() { // the timed call for the variable-step branch: observe-only
+    __asm {
+        call  hitch_sim_begin
+        mov   eax, 0x0043f512
+        call  eax
+        call  hitch_sim_end
+        ret
+    }
+}
+__declspec(naked) void sp_step_cap_stub() {
+    __asm {
+        call  hitch_sim_begin
+        mov   eax, 0x0043f512                    // llm_strat_sim_step, the call this stub replaced
+        call  eax
+        call  hitch_sim_end
+        mov   eax, 0x00e58344                    // SESSION_MODE: multiplayer is bounded by the committed horizon
+        cmp   dword ptr [eax], 3
+        je    cap_done
+        mov   eax, g_sp_step_cap
+        test  eax, eax
+        jz    cap_done                           // 0 = uncapped
+        inc   dword ptr g_sp_steps
+        cmp   dword ptr g_sp_steps, eax
+        jb    cap_done
+        mov   eax, 0x005d0198
+        fld   qword ptr [eax]                    // GAME_CLOCK
+        mov   eax, 0x00e587c1
+        fstp  qword ptr [eax]                    // TOTAL_GAME_TIME := GAME_CLOCK -- the remainder is dropped
+    cap_done:
+        ret
+    }
+}
+// clang-format on
+
+// Splice the two sim_step call sites. Loop site: the cap stub, when the cap or the hitch watch needs it. Variable-step site: the
+// timing stub, only for the hitch watch. Called after install_sp_fixed_step (so g_sp_step_cap is final).
+void install_sim_step_stubs(bool fixed_armed) {
+    const bool  promoted = mh::hook::promoted_owner_of(ADDR_SP_CAP_SITE);
+    const char *cap = "off", *hit = "off";
+    if (g_sp_step_cap > 0 && fixed_armed && promoted) cap = "carried by the promoted sim_tick";
+    const bool want_loop = (g_sp_step_cap > 0 && fixed_armed) || g_hitch_ms > 0;
+    if (want_loop && !promoted) {
+        uint8_t       repl[5] = {0xE8, 0, 0, 0, 0};
+        const int32_t rel     = (int32_t)((uintptr_t)&sp_step_cap_stub - (ADDR_SP_CAP_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        if (patch_bytes_guarded(ADDR_SP_CAP_SITE, SP_CAP_EXPECT, repl, 5)) {
+            cap = (g_sp_step_cap > 0 && fixed_armed) ? "PATCHED" : "off (timing only)";
+        } else {
+            cap           = "MISMATCHED -- NO CAP, a long stall runs every step in one frame";
+            g_sp_step_cap = 0;
+            refuse_uncarried_fix("sp_sim_step_ms", ADDR_SP_CAP_SITE, "llm_strat_sim_tick");
+        }
+    }
+    if (g_hitch_ms > 0) {
+        if (promoted) {
+            hit = "ARMED, sim phase n/a (promoted sim_tick)";
+        } else {
+            uint8_t       repl[5] = {0xE8, 0, 0, 0, 0};
+            const int32_t rel     = (int32_t)((uintptr_t)&sim_step_stub - (ADDR_SP_VAR_SITE + 5));
+            memcpy(repl + 1, &rel, sizeof(rel));
+            hit = patch_bytes_guarded(ADDR_SP_VAR_SITE, SP_VAR_EXPECT, repl, 5) ? "ARMED" : "MISMATCHED -- sim phase only from the loop site";
+        }
+    }
+    char b[320];
+    wsprintfA(b, "; sp catch-up cap: %d steps (%d ms of game time per frame, the rest of a stall is dropped): %s; hitch watch (>= %d ms, [net] hitch_ms): %s"
+                 "\n",
+              g_sp_step_cap, (int)(g_sp_step_cap * g_sp_sim_step * 1000.0 + 0.5), cap, g_hitch_ms, hit);
+    seam_log(b);
+}
+
+// Returns true when single-player will run the fixed-quantum loop (patched, or displaced by a promoted sim_tick that
+// carries it through reimpl_fixes::rig_fixed_step_loop).
+bool install_sp_fixed_step(double step_s) {
+    const char *what;
+    bool        armed = false;
+    if (mh::hook::promoted_owner_of(ADDR_SP_FIXED_SITE)) {
+        what  = "DISPLACED by promotion -- the promoted sim_tick's reimpl_fixes::rig_fixed_step_loop carries it";
+        armed = true;
+    } else if (patch_bytes_guarded(ADDR_SP_FIXED_SITE, SP_FIXED_EXPECT, SP_FIXED_REPLACE, 9)) {
+        what  = "PATCHED -- sim_tick's SESSION_MODE JNZ at 0043F40A is NOPed";
+        armed = true;
+    } else {
+        what = "MISMATCHED";
+        refuse_uncarried_fix("sp_sim_step_ms", ADDR_SP_FIXED_SITE, "llm_strat_sim_tick");
+    }
+    char b[260];
+    wsprintfA(b, "; sp fixed step: %s -- single-player %s (sp_sim_step_ms=%d)\n", what,
+              armed ? "ARMED, fixed quantum" : "NOT armed, retail variable step", (int)(step_s * 1000.0 + 0.5));
+    seam_log(b);
+    return armed;
+}
+
+// mods:A1 -- `mother_free_build` / `mother_free_build_ai`'s BYTE-PATCH CARRIERS (nine call-splices, always installed).
+// Retail's build rule reads primary_mother_bldg[planet] (player*0x740 + planet*4 + 0xcff274, 0 = no landed mother) at seven
+// places, all `CMP dword [EAX+0xcff274],0` (83 B8 74 F2 CF 00 00) followed by a Jcc, EAX = player*0x740 + planet*4:
+//   game_SetEvent 0x00413bf5 / 0x00413c6e / 0x00413cab / 0x00413fb1 (build-panel events), llm_ui_bldg_panel_open 0x0041c135
+//   (the initial page), llm_strat_bldg_try_begin_placement 0x00448c3d, and the instant-construct arm of
+//   llm_strat_order_queue_dispatch 0x00467441 (the only SIM site). Each becomes `CALL mother_free_gate_stub ; NOP NOP`:
+//   the stub redoes the compare and, with the runtime global on and no mother, returns ZF=0 ("mother present") for a
+//   human owner (a computer owner only with the _ai global) -- the following Jcc is untouched. Off: the retail compare.
+// Two more splices make a lone power plant buildable on a planet with no mother (a building with built_flags != 3 gets no tick
+// budget, and only a mother roots the network): llm_strat_bldg_link_to_network_if_adjacent 0x00492422
+// (`CMP byte [EAX+0xd9ec88],0x1a` = "is a human mother" -> flood) also answers "yes" for a plant (type 0x17 / 3) whose owner has
+// no primary mother here, and llm_strat_bldg_power_network_recompute 0x00491eac (`CMP word [EAX+0xc3d2b7],0` = online_state of
+// a plant, JNE -> flood) answers "online" for the same plant, so a recompute (any removal) re-seeds an unfinished root.
+// player_data[p].ai_enabled is at 0xe6ded8 + p*0x288fc. The twin: libmh/sim/sim_mother_free.h + the promoted bodies.
+int                 g_mother_free_rt    = 0; // read by the stubs; settable (PT-SET1), 0 = retail
+int                 g_mother_free_ai_rt = 0; // [net] mother_free_build_ai: computer owners are covered too
+constexpr uintptr_t ADDR_MF_EVENT_SHOW = 0x00413bf5, ADDR_MF_EVENT_AUTO = 0x00413c6e, ADDR_MF_EVENT_TAB = 0x00413cab,
+                    ADDR_MF_EVENT_KEY = 0x00413fb1, ADDR_MF_PANEL_OPEN = 0x0041c135, ADDR_MF_PLACE = 0x00448c3d,
+                    ADDR_MF_DISPATCH = 0x00467441, ADDR_MF_LINK = 0x00492422, ADDR_MF_SEED = 0x00491eac;
+const uint8_t MF_GATE_EXPECT[7] = {0x83, 0xB8, 0x74, 0xF2, 0xCF, 0x00, 0x00};
+const uint8_t MF_LINK_EXPECT[7] = {0x80, 0xB8, 0x88, 0xEC, 0xD9, 0x00, 0x1A};
+const uint8_t MF_SEED_EXPECT[8] = {0x66, 0x83, 0xB8, 0xB7, 0xD2, 0xC3, 0x00, 0x00};
+
+// clang-format off
+__declspec(naked) void mother_free_gate_stub() {
+    __asm {
+        cmp   dword ptr [eax + 0xcff274], 0      // the compare this stub replaced
+        jne   mg_ret                             // a mother is here: ZF=0
+        cmp   g_mother_free_rt, 0
+        je    mg_ret                             // rule off: ZF=1, exactly retail
+        cmp   g_mother_free_ai_rt, 0
+        jne   mg_force
+        push  eax
+        push  ecx
+        push  edx
+        xor   edx, edx
+        mov   ecx, 0x740
+        div   ecx                                // eax = player (planet*4 < 0x740)
+        imul  eax, eax, 0x288fc
+        cmp   dword ptr [eax + 0xe6ded8], 0      // player_data[player].ai_enabled
+        pop   edx
+        pop   ecx
+        pop   eax
+        jne   mg_ai                              // a computer player, _ai off: the retail refusal
+    mg_force:
+        test  esp, esp                           // ZF=0 = "mother present"
+        ret
+    mg_ai:
+        cmp   eax, eax                           // ZF=1 = "no mother"
+    mg_ret:
+        ret
+    }
+}
+
+__declspec(naked) void mother_free_link_stub() {
+    __asm {
+        cmp   byte ptr [eax + 0xd9ec88], 0x1a    // the compare this stub replaced (human mother)
+        je    ml_ret
+        cmp   g_mother_free_rt, 0
+        jne   ml_on
+        test  esp, esp                           // ZF=0: not a mother
+        ret
+    ml_on:
+        push  edx
+        mov   dl, byte ptr [eax + 0xd9ec88]
+        cmp   dl, 0x17
+        je    ml_plant
+        cmp   dl, 3
+        jne   ml_no1
+    ml_plant:
+        push  ecx
+        movzx edx, word ptr [ebp - 0x18]         // player
+        cmp   g_mother_free_ai_rt, 0
+        jne   ml_cov
+        imul  ecx, edx, 0x288fc
+        cmp   dword ptr [ecx + 0xe6ded8], 0
+        jne   ml_no2                             // a computer owner, _ai off
+    ml_cov:
+        imul  edx, edx, 0x740
+        mov   ecx, dword ptr ds:[0x00e58366]     // G_PLANET_INDEX
+        shl   ecx, 2
+        add   edx, ecx
+        cmp   dword ptr [edx + 0xcff274], 0      // ZF=1: no primary mother here -> a root, like a mother
+        pop   ecx
+        pop   edx
+    ml_ret:
+        ret
+    ml_no2:
+        pop   ecx
+    ml_no1:
+        pop   edx
+        test  esp, esp                           // ZF=0: not a root
+        ret
+    }
+}
+
+__declspec(naked) void mother_free_seed_stub() {
+    __asm {
+        cmp   word ptr [eax + 0xc3d2b7], 0       // the compare this stub replaced (plant online_state)
+        jne   ms_ret                             // online: seeds (ZF=0)
+        cmp   g_mother_free_rt, 0
+        je    ms_ret                             // rule off: ZF=1, retail (not seeded)
+        push  edx
+        push  ecx
+        movzx edx, word ptr [ebp - 0x14]         // player
+        cmp   g_mother_free_ai_rt, 0
+        jne   ms_cov
+        imul  ecx, edx, 0x288fc
+        cmp   dword ptr [ecx + 0xe6ded8], 0
+        jne   ms_skip                            // a computer owner, _ai off
+    ms_cov:
+        imul  edx, edx, 0x740
+        mov   ecx, dword ptr ds:[0x00e58366]     // G_PLANET_INDEX
+        shl   ecx, 2
+        add   edx, ecx
+        cmp   dword ptr [edx + 0xcff274], 0
+        pop   ecx
+        pop   edx
+        jne   ms_skip2                           // a mother is here: not seeded
+        test  esp, esp                           // no mother: seeds (ZF=0)
+        ret
+    ms_skip:
+        pop   ecx
+        pop   edx
+    ms_skip2:
+        cmp   eax, eax                           // ZF=1: not seeded
+    ms_ret:
+        ret
+    }
+}
+// clang-format on
+
+const char *g_mf_what    = "not installed";
+bool        g_mf_carried = false;
+
+void install_mother_free_build() {
+    struct mf_site {
+        uintptr_t      addr;
+        const uint8_t *expect;
+        int            len;
+        void (*stub)();
+        const char *owner;
+    };
+    static const mf_site sites[] = {
+        {ADDR_MF_EVENT_SHOW, MF_GATE_EXPECT, 7, mother_free_gate_stub, "game_SetEvent"},
+        {ADDR_MF_EVENT_AUTO, MF_GATE_EXPECT, 7, mother_free_gate_stub, "game_SetEvent"},
+        {ADDR_MF_EVENT_TAB, MF_GATE_EXPECT, 7, mother_free_gate_stub, "game_SetEvent"},
+        {ADDR_MF_EVENT_KEY, MF_GATE_EXPECT, 7, mother_free_gate_stub, "game_SetEvent"},
+        {ADDR_MF_PANEL_OPEN, MF_GATE_EXPECT, 7, mother_free_gate_stub, "llm_ui_bldg_panel_open"},
+        {ADDR_MF_PLACE, MF_GATE_EXPECT, 7, mother_free_gate_stub, "llm_strat_bldg_try_begin_placement"},
+        {ADDR_MF_DISPATCH, MF_GATE_EXPECT, 7, mother_free_gate_stub, "llm_strat_order_queue_dispatch"},
+        {ADDR_MF_LINK, MF_LINK_EXPECT, 7, mother_free_link_stub, "llm_strat_bldg_link_to_network_if_adjacent"},
+        {ADDR_MF_SEED, MF_SEED_EXPECT, 8, mother_free_seed_stub, "llm_strat_bldg_power_network_recompute"},
+    };
+    int patched = 0, displaced = 0, mismatched = 0;
+    for (const mf_site &s : sites) {
+        if (mh::hook::promoted_owner_of(s.addr)) {
+            ++displaced;
+            continue;
+        }
+        uint8_t       repl[8] = {0xE8, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        const int32_t rel     = (int32_t)((uintptr_t)s.stub - (s.addr + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        bool ok = false;
+        // one literal expression per site: lint_dll_patches keys the manifest on (file, expr)
+        switch (s.addr) {
+            case ADDR_MF_EVENT_SHOW: ok = patch_bytes_guarded(ADDR_MF_EVENT_SHOW, s.expect, repl, s.len); break;
+            case ADDR_MF_EVENT_AUTO: ok = patch_bytes_guarded(ADDR_MF_EVENT_AUTO, s.expect, repl, s.len); break;
+            case ADDR_MF_EVENT_TAB: ok = patch_bytes_guarded(ADDR_MF_EVENT_TAB, s.expect, repl, s.len); break;
+            case ADDR_MF_EVENT_KEY: ok = patch_bytes_guarded(ADDR_MF_EVENT_KEY, s.expect, repl, s.len); break;
+            case ADDR_MF_PANEL_OPEN: ok = patch_bytes_guarded(ADDR_MF_PANEL_OPEN, s.expect, repl, s.len); break;
+            case ADDR_MF_PLACE: ok = patch_bytes_guarded(ADDR_MF_PLACE, s.expect, repl, s.len); break;
+            case ADDR_MF_DISPATCH: ok = patch_bytes_guarded(ADDR_MF_DISPATCH, s.expect, repl, s.len); break;
+            case ADDR_MF_LINK: ok = patch_bytes_guarded(ADDR_MF_LINK, s.expect, repl, s.len); break;
+            case ADDR_MF_SEED: ok = patch_bytes_guarded(ADDR_MF_SEED, s.expect, repl, s.len); break;
+        }
+        if (ok) {
+            ++patched;
+        } else {
+            ++mismatched;
+            refuse_uncarried_fix("mother_free_build", s.addr, s.owner);
+        }
+    }
+    static char what[200];
+    wsprintfA(what, "%d site(s) PATCHED, %d DISPLACED (libmh owns them), %d MISMATCHED", patched, displaced, mismatched);
+    g_mf_what    = what;
+    g_mf_carried = mismatched == 0;
+    char b[300];
+    // The "mother free build ON/OFF" banner is the gameplay setter's (mh_set_mother_free_build).
+    wsprintfA(b, "; mother free build splice: installed, gate 0 until the gameplay settings apply: %s\n", what);
+    seam_log(b);
+}
+
+// ===== mods:M1P -- the movement PROTOTYPE keys (movement plan Phase 0 + 1a/1b). All DEFAULT OFF = retail. ======
+//
+// Eight call-splices, ALWAYS installed, each runtime-gated by a global the gameplay setters (below) flip; off = the retail bytes' own
+// behaviour. Host-set ([net], F_HOSTSYNC, C_DEV): the sim changes, so every peer must run the same values.
+//   move_centroid_wrap_fix   llm_strat_group_move_order_pathfind 0x0041ca37: the group-centre wrap `d = 0x80 - d` (x at 0x0041caf2, y at
+//                            0x0041cb51) becomes `d = d - map_w` / `d - map_h`; llm_strat_slot_dist_to_ref 0x004cbd63: the wrap tests of the
+//                            x and y deltas (0x004cbdb0 / 0x004cbdc3) also fold a delta below -half by + map_w / map_h (retail corrects
+//                            only the positive side).
+//   move_detour_slot_guard   llm_strat_unit_path_detour 0x004209b2: the recursion into the occupant (0x0042172e) is skipped when the
+//                            occupant's path_slot_id is 0xff (it would index player*30000 + 255*300, past the player's 100 slots).
+//   move_flood_queue_guard   llm_map_region_flood_reachable 0x00424ee0: the 4096-slot ring queue is bounded (0x00424f62): the flood stops
+//                            when 0xff8 entries are pending, instead of the write cursor lapping the read cursor.
+//   route_cost_mode/base/ring4/ring8/ring16, route_gap_wave_full   the flood's READ of a cell's cost (0x00424f7f, `(low byte) << 8`
+//                            added to the neighbour): the low terrain_flags byte is mapped through route_cost_calc(). The stored bits are
+//                            never changed. See route_cost_calc for the formula; the defaults reproduce retail exactly.
+//   route_corridor_mode      (mods:M1C) the CALL to llm_strat_pathfind_mark_group_member_regions 0x00420919 in llm_strat_group_move_order_pathfind
+//                            (0x0041d06c), the last step before the flood: after the original marks the member regions, widen which nav
+//                            regions carry a non-zero route_mark (the flood's eligibility test, with passable != 0). 1 = every region
+//                            adjacent to a marked one too; 2 = every region; 3 = widen nothing, only log (measurement).
+// None of the owners is promoted by libmh at the time of writing; if one is, the site is DISPLACED and the key logs "NOT ACTIVE".
+int                 g_move_centroid_rt = 0;
+int                 g_move_detour_rt   = 0;
+int                 g_move_flood_rt    = 0;
+int                 g_rc_mode          = 0;  // route_cost_mode (0 = retail raw byte, 1 = table)
+int                 g_rc_base          = 1;  // cost of the passable bit (retail 1)
+int                 g_rc_ring4         = 4;  // proximity bit 4   (retail 4)
+int                 g_rc_ring8         = 8;  // proximity bit 8   (retail 8)
+int                 g_rc_ring16        = 16; // proximity bit 16  (retail 16)
+int                 g_rc_wave_full     = 0;  // route_gap_wave_full: N, 0 = off
+int                 g_cor_mode         = 0;  // route_corridor_mode (0 retail, 1 corridor + adjacent, 2 all regions, 3 measure only)
+uint32_t            g_flood_deq        = 0;  // flood dequeues since the last corridor stub call (counted in mv_flood_c_stub)
+constexpr uintptr_t ADDR_MV_CENT_X = 0x0041caf2, ADDR_MV_CENT_Y = 0x0041cb51, ADDR_MV_SLOT_X = 0x004cbdb0,
+                    ADDR_MV_SLOT_Y = 0x004cbdc3, ADDR_MV_DETOUR = 0x0042172e, ADDR_MV_FLOOD_Q = 0x00424f62,
+                    ADDR_MV_FLOOD_C = 0x00424f7f, ADDR_MV_CORR = 0x0041d06c;
+const uint8_t MV_CENT_X_EXPECT[8]  = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
+const uint8_t MV_CENT_Y_EXPECT[8]  = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
+const uint8_t MV_SLOT_X_EXPECT[19] = {0x8B, 0x45, 0xE0, 0x3B, 0x05, 0xC0, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x84, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE0};
+const uint8_t MV_SLOT_Y_EXPECT[19] = {0x8B, 0x45, 0xE4, 0x3B, 0x05, 0xBC, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x64, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE4};
+const uint8_t MV_DETOUR_EXPECT[6]  = {0x83, 0x7D, 0xD4, 0x00, 0x74, 0x12};
+const uint8_t MV_FLOOD_Q_EXPECT[8] = {0x39, 0xF7, 0x0F, 0x84, 0x08, 0x01, 0x00, 0x00};
+const uint8_t MV_FLOOD_C_EXPECT[9] = {0x81, 0xE2, 0xFF, 0x00, 0x00, 0x00, 0xC1, 0xE2, 0x08};
+const uint8_t MV_CORR_EXPECT[5]    = {0xE8, 0xA8, 0x38, 0x00, 0x00}; // CALL 0x00420919 (llm_strat_pathfind_mark_group_member_regions)
+
+// mods:M1C -- the corridor widening, run right after the retail member-region marking. llm_map_region (1056 bytes): +4 cell_count, +8
+// neighbor_count, +12 neighbors[128], +1036 next, +1048 route_mark. The active list head is 0x0051de7c. Mode 1 marks (3) every region that
+// neighbours a marked one (the set is computed from the marks as they were on entry: a region marked 3 never expands, so list order
+// cannot matter); mode 2 marks (3) every region; mode 3 changes nothing. Logs one line per wave when the key is on.
+static uint8_t *cor_next(uint8_t *r) { return *reinterpret_cast<uint8_t **>(r + 1036); }
+static int32_t &cor_mark(uint8_t *r) { return *reinterpret_cast<int32_t *>(r + 1048); }
+static void __cdecl corridor_widen() {
+    const int mode    = g_cor_mode;
+    uint8_t  *head    = *reinterpret_cast<uint8_t **>(0x0051de7cu);
+    int       regions = 0, before = 0;
+    for (uint8_t *r = head; r; r = cor_next(r)) {
+        ++regions;
+        if (cor_mark(r) != 0) ++before;
+    }
+    if (mode == 1) {
+        for (uint8_t *r = head; r; r = cor_next(r)) {
+            const int32_t m = cor_mark(r);
+            if (m != 1 && m != 2) continue; // only the entry marks expand (3 is ours)
+            const uint32_t n = *reinterpret_cast<uint32_t *>(r + 8);
+            for (uint32_t i = 0; i < n && i < 128; ++i) {
+                uint8_t *nb = reinterpret_cast<uint8_t **>(r + 12)[i];
+                if (nb && cor_mark(nb) == 0) cor_mark(nb) = 3;
+            }
+        }
+    } else if (mode == 2) {
+        for (uint8_t *r = head; r; r = cor_next(r))
+            if (cor_mark(r) == 0) cor_mark(r) = 3;
+    }
+    int      after = 0;
+    uint32_t cells = 0;
+    for (uint8_t *r = head; r; r = cor_next(r))
+        if (cor_mark(r) != 0) {
+            ++after;
+            cells += *reinterpret_cast<uint32_t *>(r + 4);
+        }
+    char b[240];
+    wsprintfA(b, "; corridor (mods:M1C) mode=%d members=%d regions marked %d -> %d of %d, region cells eligible=%u, flood dequeues since last wave=%u\n", mode,
+              *reinterpret_cast<const volatile int32_t *>(0x0051de38u), before, after, regions, cells, g_flood_deq);
+    g_flood_deq = 0;
+    seam_log(b);
+}
+
+// The flood's per-cell cost. `low` = the cell's terrain_flags low byte: bit0 = passable, bits 2/3/4 (values 4/8/16) = obstacle-proximity
+// rings (a cell touching an obstacle carries all three: 1+4+8+16 = 29). Retail adds `low` itself. Mode 1: bit0 -> route_cost_base, each
+// ring bit -> its route_cost_ringN, any other bit stays raw; with route_gap_wave_full=N the ring part is scaled by min(wave_size, N)/N
+// (wave_size = _G_LLM_STRAT_GROUP_MEMBER_COUNT, integer division) so a lone unit pays little for squeezing past an obstacle.
+// With the defaults (1/4/8/16, wave_full 0) the result equals `low`. Integer only, no state: deterministic.
+// cdecl, preserves EBX/ESI/EDI (MSVC); the stub saves EAX/ECX.
+static uint32_t __cdecl route_cost_calc(uint32_t low) {
+    uint32_t cost = low & ~0x1Du; // bits other than passable and the three rings, raw
+    if (low & 1u) cost += (uint32_t)g_rc_base;
+    uint32_t ring = ((low & 4u) ? (uint32_t)g_rc_ring4 : 0u) + ((low & 8u) ? (uint32_t)g_rc_ring8 : 0u) + ((low & 16u) ? (uint32_t)g_rc_ring16 : 0u);
+    if (g_rc_wave_full > 0) {
+        int n = *reinterpret_cast<const volatile int32_t *>(0x0051de38u); // _G_LLM_STRAT_GROUP_MEMBER_COUNT
+        if (n < 1) n = 1;
+        if (n > g_rc_wave_full) n = g_rc_wave_full;
+        ring = ring * (uint32_t)n / (uint32_t)g_rc_wave_full;
+    }
+    return cost + ring;
+}
+
+// clang-format off
+__declspec(naked) void mv_cent_x_stub() {
+    __asm {
+        cmp   g_move_centroid_rt, 0
+        jne   mx_fix
+        mov   eax, 0x80                          // the two instructions this stub replaced
+        sub   eax, dword ptr [ebp - 0x54]
+        ret
+    mx_fix:
+        mov   eax, dword ptr [ebp - 0x54]
+        sub   eax, dword ptr ds:[0x00825084]     // d - map_width
+        ret
+    }
+}
+
+__declspec(naked) void mv_cent_y_stub() {
+    __asm {
+        cmp   g_move_centroid_rt, 0
+        jne   my_fix
+        mov   eax, 0x80
+        sub   eax, dword ptr [ebp - 0x54]
+        ret
+    my_fix:
+        mov   eax, dword ptr [ebp - 0x54]
+        sub   eax, dword ptr ds:[0x00825064]     // d - map_height
+        ret
+    }
+}
+
+__declspec(naked) void mv_slot_x_stub() {
+    __asm {
+        mov   eax, dword ptr [ebp - 0x20]        // the block this stub replaced: if (dx > half) dx -= width
+        cmp   eax, dword ptr ds:[0x00e654c0]
+        jle   sx_chk
+        mov   eax, dword ptr ds:[0x00825084]
+        sub   dword ptr [ebp - 0x20], eax
+        ret
+    sx_chk:
+        cmp   g_move_centroid_rt, 0
+        je    sx_done
+        mov   edx, dword ptr ds:[0x00e654c0]
+        neg   edx
+        cmp   eax, edx
+        jge   sx_done
+        mov   eax, dword ptr ds:[0x00825084]     // dx < -half: dx += width
+        add   dword ptr [ebp - 0x20], eax
+    sx_done:
+        ret
+    }
+}
+
+__declspec(naked) void mv_slot_y_stub() {
+    __asm {
+        mov   eax, dword ptr [ebp - 0x1c]
+        cmp   eax, dword ptr ds:[0x00e654bc]
+        jle   sy_chk
+        mov   eax, dword ptr ds:[0x00825064]
+        sub   dword ptr [ebp - 0x1c], eax
+        ret
+    sy_chk:
+        cmp   g_move_centroid_rt, 0
+        je    sy_done
+        mov   edx, dword ptr ds:[0x00e654bc]
+        neg   edx
+        cmp   eax, edx
+        jge   sy_done
+        mov   eax, dword ptr ds:[0x00825064]
+        add   dword ptr [ebp - 0x1c], eax
+    sy_done:
+        ret
+    }
+}
+
+// 0x0042172e: `cmp dword [ebp-0x2c],0 ; jz 0x00421746` (no alternate unit -> return 1) becomes CALL + NOP. The stub takes the jz itself
+// (drops its return address, jumps to 0x00421746) and otherwise returns to the NOP.
+__declspec(naked) void mv_detour_stub() {
+    __asm {
+        cmp   dword ptr [ebp - 0x2c], 0
+        je    md_none
+        cmp   g_move_detour_rt, 0
+        je    md_go
+        mov   eax, dword ptr [ebp - 0x34]        // player
+        imul  eax, eax, 0x5b04
+        mov   edx, dword ptr [ebp - 0x2c]        // occupant unit index
+        imul  edx, edx, 0xe9
+        add   eax, edx
+        cmp   byte ptr [eax + 0xdd8cf2], 0xff    // occupant path_slot_id: 0xff = no slot, do not splice into it
+        je    md_none
+    md_go:
+        ret
+    md_none:
+        add   esp, 4
+        mov   eax, 0x00421746
+        jmp   eax
+    }
+}
+
+// 0x00424f62: loop top `cmp edi,esi ; jz done` (8 bytes) becomes CALL + 3 NOP. EAX is dead at the loop top.
+__declspec(naked) void mv_flood_q_stub() {
+    __asm {
+        cmp   edi, esi
+        je    mf_done
+        cmp   g_move_flood_rt, 0
+        je    mf_go
+        mov   eax, esi
+        sub   eax, edi
+        and   eax, 0xfff                         // entries pending in the 4096-slot ring
+        cmp   eax, 0xff8
+        jae   mf_done
+    mf_go:
+        ret
+    mf_done:
+        add   esp, 4
+        mov   eax, 0x00425072
+        jmp   eax
+    }
+}
+
+// 0x00424f7f: `and edx,0xff ; shl edx,8` (9 bytes) becomes CALL + 4 NOP; the `add eax,edx` after it is kept.
+__declspec(naked) void mv_flood_c_stub() {
+    __asm {
+        and   edx, 0xff
+        inc   dword ptr g_flood_deq              // one dequeued cell per call (mods:M1C measurement)
+        cmp   g_rc_mode, 0
+        je    mc_shl
+        push  eax
+        push  ecx
+        push  edx
+        call  route_cost_calc
+        add   esp, 4
+        mov   edx, eax
+        pop   ecx
+        pop   eax
+    mc_shl:
+        shl   edx, 8
+        ret
+    }
+}
+
+// 0x0041d06c: `CALL llm_strat_pathfind_mark_group_member_regions` (5 bytes) becomes CALL this stub: it runs the original, then (key on)
+// the widening. pushad/pushfd around the C call keep every register the caller could rely on.
+__declspec(naked) void mv_corr_stub() {
+    __asm {
+        mov   eax, 0x00420919
+        call  eax
+        cmp   g_cor_mode, 0
+        je    mk_done
+        pushad
+        pushfd
+        call  corridor_widen
+        popfd
+        popad
+    mk_done:
+        ret
+    }
+}
+// clang-format on
+
+// Per key group: 0 = not installed, 1 = carried, -1 = a site MISMATCHED, -2 = a site DISPLACED (libmh owns the function).
+int         g_mv_state_fc_req = 0;
+int         g_mv_state_cent = 0, g_mv_state_det = 0, g_mv_state_fq = 0, g_mv_state_fc = 0, g_mv_state_cor = 0;
+const char *mv_state_name(int s) { return s == 1 ? "carried" : (s == -1 ? "a splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns the function; no twin)" : "not installed")); }
+
+static int mv_patch(uintptr_t addr, const uint8_t *expect, int len, void (*stub)(), const char *owner, const char *knob) {
+    if (mh::hook::promoted_owner_of(addr)) return -2;
+    uint8_t       repl[24];
+    const int32_t rel = (int32_t)((uintptr_t)stub - (addr + 5));
+    repl[0]           = 0xE8;
+    memcpy(repl + 1, &rel, sizeof(rel));
+    for (int i = 5; i < len; ++i) repl[i] = 0x90;
+    bool ok = false;
+    // one literal expression per site: lint_dll_patches keys the manifest on (file, expr)
+    switch (addr) {
+        case ADDR_MV_CENT_X: ok = patch_bytes_guarded(ADDR_MV_CENT_X, expect, repl, len); break;
+        case ADDR_MV_CENT_Y: ok = patch_bytes_guarded(ADDR_MV_CENT_Y, expect, repl, len); break;
+        case ADDR_MV_SLOT_X: ok = patch_bytes_guarded(ADDR_MV_SLOT_X, expect, repl, len); break;
+        case ADDR_MV_SLOT_Y: ok = patch_bytes_guarded(ADDR_MV_SLOT_Y, expect, repl, len); break;
+        case ADDR_MV_DETOUR: ok = patch_bytes_guarded(ADDR_MV_DETOUR, expect, repl, len); break;
+        case ADDR_MV_FLOOD_Q: ok = patch_bytes_guarded(ADDR_MV_FLOOD_Q, expect, repl, len); break;
+        case ADDR_MV_FLOOD_C: ok = patch_bytes_guarded(ADDR_MV_FLOOD_C, expect, repl, len); break;
+        case ADDR_MV_CORR: ok = patch_bytes_guarded(ADDR_MV_CORR, expect, repl, len); break;
+    }
+    if (!ok) {
+        refuse_uncarried_fix(knob, addr, owner);
+        return -1;
+    }
+    return 1;
+}
+
+static int mv_fold(int a, int b) { return (a == 1 && b == 1) ? 1 : (a < 0 ? a : (b < 0 ? b : 0)); }
+
+void install_move_proto() {
+    const int cx    = mv_patch(ADDR_MV_CENT_X, MV_CENT_X_EXPECT, 8, mv_cent_x_stub, "llm_strat_group_move_order_pathfind", "move_centroid_wrap_fix");
+    const int cy    = mv_patch(ADDR_MV_CENT_Y, MV_CENT_Y_EXPECT, 8, mv_cent_y_stub, "llm_strat_group_move_order_pathfind", "move_centroid_wrap_fix");
+    const int sx    = mv_patch(ADDR_MV_SLOT_X, MV_SLOT_X_EXPECT, 19, mv_slot_x_stub, "llm_strat_slot_dist_to_ref", "move_centroid_wrap_fix");
+    const int sy    = mv_patch(ADDR_MV_SLOT_Y, MV_SLOT_Y_EXPECT, 19, mv_slot_y_stub, "llm_strat_slot_dist_to_ref", "move_centroid_wrap_fix");
+    g_mv_state_cent = mv_fold(mv_fold(cx, cy), mv_fold(sx, sy));
+    g_mv_state_det  = mv_patch(ADDR_MV_DETOUR, MV_DETOUR_EXPECT, 6, mv_detour_stub, "llm_strat_unit_path_detour", "move_detour_slot_guard");
+    g_mv_state_fq   = mv_patch(ADDR_MV_FLOOD_Q, MV_FLOOD_Q_EXPECT, 8, mv_flood_q_stub, "llm_map_region_flood_reachable", "move_flood_queue_guard");
+    g_mv_state_fc   = mv_patch(ADDR_MV_FLOOD_C, MV_FLOOD_C_EXPECT, 9, mv_flood_c_stub, "llm_map_region_flood_reachable", "route_cost_mode");
+    g_mv_state_cor  = mv_patch(ADDR_MV_CORR, MV_CORR_EXPECT, 5, mv_corr_stub, "llm_strat_group_move_order_pathfind", "route_corridor_mode");
+    install_move_proto_arrival(); // mods:M1X lane A (seams/move_proto_arrival.cpp)
+    char b[360];
+    wsprintfA(b, "; move prototype splices (mods:M1P): centroid %s, detour guard %s, flood queue guard %s, route cost %s, corridor %s\n", mv_state_name(g_mv_state_cent),
+              mv_state_name(g_mv_state_det), mv_state_name(g_mv_state_fq), mv_state_name(g_mv_state_fc), mv_state_name(g_mv_state_cor));
+    seam_log(b);
+    install_move_proto_blocked(); // mods:M1X lane B
+    install_move_proto_speed();   // mods:M1X lane C
+    install_combat_proto();       // mods:M1C (seams/combat_proto.cpp): squad merge + building attack range
 }
 
 // ===== mp:U52 -- THE RETAIL CARRIERS ([net] team_relations_fix, [net] ally_damage_no_hostility) =========
@@ -5595,6 +6332,20 @@ void lockstep_install_core() {
     mh::config::read_ini_string("net", "sim_step_ms", SHIP_SIM_STEP_MS, sim_buf, sizeof(sim_buf), g_ini);
     double sim_step_ms = atof(sim_buf);
     if (sim_step_ms > 0.0) g_sim_step = sim_step_ms / 1000.0;
+    // Single-player fixed step. DEFAULT 20 ms; 0 = retail (one variable step per frame). Local: SP only, never sent to a peer.
+    // Clamped to 5..200 ms (a smaller quantum costs steps for nothing, a larger one is visibly choppy). `[config] mode=original`
+    // is retail by definition, so there it is forced off. Armed (g_sp_sim_step stays set) only if install_sp_fixed_step lands.
+    {
+        int sp_ms = mh_ini_get_int("net", "sp_sim_step_ms", 20, g_ini);
+        if (sp_ms > 200) sp_ms = 200;
+        if (sp_ms > 0 && sp_ms < 5) sp_ms = 5;
+        if (sp_ms > 0 && mh::config::ours_run()) {
+            g_sp_sim_step = (double)sp_ms / 1000.0;
+            // catch-up cap: ~200 ms of game time per frame (10 steps at 20 ms), at least one step
+            g_sp_step_cap = 200 / sp_ms < 1 ? 1 : 200 / sp_ms;
+        }
+    }
+    g_hitch_ms = mh_ini_get_int("net", "hitch_ms", SHIP_HITCH_MS, g_ini); // observe-only frame-hitch log, see hitch_on_present
     // Off-frame RX drain (adaptive lookahead (b) Step 2). Runs in on_time_tick; needs the
     // time_tick hook (armed below). Both peers can set it independently. Off by default.
     g_rx_spin = mh_ini_get_int("net", "rx_spin", SHIP_RX_SPIN, g_ini) != 0;
@@ -5684,6 +6435,7 @@ void lockstep_install_core() {
     // microstep 31 in move_path with an order queued and a stale facing is snapped to the table facing, so
     // the deferred order applies instead of deadlocking forever.
     g_air_order_facing_fix = mh_ini_get_int("net", "air_order_facing_fix", 1, g_ini);
+    g_project_gate_fix     = mh_ini_get_int("net", "project_gate_fix", 0, g_ini);
     // MP U45. DEFAULT ON, SIM-AFFECTING (every peer must carry the same value): 0xf4/0xf5 orders never supersede
     // each other in release_due. Carried by the promoted body AND a byte patch.
     g_diplo_order_dedup_fix = mh_ini_get_int("net", "diplo_order_dedup_fix", 1, g_ini);
@@ -5823,6 +6575,9 @@ void lockstep_install_core() {
         // resolve; the key stays in [net] because this is a NET knob and because [harness] keys are
         // inert unless `[harness] enable=1` armed the instrument, which this one must not require.
         fx.rig_fixed_step_loop = mh_ini_get_int("net", "rig_fixed_step_loop", 0, g_ini) != 0;
+        // [net] sp_sim_step_ms is the PRODUCT meaning of the same switch: single-player integrates at a fixed quantum.
+        if (g_sp_sim_step > 0.0) fx.rig_fixed_step_loop = true;
+        fx.sp_step_cap = g_sp_sim_step > 0.0 ? g_sp_step_cap : 0;
         // D17: the same knob the trampoline used, so it means ONE thing whichever implementation is
         // live -- which is the third property reimpl_fixes is documented to have. Note the ini
         // DEFAULT here is 1, unlike its `= false` initialiser in the struct: the initialiser is the
@@ -5852,6 +6607,7 @@ void lockstep_install_core() {
         // PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are set by the
         // gameplay hooks (seams/gameplay_hooks.cpp), not here.
         fx.air_order_facing_fix = g_air_order_facing_fix != 0; // PT-FIX3, see install_air_order_facing_fix
+        fx.project_gate_fix     = g_project_gate_fix != 0;     // mods:A2, see install_project_gate_fix
         // U56. SIM-AFFECTING (the elimination flag flip moves from CTL_PLAYER_LEFT's receive time into
         // presence_lost), so every peer must carry the same value: shipped default 1, same contract as U45.
         fx.player_left_pin_fix = mh_ini_get_int("net", "player_left_pin_fix", 1, g_ini) != 0;
@@ -5926,8 +6682,23 @@ void lockstep_install_core() {
     g_turret_stub_owner = g_turret_reload_owner_fix != 0;
     install_turret_reload_splice(); // PT-FIX1 + PT-FIX2 -- ALWAYS installed (PT-SET1: realtime is a runtime flag, 0 = retail), same three outcomes
     if (!g_turret_stub_owner) seam_log("; turret reload owner fix OFF ([net] turret_reload_owner_fix=0, PT-FIX1): retail -- a destroyed turret's rubble drains the reload timer of the turret that reused its slot (about 4x fire rate)\n");
-    install_turret_clip_fix();                                  // PT-FIX4 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
-    install_turret_fire_poll_fix();                             // PT-FIX5 -- ALWAYS installed (runtime-gated stub), same three outcomes
+    install_turret_clip_fix();                          // PT-FIX4 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
+    install_turret_fire_poll_fix();                     // PT-FIX5 -- ALWAYS installed (runtime-gated stub), same three outcomes
+    install_mother_free_build();                        // mods:A1 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
+    install_move_proto();                               // mods:M1P -- ALWAYS installed (runtime-gated stubs), movement prototype keys
+    if (g_project_gate_fix) install_project_gate_fix(); // mods:A2 -- same three outcomes
+    {
+        bool fixed_armed = false;
+        if (g_sp_sim_step > 0.0) {
+            fixed_armed = install_sp_fixed_step(g_sp_sim_step); // sp_sim_step_ms -- same three outcomes; unarmed = retail
+            if (!fixed_armed) g_sp_sim_step = 0.0;
+        }
+        if (g_sp_sim_step <= 0.0 && !fixed_armed) {
+            seam_log("; sp fixed step OFF ([net] sp_sim_step_ms=0 or [config] mode=original): single-player takes one variable step per frame, as retail\n");
+        }
+        if (!fixed_armed) g_sp_step_cap = 0;
+        install_sim_step_stubs(fixed_armed);
+    }
     if (g_air_order_facing_fix) install_air_order_facing_fix(); // PT-FIX3 -- same three outcomes
     else seam_log("; air order facing fix OFF ([net] air_order_facing_fix=0, PT-FIX3): retail -- a helicopter at microstep 31 with a stale facing never applies its next order\n");
     install_bldg_pip_guard(g_bldg_pip_guard != 0);                      // hotfix rc9.4 -- per site PATCHED / DISPLACED / MISMATCHED
@@ -5987,6 +6758,7 @@ void lockstep_install_core() {
             g_ls_log        = false;
             g_ls_log_sp     = false;
             g_sim_step      = 0.0;
+            g_sp_sim_step   = 0.0; // the pin lives in on_time_tick; without it the fixed loop would run at the reset 0.1
             seam_log("; time_tick hook NOT armed -- see the [interlock] line for the reason\n");
         }
     }
@@ -6269,4 +7041,112 @@ int mh_set_turret_fire_poll_fix(int on) {
         seam_log(b);
     }
     return taken == on;
+}
+
+
+// mods:A1 -- the gameplay setters (seams/gameplay_hooks.cpp). 1 = in force, 0 = refused (a splice MISMATCHED).
+int mh_set_mother_free_build(int on) {
+    on        = on != 0;
+    int taken = on;
+    if (on && !g_mf_carried) {
+        refuse_uncarried_fix("mother_free_build", ADDR_MF_DISPATCH, "llm_strat_order_queue_dispatch");
+        taken = 0;
+    }
+    static int s_last = -1;
+    g_mother_free_rt  = taken;
+    if (s_last != taken) {
+        s_last = taken;
+        char b[300];
+        wsprintfA(b, "; mother free build %s ([net] mother_free_build=%d, mods:A1): %s\n", taken ? "ON" : "OFF", taken, g_mf_what);
+        seam_log(b);
+    }
+    return taken == on;
+}
+
+int mh_set_mother_free_build_ai(int on) {
+    on                  = on != 0;
+    int        taken    = on && g_mf_carried;
+    static int s_last   = -1;
+    g_mother_free_ai_rt = taken;
+    if (s_last != taken) {
+        s_last = taken;
+        char b[200];
+        wsprintfA(b, "; mother free build AI %s ([net] mother_free_build_ai=%d, mods:A1)\n", taken ? "ON" : "OFF", taken);
+        seam_log(b);
+    }
+    return taken == on;
+}
+
+// mods:M1P -- the movement-prototype setters (seams/gameplay_hooks.cpp). Every one logs ONE line per change when its key is on (value +
+// "active", or "NOT ACTIVE" with the reason), so a playtest's mh_net.log shows what was on. 1 = in force, 0 = refused.
+static int mv_set_flag(int *rt, int on, int state, const char *key, const char *what) {
+    on        = on != 0;
+    int taken = on && state == 1;
+    *rt       = taken;
+    if (on) {
+        char b[360];
+        if (taken) wsprintfA(b, "; move prototype [net] %s=1 active (mods:M1P): %s\n", key, what);
+        else wsprintfA(b, "; move prototype [net] %s=1 NOT ACTIVE (mods:M1P): %s\n", key, mv_state_name(state));
+        seam_log(b);
+    }
+    return taken == on;
+}
+
+int mh_set_move_centroid_wrap_fix(int on) { return mv_set_flag(&g_move_centroid_rt, on, g_mv_state_cent, "move_centroid_wrap_fix", "group centre and slot distance wrap by the real map width/height"); }
+int mh_set_move_detour_slot_guard(int on) { return mv_set_flag(&g_move_detour_rt, on, g_mv_state_det, "move_detour_slot_guard", "no sidestep splice into an occupant that has no path slot"); }
+int mh_set_move_flood_queue_guard(int on) { return mv_set_flag(&g_move_flood_rt, on, g_mv_state_fq, "move_flood_queue_guard", "route flood stops before its 4096-entry queue laps itself"); }
+
+static int mv_clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// mods:M1C route_corridor_mode: 0 retail, 1 corridor + adjacent regions, 2 all regions, 3 retail + a per-wave measurement log line.
+void mh_set_route_corridor_mode(int mode) {
+    mode = mv_clamp(mode, 0, 3);
+    char b[300];
+    if (mode != 0 && g_mv_state_cor != 1) {
+        g_cor_mode = 0;
+        wsprintfA(b, "; move prototype [net] route_corridor_mode=%d NOT ACTIVE (mods:M1C): %s\n", mode, mv_state_name(g_mv_state_cor));
+        seam_log(b);
+        return;
+    }
+    g_cor_mode = mode;
+    if (mode != 0) {
+        wsprintfA(b, "; move prototype [net] route_corridor_mode=%d active (mods:M1C): %s\n", mode,
+                  mode == 1 ? "the route flood also covers every nav region next to the corridor" : (mode == 2 ? "the route flood covers every nav region (no corridor restriction)" : "retail corridor, measurement lines only"));
+        seam_log(b);
+    }
+}
+
+void mh_set_route_cost_mode(int mode) {
+    g_rc_mode         = (mode != 0 && g_mv_state_fc == 1) ? 1 : 0;
+    g_mv_state_fc_req = mode != 0;
+}
+void mh_set_route_cost_base(int v) { g_rc_base = mv_clamp(v, 1, 100); }
+void mh_set_route_cost_ring(int which, int v) {
+    v = mv_clamp(v, 0, 100);
+    if (which == 4) g_rc_ring4 = v;
+    else if (which == 8) g_rc_ring8 = v;
+    else g_rc_ring16 = v;
+}
+// The LAST route-cost row in registry order: it logs the whole set once.
+void mh_set_route_gap_wave_full(int n) {
+    g_rc_wave_full = mv_clamp(n, 0, 64);
+    if (!g_mv_state_fc_req && g_rc_wave_full == 0) return;
+    char b[400];
+    if (g_rc_mode == 0 && g_mv_state_fc_req == 0) {
+        wsprintfA(b, "; move prototype [net] route_gap_wave_full=%d IGNORED (mods:M1P): it needs route_cost_mode=1\n", g_rc_wave_full);
+    } else if (g_mv_state_fc_req && g_mv_state_fc != 1) {
+        wsprintfA(b, "; move prototype [net] route_cost_mode=1 NOT ACTIVE (mods:M1P): %s\n", mv_state_name(g_mv_state_fc));
+        g_rc_wave_full = 0;
+    } else {
+        wsprintfA(b, "; move prototype [net] route_cost_mode=%d active (mods:M1P): cost base=%d ring4=%d ring8=%d ring16=%d wave_full=%d (retail 1/4/8/16/0)\n", g_rc_mode,
+                  g_rc_base, g_rc_ring4, g_rc_ring8, g_rc_ring16, g_rc_wave_full);
+    }
+    seam_log(b);
+}
+
+// The primary-mother gate for the DLL's own UI code (ui_bldg_rearm.cpp): does [net] mother_free_build cover `player`?
+bool mh_mother_free_covers(uint32_t player) {
+    if (!g_mother_free_rt) return false;
+    if (g_mother_free_ai_rt) return true;
+    return *reinterpret_cast<const volatile int32_t *>(0x00e6ded8u + (player & 7u) * 0x288fcu) == 0;
 }

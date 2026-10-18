@@ -108,6 +108,8 @@ BLOCKS = {
     # per slot (host + up to three clients), PAR_SLOTS (6) slots. Slot k's game port is PORT_BASE + its first lane
     # (peers of one match share it), so every slot owns a distinct lane set, mutex set and port.
     "par": (829, 24),
+    # --sp-fixed-determinism's single lane (the gate's spdet_fixed unit runs beside spdet, so it cannot share sp_det's).
+    "sp_det_fixed": (853, 1),
 }
 PAR_LANES_PER_SLOT = 4
 PAR_SLOTS = 6
@@ -173,7 +175,7 @@ def row_port_collisions(rows):
 
 # The blocks whose lane number IS a port offset (PORT_BASE + lane). det_local derives ONE port from
 # its first lane (both peers of its match share it); det3 pins the VM topology's 6501 instead.
-PORT_DERIVED = ("soak", "tact", "ui_play", "sp_det", "det_local", "sweep", "par")
+PORT_DERIVED = ("soak", "tact", "ui_play", "sp_det", "sp_det_fixed", "det_local", "sweep", "par")
 
 
 def block(name):

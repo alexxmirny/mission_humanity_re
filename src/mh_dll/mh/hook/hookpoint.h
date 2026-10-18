@@ -97,6 +97,16 @@ enum class point {
     // ---- OBSERVE, appended (mp:D37b) -- at the END so no earlier point is renumbered ------------
     order_issue, // llm_strat_order_dispatch -- the field replay's lockstep-lane emulation
 
+    // ---- REGISTER-ONLY, appended (mods:G17) ------------------------------------------------------
+    new_game_init_observer, // mh::sim::set_new_game_init_observer -- the cfg-table restore, promoted body
+
+    // ---- OBSERVE, appended (mods:M1D) ------------------------------------------------------------
+    group_pathfind, // llm_strat_group_move_order_pathfind -- the movement probe's per-wave exit observer
+
+    // ---- OBSERVE, appended (the SND trace, 2026-10-14) -----------------------------------------
+    snd_play,      // llm_snd_play                    -- [log] snd_trace: every sound request + its outcome
+    snd_order_ack, // llm_strat_group_order_ack_voice -- [log] snd_trace: the move-ack cooldown branch
+
     count_
 };
 

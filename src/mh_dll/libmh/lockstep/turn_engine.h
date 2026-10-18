@@ -527,6 +527,11 @@ struct reimpl_fixes {
     // (SENT); only the RECV site is inside a body we promote.
     bool resync_trigger_gate = false;
 
+    // 2026-10-16: THIS FIELD IS NOW ALSO THE PRODUCT'S SINGLE-PLAYER FIXED STEP. `[net] sp_sim_step_ms` (default 20,
+    // 0 = retail) sets it from seams/net_lockstep.cpp, and on_time_tick pins SIM_STEP_INTERVAL to that value in every
+    // session mode but 3 -- one meaning whichever body is live (the retail carrier is the 2-byte NOP
+    // `install_sp_fixed_step`). The "NEVER SHIPS ON" paragraph below predates that and is now only true of the ini key
+    // `rig_fixed_step_loop` itself, which stays as the rig's way to force the loop with an arbitrary interval.
     // [net] rig_fixed_step_loop -- RIG KNOB, NOT A GAMEPLAY FIX, and the odd one out in this
     // struct: every other field restores behaviour a retired byte patch used to carry, while this one
     // deliberately makes the sim run a branch the game would not have taken. It forces sim_tick's
@@ -551,6 +556,13 @@ struct reimpl_fixes {
     // for MP-regime parity, and the stock mode-2 shape stays the coverage oracle (P0-SPDET exists
     // because the MP gate cannot see single-player paths -- and mode-2 sim_tick IS one of them).
     bool rig_fixed_step_loop = false;
+
+    // [net] sp_sim_step_ms catch-up CAP: the most fixed steps one sim_tick call may run in single-player (0 = no cap).
+    // Retail has no cap at all (a 20 s stall is ONE 20 s step); the fixed loop would run 1000 steps in one frame, so
+    // after `sp_step_cap` steps the remainder of TOTAL_GAME_TIME is DROPPED (TOTAL := GAME_CLOCK) rather than carried.
+    // Never applies in session mode 3 (the committed horizon already bounds it). One meaning with the retail
+    // carrier (seams/net_lockstep.cpp sp_step_cap_stub).
+    int32_t sp_step_cap = 0;
 
     // [net] desync_icon_gate -- MP U20: show the de-sync corner icon only on GENUINE sustained
     // silence (SYNC_RETRY_COUNTDOWN < SYNC_OVERLAY_AFTER), not on the routine at-horizon waiting that
@@ -668,6 +680,50 @@ struct reimpl_fixes {
     // helicopter is stuck forever, RE-MISC10). SIM-AFFECTING (shipped default 1, not negotiated). Byte
     // splice for the unpromoted body: net_lockstep.cpp install_air_order_facing_fix. Initialiser = faithful stock.
     bool air_order_facing_fix = false;
+
+    // [net] project_gate_fix -- mods:A2: llm_progress_propagate_unlocks withholds a research PROJECT whose
+    // depend[] are all acquired once the current planet's own invention is acquired by PlayerSide (every
+    // conquered planet: "lab built, no research"). With the key on the gate is dropped. Campaign-only
+    // (MP/skirmish sit on pseudo planet 0x1f, invention_index 0, never acquired: gate open either way), so
+    // NOT host-synced. SHIPPED DEFAULT OFF. Byte splice for the unpromoted body: net_lockstep.cpp
+    // install_project_gate_fix. Initialiser = faithful stock.
+    bool project_gate_fix = false;
+
+    // [net] mother_free_build / mother_free_build_ai -- mods:A1: the primary-mother gate of the build sites reads OPEN
+    // (game_SetEvent x4, llm_ui_bldg_panel_open's page, try_begin_placement, order 0x19) and a power plant roots the network
+    // (link_to_network, recompute seed) while its owner has no primary mother on the planet. The _ai flag extends it to
+    // computer players (ai_enabled != 0). Host-set (F_HOSTSYNC), SIM-AFFECTING, shipped default OFF. Byte splices for the
+    // unpromoted bodies: net_lockstep.cpp install_mother_free_build. Initialiser = faithful stock.
+    bool mother_free_build    = false;
+    bool mother_free_build_ai = false;
+
+    // [net] move_attack_heading_fix -- mods:M1X: llm_strat_pathfind_build_steps (the greedy path of a single-unit attack
+    // wave) records the heading it actually stepped (the -3/+3 turn candidate) instead of the blocked direct heading, so
+    // the unit no longer walks into the building it was routed around and gives up. Host-set (F_HOSTSYNC, dev key under
+    // [net] improved_movement), SIM-AFFECTING. Retail carrier: move_proto_blocked.cpp's runtime-flipped byte at 0x0041ec1f.
+    // Initialiser = faithful stock.
+    bool move_attack_heading_fix = false;
+
+    // [net] move_squad_merge_fix -- mods:M1C: llm_strat_unit_state_squad_merge accepts a target soldier that is firing
+    // (state 0x1a/0x1b/0x1c) and settled on its tile when the merge would otherwise succeed: the target is released
+    // (target_release_ref mode 1) and put idle first. Host-set (F_HOSTSYNC, dev key under [net] improved_movement),
+    // SIM-AFFECTING. Retail carrier: combat_proto.cpp's splice on the state compare at 0x0047ebe1. Initialiser = stock.
+    bool move_squad_merge_fix = false;
+    // [net] move_merge_goal_fix -- mods:M1X: llm_strat_group_move_order_pathfind step 2 relocates a squad merge's goal (the
+    // target soldier's occupied tile) to the nearest REACHABLE tile next to it (sim/sim_merge_goal.h) instead of the first
+    // closer tile of llm_strat_pathfind_find_closer_visible_tile's spiral. Retail carrier: move_proto_arrival.cpp 0x0041cc69.
+    bool move_merge_goal_fix = false;
+    // [net] projectile_facing_fix -- mods:M1C: llm_strat_projectile_tick's per-tick sprite re-aim uses a facing difference
+    // wrapped into -12..11 (0 for weapon types 5/6, whose frame is sector-based) -- sim/sim_projectile_facing.h. Retail
+    // carrier: combat_proto.cpp at 0x00441424.
+    bool projectile_facing_fix = false;
+
+    // [net] attack_range_footprint -- mods:M1C: weapon range to a BUILDING is measured to the footprint tile nearest
+    // the attacker instead of the centre (sim/sim_attack_range_footprint.h), in the attack-building issuer, the move
+    // walker's path-end check, unit_fire_weapon's auto mode, attack_building's re-aim and group_step_ground. Host-set
+    // (F_HOSTSYNC, dev key under [net] improved_combat), SIM-AFFECTING. Retail carrier: combat_proto.cpp's splices.
+    // Initialiser = faithful stock.
+    bool attack_range_footprint = false;
 
     // [net] player_left_pin_fix -- MP U56: a NATURAL elimination of a human is observed by every peer's
     // own sim at the same step (llm_strat_player_presence_lost(p, 0)), but the eliminated peer's

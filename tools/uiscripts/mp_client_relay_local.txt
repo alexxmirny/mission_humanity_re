@@ -7,7 +7,7 @@
 # clicked. Contrast mp_client_relay_browse.txt (R2), which reaches the same directory only by
 # walking Internet server -> Server address -> Connect.
 #
-# HOST PREREQUISITE: mp_host_lobby.txt on a relay lane (test_ui.py relay_browse_local).
+# HOST PREREQUISITE: a relay lane's host lobby (mp_host_relay_leave.txt in test_ui.py's relay_seq row, where this is client 1).
 
 # 1. main menu (NETWORK GAME = value 110)
 settled value:110
@@ -34,4 +34,9 @@ occ 2
 settled Cancel
 capture c4_joined_from_first_browser
 log CLIENT joined a relay-listed game from the FIRST browser -- never visited the IP window
+
+# leave the lobby with a plain Cancel (LEAVE) before the runner ends this process: in the relay_seq row the host stays up for the next
+# client, and a process killed while seated would leave its seat standing until the link times out
+clickl Cancel
+absent Network players
 end

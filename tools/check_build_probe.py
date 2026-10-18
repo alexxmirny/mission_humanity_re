@@ -29,7 +29,7 @@ Clause names are printed on failure.
 
 ---- USAGE ------------------------------------------------------------------------------------
 
-  python tools/check_build_probe.py --expect identical|diverge <host-run-dir> <client-run-dir>
+  python tools/check_build_probe.py --expect identical|diverge [--building N] <host-run-dir> <client-run-dir>
   python tools/check_build_probe.py --selftest        planted logs; every negative RED
 """
 
@@ -78,12 +78,16 @@ def first_region_diff(a, b):
     return None, None
 
 
-def check(host_dir, client_dir, expect, min_overlap=1000):
+def check(host_dir, client_dir, expect, min_overlap=1000, building=None):
     fails = []
     host_lines = check_cancel_task.net_log_lines(host_dir)
     client_lines = check_cancel_task.net_log_lines(client_dir)
     banner = banner_of(host_lines)
     probed = [ln for ln in host_lines if PROBED in ln]
+    if building is not None:
+        # a match that holds other build clicks (tooling:TL-SUITE-FOLD: ship_fix_a also places relays) counts only the
+        # probe lines that name THIS click's building
+        probed = [ln for ln in probed if re.search(r"\bbuilding %d\b" % building, ln)]
     desync = [ln for ln in host_lines + client_lines if DESYNC in ln]
 
     if banner is None:
@@ -292,13 +296,39 @@ def selftest():
             bad += 0 if ok else 1
         finally:
             shutil.rmtree(root, ignore_errors=True)
-    print("check_build_probe selftest: %d/%d" % (len(cases) - bad, len(cases)))
+    # --building: a probe line for ANOTHER building does not satisfy clause 2 (a match with other build clicks)
+    for label, building, want in (
+        ("ship arm: --building names the probed building", 5, True),
+        ("ship arm NEG: --building names a building nobody clicked", 28, False),
+    ):
+        root = tempfile.mkdtemp(prefix="d35chk_")
+        try:
+            h = plant(root, "host", 1500, **ship)
+            c = plant(
+                root, "client", 1500, diverge_from=None, banner=None, probed=False, desync=None
+            )
+            fails, _ = check(h, c, "identical", building=building)
+            ok = (not fails) == want
+            print(
+                "  %s  %s%s"
+                % ("ok " if ok else "BAD", label, "" if not fails else "  -> " + "; ".join(fails))
+            )
+            bad += 0 if ok else 1
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    print("check_build_probe selftest: %d/%d" % (len(cases) + 2 - bad, len(cases) + 2))
     return 0 if bad == 0 else 1
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--expect", choices=("identical", "diverge"), default="identical")
+    ap.add_argument(
+        "--building",
+        type=int,
+        default=None,
+        help="count only probe lines for this Building[] index (a match with other build clicks)",
+    )
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("dirs", nargs="*")
     args = ap.parse_args()
@@ -309,7 +339,7 @@ def main():
             "usage: check_build_probe.py --expect identical|diverge <host-run-dir> <client-run-dir>"
         )
         return 2
-    fails, summary = check(args.dirs[0], args.dirs[1], args.expect)
+    fails, summary = check(args.dirs[0], args.dirs[1], args.expect, building=args.building)
     if fails:
         print("check_build_probe: FAIL (%s)" % summary)
         for f in fails:

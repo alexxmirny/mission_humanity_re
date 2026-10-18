@@ -69,7 +69,8 @@ enum {
     F_EXPERIMENTAL = 1,
     F_RESTART      = 2,
     F_PENDING      = 4,
-    F_HOSTSYNC     = 8
+    F_HOSTSYNC     = 8,
+    F_LOCAL        = 16
 };
 
 struct reg_row {

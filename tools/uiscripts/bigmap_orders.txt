@@ -1,0 +1,138 @@
+# bigmap_orders -- mods:MM4C, a screen_seq step (one process, libmh bound, 1024x768, ini/bigmap_orders.ini: [ui] bigmap_orders=1).
+# 2-almost (64 x 64): unit 5 (a group of five insects, idle beside the base) is drag-selected, then Tab is held and the big map is
+# right clicked. The side minimap's right click is what the overlay now does: the stock minimap ladder in llm_strat_input_update 0x00441b88:
+#   a. an empty tile 22 tiles off the view's left edge: a deferred move; frames b_arrived after the unit walked there;
+#   b. a tile in the unexplored dark: the same move ("tile not visible" arm);
+#   c. control: the SAME tile as (a) clicked on the bare world (Tab released) -> the unit's goal is the same tile;
+#   d. a double click on the overlay -> the confirmed move; e. Shift held -> the confirmed move;
+#   f. an enemy building on the overlay -> an attack order (control: the same building clicked on the bare world, same goal);
+#   h. a building armed for placement -> cancelled, no order (arming drops the unit selection, as in the stock game);
+#   g. nothing selected -> no order.
+# The verdict is tools/check_bigmap.py --orders over the `; BIGMAP: order at` lines and the `; [goal]` lines (loggoal), not a frame.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +600
+logsel start
+loggoal start
+# select unit 5 with a held drag round the group beside the base
+cursorhold 650 400 10
+presshold 650 400
+cursorhold 650 400 6
+cursorhold 790 520 12
+release 790 520
+gameclock +100
+logsel selected
+loggoal selected
+# a. the overlay, camera-centred: pixel (407,357) is tile (54,62), the world tile at screen (304,304)
+hotkeydown Tab
+cursorhold 407 357 10
+screensettled
+capture bigmap_orders__a_held
+simrclick 407 357
+cursorhold 407 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +8000
+loggoal a_overlay
+screensettled
+capture bigmap_orders__b_arrived
+# b. a tile in the unexplored dark (pixel (230,170) = tile (29,35)): the "tile not visible" arm, the same deferred move
+hotkeydown Tab
+cursorhold 230 170 10
+screensettled
+simrclick 230 170
+cursorhold 230 170 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+loggoal b_far
+capture bigmap_orders__c_far_walking
+# c. control: the bare world. Screen (304,304) is tile (54,62), the tile (a) ordered the unit to
+simrclick 304 304
+cursorhold 600 400 10
+gameclock +3000
+loggoal c_control
+# d. a double click on the overlay (pixel (350,430) = tile (46,8)): the confirmed move
+hotkeydown Tab
+cursorhold 350 430 10
+screensettled
+rclick 350 430
+rclick 350 430
+cursorhold 350 430 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+loggoal d_double
+# e. Shift held for the click (pixel (414,357) = tile (55,62), visible): the confirmed move
+hotkeydown Tab
+cursorhold 414 357 10
+screensettled
+simrclick 414 357 shift
+cursorhold 414 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+loggoal e_shift
+# f. an enemy building (the crashed ship, pixel (456,371) = tile (61,0)): an attack order
+hotkeydown Tab
+cursorhold 456 371 10
+screensettled
+simrclick 456 371
+cursorhold 456 371 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +4000
+loggoal f_attack
+capture bigmap_orders__e_attack
+# f2. control: the same building clicked on the bare world (a move away first, so the attack order is a change) -> the same goal
+simrclick 304 304
+cursorhold 600 400 10
+gameclock +1500
+loggoal f_away
+simrclick 520 380
+cursorhold 600 400 10
+gameclock +3000
+loggoal f_attack_control
+# h. a building armed for placement (the building tab, then the Relay row; the unit stays selected): the right click on the overlay
+# only disarms it -- no order, the unit keeps its goal
+simclick 890 182
+gameclock +200
+simclick 905 413
+gameclock +100
+logbuild h_armed
+loggoal h_armed
+capture bigmap_orders__c_armed
+hotkeydown Tab
+cursorhold 414 357 10
+screensettled
+simrclick 414 357
+cursorhold 414 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+logbuild h_cancelled
+loggoal h_cancelled
+capture bigmap_orders__d_cancelled
+# g. nothing selected (arming a building dropped the unit selection already): the overlay right click gives no order
+logsel g_none
+hotkeydown Tab
+cursorhold 407 357 10
+screensettled
+simrclick 407 357
+cursorhold 407 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +1000
+loggoal g_none
+capture bigmap_orders__f_nothing
+end

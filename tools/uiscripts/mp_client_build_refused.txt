@@ -47,6 +47,10 @@ present Host runs
 # with the notice clipped by a panel still moving. The count + the rendered title pin the frame.
 sessions 1
 present Games available
+# RE-GATE ON THE NOTICE (tooling:TL-SUITE-FOLD, 2026-10-16): under suite load the rescan that sets the title can
+# also re-select the session row, and the right panel then shows the map description instead of the notice
+# (one red at 0.222%, frame read: "Plenty of place to make a base..."). Capture only while the notice is up.
+present Host runs
 capture c6_build_refused_browser
 log CLIENT: JOIN refused for a different build -> back on the browser, notice says update
 end

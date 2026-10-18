@@ -13,6 +13,8 @@ namespace mh::sim {
 
 namespace {
 
+bool g_project_gate_fix = false; // mods:A2, see set_project_gate_fix
+
 // ---- cfg_enum_E_INVETION_TYPE (translator-brief rule 17a; Ghidra's own field-comment spelling) ----
 // No committed Ghidra ENUM TYPE exists for this domain (only the type-comment string) -- per the
 // established precedent (sim_game_handle_progress.h / sim_game_update_progress.cpp), this TU defines
@@ -35,6 +37,9 @@ inline uint16_t depend_word(const cfg_invention &inv, int32_t j) {
 }
 
 } // namespace
+
+void set_project_gate_fix(bool on) { g_project_gate_fix = on; }
+bool project_gate_fix() { return g_project_gate_fix; }
 
 namespace detail {
 
@@ -85,7 +90,8 @@ void progress_propagate_unlocks(const sim_view &v, sim_store &own, uint16_t play
             // this function's own `player` parameter -- 0x00440dc1 reads PlayerSide directly). Full
             // 32-bit read of invention_index (hazard 3 -- do not narrow to 16-bit like unit b2's
             // sibling read of the same field).
-            if (inv.type == INVENTION_TYPE_PROJECT) {
+            // mods:A2: with [net] project_gate_fix the gate is dropped (retail: the JZ at 0x00440dd7).
+            if (inv.type == INVENTION_TYPE_PROJECT && !g_project_gate_fix) {
                 const int32_t planet_invention = v.cfg_planets[*v.planet_index].invention_index;
                 // MOVZX @0x00440dc1 -- ZERO-extend of the 16-bit PlayerSide, so the widening goes
                 // through uint16_t (sim_view::player_side is const int16_t*; a straight int32_t cast

@@ -227,8 +227,14 @@ fn harness(app: App) -> Harness<'static, App> {
 }
 
 fn harness_wgpu(app: App) -> Harness<'static, App> {
+    harness_wgpu_sized(app, 600.0)
+}
+
+/// The same, in a window `height` points tall: a Settings page scrolls inside its frame at
+/// 800x600, so a review picture of the WHOLE page needs more room.
+fn harness_wgpu_sized(app: App, height: f32) -> Harness<'static, App> {
     Harness::builder()
-        .with_size(vec2(800.0, 600.0))
+        .with_size(vec2(800.0, height))
         .with_pixels_per_point(1.0)
         // kittest's default (`PREDICTABLE`) filters textures in the shader, which ignores the
         // sampler's wrap mode -- the 16 px grid and hazard tiles would not repeat. The launcher's
@@ -282,7 +288,7 @@ fn nothing_sticks_out_of_the_frame_at_800x600() {
             let mut h = harness(f.app);
             h.run();
             if page == View::Settings {
-                for tab in ["language", "multiplayer", "updates"] {
+                for tab in ["display", "gameplay", "multiplayer", "updates"] {
                     h.state_mut().settings_state.subtab = tab.into();
                     h.run();
                     assert_fits(&h, RIGHT, &format!("settings/{tab} {}", loc.code()));
@@ -597,11 +603,11 @@ fn russian_relabels_every_menu_entry_and_the_version_line_keeps_the_channel_name
     // ... and the renamed setting.
     assert_eq!(
         i18n::tr_in(Locale::En, "setting.video.filter"),
-        "Interpolation"
+        "Scaling filter"
     );
     assert_eq!(
         i18n::tr_in(Locale::Ru, "setting.video.filter"),
-        "Интерполяция"
+        "Фильтр масштабирования"
     );
     i18n::set_locale(Locale::En);
     let _ = std::fs::remove_dir_all(root);
@@ -634,20 +640,16 @@ fn the_badges_sit_on_the_row_of_their_setting() {
     let root = f.root.clone();
     let mut h = harness(f.app);
     h.run();
-    // The synthetic row is experimental and restart-flagged; its Off/On control
-    // and both pills must be on the same line (their vertical centres within a few pixels).
+    // The synthetic row is experimental and restart-flagged; its Off/On control and the pill must be
+    // on the same line (their vertical centres within a few pixels).
     let pill = h.get_by_label("EXPERIMENTAL").rect();
-    // The Resolution row is restart-flagged too, so several rows carry this pill: take the one on the
-    // experimental row's line.
-    let restart = h
-        .query_all_by_label("next game start")
-        .map(|n| n.rect())
-        .min_by(|a, b| {
-            (a.center().y - pill.center().y)
-                .abs()
-                .total_cmp(&(b.center().y - pill.center().y).abs())
-        })
-        .unwrap();
+    // No per-row restart pill any more (user 2026-10-14): the page says it once, above the rows.
+    assert!(h.query_by_label("next game start").is_none());
+    assert_eq!(
+        h.query_all_by_label("Changes apply at the next game start.")
+            .count(),
+        1
+    );
     let on = h
         .root()
         .children_recursive()
@@ -663,19 +665,11 @@ fn the_badges_sit_on_the_row_of_their_setting() {
         (pill.center().y - on.center().y).abs() < 6.0,
         "EXPERIMENTAL {pill:?} is not on the line of its control {on:?}"
     );
-    // Both pills follow the control straight away, in order, on the same line -- not in a column
-    // at the far right edge.
+    // The pill follows the control straight away, on the same line -- not in a column at the far
+    // right edge.
     assert!(
         pill.left() > on.right() && pill.left() - on.right() < 40.0,
         "the pill hugs its control: control {on:?}, pill {pill:?}"
-    );
-    assert!(
-        restart.left() > pill.right() && restart.left() - pill.right() < 20.0,
-        "the second pill follows the first: {pill:?} {restart:?}"
-    );
-    assert!(
-        (restart.center().y - pill.center().y).abs() < 2.0,
-        "one line: {pill:?} {restart:?}"
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -747,7 +741,8 @@ fn the_report_lists_sessions_from_both_log_roots_without_duplicates() {
 fn save(h: &mut Harness<'_, App>, dir: &Path, name: &str) {
     h.run();
     let img = h.render().expect("render");
-    assert_eq!((img.width(), img.height()), (800, 600));
+    assert_eq!(img.width(), 800);
+    assert!(img.height() >= 600);
     let near = |p: [u8; 4], c: Color32| {
         (i32::from(p[0]) - i32::from(c.r())).abs() < 12
             && (i32::from(p[1]) - i32::from(c.g())).abs() < 12
@@ -779,6 +774,15 @@ fn review_screenshots() {
             save(&mut h, &dir, &format!("{name}_{code}"));
             let _ = std::fs::remove_dir_all(root);
         };
+        // Whole-page pictures of the Settings tabs and the Diagnostics page.
+        let shot_tall = |name: &str, f: &dyn Fn(&mut App)| {
+            let mut fx = fixture(&format!("shot_{name}_{code}"), true);
+            f(&mut fx.app);
+            let root = fx.root.clone();
+            let mut h = harness_wgpu_sized(fx.app, 1000.0);
+            save(&mut h, &dir, &format!("{name}_{code}"));
+            let _ = std::fs::remove_dir_all(root);
+        };
         shot("play", true, &|_| {});
         shot("play_nogame", false, &|_| {});
         shot("play_crash", true, &|a| {
@@ -792,12 +796,60 @@ fn review_screenshots() {
                 seconds: 412.0,
             });
         });
-        for tab in ["display", "language", "multiplayer", "gameplay", "updates"] {
-            shot(&format!("settings_{tab}"), true, &|a| {
+        for tab in ["display", "gameplay", "multiplayer", "updates"] {
+            shot_tall(&format!("settings_{tab}"), &|a| {
                 a.view = View::Settings;
                 a.settings_state.subtab = tab.into();
             });
+            // The same page with the descriptions inline (the Compact / Detailed switch).
+            shot_tall(&format!("settings_{tab}_detailed"), &|a| {
+                a.view = View::Settings;
+                a.settings_state.subtab = tab.into();
+                a.settings_state.detailed = true;
+            });
         }
+        // The dependent rows (visible_if, indented) with their parent off and on.
+        for (name, tab, edits) in [
+            (
+                "settings_display_deps_off",
+                "display",
+                &[("ui.bigmap", "0")][..],
+            ),
+            (
+                "settings_gameplay_deps_off",
+                "gameplay",
+                &[
+                    ("net.turret_reload_realtime_fix", "0"),
+                    ("net.mother_free_build", "0"),
+                ][..],
+            ),
+            (
+                "settings_gameplay_deps_on",
+                "gameplay",
+                &[
+                    ("net.turret_reload_realtime_fix", "1"),
+                    ("net.mother_free_build", "1"),
+                ][..],
+            ),
+            (
+                "settings_multiplayer_deps_off",
+                "multiplayer",
+                &[("hud.net_indicator", "0")][..],
+            ),
+        ] {
+            shot_tall(name, &|a| {
+                a.view = View::Settings;
+                a.settings_state.subtab = tab.into();
+                a.ensure_model();
+                for (k, v) in edits {
+                    a.model.set(k, v);
+                }
+            });
+        }
+        shot_tall("diagnostics_detailed", &|a| {
+            a.view = View::Diagnostics;
+            a.settings_state.detailed = true;
+        });
         shot("settings_errors", true, &|a| {
             a.view = View::Settings;
             a.settings_state.subtab = "multiplayer".into();
@@ -869,7 +921,7 @@ fn review_screenshots() {
             a.view = View::About;
             a.about_doc = Some(super::about::Doc::License);
         });
-        shot("diagnostics", true, &|a| a.view = View::Diagnostics);
+        shot_tall("diagnostics", &|a| a.view = View::Diagnostics);
         shot("restart_prompt", true, &|a| {
             a.auto.pending_restart = Some(crate::update::StagedLauncher {
                 version: "0.2.1".into(),

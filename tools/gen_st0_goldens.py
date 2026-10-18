@@ -17,8 +17,8 @@ precision settings, and logs one line per (precision, input):
 
 TO RE-CAPTURE:
     1. add `[st0] goldens=1` to a scenario's extra ini
-    2. python tools/test_ui.py --only menu_walk
-    3. python tools/gen_st0_goldens.py workdir/mh_lanes/ui_menu_walk/logs/<run>/mh_net.log
+    2. python tools/test_ui.py --only solo_walk
+    3. python tools/gen_st0_goldens.py workdir/mh_lanes/ui_solo_walk/logs/<run>/mh_net.log
 
 IT REFUSES A RUN THAT DISAGREED. Goldens taken from a sweep that reported a divergence would pin the
 divergence, so the tool reads the run's own verdict rather than trusting the caller to have looked.

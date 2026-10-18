@@ -12,18 +12,20 @@ The stimulus is the harness fixture's (`pip_*`, pip_tick in mh_harness/harness.c
 plant pip_level[0] = 0xC384DE82, pip_active_count 0 and half-energy pending damage into player 0's mother
 building, then `pip_tail` steps later log `; PIP DONE`. Two arms, one checker:
 
-  * `bldg_pip_guard` (`--expect fixed`, ship default):
+  * `bldg_pip_guard` (`--expect fixed`, ship default; a segment of the registry row `ship_fix_a`):
       clause 1  the host's net log says `bldg pip guard ON` with both sites PATCHED (or DISPLACED);
       clause 2  both peers logged POKE and DONE, and at DONE every pip_level is 0..4 and active 0..16;
       clause 3  both peers logged one `[pip] GUARD (building_tick)` line carrying the planted value;
       clause 4  the state hash is IDENTICAL on every common step and the in-band desync watch stayed quiet.
   * the reproduction arm (`--expect retail`, `[net] bldg_pip_guard=0`) -- NOT a registry row: both peers die
     at 0x0047908b and a walk whose process dies is red before any post_check runs. Run it by hand:
-      python tools/ui_test.py --host lane=ui_pip_retail_host:mp_host_pip_guard.txt --connect-ip 127.0.0.1
+      python tools/ui_test.py --host lane=ui_pip_retail_host:mp_host_ship_fix_a.txt --connect-ip 127.0.0.1
         --port 10000 --extra-ini tools/uiscripts/ini/video_1024.ini --client lane=ui_pip_retail_c1:mp_client_idle.txt
         --net-extra "transport=udp;bldg_pip_guard=0" --headless
-        --harness-extra "region_hash_step=50;synth_move=0;pip_at=100;pip_player=0;pip_tail=300"
-    then this checker on the two lanes' newest session dirs. Measured 2026-10-15: PASS, crash markers
+        --harness-extra "region_hash_step=50;synth_move=0;pip_at=300;pip_player=0;pip_tail=300"
+    (mp_host_ship_fix_a.txt is the folded walk that carries this check as its bldg_pip_guard segment; with only the pip
+    knobs set the other fixtures stay off and the walk dies at the poke.) then this checker on the two lanes' newest
+    session dirs. Measured 2026-10-15 on the standalone walk the row had before it was folded: PASS, crash markers
     address=0x0047908b on both peers.
       clause 1  the host's net log says `bldg pip guard OFF`;
       clause 2  the host logged POKE and NO peer logged DONE (the game did not survive the poke);

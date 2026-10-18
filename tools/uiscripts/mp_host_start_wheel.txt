@@ -63,4 +63,27 @@ cursorhold 400 300 30
 zoom ge 140
 capture m5_zoomed_end
 log HOST left the match zoomed -- the peers must still agree
+# D15: and the wheel over the side-panel lists (the pump marks the current panel dirty, the draw wrapper scrolls the list under the
+# pointer): notches back and forward over the panel at three heights, with the sim running between them. The panel's list scroll
+# offsets and the refresh flag are view state; the peers must still agree.
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+cursorhold 904 300 10
+rawmouse wheel -120
+gameclock +200
+cursorhold 904 500 10
+rawmouse wheel 120
+gameclock +200
+cursorhold 904 500 10
+rawmouse wheel -120
+gameclock +200
+cursorhold 400 300 10
+rawmouse wheel 120
+gameclock +200
+cursorhold 904 300 10
+rawmouse wheel 120
+gameclock +200
+capture m6_panel_wheeled
+log HOST wheeled the side panel six times -- the peers must still agree
 end

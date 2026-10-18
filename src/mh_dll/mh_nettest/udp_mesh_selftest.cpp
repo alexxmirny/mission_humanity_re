@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "selftest_dispatch.h"
 #include "../mh_net_udp/mesh.h"
 #include "../mh_net_udp/udp_endpoint.h"
 
@@ -783,6 +784,16 @@ bool same_epoch(Arm &a, uint32_t *epoch_out = nullptr, uint32_t *tier_out = null
     return ok;
 }
 
+// TL-MESHTEST-LOAD: "every endpoint holds the same epoch" is a CONVERGENCE claim, and the arms asked it
+// ONCE, the instant the last ack landed -- so a succession epoch still travelling to one client (a
+// descheduled thread, a loaded box) read as disagreement, and every later check in the arm inherited
+// the wrong epoch0 and cascaded. Wait (bounded, quiet) for agreement, then make the loud call that
+// prints the divergence if it never came. A real split-brain still reds: it never converges.
+bool same_epoch_settled(Arm &a, uint32_t *epoch_out = nullptr, uint32_t *tier_out = nullptr, int *winner_out = nullptr) {
+    wait_for([&] { return same_epoch(a, nullptr, nullptr, nullptr, true); }, 4000);
+    return same_epoch(a, epoch_out, tier_out, winner_out);
+}
+
 bool all_acked(Arm &a) {
     const Endpoint::MeshStatus h = st(g_e[0]);
     return h.epoch != 0 && h.all_acked_ms != 0 && (h.acked_mask & h.S) == h.S && a.clients >= 1;
@@ -817,7 +828,7 @@ void direct_arm(int clients, int base) {
     checkf(t_ack <= 5000, "the first epoch is published, delivered and acked by all within 5 s of start (%u ms)", (unsigned)t_ack);
     uint32_t epoch = 0, tier = 0;
     int      winner = -1;
-    checkf(same_epoch(a, &epoch, &tier, &winner), "every endpoint holds the same epoch, digest, survivor set and ranking");
+    checkf(same_epoch_settled(a, &epoch, &tier, &winner), "every endpoint holds the same epoch, digest, survivor set and ranking");
     const Endpoint::MeshStatus h = st(g_e[0]);
     checkf(epoch == 1, "the first epoch is epoch 1 (got %u)", epoch);
     checkf(tier == M::TIER_DIRECT, "the election ran on measured direct edges (tier %u)", tier);
@@ -941,7 +952,7 @@ void muted_arm(int base) {
     const bool ok     = wait_for([&] { return admitted(a) && all_acked(a); }, 14000);
     checkf(ok, "the epoch is still published (by the deadline) and acked by all");
     if (ok) {
-        checkf(same_epoch(a, &epoch, &tier, &winner), "every endpoint holds the same epoch and ranking");
+        checkf(same_epoch_settled(a, &epoch, &tier, &winner), "every endpoint holds the same epoch and ranking");
         const Endpoint::MeshStatus h = st(g_e[0]);
         checkf(tier == M::TIER_ID, "no candidate reaches everybody, no relay: the lowest-id tier (tier %u)", tier);
         int lo = 99;
@@ -1037,7 +1048,7 @@ void relay_arm(int base) {
     if (ok) {
         uint32_t epoch = 0, tier = 0;
         int      winner = -1;
-        checkf(same_epoch(a, &epoch, &tier, &winner), "every endpoint holds the same epoch and ranking");
+        checkf(same_epoch_settled(a, &epoch, &tier, &winner), "every endpoint holds the same epoch and ranking");
         const Endpoint::MeshStatus h = st(g_e[0]);
         checkf(tier == M::TIER_RELAY, "relayed clients: the relay tier decided (tier %u)", tier);
         checkf(winner == a.ids[1], "the client with the shortest relay leg is rank 1 (id %d, expected %d)", winner, a.ids[1]);
@@ -1162,7 +1173,7 @@ void handover_arm(int clients, int base, int mode) {
     }
     uint32_t epoch0 = 0;
     int      winner = -1;
-    check("one epoch everywhere", same_epoch(a, &epoch0, nullptr, &winner));
+    check("one epoch everywhere", same_epoch_settled(a, &epoch0, nullptr, &winner));
     const Endpoint::MeshStatus h0        = st(g_e[0]);
     const int                  first     = h0.rank[0];
     const int                  second    = h0.rank_n > 1 ? h0.rank[1] : -1;
@@ -1350,7 +1361,7 @@ void failover_arm(int clients, int base, int mode) {
         return;
     }
     uint32_t epoch0 = 0;
-    check("one epoch everywhere", same_epoch(a, &epoch0));
+    check("one epoch everywhere", same_epoch_settled(a, &epoch0));
     const Endpoint::MeshStatus h0 = st(g_e[0]);
     int                        idx_of[8];
     for (int i = 0; i < 8; ++i) idx_of[i] = -1;
@@ -1608,7 +1619,7 @@ void u64_arm(int clients, int base, int mode) {
         return;
     }
     uint32_t epoch0 = 0;
-    check("one epoch everywhere", same_epoch(a, &epoch0));
+    check("one epoch everywhere", same_epoch_settled(a, &epoch0));
     const Endpoint::MeshStatus h0    = st(g_e[0]);
     const int                  first = h0.rank[0];
     if (mode == 0) {
@@ -1830,37 +1841,37 @@ int run_meshtest() {
         test_elect_table();
         test_elect_fuzz();
         test_codecs();
-        direct_arm(2, 40100);
-        direct_arm(3, 40120);
-        muted_arm(40140);
-        relay_arm(40160);
-        noack_arm(40180);
-        legacy_arm(40200);
-        handover_arm(2, 40220, 0);
-        handover_arm(3, 40240, 0);
-        handover_arm(3, 40260, 1);
-        handover_arm(2, 40280, 2);
+        direct_arm(2, selftest_port(40100));
+        direct_arm(3, selftest_port(40120));
+        muted_arm(selftest_port(40140));
+        relay_arm(selftest_port(40160));
+        noack_arm(selftest_port(40180));
+        legacy_arm(selftest_port(40200));
+        handover_arm(2, selftest_port(40220), 0);
+        handover_arm(3, selftest_port(40240), 0);
+        handover_arm(3, selftest_port(40260), 1);
+        handover_arm(2, selftest_port(40280), 2);
     }
     if (!u64_only) {
         test_fo_pure();
-        failover_arm(2, 40300, 0);
-        failover_arm(3, 40320, 0);
-        failover_arm(4, 40340, 1); // 5 seated: hub + first candidate lost leaves 3 of 5, a majority
-        failover_arm(3, 40360, 2);
-        failover_arm(3, 40380, 3);
-        failover_arm(2, 40400, 4);
-        failover_arm(2, 40420, 5);
-        failover_arm(4, 40440, 6);
-        failover_arm(3, 40460, 7);
-        failover_arm(2, 40480, 8); // mp:U58 shape: a silent NON-hub client must not read as hub loss
+        failover_arm(2, selftest_port(40300), 0);
+        failover_arm(3, selftest_port(40320), 0);
+        failover_arm(4, selftest_port(40340), 1); // 5 seated: hub + first candidate lost leaves 3 of 5, a majority
+        failover_arm(3, selftest_port(40360), 2);
+        failover_arm(3, selftest_port(40380), 3);
+        failover_arm(2, selftest_port(40400), 4);
+        failover_arm(2, selftest_port(40420), 5);
+        failover_arm(4, selftest_port(40440), 6);
+        failover_arm(3, selftest_port(40460), 7);
+        failover_arm(2, selftest_port(40480), 8); // mp:U58 shape: a silent NON-hub client must not read as hub loss
     }
-    u64_arm(3, 40500, 0);      // mp:U64 -- the live hub partitioned from every client, then the heal
-    u64_arm(3, 40520, 1);      // mp:U64 -- an even split: the far side ends as MINORITY on both members
-    u64_arm(3, 40540, 2);      // mp:U64 -- the old host relaunches after the failover
-    u64_arm(3, 40560, 3);      // mp:U64 -- ...and during it
-    isolated_relay_arm(40580); // mp:U64 -- a relayed survivor with a dead relay leg
-    dead_queue_arm(40620);     // mp:U64 -- three clients lost in one pass are all reported
-    rooms_stable_arm(40600);   // mp:U64 -- relayed epochs keep each candidate's room
+    u64_arm(3, selftest_port(40500), 0);      // mp:U64 -- the live hub partitioned from every client, then the heal
+    u64_arm(3, selftest_port(40520), 1);      // mp:U64 -- an even split: the far side ends as MINORITY on both members
+    u64_arm(3, selftest_port(40540), 2);      // mp:U64 -- the old host relaunches after the failover
+    u64_arm(3, selftest_port(40560), 3);      // mp:U64 -- ...and during it
+    isolated_relay_arm(selftest_port(40580)); // mp:U64 -- a relayed survivor with a dead relay leg
+    dead_queue_arm(selftest_port(40620));     // mp:U64 -- three clients lost in one pass are all reported
+    rooms_stable_arm(selftest_port(40600));   // mp:U64 -- relayed epochs keep each candidate's room
     printf("=== meshtest: %d checks, %d failures, %u ms ===\n", g_checks, g_fails, (unsigned)(GetTickCount() - t0));
     return g_fails ? 1 : 0;
 }

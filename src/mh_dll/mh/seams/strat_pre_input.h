@@ -15,7 +15,7 @@ using pre_input_fn = void (*)();
 
 // Register `fn` (and arm the shared detour on the first call). `who` names the feature in the interlock's
 // refusal line. Returns false -- with the refusal already logged by the detour primitive -- when the entry
-// could not be taken; `fn` is then never called. At most 4 functions.
+// could not be taken; `fn` is then never called. At most 6 functions.
 bool strat_pre_input_add(pre_input_fn fn, const char *who);
 
 } // namespace mh::seams

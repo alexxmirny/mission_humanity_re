@@ -19,7 +19,7 @@ THREE ARMS, one checker (the check_cancel_task.py shape):
                      byte patches and the match must stay clean. Also `resync_gate_proof` (mp:P9
                      2/2): the reproduction's exact shape with the gate ON and `resync_count_init=0`
                      -- the gate alone must hold the barrier count at 0 to gameclock 30 s.
-  --expect storm     the `resync_storm_repro` row (registered `expect_red: "mp:P9"` and KEPT red):
+  --expect storm     the retired `resync_storm_repro` row (2026-10-15; run it by hand, it stays red):
                      the same pair with `[net] resync_trigger_gate=0` + `resync_count_init=0` (the
                      field's pre-fix state) and `defang_overlay=0` (the SHIPPED value -- see WATCH
                      v2 below), host 100 / joiner 60 ms lookahead through a 100 ms one-way shim (the

@@ -781,6 +781,73 @@ void mp_clear_match_residue() {
        (unsigned long)pd_len, pl_nz, (unsigned long)(str_hi - str_lo));
 }
 
+// mods:G17 -- THE CFG TABLES A NEW GAME STARTS FROM. The INIT.CFG parse runs ONCE, at boot stage 5, into seven
+// baked tables (Unit, Building, Weapon, System, Planets, Projects, Upgrades; 346,324 B, no pointers) that a
+// savegame LOAD then overwrites in place (llm_game_load blocks 2..8). Nothing re-reads INIT.CFG afterwards, so a
+// New Game started after a Load plays on the SAVE's tables -- a modded INIT.CFG is silently ignored for the rest
+// of the session. The repair is "what a fresh process has": capture the seven at the first idle main-menu present
+// (the same instant mp:D45 uses: stages 5..8, incl. llm_strat_bldg_init_defaults which writes Building, have all
+// completed and no session has begun), and put them back at the top of llm_strat_new_game_init -- BEFORE its body,
+// because that body copies the baseline column [8] of Weapon/Unit into the per-player columns, and a restore
+// after it would leave the save's columns. new_game_init is the single point every new-game route crosses
+// (SP campaign, tutorial, every MP start on host and joiner, D17 --newgame / --mp-*); a Load, the flag-1 soft
+// planet transition and --tactical never reach it, so they keep the save's tables. Two carriers share
+// MH_Cfg_NewGameRestore: the retail detour armed in net_seams.cpp (shipped config, [config] mode=original) and the
+// libmh promoted-body observer (mh::sim::set_new_game_init_observer). DECLARED DIVERGENCE (the fork-plan divergence policy):
+// a SECOND New Game in one process also resets the tables (retail kept the first game's upgrade mutations).
+// [net] cfg_newgame_restore_fix=0 is the REPRODUCTION knob: measure, log, keep the save's tables.
+struct cfg_keep {
+    mh::state::region_id rid;
+    const char          *name;
+    uint8_t             *snap; // HeapAlloc'd copy, null until captured
+    uint32_t             len;
+};
+cfg_keep g_cfg_keep[] = {
+    {mh::state::RID_UNIT, "unit", nullptr, 0},
+    {mh::state::RID_BUILDING, "building", nullptr, 0},
+    {mh::state::RID_WEAPON, "weapon", nullptr, 0},
+    {mh::state::RID_SYSTEM, "system", nullptr, 0},
+    {mh::state::RID_PLANETS, "planets", nullptr, 0},
+    {mh::state::RID_PROJECTS, "projects", nullptr, 0},
+    {mh::state::RID_UPGRADES, "upgrades", nullptr, 0},
+};
+bool g_cfg_captured = false;
+
+uint64_t cfg_fnv(const uint8_t *p, uint32_t n) {
+    uint64_t h = 1469598103934665603ull;
+    for (uint32_t i = 0; i < n; ++i) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+
+uint32_t cfg_diff_bytes(const uint8_t *a, const uint8_t *b, uint32_t n) {
+    uint32_t d = 0;
+    for (uint32_t i = 0; i < n; ++i) d += a[i] != b[i];
+    return d;
+}
+
+void cfg_capture_boot_tables() {
+    char msg[320];
+    int  o = wsprintfA(msg, "; G17: cfg tables captured:");
+    for (cfg_keep &k : g_cfg_keep) {
+        const uint8_t *live = mh::state::ptr<uint8_t>(k.rid);
+        // The save block's REACH, not the symbol's size: Upgrades measures 10296 B but its block (and the load
+        // that overwrites it) is 10400 -- the extra 104 B are the next global, and a restore short of the
+        // reach would leave them the save's.
+        const mh::state::region &rg  = mh::state::REGIONS[static_cast<int>(k.rid)];
+        const uint32_t           len = rg.reach > rg.size ? rg.reach : rg.size;
+        if (live == nullptr || len == 0) continue;
+        k.snap = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, len));
+        if (k.snap == nullptr) continue;
+        memcpy(k.snap, live, len);
+        k.len            = len;
+        const uint64_t h = cfg_fnv(live, len);
+        o += wsprintfA(msg + o, " %s=%lu B fnv=%08lx%08lx", k.name, (unsigned long)len,
+                       (unsigned long)(h >> 32), (unsigned long)(h & 0xffffffffu));
+    }
+    g_cfg_captured = true;
+    lg("%s", msg);
+}
+
 // mp:D45 -- one-shot capture of the boot snapshot, called from net_lockstep's present hook (it runs in every
 // game mode and in every build configuration, unlike the menu-state-tick hook, which is only installed when a
 // launch verb or the manual MP flow arms -- i.e. possibly AFTER a savegame was loaded). Fires on the first
@@ -791,7 +858,8 @@ extern "C" void MH_MP_CaptureBootResidue(void) {
     if (g_boot_captured) return;
     if (*(const uint8_t *)ADDR_GAME_MODE != GAME_MODE_MENU || *(const uint8_t *)ADDR_MENU_STATE != MENU_STATE_IDLE) return;
     if (*(const uint8_t *)ADDR_SESSION_MODE == 3) return;
-    g_boot_captured = true; // one attempt, even if an allocation below fails (the entry line says so)
+    g_boot_captured = true;    // one attempt, even if an allocation below fails (the entry line says so)
+    cfg_capture_boot_tables(); // mods:G17 -- the seven cfg tables, same instant
     char msg[256];
     int  o = wsprintfA(msg, "; D45: boot snapshot captured:");
     for (boot_keep &k : g_boot_keep) {
@@ -810,6 +878,30 @@ extern "C" void MH_MP_CaptureBootResidue(void) {
         unsigned long nz = 0;
         for (uint32_t i = 0; i < len; ++i) nz += live[i] != 0;
         o += wsprintfA(msg + o, " %s=%lu B (nonzero %lu)", k.name, (unsigned long)len, nz);
+    }
+    lg("%s", msg);
+}
+
+// mods:G17 -- the restore itself, called at the top of llm_strat_new_game_init by BOTH carriers (the retail detour in
+// net_seams.cpp and the libmh observer). Idempotent: a second call in one new-game route finds nothing to do.
+// The logged pair per table is "bytes differing from the boot capture BEFORE / AFTER": 0/0 in a fresh process
+// (the fix writes nothing there), N/0 after a Load with the fix, N/N with [net] cfg_newgame_restore_fix=0.
+// Silent before the capture exists (the boot-time call from llm_strat_mode_init runs before the INIT.CFG parse).
+extern "C" void MH_Cfg_NewGameRestore(void) {
+    if (!g_cfg_captured) return;
+    static int s_enabled = -1;
+    if (s_enabled < 0) s_enabled = net_ini_int("cfg_newgame_restore_fix", 1) != 0 ? 1 : 0;
+    char msg[320];
+    int  o = wsprintfA(msg, "; G17: new-game cfg tables %s (before/after, bytes differing from boot):",
+                      s_enabled ? "restored" : "KEPT ([net] cfg_newgame_restore_fix=0)");
+    for (cfg_keep &k : g_cfg_keep) {
+        if (k.snap == nullptr) continue;
+        uint8_t *live = mh::state::ptr<uint8_t>(k.rid);
+        if (live == nullptr) continue;
+        const uint32_t before = cfg_diff_bytes(live, k.snap, k.len);
+        if (s_enabled && before != 0) memcpy(live, k.snap, k.len);
+        const uint32_t after = before == 0 ? 0 : cfg_diff_bytes(live, k.snap, k.len);
+        o += wsprintfA(msg + o, " %s=%lu/%lu", k.name, (unsigned long)before, (unsigned long)after);
     }
     lg("%s", msg);
 }

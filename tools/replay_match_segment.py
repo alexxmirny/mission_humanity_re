@@ -1682,7 +1682,7 @@ def main(argv=None):
         # A scene dump imports in the configuration it was recorded in: configuration (1) -- mh.dll alone, libmh
         # absent, how players run -- through mh.dll's own copy of the import (desync/scene_dump.cpp), and
         # configuration (2) through libmh.dll. Replaying a configuration-(1) recording in (2) would displace
-        # every mh.dll gameplay byte patch inside the promoted sim (no libmh twin: G362), so it is not done.
+        # every mh.dll gameplay byte patch inside the promoted sim (no libmh twin: G364), so it is not done.
         if a.config == "auto":
             config = rec["config"] or 1
         print(

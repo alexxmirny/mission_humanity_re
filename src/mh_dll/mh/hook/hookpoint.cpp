@@ -34,6 +34,7 @@ int  set_sim_step_pre_hook(void (*fn)());
 void set_dispatch_observer(void (*fn)());
 void set_land_players_observer(void (*fn)());
 void set_session_begin_multi_observer(void (*fn)());
+void set_new_game_init_observer(void (*fn)());
 void set_time_resync_instrument_hooks(void (*pace_time_tick_hook)());
 int  install_promotion_lt_frame(int default_on, int spine_promoted, void (*pace_time_tick_hook)(),
                                 void (*harness_sim_tick_hook)());
@@ -153,6 +154,28 @@ constexpr row TABLE[] = {
     // Guarded on the generated entry8 (strictly stronger than the prologue), like land_players.
     {"order_issue", "the field replay's net-player issue drop", mh::exp::addr_llm_strat_order_dispatch,
      shape::observe, 8, entry_claim::exclusive, 0, mh::exp::entry_llm_strat_order_dispatch},
+
+    // ---- REGISTER-ONLY, appended (mods:G17) ------------------------------------------------------
+    {"new_game_init_observer", "the new-game cfg-table restore (promoted-body observer, G17)", 0,
+     shape::register_only, 0, entry_claim::exclusive, 0, 0},
+
+    // ---- OBSERVE, appended (mods:M1D) -----------------------------------------------------------
+    // The movement probe's wave observer ([harness] mv_replay + mv_waves): a read-only exit hook on the
+    // group-move pathfind. ::exclusive, so under a libmh promotion of that function the interlock refuses
+    // the arm and the probe logs that it has no wave lines (the probe is a shipped-configuration tool).
+    {"group_pathfind", "the movement probe's per-wave pathfind exit observer (mods:M1D)",
+     mh::exp::addr_llm_strat_group_move_order_pathfind, shape::observe, 8, entry_claim::exclusive,
+     WATCOM_PROLOGUE, 0},
+
+    // ---- OBSERVE, appended (the SND trace, [log] snd_trace) --------------------------------------
+    // Both entries open `55 89 e5 68 <imm32>` (push ebp; mov ebp,esp; push imm) -- exactly eight bytes on an
+    // instruction boundary -- and the generated entry8 is the guard. The detours CALL the trampoline (they
+    // log after the original returns), so the stolen bytes must carry no relative branch: they do not.
+    {"snd_play", "[log] snd_trace + [snd] voice fixes: llm_snd_play", mh::exp::addr_llm_snd_play, shape::observe, 8,
+     entry_claim::exclusive, 0, mh::exp::entry_llm_snd_play},
+    {"snd_order_ack", "[log] snd_trace + [snd] ack_cooldown_on_play: order-ack voice",
+     mh::exp::addr_llm_strat_group_order_ack_voice, shape::observe, 8, entry_claim::exclusive, 0,
+     mh::exp::entry_llm_strat_group_order_ack_voice},
 };
 
 // The table and the enum are ONE list. A point added to the enum without a row would otherwise read
@@ -231,6 +254,7 @@ bool register_callback(point p, void (*fn)()) {
         case point::dispatch_observer: mh::sim::set_dispatch_observer(fn); break;
         case point::land_players_observer: mh::sim::set_land_players_observer(fn); break;
         case point::session_begin_multi: mh::sim::set_session_begin_multi_observer(fn); break;
+        case point::new_game_init_observer: mh::sim::set_new_game_init_observer(fn); break;
         case point::time_resync_prelude: mh::sim::set_time_resync_instrument_hooks(fn); break;
         // The two LT1F chain hooks have no setter of their own: they are ARGUMENTS to the frame
         // pair's installer, so the registry holds them until arm_frame_promotion asks.

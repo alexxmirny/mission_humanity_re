@@ -22,7 +22,7 @@ no-video screen. The rig row `info_avi_absent` reaches the failure with `[net] i
 
 ---- USAGE ------------------------------------------------------------------------------------
 
-  python tools/check_info_avi.py <host-run-dir> <client-run-dir> [--max-stall-ms N]
+  python tools/check_info_avi.py <host-run-dir> <client-run-dir> [--max-stall-ms N] [--clock-window LO:HI]
   python tools/check_info_avi.py --selftest        planted logs; every negative RED
 """
 
@@ -77,10 +77,16 @@ def uidrive_lines(run_dir):
     return out
 
 
-def longest_clock_freeze(rows):
+def longest_clock_freeze(rows, clock_window=None):
     """Longest wall-clock span (ms) over which clock_ms did not advance, counted from the first row
-    whose clock is past 0 (the lobby and the start barrier are not the question)."""
+    whose clock is past 0 (the lobby and the start barrier are not the question). `clock_window`
+    (lo, hi) keeps only the rows whose game clock lies in it -- a match that also holds a MODAL
+    dialog (the diplomacy dialog stalls the host's sim while it is open) judges the info screen on
+    its own segment's clock span."""
     started = [r for r in rows if r.get("clock_ms", 0) > 0]
+    if clock_window is not None:
+        lo, hi = clock_window
+        started = [r for r in started if lo <= r["clock_ms"] <= hi]
     worst, t0, prev = 0, None, None
     for r in started:
         if prev is not None and r["clock_ms"] == prev:
@@ -91,7 +97,7 @@ def longest_clock_freeze(rows):
     return worst, len(started)
 
 
-def check(host_dir, client_dir, max_stall_ms=1000, min_overlap=1000):
+def check(host_dir, client_dir, max_stall_ms=1000, min_overlap=1000, clock_window=None):
     fails = []
     lines = check_cancel_task.net_log_lines(host_dir)
     banner = banner_of(lines)
@@ -141,7 +147,7 @@ def check(host_dir, client_dir, max_stall_ms=1000, min_overlap=1000):
     stalls = {}
     for role, peer in (("host", a), ("client", b)):
         rows = peer.get("lockstep_rows") or []
-        worst, nrows = longest_clock_freeze(rows)
+        worst, nrows = longest_clock_freeze(rows, clock_window)
         stalls[role] = worst
         if nrows < 10:
             fails.append(
@@ -251,7 +257,35 @@ def selftest():
             bad += 0 if ok else 1
         finally:
             shutil.rmtree(root, ignore_errors=True)
-    print("check_info_avi selftest: %d/%d" % (len(cases) - bad, len(cases)))
+    # --clock-window: a freeze OUTSIDE the window is not this segment's (a match with a modal dialog elsewhere)
+    for label, hk, window, want in (
+        (
+            "window excludes a 4 s freeze at clock 10000",
+            dict(good, freeze_ms=4000),
+            (12000, 19000),
+            True,
+        ),
+        (
+            "window includes a 4 s freeze at clock 10000",
+            dict(good, freeze_ms=4000),
+            (8000, 19000),
+            False,
+        ),
+    ):
+        root = tempfile.mkdtemp(prefix="x2gchk_")
+        try:
+            h = plant(root, "host", 1500, **hk)
+            c = plant(root, "client", 1500, banner=None, missing=False, closed=False)
+            fails, _ = check(h, c, clock_window=window)
+            ok = (not fails) == want
+            print(
+                "  %s  %s%s"
+                % ("ok " if ok else "BAD", label, "" if not fails else "  -> " + "; ".join(fails))
+            )
+            bad += 0 if ok else 1
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    print("check_info_avi selftest: %d/%d" % (len(cases) + 2 - bad, len(cases) + 2))
     return 0 if bad == 0 else 1
 
 
@@ -259,6 +293,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--max-stall-ms", type=int, default=1000)
+    ap.add_argument(
+        "--clock-window",
+        default=None,
+        metavar="LO:HI",
+        help="judge clause 5 only on lockstep rows whose game clock (ms) lies in LO..HI",
+    )
     ap.add_argument("dirs", nargs="*")
     args = ap.parse_args()
     if args.selftest:
@@ -266,7 +306,11 @@ def main():
     if len(args.dirs) != 2:
         print("usage: check_info_avi.py <host-run-dir> <client-run-dir> [--max-stall-ms N]")
         return 2
-    fails, summary = check(args.dirs[0], args.dirs[1], args.max_stall_ms)
+    window = None
+    if args.clock_window:
+        lo, _, hi = args.clock_window.partition(":")
+        window = (int(lo), int(hi))
+    fails, summary = check(args.dirs[0], args.dirs[1], args.max_stall_ms, clock_window=window)
     if fails:
         print("check_info_avi: FAIL (%s)" % summary)
         for f in fails:

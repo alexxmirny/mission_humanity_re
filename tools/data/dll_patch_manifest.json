@@ -633,6 +633,22 @@
    "rationale": " ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
   },
   {
+   "id": "detour_cfg_newgame_restore",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/net_seams.cpp",
+     "expr": "ADDR_NEW_GAME_INIT"
+    }
+   ],
+   "owner": [
+    "llm_strat_new_game_init"
+   ],
+   "knob": null,
+   "carrier": "migrated:cfg_newgame_restore_fix",
+   "note": "mods:G17: restores the seven baked cfg tables to the boot parse at the top of llm_strat_new_game_init. The detour is armed only when detour_refusal says the entry is free (shipped config without libmh, [config] mode=original); when sim_resid promotes the body, libmh's own detail::new_game_init fires the SAME function through set_new_game_init_observer (hookpoint new_game_init_observer), so both configurations carry it. Knob [net] cfg_newgame_restore_fix (default 1)."
+  },
+  {
    "id": "detour_session_begin_multi_logger",
    "kind": "detour",
    "sources": [
@@ -1108,6 +1124,364 @@
    "note": "patching:PT-FIX3 (2026-10-10): block-splice the 25 bytes at 0x00480b86 (`MOV [0x00ae3738],0 / MOV [0x00ae373c],0 / JMP 0x00481172`, the move_path early return for move_microstep==31 && order_queued, entered from the JNZ at 0x00480b82) into a JMP to a stub that, for an air unit (cfg type > 0xe, the dispatcher's own test at 0x00466aab) whose facing_target (+0x2c) differs from MOVE_MICROSTEPS[heading*0x60+ms*3].facing, sets facing_target and facing_current (+0x2d) to it, then performs the block's own tick-budget zeroing and JMPs 0x00481172. Retail defers an air unit's order in llm_strat_order_queue_dispatch (0x00466b03) while the two differ, and nothing reconciles them in states 0x11/0x12/0x2c (update_rotation skips non-independent units; this early return skips the sync): a helicopter at microstep 31 with a stale facing that gets an order is frozen forever (RE-MISC10). SIM-AFFECTING, default ON; the promoted move_path carries the same rule (sim_unit_state_move_path.cpp, reimpl_fixes::air_order_facing_fix). Offline oracle: simtest move_path arm; rig: air_order_deadlock / air_order_deadlock_retail."
   },
   {
+   "id": "project_gate_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PROJECT_GATE_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00440dd0"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_progress_propagate_unlocks"
+   ],
+   "knob": "project_gate_fix",
+   "carrier": "migrated:project_gate_fix",
+   "note": "mods:A2 (2026-10-12): NOP the `JZ 0x00440de2` (74 09, guard 80 B8 51 87 C3 00 01 74 09 from 0x00440dd0) that follows `CMP byte [EAX+0xc38751],1` = progress[PlayerSide][Planets[G_PLANET_INDEX].invention_index].acquired. Retail offers a research PROJECT (all depend[] acquired) only while that flag is NOT set, i.e. never on a conquered planet (conquest acquires the planet's invention): 'lab built, no research'. With the JZ gone the gate is always 1. Campaign only: MP/skirmish sit on pseudo planet 0x1f whose invention_index is 0 (never acquired, gate open anyway), so the key is a plain [net] key, not host-synced. DEFAULT OFF; the promoted propagate_unlocks carries the same rule (sim_lt_progress_unlock_fixpoint.cpp, reimpl_fixes::project_gate_fix). Rig: a2_conquered_research / a2_conquered_research_off."
+  },
+  {
+   "id": "sp_fixed_step",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SP_FIXED_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0043f403"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_sim_tick"
+   ],
+   "knob": "sp_sim_step_ms",
+   "carrier": "migrated:sp_sim_step_ms",
+   "note": "SP fixed step (2026-10-16): NOP the `JNZ 0x0043f464` (75 58, guard 83 3D 44 83 E5 00 03 75 58 from 0x0043f403) after `CMP dword [SESSION_MODE],3`, so every session mode takes the mode-3 fixed-quantum catch-up loop instead of the single-player one variable step to TOTAL_GAME_TIME. on_time_tick pins SIM_STEP_INTERVAL to [net] sp_sim_step_ms whenever SESSION_MODE != 3. Under a promoted sim_tick the twin carries it via reimpl_fixes::rig_fixed_step_loop."
+  },
+  {
+   "id": "sp_step_cap",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SP_CAP_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0043f45b"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_sim_tick"
+   ],
+   "knob": "sp_sim_step_ms",
+   "carrier": "migrated:sp_sim_step_ms",
+   "note": "SP catch-up cap (2026-10-16): the `CALL llm_strat_sim_step` (E8 B2 00 00 00) inside sim_tick's fixed-step loop becomes a call to sp_step_cap_stub, which runs the step and, outside session mode 3, after [net] sp_sim_step_ms-derived cap steps (10 at 20 ms) sets TOTAL_GAME_TIME := GAME_CLOCK so the rest of a long stall is dropped. Twin: reimpl_fixes::sp_step_cap."
+  },
+  {
+   "id": "sp_hitch_timing",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_SP_VAR_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0043f48f"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_sim_tick"
+   ],
+   "knob": "hitch_ms",
+   "carrier": "migrated:hitch_ms",
+   "note": "Hitch watch (2026-10-16, observe-only, [net] hitch_ms, default 0): the `CALL llm_strat_sim_step` (E8 7E 00 00 00) on sim_tick's one-variable-step branch becomes a call to sim_step_stub, which brackets the step with QPC reads for the [hitch] log line. No behaviour change."
+  },
+  {
+   "id": "mother_free_gate",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_EVENT_SHOW"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_EVENT_AUTO"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_EVENT_TAB"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_EVENT_KEY"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_PANEL_OPEN"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_PLACE"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_DISPATCH"
+    }
+   ],
+   "addrs": [
+    "0x00413bf5",
+    "0x00413c6e",
+    "0x00413cab",
+    "0x00413fb1",
+    "0x0041c135",
+    "0x00448c3d",
+    "0x00467441"
+   ],
+   "kind": "code",
+   "owner": [
+    "game_SetEvent",
+    "llm_ui_bldg_panel_open",
+    "llm_strat_bldg_try_begin_placement",
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "mother_free_build",
+   "carrier": "migrated:mother_free_build",
+   "note": "mods:A1 (2026-10-13): the seven reads of profiles[player].primary_mother_bldg[planet] that gate building, each the 7-byte `CMP dword [EAX+0xcff274],0` (guard 83 B8 74 F2 CF 00 00, EAX = player*0x740 + planet*4) followed by a Jcc: game_SetEvent EV_PANEL_SHOW_BUILD 0x00413bf5, EV_BUILD_OPEN_AUTOPAGE 0x00413c6e, EV_BUILD_TAB_BUILDINGS 0x00413cab, EV_BUILD_HOTKEY_TOGGLE 0x00413fb1, llm_ui_bldg_panel_open 0x0041c135 (initial page), llm_strat_bldg_try_begin_placement 0x00448c3d (silent refusal to arm), and order 0x19 (instant construct) in llm_strat_order_queue_dispatch 0x00467441 (the only sim site). Each becomes CALL mother_free_gate_stub + 2 NOP; the stub redoes the compare and, with g_mother_free_rt on and no mother, returns ZF=0 (mother present) for a human owner (a computer owner only with g_mother_free_ai_rt; player = EAX / 0x740, ai_enabled = player_data[p] +0x18). Off: the retail compare. ALWAYS installed (settable via mh_set_mother_free_build). SIM-AFFECTING, host-set (F_HOSTSYNC), DEFAULT OFF; the promoted bodies carry the same rule (libmh/sim/sim_mother_free.h, reimpl_fixes::mother_free_build). Rig: a1_mother_free*."
+  },
+  {
+   "id": "mother_free_link",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_LINK"
+    }
+   ],
+   "addrs": [
+    "0x00492422"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_link_to_network_if_adjacent"
+   ],
+   "knob": "mother_free_build",
+   "carrier": "migrated:mother_free_build",
+   "note": "mods:A1 (2026-10-13): the `CMP byte [EAX+0xd9ec88],0x1a` (guard 80 B8 88 EC D9 00 1A; the 'is a human mother' test whose JE at 0x00492429 floods from this building) in llm_strat_bldg_link_to_network_if_adjacent becomes CALL mother_free_link_stub + 2 NOP. With g_mother_free_rt on the stub also answers 'yes' for a power plant (cfg type 0x17 or 3) whose owner ([EBP-0x18]) has no primary mother on the planet (and is a human, or g_mother_free_ai_rt is on), so a lone plant on a mother-less planet connects (built_flags 3) and builds instead of staying inert at built_flags 2. The A-mother test at 0x0049244b is untouched. SIM-AFFECTING, DEFAULT OFF; the promoted body carries the same rule (sim_bldg_link_to_network.cpp, mother_free_plant_root)."
+  },
+  {
+   "id": "mother_free_seed",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MF_SEED"
+    }
+   ],
+   "addrs": [
+    "0x00491eac"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_power_network_recompute"
+   ],
+   "knob": "mother_free_build",
+   "carrier": "migrated:mother_free_build",
+   "note": "mods:A1 (2026-10-13): the `CMP word [EAX+0xc3d2b7],0` (guard 66 83 B8 B7 D2 C3 00 00) = online_state of a plant, tested at the seeding pass of llm_strat_bldg_power_network_recompute (JNE 0x00491eb8 floods from it), becomes CALL mother_free_seed_stub + 3 NOP. With g_mother_free_rt on the stub answers 'online' for a plant whose owner ([EBP-0x14]) has no primary mother on the planet, so a recompute (run on any building removal) re-seeds a root plant that is still under construction instead of leaving it disconnected. SIM-AFFECTING, DEFAULT OFF; the promoted body carries the same rule (sim_bldg_power_network_recompute.cpp)."
+  },
+  {
+   "id": "move_centroid_wrap_fix",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_CENT_X"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_CENT_Y"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_SLOT_X"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_SLOT_Y"
+    }
+   ],
+   "addrs": [
+    "0x0041caf2",
+    "0x0041cb51",
+    "0x004cbdb0",
+    "0x004cbdc3"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_group_move_order_pathfind",
+    "llm_strat_slot_dist_to_ref"
+   ],
+   "knob": "move_centroid_wrap_fix",
+   "carrier": null,
+   "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. Pathfind: the `MOV EAX,0x80 ; SUB EAX,[EBP-0x54]` (guard B8 80 00 00 00 2B 45 AC; the wrap of a centroid delta beyond half the map, retail is only right for 128-wide maps) at 0x0041caf2 (x) and 0x0041cb51 (y) becomes CALL mv_cent_x/y_stub + 3 NOP; the stub with the key on yields d - map_width / d - map_height. slot_dist_to_ref: the 19-byte `if (dx > half) dx -= width` block at 0x004cbdb0 (x) / 0x004cbdc3 (y) becomes CALL mv_slot_x/y_stub + NOPs; with the key on it also folds dx < -half by + width. Carrier pending the libmh twin: if libmh promotes these functions the sites are DISPLACED and the key logs NOT ACTIVE."
+  },
+  {
+   "id": "move_detour_slot_guard",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_DETOUR"
+    }
+   ],
+   "addrs": [
+    "0x0042172e"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_path_detour"
+   ],
+   "knob": "move_detour_slot_guard",
+   "carrier": null,
+   "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. The tail `CMP dword [EBP-0x2c],0 ; JZ 0x00421746` (guard 83 7D D4 00 74 12; alternate/occupant unit index == 0 -> return 1) of llm_strat_unit_path_detour becomes CALL mv_detour_stub + NOP; the stub takes the JZ itself and, with the key on, also when the occupant's path_slot_id (the byte at player*0x5b04 + alt*0xe9 + 0xdd8cf2) is 0xff, so the recursion never splices into player*30000 + 255*300 (past the player's 100 slots). Carrier pending the libmh twin."
+  },
+  {
+   "id": "move_flood_queue_guard",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_FLOOD_Q"
+    }
+   ],
+   "addrs": [
+    "0x00424f62"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_map_region_flood_reachable"
+   ],
+   "knob": "move_flood_queue_guard",
+   "carrier": null,
+   "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. The loop top `CMP EDI,ESI ; JZ 0x00425072` (guard 39 F7 0F 84 08 01 00 00) of the 4096-slot ring flood becomes CALL mv_flood_q_stub + 3 NOP; the stub takes the JZ itself and, with the key on, also when 0xff8 entries are pending (the flood ends with a partial field instead of the write cursor lapping the read cursor). Carrier pending the libmh twin."
+  },
+  {
+   "id": "route_cost_mode",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_FLOOD_C"
+    }
+   ],
+   "addrs": [
+    "0x00424f7f"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_map_region_flood_reachable"
+   ],
+   "knob": "route_cost_mode",
+   "carrier": null,
+   "note": "mods:M1P prototype (2026-10-13), default OFF (mode 0), host-set. The flood's read of the per-tile cost `AND EDX,0xff ; SHL EDX,8` (guard 81 E2 FF 00 00 00 C1 E2 08; the cell's low terrain_flags byte, added to the neighbour's upper 24 bits) becomes CALL mv_flood_c_stub + 4 NOP. With route_cost_mode=1 the stub maps the byte through route_cost_calc: bit0 -> route_cost_base, proximity bits 4/8/16 -> route_cost_ring4/8/16 (defaults 1/4/8/16 = retail exactly), optionally scaled by min(wave size, route_gap_wave_full)/route_gap_wave_full (wave size = _G_LLM_STRAT_GROUP_MEMBER_COUNT 0x0051de38). The stored terrain_flags bits are never changed. Carrier pending the libmh twin."
+  },
+  {
+   "id": "route_corridor_mode",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_CORR"
+    }
+   ],
+   "addrs": [
+    "0x0041d06c"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_group_move_order_pathfind"
+   ],
+   "knob": "route_corridor_mode",
+   "carrier": null,
+   "note": "mods:M1C prototype (2026-10-13), default OFF (mode 0), host-set. The `CALL llm_strat_pathfind_mark_group_member_regions` (guard E8 A8 38 00 00) just before the region flood becomes CALL mv_corr_stub: it runs the original (marks the member regions route_mark=2), then with the key on widens the flood's eligibility (a region with route_mark != 0 and a passable cell): mode 1 marks every region adjacent to a marked one, mode 2 marks every region, mode 3 only logs one measurement line per wave. Carrier pending the libmh twin: if libmh promotes llm_strat_group_move_order_pathfind the site is DISPLACED and the key logs NOT ACTIVE."
+  },
+  {
+   "id": "move_blocked_protocol",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_blocked.cpp",
+     "expr": "ADDR_MV_BLOCKED"
+    }
+   ],
+   "addrs": [
+    "0x0047d50d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_move_walker"
+   ],
+   "knob": "move_block_wait_ms",
+   "carrier": null,
+   "note": "mods:M1X prototype (2026-10-14), default retail, host-set; keys move_block_wait_ms / move_keep_sidestep / move_repath_cooldown_ms. The blocked-step retry block after CALL llm_strat_path_step_check_and_request_detour (0x0047d50d..0x0047d532, 38 bytes, guard 85 C0 74 0C A1 E0 62 E1 00 C6 80 AB 00 00 00 C9 A1 E0 62 E1 00 8A 90 AB 00 00 00 FE 80 AB 00 00 00 80 FA C8 76 30) becomes CALL mv_blocked_stub + 33 NOP; the stub jumps to the retail continuations 0x0047d533 (replan) / 0x0047d563 (wait +0.05 s) / 0x0047d574 (done). Retail values reproduce the retail decision exactly. Carrier pending the libmh twin: if libmh promotes move_walker the site is DISPLACED and the keys log NOT ACTIVE."
+  },
+  {
+   "id": "move_nudge_claim_swap",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_nudge.cpp",
+     "expr": "ADDR_ND_CALL"
+    }
+   ],
+   "addrs": [
+    "0x0047d508"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_move_walker"
+   ],
+   "knob": "move_nudge_idle",
+   "carrier": null,
+   "note": "mods:M1N prototype (2026-10-16), default retail, host-set; keys move_nudge_idle / move_claim_leader / move_swap_headon. The `CALL llm_strat_path_step_check_and_request_detour` in the walker's blocked-step block (guard E8 30 CD 01 00, the 5 bytes just before the M1X block at 0x0047d50d) is retargeted at a stub that asks nd_decide(): -1 = tail-jump to the retail function (every key at 0 is retail), else its value is the return (0 = wait for the occupant). Nudge: an idle same-player ground blocker gets state 0x36 (step_adjacent) toward a free neighbour. Swap / claim: the walker's step done for two units in one tick (tiles claimed crosswise, microstep 0, fog moved), so both slide through each other's tile; a claimed leader gets one extra leg in front of its path. 2026-10-17: when the only free neighbour of an idle blocker is straight ahead (a one-tile corridor) nd_decide now TRADES tiles with it (one-leg path from path_make_single_step, then the exchange) instead of pushing it ahead tile after tile. Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_move_walker the site is DISPLACED and the keys log NOT ACTIVE."
+  },
+  {
+   "id": "move_marshal_nudge_swap",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_nudge.cpp",
+     "expr": "ADDR_MK_SITE"
+    },
+    {
+     "file": "mh/seams/move_proto_nudge.cpp",
+     "expr": "ADDR_MK2_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00482954",
+    "0x004829e2"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_group_marshal"
+   ],
+   "knob": "move_nudge_idle",
+   "carrier": null,
+   "note": "mods:M1N field fix (2026-10-16, user playtest rc10: units do not slide in a narrow corridor / cannot get past a friend). TWO jump-splices (same stub logic, 7 bytes each): (1) 0x00482954, the 7 bytes `MOVZX EAX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 05 44 81 E5 00) that open the `member has no path (slot 0xff)` branch of the wave-commit loop (the line before it is CMP path_slot_id,0xff / JNZ); (2) 0x004829e2, `MOVZX EDX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 15 44 81 E5 00) right after the `path exhausted / first step blocked` branch's llm_strat_path_free_slot call (rejoin 0x004829e9; a zero-length path lands here and counts retries toward giving up). Each goes to a stub that asks mk_decide(player, [EBP-0x48] = member unit index): 1 = handled (jump to the loop's per-member continue 0x004828ab, skipping the retail clock bump), 0 = run the displaced MOVZX and rejoin at 0x0048295b. A member the planner stalled in state 0x0a (the route was shortened at an idle friend's tile, or two friends meet head-on and both are marshal-stuck) either nudges the idle friend aside (state 0x36, as the walker case) or trades tiles with it (one-leg paths from path_make_single_step, then the walker exchange). Keys move_nudge_idle / move_swap_headon, so every key at 0 is byte-for-byte retail behaviour at runtime. Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_group_marshal the site is DISPLACED and the splice is not installed."
+  },
+  {
+   "id": "move_route_through_idle",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_nudge.cpp",
+     "expr": "ADDR_RT_CALL"
+    }
+   ],
+   "addrs": [
+    "0x0041c9ce"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_group_move_order_commit"
+   ],
+   "knob": "move_route_through_idle",
+   "carrier": null,
+   "note": "mods:M1N follow-up 2 (2026-10-17, user playtest rc11 'more like a corner': an idle friend in a one-tile corridor was a wall for the route planner, so the goal was cut short to a dead-end pocket and the order given up). The 5-byte `CALL llm_strat_group_move_order_pathfind` (guard E8 64 00 00 00; its only caller) in llm_strat_group_move_order_commit is retargeted at a stub that (1) rt_unmask(): for every IDLE same-player ground unit of the order's owner (state 1, default op 1, no order queued, settled, alive, its tile claimed by it, passable byte 0; NOT the goal tile) writes the tile's own value (origin_tile_was_passable) into passable[]; for each such tile it also ORs the three proximity-ring bits (0x1d) into the region cell's cached cost byte (terrain_flags low byte, so the flood prices it like a tile pressed against a cliff and goes round a short crowd when it can; key value 2 skips this, measurement only); (2) calls the retail planner with the registers it was given (EAX mode, EDX target mask); (3) rt_restore(): puts the 0 and the old cost byte back. Every reader of passable[] inside the planner (flood eligibility, trace_route flank test, find_nearest_valid_tile, walk_to_valid_tile, the per-member walks) sees the same open tile for the one call. The walker then reaches the friend and move_nudge_idle (3e-1 / 3e-4) makes room. Key move_route_through_idle (-1 follows improved_movement) and needs move_nudge_idle=1 at plan time; every key at 0 = the stub only calls the retail function. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
+  },
+  {
    "id": "diplo_order_dedup_fix",
    "sources": [
     {
@@ -1187,7 +1561,7 @@
    ],
    "knob": "overlay_dialog_guard",
    "carrier": "migrated:overlay_dialog_guard",
-   "note": "mp:U74/U44 (2026-10-07): retail carrier of the stall-overlay dialog guard. Call-splices every retail call of llm_net_lockstep_overlay_dismiss (0x004c7d1c; 7 sites) and llm_net_lockstep_sync_overlay_show (0x004c7eea; 1 site) into odg::dismiss_thunk / show_thunk (net_lockstep.cpp), plus the wait_player site 0x0043f0fc through wait_overlay_gate_thunk's forward target (icon_count's entry above). The thunks are the libmh twin's overlay_hoist.cpp ledger over raw VAs: a dismiss only closes a screen lockstep armed (else the pre-call mode is put back), the kick modal stashes an open mode-3 dialog's UI state and restores it on dismiss, and a 3->* dismiss dirties the viewport. Per-site DISPLACED when promoted_owner_of(site) -- the twin carries the same rule from lockstep/overlay_hoist.cpp + host_event_sink.cpp (reimpl_fixes::overlay_dialog_guard); 0x004c8620 (inside the retail mp_leave callee, which the twin hoist wraps from outside) is spliced only when libmh does not run (absent, or mode=original). UI-only, no sim hash impact. Rig: dialog_stall_original / dialog_stall_off_original. mp:U44b (2026-10-14): + 0x004b82a8 (llm_menu_finish_enter_gameplay: a dialog closed during a stall re-arms the wait icon itself) into odg::wait_thunk, so lockstep ledgers the icon it shows there. Unledgered, the next dismiss restored mode 3 over the closed dialog and input died for the rest of the match (field report 01M4XZJER40J6TBCFCYR8KW9RN). Retail UI code, never promoted; the twin carries the fix through the dismiss safety net instead. The third caller (0x004c85e8, extend_ui_enter) is left unrouted on caution: ledgering its icon lets a later dismiss rewrite the mode-8 barrier, and the routed build went red on dialog_stall_c1_retail's third stall (2/2, on a shared box -- a lead, not a proof); the safety net covers it. Dev values: overlay_dialog_guard=2 skips the splice and the safety net (the rc9.3 reproduction arm), 3 skips only the splice. Rig: dialog_stall* arm (d)."
+   "note": "mp:U74/U44 (2026-10-07): retail carrier of the stall-overlay dialog guard. Call-splices every retail call of llm_net_lockstep_overlay_dismiss (0x004c7d1c; 7 sites) and llm_net_lockstep_sync_overlay_show (0x004c7eea; 1 site) into odg::dismiss_thunk / show_thunk (net_lockstep.cpp), plus the wait_player site 0x0043f0fc through wait_overlay_gate_thunk's forward target (icon_count's entry above). The thunks are the libmh twin's overlay_hoist.cpp ledger over raw VAs: a dismiss only closes a screen lockstep armed (else the pre-call mode is put back), the kick modal stashes an open mode-3 dialog's UI state and restores it on dismiss, and a 3->* dismiss dirties the viewport. Per-site DISPLACED when promoted_owner_of(site) -- the twin carries the same rule from lockstep/overlay_hoist.cpp + host_event_sink.cpp (reimpl_fixes::overlay_dialog_guard); 0x004c8620 (inside the retail mp_leave callee, which the twin hoist wraps from outside) is spliced only when libmh does not run (absent, or mode=original). UI-only, no sim hash impact. Rig: dialog_stall_original (its fix-off twin dialog_stall_off_original retired 2026-10-15; dialog_stall_off keeps the fix-off proof). mp:U44b (2026-10-14): + 0x004b82a8 (llm_menu_finish_enter_gameplay: a dialog closed during a stall re-arms the wait icon itself) into odg::wait_thunk, so lockstep ledgers the icon it shows there. Unledgered, the next dismiss restored mode 3 over the closed dialog and input died for the rest of the match (field report 01M4XZJER40J6TBCFCYR8KW9RN). Retail UI code, never promoted; the twin carries the fix through the dismiss safety net instead. The third caller (0x004c85e8, extend_ui_enter) is left unrouted on caution: ledgering its icon lets a later dismiss rewrite the mode-8 barrier, and the routed build went red on dialog_stall_c1_retail's third stall (2/2, on a shared box -- a lead, not a proof); the safety net covers it. Dev values: overlay_dialog_guard=2 skips the splice and the safety net (the rc9.3 reproduction arm), 3 skips only the splice. Rig: dialog_stall* arm (d)."
   },
   {
    "id": "team_seed",
@@ -1587,6 +1961,349 @@
    "knob": "ui.minimap_box_clip",
    "carrier": null,
    "note": "RES9: the entry's MOV EDI,[0x00603b00] (8B 3D 00 3B 60 00) -> JMP rel32 + NOP to a thunk that draws the viewport box clipped to the 128x128 minimap (stock pixels whenever the box fits); at heights >= 1152 in zoom mode 4 the stock loop writes above the side-panel surface. minimap_box_clip=2 runs the stock body behind the same thunk, measured"
+  },
+  {
+   "id": "minimap_res_all_zooms",
+   "sources": [
+    {
+     "file": "mh/seams/ui_minimap_plus.cpp",
+     "expr": "s.va"
+    }
+   ],
+   "addrs": [
+    "0x004a191c",
+    "0x004a1b15",
+    "0x004a1ce6",
+    "0x004a20ca"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_minimap_render"
+   ],
+   "knob": "ui.minimap_res_all_zooms",
+   "carrier": null,
+   "note": "mods:MM1: the four `cmp dword [_G_LLM_STRAT_MINIMAP_FULLMAP_FLAG],1 ; je` gates (74 41 / 74 41 / 74 47 / 74 76, zoom 5 / 1 / 2 / 4) that jump over the per-pixel resource-marker block become NOP NOP, so the widest zoom draws resources like every other zoom. Render only."
+  },
+  {
+   "id": "minimap_top_gate",
+   "sources": [
+    {
+     "file": "mh/seams/ui_minimap_plus.cpp",
+     "expr": "GATE_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004a22f0"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_minimap_render"
+   ],
+   "knob": "ui.minimap_top_no_mask",
+   "carrier": null,
+   "note": "mods:MM2/MM3: the render exit's 6-byte `je 0x004a1a1b` (0F 84 25 F7 FF FF; the round-mask pass, which also skips the viewport-box call) becomes JMP rel32 + NOP to a thunk: flag != 1 takes the box call, else the mask runs unless [ui] minimap_top_no_mask; render only. Shares the end-of-mask patch (minimap_top_end); gated with ui.minimap_top_box."
+  },
+  {
+   "id": "minimap_top_end",
+   "sources": [
+    {
+     "file": "mh/seams/ui_minimap_plus.cpp",
+     "expr": "END_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004a1aad"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_minimap_render"
+   ],
+   "knob": "ui.minimap_top_box",
+   "carrier": null,
+   "note": "mods:MM3: the round-mask pass's closing `jmp 0x004a22fb` (E9 49 08 00 00) becomes a JMP to a thunk that, at the widest zoom with [ui] minimap_top_box on, calls llm_strat_minimap_draw_viewport_box (RES9-clipped) after the mask, then continues at 0x004a22fb. Render only."
+  },
+  {
+   "id": "shift_rearm_build",
+   "sources": [
+    {
+     "file": "mh/seams/ui_bldg_rearm.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x00443ae9"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_input_update"
+   ],
+   "knob": "ui.shift_rearm_build",
+   "carrier": null,
+   "note": "mods:D11: the 10-byte MOV [_G_LLM_BUILD_PLACEMENT_ID],0 at the LMB-up of a placement (C7 05 DC 01 5D 00 00 00 00 00) -> CALL rel32 + 5 NOPs to a thunk that keeps the armed type while Shift is held, the tutorial is not running, the mothership building stands and the next copy is affordable (read-only pass 1 of llm_bldg_pay_build_cost; never llm_strat_bldg_try_begin_placement, whose pay+regrant books resource_spent). Otherwise stores 0 as stock. [ui] shift_rearm_build=0 installs nothing"
+  },
+  {
+   "id": "bigmap_before_cursor",
+   "sources": [
+    {
+     "file": "mh/seams/ui_bigmap.cpp",
+     "expr": "SPLICE_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004263ba"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_frame_present"
+   ],
+   "knob": "ui.bigmap",
+   "carrier": null,
+   "note": "mods:MM4B: the CALL llm_gfx_draw_cursor_menu (E8 8E F7 07 00) in llm_frame_present -> CALL rel32 to a thunk that runs the big-map overlay draw (pushad/pushfd around it) and then JMPs to the stock cursor draw, so the mouse cursor is drawn ON TOP of the overlay. Render only. If the bytes differ nothing is written and the present hook draws the overlay (over the cursor), as before MM4B. [ui] bigmap=0 installs nothing"
+  },
+  {
+   "id": "detour_snd_order_ack",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/hook/hookpoint.cpp",
+     "expr": "mh::exp::addr_llm_strat_group_order_ack_voice"
+    }
+   ],
+   "owner": [
+    "llm_strat_group_order_ack_voice"
+   ],
+   "knob": "[log] snd_trace",
+   "carrier": "none:an OBSERVE-ONLY diagnostic (seams/snd_trace.cpp, [log] snd_trace=1, default 0, dev-gated) that changes no behaviour, so a promotion that displaces it loses nothing but the trace. llm_strat_group_order_ack_voice is promoted by libmh's orders_issue seam ([promote] orders, libmh.dll bound); the shipped configuration has no libmh.dll, so the original body runs and the observer arms. When libmh owns the entry the claim is refused loudly (the [interlock] line) and MH_SndTrace_Install logs 'order_ack_voice=REFUSED' in mh_snd.log; run [config] mode=original to trace the original body."
+  },
+  {
+   "id": "move_distinct_goals",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_arrival.cpp",
+     "expr": "ADDR_ARR_COMMIT"
+    }
+   ],
+   "addrs": [
+    "0x0041c9d3"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_group_move_order_commit"
+   ],
+   "knob": "move_distinct_goals",
+   "carrier": null,
+   "note": "mods:M1X lane A prototype (2026-10-14), default OFF, host-set. Right after commit's CALL to llm_strat_group_move_order_pathfind, `CMP dword [0x0051de38],1` (guard 83 3D 38 DE 51 00 01) becomes CALL mv_arr_commit_stub + 2 NOP; the stub re-executes the CMP before returning (the JLE after it reads its flags). With the key on, for a plain move with move_group_id != 0: every member keeps its formation tile when free, else takes the nearest free reachable tile (written to _G_LLM_STRAT_GROUP_MEMBER_TILE, which commit copies and the marshal makes the goal); a wave of one whose goal another group member already holds is re-planned to the nearest free tile (pathfind run again) and its unit goal set there. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
+  },
+  {
+   "id": "move_near_enough",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_arrival.cpp",
+     "expr": "ADDR_ARR_RETRY"
+    }
+   ],
+   "addrs": [
+    "0x00482b5b"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_group_marshal"
+   ],
+   "knob": "move_near_enough",
+   "carrier": null,
+   "note": "mods:M1X lane A prototype (2026-10-14), default OFF, host-set (also used by move_distinct_goals). In the marshal's path-exhausted/blocked branch, `INC byte [EAX+0xdd8cf3] ; CMP byte [EAX+0xdd8cf3],4` (guard FE 80 F3 8C DD 00 80 B8 F3 8C DD 00 04; path_blocked_retry_count) becomes CALL mv_arr_retry_stub + 8 NOP; the stub does the INC, optionally sets the counter to 4, and re-executes the CMP (the JNC after it reads its flags). A plain-move unit (order 0x0f, or 0x01 on a replan) standing on its goal, or (move_near_enough=R) within R + isqrt(group size) tiles of a goal held by a parked unit of its own player, takes the retail give-up branch at once (STOP_TO_DEFAULT, notify 0x66, passable 0). Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_group_marshal the site is DISPLACED and the key logs NOT ACTIVE."
+  },
+  {
+   "id": "move_group_speed",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_speed.cpp",
+     "expr": "ADDR_MVS_COMMIT"
+    },
+    {
+     "file": "mh/seams/move_proto_speed.cpp",
+     "expr": "ADDR_MVS_WALK"
+    }
+   ],
+   "addrs": [
+    "0x00482897",
+    "0x0047d3d1"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_group_marshal",
+    "llm_strat_unit_state_move_walker"
+   ],
+   "knob": "move_group_speed",
+   "carrier": null,
+   "note": "mods:M1X lane C prototype (2026-10-14), default -1 = follow group_movement (on: 1), host-set. Marshal: the `MOV [EBP-0x34],0` (guard C7 45 CC 00 00 00 00) right after each wave's CALL llm_strat_group_move_order_commit becomes CALL mvs_commit_stub + 2 NOP; with the key on every ground member of the wave gets move_step_speed_scale = slowest step_speed / own step_speed, the slowest taken over the wave, every live ground unit of the player with the wave's move_group_id, and every queued unit record carrying it (move order; id 0 = the wave only), or 1.0. Walker: the 38-byte scale averaging at 0x0047d3d1 (FILD [EBP-0x50]; FADD/FSTP [EDX+0xae]; MOV EAX,[0x00e162e0]; FLD [EAX+0xae]; FMUL [0x005013c0]; FSTP [EAX+0xae]) becomes CALL mvs_walk_stub + 33 NOP; with the key on and scale >= 1.0 the scale is kept, else the retail averaging runs. Carrier pending the libmh twin: if libmh promotes either function the sites are DISPLACED and the key logs NOT ACTIVE."
+  },
+  {
+   "id": "move_attack_heading_fix",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_blocked.cpp",
+     "expr": "ADDR_MV_ATK_HEADING"
+    }
+   ],
+   "addrs": [
+    "0x0041ec1d"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_pathfind_build_steps"
+   ],
+   "knob": "move_attack_heading_fix",
+   "carrier": "migrated:move_attack_heading_fix",
+   "note": "mods:M1X (2026-10-14), dev key, default -1 = follow improved_movement (on: 1), host-set. In llm_strat_pathfind_build_steps (the greedy path of a single-unit attack wave) the heading store reads `MOV AL,[EBP-0x20]` (the blocked direct heading, guard 8A 45 E0) although the step taken was the -3/+3 turn candidate [EBP-0x1c]; the setter flips the byte at 0x0041ec1f E0 <-> E4 at runtime (off = the retail byte), so the path records the heading actually stepped and the unit no longer walks into the building it was routed around (4 x 2 s retries, STOP). Carrier: the libmh twin in sim/sim_path_group_steps.cpp, gated by reimpl_fixes::move_attack_heading_fix (tmp/m1/attack_stall.md)."
+  },
+  {
+   "id": "move_squad_merge_fix",
+   "sources": [
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_SQM_STATE_CMP"
+    }
+   ],
+   "addrs": [
+    "0x0047ebe1"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_squad_merge"
+   ],
+   "knob": "move_squad_merge_fix",
+   "carrier": "migrated:move_squad_merge_fix",
+   "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_movement (on: 1), host-set. Step 3b of llm_strat_unit_state_squad_merge `CMP word ptr [EAX+disp32],1` (guard 66 83 B8 <disp32 read from the image> 01; stock disp 0x00dd8c4e) becomes CALL sqm_stub + 3 NOP; the stub ends with the same compare (JZ at 0x0047ebe9 reads its flags). With the key on, a target soldier settled on its tile (move_microstep >= 0x1f) in state 0x1a/0x1b/0x1c that passes 3c/3d/3e is released (llm_strat_target_release_ref mode 1, target_ref/index 0, state = order = 1) before the compare. Carrier: the libmh twin in sim/sim_unit_state_squad_merge.cpp, gated by reimpl_fixes::move_squad_merge_fix (tmp/m1/combat_fixes.md)."
+  },
+  {
+   "id": "move_merge_goal_fix",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_arrival.cpp",
+     "expr": "ADDR_MV_MERGE_GOAL"
+    }
+   ],
+   "addrs": [
+    "0x0041cc69"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_group_move_order_pathfind"
+   ],
+   "knob": "move_merge_goal_fix",
+   "carrier": "migrated:move_merge_goal_fix",
+   "note": "mods:M1X (2026-10-14), dev key, default -1 = follow improved_movement (on: 1), host-set. llm_strat_group_move_order_pathfind step 2 relocates an impassable/undiscovered goal with CALL llm_strat_pathfind_find_closer_visible_tile (guard E8 87 33 00 00 -> 0x0041fff5, its only call): a fixed spiral (north first) taking the first passable, discovered tile strictly closer to the group centre, with no reachability test. The CALL becomes CALL mv_merge_goal_stub (always installed, runtime-gated): with the key on and the wave's units carrying the squad-merge order 0x33, the goal is the nearest REACHABLE tile within Chebyshev 1 of the target soldier (BFS from the group centre, 8 neighbours N,E,S,W,NE,SE,SW,NW, the router's flank rule for diagonals, radius start..target+16; sim/sim_merge_goal.h) and the stub returns 0 (found); otherwise it jumps to the retail callee. Carrier: the libmh twin in sim/sim_group_move_order_pathfind.cpp, gated by reimpl_fixes::move_merge_goal_fix (tmp/m1/merge_path_and_fx.md)."
+  },
+  {
+   "id": "attack_range_footprint",
+   "sources": [
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_ISSUE_REPOS"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_ISSUE_ALT"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_ISSUE_ENQ"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_ISSUE_ATK"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_JIT_REPOS"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_JIT_ENQ"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_JIT_ATK"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_JIT_ALT"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_JIT_WALK"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_WALK"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_FIRE"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_REAIM"
+    },
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_ARF_STEP"
+    }
+   ],
+   "addrs": [
+    "0x0046bfca",
+    "0x0046c24a",
+    "0x0046c49f",
+    "0x0046c6f4",
+    "0x0046c19e",
+    "0x0046c648",
+    "0x0046c731",
+    "0x0046c3f3",
+    "0x0047d114",
+    "0x0047d016",
+    "0x0048bbce",
+    "0x00484fc6",
+    "0x004831c0"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_order_attack_building_reposition",
+    "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+    "llm_strat_unit_order_attack_building_reposition_enqueue",
+    "llm_strat_unit_order_attack_building",
+    "llm_strat_unit_order_attack_building_reposition",
+    "llm_strat_unit_order_attack_building_reposition_enqueue",
+    "llm_strat_unit_order_attack_building",
+    "llm_strat_unit_order_attack_building_reposition_alt_enqueue",
+    "llm_strat_unit_state_move_walker",
+    "llm_strat_unit_state_move_walker",
+    "llm_strat_unit_fire_weapon",
+    "llm_strat_unit_state_attack_building",
+    "llm_strat_unit_group_step_ground"
+   ],
+   "knob": "attack_range_footprint",
+   "carrier": "migrated:attack_range_footprint",
+   "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_combat (on: 1), host-set. Thirteen 5-byte `CALL rel32` retargets (guard E8 + rel32 to the stock callee): ISSUE (CALL llm_strat_bldg_get_coords in the four attack-building issuers: the original runs, then the attacker's aim tile overwrites the order's point), JITTER (CALL llm_strat_bldg_footprint_random_point / _random_offset: the point is put back to the centre before the original jitters it), WALK (move_walker path-end check: the unit's real target instead of (CUR_PLAYER, CUR_INDEX)), FIRE (unit_fire_weapon range-check coords), REAIM (attack_building weapon re-select: target_fine_x AND _y instead of the aliased pair), STEP (group_step_ground goal/target_fine refresh). Aim tile = the occupied footprint tile nearest the attacker (wrapped Manhattan), its centre in fine coords; units with a weapon range_min > 1 keep the centre (sim/sim_attack_range_footprint.h). All sites or none: one MISMATCHED site refuses the key. Carrier: the libmh twins (issue_unit_attack.cpp reposition, sim_unit_state_move_walker, sim_unit_fire_weapon, sim_unit_state_attack_building, sim_unit_group_step_ground) gated by reimpl_fixes::attack_range_footprint (tmp/m1/combat_fixes.md)."
+  },
+  {
+   "id": "projectile_facing_fix",
+   "sources": [
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_PFF_DELTA"
+    }
+   ],
+   "addrs": [
+    "0x00441424"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_projectile_tick"
+   ],
+   "knob": "projectile_facing_fix",
+   "carrier": "migrated:projectile_facing_fix",
+   "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_combat (on: 1), host-set. llm_strat_projectile_tick re-aims a flying shot's sprite each tick by (new facing - facing) * stride on anim_frame and anim_loop_frame, the difference NOT wrapped: crossing the 24/1 facing boundary (due south) adds +-23 strides and the frame runs in another animation (2-almost repro: W2 loop 2049 -> 2072, frames 2074..2077). `SUB EDX,[EAX+0x59]; MOV EAX,[0x00e1538c]` (guard 2B 50 59 A1 8C 53 E1 00) becomes CALL pff_stub + 3 NOP; the stub redoes both and, with the key on, sets EDX to the difference wrapped into -12..11, or 0 for weapon types 5/6 (sector-based start frame; every shipped type 5/6 weapon is non-homing). Carrier: the libmh twin in sim/sim_projectile_tick.cpp, gated by reimpl_fixes::projectile_facing_fix (sim/sim_projectile_facing.h; tmp/m1/merge_path_and_fx.md)."
   },
   {
    "id": "replay_boundary_notes",

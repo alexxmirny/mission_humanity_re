@@ -1,0 +1,61 @@
+# mods:D11 HOST walk -- Shift+click placement chain in a 2-peer lockstep match (row d11_shift_chain_c1). Pair with
+# mp_client_idle.txt. The host lands the mother, opens the place-building tab, arms the first icon, Shift-places three
+# buildings in a row (the type stays armed after each) and a plain fourth, then lets the orders run. The re-arm is a write
+# of a view global and the orders are the same ones a re-pick would issue, so nothing peer-local may reach the sim: the pair
+# must stay IDENTICAL (the lockstep hash compare) and the desync watch clean.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# deploy). It flies until well before gameclock 20000.
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 20000
+capture landed
+
+# the "place building" tab (HUD, absolute coordinates); the first icon (Power Plant)
+simclick 890 215
+gameclock 21000
+simclick 905 275
+gameclock 21500
+logbuild d11_armed
+capture d11_armed
+# a Shift chain: three places, the type stays armed; spots are a camera-centred row near the landed mother
+simclick 300 250 shift
+gameclock 22500
+logbuild d11_shift1
+simclick 420 250 shift
+gameclock 23500
+logbuild d11_shift2
+simclick 540 250 shift
+gameclock 24500
+logbuild d11_shift3
+capture d11_shift3
+simclick 300 400
+gameclock 25500
+logbuild d11_plain
+capture d11_plain
+gameclock 40000
+end

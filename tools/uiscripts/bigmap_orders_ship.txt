@@ -1,0 +1,59 @@
+# bigmap_orders_ship -- mods:MM4C, a satellite_seq step in the SHIPPED configuration (libmh.dll absent for the whole process: the
+# retail issuers and tile finders are what the overlay calls). The first arms of bigmap_orders on 2-almost: unit 5 drag-selected,
+# Tab held, the overlay right clicked on a visible tile (a), on an unexplored one (b), the control click on the bare world at the
+# screen position of (a)'s tile (c), a Shift click (e). The verdict is tools/check_bigmap.py --orders-ship (the `order at` lines and
+# the unit's goals); the one frame is the unit arrived at (a)'s tile, the same pixels the libmh-bound step bigmap_orders shows.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +600
+cursorhold 650 400 10
+presshold 650 400
+cursorhold 650 400 6
+cursorhold 790 520 12
+release 790 520
+gameclock +100
+loggoal selected
+hotkeydown Tab
+cursorhold 407 357 10
+screensettled
+simrclick 407 357
+cursorhold 407 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +8000
+loggoal a_overlay
+screensettled
+capture bigmap_orders_ship__a_arrived
+hotkeydown Tab
+cursorhold 230 170 10
+screensettled
+simrclick 230 170
+cursorhold 230 170 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+loggoal b_far
+simrclick 304 304
+cursorhold 600 400 10
+gameclock +3000
+loggoal c_control
+hotkeydown Tab
+cursorhold 414 357 10
+screensettled
+simrclick 414 357 shift
+cursorhold 414 357 10
+hotkeyup Tab
+cursorhold 600 400 10
+gameclock +3000
+loggoal e_shift
+end

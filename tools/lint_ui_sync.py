@@ -66,6 +66,9 @@ KNOWN_WAIT_OPS = frozenset(
         "sessions",
         "peers",
         "occ",
+        "listtop",  # D15: a menu list widget's top row
+        "hudtop",  # D15: a side-panel list descriptor's top row
+        "infopage",  # D15: the info screen's page
         "race",
         "team",
         "lobbymode",
@@ -123,6 +126,8 @@ KNOWN_ACTION_OPS = frozenset(
         "key",
         "keyhold",
         "hotkey",
+        "hotkeydown",
+        "hotkeyup",
         "type",
         "layout",
         "keyjournal",
@@ -133,6 +138,16 @@ KNOWN_ACTION_OPS = frozenset(
         "dump",
         "mark",
         "logsel",
+        "loggoal",  # mods:MM4C
+        "logbuild",
+        "logbldgs",  # mods:A1 fixture ops
+        "liftoff",
+        "watch",
+        "removebldg",
+        "camto",
+        "reveal",
+        "savegame",
+        "delsave",
         "end",
     }
 )

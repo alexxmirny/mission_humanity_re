@@ -193,6 +193,23 @@ drift gate to run before it when in doubt. Read the sha it pushed: `git -C tmp\p
 - Log the release in the private tree's session notes (the day's line names the tag and the
   public sha).
 
+### 0.8 Hotfixes: the release branch
+
+Each release line has a branch, `release/vMAJOR.MINOR.PATCH`, cut at the commit its first public
+tag came from (`release/v0.2.0` = `ae88febf`, the `v0.2.0-rc9.1` commit). `v0.2.0` stable was tagged on 2026-10-17 from the branch tip `e8b946ca` (public `9266fae`), and the branch was merged back into `master` (`d6aefe2b`). Every hotfix for that
+line lands there:
+
+1. Make the fix on the branch, or cherry-pick it from `master` (`git cherry-pick -x`). Gate it
+   there as in 0.2. Commit, `git push origin release/v0.2.0`.
+2. Tag the next version from the branch (`rc9.2`, ..., then `v0.2.0`, `v0.2.1`; never `rc10`, see
+   section 1) and run 0.4–0.7 from a checkout of the branch. `build_public_seed.py --follow-up`
+   publishes the CHECKED-OUT tree, so the public `main` then carries the branch, not `master`.
+3. Merge the branch back into `master` (`git merge --no-ff release/v0.2.0`), so no fix is lost
+   in the next release.
+
+`master` stays the development line; nothing from it reaches the release branch except by an
+explicit cherry-pick.
+
 ## 1. The version convention
 
 **`vMAJOR.MINOR.PATCH`, optionally with a pre-release suffix: `v0.1.0`, `v0.1.0-rc1`, `v0.2.0-beta`.**
@@ -262,7 +279,8 @@ Keep the **Known limits** block current: it is the one place a downloader reads 
 that is a limit. Three at `v0.2.0` — TCP needs a forwarded port (only UDP has the relay; UDP is the
 shipped default since 2026-09-20, so a hand-unzipped install with an untouched `mh_net.ini` is
 already on the relay-capable transport), the 8-player cap, and one channel-C map transfer at a time
-(`mp:T2a`). Each is retired from the template when its tracker row closes, which is what happened to
+(`mp:T2a`; closed on path B: one transfer per endpoint is kept as the contract and transfers serialise,
+so this limit stays in the block). Each other limit is retired from the template when its tracker row closes, which is what happened to
 the fourth: **the one-row browser (`mp:R2b`) shipped fixed in v0.2.0** — the list now shows every
 relay-hosted game — so the line is gone from the block above rather than kept as history. The
 example message is the CURRENT template, not a transcript of `v0.1.0`.

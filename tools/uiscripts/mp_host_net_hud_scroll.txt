@@ -1,0 +1,78 @@
+# net_hud_scroll HOST (tooling:TL-SUITE-FOLD step 7): net_hud + scroll_stall in ONE udp match through a plain-relay shim.
+# Replaces the rows net_hud (mp_host_hud.txt) and scroll_stall (mp_host_scroll_stall.txt); the old scripts' RE background is in git history.
+#
+# Segments, in order (each ends with the link healthy again):
+#   1. net_hud (mp:L1/L1c/L1d): capture the connection indicator at gameclock 20000 on a clean link. Taken FIRST: its bar reads full only
+#      while ipdv/loss are clean, which a forced stall would spoil. The client signals `hudcap` after its own capture.
+#   2. net_hud stall (mp:TL-UISTALL): the row's trigger on the `net_hud cut` marker blackholes host -> client (s2c) and the client captures its
+#      `WAITING FOR host` frame, then signals `stallcap`; the `net_hud lift` marker lifts the blackhole. It is the FIRST stall of the match on
+#      purpose: after host-side stalls the client's indicator names the host `PLAYER <n>` and the stall frame draws nothing (seen in the first
+#      fold attempt, 2026-10-15) -- the row asks the net_hud question under the conditions net_hud always asked it in.
+#   3. scroll_stall (mp:U48): LEFT is held and released INSIDE a forced stall (`blackhole c2s` on the `scroll_stall: hold start` marker,
+#      lifted on `released in stall`); the scroll latch must clear (check_cam_trace, windowed between the `scroll_stall: begin` and
+#      `scroll_stall: resumed` markers).
+# NOT folded in: dialog_stall (mp:U44). Behind the s2c stall of segment 2 its closing "sell" step went red in about half of the solo runs
+# (the dialog was left in the dead mode 3 the step exists to catch), where the standalone walk was 5/5 green -- see the registry comment.
+# THE STALLS ARE FORCED, NOT WAITED FOR; `stalled <ms>` proves each one was in force.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 20000
+# ---- segment 1: net_hud (L1) -- the player-visible connection indicator on a CLEAN link, before any stall. The client captures its own
+# at the same clock and signals; the host waits so the stall below cannot start before both frames are taken.
+capture net_hud__n1_hud
+log HOST captured the net indicator in a live udp match
+awaitsignal hudcap
+
+# ---- segment 2: net_hud stall (TL-UISTALL) ----
+log HOST net_hud_scroll: net_hud cut
+awaitsignal stallcap
+log HOST net_hud_scroll: net_hud lift
+# the lifted s2c blackhole lets the client's sim resume
+gameclock +2000
+
+# ---- segment 3: scroll_stall (U48) ----
+log HOST scroll_stall: begin
+# the cursor is centred first so no CAM_EDGE_* latch can muddy the held= column
+cursorhold 512 384 30
+log HOST scroll_stall: hold start
+keyhold 0x4b 600
+stalled 0
+# (c) chat still works IN the stall: the rescue peeks, it never consumes, so Enter + text still reach the
+# chat line through the overlay's own pump. `field chat` waits for the exact buffer (abort on timeout).
+key 0x1c
+type ho
+field chat hex:686f
+key 0x1c
+log HOST scroll_stall: released in stall
+# 240 more presents: the UP sits in the ring until a frame drains it, and the clear (or the stuck latch) needs
+# frames to be SEEN in the trace. (gameclock is no help here: the hold itself already ran the clock past any
+# fixed target.)
+cursorhold 512 384 240
+# the capture's size follows the screen mode: a frame taken while the wait overlay still holds the 640x480 menu surface is a different image
+gamemode 2
+capture scroll_stall__s1_resumed
+log HOST scroll_stall: resumed
+signal hostdone
+end

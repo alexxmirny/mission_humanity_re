@@ -25,7 +25,8 @@ VM-needing arms: `--topology vm` (or a spec prefixed `vm:`) runs the arm in the 
 one pair of VMs, so those arms are serialised on a lock and take no slot; local arms run beside them.
 
 NOT parallelisable here (the child refuses or the scheduler would lie): arms that need the shim control port singleton
-(6699: the u64 partition/heal arms) or `--u64*` at all (4 local lanes + a shim) -- run those through det_arms.py directly.
+(6699: the u64 partition/heal arms) -- run those through det_arms.py directly. The other `--u64 <arm>` arms (elect4,
+newhub, double, spec4, spec4neg, base4) are 4-peer all-local arms (the 4 lanes of a slot; tooling:TL-RELGATE-FOLD).
 
 Output: one verdict table (arm, slot, verdict, wall, per-phase seconds from the child's `[phase]` lines) and
 tmp/rig_par/last_run.json. Exit 0 only if every arm is PASS.
@@ -54,6 +55,24 @@ PRESETS = {
         "--u63-crash --u55-relay --u53-config1",
         "--u63-neg",
     ],
+    # tooling:TL-RELGATE-FOLD -- the host-migration arms that the RELEASE gate runs ALL-LOCAL (3-wide) instead of one
+    # after another on the VM pair. Longest first (the 4-peer arms, then the arms that wait out U55's 58 s end), so the
+    # batch's tail is a short arm. The VM chain keeps hm_crash (--u63-crash direct), the shim arms (u64 partition /
+    # heal, shim control port 6699 singleton) and `--u64 newhub`: measured local 4/8 PASS (the second failover among 4
+    # loopback peers is the load-sensitive one: a survivor's log truncated at ~2300 of 2600 steps, or a step-601 removal
+    # desync) against 1/1 on the VM pair, so it was NOT moved (tooling:TL-RELGATE-FOLD, fold 6). Same checkers as the VM arms (check_u62/u63/u53/u64): same verdicts.
+    "hm_local": [
+        "--u64 elect4",
+        "--u64 double",
+        "--u62-neg",
+        "--u62-host-exit",
+        "--u62-host-quit",
+        "--u63-crash --u55-relay --u53-config1",
+        "--u63-crash --u55-relay",
+        "--u63-crash --u53-config1",
+        "--u53-host-elim",
+        "--u53-client-elim",
+    ],
 }
 VERDICT_RE = re.compile(r"\[det\] U\d\d (\S+): (PASS|FAIL)")
 PHASE_RE = re.compile(
@@ -65,6 +84,18 @@ PHASE_RE = re.compile(
 LOAD_SIGNS = ("did not present a frame", "waited", "TIMEOUT", "timed out", "stalled run")
 _procs = {}
 _procs_lock = threading.Lock()
+
+
+# u64 arms that drive tools/net_shim.py (u64_arms.ARMS[..]["partition_at"]); the others (elect4, newhub, double, spec4*,
+# base4) are plain 4-lane local arms since tooling:TL-RELGATE-FOLD.
+SHIM_U64 = ("partition", "heal")
+
+
+def _u64_needs_shim(spec):
+    toks = spec.split()
+    return any(
+        t == "--u64" and i + 1 < len(toks) and toks[i + 1] in SHIM_U64 for i, t in enumerate(toks)
+    )
 
 
 def kill_tree(proc):
@@ -271,10 +302,10 @@ def main(argv=None):
     if not specs:
         ap.error("give arms or --preset")
     for s in specs:
-        if "--u64" in s or "--shim" in s:
+        if "--shim" in s or _u64_needs_shim(s):
             ap.error(
-                "arm %r: u64/shim arms are not parallelisable (shim control port 6699 singleton) -- run them via det_arms.py"
-                % s
+                "arm %r: shim arms (u64 partition / heal) are not parallelisable (shim control port 6699 singleton) -- "
+                "run them via det_arms.py" % s
             )
     if not 1 <= args.parallel <= lane_alloc.PAR_SLOTS:
         ap.error("--parallel must be 1..%d" % lane_alloc.PAR_SLOTS)

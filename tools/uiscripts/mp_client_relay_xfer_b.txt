@@ -1,0 +1,26 @@
+# X2d CLIENT 2 (tooling:TL-SUITE-FOLD step 5) -- the map_join_race walk: JOIN a relay-listed game from the FIRST browser (no IP window; the
+# row clears this client's saved server), its first host advert held until its JOIN has gone out ([net] map_test_advert_hold_ms, this client
+# only). Then wait for Start and enter the match. Pair with mp_host_relay_xfer.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# THE FIRST BROWSER lists the relay-hosted game by itself (mp:R7); the Internet-server button stays unclicked (that is the direct path)
+present Internet server
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby_b
+settled Cancel
+occ 3
+capture map_join_race__m2_lobby
+absent Network players
+gameclock 6000
+capture map_join_race__m3_launched
+log CLIENT joined from the FIRST browser through the relay, past the advert-vs-JOIN race, and entered the match
+end

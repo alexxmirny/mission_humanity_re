@@ -1,7 +1,7 @@
 # mp:R7a DIRECT-DIAL CLIENT walk: with `[net] relay` set in the CLIENT ini, use *Internet server* +
 # a typed address and connect DIRECT -- the relay is configured but MUST NOT be contacted for this dial.
 #
-# WHAT THIS PROVES, and how it differs from relay_browse. relay_browse (R2) reaches the same session
+# WHAT THIS PROVES, and how it differs from relay_seq client 2 (mp_client_relay_browse.txt). That walk (R2) reaches the same session
 # browser and its Connect goes THROUGH the relay, because the game it wants is a relay-directory row.
 # Here the host is NOT on the relay (relay_client_only in test_ui.py), so there is no directory row --
 # and since R7a the session browser's *Internet server* + typed IP is a genuine direct dial: the

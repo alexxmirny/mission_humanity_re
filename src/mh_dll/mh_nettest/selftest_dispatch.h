@@ -26,6 +26,24 @@
 #include <stdlib.h>
 #include <string.h>
 
+// HOW LONG A SUITE WAITS FOR A BACKGROUND WORKER TO GO IDLE (the state recorder's writer, the gzip
+// thread, the seed-sanity scan). These waits return the instant the worker is done, so the deadline
+// costs nothing when it is met and only bounds a worker that truly never finishes -- it must therefore
+// be set by "longest a loaded box could take", not by "how long it takes on mine": the workers run at
+// BELOW_NORMAL, and under contention a 0.3 s gzip was measured at 11.8 s (and a scan waited out its
+// old 5 s bound in 24 of 24 runs beside 24 CPU burners). TL-SELFTEST-TAIL.
+inline constexpr unsigned SELFTEST_WAIT_IDLE_MS = 120000;
+
+// A PORT-BAND SHIFT FOR RUNNING SEVERAL COPIES OF A SUITE AT ONCE (TL-TEST-LOAD). The suites that bind
+// a band of fixed UDP ports (udploopbacktest 39560.., meshtest 40100..) cannot be run twice on one box
+// -- the second copy's bind fails or, worse, its datagrams reach the first copy's endpoints -- so a
+// load test of them measured collisions rather than the flake. MH_SELFTEST_PORT_SHIFT (default 0, so
+// every committed number and every gate run is unchanged) moves the whole band of one process.
+inline int selftest_port(int base) {
+    const char *v = getenv("MH_SELFTEST_PORT_SHIFT");
+    return base + (v ? atoi(v) : 0);
+}
+
 // Everything a suite may be handed. Parsed ONCE in main() so a row cannot disagree with its
 // neighbours about which argv slot means what.
 struct suite_args {

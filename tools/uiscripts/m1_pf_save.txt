@@ -1,0 +1,12 @@
+# mods:M1 S0 -- the ground path-trace probe on a loaded save (deploy it with --deploy-save <name>): load the
+# newest save from the main menu, then hand the run to the harness's pf_* probe (see m1_pf_solo.txt).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+log pf: save loaded, handing the run to the harness
+end

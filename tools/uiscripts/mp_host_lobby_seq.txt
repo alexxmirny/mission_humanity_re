@@ -1,0 +1,157 @@
+# lobby_host_seq HOST (tooling:TL-SUITE-FOLD step 6) -- ONE host process, FOUR lobby-only TCP segments, one client after another
+# (client_sequence). Replaces the four rows whose host scripts are concatenated here, in this order:
+#   1 lobby_team       mp_host_team.txt         the TEAM spinners + MODE selector (mp:U51)            client 1 mp_client_team_seq.txt
+#   2 leave_frees_slot mp_host_watch_leave.txt  a plain lobby Cancel's LEAVE frees the slot (U12)     client 2 mp_client_leave_seq.txt
+#   3 host_recreate    mp_host_recreate.txt     host Cancel + re-create, client re-discovers + rejoins client 3 mp_client_rejoin_seq.txt
+#   4 s7_occ_cap       mp_host_ai_closed.txt    1 human + 1 AI + 1 closed slot reads 2/7 in a browser  client 4 mp_client_browse_s7_seq.txt
+# Each segment's rendezvous signals keep their old names (all distinct). Segment 1 ends by putting its AI slot back to OPEN (a lobby
+# `occ` predicate is exact, so a leftover AI would break segment 2's `occ 2`); segment 3 re-creates the game, so segment 4 starts clean.
+# Between segments the host waits for the previous client to LEAVE (`occ <2`) before it arms the next segment's gates. Segment 4's
+# client only browses, so the host holds its final lobby until that client signals `s7done`.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+# ================= segment 1: lobby_team =================
+peers 1
+occ 2
+settled Cancel
+click 70 149
+present Computer
+occ 3
+lobbymode 0
+team 0 0
+team 1 0
+team 2 0
+
+# --- FFA: the spinners are visible and editable here too. Own row once, the AI row once. ---
+click 221 115
+team 0 1
+click 221 149
+team 2 1
+awaitsignal clientin
+capture lobby_team__t1_host_ffa
+
+# --- Team mode: the host selects it; the teams set in FFA survive the switch ---
+click 501 370
+lobbymode 1
+team 0 1
+team 2 1
+# the AI row once more
+click 221 149
+team 2 2
+capture lobby_team__t2_host_team
+
+# --- the client cycles its own row (and probes the host's row + the mode selector, which must not move) ---
+awaitsignal clientdone
+team 1 2
+team 0 1
+team 2 2
+lobbymode 1
+capture lobby_team__t3_host_after_client
+
+# --- vacate + re-take the AI slot: the team is forgotten ---
+click 70 149
+absent Computer
+team 2 0
+click 70 149
+click 70 149
+present Computer
+team 2 0
+capture lobby_team__t4_host_retaken
+
+# --- back to FFA: the spinners hide on both peers ---
+click 501 370
+lobbymode 0
+capture lobby_team__t5_host_ffa
+awaitsignal clientffa
+log HOST team/mode scenario COMPLETE
+# put the AI slot back to OPEN (AI -> CLOSED -> OPEN) and wait for client 1 to leave
+click 70 149
+absent Computer
+click 70 149
+screensettled
+# and the host's own TEAM spinner back to '-' (T1 -> T2 -> T3 -> T4 -> -) so segment 2's roster frame shows an untouched row
+click 221 115
+team 0 2
+click 221 115
+team 0 3
+click 221 115
+team 0 4
+click 221 115
+team 0 0
+occ <2
+# ================= segment 2: leave_frees_slot =================
+peers 1
+occ 2
+settled Start
+capture leave_frees_slot__h1_client_seated
+signal hseated
+
+# U12: the client clicked Cancel -> LEAVE -> this host vacates its slot.
+occ <2
+# ...and it did so on the MESSAGE, not on a dropped link: the peer is still connected.
+peers 1
+# the retail consequence the player sees: Start greys itself again (it is the game's own
+# "enough players" signal, the same one mp_host_start.txt waits for).
+disabled Start
+capture leave_frees_slot__h2_slot_freed
+log HOST freed the departed client's lobby slot from its LEAVE (peer still connected)
+signal hdone
+# ================= segment 3: host_recreate =================
+occ 2
+capture host_recreate__h1_lobby
+# LEAVE the lobby (host Cancel -> local browser), then RE-CREATE game2.
+# Wait for the client to have TAKEN ITS OWN c1 capture first (mp_client_rejoin.txt: `signal c1shot`).
+# `occ 2` is satisfied on this peer seconds before the client's view is capture-ready, and leaving on it
+# yanked the lobby out from under the client's capture -- see the note in mp_client_rejoin.txt. (H1)
+awaitsignal c1shot
+clickl Cancel
+# Hold the re-create until the client has captured the browser it was just dumped onto (U29/U22 a0,
+# `c1b_after_host_left`). Without this the host's game2 can arrive mid-capture and the frame carries a
+# session row that appears or not depending on timing -- the same class of race as c1shot above.
+awaitsignal c2shot
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+occ 2
+capture host_recreate__h2_rejoined
+log HOST re-created game2; client re-joined (both seated)
+# client 3 ends with a plain Cancel; wait for its slot to free
+occ <2
+# ================= segment 4: s7_occ_cap =================
+absent No network module
+settled Start
+capture s7_occ_cap__lobby_open
+
+# --- CLOSE slot 2 (two state clicks: OPEN->AI->CLOSED), settling on the AI name between them ---
+click 70 149
+present Computer
+capture s7_occ_cap__lobby_s2_ai
+click 70 149
+dump
+capture s7_occ_cap__lobby_s2_closed
+
+# --- ADD AI in slot 1 (one click: OPEN->AI) ---
+click 70 132
+present Computer
+capture s7_occ_cap__lobby_final
+log host set to 1 human + 1 AI (slot1) + 1 closed (slot2)
+awaitsignal s7done
+end

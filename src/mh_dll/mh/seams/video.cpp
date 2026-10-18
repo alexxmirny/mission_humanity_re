@@ -59,6 +59,7 @@
 #include "ui_panel_rows.h"             // RES7: the side-panel list tables grown for the tallest entry
 #include "gfx/res_list.h"              // RES3: the generated resolution list
 #include "include/mh_mapzoom_export.h" // MH_MapZoom_ReseedWheel
+#include "include/mh_uiwheel_export.h" // MH_UiWheel_Reseed
 #include "addr/mh_calls.gen.h"         // RES6: llm_view_set_size_mode / llm_map_cam_set_col
 
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -1329,6 +1330,7 @@ extern "C" void __cdecl on_galaxy_open_pre() {
     g_galaxy_prev_ix = ix;
     g_galaxy_active  = true;
     MH_MapZoom_ReseedWheel();
+    MH_UiWheel_Reseed();
 }
 
 // After the build (which wrote the cache from the native mode): the size to restore on exit is the picker one.
@@ -1344,7 +1346,8 @@ extern "C" void __cdecl on_view_apply_pre() {
     *(int *)ADDR_MODE_CACHE = g_galaxy_prev_ix;
     g_galaxy_active         = false;
     vid_log("; [video] galaxy native: leaving the screen, restoring picker %d", g_galaxy_prev_ix);
-    MH_MapZoom_ReseedWheel(); // the wheel counter restarts with the size change; the zoom itself is kept
+    MH_MapZoom_ReseedWheel();
+    MH_UiWheel_Reseed(); // the wheel counter restarts with the size change; the zoom itself is kept
     cursor_capture();
 }
 

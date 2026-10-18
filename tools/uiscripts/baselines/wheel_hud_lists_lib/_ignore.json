@@ -1,0 +1,17 @@
+{
+  "_why_minimap": "tooling:TL-SUITE-FOLD step 9: the wheel_hud_lists captures mask the strategic minimap [869,5,132,132] (unit dots and the fog edge move between runs: 0.24-0.36% of the frame against a 0.3% tol, and ship_walk's c_owned_list failed at 0.312/0.356%). Outside the minimap the frames are pixel-identical to the baselines (checked on all six captures except 44 px of d_unit_panel's list, inside its 0.6% tol); the lists under test are all below y 140.",
+  "*": [
+    [
+      0,
+      0,
+      864,
+      768
+    ],
+    [
+      869,
+      5,
+      132,
+      132
+    ]
+  ]
+}

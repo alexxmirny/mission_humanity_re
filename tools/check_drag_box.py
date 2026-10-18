@@ -23,6 +23,9 @@ Absence of a drag is RED.
 
   check_drag_box.py [--stock | --update-oracle] [--allow-skip] <run-dir>
   check_drag_box.py --wide <run-dir>     RES13: the res_drag_wide row (drags wider than half the map), see wide_problems
+  check_drag_box.py ... --segment NAME [--session N] <run-dir>
+                                         a multi-segment walk (ship_walk): judge only the lines between `; [mark] NAME` and
+                                         the next mark, and the orders of the Nth game session that recorded any
   check_drag_box.py --selftest
 """
 
@@ -57,6 +60,9 @@ BOX = re.compile(
     r"cam (?P<cx>-?\d+),(?P<cy>-?\d+) screen (?P<l>-?\d+),(?P<t>-?\d+)\.\.(?P<r>-?\d+),(?P<b>-?\d+)\s*$"
 )
 STAMP = re.compile(r"^\[[0-9:.]+\] ")
+sys.path.insert(0, HERE)
+import walk_segments  # noqa: E402  the `; [mark] <segment>` slicer shared by the multi-segment walks
+
 ORDER_LEN, REC_LEN, HEADER_LEN = 0x44, 0x48, 8
 
 
@@ -81,12 +87,18 @@ def session_dirs(run_dir):
     return out
 
 
-def read_orders(run_dir):
-    """The player's recorded orders as hex strings of every byte but exec_time (the double at 0), in record order; None if no file."""
+def read_orders(run_dir, session=None):
+    """The player's recorded orders as hex strings of every byte but exec_time (the double at 0), in record order; None if no file.
+    `session` (1-based) picks the Nth game session of a multi-segment walk that recorded orders (a walk starts one game per
+    segment, each in its own session dir); None keeps the single-game rows' rule, the first session that has the file."""
+    seen = 0
     for d in session_dirs(run_dir):
         for name in ("mh_rec_orders.bin", "mh_rec_orders.bin.gz"):
             p = os.path.join(d, name)
             if os.path.isfile(p):
+                seen += 1
+                if session is not None and seen != session:
+                    continue
                 blob = open(p, "rb").read()
                 if p.endswith(".gz"):
                     blob = gzip.decompress(blob)
@@ -116,11 +128,15 @@ def read_orders(run_dir):
     return None
 
 
-def parse(text):
-    """{label: {world, cam, screen, ids, n}} plus the guard lines. Drag K's box is the last `[drag_box] world` before dK_dragging."""
+def parse(text, premarked=False):
+    """{label: {world, cam, screen, ids, n}} plus the guard lines. Drag K's box is the last `[drag_box] world` before dK_dragging.
+    `premarked`: the text is already one walk segment's slice (tools/walk_segments.py), not a whole log to cut at the row's mark."""
     text = "\n".join(STAMP.sub("", ln) for ln in text.splitlines())
-    seg = re.split(r"; \[mark\] res_drag_(?:box|wide)", text, maxsplit=1)
-    body = seg[1] if len(seg) == 2 else ""
+    if premarked:
+        body = text
+    else:
+        seg = re.split(r"; \[mark\] res_drag_(?:box|wide)", text, maxsplit=1)
+        body = seg[1] if len(seg) == 2 else ""
     drags, last_box, skipped = {}, None, []
     for ln in body.splitlines():
         m = BOX.match(ln)
@@ -155,14 +171,17 @@ def parse(text):
     return out, skipped
 
 
-def snapshot(run_dir):
+def snapshot(run_dir, segment=None, session=None):
     text = video_log(run_dir)
     if text is None:
         return None, ["no mh_video.log in %s" % run_dir]
-    drags, skipped = parse(text)
+    seg, why = walk_segments.slice_or_problem(text, segment)
+    if why:
+        return None, [why]
+    drags, skipped = parse(seg, premarked=bool(segment))
     return {
         "drags": drags,
-        "orders": read_orders(run_dir),
+        "orders": read_orders(run_dir, session),
         "skipped": skipped,
         "armed": "draw guard armed" in text,
         "dir_armed": "drag direction armed (4/4 sites)" in text,
@@ -399,15 +418,26 @@ def wide_problems(snap, oracle):
     return out
 
 
+def pop_session(argv):
+    """(N or None, argv without `--session N`): the Nth game session of a multi-segment walk that recorded orders (1-based)."""
+    argv = list(argv)
+    if "--session" in argv:
+        i = argv.index("--session")
+        return int(argv[i + 1]), argv[:i] + argv[i + 2 :]
+    return None, argv
+
+
 def main(argv):
     if "--selftest" in argv:
         return selftest()
+    segment, argv = walk_segments.pop_segment(argv)
+    session, argv = pop_session(argv)
     if "--wide" in argv:
         args = [a for a in argv if not a.startswith("--")]
         if len(args) != 1:
             print(__doc__)
             return 2
-        snap, bad = snapshot(args[0])
+        snap, bad = snapshot(args[0], segment, session)
         if not bad:
             with open(ORACLE) as f:
                 bad = wide_problems(snap, json.load(f))
@@ -420,7 +450,7 @@ def main(argv):
     if len(args) != 1:
         print(__doc__)
         return 2
-    snap, bad = snapshot(args[0])
+    snap, bad = snapshot(args[0], segment, session)
     if bad:
         print("check_drag_box: FAIL -- " + "; ".join(bad))
         return 1

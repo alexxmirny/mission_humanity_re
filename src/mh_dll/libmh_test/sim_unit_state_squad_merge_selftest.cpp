@@ -154,6 +154,18 @@ void                  rec_unit_set_state(uint16_t new_state) {
     g_set_state_calls.push_back(new_state);
 }
 
+// ---- llm_strat_target_release_ref (mods:M1C move_squad_merge_fix only) ------------------------------
+struct release_call {
+    uint32_t player;
+    int32_t  unit_idx;
+    uint32_t mode;
+};
+std::vector<release_call> g_release_calls;
+void                      rec_target_release_ref(uint32_t player, int32_t unit_idx, uint32_t mode) {
+    tr("target_release_ref");
+    g_release_calls.push_back({player, unit_idx, mode});
+}
+
 const unit_state_squad_merge_calls g_calls = {
     &rec_wrap_delta_x,
     &rec_wrap_delta_y,
@@ -163,6 +175,7 @@ const unit_state_squad_merge_calls g_calls = {
     &rec_unit_teardown_mapped,
     &rec_unit_change_proto_and_energy,
     &rec_unit_set_state,
+    &rec_target_release_ref,
 };
 
 constexpr uint16_t PLAYER       = 3;
@@ -190,6 +203,7 @@ void reset_recorders() {
     g_teardown_touch_experience_after = 0;
     g_change_calls.clear();
     g_set_state_calls.clear();
+    g_release_calls.clear();
 }
 
 soldier &sold(sim_fixture &fx, int32_t index) {
@@ -338,6 +352,47 @@ void run_unit_state_squad_merge_tests() {
 
         ck(g_set_state_calls.size() == 1 && g_set_state_calls[0] == UNIT_STATE_STOP_TO_DEFAULT,
            "T4: target not idle -- unit_set_state(STOP_TO_DEFAULT), 0x0047ebe9/0x0047ecbf");
+    }
+
+    // =================================================================================================
+    // T4M -- [net] move_squad_merge_fix (mods:M1C). (a) a target firing at a building (0x1c), settled
+    // (move_microstep 0x1f), mergeable: released (mode 1), target_ref/index cleared, state = order = 1,
+    // and the merge proceeds (teardown runs, no bail). (b) the same target mid-step: refused, untouched.
+    // (c) settled but 3c fails: refused, untouched (a refused merge never stops an attacker). (d) key
+    // off: T4's bail, target untouched.
+    // =================================================================================================
+    {
+        for (int arm = 0; arm < 4; ++arm) {
+            fx.reset();
+            reset_recorders();
+            make_self_unit(fx);
+            unit &t          = make_eligible_target(fx);
+            t.state          = 0x1c;
+            t.order          = 0x1c;
+            t.target_ref     = 0x41;
+            t.target_index   = 6;
+            t.move_microstep = arm == 1 ? 0x10 : 0x1f;
+            if (arm == 2) fx.cfg_units[TARGET_PROTO].soldier_count = 3; // 3+1 > family_count(3)
+            set_move_squad_merge_fix(arm != 3);
+
+            sim_store own = fx.store();
+            detail::unit_state_squad_merge(fx.view(), own, g_calls);
+            set_move_squad_merge_fix(false);
+
+            if (arm == 0) {
+                ck(g_release_calls.size() == 1 && g_release_calls[0].player == PLAYER && g_release_calls[0].unit_idx == TARGET_IDX &&
+                       g_release_calls[0].mode == 1u,
+                   "T4M(a): the firing target is released once, mode 1");
+                ck(t.state == UNIT_STATE_STOP_TO_DEFAULT && t.order == UNIT_STATE_STOP_TO_DEFAULT && t.target_ref == 0 && t.target_index == 0,
+                   "T4M(a): target idle (state = order = 1), target_ref/index cleared");
+                ck(g_set_state_calls.empty(), "T4M(a): no bail");
+                ck_eq((uint32_t)g_teardown_calls.size(), 1u, "T4M(a): the merge completes (teardown_mapped runs)");
+            } else {
+                ck(g_release_calls.empty() && t.state == 0x1c && t.target_ref == 0x41,
+                   arm == 1 ? "T4M(b): mid-step target untouched" : (arm == 2 ? "T4M(c): 3c fails -- target untouched" : "T4M(d): key off -- target untouched"));
+                ck(g_set_state_calls.size() == 1 && g_set_state_calls[0] == UNIT_STATE_STOP_TO_DEFAULT, "T4M(b/c/d): the mover bails at 3b/3c");
+            }
+        }
     }
 
     // =================================================================================================

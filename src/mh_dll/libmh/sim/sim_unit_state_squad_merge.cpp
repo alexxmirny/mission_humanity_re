@@ -24,6 +24,7 @@ const unit_state_squad_merge_calls &live_unit_state_squad_merge_calls() {
         MH_LIBMH_BIND(llm_strat_unit_teardown_mapped),
         MH_LIBMH_BIND(llm_strat_unit_change_proto_and_energy),
         MH_LIBMH_BIND(llm_strat_unit_set_state),
+        MH_LIBMH_BIND(llm_strat_target_release_ref),
     };
     return c;
 }
@@ -102,6 +103,29 @@ void unit_state_squad_merge(const sim_view &v, sim_store &own, const unit_state_
     if (v.cfg_units[target_proto].soldier_count <= 0) {
         c.unit_set_state(UNIT_STATE_STOP_TO_DEFAULT);
         return;
+    }
+
+    // ---- [net] move_squad_merge_fix (mods:M1C; retail carrier: combat_proto.cpp's splice on the 3b compare) ----
+    // A target that is firing (0x1a/0x1b/0x1c) and settled on its tile, and that would pass 3c/3d/3e below (evaluated
+    // here with the same inputs and calls, so a refused merge never stops an attacker), is released and put idle, so
+    // the 3b compare passes. Off = this block does nothing.
+    if (move_squad_merge_fix() && c.target_release_ref) {
+        unit &t = own.unit_at(player, target_idx);
+        if (t.state == 0x1a || t.state == 0x1b || t.state == 0x1c) {
+            const bool settled = t.move_microstep >= 0x1f;
+            const bool fits    = v.cfg_units[target_proto].soldier_count + cfgA <= family_count &&
+                              v.cfg_units[target_proto].soldier_type == v.cfg_units[self_proto].soldier_type;
+            const int32_t pdx      = c.wrap_delta_x(x, y, goal_x);
+            const int32_t pdy      = c.wrap_delta_y(x, y, goal_x, goal_y);
+            const bool    adjacent = ((pdx <= pdy) ? pdy : pdx) <= 1;
+            if (settled && fits && adjacent && &t != &u) {
+                if (t.target_ref != 0) c.target_release_ref(player, target_idx, 1u);
+                t.target_ref   = 0;
+                t.target_index = 0;
+                t.state        = UNIT_STATE_STOP_TO_DEFAULT;
+                t.order        = UNIT_STATE_STOP_TO_DEFAULT;
+            }
+        }
     }
 
     // ---- step 3b (0x0047ebcb-0x0047ebe9): target must be idle ----

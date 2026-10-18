@@ -622,6 +622,11 @@
       "note": "mp:CH1 (2026-09-21). __watcall(void), plain RET. The one call every Enter in the in-game chat line makes BEFORE the mode split (llm_strat_input_update 0x00441c27; also llm_net_chat_input_process and the scancode drain's own 0x1c arm) -- the run-before site of the redacted `; [chat] submit` log line (seams/ui_cheat_gate.cpp). Entry `55 89 E5 68 24 00 00 00`."
     },
     {
+      "name": "llm_ui_print_queue_text_id",
+      "en": "0x0049653d",
+      "note": "mods:D11: __watcall void(int text_id), text id in EAX; the floating-message printer llm_strat_bldg_try_begin_placement calls (bracketed by _G_LLM_STRAT_FLOATING_MSG_QUEUE_ACTIVE = 0 / 1) for a refused build-cost click. The Shift re-arm prints the same refusal when the chain stops because the next copy is unaffordable"
+    },
+    {
       "name": "llm_strat_minimap_draw_viewport_box",
       "en": "0x004a2344",
       "note": "RES9: the minimap's viewport-box draw, hand-written asm, no parameters, preserves only ECX/ESI/EBP; sole caller llm_strat_minimap_render (0x004a22f6, inside its PUSHAD/POPAD). Draws the W x H outline in 0xDEFF at [_G_LLM_GFX_DRAW_SURFACE] + pitch*ORIGIN_Y + 2*ORIGIN_X + BOX_OFS with no clipping; at render heights >= 1152 in zoom mode 4 the box starts above the side-panel surface. Entry `8B 3D 00 3B 60 00` (MOV EDI,[0x00603b00]) is JMPed to the clipped draw (seams/ui_minimap_box.cpp)."
@@ -675,6 +680,12 @@
       "en": "0x00448c90",
       "parent": "llm_strat_bldg_try_begin_placement",
       "note": "mp:D35: CALL llm_strat_bldg_grant_type_resources (E8 2A AB 04 00) -- the re-grant that undid the probe's payment and booked +cost into the gains-only resource_spent counter on the clicking peer alone; NOPed together with the pay splice (both or neither)"
+    },
+    {
+      "name": "bldg_rearm_clear_site",
+      "en": "0x00443ae9",
+      "parent": "llm_strat_input_update",
+      "note": "mods:D11: the 10-byte MOV dword ptr [_G_LLM_BUILD_PLACEMENT_ID],0 (C7 05 DC 01 5D 00 00 00 00 00) at the LMB-up of a placement (inside `if (BUILD_PREVIEW_SUPPRESS_FLAG) {..}`, the jz at 0x00443ae7 skips to 0x00443afd) -- the clear that un-arms the building type after every placement; spliced to CALL rel32 + 5 NOPs to a thunk that keeps the id while Shift is held and the next copy is affordable"
     },
     {
       "name": "netcrit_ui_call_site",

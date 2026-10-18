@@ -7,7 +7,7 @@ runs them all (or a filtered subset) and aggregates PASS/FAIL/SKIP so a regressi
 
     python tools/test_ui.py                 # run every test (solo + VM)
     python tools/test_ui.py --solo          # only the single-peer tests (host-only on the first VM)
-    python tools/test_ui.py --only s7_occ_cap match_launch
+    python tools/test_ui.py --only lobby_host_seq match_launch
     python tools/test_ui.py --list          # list tests + exit
     python tools/test_ui.py --update-baselines   # regenerate every baseline (careful)
 
@@ -579,6 +579,30 @@ RED_VERDICTS = ("FAIL", *TIMEOUT_CLASSES)
 LOAD_RERUN_CAP = 3
 
 
+def group_weight(grp):
+    """A scheduling group's expected wall seconds: its rows' budget_s summed (a share_lanes group
+    runs serially in one worker). `grp` is a list of (index, test)."""
+    return sum(t.get("budget_s") or 0 for _i, t in grp)
+
+
+def lpt_order(groups):
+    """tooling:TL-SUITE-FOLD step 10: the groups longest-first (LPT list scheduling). A pool takes
+    groups in submission order, so a 300 s group that starts late is the suite's tail; started first
+    it overlaps everything else. Stable, so equal weights keep registry order. Order only -- the
+    groups themselves (lane exclusivity, owners before sharers) are untouched."""
+    return sorted(groups, key=group_weight, reverse=True)
+
+
+def predict_makespan(groups, workers):
+    """Wall seconds a pool of `workers` needs to run `groups` taken in the order given, each at its
+    budget_s weight (greedy: the next group goes to the first worker to free up)."""
+    free = [0.0] * max(1, workers)
+    for g in groups:
+        i = free.index(min(free))
+        free[i] += group_weight(g)
+    return max(free) if groups else 0.0
+
+
 def apply_load_rerun(tests, results, timings, run_one, cap=LOAD_RERUN_CAP, allow_check=None):
     """Mutates `results`/`timings` in place for every non-`expect_red` row whose verdict is in
     RED_VERDICTS; returns the {name: {...}} detail dict for the suite's own record. Pure enough to
@@ -722,6 +746,67 @@ def loadred_selftest():
     return 0 if ok else 1
 
 
+def merge_solo_step(row, step):
+    """tooling:TL-SUITE-FOLD step 8: the registry row ONE process of a `solo_steps` row runs as
+    (ui_registry.merge_step: the step's keys over the row's, extra_ini concatenated, harness_extra
+    merged by key)."""
+    return ui_registry.merge_step(row, step, "solo_steps")
+
+
+def merge_multi_step(row, step):
+    """tooling:TL-SUITE-FOLD step 9: the registry row ONE match of a `multi_steps` row runs as."""
+    return ui_registry.merge_step(row, step, "multi_steps")
+
+
+def solo_requires(name, args):
+    """(ok, reason) of the precondition a solo step names (a function in ui_suite_common)."""
+    fn = getattr(ui_suite_common, name, None)
+    if not callable(fn):
+        return False, "unknown precondition %r" % name
+    return fn(args)
+
+
+def solo_step_saves(row):
+    """Every save name (and its `name_NN` copies) any step or the row itself deploys: the files the
+    runner sweeps out of the lane between steps, so a step's Load list is what a fresh lane would
+    hold rather than what the previous step left (ui_test copies saves in, never out)."""
+    names = set()
+    for spec in [row.get("deploy_save")] + [
+        s.get("deploy_save") for s in row.get("solo_steps", ())
+    ]:
+        for tok in (spec or "").split(","):
+            base, _, count = tok.partition("*")
+            if base:
+                names.add(base)
+                names.update("%s_%02d" % (base, k + 1) for k in range(1, int(count or 1)))
+    return names
+
+
+def set_lane_satellites(lane_dir, omit):
+    """Make the lane hold every default satellite DLL except `omit` (a step's own omit_satellite).
+    A lane's satellite set is just which files sit beside mh.dll (make_lane copies them, ui_test's
+    refresh_satellites only refreshes what is there), so a sequence of steps with different absent
+    arms toggles files between processes. Returns the problems, [] when the lane is as asked."""
+    problems = []
+    for sat in make_lane.DEFAULT_SATELLITES:
+        dst = os.path.join(lane_dir, sat)
+        try:
+            if sat in omit:
+                if os.path.isfile(dst):
+                    os.remove(dst)
+            elif not os.path.isfile(dst):
+                shutil.copy2(os.path.join(make_lane.SATELLITE_SRC, sat), dst)
+        except OSError as e:
+            problems.append("%s: %s" % (sat, e))
+    return problems
+
+
+def sweep_lane_saves(lane_dir, names):
+    for nm in names:
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(lane_dir, "save", nm + ".sav"))
+
+
 def shim_spec(test, forward_to, shim_port=0):
     """build_scenario_argv's `shim` for a link-condition row (None when it has none): the peers run
     through tools/net_shim.py, whose lifetime ui_test owns. Locally the shim needs its own listen and
@@ -790,6 +875,18 @@ def build_argv(test, vms, suite, plan=None, cfg=None, local=False):
         signal_touch=test.get("signal_touch"),  # mp:R4b -- set by the runner
         client_after_exit=list((test.get("client_after_exit") or {}).items()),  # mp:GS1(b)
         client_expect_exit=list(test.get("client_expect_exit") or []),
+        client_sequence=bool(test.get("client_sequence")),  # tooling:TL-SUITE-FOLD step 4
+        client_cfg=[
+            "%d:%s=%s" % (n, k, v)
+            for n, cfg_ in sorted((test.get("client_cfg") or {}).items())
+            for k, v in cfg_.items()
+            if k != "net_extra"
+        ],
+        net_extra_peer=[
+            "%d:%s" % (n, cfg_["net_extra"])
+            for n, cfg_ in sorted((test.get("client_cfg") or {}).items())
+            if cfg_.get("net_extra")
+        ],
     )
 
     def client_idx(i):
@@ -925,7 +1022,9 @@ MODE_FLAGS = (
     ("--classify-selftest", None),
     ("--loadred-selftest", None),
     ("--release-tier-selftest", None),
+    ("--solo-steps-selftest", None),
     ("--sp-determinism", "det_arms"),
+    ("--sp-fixed-determinism", "det_arms"),
     ("--tact-equiv", "tact_test"),
     ("--tact-verify", "tact_test"),
     ("--tact-replay", "tact_test"),
@@ -995,6 +1094,12 @@ def build_parser():
         help="offline: a `tier: release` row is skipped bare, run with --release-tier, run when named",
     )
     ap.add_argument(
+        "--solo-steps-selftest",
+        action="store_true",
+        help="offline (tooling:TL-SUITE-FOLD step 8): solo_steps merge / save sweep / satellite toggle "
+        "negative cases, and every script a registry row or step names exists",
+    )
+    ap.add_argument(
         "--loadred-selftest",
         action="store_true",
         help="tooling:TL-SUITE-LOADRED: apply_load_rerun's own negative cases against a fake "
@@ -1035,6 +1140,15 @@ def build_parser():
         "--solo",
         action="store_true",
         help="run only the single-peer tests (host-only on the first VM)",
+    )
+    ap.add_argument(
+        "--step",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="tooling:TL-SUITE-FOLD step 8: run only the named step(s) of a solo_steps row (the old "
+        "stand-alone row's name), e.g. `test_ui.py overlay_seq --step win_resize`. Repeatable. "
+        "Rows without solo_steps are unaffected; a solo_steps row with none of the names is a SKIP.",
     )
     ap.add_argument(
         "--selftest-refusals",
@@ -1137,6 +1251,110 @@ def release_tier_filter(tests, include_release):
         % (len(skipped), ", ".join(skipped))
     )
     return [t for t in tests if t.get("tier") != "release"]
+
+
+def solo_steps_selftest():
+    """`--solo-steps-selftest` (tooling:TL-SUITE-FOLD step 8): the pure parts of a `solo_steps` row, and the
+    one thing a fold can silently break -- a step (or row) whose script file does not exist (the
+    wheel_hud_lists_lib row sat dangling after step 2 folded its script away)."""
+    import tempfile  # noqa: PLC0415
+
+    ok = True
+
+    def chk(label, hit):
+        nonlocal ok
+        ok = ok and bool(hit)
+        print("  %-52s %s" % (label, "ok" if hit else "XX"))
+
+    row = {
+        "name": "r",
+        "kind": "solo",
+        "tol": 0.5,
+        "extra_ini": "a.ini",
+        "harness_extra": "x=1;y=2",
+        "net_extra": "n=1",
+        "solo_steps": [{"name": "s1", "script": "s1.txt"}],
+    }
+    m = merge_solo_step(
+        row,
+        {
+            "name": "s1",
+            "script": "s1.txt",
+            "extra_ini": ["b.ini"],
+            "harness_extra": "y=3",
+            "tol": 0.0,
+        },
+    )
+    chk("row ini first, step ini after", m["extra_ini"] == ["a.ini", "b.ini"])
+    chk("harness_extra merged by key, step wins", m["harness_extra"] == "x=1;y=3")
+    chk("a step's tol wins over the row's", m["tol"] == 0.0)
+    chk(
+        "solo_steps dropped, step named, script set",
+        "solo_steps" not in m and m["step"] == "s1" and m["script"] == "s1.txt",
+    )
+    m = merge_solo_step(row, {"name": "s2", "script": "s2.txt", "net_extra": "m=2"})
+    chk(
+        "row tol / harness kept when the step has none",
+        m["tol"] == 0.5 and m["harness_extra"] == "x=1;y=2",
+    )
+    chk("a step's net_extra replaces the row's", m["net_extra"] == "m=2")
+    chk(
+        "save names: copies expand like ui_test's, steps + row union",
+        solo_step_saves(
+            {
+                "deploy_save": "z",
+                "solo_steps": [{"deploy_save": "a*3,b"}, {}, {"deploy_save": "11"}],
+            }
+        )
+        == {"z", "a", "a_02", "a_03", "b", "11"},
+    )
+    with tempfile.TemporaryDirectory() as td:
+        src, lane = os.path.join(td, "src"), os.path.join(td, "lane")
+        os.makedirs(os.path.join(lane, "save"))
+        os.makedirs(src)
+        sats = ["one.dll", "two.dll"]
+        for f in sats:
+            open(os.path.join(src, f), "w").close()
+        open(os.path.join(lane, "two.dll"), "w").close()
+        for nm in ("a", "a_02", "keep"):
+            open(os.path.join(lane, "save", nm + ".sav"), "w").close()
+        saved = (make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC)
+        make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC = sats, src
+        try:
+            probs = set_lane_satellites(lane, {"two.dll"})
+            chk(
+                "omit removes a present DLL, restores a missing one",
+                not probs
+                and os.path.isfile(os.path.join(lane, "one.dll"))
+                and not os.path.exists(os.path.join(lane, "two.dll")),
+            )
+            set_lane_satellites(lane, set())
+            chk(
+                "an empty omit set brings every DLL back",
+                all(os.path.isfile(os.path.join(lane, f)) for f in sats),
+            )
+        finally:
+            make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC = saved
+        sweep_lane_saves(lane, {"a", "a_02", "absent"})
+        left = sorted(os.listdir(os.path.join(lane, "save")))
+        chk("save sweep removes only the named saves", left == ["keep.sav"])
+    missing = []
+    for t in TESTS:
+        scripts = [t["script"]] if t.get("script") else []
+        scripts += [st["script"] for st in t.get("solo_steps", ())]
+        scripts += [st["host"] for st in t.get("multi_steps", ())]
+        scripts += [c for st in t.get("multi_steps", ()) for c in st["clients"]]
+        scripts += [t[k] for k in ("host",) if t.get(k) and not t.get("multi_steps")]
+        scripts += [c for c in (t.get("clients") or ()) if not t.get("multi_steps")]
+        for sc in scripts:
+            if not os.path.isfile(os.path.join(REPO, "tools", "uiscripts", sc)):
+                missing.append("%s: %s" % (t["name"], sc))
+        for st in t.get("solo_steps", ()):
+            if st.get("requires") and not callable(getattr(ui_suite_common, st["requires"], None)):
+                missing.append("%s/%s: requires %s" % (t["name"], st["name"], st["requires"]))
+    chk("every solo script + step precondition exists %s" % (missing[:3] or ""), not missing)
+    print("solo-steps-selftest: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
 
 
 def release_tier_selftest():
@@ -1390,14 +1608,25 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
 
     def hash_check(test):
         """(ok, text, short) -- tooling:TL-SUITE-HASHDEF: mp_analyze over every peer's process dir."""
-        if test.get("kind") != "multi":
-            return True, "", ""
+        if test.get("kind") != "multi" or test.get("multi_steps"):
+            return True, "", ""  # (a multi_steps row hashes inside run_multi_steps, per step)
+        return hash_check_step(test)
+
+    def hash_check_step(test):
+        """hash_check's body, for a plain row or one (merged) step of a multi_steps row."""
         if ui_registry.hash_plan(test) is None:
             return True, "  hash: not compared -- %s" % test["no_hash_why"], "opt-out"
         if plan is None:
             return True, "  hash: SKIPPED -- needs the local lane logs (--no-local run)", "skipped"
         _, _, lanes = plan.get(test["name"], (None, None, []))
-        dirs = [sp_newest_run(os.path.join(make_lane.LANE_ROOT, nm)) for nm in lanes]
+        # tooling:TL-SUITE-FOLD step 5: `hash_skip_clients` names sequence clients (1-based) that by design never
+        # reach a match (map_tcp's refused joiner) -- their lane has no hashes, and a NO DATA pair reds the compare.
+        skip = set(test.get("hash_skip_clients") or ())
+        dirs = [
+            sp_newest_run(os.path.join(make_lane.LANE_ROOT, nm))
+            for i, nm in enumerate(lanes)
+            if i not in skip
+        ]
         if len(dirs) < 2 or None in dirs:
             return False, "  hash: FAIL -- no run dir for 2+ peers (lanes %s)" % lanes, "FAIL"
         for d in dirs:
@@ -1416,6 +1645,154 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         if ok and not plant:
             short = "IDENTICAL/%s" % line.split("over ")[1].split()[0]
         return ok, text, short
+
+    def run_solo_steps(t, invoke, stream):
+        """tooling:TL-SUITE-FOLD step 8: run a `solo_steps` row -- one ui_test.py process per step, in
+        order, on the row's one lane. Each step is the old stand-alone row (merge_solo_step), so its
+        own baseline label and its own post_check apply to ITS run (the lane's newest process dir is
+        that step's). A red step does not stop the sequence: every step reports. Returns (rc, text,
+        [(step name, PASS|FAIL|SKIP, seconds)]); a step whose precondition is unmet is a SKIP, and
+        the row is a SKIP only when every step is."""
+        out, verdicts = [], []
+        lane_dir = None
+        if plan is not None and plan.get(t["name"], (0, 0, []))[2]:
+            lane_dir = os.path.join(make_lane.LANE_ROOT, plan[t["name"]][2][0])
+        saves = solo_step_saves(t)
+
+        def say(msg):
+            out.append(msg)
+            if stream:
+                print(msg)
+
+        for step in t["solo_steps"]:
+            nm = step["name"]
+            if args.step and nm not in args.step:
+                continue
+            say("\n  ---- step %s (%s) ----" % (nm, step["script"]))
+            if step.get("requires"):
+                ok, why = solo_requires(step["requires"], args)
+                if not ok:
+                    say("  step %s: SKIP -- %s" % (nm, why))
+                    verdicts.append((nm, "SKIP", 0.0))
+                    continue
+            ts = merge_solo_step(t, step)
+            if lane_dir and saves:
+                sweep_lane_saves(lane_dir, saves)
+            if lane_dir and any(x.get("omit_satellite") for x in t["solo_steps"]):
+                bad_sat = set_lane_satellites(lane_dir, set(ts.get("omit_satellite") or ()))
+                if bad_sat:
+                    say("  step %s: FAIL -- cannot set the lane's satellites: %s" % (nm, bad_sat))
+                    verdicts.append((nm, "FAIL", 0.0))
+                    continue
+            s0 = time.time()
+            rc_s, text_s = invoke(ts)
+            if text_s:
+                out.append(text_s)
+            ok_s = rc_s == 0
+            if ok_s:
+                ok_s, ptext = post_check(ts)
+                if ptext:
+                    say(ptext)
+            secs_s = time.time() - s0
+            say("  step %s: %s  [%.0fs]" % (nm, "PASS" if ok_s else "FAIL", secs_s))
+            verdicts.append((nm, "PASS" if ok_s else "FAIL", secs_s))
+        if not verdicts:
+            say("  no step of this row is named by --step %s" % ", ".join(args.step))
+            verdicts.append(("-", "SKIP", 0.0))
+        bad = [n for n, v, _s in verdicts if v == "FAIL"]
+        say(
+            "  steps: "
+            + ", ".join("%s %s %.0fs" % (n, v, s_) for n, v, s_ in verdicts)
+            + (("  -- RED: " + ", ".join(bad)) if bad else "")
+        )
+        return (1 if bad else 0), "\n".join(out), verdicts
+
+    def run_multi_steps(t, invoke, stream):
+        """tooling:TL-SUITE-FOLD step 9: run a `multi_steps` row -- one match per step, in order, on the
+        row's lanes (both peers relaunch with that step's boot-time settings). Each step is the old
+        stand-alone row (merge_multi_step): its own [net]/shim/harness knobs, its own baseline labels (the
+        script basenames), its own post_check and its own hash compare. A red step does not stop the
+        sequence; a peer killed mid-step reds that step (ui_test reports PROCESS-GONE) and the next step
+        relaunches both peers. Returns (rc, text, [(step name, PASS|FAIL|SKIP, seconds)])."""
+        out, verdicts, step_hashes = [], [], []
+        # a step that sets its own omit_satellite (cfg_newgame_mp_seq: libmh.dll absent in one step only)
+        # toggles the files on EVERY lane of the row before its match, as a solo step does for its one lane
+        sat_lanes = []
+        if any("omit_satellite" in x for x in t["multi_steps"]) and plan is not None:
+            sat_lanes = [
+                os.path.join(make_lane.LANE_ROOT, nm) for nm in plan.get(t["name"], (0, 0, []))[2]
+            ]
+
+        def say(msg):
+            out.append(msg)
+            if stream:
+                print(msg)
+
+        for step in t["multi_steps"]:
+            nm = step["name"]
+            if args.step and nm not in args.step:
+                continue
+            say("\n  ---- step %s (%s) ----" % (nm, step["host"]))
+            ts = merge_multi_step(t, step)
+            bad_sat = [
+                p_
+                for ld in sat_lanes
+                for p_ in set_lane_satellites(ld, set(ts.get("omit_satellite") or ()))
+            ]
+            if bad_sat:
+                say("  step %s: FAIL -- cannot set the lanes' satellites: %s" % (nm, bad_sat))
+                verdicts.append((nm, "FAIL", 0.0))
+                continue
+            # tooling:TL-SUITE-HASHDEF, per step: a step that does not declare no_hash_why arms the
+            # hash harness and is compared when its match is done
+            hextra = ui_registry.hash_plan(ts)
+            if hextra is not None:
+                ts = dict(ts, harness_extra=hextra)
+                if args.plant_desync:
+                    ts["harness_extra_host"] = ui_registry.harness_merge(
+                        ts.get("harness_extra_host"), ui_registry.PLANT_HOST
+                    )
+            elif args.plant_desync:
+                say(
+                    "  step %s: SKIP -- --plant-desync: this step does not hash (%s)"
+                    % (nm, ts.get("no_hash_why"))
+                )
+                verdicts.append((nm, "SKIP", 0.0))
+                continue
+            ts = ui_registry.with_suite_hash_kind(ts)
+            s0 = time.time()
+            rc_s, text_s = invoke(ts)
+            if text_s:
+                out.append(text_s)
+            ok_s = rc_s == 0
+            if ok_s and not args.plant_desync:
+                ok_s, ptext = post_check(ts)
+                if ptext:
+                    say(ptext)
+            if ok_s or args.plant_desync:
+                hok, htext, short = hash_check_step(ts)
+                if htext:
+                    say(htext)
+                if args.plant_desync:
+                    ok_s = hok
+                elif not hok:
+                    ok_s = False
+                step_hashes.append("%s:%s" % (nm, short))
+            secs_s = time.time() - s0
+            say("  step %s: %s  [%.0fs]" % (nm, "PASS" if ok_s else "FAIL", secs_s))
+            verdicts.append((nm, "PASS" if ok_s else "FAIL", secs_s))
+        if not verdicts:
+            say("  no step of this row is named by --step %s" % ", ".join(args.step))
+            verdicts.append(("-", "SKIP", 0.0))
+        bad = [n for n, v, _s in verdicts if v == "FAIL"]
+        say(
+            "  steps: "
+            + ", ".join("%s %s %.0fs" % (n, v, s_) for n, v, s_ in verdicts)
+            + (("  -- RED: " + ", ".join(bad)) if bad else "")
+        )
+        if step_hashes:
+            hashes[t["name"]] = ",".join(step_hashes)
+        return (1 if bad else 0), "\n".join(out), verdicts
 
     def run_one(idx, t):
         """Run one test. Returns (name, verdict, text-to-print). Safe to call from a worker thread."""
@@ -1456,22 +1833,25 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             return t["name"], "SKIP", head + "\n" + msg
         # tooling:TL-SUITE-HASHDEF: a multi row arms the hash harness unless it declares no_hash_why.
         hextra = ui_registry.hash_plan(t)
+        if t.get("multi_steps"):
+            hextra = None  # per step, in run_multi_steps
         if hextra is not None:
             t = dict(t, harness_extra=hextra)
             if args.plant_desync:
                 t["harness_extra_host"] = ui_registry.harness_merge(
                     t.get("harness_extra_host"), ui_registry.PLANT_HOST
                 )
-        elif args.plant_desync:
+        elif args.plant_desync and not t.get("multi_steps"):
             msg = "  SKIP -- --plant-desync: this row does not hash (%s)" % (
                 t.get("no_hash_why") or "solo"
             )
             if jobs == 1:
                 print(msg)
             return t["name"], "SKIP", head + "\n" + msg
-        t = ui_registry.with_suite_hash_kind(
-            t
-        )  # tooling:TL-SUITE-HASHCOST: kind 2 unless the row says
+        if not t.get("multi_steps"):
+            t = ui_registry.with_suite_hash_kind(
+                t
+            )  # tooling:TL-SUITE-HASHCOST: kind 2 unless the row says
         # The wrapper kill-timeout must outlast the test's OWN wall-clock budget, or it kills the run
         # before ui_test can report -- and a killed run has no verdict, only a missing one.
         t0 = time.time()
@@ -1522,25 +1902,37 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                 relay_note = "  [relay %s -> tmp/relay_%s.log]" % (relay.note, t["name"])
                 if jobs == 1:
                     print(relay_note)
+
             # tooling:TL-HARN19 -- local runs get the progress watchdog (killed only once no lane's
             # mh_uidrive.log has advanced for --walk-stall-timeout seconds); VM/--no-local runs keep
             # the flat kill unchanged (test_run_dirs needs the local lane logs to read progress from).
-            if args.local and plan is not None:
-                rc, text = run_ui_test_watched(
-                    build_argv(t, args.vms, suite, plan, cfg, local=True),
-                    max(args.per_test_timeout, _walk_backstop_timeout(t, suite) + 120),
-                    lambda _t=t: test_run_dirs(_t),
-                    stall_s=args.walk_stall_timeout,
-                    capture=jobs > 1,
-                )
-            else:
-                rc, text = run_ui_test(
-                    build_argv(t, args.vms, suite, plan, cfg),
-                    max(args.per_test_timeout, t["timeout"] + 120)
-                    if t.get("timeout")
+            def invoke(tt):
+                if args.local and plan is not None:
+                    return run_ui_test_watched(
+                        build_argv(tt, args.vms, suite, plan, cfg, local=True),
+                        max(args.per_test_timeout, _walk_backstop_timeout(tt, suite) + 120),
+                        lambda _t=tt: test_run_dirs(_t),
+                        stall_s=args.walk_stall_timeout,
+                        capture=jobs > 1,
+                    )
+                return run_ui_test(
+                    build_argv(tt, args.vms, suite, plan, cfg),
+                    max(args.per_test_timeout, tt["timeout"] + 120)
+                    if tt.get("timeout")
                     else args.per_test_timeout,
                     capture=jobs > 1,
                 )
+
+            if t.get("solo_steps"):
+                rc, text, step_verdicts = run_solo_steps(t, invoke, jobs == 1)
+                if all(v == "SKIP" for _n, v, _s in step_verdicts):
+                    return t["name"], "SKIP", head + "\n" + text
+            elif t.get("multi_steps"):
+                rc, text, step_verdicts = run_multi_steps(t, invoke, jobs == 1)
+                if all(v == "SKIP" for _n, v, _s in step_verdicts):
+                    return t["name"], "SKIP", head + "\n" + text
+            else:
+                rc, text = invoke(t)
         if relay_note:
             text = (text or "") + "\n" + relay_note
         # Wall clock per test, because "the suite takes too long" is not actionable until you can see
@@ -1597,7 +1989,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             if not ok:
                 rc = 1
         # tooling:TL-SUITE-HASHDEF: the lockstep hash compare. Under --plant-desync it IS the verdict.
-        if rc == 0 or args.plant_desync:
+        if (rc == 0 or args.plant_desync) and not t.get("multi_steps"):  # (multi_steps: per step)
             hok, htext, hashes[t["name"]] = hash_check(t)
             if htext:
                 if jobs == 1:
@@ -1727,6 +2119,22 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         solo_groups = lane_groups(solos)
         chains = [[t["name"] for _i, t in g] for g in groups + solo_groups if len(g) > 1]
         net_jobs = max(1, min(args.net_jobs, len(groups) or 1))
+        # tooling:TL-SUITE-FOLD step 10: a default run (no rows named) submits its groups longest-first;
+        # naming rows keeps them in the order given.
+        if not (set(args.only) | set(args.only_flag)):
+            old_span = max(predict_makespan(groups, net_jobs), predict_makespan(solo_groups, jobs))
+            groups, solo_groups = lpt_order(groups), lpt_order(solo_groups)
+            new_span = max(predict_makespan(groups, net_jobs), predict_makespan(solo_groups, jobs))
+            print(
+                "\nschedule: longest-first (predicted %.0f s vs %.0f s in registry order): %s"
+                % (
+                    new_span,
+                    old_span,
+                    ", ".join(
+                        "%s %d" % (g[0][1]["name"], group_weight(g)) for g in groups + solo_groups
+                    ),
+                )
+            )
         print(
             "\nrunning %d tests: %d solo in %d lane group(s) at --jobs %d + %d multi-peer in "
             "their own pool (--net-jobs %d; capped peers wait more than they compute)"
@@ -2135,6 +2543,8 @@ def main(argv=None):
         return loadred_selftest()
     if args.release_tier_selftest:
         return release_tier_selftest()
+    if args.solo_steps_selftest:
+        return solo_steps_selftest()
     if args.walk_watchdog_selftest:
         return walk_watchdog_selftest()
     if args.selftest_refusals:
@@ -2151,6 +2561,7 @@ OFFLINE_FLAGS = {
     "--classify-selftest",
     "--loadred-selftest",
     "--release-tier-selftest",
+    "--solo-steps-selftest",
     "--walk-watchdog-selftest",  # tooling:TL-HARN19 -- a fake child process, no rig
     "--selftest-refusals",
     "--det-selftest",

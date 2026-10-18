@@ -1,24 +1,31 @@
-# U40 (HOST): play a match, END it, then RE-CREATE a game in the SAME INSTANCE and have the client
-# -- which never restarted -- find it, join it, and be seated. Pair with mp_client_rematch.txt.
+# host_rematch (tooling:TL-SUITE-FOLD step 6) -- ONE two-match walk that replaces host_rematch (U40: match ends, the host re-creates, the client
+# re-discovers + re-joins), rematch_play (RM1: a SECOND match in the same process enters clean and stays in lockstep past 12 s) and
+# rematch_rollup (U41b: match 2 ENDS too, so the queue rollup crosses the boundary twice). The three walks were strict prefixes of one
+# another; this is the longest (the old mp_host_rematch3.txt / mp_client_rematch3.txt), run once with every post_check of the three.
+# Captures: q1..q3 keep host_rematch's names; the game-2 frame is rematch_play's. rematch_play's r1..r3 and rematch_rollup's r1..r4
+# were pixel-identical to q1..q3 / r4 (measured when folded), so they are not taken twice.
+# mp:U41b HOST -- rematch_play's walk (mp_host_rematch2.txt, copied verbatim below the marker) plus
+# the END of match 2, so the queue counters cross the SES1 match boundary TWICE in one process.
+# U41b's claim is that the second `net: inbound queue rollup (this match)` line carries match 2's
+# own numbers rather than inheriting match 1's high-water; rematch_play's match 2 never ends inside
+# its walk, so it never writes that second line. Assertion: tools/check_queue_rollups.py.
+# No capture after match 2: the main menu FADES IN from black after a match, so a frame there is a
+# race (the first baseline caught it mid-fade); the post-check, not a pixel, is the evidence.
+# ---- mp_host_rematch2.txt ----
+# mp:RM1 (HOST): host_rematch's walk (mp_host_rematch.txt, U40) CONTINUED INTO THE SECOND MATCH. That
+# scenario stops at the re-joined lobby and proves the re-host SEATS the client; this one presses Start
+# on game 2 and proves the match that follows is a real lockstep match -- the field's 2026-09-20 rematches
+# (9806a28e / 05acccbc / e758413a) were seated fine and then desynced at the first sample or froze at
+# committed 6060, because every 2nd match in one process entered session_begin_multi with the previous
+# match's residue (stale gclk, P[1..] relations zeroed on the host, p54bc=0 on the joiner). The walk up to
+# the re-joined lobby is a verbatim copy of mp_host_rematch.txt (its comments explain every step); the
+# captures are renamed so this pair has baselines of its own. Pair with mp_client_rematch2.txt.
 #
-# THE DIFFERENCE FROM host_recreate, which looks similar and tests something else: there the host
-# leaves the LOBBY and no match ever runs, so the transport link and the session identity are
-# untouched throughout. Here a MATCH happens and both peers quit out of it, which is the boundary the
-# 2026-09-01 internet session died on ("lobby state failed to propagate to peers -- everyone had to
-# quit and relaunch").
-#
-# WHAT THIS SCENARIO REALLY GATES, stated plainly so nobody has to re-derive it: the HOST half.
-# Pre-U40 a re-created game reused the finished match's tag AND match_id, the S4 join gate was still
-# open from the old match, and the peer mirror's was_member[] edge was still set for this client --
-# so the re-JOIN fires no JOIN edge and the peer is never re-seated. `occ 2` at the end is that
-# assertion. The TRANSPORT half (a client whose link actually DIED dialling again) cannot be staged
-# here, because on a rig the sockets survive a match; its oracle is the mutation-checked
-# `net_selftest.exe relinktest`.
-#
-# THE TWO PEERS ARE STRICTLY ORDERED BY SIGNALS -- client quits, host quits, host re-creates, client
-# re-joins -- because every unordered version of this walk raced: a client that re-dialled while the
-# host was still in the match made the host accept a peer mid-lockstep, and a host that re-created
-# before the client had left advertised into the match it was still finishing.
+# THE ASSERTION IS THE post_check (tools/check_rematch_residue.py), not the pixels: game 2's
+# PLAYERDUMP[sbm] must show gclk=0, p54bc=2 and the same rel bytes as game 1's on BOTH peers, and game 2's
+# [desync] rollup must read 0 mismatching / >=1 compared. `gameclock 12000` on both peers is the freeze
+# half: a joiner that never entered lockstep (p54bc=0) free-runs while the host sits pinned at its
+# horizon, and the host's clock never gets here.
 
 # ---- game 1 --------------------------------------------------------------------------------------
 settled value:110
@@ -40,7 +47,7 @@ peers 1
 awaitsignal lobby
 enabled Start
 settled Start
-capture q1_lobby_game1
+capture host_rematch__q1_lobby_game1
 clickl Start
 
 # ---- the match, then END it ----------------------------------------------------------------------
@@ -125,11 +132,37 @@ present Network players
 peers 1
 occ 1
 settled Cancel
-capture q2_new_lobby_no_ghost
+capture host_rematch__q2_new_lobby_no_ghost
 signal rehosted
 # ...and now the real thing: the client joins the NEW lobby and is seated.
 occ 2
 settled Cancel
-capture q3_rejoined
-log HOST re-created a game after the match; the client re-dialled and re-joined without restarting
+capture host_rematch__q3_rejoined
+# ---- game 2: the rematch itself --------------------------------------------------------------------
+# The client is seated (`occ 2` above) and captures its lobby frame; wait for that before Start so
+# its capture is not raced by the launch.
+awaitsignal rejoined
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+# Past the 10000 ms initial horizon: a peer whose lockstep flag was never re-armed (the joiner's
+# p54bc=0) sends no frames, so the host pins at its horizon and this predicate is what times out.
+gameclock 12000
+capture rematch_play__r4_game2_running
+log HOST played a SECOND match in the same process after re-creating; game 2 ran past 12 s
+# ---- U41b: end match 2 exactly as match 1 ended (the client quits; graceful_leave ends ours) ----
+signal game2up
+awaitsignal cliquit2
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+log HOST: match 2 ended -- the second queue rollup is behind us
 end

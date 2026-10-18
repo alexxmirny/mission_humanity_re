@@ -175,13 +175,29 @@ def run(args, cfg, arm, config1=False, relayed=False):
 
     spec = ARMS[arm]
     det_dir = D.rig_phases.det_dir_path()
-    down = [ip for ip in args.vms[:2] if not D.vm_reachable(ip)]
-    if down:
-        return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
-    for name, no in ((D.DET3_LANE, D.DET3_LANE_NO), (DET4_LANE, DET4_LANE_NO)):
-        r = subprocess.run(_lane_cmd(D, name, no, config1, cfg), capture_output=True, text=True)
-        if r.returncode != 0:
-            return False, ["      FAIL: lane %s: %s" % (name, (r.stderr or r.stdout).strip()[:200])]
+    # tooling:TL-RELGATE-FOLD: `--local-peers [--par-slot K]` runs the 4 peers as the 4 local lanes of parallel slot K
+    # (lane_alloc block `par`, the run_u53 --local-peers topology with one more client). Only the arms that need no
+    # shim: the shim's control port (6699) is a machine singleton, so partition / heal stay on the VM pair.
+    local4 = bool(getattr(args, "local_peers", False))
+    if local4 and spec.get("partition_at"):
+        return False, [
+            "      FAIL: --local-peers cannot run %r: the partition shim's control port is a singleton (VM topology only)"
+            % arm
+        ]
+    if local4:
+        err, lport, lnames = D.provision_par_lanes(args, cfg, 4, config1)
+        if err:
+            return False, [err]
+    else:
+        down = [ip for ip in args.vms[:2] if not D.vm_reachable(ip)]
+        if down:
+            return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
+        for name, no in ((D.DET3_LANE, D.DET3_LANE_NO), (DET4_LANE, DET4_LANE_NO)):
+            r = subprocess.run(_lane_cmd(D, name, no, config1, cfg), capture_output=True, text=True)
+            if r.returncode != 0:
+                return False, [
+                    "      FAIL: lane %s: %s" % (name, (r.stderr or r.stdout).strip()[:200])
+                ]
     steps = getattr(args, "u64_steps", None) or spec["steps"]
     crash = dict(spec["crash"])
     if getattr(args, "u64_exit_step", None):
@@ -221,7 +237,7 @@ def run(args, cfg, arm, config1=False, relayed=False):
             )
         shim = {"target": args.vms[0], "delay": 0, "triggers": trig}
     relay_cm = (
-        D.RelayProc(D.RELAY_PORT, os.path.join(D.REPO, "tmp", "relay_u64.log"))
+        D.RelayProc(D.RELAY_PORT, os.path.join(D.rig_phases.scratch_dir(), "relay_u64.log"))
         if relayed
         else D.contextlib.nullcontext()
     )
@@ -231,34 +247,41 @@ def run(args, cfg, arm, config1=False, relayed=False):
             if not relay.ok:
                 return None, ["      SKIP -- the relay could not be started: %s" % relay.note]
             net_parts += [
-                "relay=%s:%d" % (D.relay_addr_for_peers(False), relay.port),
+                "relay=%s:%d" % (D.relay_addr_for_peers(local4), relay.port),
                 "force_relay=1",
             ]
         if spec.get("net_extra"):
             net_parts.append(spec["net_extra"])
         if args.net_extra:
             net_parts.append(args.net_extra)
+        scripts = (
+            SPECTATOR_SCRIPT if spec.get("spectator") else CLIENT_SCRIPTS[0],
+            "mp_client_u71_c2.txt" if spec.get("spectator") else CLIENT_SCRIPTS[1],
+            "mp_client_u71_c3.txt" if spec.get("spectator") else CLIENT_SCRIPTS[2],
+        )
+        if local4:  # every peer a lane of this slot: its own game port, loopback
+            topo = dict(
+                host="lane=%s:%s" % (lnames[0], HOST_SCRIPT),
+                clients=["lane=%s:%s" % (lnames[1 + i], scripts[i]) for i in range(3)],
+                connect_ip="127.0.0.1",
+                port=lport,
+            )
+        else:
+            topo = dict(
+                host="%s:%s" % (args.vms[0], HOST_SCRIPT),
+                clients=[
+                    "%s:%s" % (args.vms[1], scripts[0]),
+                    "lane=%s:%s" % (D.DET3_LANE, scripts[1]),
+                    "lane=%s:%s" % (DET4_LANE, scripts[2]),
+                ],
+                connect_ip=args.vms[0],
+            )
         argv = D.build_scenario_argv(
             cfg=cfg,
             determinism=True,
             steps=steps,
-            host="%s:%s" % (args.vms[0], HOST_SCRIPT),
-            clients=[
-                "%s:%s"
-                % (args.vms[1], SPECTATOR_SCRIPT if spec.get("spectator") else CLIENT_SCRIPTS[0]),
-                "lane=%s:%s"
-                % (
-                    D.DET3_LANE,
-                    "mp_client_u71_c2.txt" if spec.get("spectator") else CLIENT_SCRIPTS[1],
-                ),
-                "lane=%s:%s"
-                % (
-                    DET4_LANE,
-                    "mp_client_u71_c3.txt" if spec.get("spectator") else CLIENT_SCRIPTS[2],
-                ),
-            ],
+            **topo,
             det_exclude=list(spec["exclude"]),
-            connect_ip=args.vms[0],
             timeout_frames=D.LOCAL_TIMEOUT_FRAMES * 4,
             net_extra=";".join(net_parts),
             timeout=max(args.timeout, 600 + steps),
@@ -269,8 +292,8 @@ def run(args, cfg, arm, config1=False, relayed=False):
                 else "region_hash_step=1"
             ),
             harness_extra_host=host_extra,
-            harness_extra_peer=peer_extra,
-            net_extra_peer=net_peer,
+            harness_extra_peer=peer_extra + list(getattr(args, "harness_extra_peer", None) or ()),
+            net_extra_peer=net_peer + list(getattr(args, "net_extra_peer", None) or ()),
             shim=shim,
             omit_satellite=["libmh.dll"] if config1 else (),
         )

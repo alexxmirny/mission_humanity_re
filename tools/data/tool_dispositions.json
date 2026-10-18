@@ -94,6 +94,11 @@
       "why": "mp:D35: the configuration-(1) (no libmh.dll) build-click rows' cross-peer post_check -- with the mh.dll seam's charge-free probe (ship default) the host logs the probe line and the pair stays IDENTICAL with the in-band desync watch clean; with [net] build_probe_free=0 (the reproduction arm) the retail pay + re-grant diverges pK_ai_econ, never heals, and the watch logs *** DESYNC",
       "evidence": "invoked by tools/test_ui.py's d35_buildclick_c1 / d35_buildclick_c1_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_mv_marshal.py": {
+      "class": "keep",
+      "why": "mods:M1N field fix (rc10 playtest, 2026-10-16) -- the m1n_marshal_idle / m1n_marshal_headon / m1n_marshal_off UI rows' post_check: reads the `; MV ORDERSUM` lines of the harness mv_replay probe and the seam's `; M1N *-marshal` lines and asserts a unit stalled in group-move marshal beside a friend in a one-tile corridor gets past it (and, with the keys at 0, that retail still stalls)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's m1n_marshal_* rows (post_check, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_netcrit_pure.py": {
       "class": "keep",
       "why": "mp:D37: the configuration-(1) relay-chain rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the network-panel probe restoring sim bytes it moved and the pair stays IDENTICAL with the in-band desync watch clean; with [net] netcrit_ui_pure=0 (the reproduction arm) the HUD panel's is_network_critical recompute diverges `buildings`, never heals, and the watch logs *** DESYNC",
@@ -154,6 +159,11 @@
       "why": "mp:D28: the d28_canceltask_local UI scenario's cross-peer post_check (the ship arm is host_clicks' canceltask segment) -- with the cancel-task Yes routed as a building order (ship default) the host's log carries the routed line and the pair stays IDENTICAL; with [net] cancel_task_order=0 (the reproduction arm) the retail local call diverges `buildings` and never heals",
       "evidence": "invoked by tools/test_ui.py's d28_canceltask_local TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest); its net-log reader + needles are reused by check_host_clicks.py"
     },
+    "check_d47_poke.py": {
+      "class": "keep",
+      "why": "mp:D47: the cfg_newgame_mp_poke UI row's post_check -- a region_poke on the peer that played single-player before the match must be first seen at the MATCH step it names, on the region it poked (the positive control for the match-step keying)",
+      "evidence": "invoked by tools/test_ui.py's cfg_newgame_mp_poke registry row (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
     "check_host_clicks.py": {
       "class": "keep",
       "why": "tooling:TL-SUITE-SPLICE-HOSTCLICK -- the host_clicks UI scenario's per-segment post_check: one match runs the U39 diplomacy, D28 cancel-task and D25 build-click host clicks, and each segment is judged on its own sim window (the `log hc <seg>` gameclock fences) -- a fresh state-hash divergence inside it, a peer missing rows, and for D28 the seam banner + routed line -- so one red segment cannot hide the other two",
@@ -166,8 +176,8 @@
     },
     "check_codepage_adopt.py": {
       "class": "keep",
-      "why": "mp:F3c: the codepage_adopt / codepage_refused UI scenarios' cross-peer post_check -- the joiner adopted the host's codepage (both logs), or was refused AND told (host REFUSED + sent JOIN_REFUSED, client JOIN REFUSED + join_refused session close, host never ADMITTED)",
-      "evidence": "invoked by tools/test_ui.py's codepage_adopt and codepage_refused TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+      "why": "mp:F3c: the lobby_seq UI scenario's cross-peer post_checks (formerly codepage_adopt / codepage_refused / name_forged / build_refused) -- the joiner adopted the host's codepage (both logs), or was refused AND told (host REFUSED + sent JOIN_REFUSED, client JOIN REFUSED + join_refused session close, host never ADMITTED)",
+      "evidence": "invoked by the lobby_seq registry row's four post_check entries (post_check_peers, --client N) and tools/lint_repo.py (--selftest)"
     },
     "check_const_view.py": {
       "class": "keep",
@@ -263,7 +273,7 @@
     "check_map_transfer.py": {
       "class": "keep",
       "why": "mp:X2 -- the two peers agreed about a map they disagreed about: the host claimed content, the joiner stored it under the content-addressed name outside the map directory, its own file is byte-unchanged, and the host held Start meanwhile. Needs BOTH peers logs, so a single-lane checker could only ever report half the claim",
-      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (map_absent, map_conflict, map_have post_check_peers)"
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (map_xfer, map_tcp post_check_peers)"
     },
     "check_module_bind.py": {
       "class": "keep",
@@ -278,7 +288,7 @@
     "check_net_indicator.py": {
       "class": "keep",
       "why": "mp:L1: the player-visible connection indicator's NUMBERS, read off the `; [netind]` lines in mh_net.log. The suite's capture baseline proves the element is drawn in the right place with the right labels and masks the number cells (they differ every run); this proves the digits mean something -- a measured srtt, a bar level in range, and cmd_ms == look_ms + step_ms, the display's own definition of command latency.",
-      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the net_hud scenario's post_check in tools/test_ui.py"
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the net_hud_scroll scenario's post_check in tools/test_ui.py"
     },
     "check_net_lockstep_refs.py": {
       "class": "keep",
@@ -346,6 +356,24 @@
       "evidence": "the graceful_quit and gquit_net rows in tools/uiscripts/registry.yaml name it in their post_check lists; `check_session_players.py --selftest` plants the negatives and is run by hand",
       "hand_run": true
     },
+    "check_cfg_newgame_restore.py": {
+      "class": "keep",
+      "why": "mods:G17: the cfg_newgame_* UI scenarios' post_check -- reads the `; G17: new-game cfg tables` line mh.dll logs at the top of llm_strat_new_game_init (per table, bytes differing from the boot capture before/after the restore): after a Load of cfgmod.sav every table differs before and none after; a fresh process is 0/0; the fix-off twin keeps the difference (RED, expect_red). Absence of the capture or restore line is RED",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's cfg_newgame_* rows (post_check, run by test_ui.py); `check_cfg_newgame_restore.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "m1_detours.py": {
+      "class": "keep",
+      "why": "offline detour analysis of the `[harness] mv_replay` movement probe log (actual vs shortest vs planned route, cause attribution, router-model check); the probe it reads ships in mh_harness",
+      "evidence": "no machine invoker -- run by a human on a probe log; stdlib only, reads nothing but the log it is given",
+      "hand_run": true
+    },
+    "make_cfgmod_sav.py": {
+      "class": "keep",
+      "why": "mods:G17: builds (and --check verifies) the fixture save tools/uiscripts/saves/cfgmod.sav -- 2-almost.sav with one byte flipped in each of the seven baked cfg tables, re-encoded with a literal-only LZW stream and round-trip verified through src/formats/decompress.py -- what a save made under a modded INIT.CFG holds",
+      "evidence": "the committed fixture cfgmod.sav is its output (deploy_save: cfgmod in the cfg_newgame_* rows of tools/uiscripts/registry.yaml); no Python source imports it",
+      "hand_run": true
+    },
     "check_presence.py": {
       "class": "keep",
       "why": "dist RL15: mh.dll's presence.json (the launcher's Discord feed) must follow a campaign planet switch. A UI walk cannot see it (no pixels): reads the file after the run and requires state/mode campaign, system and planet named, the planet no longer the one NEW GAME starts on, and a rewrite after the session began; a --before/--after pair mode checks two hand snapshots. Absence of the file is RED",
@@ -356,6 +384,16 @@
       "class": "keep",
       "why": "patching:PT-FIX3: the air_order_deadlock / air_order_deadlock_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; PT3` probe lines (create a helicopter, send it east, then hold it at microstep 31 / state 0x12 / stale facing until a second move order is deferred, then release): with `[net] air_order_facing_fix=1` the order is applied within a few steps and the helicopter leaves; with =0 (retail) it stays frozen with order_queued 1. Both peers must agree, hashes IDENTICAL",
       "evidence": "invoked by tools/test_ui.py's air_order_deadlock* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "check_a1_mother_free.py": {
+      "class": "keep",
+      "why": "mods:A1: the a1_mother_free* / a1_ai_* / a1_mother_free_mp* UI scenarios' post_check -- reads the `; [a1]` lines of the logbldgs op (primary mother, power, buildings in a tile rectangle) and the net log: with `[net] mother_free_build=1` a lone Reactor on a mother-less planet is connected at placement, builds and generates power, a Relay next to it connects, a removal mid-construction keeps a second lone Reactor connected, save/load keeps them; the AI option decides whether the mother-less AI places buildings; in a 2-peer match the client adopts the host's value and both peers build (key off: red)",
+      "evidence": "invoked by the a1_* rows of tools/uiscripts/registry.yaml (post_check; post_check_peers for the MP rows) and tools/lint_repo.py (--selftest)"
+    },
+    "check_a2_progress.py": {
+      "class": "keep",
+      "why": "mods:A2: the a2_project_gate* UI scenarios' post_check -- reads the harness's `; PROGRESS` probe lines (Nortus save loaded, the conquest and the lab's inventions played through game_UpdateProgress): with `[net] project_gate_fix=1` no PROJECT with all depend[] met is left hidden after the conquest; at the default (0, retail) the projects stay hidden (the fix-off twin runs the same check red)",
+      "evidence": "invoked by the a2_project_gate* rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
     },
     "check_pt5_turret_poll.py": {
       "class": "keep",
@@ -390,7 +428,7 @@
     "check_queue_rollups.py": {
       "class": "keep",
       "why": "mp:U41b -- two matches over one live link must write two per-match inbound-queue rollups, the second not inheriting the first's high-water or counters; reads each peer's process mh_net.log",
-      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (rematch_rollup post_check_peers)"
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (host_rematch post_check_peers)"
     },
     "check_gone_peer_guard.py": {
       "class": "keep",
@@ -449,8 +487,8 @@
     },
     "check_relay_leg.py": {
       "class": "keep",
-      "why": "mp:R7a: the positive twin of check_direct_dial -- the relay_browse_local scenario's claim that a first-browser join really goes THROUGH the relay (a `udp relay leg UP` and a `udp path` line are present, and the relay carried the session), so a regression that silently made the first-browser path direct cannot pass.",
-      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_browse_local scenario's post_check in tools/test_ui.py"
+      "why": "mp:R7a: the positive twin of check_direct_dial -- the relay_seq scenario's (client 1) claim that a first-browser join really goes THROUGH the relay (a `udp relay leg UP` and a `udp path` line are present, and the relay carried the session), so a regression that silently made the first-browser path direct cannot pass.",
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_seq scenario's post_check in tools/test_ui.py"
     },
     "check_relay_path.py": {
       "class": "keep",
@@ -465,7 +503,7 @@
     "check_relay_rooms.py": {
       "class": "keep",
       "why": "mp:R6: the relayed scenarios' claim that a HOST registers under a MINTED room (never its `[net] port`), that hosts in one run hold distinct rooms, that every client dialled a minted one through the directory, and that the relay refused no registration -- read off every peer's mh_net.log (`net: udp relay -- host room`, `leg UP ... room=`) and the relay's counters line, since a frame cannot show a room code.",
-      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_match / relay_browse scenarios' post_check in tools/test_ui.py"
+      "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and as the relay_xfer / relay_seq scenarios' post_check in tools/test_ui.py"
     },
     "check_rehome_relay.py": {
       "class": "keep",
@@ -485,8 +523,8 @@
     },
     "check_rematch_residue.py": {
       "class": "keep",
-      "why": "mp:RM1: the rematch_play UI scenario's cross-peer post_check -- a SECOND match in one process enters session_begin_multi as clean as the first (gclk=0, p54bc=2, relation rows equal to game 1's and across peers), game 1's [desync] rollup compared >= 1 with 0 mismatching, game 2's first hashed sample identical on both peers",
-      "evidence": "invoked by tools/test_ui.py's rematch_play TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+      "why": "mp:RM1: the host_rematch UI scenario's cross-peer post_check (was rematch_play) -- a SECOND match in one process enters session_begin_multi as clean as the first (gclk=0, p54bc=2, relation rows equal to game 1's and across peers), game 1's [desync] rollup compared >= 1 with 0 mismatching, game 2's first hashed sample identical on both peers",
+      "evidence": "invoked by tools/test_ui.py's host_rematch registry row (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_resync_receiver_deadline.py": {
       "class": "keep",
@@ -552,7 +590,7 @@
     "check_transport_death.py": {
       "class": "keep",
       "why": "mp:U19f: the txdeath_ingame UI scenario's cross-peer post_check -- an IN-GAME (not lobby-phase, not a quit) net_shim blackhole must be seen through the fast-drop route (`; U17 fast-drop`), raise on_gameover outcome=7 (NETWORK_ERROR), never through mp:U19e's garbled-stream arm, and U19d's below-quorum wording correction must NOT fire on a real transport death -- the negative arm that discriminator never had",
-      "evidence": "invoked by tools/test_ui.py's txdeath_ingame TESTS entry (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+      "evidence": "invoked by tools/test_ui.py's link_death_seq TESTS entry (--client 2) (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_u45_diplo.py": {
       "class": "keep",
@@ -1258,8 +1296,7 @@
     "rig_parallel.py": {
       "class": "keep",
       "why": "runs several independent 3-peer det_arms rig arms N-wide (all-local lane slots, one rig lease, one verdict table)",
-      "evidence": "no machine invoker -- run by a human batching rig arms (tooling:TL-RIG-PARALLEL); drives det_arms.py --local-peers --par-slot",
-      "hand_run": true
+      "evidence": "run_gate.py's `hm_local` release unit (tooling:TL-RELGATE-FOLD) and a human batching rig arms (tooling:TL-RIG-PARALLEL); drives det_arms.py --local-peers --par-slot"
     },
     "rig_phases.py": {
       "class": "keep",
@@ -1614,10 +1651,28 @@
       "evidence": "the res_drag_stock, res_drag_box and res_drag_box_orig rows in tools/uiscripts/registry.yaml name it as a post_check; `check_drag_box.py --selftest` plants every negative and is run by hand",
       "hand_run": true
     },
+    "check_shift_rearm.py": {
+      "class": "keep",
+      "why": "mods:D11: Shift+click keeps the just-placed building type armed -- reads the harness's `; [build] <label> armed= type= shift= placed= res=` lines, the seam's `; D11:` lines and mh_rec_orders.bin and holds the chain: armed after each Shift place, 0 after a plain one or a Shift+right-click, an occupied footprint keeps the type, the chain stops once when the next copy is unaffordable, one 0xea order per building placed. Absence of the seam's armed banner is RED, so the fix-off twin goes red on behaviour and on the banner",
+      "evidence": "the shift_rearm_build / _orig / _off rows and d11_shift_chain_c1 (--mp) in tools/uiscripts/registry.yaml name it as a post_check; `check_shift_rearm.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_bigmap.py": {
+      "class": "keep",
+      "why": "mods:MM4: the big minimap overlay shows while its key is held and leaves nothing behind -- the seam's `; BIGMAP: shown` lines (geometry at 1024x768, 640x480, 2560x1440, the map plus its frame fitting the view) and the held / after-release frames: the held frame differs over most of the view, the after-release frame matches the before frame except animated sprites and has no 32x32 tile left changed (the residue trap). Absence of a line or a frame is RED",
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment bigmap); `check_bigmap.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
     "check_minimap_box.py": {
       "class": "keep",
       "why": "RES9: the minimap viewport box clipped to the minimap is verified from the seam's own per-geometry mh_net.log lines (stock overrun, drawn and clipped pixels, the canary before the side-panel surface), read from the menu folder and the session folders after it; the row runs on a live save, so pixels are masked and not the oracle. Absence of a line is RED",
       "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment res_minimap_box); `check_minimap_box.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_minimap_plus.py": {
+      "class": "keep",
+      "why": "mods:MM1-MM3: the minimap's widest zoom keeps its resources, corners and view box -- reads the seam's boot line (all three parts armed) and the RES9 geometry line the top-level box draw logs on res_walk's 128-tile ayy30 at zoom 1; the pixels are the capture baselines' job. Absence of a line is RED",
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment minimap_plus); `check_minimap_plus.py --selftest` plants every negative and is run by hand",
       "hand_run": true
     }
   }

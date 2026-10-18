@@ -41,6 +41,7 @@
 #include <utility>
 #include <vector>
 
+#include "selftest_dispatch.h"
 #include "../mh_net_udp/udp_endpoint.h"
 
 namespace {
@@ -773,12 +774,12 @@ int run_origin_arms() {
 
     const bool skip = getenv("MH_OSQ_MUTATE") && strcmp(getenv("MH_OSQ_MUTATE"), "skip_reconcile") == 0;
     if (skip) printf("  !! MH_OSQ_MUTATE=skip_reconcile: the reconcile is SKIPPED in the real arms (expect red)\n");
-    hub_kill_arm("3-endpoint hub-kill", 2, 39800, !skip, false);
-    hub_kill_arm("4-endpoint hub-kill", 3, 39810, !skip, false);
+    hub_kill_arm("3-endpoint hub-kill", 2, selftest_port(39800), !skip, false);
+    hub_kill_arm("4-endpoint hub-kill", 3, selftest_port(39810), !skip, false);
     // THE MUTATION, asserted from inside: the same arm with the reconcile skipped must NOT hold.
-    const bool held_without = hub_kill_arm("mutation probe", 2, 39820, false, true);
+    const bool held_without = hub_kill_arm("mutation probe", 2, selftest_port(39820), false, true);
     check("MUTATION: skipping the reconcile is DETECTED (the properties do not hold without it)", !held_without);
-    legacy_arm(39830);
+    legacy_arm(selftest_port(39830));
     printf("     exactly-once layer: %d checks so far, %d failures in this block\n", g_checks, g_fails - fails0);
     return g_fails - fails0;
 }

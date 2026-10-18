@@ -396,9 +396,33 @@ def selftest():
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    # tooling:TL-SUITE-FOLD: --client N judges the host + that client ONLY (link_death_seq's lobby client
+    # has no game over and must not red the pair); an out-of-range N is refused.
+    root = tempfile.mkdtemp(prefix="txdeath_selftest_client_")
+    try:
+        host = _plant(root, "peer0", GREEN)
+        lobby_client = _plant(root, "peer1", ["; a lobby-only client: no match, no game over"])
+        match_client = _plant(root, "peer2", GREEN_CLIENT)
+        dirs = [host, lobby_client, match_client]
+        cases = (
+            ("no --client: every client is judged, the lobby one is REFUSED", [], 2),
+            ("--client 2: host + the match client pass", ["--client", "2"], 0),
+            ("--client 1: host + the lobby client are REFUSED", ["--client", "1"], 2),
+        )
+        for label, extra, want in cases:
+            try:
+                got = main(dirs + extra)
+            except SystemExit as e:
+                got = e.code
+            if got != want:
+                failures += 1
+            print("  [%s] %s (rc %s)" % ("PASS" if got == want else "SELFTEST FAILURE", label, got))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
     print(
         "check_transport_death --selftest: %s -- %d arm(s)"
-        % ("FAIL" if failures else "PASS", len(arms) + 3)
+        % ("FAIL" if failures else "PASS", len(arms) + 6)
     )
     return 1 if failures else 0
 
@@ -406,6 +430,14 @@ def selftest():
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("run_dirs", nargs="*", help="one or more peers' run directories")
+    ap.add_argument(
+        "--client",
+        type=int,
+        metavar="N",
+        help="tooling:TL-SUITE-FOLD: judge only the host (the first dir) and the Nth dir after it. A "
+        "sequence row (link_death_seq) hands over every client's dir, and only the in-game one has a "
+        "match to judge -- the lobby client before it never reached a game over",
+    )
     ap.add_argument(
         "--selftest", action="store_true", help="planted logs; every negative must go red"
     )
@@ -415,8 +447,15 @@ def main(argv=None):
         return selftest()
     if not args.run_dirs:
         ap.error("give at least one run directory or --selftest")
+    run_dirs = args.run_dirs
+    if args.client is not None:
+        if not 1 <= args.client < len(run_dirs):
+            ap.error(
+                "--client %d but %d dir(s) given (host + clients)" % (args.client, len(run_dirs))
+            )
+        run_dirs = [run_dirs[0], run_dirs[args.client]]
     try:
-        ok, report = check(args.run_dirs)
+        ok, report = check(run_dirs)
     except Refusal as exc:
         print("check_transport_death: REFUSED -- %s" % exc)
         return 2

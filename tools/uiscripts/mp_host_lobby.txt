@@ -6,7 +6,7 @@
 # U42 NEGATIVE ARM: this is a normal (module-present) lane, so the standing "No network module" line
 # (mh/ui/lobby_notice.cpp, also armed on this screen since U42) must NEVER paint here -- `absent`
 # rather than trusting the capture's tolerance, since the notice is one line of text far under the
-# default 2% pixel budget. See tools/uiscripts/no_net_lobby.txt for the positive (module=none) arm.
+# default 2% pixel budget. The positive (module=none) arm is the no_net_lobby segment of no_net_walk.txt.
 settled value:110
 clickv 110
 present Player name

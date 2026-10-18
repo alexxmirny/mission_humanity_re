@@ -842,6 +842,82 @@ bool wd_is_ret(DWORD v) {
     return false;
 }
 
+// ---- [net] hitch_ms: the MID-FRAME main-thread stack sample (single-player; multiplayer keeps the freeze path) ----------
+// The watchdog thread already exists (it hosts the focus hook), so it does the sampling: every 5 ms while hitch_ms > 0 and the
+// session is not mode 3 it compares "now" with the QPC of the last present (hitch_sample_beat). When a strategic frame is in
+// progress and has run for hitch_ms it takes ONE sample (a second at 3x), formats it into a slot -- NOTHING is logged from this
+// thread -- and the main thread prints the slot right after that frame's `; [hitch]` line (hitch_sample_emit), so the stack
+// sits under the line that describes the frame. A sample taken after the frame ended would only show the frame loop.
+struct HzSlot {
+    volatile LONG     state; // 0 empty, 1 being filled, 2 ready
+    volatile LONGLONG tag;   // the frame's start (the QPC of the present that began it) the samples belong to
+    volatile LONG     nsamp;
+    char              text[2][3000];
+};
+HzSlot            g_hz;
+volatile LONGLONG g_hz_beat = 0, g_hz_tt = 0;
+int               g_hz_ms = 0, g_hz_inject_ms = 0;
+LONGLONG          g_hz_freq = 1;
+
+void wd_fmt_hitch(const WdSnap *s, int sample, DWORD ms_into, char *out, int cap) {
+    char b[1000];
+    char a[96];
+    out[0] = 0;
+    wd_fmt_addr(a, s->eip);
+    wsprintfA(b, "; [hitch]   eip=%s esp=%08X ebp=%08X (sample %d, %lu ms into the frame)\n", a, (unsigned)s->esp, (unsigned)s->ebp, sample, (unsigned long)ms_into);
+    lstrcpynA(out, b, cap);
+    int n = wsprintfA(b, "; [hitch]   ebp-chain:");
+    for (int i = 0; i < s->nchain && n < 880; ++i) {
+        wd_fmt_addr(a, s->chain[i]);
+        n += wsprintfA(b + n, " %s", a);
+    }
+    lstrcatA(b, "\n");
+    if (lstrlenA(out) + lstrlenA(b) < cap) lstrcatA(out, b);
+    n         = wsprintfA(b, "; [hitch]   stack-ret:");
+    int shown = 0;
+    for (int i = 0; i < s->nwords && shown < 28; ++i) {
+        if (!wd_is_ret(s->words[i])) continue;
+        wd_fmt_addr(a, s->words[i]);
+        if (n + lstrlenA(a) + 8 > 940) {
+            lstrcatA(b, "\n");
+            if (lstrlenA(out) + lstrlenA(b) < cap) lstrcatA(out, b);
+            n = wsprintfA(b, "; [hitch]   stack-ret:");
+        }
+        n += wsprintfA(b + n, " %s@%d", a, i);
+        ++shown;
+    }
+    lstrcatA(b, "\n");
+    if (lstrlenA(out) + lstrlenA(b) < cap) lstrcatA(out, b);
+}
+
+// Watchdog thread, single-player branch, every poll. `th` = the main thread's handle.
+void wd_hitch_poll(HANDLE th) {
+    static LONGLONG hz_n     = -1;
+    static int      hz_taken = 0;
+    if (g_hz_ms <= 0 || !g_hz_beat) return;
+    LARGE_INTEGER q;
+    QueryPerformanceCounter(&q);
+    const LONGLONG n = g_hz_beat; // the frame is identified by the QPC that started it (g_wd_beat_n is bumped later in on_present)
+    if (n != hz_n) {
+        hz_n     = n;
+        hz_taken = 0;
+    }
+    const bool ingame = g_hz_tt && (q.QuadPart - g_hz_tt) < 3 * g_hz_freq; // a strategic frame ran within the last 3 s
+    if (!ingame || hz_taken >= 2) return;
+    const DWORD ms   = (DWORD)((q.QuadPart - g_hz_beat) * 1000 / g_hz_freq);
+    const DWORD need = (DWORD)g_hz_ms * (hz_taken == 0 ? 1 : 3);
+    if (ms < need || g_hz.state == 1) return;
+    static WdSnap snap;
+    if (wd_capture(th, &snap)) {
+        g_hz.state = 1;
+        wd_fmt_hitch(&snap, hz_taken + 1, ms, g_hz.text[hz_taken], sizeof(g_hz.text[0]));
+        g_hz.tag   = n;
+        g_hz.nsamp = hz_taken + 1;
+        g_hz.state = 2;
+    }
+    ++hz_taken;
+}
+
 void wd_report(const WdSnap *s, DWORD frozen_ms, int sample) {
     char b[1000];
     char a[96];
@@ -964,6 +1040,11 @@ DWORD WINAPI wd_thread(LPVOID) {
     const DWORD hook_err  = g_wd_hook ? 0 : GetLastError();
     const DWORD hook_from = GetTickCount();
     char        b[200];
+    if (g_hz_ms > 0) {
+        wsprintfA(b, "; [hitch] stack sampler armed: one main-thread sample %d ms into a slow single-player frame (second at %d ms), 5 ms poll%s\n", g_hz_ms,
+                  g_hz_ms * 3, g_hz_inject_ms > 0 ? ", INJECT arm set" : "");
+        seam_log(b);
+    }
     if (g_wd_ms > 0)
         wsprintfA(b, "; [freeze] frame watchdog armed: threshold=%d ms (MP matches only), focus tap=%s%s\n", g_wd_ms,
                   g_wd_hook ? "on" : "off (retrying)", g_wd_inject_ms > 0 ? ", INJECT arm set" : "");
@@ -976,13 +1057,14 @@ DWORD WINAPI wd_thread(LPVOID) {
                   (unsigned long)hook_err);
         seam_log(b);
     }
-    LONG  rep_n    = -1;
-    DWORD rep_ref  = 0;
-    DWORD m3_since = 0;
-    int   samples  = 0;
-    bool  ddraw    = false;
+    LONG  rep_n     = -1;
+    DWORD rep_ref   = 0;
+    DWORD m3_since  = 0;
+    int   samples   = 0;
+    bool  ddraw     = false;
+    int   last_sess = 0;
     for (;;) {
-        Sleep(100);
+        Sleep(g_hz_ms > 0 && last_sess != 3 ? 5 : 100); // the hitch sampler needs a fine poll; multiplayer and "off" keep 100 ms
         const DWORD now = GetTickCount();
         if (!g_wd_hook) {
             g_wd_hook = SetWindowsHookExA(WH_CALLWNDPROC, wd_callwnd, self, g_main_tid);
@@ -993,7 +1075,9 @@ DWORD WINAPI wd_thread(LPVOID) {
             }
         }
         const int sess = *(const uint8_t *)ADDR_SESSION_MODE;
+        last_sess      = sess;
         if (sess != 3) {
+            wd_hitch_poll(th);
             if (rep_n >= 0) {
                 wsprintfA(b, "; [freeze] frozen main thread ended: left the match after %lu ms without a present\n",
                           (unsigned long)(now - rep_ref));
@@ -1045,6 +1129,59 @@ __declspec(noinline) void frame_watchdog_inject_sleep(int ms) {
     Sleep((DWORD)ms); // the test arm's blocking call: the freeze stack must name this call site
 }
 
+void hitch_sample_tt(long long qpc) {
+    g_hz_tt = qpc;
+    // A single-player game loaded from the menu never starts the transport, so lazy_start (the usual caller) never ran and
+    // there was no watchdog thread. The first strategic frame starts it; idempotent, and a later multiplayer lazy_start is a no-op.
+    if (!g_wd_started) frame_watchdog_start();
+}
+void hitch_sample_beat(long long qpc) { g_hz_beat = qpc; }
+
+// Main thread, right after the frame's `; [hitch]` line: print what the watchdog thread sampled DURING this frame.
+void hitch_sample_emit(long long frame_start_qpc) {
+    for (int i = 0; i < 30 && g_hz.state == 1; ++i) Sleep(1); // a sample still being formatted (a few ms at most)
+    if (g_hz.state != 2) return;
+    const LONG n    = g_hz.nsamp;
+    const bool mine = g_hz.tag == frame_start_qpc; // else it belongs to an earlier frame whose line was never written
+    for (LONG i = 0; mine && i < n && i < 2; ++i) {
+        const char *p = g_hz.text[i];
+        while (*p) { // seam_log takes one line at a time
+            const char *e = p;
+            while (*e && *e != '\n') ++e;
+            if (*e) ++e;
+            char      line[1100];
+            const int len = (int)(e - p) < 1099 ? (int)(e - p) : 1099;
+            memcpy(line, p, (size_t)len);
+            line[len] = 0;
+            seam_log(line);
+            p = e;
+        }
+    }
+    g_hz.state = 0;
+}
+
+__declspec(noinline) void hitch_inject_sleep(int ms) {
+    char b[200];
+    char a[96];
+    wd_fmt_addr(a, (DWORD)(uintptr_t)&hitch_inject_sleep);
+    wsprintfA(b, "; [hitch] INJECT Sleep(%d) from hitch_inject_sleep=%s (its Sleep call returns within +0x60)\n", ms, a);
+    seam_log(b);
+    Sleep((DWORD)ms); // the test arm's blocking call: the sampled stack must name this call site
+}
+
+// Main thread, end of a present (single-player test arm): one Sleep ~3 s after the first strategic frame.
+void hitch_inject_poll(long long qpc) {
+    if (g_hz_inject_ms <= 0 || *(const uint8_t *)ADDR_SESSION_MODE == 3 || !g_hz_tt) return;
+    static LONGLONG s_first = 0;
+    static bool     s_done  = false;
+    if (s_done) return;
+    if (!s_first) s_first = qpc;
+    if (qpc - s_first > 3 * g_hz_freq) {
+        s_done = true;
+        hitch_inject_sleep(g_hz_inject_ms);
+    }
+}
+
 // Main thread, once per completed present (net_lockstep.cpp on_present).
 void frame_watchdog_beat() {
     if (!g_wd_started) return;
@@ -1067,8 +1204,15 @@ void frame_watchdog_start() {
     g_wd_ms        = mh_ini_get_int("net", "frame_watchdog_ms", SHIP_FRAME_WATCHDOG_MS, g_ini);
     g_wd_inject_ms = mh_ini_get_int("net", "frame_watchdog_inject_ms", 0, g_ini);
     g_wd_beat_tick = GetTickCount();
-    g_wd_started   = true;
-    HANDLE t       = CreateThread(nullptr, 0, wd_thread, nullptr, 0, nullptr);
+    g_hz_ms        = mh_ini_get_int("net", "hitch_ms", SHIP_HITCH_MS, g_ini);
+    g_hz_inject_ms = mh_ini_get_int("net", "hitch_inject_ms", 0, g_ini);
+    {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        g_hz_freq = f.QuadPart ? f.QuadPart : 1;
+    }
+    g_wd_started = true;
+    HANDLE t     = CreateThread(nullptr, 0, wd_thread, nullptr, 0, nullptr);
     if (t) CloseHandle(t);
     else g_wd_started = false;
 }

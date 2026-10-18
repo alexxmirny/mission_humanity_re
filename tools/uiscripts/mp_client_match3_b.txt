@@ -1,0 +1,33 @@
+# match3 CLIENT B (slot 2): race_inflight's client walk + chat_relay's receive (see mp_host_match3.txt). Holds its Join until
+# client A is seated (`lobby_a`), so its slot index is 2.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+awaitsignal lobby_a
+clickl Join game
+present Network players
+occ 3
+settled Cancel
+pokerace 2 2
+race 2 2
+capture race_inflight__i1_client_alien_host_unaware
+signal lobby_b
+absent Network players
+gameclock 6000
+capture race_inflight__i2_launched
+log CLIENT B entered -- must be the HOST's race (Human), not our poked Alien
+gamemode 2
+awaitsignal chatsent
+wmsg hex:1f0440043804320435044204
+log F3 CLIENT B: received the Cyrillic chat line as U+041F U+0440 U+0438 U+0432 U+0435 U+0442
+end

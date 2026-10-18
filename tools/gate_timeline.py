@@ -77,6 +77,7 @@ JOURNAL_RE = re.compile(r"journal=[^\r\n]*?([^\\/\r\n]+)\.journal")
 # Lane-name prefixes of the single-purpose (non-suite) lanes -> their run_gate unit.
 LANE_UNITS = (
     ("ui_sp_det", "spdet"),
+    ("ui_sp_det_fixed", "spdet_fixed"),
     ("ui_tact_", "suite"),  # the suite's pooled tactical-journal tail
     ("ui_determinism", "det_c1"),  # --det-local's pair (det itself runs on the VMs)
     ("inmem", "inmem"),

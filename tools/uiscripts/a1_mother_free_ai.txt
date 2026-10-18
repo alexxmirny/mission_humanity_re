@@ -1,0 +1,27 @@
+# mods:A1 -- B+AI: the AI player (player 1 on 2-almost.sav: a landed H mother, a building under construction, stock) loses its
+# mother (the lift-off path) and keeps going for a minute of game time. [net] mother_free_build_ai=1: the AI's build orders
+# are accepted without a mother (and its plants root the network); =0 (default): the dispatcher refuses them exactly as retail.
+# tools/check_a1_mother_free.py --ai on|off reads the `; [a1]` lines (the AI's building count / construction progress).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+mark a1_mother_free_ai
+watch 1
+logbldgs ai_start
+liftoff
+gameclock +1500
+logbldgs ai_lifted
+capture ai_lifted
+gameclock +30000
+logbldgs ai_t30
+gameclock +30000
+logbldgs ai_t60
+end

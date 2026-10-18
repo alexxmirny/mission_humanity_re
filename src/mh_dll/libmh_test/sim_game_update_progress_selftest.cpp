@@ -11,6 +11,7 @@
 // file defines its own local copies (values cross-checked against the header banner), same posture
 // sim_game_set_event_selftest.cpp's local `EV_*` enum already established for this codebase.
 //
+#include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h"
 #include "sim/sim_game_update_progress.h"
 
 #include "sim_test_support.h"
@@ -284,6 +285,74 @@ void run_update_progress_tests() {
     ck_eq((uint32_t)g_propagate.size(), 1u, "SYSTEM plr!=player_side: only the shared tail's propagate_unlocks");
     ck(g_finalize[0].seq < g_propagate[0].seq,
        "SYSTEM plr!=player_side order: the unconditional finalize_acquire precedes the tail");
+}
+
+// ---- mods:A2 -- the PROJECT gate in progress_propagate_unlocks (0x00440dd0 CMP / 0x00440dd7 JZ) -------
+namespace {
+int                         g_gate_project_adds  = 0;
+int                         g_gate_building_adds = 0;
+void                        gate_add_project(uint16_t, uint32_t) { ++g_gate_project_adds; }
+void                        gate_add_building(uint16_t, int32_t) { ++g_gate_building_adds; }
+void                        gate_noop_u(uint16_t, uint16_t) {}
+void                        gate_noop_p(uint16_t, int32_t) {}
+void                        gate_noop_h(uint32_t, int32_t) {}
+const handle_progress_calls g_gate_calls = {gate_add_building, gate_noop_u, gate_add_project, gate_noop_p,
+                                            gate_noop_h, gate_noop_u};
+
+// One PROJECT (inv 5, depend[0] = 6 acquired) and one BUILDING (inv 8, same dependency), the current planet's
+// invention (inv 7) acquired or not. Returns {project offered, building offered}.
+void gate_scenario(sim_fixture &fx, bool planet_inv_acquired, bool fix, int *proj, int *bldg) {
+    fx.reset();
+    g_gate_project_adds                              = 0;
+    g_gate_building_adds                             = 0;
+    fx.player_side                                   = 0;
+    fx.planet_index                                  = 1;
+    fx.cfg_planets[1].invention_index                = 7;
+    fx.cfg_inventions[5].type                        = INV_TYPE_PROJECT;
+    fx.cfg_inventions[5].depend[0]                   = 6;
+    fx.cfg_inventions[8].type                        = INV_TYPE_BUILDING;
+    fx.cfg_inventions[8].depend[0]                   = 6;
+    fx.progress[0 * PROGRESS_ROW_COUNT + 6].acquired = 1;
+    fx.progress[0 * PROGRESS_ROW_COUNT + 7].acquired = planet_inv_acquired ? 1 : 0;
+    set_project_gate_fix(fix);
+    {
+        sim_store own = fx.store();
+        detail::progress_propagate_unlocks(fx.view(), own, /*player*/ 0, g_gate_calls);
+    }
+    set_project_gate_fix(false);
+    *proj = g_gate_project_adds;
+    *bldg = g_gate_building_adds;
+}
+} // namespace
+
+void run_project_gate_tests() {
+    sim_fixture fx;
+    int         proj = 0, bldg = 0;
+    gate_scenario(fx, /*planet acquired*/ false, /*fix*/ false, &proj, &bldg);
+    ck_eq((uint32_t)proj, 1u, "gate: unconquered planet, fix off: the PROJECT is offered (retail)");
+    ck_eq((uint32_t)bldg, 1u, "gate: unconquered planet, fix off: the BUILDING is offered");
+    gate_scenario(fx, true, false, &proj, &bldg);
+    ck_eq((uint32_t)proj, 0u, "gate: CONQUERED planet, fix off: the PROJECT is withheld (retail: lab built, no research)");
+    ck_eq((uint32_t)bldg, 1u, "gate: CONQUERED planet, fix off: the BUILDING is still offered (the gate is PROJECT-only)");
+    gate_scenario(fx, true, true, &proj, &bldg);
+    ck_eq((uint32_t)proj, 1u, "gate: CONQUERED planet, fix ON: the PROJECT is offered");
+    ck_eq((uint32_t)bldg, 1u, "gate: CONQUERED planet, fix ON: the BUILDING is offered");
+    gate_scenario(fx, false, true, &proj, &bldg);
+    ck_eq((uint32_t)proj, 1u, "gate: unconquered planet, fix ON: unchanged (offered)");
+    // MP/skirmish: pseudo planet 0x1f, invention_index 0 -> progress[side][0].acquired is never set.
+    fx.reset();
+    g_gate_project_adds                  = 0;
+    fx.player_side                       = 0;
+    fx.planet_index                      = 0x1f;
+    fx.cfg_planets[0x1f].invention_index = 0;
+    fx.cfg_inventions[5].type            = INV_TYPE_PROJECT;
+    fx.cfg_inventions[5].depend[0]       = 6;
+    fx.progress[6].acquired              = 1;
+    {
+        sim_store own = fx.store();
+        detail::progress_propagate_unlocks(fx.view(), own, 0, g_gate_calls);
+    }
+    ck_eq((uint32_t)g_gate_project_adds, 1u, "gate: MP pseudo planet 0x1f (invention 0), fix off: the PROJECT is offered, so the fix is a no-op there");
 }
 
 } // namespace mh::sim::test

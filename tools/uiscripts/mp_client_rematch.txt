@@ -1,14 +1,36 @@
-# U40 (CLIENT): join a match, END it, then -- WITHOUT RESTARTING -- go back to the browser, find the
-# game the host re-created, join it and be seated. Pair with mp_host_rematch.txt.
-#
-# The walk back to the browser is deliberately the ORDINARY one (Internet server -> Connect), because
-# that is what a player does and it is where the U40 re-dial hangs off: on_discover_poll kicks the
-# connect when there is no link we still believe in, and after a match the relink latch says there is
-# not. The browser being EMPTY between the match and the host's re-create is the fix working, not a
-# failure: mp_session_close withdrew the finished match's stored SESSION_INFO, so `sessions 1` below
-# can only be satisfied by the host's NEW advert -- never by the stale row U26 was about. (Measured:
-# before the boundary cleared the store, that step matched at `waited 0` on the dead lobby and the
-# JOIN that followed named the OLD lobby-id, which the re-hosted host correctly ignored.)
+# host_rematch CLIENT (tooling:TL-SUITE-FOLD step 6) -- ONE two-match walk that replaces host_rematch (U40: match ends, the host re-creates, the client
+# re-discovers + re-joins), rematch_play (RM1: a SECOND match in the same process enters clean and stays in lockstep past 12 s) and
+# rematch_rollup (U41b: match 2 ENDS too, so the queue rollup crosses the boundary twice). The three walks were strict prefixes of one
+# another; this is the longest (the old mp_host_rematch3.txt / mp_client_rematch3.txt), run once with every post_check of the three.
+# Captures: q1..q3 keep host_rematch's names; the game-2 frame is rematch_play's. rematch_play's r1..r3 and rematch_rollup's r1..r4
+# were pixel-identical to q1..q3 / r4 (measured when folded), so they are not taken twice.
+# mp:U41b CLIENT -- rematch_play's walk (mp_client_rematch2.txt, copied verbatim below the marker) plus
+# the END of match 2, so the queue counters cross the SES1 match boundary TWICE in one process.
+# U41b's claim is that the second `net: inbound queue rollup (this match)` line carries match 2's
+# own numbers rather than inheriting match 1's high-water; rematch_play's match 2 never ends inside
+# its walk, so it never writes that second line. Assertion: tools/check_queue_rollups.py.
+# No capture after match 2: the main menu FADES IN from black after a match, so a frame there is a
+# race (the first baseline caught it mid-fade); the post-check, not a pixel, is the evidence.
+# mp:U41d (2026-09-24): a 2026-09-24 revision of this walk (wave 4 lane E) fired a 20-message
+# scripted chat burst here to force the HOST's match-1 queue deeper than its own match-2 baseline,
+# because the checker's PROOF at the time was a magnitude comparison (does match 2's high-water
+# read lower than match 1's), which was luck-dependent -- the host's own traffic sits flat
+# match-to-match (~3-5 total) while the client's match 2 is inflated by its own quit-drain (~60+),
+# so neither peer reliably showed a decrease on natural traffic alone
+# (tmp/wave2_rig/gatediet_b5/b5_rematch_2.log, tmp/wave2_rig/gatediet_b3/b3_suite_n2.log). THE
+# BURST IS REMOVED (wave 5 lane F): check_queue_rollups.py's verdict no longer rests on magnitude
+# at all -- MH_Net_QueueMatchBoundary now stamps an EPOCH (lane_queue::epoch_, incremented ONLY
+# inside reset_counters()) plus post-reset evicted/refused on the boundary line, and the checker
+# requires that marker to advance rather than requiring any particular traffic shape. The
+# magnitude comparison is still computed and printed, but only as an informational note -- see
+# that file's docstring for the full reasoning: a log line printed by the CALLER of a reset is not
+# proof the reset itself ran, so the marker has to live INSIDE reset_counters(), not in whatever
+# always executes around it.
+# ---- mp_client_rematch2.txt ----
+# mp:RM1 (CLIENT): mp_client_rematch.txt's walk (U40) CONTINUED INTO THE SECOND MATCH -- see
+# mp_host_rematch2.txt for what this pair proves. The walk up to the re-joined lobby is a verbatim copy
+# of mp_client_rematch.txt (its comments explain every step); the captures are renamed so this pair has
+# baselines of its own.
 
 # ---- join game 1 ---------------------------------------------------------------------------------
 settled value:110
@@ -29,7 +51,7 @@ present Network players
 # tell the host we are really in our lobby (its `awaitsignal lobby`), not merely connected
 signal lobby
 settled Cancel
-capture q1_lobby_game1
+capture host_rematch__q1_lobby_game1
 
 # ---- the match, then END it ----------------------------------------------------------------------
 absent Network players
@@ -77,6 +99,23 @@ clickl Join game
 present Network players
 occ 2
 settled Cancel
-capture q2_rejoined_after_match
-log CLIENT re-discovered and re-joined the host's new game without restarting
+capture host_rematch__q2_rejoined_after_match
+# ---- game 2: the rematch itself --------------------------------------------------------------------
+# The host presses Start only after we have captured the lobby (`awaitsignal rejoined` on its side).
+signal rejoined
+absent Network players
+gamemode 2
+gameclock 12000
+capture rematch_play__r3_game2_running
+log CLIENT played a SECOND match in the same process after re-joining; game 2 ran past 12 s
+# ---- U41b: quit match 2 the way match 1 was quit ----
+awaitsignal game2up
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit2
+log CLIENT: quit match 2 -- the second queue rollup is behind us
 end

@@ -2,7 +2,7 @@
 """check_relay_leg -- mp:R7a: a peer that joined from the FIRST browser really went THROUGH the relay.
 
 The positive control for R7a's done_when clause (a): "joining from the first browser goes through the
-relay (relay counters show the session; `udp path` lines present)". relay_browse_local walks the first
+relay (relay counters show the session; `udp path` lines present)". relay_seq (client 1) walks the first
 browser (the relay-discovery screen) and joins a relay-listed game; this asserts the CLIENT's log
 carries the two lines that only a relayed dial writes -- so the scenario cannot silently regress into a
 direct connection (which is exactly the OTHER half of R7a, guarded by check_direct_dial). Its mirror
@@ -17,7 +17,13 @@ image: check_direct_dial fails if these lines are PRESENT; this fails if they ar
   the client.
 
     python tools/check_relay_leg.py [--relay-log <relay log>] <run dir> [<run dir> ...]
+    python tools/check_relay_leg.py --client N [--relay-log <relay log>] <host dir> <client 1 dir> ...
     python tools/check_relay_leg.py --selftest
+
+`--client N` (tooling:TL-SUITE-FOLD step 5, the relay_seq row): the row runs SEVERAL clients one after another
+against one host and one relay, and only client N is the first-browser join this file speaks for. The dirs are
+`<host> <client 1> .. <client K>`; only client N's log is judged for the leg / path / R2c clauses, so another
+client's leg (relay_seq client 2's IP-window browser also brings one UP) cannot satisfy them.
 """
 
 import argparse
@@ -231,6 +237,60 @@ def selftest():
             print("  %-48s exit %d (want %d)" % (name, got, want))
             if got != want:
                 fails.append("%s: exit %d, wanted %d\n%s" % (name, got, want, r.stdout))
+        # tooling:TL-SUITE-FOLD step 5: --client N judges ONE client of a sequence row. Dirs: host, client 1, client 2.
+        for j, (name, c1_text, c2_text, which, want) in enumerate(
+            [
+                (
+                    "--client 1: client 1 relayed, client 2 direct -- GREEN",
+                    RELAYED_LOG,
+                    DIRECT_DIAL_LOG,
+                    1,
+                    0,
+                ),
+                (
+                    "--client 2: client 2 direct is RED even though client 1 relayed",
+                    RELAYED_LOG,
+                    DIRECT_DIAL_LOG,
+                    2,
+                    1,
+                ),
+                (
+                    "--client 1: client 1 direct is RED though client 2 relayed (its leg must not stand in)",
+                    DIRECT_DIAL_LOG,
+                    RELAYED_LOG,
+                    1,
+                    1,
+                ),
+            ]
+        ):
+            dirs = []
+            for k, text in enumerate(["; host\n", c1_text, c2_text]):
+                d = os.path.join(
+                    tmp, "seq%d_%d" % (j, k), "logs", "run"
+                )  # own lane: find_log also walks its siblings
+                os.makedirs(d, exist_ok=True)
+                with open(os.path.join(d, "mh_net.log"), "w", encoding="utf-8") as fh:
+                    fh.write(text)
+                dirs.append(d)
+            rl = os.path.join(tmp, "seqrelay%d.log" % j)
+            with open(rl, "w", encoding="utf-8") as fh:
+                fh.write(RELAY_BUSY)
+            r = subprocess.run(
+                [
+                    sys.executable,
+                    os.path.abspath(__file__),
+                    "--client",
+                    str(which),
+                    "--relay-log",
+                    rl,
+                ]
+                + dirs,
+                capture_output=True,
+                text=True,
+            )
+            print("  %-48s exit %d (want %d)" % (name, r.returncode, want))
+            if r.returncode != want:
+                fails.append("%s: exit %d, wanted %d\n%s" % (name, r.returncode, want, r.stdout))
     for f in fails:
         print("SELFTEST FAIL: %s" % f)
     print("check_relay_leg --selftest: %s" % ("PASS" if not fails else "FAIL (%d)" % len(fails)))
@@ -242,8 +302,22 @@ def main():
         return selftest()
     ap = argparse.ArgumentParser()
     ap.add_argument("--relay-log", help="the relay process's log for this run")
+    ap.add_argument(
+        "--client",
+        type=int,
+        default=0,
+        help="judge only client N of a client-sequence row (dirs are <host> <client 1> .. <client K>)",
+    )
     ap.add_argument("dirs", nargs="+", help="each peer's session run dir (or a lane dir above one)")
     a = ap.parse_args()
+    if a.client:
+        if not 1 <= a.client < len(a.dirs):
+            print(
+                "check_relay_leg: --client %d but %d run directories were handed over (host + clients)"
+                % (a.client, len(a.dirs))
+            )
+            return 2
+        a.dirs = [a.dirs[a.client]]
     ok, lines = check(a.dirs, relay_log=a.relay_log)
     for ln in lines:
         print(ln)

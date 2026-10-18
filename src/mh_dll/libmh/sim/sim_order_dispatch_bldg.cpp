@@ -1,4 +1,5 @@
 #include "sim/sim_order_dispatch.h"
+#include "sim/sim_mother_free.h" // mods:A1 mother_gate_open
 
 // NO direct mh::call:: in this file. w_sprintf's measured `vss` shape used to be called directly
 // here on the argument that a recording stub cannot stand in for a shape thunk; it can, and the
@@ -643,7 +644,7 @@ void dispatch_building_order(const sim_view &v, sim_store &own, const dispatch_c
             const int32_t clear = c.llm_bldg_footprint_is_clear(o.args[4], o.args[5], o.args[0], 8u);
 
             const bool may_build =
-                clear != 0 && v.profiles[x.player].primary_mother_bldg[*v.planet_index] != 0 &&
+                clear != 0 && mother_gate_open(v, x.player, *v.planet_index) && // mods:A1: open under [net] mother_free_build
                 (*v.tutorial_step == 0 || is_local_player(v, x.player));
 
             if (may_build && c.llm_bldg_pay_build_cost(x.player, o.args[0]) == 0) {

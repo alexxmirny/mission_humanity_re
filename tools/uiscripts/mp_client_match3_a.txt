@@ -1,0 +1,35 @@
+# match3 CLIENT A (slot 1): mixed_race's client walk + chat_relay's receive (see mp_host_match3.txt). Signals lobby_a once it
+# has picked Alien, which releases client B's Join.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture mixed_race__r1_lobby_human
+click 293 132
+race 1 2
+settled Cancel
+capture mixed_race__r2_lobby_alien
+capture chat_relay__c_lobby
+signal lobby_a
+absent Network players
+gameclock 6000
+capture mixed_race__r3_launched
+log CLIENT A entered the match as ALIEN (host stays Human)
+gamemode 2
+awaitsignal chatsent
+wmsg hex:1f0440043804320435044204
+log F3 CLIENT A: received the Cyrillic chat line as U+041F U+0440 U+0438 U+0432 U+0435 U+0442
+end

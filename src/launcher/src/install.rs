@@ -488,7 +488,15 @@ fn extract(zip_path: &Path, dest: &Path) -> Result<Vec<String>, String> {
         let mut entry = archive
             .by_index(i)
             .map_err(|e| format!("cannot read entry {i} of {}: {e}", zip_path.display()))?;
-        let raw = entry.name().to_string();
+        let raw = entry
+            .name()
+            .map_err(|e| {
+                format!(
+                    "entry {i} of {} has an unreadable name: {e}",
+                    zip_path.display()
+                )
+            })?
+            .into_owned();
         if entry.is_dir() {
             return Err(format!(
                 "{} holds a directory entry ({raw}); the release zips are flat",

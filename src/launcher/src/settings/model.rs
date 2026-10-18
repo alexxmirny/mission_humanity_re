@@ -109,7 +109,9 @@ pub fn parse_bool(s: &str) -> Option<bool> {
     }
 }
 
-/// A parsed hotkey: `[Ctrl+][Alt+][Shift+](A-Z | 0-9 | F1-F12)`.
+/// A parsed hotkey: `[Ctrl+][Alt+][Shift+](A-Z | 0-9 | F1-F12)`, plus (rows that opt in with the
+/// `named` option, e.g. `ui.bigmap_key`) one of [`NAMED_KEYS`]. A row that does not opt in refuses them: the
+/// game-side parser of such a row (the net indicator's) would read `Tab` as the letter T.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hotkey {
     pub ctrl: bool,
@@ -117,6 +119,16 @@ pub struct Hotkey {
     pub shift: bool,
     /// Upper-case letter, digit, or `F1`..`F12`.
     pub key: String,
+}
+
+/// The non-alphanumeric keys a `named` hotkey row accepts, in their canonical spelling (egui's `Key::name`).
+pub const NAMED_KEYS: [&str; 8] = [
+    "Tab", "Space", "Home", "End", "Insert", "Delete", "PageUp", "PageDown",
+];
+
+/// Does this hotkey row accept [`NAMED_KEYS`]?
+pub fn hotkey_named(row: &Row) -> bool {
+    row.options.iter().any(|o| o == "named")
 }
 
 impl Hotkey {
@@ -140,6 +152,11 @@ impl Hotkey {
 /// `Ok(None)` for "no hotkey" (empty or `none`), `Ok(Some)` for a valid chord, `Err` otherwise.
 /// Modifier order and case are free (the game accepts any), duplicates are not.
 pub fn parse_hotkey(s: &str) -> Result<Option<Hotkey>, ()> {
+    parse_hotkey_named(s, false)
+}
+
+/// [`parse_hotkey`] for a row that may accept [`NAMED_KEYS`] (`named`).
+pub fn parse_hotkey_named(s: &str, named: bool) -> Result<Option<Hotkey>, ()> {
     let t = s.trim();
     if t.is_empty() || t.eq_ignore_ascii_case("none") {
         return Ok(None);
@@ -163,6 +180,12 @@ pub fn parse_hotkey(s: &str) -> Result<Option<Hotkey>, ()> {
             return Err(());
         }
         *slot = true;
+    }
+    if named {
+        if let Some(n) = NAMED_KEYS.iter().find(|n| n.eq_ignore_ascii_case(key)) {
+            hk.key = (*n).to_string();
+            return Ok(Some(hk));
+        }
     }
     let k = key.to_ascii_uppercase();
     let ok = match k.as_bytes() {
@@ -209,7 +232,7 @@ pub fn canon(row: &Row, raw: &str) -> String {
             .find(|o| o.eq_ignore_ascii_case(t))
             .cloned()
             .unwrap_or_else(|| t.to_string()),
-        Kind::Hotkey => match parse_hotkey(t) {
+        Kind::Hotkey => match parse_hotkey_named(t, hotkey_named(row)) {
             Ok(Some(h)) => h.format(),
             Ok(None) => "none".to_string(),
             Err(()) => t.to_string(),
@@ -432,7 +455,9 @@ impl Model {
                 }
                 Ok(())
             }
-            Kind::Hotkey => parse_hotkey(t).map(|_| ()).map_err(|()| Problem::BadHotkey),
+            Kind::Hotkey => parse_hotkey_named(t, hotkey_named(r))
+                .map(|_| ())
+                .map_err(|()| Problem::BadHotkey),
         }
     }
 
@@ -663,6 +688,19 @@ mod tests {
         }
         m.set("video.fps_limit", "x");
         assert_eq!(m.validate("video.fps_limit"), Err(Problem::NotInteger));
+    }
+
+    #[test]
+    fn named_keys_only_on_rows_that_opt_in() {
+        // The big-map key (`options: ["named"]`) takes Tab and friends; every other hotkey row refuses
+        // them, because its game-side parser would read `Tab` as the letter T.
+        let named = |s: &str| parse_hotkey_named(s, true).unwrap().map(|h| h.format());
+        assert_eq!(named("tab").as_deref(), Some("Tab"));
+        assert_eq!(named("ctrl+pagedown").as_deref(), Some("Ctrl+PageDown"));
+        assert_eq!(named("F9").as_deref(), Some("F9"));
+        assert!(parse_hotkey_named("Tab", false).is_err());
+        assert!(parse_hotkey("Space").is_err());
+        assert!(parse_hotkey_named("Backspace", true).is_err());
     }
 
     #[test]
@@ -897,5 +935,96 @@ mod tests {
         assert!(!m.is_visible(&extra));
         m.set("a.mode", "y");
         assert!(m.is_visible(&extra));
+    }
+
+    /// LA20: a row hidden by its parent's `visible_if` is not deleted -- its ini value survives an
+    /// Apply that turns the parent off, and a reload still shows the same value.
+    #[test]
+    fn a_hidden_dependent_row_keeps_its_value_through_save_and_load() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_model_hidden_dep");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("mh_net.ini");
+        std::fs::write(
+            &ini,
+            "[ui]\r\nbigmap=1\r\nbigmap_key=F5\r\nbigmap_center=map\r\n",
+        )
+        .unwrap();
+        let (mut m, mut store) = model();
+        m.load(Some(&std::fs::read(&ini).unwrap()), &store);
+        let key = m.schema().row("ui.bigmap_key").unwrap().clone();
+        assert!(m.is_visible(&key));
+        m.set("ui.bigmap", "0");
+        assert!(!m.is_visible(&key), "the parent is off: the row is hidden");
+        assert!(
+            m.ini_edits().iter().all(|e| e.key != "bigmap_key"),
+            "hiding writes nothing for the dependent rows"
+        );
+        m.apply(&ini, &mut store).unwrap();
+        let text = std::fs::read_to_string(&ini).unwrap();
+        assert!(
+            text.contains("bigmap=0") && text.contains("bigmap_key=F5"),
+            "{text}"
+        );
+        assert!(text.contains("bigmap_center=map"), "{text}");
+        let mut again = Model::new(Schema::builtin());
+        again.load(Some(text.as_bytes()), &store);
+        assert!(!again.is_visible(&key));
+        assert_eq!(again.value("ui.bigmap_key"), "F5");
+        assert_eq!(again.value("ui.bigmap_center"), "map");
+        again.set("ui.bigmap", "1");
+        assert!(
+            again.is_visible(&key),
+            "turning the parent on shows it again"
+        );
+        assert_eq!(again.value("ui.bigmap_key"), "F5");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An ini written by 0.2.0 (before the groups): every value reads as it did, nothing is dirty,
+    /// and an Apply with no edit leaves the file byte for byte.
+    const INI_020: &str = "; written by the 0.2.0 launcher\r\n[video]\r\nwindow=windowed\r\nscale=integer\r\nvsync=0\r\nfps_limit=144\r\n[lang]\r\npack=ru\r\n[log]\r\nkeep_sessions=50\r\nkeep_days=7\r\n[net]\r\nport=7000\r\nforce_relay=1\r\nturret_fire_rate_mult=3.0\r\nmother_free_build=1\r\n[hud]\r\nnet_indicator=0\r\nnet_indicator_key=Ctrl+Alt+M\r\n[ui]\r\nbigmap=0\r\nbigmap_key=Tab\r\nbigmap_center=map\r\n";
+
+    #[test]
+    fn a_020_era_ini_loads_unchanged_under_the_grouped_layout() {
+        let dir = std::env::temp_dir().join("mh_launcher_test_model_020");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ini = dir.join("mh_net.ini");
+        std::fs::write(&ini, INI_020).unwrap();
+        let (mut m, mut store) = model();
+        m.load(Some(INI_020.as_bytes()), &store);
+        for (id, want) in [
+            ("video.window", "windowed"),
+            ("video.fps_limit", "144"),
+            ("lang.pack", "ru"),
+            ("log.keep_sessions", "50"),
+            ("log.keep_days", "7"),
+            ("net.port", "7000"),
+            ("net.force_relay", "1"),
+            ("net.turret_fire_rate_mult", "3.0"),
+            ("net.mother_free_build", "1"),
+            ("hud.net_indicator", "0"),
+            ("hud.net_indicator_key", "Ctrl+Alt+M"),
+            ("ui.bigmap", "0"),
+            ("ui.bigmap_key", "Tab"),
+            ("ui.bigmap_center", "map"),
+        ] {
+            assert_eq!(m.value(id), want, "{id}");
+        }
+        assert!(!m.is_dirty() && m.problems().is_empty());
+        assert!(m.ini_edits().is_empty());
+        // Keys the file does not have fall back to the schema default, not to an error.
+        assert_eq!(m.value("ui.bigmap_orders"), "1");
+        // The parents are off, so these show nothing -- yet they are still in the file.
+        for id in ["ui.bigmap_key", "hud.net_indicator_key"] {
+            let r = m.schema().row(id).unwrap().clone();
+            assert!(!m.is_visible(&r), "{id}");
+        }
+        let before = std::fs::read(&ini).unwrap();
+        let r = m.apply(&ini, &mut store).unwrap();
+        assert_eq!(r.ini, Change::Unchanged);
+        assert_eq!(std::fs::read(&ini).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -7,6 +7,14 @@
 
 namespace mh::sim {
 
+// mods:A2 -- `[net] project_gate_fix`: drop the PROJECT gate in progress_propagate_unlocks (retail withholds a
+// research PROJECT whose depend[] are all acquired once the CURRENT planet's own invention is acquired by
+// PlayerSide, i.e. on every conquered planet: the offer waits for an unconquered one). Default off = retail.
+// Set from reimpl_fixes by lockstep::set_fixes. Campaign only: a multiplayer/skirmish session sits on the
+// pseudo planet 0x1f whose invention_index is 0 (never acquired), so the gate is open there either way.
+void set_project_gate_fix(bool on);
+bool project_gate_fix();
+
 namespace detail {
 
 // llm_progress_propagate_unlocks @0x00440cb5. The tech-tree unlock fixpoint. Reads `v.progress` /

@@ -12,6 +12,7 @@
 // unless a case seeds the fallback table or the defer flag.
 //
 #include "sim/sim_game_set_event.h"
+#include "sim/sim_mother_free.h" // mods:A1
 
 #include "sim_test_support.h"
 
@@ -412,6 +413,62 @@ void run_game_set_event_tests() {
         uint32_t r = run(fx, EV_PANEL_SHOW_INFO); // keeps mode 2
         ck_eq((uint32_t)fx.ui_panel_mode, 2u, "FALLBACK equal-to-mode: mode unchanged");
         ck_eq(r, 4u, "FALLBACK equal-to-mode: return = scanned_count(1)*4 = 4");
+    }
+
+    // ---- mods:A1 ([net] mother_free_build): the primary-mother gate of the build-panel events reads OPEN for a covered
+    // player. Player 2 / planet 5, NO mother; the AI flag of the player decides whether the _ai option is needed. -----------
+    {
+        auto setup = [&](bool on, bool ai_opt, bool player_is_ai, int32_t mother) {
+            fx.reset();
+            fx.player_side                        = 2;
+            fx.planet_index                       = 5;
+            fx.profiles[2].primary_mother_bldg[5] = mother;
+            fx.players[2].ai_enabled              = player_is_ai ? 1 : 0;
+            set_mother_free_build(on, ai_opt);
+        };
+        // TAB_BUILDINGS: refused without the rule, opens page 0 with it.
+        setup(false, false, false, 0);
+        run(fx, EV_BUILD_TAB_BUILDINGS);
+        ck_eq((uint32_t)fx.ui_panel_mode, 0u, "A1 TAB_BUILDINGS key off, no mother: refused (retail)");
+        setup(true, false, false, 0);
+        run(fx, EV_BUILD_TAB_BUILDINGS);
+        ck_eq((uint32_t)fx.ui_panel_mode, 1u, "A1 TAB_BUILDINGS key on, no mother: opens");
+        ck_eq((uint32_t)fx.ui_panel_page, 0u, "A1 TAB_BUILDINGS key on, no mother: buildings page 0");
+        setup(true, false, true, 0);
+        run(fx, EV_BUILD_TAB_BUILDINGS);
+        ck_eq((uint32_t)fx.ui_panel_mode, 0u, "A1 TAB_BUILDINGS key on, AI player, _ai off: refused");
+        setup(true, true, true, 0);
+        run(fx, EV_BUILD_TAB_BUILDINGS);
+        ck_eq((uint32_t)fx.ui_panel_mode, 1u, "A1 TAB_BUILDINGS key on, AI player, _ai on: opens");
+        // AUTOPAGE: page 0 (buildings) with the rule, 1 (units) without.
+        setup(true, false, false, 0);
+        run(fx, EV_BUILD_OPEN_AUTOPAGE);
+        ck_eq((uint32_t)fx.ui_panel_page, 0u, "A1 OPEN_AUTOPAGE key on, no mother: page 0");
+        setup(false, false, false, 0);
+        run(fx, EV_BUILD_OPEN_AUTOPAGE);
+        ck_eq((uint32_t)fx.ui_panel_page, 1u, "A1 OPEN_AUTOPAGE key off, no mother: page 1 (retail)");
+        // SHOW_BUILD page 2 -> 0 stays 0 with the rule.
+        setup(true, false, false, 0);
+        fx.ui_panel_mode = 0;
+        fx.ui_panel_page = 2;
+        run(fx, EV_PANEL_SHOW_BUILD);
+        ck_eq((uint32_t)fx.ui_panel_page, 0u, "A1 PANEL_SHOW_BUILD key on, no mother: page 2->0 stays 0");
+        // HOTKEY_TOGGLE from the units page returns to buildings with the rule.
+        setup(true, false, false, 0);
+        fx.ui_panel_mode = 1;
+        fx.ui_panel_page = 1;
+        run(fx, EV_BUILD_HOTKEY_TOGGLE);
+        ck_eq((uint32_t)fx.ui_panel_page, 0u, "A1 BUILD_HOTKEY_TOGGLE key on, no mother: units -> buildings");
+        setup(false, false, false, 0);
+        fx.ui_panel_mode = 1;
+        fx.ui_panel_page = 1;
+        run(fx, EV_BUILD_HOTKEY_TOGGLE);
+        ck_eq((uint32_t)fx.ui_panel_page, 1u, "A1 BUILD_HOTKEY_TOGGLE key off, no mother: stays on units (retail)");
+        // A mother present: the key changes nothing.
+        setup(true, false, false, 9);
+        run(fx, EV_BUILD_OPEN_AUTOPAGE);
+        ck_eq((uint32_t)fx.ui_panel_page, 0u, "A1 OPEN_AUTOPAGE key on, mother present: page 0 as always");
+        set_mother_free_build(false, false);
     }
 }
 

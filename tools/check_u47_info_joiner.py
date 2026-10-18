@@ -50,7 +50,14 @@ import mp_analyze  # noqa: E402
 
 DRIVER_TICK = re.compile(r"; DIAG manual-mp CLIENT driver tick")
 # The line the joiner logs when the lobby hands over to the match (launch.cpp, mp_lobby_entry_tick).
-MATCH_ENTRY = re.compile(r"TRIGGERING game entry via begin_map_load")
+# TWO ways in, and which one a run takes is a TIMING property: the DLL's own lobby entry driver logs
+# TRIGGERING (launch.cpp); when the host's START reaches retail's handler first -- which a loaded box
+# makes common -- the joiner enters through the retail path and only on_begin_map_load's D36 residue
+# line (written on EVERY begin_map_load, either path) marks the entry. Requiring the TRIGGERING line
+# alone turned that scheduling difference into a "no entry" red (tooling:TL-U47-LOADRED).
+MATCH_ENTRY = re.compile(
+    r"TRIGGERING game entry via begin_map_load|D36: match-entry residue cleared"
+)
 NETIND_STALL = re.compile(r"\[netind\] stall waiting_for=")
 
 
@@ -70,6 +77,30 @@ def window_of(client_rows, mode=4):
 
 MAX_NEW_EPISODES = 2
 MAX_FREEZE_MS = 1000
+# LOAD-INVARIANT CLAUSES (tooling:TL-U47-LOADRED). A box whose cores are taken runs BOTH lockstep peers
+# below real time (measured: host and joiner at 0.51-0.89 of wall, in the SAME ratio before and during
+# the panel), so "the clock advanced >= 90% of the wall window" and "<= 2 new stall episodes" were
+# really tests of the box. The bug (rc5) is a host that stops advancing for as long as the panel is
+# open; against the same run's own pre-panel rate that is a ratio near 0, load or no load. Every
+# rate/count clause therefore compares the panel window with the rows just BEFORE it (the landed
+# match, panel closed), falling back to the old absolute bounds only when too little baseline exists.
+BASE_MIN_CLOCK_MS = (
+    6000  # the script's own `gameclock 6000` landing: earlier rows carry the entry hitches
+)
+BASE_MIN_SPAN_MS = 5000  # less than this of baseline is noise, not a rate
+MIN_RATE_RATIO = 0.6  # window rate must keep >= this share of the pre-panel rate (bug: ~0)
+ICON_SLACK = 2
+
+
+def baseline_of(rows, w0):
+    """The panel's pre-window baseline over `rows`: (rate clock_ms/wall_ms, wall span ms, rows) or None."""
+    pre = [r for r in rows if r["wall_ms"] < w0 and r["clock_ms"] >= BASE_MIN_CLOCK_MS]
+    if len(pre) < 2:
+        return None
+    span = pre[-1]["wall_ms"] - pre[0]["wall_ms"]
+    if span < BASE_MIN_SPAN_MS:
+        return None
+    return (pre[-1]["clock_ms"] - pre[0]["clock_ms"]) / float(span), span, pre
 
 
 def longest_freeze(rows):
@@ -104,7 +135,18 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
     clock_adv = (inw[-1]["clock_ms"] - inw[0]["clock_ms"]) if inw else 0
     rx_adv = (inw[-1]["rx_pkts"] - inw[0]["rx_pkts"]) if inw else 0
     max_since = max((r.get("since_rx_ms", 0) for r in inw), default=0)
-    if clock_adv < (w1 - w0) * 0.5:
+    cbase = baseline_of(client_rows, w0)
+    if cbase:
+        # a loaded box slows the joiner before the panel as much as during it; a parked joiner (rc5)
+        # drops to ~0 against its own pre-panel rate
+        c_rate = clock_adv / float(max(1, w1 - w0))
+        if c_rate < MIN_RATE_RATIO * cbase[0]:
+            fails.append(
+                "clause 2: the joiner's clock advanced %d ms over a %d ms window = %.2f of wall, "
+                "against %.2f of wall just before the panel (parked?)"
+                % (clock_adv, w1 - w0, c_rate, cbase[0])
+            )
+    elif clock_adv < (w1 - w0) * 0.5:
         fails.append(
             "clause 2: the joiner's clock advanced %d ms over a %d ms window (parked?)"
             % (clock_adv, w1 - w0)
@@ -124,6 +166,11 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
     else:
         base_stall = before[-1]["stall"] if before else hin[0]["stall"]
         base_icon = before[-1].get("icon_calls", 0) if before else hin[0].get("icon_calls", 0)
+        hbase = baseline_of(host_rows, w0)
+        if hbase:
+            # `stall` is the game's own STALL_COUNT gauge (it climbs while a wait lasts, falls back to 0
+            # when it ends), so a loaded box peaks at ~8-10 BEFORE the panel too: compare peaks.
+            base_stall = max(base_stall, max(r["stall"] for r in hbase[2]))
         h_stall = max(r["stall"] for r in hin) - base_stall
         h_icon = max(r.get("icon_calls", 0) for r in hin) - base_icon
         h_adv = hin[-1]["clock_ms"] - hin[0]["clock_ms"]
@@ -132,21 +179,39 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
         # an episode that never ENDED, which the `stall` counter shows as ONE increment, so the real
         # tests are the clock freeze, the wait icon and the clock advance; the counter is a backstop.
         freeze = longest_freeze(hin)
+        icon_allow = 0
+        max_freeze = MAX_FREEZE_MS
+        if hbase:
+            # the wait icon is drawn after the sim has been parked > 1 s; how often a loaded box does
+            # that before the panel sets how often it may inside it (rc5: every frame, for the whole hold)
+            icon_rate = (
+                hbase[2][-1].get("icon_calls", 0) - hbase[2][0].get("icon_calls", 0)
+            ) / float(hbase[1])
+            icon_allow = int(2 * icon_rate * (w1 - w0)) + ICON_SLACK
+            max_freeze = max(MAX_FREEZE_MS, 3 * longest_freeze(hbase[2]))
         if h_stall > MAX_NEW_EPISODES:
             fails.append(
-                "clause 3: the host logged %d new stall episode(s) while the joiner held the panel (max %d)"
+                "clause 3: the host's stall gauge peaked %d above its pre-panel peak while the joiner held the panel (max %d)"
                 % (h_stall, MAX_NEW_EPISODES)
             )
-        if freeze >= MAX_FREEZE_MS:
+        if freeze >= max_freeze:
             fails.append(
                 "clause 3: the host's clock stood still for %d ms inside the window (max %d)"
-                % (freeze, MAX_FREEZE_MS)
+                % (freeze, max_freeze)
             )
-        if h_icon > 0:
+        if h_icon > icon_allow:
             fails.append(
-                "clause 3: the host's wait icon armed %d time(s) inside the window" % h_icon
+                "clause 3: the host's wait icon armed %d time(s) inside the window (allowed %d at its pre-panel rate)"
+                % (h_icon, icon_allow)
             )
-        if h_adv < (w1 - w0) * 0.9:
+        if hbase:
+            h_rate = h_adv / float(max(1, w1 - w0))
+            if h_rate < MIN_RATE_RATIO * hbase[0]:
+                fails.append(
+                    "clause 3: the host's clock advanced %d ms over a %d ms window = %.2f of wall, against %.2f of wall just before the panel"
+                    % (h_adv, w1 - w0, h_rate, hbase[0])
+                )
+        elif h_adv < (w1 - w0) * 0.9:
             fails.append(
                 "clause 3: the host's clock advanced %d ms over a %d ms window" % (h_adv, w1 - w0)
             )
@@ -195,32 +260,67 @@ def check(host_dir, client_dir, min_window_s=10.0):
 
 
 def _plant(
-    window_s=12, host_stall_in_window=0, host_freeze_ms=0, client_parked=False, ticks=0, panel=True
+    window_s=12,
+    host_stall_in_window=0,
+    host_freeze_ms=0,
+    client_parked=False,
+    ticks=0,
+    panel=True,
+    load=1.0,
+    host_slow_in_window=1.0,
+    host_icons_per_row=0,
+    saw=0,
+    entry="trigger",
 ):
+    """Planted lockstep rows, one per 100 ms of wall. `load` slows BOTH peers' sim clock everywhere (a
+    box with its cores taken); `saw` gives the host's stall gauge a sawtooth of that peak everywhere
+    (loaded boxes peak before the panel too); `host_slow_in_window` slows only the host, only inside
+    the panel window (the bug shape without a freeze)."""
     host, client = [], []
     stall = 3
-    for i in range(0, 40000, 100):  # one row per 100 ms of wall + clock
+    icon = 3
+    clock_h = clock_c = 0.0
+    W0 = 26000
+    for i in range(0, 70000, 100):
         t = 1000 + i
-        in_win = panel and 10000 <= i < 10000 + window_s * 1000
-        if in_win and host_stall_in_window and i == 10000 + 2000:
+        in_win = panel and W0 <= i < W0 + window_s * 1000
+        if in_win and host_stall_in_window and i == W0 + 2000:
             stall += host_stall_in_window
-        hc = i
-        if host_freeze_ms and in_win and i >= 12000:
-            hc = 12000 if i < 12000 + host_freeze_ms else i - host_freeze_ms
+        step = 100 * load
+        hstep = step * (host_slow_in_window if in_win else 1.0)
+        if host_freeze_ms and in_win and W0 + 2000 <= i < W0 + 2000 + host_freeze_ms:
+            hstep = 0.0
+        clock_h += hstep
+        clock_c += step
+        if in_win and host_icons_per_row:
+            icon += host_icons_per_row
+        gauge = stall + ((i // 100) % (saw + 1) if saw else 0)
         host.append(
-            dict(wall_ms=t, clock_ms=hc, stall=stall, icon_calls=3, rx_pkts=i, since_rx_ms=10)
+            dict(
+                wall_ms=t,
+                clock_ms=int(clock_h),
+                stall=gauge,
+                icon_calls=icon,
+                rx_pkts=i,
+                since_rx_ms=10,
+            )
         )
         parked = client_parked and in_win
         client.append(
             dict(
                 wall_ms=t,
-                clock_ms=10000 if parked else i,
+                clock_ms=client[-1]["clock_ms"] if parked else int(clock_c),
                 rx_pkts=0 if parked else i,
                 since_rx_ms=3000 if parked else 10,
                 game=4 if in_win else 2,
             )
         )
-    launch = ["; --mp-join: TRIGGERING game entry via begin_map_load (slots_occupied=2)"] + [
+    entry_ln = {
+        "trigger": "; --mp-join: TRIGGERING game entry via begin_map_load (slots_occupied=2)",
+        "retail": "; D36: match-entry residue cleared: player_data nonzero=0 of 1329136 B",
+        "none": "; U29: left the lobby screen",
+    }[entry]
+    launch = [entry_ln] + [
         "; DIAG manual-mp CLIENT driver tick #%d occ=0 map=0" % i for i in range(ticks)
     ]
     return host, client, launch
@@ -240,6 +340,28 @@ def selftest():
         ("NEG: driver ticked in-match (rc5)", dict(ticks=2), False),
         ("NEG: window too short (6 s)", dict(window_s=6), False),
         ("NEG: panel never opened", dict(panel=False), False),
+        # the load-invariant clauses (tooling:TL-U47-LOADRED): a slow box is not a stall
+        (
+            "LOADED box: both peers at 0.5x real time throughout, stall gauge sawtooth to 8",
+            dict(load=0.5, saw=8),
+            True,
+        ),
+        (
+            "LOADED box: both peers at 0.7x, entry through retail's START handler (no TRIGGERING)",
+            dict(load=0.7, entry="retail"),
+            True,
+        ),
+        (
+            "NEG: LOADED box AND the host drops to 20% of its own rate inside the window",
+            dict(load=0.5, host_slow_in_window=0.2),
+            False,
+        ),
+        (
+            "NEG: wait icon armed every frame inside the window (rc5), clock still moving",
+            dict(host_icons_per_row=1),
+            False,
+        ),
+        ("NEG: no entry marker at all", dict(entry="none"), False),
     ]
     bad = 0
     for label, kw, want in cases:

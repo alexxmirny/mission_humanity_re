@@ -1,0 +1,48 @@
+# mods:G17 JOINER that LOADED A SAVE FIRST (cfgmod.sav: one byte flipped in each of the seven baked cfg tables),
+# quit to the menu, then joined the host's match. Without the restore this peer plays the match on the save's
+# tables while the host plays the boot parse -- a silent desync source (the cfg tables do not travel). The
+# restore at the top of llm_strat_new_game_init runs inside session_begin_multi on both peers.
+# Pair with mp_host_start.txt. tools/check_cfg_newgame_restore.py --fresh-first 1 reads both `; G17:` lines.
+
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Game name:
+gamemode 2
+gameclock +200
+log G17 CLIENT: save loaded, quitting to the menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ---- then mp_client_start.txt's join walk ----
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gameclock 6000
+capture g17_launched
+log G17 CLIENT entered the match after loading a save
+end

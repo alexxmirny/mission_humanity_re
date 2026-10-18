@@ -6,9 +6,10 @@
 
 #include <cstring> // std::memcpy -- the PRESERVE-BUG's straddling double store, see below
 
-#include "addr/mh_calls.gen.h" // typed callables for the effectful/frontier originals we still call OUT to
-#include "state/host_events.h" // bldg_panel_open is a SCREEN record (LIFT-SCREEN)
-#include "crt/crt_select.h"    // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
+#include "addr/mh_calls.gen.h"   // typed callables for the effectful/frontier originals we still call OUT to
+#include "sim/sim_mother_free.h" // mods:A1 mother_gate_open
+#include "state/host_events.h"   // bldg_panel_open is a SCREEN record (LIFT-SCREEN)
+#include "crt/crt_select.h"      // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
 
 namespace mh::sim {
 
@@ -55,7 +56,7 @@ void map_fill_defaults(const sim_view &v, sim_store &own, const map_fill_default
     // (sim_game_set_event.cpp:170-171) -- the original reaches the same pair by both routes.
     own.ui_panel_mode() = 1;
     own.ui_panel_page() =
-        (v.profiles[*v.player_side].primary_mother_bldg[*v.planet_index] == 0) ? 1 : 0;
+        (!mother_gate_open(v, *v.player_side, *v.planet_index)) ? 1 : 0; // mods:A1
 
     std::memset(own.available_buildings_row(0), 0, 0x640);
     for (int32_t m = 0; m < 8; ++m) {

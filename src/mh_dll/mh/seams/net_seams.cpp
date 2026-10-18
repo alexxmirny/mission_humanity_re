@@ -40,8 +40,11 @@
 #include "include/mh_overlay_export.h"      // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
 #include "include/mh_keyrepeat_export.h"    // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
 #include "include/mh_pause_export.h"        // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
+#include "include/mh_sndtrace_export.h"     // MH_SndTrace_Install (snd_trace.cpp) -- [log] snd_trace sound-request trace
 #include "include/mh_viewwrap_export.h"     // MH_ViewWrap_Install (view_wrap.cpp) -- RES3 biased sprite wrap window
+#include "include/mh_bigmap_export.h"       // MH_BigMap_Install (ui_bigmap.cpp) -- mods:MM4 click + draw-before-cursor
 #include "include/mh_mapzoom_export.h"      // MH_MapZoom_Install (ui_map_zoom.cpp) -- RES2 wheel zoom, cursor anchor, torus minimum
+#include "include/mh_uiwheel_export.h"      // MH_UiWheel_Install (ui_wheel.cpp) -- D15 wheel scrolls menu / dialog / side-panel lists
 #include "include/mh_fontguard_export.h"    // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
 #include "include/mh_chatinput_export.h"    // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
 #include "include/mh_cheatgate_export.h"    // MH_CheatGate_Install (ui_cheat_gate.cpp) -- CH1 the SP cheat console refused in a network game
@@ -49,9 +52,11 @@
 #include "include/mh_canceltask_export.h"   // MH_CancelTask_Install (ui_bldg_cancel_task.cpp) -- D28 the building dialog's cancel-task Yes as a replicated order
 #include "include/mh_netcrit_export.h"      // MH_NetCrit_Install (ui_bldg_netcrit_pure.cpp) -- D37 the HUD network panel probe leaves the sim untouched in lockstep
 #include "include/mh_storagepurge_export.h" // MH_StoragePurge_Install (ui_storage_panel_purge.cpp) -- D38 row 5 the storage panel leaves dead docked units to the sim in lockstep
+#include "include/mh_bldgrearm_export.h"    // MH_BldgRearm_Install (ui_bldg_rearm.cpp) -- D11 Shift+click keeps the placed building type armed
 #include "include/mh_buildprobe_export.h"   // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
 #include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
 #include "include/mh_workerclick_export.h"  // MH_WorkerClick_Install (ui_worker_click.cpp) -- RES8 the worker +/- buttons order one worker on every press
+#include "include/mh_minimapplus_export.h"  // MH_MinimapPlus_Install (ui_minimap_plus.cpp) -- MM1-MM3 resources/corners/box at the minimap's widest zoom
 #include "include/mh_minimapbox_export.h"   // MH_MinimapBox_Install (ui_minimap_box.cpp) -- RES9 the minimap viewport box drawn clipped to the minimap
 #include "include/mh_crewreminder_export.h" // MH_CrewReminder_Install (ui_crew_reminder.cpp) -- hotfix rc9.4 the garage crew-shortage reminder
 #include "include/mh_infoguard_export.h"    // MH_InfoGuard_Install (ui_info_guard.cpp) -- U73 an info screen is never opened for a blank/stale entity (no "Cannot find info text" modal)
@@ -70,6 +75,7 @@
 #include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
 #include "include/mh_log_sink.h"            // LOG1: the async log sink every log line goes through
 #include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
+#include "addr/mh_export.gen.h"             // mh::exp::addr_llm_strat_new_game_init (mods:G17)
 #include "../../mh_net_udp/udp_stats.h"     // mp:D30: mh::netstats::order_is_late
 #include "addr/mh_patches.gen.h"            // promotable-function extents (the C1 interlock table)
 #include "addr/mh_tombstones.gen.h"         // ledger-dead body extents (the X-TOMB dead table)
@@ -689,6 +695,39 @@ __declspec(naked) void session_begin_multi_detour() {
         popad
         jmp  dword ptr [g_sbm_tramp]
     }
+}
+
+// ---- mods:G17: the new-game cfg-table restore, retail carrier -------------------------------------------
+// A New Game after a Load plays on the save's seven cfg tables (INIT.CFG is parsed once, at boot). The
+// restore (launch.cpp MH_Cfg_NewGameRestore) runs at the top of llm_strat_new_game_init, ahead of the body's
+// baseline-column copies. This is the carrier for the configurations where the entry is the GAME's own code
+// (shipped mh.dll without libmh, `[config] mode=original`); when sim_resid promotes the body, the entry is
+// owned and libmh's own observer (mh::sim::set_new_game_init_observer) carries the same function instead.
+extern "C" void        MH_Cfg_NewGameRestore(void);
+constexpr uintptr_t    ADDR_NEW_GAME_INIT = mh::exp::addr_llm_strat_new_game_init;
+void                  *g_ngi_tramp        = nullptr;
+__declspec(naked) void new_game_init_detour() {
+    __asm {
+        pushad
+        pushfd
+        call MH_Cfg_NewGameRestore
+        popfd
+        popad
+        jmp  dword ptr [g_ngi_tramp]
+    }
+}
+// The libmh observer is registered whenever libmh is bound (a no-op thunk when it is absent); the trampoline
+// only where nothing promoted the entry. Both may be live on a mixed-promotion run: the restore is idempotent
+// and each route crosses exactly one of them. The refusal is PRE-CHECKED so a promoted run does not file a
+// refused install into the enumerated interlock summary (a gated artifact).
+void install_cfg_newgame_restore() {
+    mh::hook::register_callback(mh::hook::point::new_game_init_observer, &MH_Cfg_NewGameRestore);
+    // SILENT on both outcomes: the arm log's sequence is a gated artifact (check_arm_order), and the first
+    // restore line in mh_net.log ("; G17: new-game cfg tables ...") is the affirmative evidence.
+    if (mh::hook::detour_refusal(ADDR_NEW_GAME_INIT, entry_claim::exclusive, mh::hook::WATCOM_PROLOGUE) ==
+        mh::hook::refuse_reason::none)
+        install_trampoline(ADDR_NEW_GAME_INIT, (void *)new_game_init_detour, &g_ngi_tramp, 8,
+                           entry_claim::exclusive, "the new-game cfg-table restore (G17)");
 }
 
 // ---- D21: the SHIP-path per-step hook for the runtime desync detector ---------------------------
@@ -2271,6 +2310,7 @@ static int MH_Core_Arm(void) {
                      "the body's first statement instead of a trampoline\n");
         }
     }
+    install_cfg_newgame_restore();               // mods:G17: after the promotions, like the session_begin_multi logger above
     if (g_ls_log) install_savegame_err_logger(); // net_diag: error-dlg CALLER logger (pure log)
 
 
@@ -2305,9 +2345,12 @@ static int MH_Core_Arm(void) {
         seam_log(m);
     }
     MH_KeyRepeat_Install();    // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
+    MH_SndTrace_Install();     // [log] snd_trace=1: observe-only mh_snd.log (every llm_snd_play request + outcome; default off, best-effort)
     MH_Pause_Install();        // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
     MH_ViewWrap_Install();     // RES3: the render call sites of llm_strat_pixel_delta_wrapped take the biased window (best-effort; sim callers stay stock)
     MH_MapZoom_Install();      // RES2: wheel zoom anchored at the cursor + the torus minimum zoom + our resampler (best-effort; after the pause hook: they share one detour)
+    MH_UiWheel_Install();      // D15: the wheel scrolls menu / dialog lists, the info screen pages and the strategic side-panel lists (best-effort; after the zoom: shares the pre-input hook)
+    MH_BigMap_Install();       // mods:MM4: big-map click (pre-input hook) + the draw spliced in front of the stock cursor draw (best-effort)
     MH_FontGuard_Install();    // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
     MH_ChatInput_Install();    // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
     MH_CheatGate_Install();    // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
@@ -2318,8 +2361,10 @@ static int MH_Core_Arm(void) {
     MH_NetCrit_Install();      // D37: the HUD network panel's is_network_critical probe restores the sim bytes it touches in a lockstep match (best-effort)
     MH_StoragePurge_Install(); // D38 row 5: the storage panel's dead-docked purge is skipped in a lockstep match -- the sim purges on every peer (best-effort)
     MH_BuildProbe_Install();   // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
+    MH_BldgRearm_Install();    // D11: Shift held through a placing click keeps the building type armed ([ui] shift_rearm_build; best-effort)
     MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
     MH_WorkerClick_Install();  // RES8: the worker +/- buttons order one worker on every press, the first one included (best-effort)
+    MH_MinimapPlus_Install();  // MM1-MM3: resources at every zoom, no round mask, the view box at the widest zoom ([ui] minimap_plus; best-effort)
     MH_MinimapBox_Install();   // RES9: the minimap viewport box is drawn clipped to the 128x128 minimap (best-effort)
     MH_CrewReminder_Install(); // hotfix rc9.4: a local vehicle waiting in its garage for crew re-shows the advisor text every 30 s (best-effort)
     MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)

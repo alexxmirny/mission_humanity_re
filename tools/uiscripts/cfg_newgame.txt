@@ -1,0 +1,36 @@
+# mods:G17 -- a NEW GAME after a LOAD must start from the boot parse of INIT.CFG, not the save's tables.
+#
+# The deployed save is cfgmod.sav (tools/make_cfgmod_sav.py: 2-almost.sav with one byte flipped in each of
+# the seven baked cfg tables), the lane's ONLY save, so the Load dialog opens with it selected. Walk: Load
+# game -> in game -> ESC -> Quit game -> main menu -> NEW GAME -> race -> in game. The evidence is mh_net.log's
+# `; G17: new-game cfg tables ...` line (tools/check_cfg_newgame_restore.py): per table, the bytes differing
+# from the boot capture before / after the restore at the top of llm_strat_new_game_init.
+
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Game name:
+gamemode 2
+gameclock 5
+log G17: save loaded, quitting to the menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# NEW GAME -> race picker (the sp_campaign.txt walk)
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock 1000
+log G17: new game running after the load
+capture newgame
+end

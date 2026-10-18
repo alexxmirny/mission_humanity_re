@@ -62,4 +62,10 @@ present Network players
 occ 2
 capture s8_joined_lobby
 log CLIENT S8 round-trip COMPLETE -- dead IP corrected in-session -> joined the lobby
+# 10. leave on purpose (LEAVE sent, slot freed) so a later client in the same host session finds the
+# lobby empty again (the lobby_seq row runs this as its last segment, but it must not depend on that)
+clickl Cancel
+absent Network players
+onscreen Join game
+log CLIENT S8 left the lobby -- slot freed
 end

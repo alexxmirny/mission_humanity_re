@@ -1,0 +1,33 @@
+# mp:X2 CLIENT (tooling:TL-SUITE-FOLD step 5) -- client 4, no knob (the map_have case: holds the content already).
+# Pair with mp_host_map_xfer.txt (see its header for the five-peer shape).
+
+# join the host by IP -> the joined lobby (see mp_client_join.txt for the flow)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+awaitsignal go
+awaitsignal j3
+clickl Join game
+
+# joined lobby: all five peers seated, then wait out the download and the host's Start
+present Network players
+settled Cancel
+occ 5
+capture map_have__x2_lobby
+# the host holds Start until every joiner has taken this frame (the last joiner is seated into a lobby whose gate may already be open)
+signal lobbycap4
+absent Network players
+gameclock 6000
+capture map_have__x3_launched
+log CLIENT entered the match
+end

@@ -19,7 +19,7 @@ inferring the promotion from the scenario having finished.
 newest log under it that actually carries punch content wins) -- the same shape check_net_indicator's
 `find_log` uses, and for the same reason (test_ui.py's post_check hands over the boot/menu session).
 
-THE NEGATIVE THIS EXISTS FOR: a lane pinned with `[net] force_relay=1` (relay_match, relay_browse)
+THE NEGATIVE THIS EXISTS FOR: a lane pinned with `[net] force_relay=1` (relay_xfer, relay_seq)
 writes `net: udp path RELAY (forced) -- ...` ONCE at start, INSTEAD of ever arming the punch (see
 log_formats.json id `net.punch_forced`) -- it NEVER promotes, by design, so this checker MUST fail
 against one. Running it there is exactly the negative proof mp:R3a's done_when asks for: a real

@@ -6,8 +6,9 @@
 //
 #include "sim/sim_game_set_event.h"
 
-#include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
-#include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
+#include "ai/ai_state.h"         // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "sim/sim_mother_free.h" // mods:A1 mother_gate_open
 #include "state/host_events.h"
 
 namespace mh::sim {
@@ -110,7 +111,7 @@ uint32_t game_set_event(const sim_view &v, sim_store &own, const game_set_event_
                 // player has no primary mother building on this planet it becomes 1 (units page).
                 if (own.ui_panel_page() == 2) {
                     own.ui_panel_page() = 0;
-                    if (v.profiles[*v.player_side].primary_mother_bldg[*v.planet_index] == 0) {
+                    if (!mother_gate_open(v, *v.player_side, *v.planet_index)) { // mods:A1: open under mother_free_build
                         own.ui_panel_page() = 1;
                     }
                 }
@@ -122,7 +123,7 @@ uint32_t game_set_event(const sim_view &v, sim_store &own, const game_set_event_
             break;
         case EV_BUILD_TAB_BUILDINGS:
             if ((*v.ui_bldg_tab_select_blocked == 0) &&
-                (v.profiles[*v.player_side].primary_mother_bldg[*v.planet_index] != 0)) {
+                mother_gate_open(v, *v.player_side, *v.planet_index)) { // mods:A1
                 if (own.ui_panel_mode() != 1) {
                     own.ui_panel_switch_pending() = 1;
                     own.ui_panel_mode()           = 1;
@@ -167,7 +168,7 @@ uint32_t game_set_event(const sim_view &v, sim_store &own, const game_set_event_
             own.ui_panel_mode()           = 1;
             // page = (no primary mother building here) ? 1 : 0
             own.ui_panel_page() =
-                (v.profiles[*v.player_side].primary_mother_bldg[*v.planet_index] == 0) ? 1 : 0;
+                (!mother_gate_open(v, *v.player_side, *v.planet_index)) ? 1 : 0; // mods:A1
             break;
         case EV_HUD_REDRAW_ALL:
             own.ui_panel_switch_pending() = 1;
@@ -243,7 +244,7 @@ uint32_t game_set_event(const sim_view &v, sim_store &own, const game_set_event_
                     // On the units page: cycle back to buildings only if selection is not blocked and a
                     // primary mother building exists; otherwise leave the page as-is (break out entirely).
                     if ((*v.ui_bldg_tab_select_blocked != 0) ||
-                        (v.profiles[*v.player_side].primary_mother_bldg[*v.planet_index] == 0)) {
+                        (!mother_gate_open(v, *v.player_side, *v.planet_index))) { // mods:A1
                         break;
                     }
                     own.ui_panel_page() = 0;

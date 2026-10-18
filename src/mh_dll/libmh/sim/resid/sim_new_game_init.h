@@ -109,4 +109,21 @@ void new_game_init(const sim_view &v, sim_store &own, const new_game_init_calls 
 // Live wrapper: the logic applied to state() and live_new_game_init_calls().
 void new_game_init();
 
+// ---- THE NEW-GAME OBSERVER (mods:G17, 2026-10-13) -----------------------------------------------
+//
+// WHY. The seven saved cfg tables (Unit/Building/Weapon/System/Planets/Projects/Upgrades) are
+// overwritten in place by a savegame load, and the INIT.CFG parse that built them runs once, at
+// boot -- so a New Game after a Load plays on the SAVE's tables. mh.dll restores its boot copy
+// (seams/launch.cpp MH_Cfg_NewGameRestore) BEFORE this body's per-player column copies run, which
+// is why the observer fires as the first statement. The retail detour on 0x00455df0 cannot carry it
+// when this body is promoted (the entry is owned), and session_state_reset reaches this body by a
+// DIRECT C++ call that no entry hook sees -- the D18 / C10 arrangement again.
+//
+// Fired from the detail body, so every route in (the promoted entry, the intra-slice call from
+// session_state_reset, the tutorial/lobby closures) passes it exactly once per call. Idempotent
+// observer by contract: mh.dll may ALSO hold the retail detour on a mixed-promotion run.
+void set_new_game_init_observer(void (*fn)());
+void (*new_game_init_observer())();
+void fire_new_game_init_observer();
+
 } // namespace mh::sim

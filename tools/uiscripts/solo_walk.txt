@@ -1,0 +1,823 @@
+# solo_menu_walk -- ONE process walks the default-configuration solo rows that boot to the 640x480 main menu (11 rows that
+# each paid a boot). Every segment opens with `mark <old row name>`, every capture is named <old row>__<name> so a red
+# frame names the row it replaced, and every segment ends back on the main menu (settled value:110) so the next one starts
+# where its old script did. Baselines are the old rows' PNGs, unchanged (baselines/solo_menu_walk/).
+#
+# ORDER IS LOAD-BEARING in two places:
+#   * cfg_newgame_fresh is the FIRST new game of the process (its claim is "no Load before it": every cfg table 0/0), and
+#     cfg_newgame_restore the first one after a Load. mh_launch.log has no timestamps to slice on, so the registry row
+#     judges the `; G17:` lines by position (--nth 1 fresh, --nth 2 restore); the AI lobby start writes none.
+#   * campaign_planet_switch is LAST: it starts a campaign game and then Loads cfgmod over it, and check_presence reads
+#     the planet the process ends on.
+# A typed-into player-name field is left with Cancel (the name stays the runner's pinned "host"); the lobbies are left
+# with Cancel > Cancel. The deployed save is cfgmod.sav (2-almost.sav with one byte flipped in each cfg table), the lane's
+# only save, so every Load dialog opens with it selected.
+
+# ===== segment boot_snapshot (was row boot_snapshot: boot_snapshot_capture.txt)
+mark boot_snapshot
+# LIB-BOOT: capture the post-cfg prototype snapshot. Reach the main menu and stop.
+#
+# The capture itself is NOT driven from here -- it fires inside mh.dll, off the present tick, on the
+# FIRST present with _G_LLM_GAME_MODE == 3 (boot stage 9 has just set it, so stages 5..8 have all
+# run: the INIT.CFG parse, the sprite banks, llm_strat_bldg_init_defaults and the panel/minimap
+# init). This script exists only to get the process to that point and then let it exit, so it is
+# deliberately the shortest walk there is: one WAIT on the main menu being settled, one capture for
+# evidence, `end`.
+#
+# ARM IT WITH:  the solo_walk row (registry.yaml), whose harness_extra carries
+#               boot_snapshot=1 (this segment is the first one, before any session).
+# The blob lands in the run folder as mh_boot_snapshot.bin, and the run's mh_harness.log carries the
+# `; BOOT SNAPSHOT:` line with its content hash, schema fingerprint and the two text-pointer tallies.
+#
+# NO CLICKS. Anything past the main menu risks starting a session, and a session begun before the
+# snapshot is imported is exactly the ordering hazard the -4 refusal exists for (Planets slot 0x1f).
+# The capture is one-shot and has already fired by the time this frame settles.
+
+settled value:110
+capture boot_snapshot__menu
+log boot snapshot capture point reached (main menu, GAME_MODE 3)
+
+# ===== segment cfg_newgame_fresh (was row cfg_newgame_fresh: cfg_newgame_fresh.txt)
+mark cfg_newgame_fresh
+# mods:G17 negative control: a NEW GAME in a FRESH process (no Load first) -- the restore must find nothing
+# to do (every table 0/0 in the `; G17:` line), i.e. the fix is byte-identical to retail there.
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock 1000
+log G17: fresh new game running
+capture cfg_newgame_fresh__newgame
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment menu_walk (was row menu_walk: mp_menu_walk.txt)
+mark menu_walk
+# Phase 3 done_when: the full MP menu walk, keyed PURELY on UI-state transitions (no frame/time waits).
+# main menu -> NETWORK GAME -> player name -> local-games browser -> Create -> game name -> map pick -> lobby.
+# A frame is captured at each of the 6 screens (capture_wN_*.bmp).
+
+# 1. main menu (7-button sprite menu; NETWORK GAME = value 110)
+settled value:110
+capture menu_walk__w1_menu
+clickv 110
+
+# 2. player-name screen (title "Player name"; accept default name via Ok)
+present Player name
+settled Ok
+capture menu_walk__w2_playername
+clickl Ok
+
+# 3. local-games browser (host a game via "Create game")
+settled Create
+capture menu_walk__w3_browser
+clickl Create
+
+# 4. game-name screen (title "Game name"; accept via Ok)
+present Game name
+settled Ok
+capture menu_walk__w4_gamename
+clickl Ok
+
+# 5. map picker (title "Available maps"; accept the pre-selected map via Ok)
+present Available maps
+settled Ok
+capture menu_walk__w5_mappick
+clickl Ok
+
+# 6. lobby (title "Network players"; the host waiting room with Start/Cancel)
+present Network players
+settled Start
+capture menu_walk__w6_lobby
+log MP menu walk COMPLETE -- reached the host lobby
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled Create
+clickl Cancel
+settled value:110
+
+# ===== segment ip_cancel (was row ip_cancel: mp_ip_cancel.txt)
+mark ip_cancel
+# U38 (solo): Browser -> Internet server -> Cancel, the path that slid in TWICE.
+#
+# THE DEFECT IS AN ANIMATION, WHICH A PIXEL CANNOT SEE, so be honest about what this test is for.
+# llm_mp_netsetup_ip_field_cancel (0x004bd805) calls llm_lobby_show_intro_wait(0) and then, at the very
+# next instruction, llm_mp_local_browser_setup -- which ends with its OWN show_intro_wait(0). Two 400 ms
+# slide-ins back to back. The fix suppresses the first by return address; the PROOF that it fired is the
+# seam log line `; slide: suppressed the redundant ip-cancel slide-in`.
+#
+# What THIS script is for is the other half: that suppressing a slide did not break the navigation it
+# was part of. That is the regression a return-address suppression can plausibly cause -- wrong site,
+# wrong screen, dead button -- and it is exactly what a state predicate can assert. So: walk in, walk
+# out, and require the local browser to be functional on arrival (Create game is present AND clickable,
+# not merely drawn).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+
+# the local-games browser -- the screen we must come back to
+settled Create
+capture ip_cancel__i1_browser
+
+# -> the "connect by IP" screen (widget 0x0065010b -> llm_mp_netsetup_enter_connect_ip_screen)
+clickl Internet server
+present Server address
+settled Cancel
+capture ip_cancel__i2_ip_window
+
+# -> Cancel returns here. `settled Create` rather than `present Create`: present would pass mid-slide,
+# and the whole subject of this test is the slide, so the assertion has to outlast it.
+clickl Cancel
+absent Server address
+settled Create
+capture ip_cancel__i3_back_on_browser
+
+# ...and the browser is not just drawn but LIVE. A suppression that landed on the wrong call site could
+# leave a correctly-rendered screen whose widgets were never re-wired; clicking through proves the
+# setup() that owns the surviving slide-in really ran.
+clickl Create
+present Game name
+log IP-cancel round trip COMPLETE -- browser came back live after the de-duplicated slide
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled Create
+clickl Cancel
+settled value:110
+
+# ===== segment u52_relobby (was row u52_relobby: mp_host_u52_relobby.txt)
+mark u52_relobby
+# mp:U52 HOST (solo): a NEW lobby starts with no teams and FFA mode. The host opens a lobby, sets TEAM mode and team T2
+# for itself, LEAVES (Cancel -> browser) and creates the game again: the second lobby must read FFA and "-". Without the
+# reset (detour on llm_lobby_screen_open) the mode/team bytes survive the leave, because nothing in retail ever writes
+# them back.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+occ 1
+settled Cancel
+lobbymode 0
+team 0 0
+click 221 115
+team 0 1
+click 221 115
+team 0 2
+click 501 370
+lobbymode 1
+capture u52_relobby__relobby_before
+
+clickl Cancel
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+occ 1
+settled Cancel
+lobbymode 0
+team 0 0
+capture u52_relobby__relobby_after
+log HOST second lobby opened in FFA with no team
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled Create
+clickl Cancel
+settled value:110
+
+# ===== segment key_repeat (was row key_repeat: key_repeat.txt)
+mark key_repeat
+# U24 -- one keystroke must produce exactly ONE character in a menu text field.
+#
+# Guards the fix in src/mh_dll/mh/seams/ui_keyrepeat.cpp, which clears the key pair published by
+# llm_ui_modal_key_pump at pump entry so each publish is dispatched once. What this test can and
+# cannot see, stated plainly:
+#
+#   * It CANNOT reproduce the reported bug. The repeat count is (MENU_NOW_MS - STEP_NEXT_MS)/150 + 1,
+#     so it only exceeds 1 on a machine whose menu frames lag behind the menu clock -- our rig keeps
+#     up, which is exactly why the bug was never reproducible here.
+#   * It CAN catch the real risk of the fix: OVER-SUPPRESSION. If clearing the published pair ever
+#     swallows a legitimate keystroke, the field shows the pinned name with NO appended character and
+#     the capture diverges from the baseline. That is the regression this guards, on every DLL change.
+#
+# setup.dat is pinned by ui_test.py (--host-name host), so the field starts as a known string and the
+# baseline is machine-independent: "host" + one typed character.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+# The 'Your name' widget is the edit field. It must be ACTIVATED before it accepts keystrokes: the
+# modal editor (llm_ui_edit_field_modal_tick) only runs while it is the pending widget. A key sent to
+# an unfocused screen goes to menu navigation instead and leaves the field untouched -- which is a
+# false PASS shape for this test, so the click is load-bearing.
+dump
+clickl Your name
+capture key_repeat__k_name_before
+
+# Scancode 0x02 = '1' (PC set-1, the same table llm_strat_input_update compares against).
+key 0x02
+capture key_repeat__k_name_typed
+log U24: typed one '1' into the player-name field
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled value:110
+
+# ===== segment type_ascii (was row type_ascii: type_ascii.txt)
+mark type_ascii
+# F4 -- `type <text>` must be BYTE-IDENTICAL to the equivalent `key` sequence.
+#
+# The harness drives the game's own keyboard path: a character is resolved to the (scancode,
+# modifier) pair a player would physically press on the active layout, injected into
+# _G_LLM_INPUT_KEY_EVENTS, and translated by the game's own llm_input_key_dequeue_translate_ascii.
+# `type` is therefore not a new input path -- it is `key`, with the scancodes worked out from the
+# layout instead of written by hand. This scenario is what makes that claim checkable rather than
+# assertable: the driver journals every event it writes into the ring (scancode + event_type, the
+# two fields that ARE the input), and `keyjournal same` compares the two segments byte for byte.
+#
+# It asserts TWO things, and the second is not implied by the first:
+#   * the INJECTED EVENTS are identical    -- `keyjournal same`
+#   * the STORED TEXT is identical         -- `field name hostho1ho1`, i.e. "host" (pinned by
+#     ui_test.py --host-name) + "ho1" typed by `type` + "ho1" typed by three `key` lines.
+# A `type` that expanded correctly but delivered at the wrong moment would pass the first and fail
+# the second; a `type` that wrote the field directly would pass the second and fail the first.
+#
+# The layout is pinned to 00000409 (US) for the run and restored at the end, because the three
+# hardcoded `key` scancodes below are only 'h','o','1' on a US layout -- on the operator's German or
+# Dvorak box they would spell something else and the test would be measuring the machine.
+#
+# THE FIELD HOLDS 15 CHARACTERS AND THEN SILENTLY REFUSES (measured here: a 16th keystroke reaches
+# the game's translate step, publishes, and is simply not inserted). The text below is 13, with the
+# pinned "host" included. A script that overruns it does not fail loudly -- it just stops typing --
+# so count the characters when writing one.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+# The edit field must be ACTIVATED before it accepts keystrokes (llm_ui_edit_field_modal_tick only
+# runs while it is the pending widget) -- same load-bearing click as key_repeat.txt.
+clickl Your name
+
+layout 00000409
+
+keyjournal mark
+type ho1
+keyjournal mark
+key 0x23
+key 0x18
+key 0x02
+keyjournal same
+
+field name hostho1ho1
+
+# AND THE OTHER HALF OF A KEYSTROKE. A capital letter needs SHIFT, and shift does not travel in the
+# ring: the game's translate step reads it from GetKeyboardState, so `type` supplies it the way a
+# real Shift press does -- in the OS key-state table, held for exactly as long as the character is in
+# flight. Nothing above tests that (every character so far is unshifted, and in the Cyrillic scenario
+# both cases collapse onto '?'), so three capitals are the assertion: they can only arrive as
+# capitals if the modifier reached ToAscii.
+type ABC
+field name hostho1ho1ABC
+
+capture type_ascii__t_ascii
+layout default
+log F4: `type ho1` == `key 0x23 0x18 0x02`, byte for byte, in the ring and in the field
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled value:110
+
+# ===== segment type_cyrillic_acp (was row type_cyrillic_acp: type_cyrillic_acp.txt)
+mark type_cyrillic_acp
+# mp:MP-LANG follow-up (2026-09-29) -- the user's original complaint, on the NAME field: a Russian
+# keyboard layout on a machine whose codepage has NO Cyrillic bytes (the process ACP, CP1252 on the
+# rig; no `[input] codepage` pin) typed LATIN letters.
+#
+# Why it did: H1 resolved each keystroke to its Cyrillic code point, the codepage could not encode it,
+# and H1 fell back to the game's own scancode table -- the US-QWERTY map -- which gave the Latin
+# letter on the same key (П is on G, р on H ...). "Привет" became "ghbdtn", and in a name field those
+# Latin letters then PASSED the [A-Za-z0-9] rule, so the name read "hostghbdtn".
+#
+# Now a character the layout produces but the codepage cannot hold types NOTHING (and a name field
+# logs `name field: REJECTED U+041F (this codepage has no byte for it)`). The field stays exactly the
+# "host" the runner pinned. type_cyrillic is the same walk under a CP1251 pin, where the letters ARE
+# encodable and the [A-Za-z0-9] rule is what refuses them; this row is the fallback path.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+
+clickl Your name
+
+layout 00000419
+type Привет
+field name hex:686f7374
+capture type_cyrillic_acp__t_cyr_acp
+layout default
+log MP-LANG: typed 6 Cyrillic characters on the RU layout under CP1252 into the NAME field -> no Latin stand-ins, name stays host
+# -- back to the main menu
+settled Cancel
+clickl Cancel
+settled value:110
+
+# ===== segment ai_closed_start (was row ai_closed_start: mp_ai_closed_start.txt)
+mark ai_closed_start
+# F3E-COV: the AI-lobby START walk -- the exerciser for the host-Start lobby fixups that the post-F2
+# measurement flagged as having none (fork F3E-COV, net_seams.cpp "Host-Start hang fix" plus the
+# lobby state the "N2: host-protect guard" was written for).
+#
+# SOLO on purpose. Start un-greys at occ 2 and an AI counts toward occ, so a host plus one computer
+# player can launch alone -- the pattern res_hud.txt / sp_det.txt already prove. No client peer, no
+# rendezvous, so this costs one lane.
+#
+# WHAT IT EXERCISES, and where the assertion for each one is:
+#
+#   The AI->CLOSED slot cycle, and the host surviving it.  THE ASSERTION IS `occ 1` immediately after
+#   the close click: the roster falls 2 -> 1 (the host alone), and a close that took the HOST's slot
+#   with it -- N2's 2026-07-22 failure, where the AI's uninitialised player_id 0 aliased the host's
+#   and remove_player_slot(0) compacted slot 0 -- leaves occ 0 and TIMES OUT here.
+#   `capture a1_host_kept_slot0` is the rendered half: the host's own name row is still on screen.
+#   (In that frame the CLOSED row still shows the departed AI's "Computer" name -- the name column is
+#   repainted a frame later. It is stable, not a race: five runs, 0.000%.)
+#
+#   READ THIS BEFORE CREDITING THE N2 GUARD FOR THAT. Measured 2026-09-13 with
+#   `[trace] funcs=0x4bf59f,0x4bf513,0x4bf65d`: this walk fires llm_lobby_slot_cycle_state_cb and
+#   llm_lobby_peer_table_add_ai and NEVER CALLS llm_lobby_peer_slot_remove at all, so the guard's
+#   player-0 refusal branch is not what keeps the host here -- mp_normalize_ai_slot_ids() (N2's own
+#   other half) and the peer_clear fix already took the trigger away. This scenario pins the
+#   OBSERVABLE (the host survives an AI-slot close); the guard's pass-through branch is covered by
+#   leave_frees_slot, and its refusal branch is recorded as unreachable.
+#
+#   peer_clear (the 2026-07-11 host-Start hang fix).  Each AI add INCREMENTS the peer-table count
+#   DAT_0065f692 and nothing ever decrements it, so FUN_004bf11d's `while (0 < count)
+#   llm_lobby_peer_slot_remove(...)` on Start spins forever (100% CPU, main thread wedged -- it looks
+#   like a hang, not a crash). THE ASSERTION IS THAT THE WALK COMPLETES: this script seats TWO AI
+#   slots' worth of increments (slot 2 OPEN->AI->CLOSED leaves its increment behind -- the close
+#   removes the slot, not the count) and then clicks Start, so an unfixed build never reaches
+#   `absent Network players` and the run ends as a TIMEOUT/STALL rather than a pixel diff.
+#
+# SLOT GEOMETRY is mp_host_ai_closed.txt's, measured there: the per-slot STATE spinner column is
+# x=70, rows y = 115(host) 132 149. The spinner's own text is DRAWN, not a matchable label, so every
+# click is gated on a STATE predicate afterwards (`present Computer` for the FIRST OPEN->AI edge,
+# `occ N` for every roster edge) -- each click rebuilds the widget list and a click fired mid-rebuild
+# misses.
+#
+# NO IN-GAME CAPTURE, deliberately. The verdict for peer_clear is the completion, and an in-game
+# frame gated on a game clock carries the Pioneer-sprite phase that made tutorial_enter/pause_hotkey
+# flap until they were wall-clock-pinned. Both captures here are lobby screens (mode 0, 640x480), so
+# this scenario needs no [video] pin either.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+
+# --- slot 2: OPEN -> AI -> CLOSED. The second click is the N2 trigger. ---
+click 70 149
+present Computer
+occ 2
+click 70 149
+# N2: the host is still seated. occ 2 -> 1 means the AI slot went away and slot 0 did not.
+occ 1
+capture ai_closed_start__a1_host_kept_slot0
+
+# --- slot 1: OPEN -> AI, so the roster is host + AI = occ 2 and Start un-greys ---
+# GATE ON `occ`, NOT ON `present Computer` (sp_soak.txt's lesson, and measured here): a CLOSED slot
+# keeps the departed AI's name in its name column for at least the frame a1 captures, so "Computer"
+# is already on screen when this click is fired and the label predicate would pass on the stale row
+# instead of waiting for the rebuild. `occ` is the roster, so it can only rise when the seat is real.
+click 70 132
+occ 2
+capture ai_closed_start__a2_lobby_ai_plus_closed
+
+enabled Start
+clickl Start
+
+# peer_clear: an unfixed build never gets past the clear loop, so everything below is the assertion.
+absent Network players
+gamemode 2
+gameclock 1000
+log F3E-COV: host launched from an AI+CLOSED lobby -- N2 kept slot0, the Start clear-loop terminated
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment stats_panel (was row stats_panel: stats_panel.txt)
+mark stats_panel
+# The strategic STATS panel (the E hotkey): BUILDINGS / lost / destroyed, UNITS / lost / destroyed,
+# each with a right-aligned value.
+#
+# WHY THIS ROW EXISTS (2026-09-26). The values drew as `?????0`. llm_ui_hud_label_value_row_draw pads
+# each number to 6 cells with U+0087 (llm_str_itoa_pad_left(v, 6, 0x87)), a code unit no font maps,
+# so retail draws a blank one-em cell for each pad. mp:F2's glyph guard (gfx_font_guard.cpp) read
+# every unmapped code unit above U+0020 as a missing glyph and drew its '?' substitute; it now leaves
+# C1 controls blank too. The capture is compared only inside the right-hand panel, so the map's idle
+# animation does not count.
+#
+# Single-peer, through the real menu (an AI in slot 1, host clicks Start alone) -- pause_hotkey.txt's
+# walk.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1, then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 1500
+
+# Scancode 0x12 = E (PC set-1): the stock hotkey that opens the stats panel.
+key 0x12
+gameclock 2000
+cursor 600 450
+capture stats_panel__s1_stats
+log stats panel: captured after E
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment pause_hotkey (was row pause_hotkey: pause_hotkey.txt)
+mark pause_hotkey
+# D19 -- the hotkey that enters the orphaned big-map screen (game mode 5).
+#
+# mh.exe ships a complete mode-5 screen that NOTHING in the retail binary can reach: no store of 5
+# into _G_LLM_GAME_MODE exists anywhere in the EN or RU build (the game-mode notes "Mode 5"). The seam
+# src/mh_dll/mh/seams/ui_pause.cpp supplies the missing entry; the exit was already there
+# (llm_pause_input_wait latches any key-down / mouse press -> mode 2 + time resync).
+#
+# What this test actually asserts is the GAMEMODE PREDICATE, twice -- 2 -> 5 -> 2. The capture is a
+# secondary guard: mode 5 renders through llm_strat_render_present, so a black or garbage frame would
+# mean the screen composes differently from the strategic view it reuses, which is worth catching.
+#
+# THE FRAME IS NOT "STABLE BY CONSTRUCTION", which this header claimed until 2026-09-10. Mode 5 does
+# freeze the sim once it is up, but neither capture is gated on a fixed sim STEP -- `gameclock 1500`
+# fires on the first present past the threshold, and how many 0.1 s steps that present carried
+# depends on the frame rate. Under run_gate.py's concurrency both captures went red (2.654% /
+# 2.913%) on a build that passed standalone at 0.000%, the moving pixels being the Pioneer's
+# rotating sprite. The registry entry now pins the wall clock ([harness] pin_wallclock=1) so the
+# game clock is a function of the frame count, and the captures are byte-exact at any load; read
+# that entry for the mechanism and the measurements.
+#
+# Single-peer, through the real menu (an AI in slot 1, host clicks Start alone) -- same walk as
+# res_hud.txt / esc_menu.txt, so the hotkey is exercised on a genuinely launched match.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: seat an AI opponent in slot 1, then launch alone.
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game. Let the sim advance a little first, so entering the frozen view is a real transition out
+# of a running game rather than a race with the launch.
+absent Network players
+gamemode 2
+gameclock 1500
+
+# The BEFORE frame: the live strategic view. It was SUPPOSED to isolate what mode 5 adds --
+# llm_strat_draw_floating_messages draws G_TEXT_PTRS[0x94] as a HUD panel title when GAME_MODE == 5
+# -- but that banner is in NEITHER frame: before the clock pin b0 and b1 were the same file
+# byte-for-byte (md5 668dc59f...), so the pair asserted nothing about mode 5's composition. Pinned,
+# they differ only by the sim steps that elapsed between the two captures. Why the banner never
+# renders here is an open item.
+capture pause_hotkey__b0_strat
+
+# Scancode 0x19 = P (PC set-1, the table llm_strat_input_update compares against). The seam
+# consumes it out of the key ring, so the stock hotkey ladder never sees it.
+key 0x19
+gamemode 5
+capture pause_hotkey__b1_paused
+log D19: entered game mode 5 (big map) from the strategic view
+
+# Any key comes back -- this half is the GAME's own code, unmodified.
+key 0x19
+gamemode 2
+log D19: returned to the live strategic view (mode 2)
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment esc_menu (was row esc_menu: esc_menu.txt)
+mark esc_menu
+# Proves the [uitest] `key` action: reach a screen that is UNREACHABLE by mouse.
+#
+# The ESC/in-game menu and the enter-gameplay options screen are both opened from scancode branches in
+# llm_strat_input_update, so a mouse-only driver could never get to them. `key 0x01` (ESC, PC set-1)
+# injects a down+up pair into the game's own key ring, exactly as the mouse actions do for the mouse
+# ring -- the game then runs its real handler.
+#
+# Only the ESC MENU frame is captured. An in-game HUD shot was tried first and measured 1.37% diff
+# run-to-run (units/AI animate), which is inside the 2% tol but flaps -- and it asserts nothing this
+# test is about. res_hud already covers the HUD.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# in-game, then ESC -> the in-game menu
+absent Network players
+gamemode 2
+gameclock 1500
+key 0x01
+dump
+capture esc_menu__k2_escmenu
+log ESC menu reached via injected keypress
+# -- back to the main menu
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment cam_latch (was row cam_latch: cam_latch.txt)
+mark cam_latch
+log cam_latch: segment start
+# tooling:TL-SUITE-SPLICE-CAM -- cam_edge_scroll.txt (mp:SES3, mouse-edge pin) and cam_key_hold.txt
+# (mp:SES3c, keyboard hold) shared this exact menu->lobby->launch walk and lane; this script runs
+# both probes in the ONE boot instead of two. `tools/check_cam_trace.py` reads the shared
+# `; [mtrace]` trace and judges each probe from its own segment: the `log` line below is the
+# boundary its `--segment 1/2 --boundary` args split on, so probe 2's residue (cursor centred, no
+# key down) cannot confuse probe 1's verdict, or vice versa.
+#
+# THE ASSERTION IS THE post_check, NOT THE PIXELS -- same shape as module_absent. `s0_menu` is a
+# boot-sanity frame taken before the walk; every claim lives in check_cam_trace.py.
+#
+# Single-peer: seat an AI in slot 1 and Start alone, so the real menu -> lobby -> launch path runs
+# with no client VM (same walk both retired scripts used).
+
+settled value:110
+capture cam_latch__s0_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: OPEN -> AI on slot 1, gated on the "Computer" name label because the per-slot spinner
+# rebuilds the widget list (a click fired mid-rebuild misses).
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+# In-game. `gameclock` rather than a frame count: the edge scroll is paced by CURRENT_GAME_TIME
+# against _G_LLM_CAM_EDGE_LEFT_INTERVAL, so the thing the hold has to outlast is game time.
+absent Network players
+gamemode 2
+gameclock 2000
+
+# ---- PROBE 1 (mp:SES3): mouse pinned at the left screen edge -------------------------------------
+# 1. CENTRE -- the control. All eight latches clear, camera still.
+cursorhold 320 240 60
+# 2. PINNED AT THE LEFT EDGE. EDGE_LEFT_ACTIVE latches on the first frame and stays latched while
+#    the cursor does not move; the camera scrolls the whole time -- the "edge-latched while pinned"
+#    shape --expect-pinned requires.
+cursorhold 0 240 600
+# 3. RELEASED, back to centre. The else-branch in llm_strat_input_update clears the flag on the
+#    first frame the cursor is off the edge -- the FALL half of --expect-rise-fall, and it leaves
+#    the cursor centred for probe 2 below.
+cursorhold 320 240 120
+
+# ---- boundary: check_cam_trace.py's --segment 1/2 split on the first `; [script] LOG:` line
+# containing this text. Everything above is probe 1's segment; everything below is probe 2's.
+# (log text is truncated at 63 chars by the harness's `s->text[64]` -- keep this line short.)
+log cam_latch: probe2 start -- edge latch done, cursor centred
+
+# ---- PROBE 2 (mp:SES3c): LEFT arrow held via `keyhold` --------------------------------------------
+# Cursor is already centred at 320,240 from probe 1's release above, so no CAM_EDGE_* latch can
+# muddy the held= column this probe checks.
+# 1. CONTROL: no key held, all eight latches clear, camera still.
+cursorhold 320 240 60
+# 2. HOLD LEFT (scancode 0x4b) for 600 presents -- matched to probe 1's own 600-present hold, since
+#    both need >= 3 [mtrace] samples at the 500 ms camera heartbeat. CAM_SCROLL_LEFT_HELD latches on
+#    the DOWN event and stays latched with no paired UP -- the unpaired hold `keyhold` exists to
+#    express -- and the camera scrolls left the whole time.
+keyhold 0x4b 600
+# 3. RELEASED. The UP event `keyhold` sends on its last present clears the latch -- the fall half
+#    check_cam_trace's --expect-held requires, same as --expect-rise-fall does for probe 1.
+cursorhold 320 240 120
+
+log cam_latch: done -- edge+key latch both released
+log cam_latch: segment end
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment cfg_newgame_restore (was row cfg_newgame_restore: cfg_newgame.txt)
+mark cfg_newgame_restore
+# mods:G17 -- a NEW GAME after a LOAD must start from the boot parse of INIT.CFG, not the save's tables.
+#
+# The deployed save is cfgmod.sav (tools/make_cfgmod_sav.py: 2-almost.sav with one byte flipped in each of
+# the seven baked cfg tables), the lane's ONLY save, so the Load dialog opens with it selected. Walk: Load
+# game -> in game -> ESC -> Quit game -> main menu -> NEW GAME -> race -> in game. The evidence is mh_net.log's
+# `; G17: new-game cfg tables ...` line (tools/check_cfg_newgame_restore.py): per table, the bytes differing
+# from the boot capture before / after the restore at the top of llm_strat_new_game_init.
+
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Game name:
+gamemode 2
+gameclock 5
+log G17: save loaded, quitting to the menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# NEW GAME -> race picker (the sp_campaign.txt walk)
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock 1000
+log G17: new game running after the load
+capture cfg_newgame_restore__newgame
+# -- back to the main menu
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+
+# ===== segment campaign_planet_switch (was row campaign_planet_switch: sp_planet_switch.txt)
+mark campaign_planet_switch
+# SPPLANET (dist RL15): a CAMPAIGN PLANET SWITCH must rewrite presence.json with the new planet.
+#
+# Start: sp_campaign.txt's walk (NEW GAME -> race -> landing), which always begins on Nortus (the
+# campaign's System[1] planet). The switch: ESC -> Load game
+# -> the deployed save `2-almost` (a campaign save sitting on Aman, same Nortus System), so
+# G_PLANET_INDEX changes inside ONE process and one campaign session -- the same edge the game's own
+# "Travel to <planet>?" transition crosses, and the only one mp_presence_tick() watches (it is polled,
+# not hooked). Driving the real travel needs a mothership that can depart plus the system-map HUD,
+# which has no widget list to script; that is the honest gap of this row.
+#
+# THE LOAD LIST NEEDS NO ROW CLICK. A lane has no save dir of its own, so the deployed save is the
+# ONLY entry and the dialog opens with it selected (the list is mtime-descending, first row
+# preselected). On a polygon run (not a lane) the list holds every machine save and "Load game" would
+# load the newest -- run this row through tools/test_ui.py, not tools/ui_test.py against the polygon.
+#
+# tools/check_presence.py then reads the logs root's presence.json: still `campaign`, the system and
+# planet named, and the planet NOT Nortus (the pre-switch value this script itself created).
+
+settled value:103
+clickv 103
+
+hovered value:104
+clickv 104
+
+gamemode 2
+gameclock 1000
+log SP planet switch: in-game on the New Game planet (Nortus), opening ESC -> Load game
+
+key 0x01
+settled value:108
+clickv 108
+settled Load game
+clickl Load game
+
+# the load replaces the world; the in-game list returns once it is done
+absent Load game
+gamemode 2
+log SP planet switch: save loaded, planet switched
+capture campaign_planet_switch__switched
+
+end

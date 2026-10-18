@@ -1637,6 +1637,8 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //     gzdone [N] = mp:Q2/Q3: >= N session recordings (state / orders / clock) compressed to their final .gz by
 //                this process and no compression still running -- gate a script's `end` on it after a quit,
 //                so the runner's kill cannot strand a raw file. Default N = 1.
+//                Its timeout is WALL time (120 s), not `timeout_frames`: the compressor is a background thread, and
+//                a headless lane's ~9000 fps turns an 81000-frame budget into ~9 s (tooling:TL-SPREC-LOADRED).
 //     retryready [N] = MH_Seam_S8RetryArmed() >= N (default 1): a client's FAILED connect (dead/typo'd IP)
 //                has cleared the connect latches, so a corrected-IP re-Connect will re-kick. The S8(b)
 //                round-trip test gates its 2nd Connect on this instead of a time wait for the ~4s fail.
@@ -1780,6 +1782,9 @@ enum {
     OP_W_SESSIONS,
     OP_W_PEERS,
     OP_W_OCC,
+    OP_W_LISTTOP,  // D15: `listtop <widgetVA> <N>` -- a menu list widget's top row (param_block[7]) is N
+    OP_W_HUDTOP,   // D15: `hudtop <descVA> <N>` -- a strategic side-panel list descriptor's top row (desc+0x29) is N
+    OP_W_INFOPAGE, // D15: `infopage <N>` -- the unit/building info screen shows page N (_G_LLM_UI_INFO_DESC_INDEX)
     OP_W_RACE,
     OP_W_TEAM,      // mp:U51: `team <slot> <v>` -- the slot's TEAM byte (+0x0c) on THIS peer
     OP_W_LOBBYMODE, // mp:U51: `lobbymode <0|1>` -- host slot 0's MODE byte (+0x07): 0 FFA, 1 Team
@@ -1829,8 +1834,10 @@ enum {
     OP_A_RAWMOUSE,  // PT-INPUT1: `rawmouse abs|rel|down|up ...` -- a Raw Input packet into the owned mouse
     OP_A_RAWKEY,    // PT-INPUT1: `rawkey <make> [e0] [down|up]` -- a Raw Input packet into the owned keyboard
     OP_A_KEY,
-    OP_A_KEYHOLD, // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
-    OP_A_HOTKEY,  // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
+    OP_A_KEYHOLD,    // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
+    OP_A_HOTKEY,     // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
+    OP_A_HOTKEYDOWN, // `hotkeydown <spec>` -- press the chord and KEEP it down until `hotkeyup` (mods:MM4: a hold key)
+    OP_A_HOTKEYUP,   // `hotkeyup <spec>` -- release it
     OP_A_TYPE,
     OP_A_LAYOUT,
     OP_A_KEYJOURNAL,
@@ -1838,12 +1845,24 @@ enum {
     OP_A_LOG,
     OP_A_SIGNAL,
     OP_A_DUMP,
-    OP_A_MARK,   // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
-    OP_A_LOGSEL, // `logsel <label>` -- RES12: a `; [sel] <label> cam= gest= btn= n= bldg= ids=` line (control group 0, sorted) in mh_video.log
+    OP_A_MARK,       // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
+    OP_A_LOGBUILD,   // `logbuild <label>` -- D11: a `; [build] <label> armed= shift= placed=` line (the armed building type, Shift, own buildings of that type) in mh_video.log
+    OP_A_LOGBLDGS,   // mods:A1: `logbldgs <label> [col0 row0 col1 row1]` -- a `; [a1] <label> planet= primary= ... gen= con= pop= res=` line (primary mother, power, population, stock) and one `;   [a1] <label> slot= ... flags= online= energy= prog=` line per building (in the tile rectangle, when given)
+    OP_A_CAMTO,      // mods:A1: `camto <col> <row>` -- llm_map_cam_set_col/row
+    OP_A_REVEAL,     // mods:A1: `reveal <col> <row> <n>` -- OR the local player's sight bit into an n x n tile square (a parked scout)
+    OP_A_WATCH,      // mods:A1: `watch <player>|local` -- the player `liftoff` / `logbldgs` / `removebldg` act on (default: the local one)
+    OP_A_REMOVEBLDG, // mods:A1: `removebldg <col> <row>` -- the building at that tile: its state -> DISMANTLE_FINISH (3): the game's own removal step (refund, unmap_footprint -> power_network_recompute)
+    OP_A_DELSAVE,    // mods:A1: `delsave <name>` -- delete save/<name>.sav (so the next run's `Load game` picks the committed save, the newest)
+    OP_A_SAVEGAME,   // mods:A1: `savegame <name>` -- game_SaveGame(name), the call the in-game save dialog's confirm makes
+    OP_A_LIFTOFF,    // mods:A1: `liftoff` -- every live mother building of the watched player -> state TO_UNIT (0x7c)
+    OP_A_LOGSEL,     // `logsel <label>` -- RES12: a `; [sel] <label> cam= gest= btn= n= bldg= ids=` line (control group 0, sorted) in mh_video.log
+    OP_A_LOGGOAL,    // `loggoal <label> [@side:id]` -- mods:MM4C: a `; [goal] <label> n= goals=id:x:y,..` line: control group 0's units' goal_x:goal_y (sorted by id), or the one unit `@side:id`, in mh_video.log
     OP_A_POKERACE,
     OP_A_INJECTSTART,
     OP_A_END,
 };
+
+int g_a1_player = -1; // mods:A1: `watch` -- the player the A1 dump / lift-off / removal ops act on (-1 = the local player)
 
 struct Target {
     bool by_value;
@@ -1861,6 +1880,7 @@ struct Step {
     char     raw[176];  // original line, for logging (Phase 4 pass/fail parsing)
     // `retry <game-ms> <back> <tries> <wait>` (tooling:TL-SUITE-SPLICE-HOSTCLICK): see script_tick.
     int    retry_ms, retry_back, retry_tries, retry_used;
+    int    rect[5];    // `logbldgs <label> <col0> <row0> <col1> <row1>`: tile rectangle (rect[4] = 1 when given)
     double retry_clk0; // game clock (ms) at this attempt's first tick
 };
 
@@ -2118,6 +2138,15 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "occ") == 0) {
         s->op = OP_W_OCC;
         s->a  = parse_count(arg, &s->b);
+    } else if (strcmp(op, "listtop") == 0 || strcmp(op, "hudtop") == 0) {
+        // `listtop <widgetVA> <N>` / `hudtop <descVA> <N>` -- an address and a row, two numbers like `race`
+        s->op       = strcmp(op, "listtop") == 0 ? OP_W_LISTTOP : OP_W_HUDTOP;
+        char *after = nullptr;
+        s->a        = (arg && *arg) ? (int)strtoul(arg, &after, 0) : 0;
+        s->b        = (after && *after) ? (int)strtol(after, nullptr, 0) : -1;
+    } else if (strcmp(op, "infopage") == 0) {
+        s->op = OP_W_INFOPAGE;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
     } else if (strcmp(op, "race") == 0) {
         // `race <slot> <value>` -- two ints, unlike every other count predicate, so parse both here.
         s->op       = OP_W_RACE;
@@ -2227,7 +2256,7 @@ void parse_line(const char *line) {
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, &end, 0);
         while (*end == ' ' || *end == '	') ++end;
-        s->c = (s->op == OP_A_SIMRCLICK && strncmp(end, "shift", 5) == 0) ? 1 : 0;
+        s->c = strncmp(end, "shift", 5) == 0 ? 1 : 0; // D11: `simclick <x> <y> shift` holds Shift for the whole click too
     } else if (strcmp(op, "rclick") == 0) {
         // `rclick <x> <y> [shift]` -- a right-click spread over three presents, under a held Shift
         // when the word is given. See rclick_frame.
@@ -2298,6 +2327,18 @@ void parse_line(const char *line) {
         copy_trim(s->text, sizeof(s->text), arg);
         if (!hotkey_parse(s->text, &s->a, &s->b)) {
             ui_log("; [script] IGNORED hotkey '%s' -- not a key spec (line: %s)", s->text, s->raw);
+            return;
+        }
+    } else if (strcmp(op, "hotkeydown") == 0 || strcmp(op, "hotkeyup") == 0) {
+        // hotkeydown <spec> / hotkeyup <spec> -- mods:MM4. `hotkey` presses a chord for two presents and lets go,
+        // which is a tap. A key the DLL reads as HELD (the big map: show while the key is down) needs the chord to
+        // stay down across the capture steps that follow, so these two split it: down now (and the script moves
+        // on at once), up when the script says so. A script that ends or aborts with a chord down releases it
+        // (see the g_synth_vk clear at script exit).
+        s->op = op[6] == 'd' ? OP_A_HOTKEYDOWN : OP_A_HOTKEYUP;
+        copy_trim(s->text, sizeof(s->text), arg);
+        if (!hotkey_parse(s->text, &s->a, &s->b)) {
+            ui_log("; [script] IGNORED %s '%s' -- not a key spec (line: %s)", op, s->text, s->raw);
             return;
         }
     } else if (strcmp(op, "type") == 0) {
@@ -2499,6 +2540,58 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "mark") == 0) {
         s->op = OP_A_MARK;
         copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logbuild") == 0) {
+        s->op = OP_A_LOGBUILD;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logbldgs") == 0) {
+        s->op = OP_A_LOGBLDGS;
+        copy_trim(s->text, sizeof(s->text), arg);
+        // `logbldgs <label> [col0 row0 col1 row1]`: only the buildings whose tile lies in the rectangle are listed
+        if (char *sp = strchr(s->text, ' ')) {
+            char *e = sp;
+            for (int k = 0; k < 4; ++k) s->rect[k] = (int)strtol(e, &e, 10);
+            s->rect[4] = 1;
+            *sp        = 0;
+        }
+    } else if (strcmp(op, "watch") == 0) {
+        s->op = OP_A_WATCH;
+        s->a  = strncmp(arg, "local", 5) == 0 ? -1 : (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "removebldg") == 0) {
+        s->op   = OP_A_REMOVEBLDG;
+        char *e = nullptr;
+        s->a    = (int)strtol(arg, &e, 0);
+        s->b    = (int)strtol(e, nullptr, 0);
+    } else if (strcmp(op, "delsave") == 0) {
+        s->op = OP_A_DELSAVE;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "savegame") == 0) {
+        s->op = OP_A_SAVEGAME;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "camto") == 0) {
+        s->op   = OP_A_CAMTO;
+        char *e = nullptr;
+        s->a    = (int)strtol(arg, &e, 0);
+        s->b    = (int)strtol(e, nullptr, 0);
+    } else if (strcmp(op, "reveal") == 0) {
+        s->op   = OP_A_REVEAL;
+        char *e = nullptr;
+        s->a    = (int)strtol(arg, &e, 0);
+        s->b    = (int)strtol(e, &e, 0);
+        s->c    = (int)strtol(e, nullptr, 0);
+    } else if (strcmp(op, "liftoff") == 0) {
+        s->op = OP_A_LIFTOFF;
+    } else if (strcmp(op, "loggoal") == 0) {
+        s->op = OP_A_LOGGOAL;
+        s->a  = -1; // `loggoal <label> @<side>:<id>` reads ONE unit of any player (the peer that did not click sees the order land)
+        s->b  = 0;
+        copy_trim(s->text, sizeof(s->text), arg);
+        if (char *at = strchr(s->text, '@')) {
+            char *e = nullptr;
+            s->a    = (int)strtol(at + 1, &e, 0);
+            s->b    = e && *e == ':' ? (int)strtol(e + 1, nullptr, 0) : 0;
+            while (at > s->text && (at[-1] == ' ' || at[-1] == '\t')) --at;
+            *at = 0;
+        }
     } else if (strcmp(op, "logsel") == 0) {
         s->op = OP_A_LOGSEL;
         copy_trim(s->text, sizeof(s->text), arg);
@@ -2964,6 +3057,15 @@ bool wait_satisfied(const Step *s) {
             }
             return count_ok(s, occ);
         }
+        case OP_W_LISTTOP: { // D15: the list widget's top row; false while the widget or its param block does not exist
+            if (!s->a || s->b < 0) return false;
+            const uintptr_t pb = *(const uintptr_t *)((uintptr_t)(unsigned)s->a + 0x30);
+            return pb && *(const int *)(pb + 4 * 7) == s->b;
+        }
+        case OP_W_HUDTOP: // D15: a side-panel list descriptor's scroll_row_offset (+0x29, packed)
+            return s->a && s->b >= 0 && *(const int *)((uintptr_t)(unsigned)s->a + 0x29) == s->b;
+        case OP_W_INFOPAGE: // D15: _G_LLM_UI_INFO_DESC_INDEX
+            return s->a >= 0 && *(const int *)0x00654482u == s->a;
         case OP_W_RACE: { // lobby slot's race field on THIS peer -- the U28 propagation gate
             if (s->a < 0 || s->a > 7 || s->b < 0) return false;
             return *(const unsigned char *)(LOBBY_SLOTS_ADDR + s->a * SLOT_STRIDE + SLOT_RACE_OFF) ==
@@ -3070,7 +3172,7 @@ click_result do_action(const Step *s) {
             g_btn_held = true;
             break;
         case OP_A_SIMCLICK:
-            return simclick_frame(g_wait, s->a, s->b) ? CLICK_OK : CLICK_RETRY;
+            return simclick_frame(g_wait, s->a, s->b, false, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_SIMRCLICK:
             return simclick_frame(g_wait, s->a, s->b, true, s->c != 0) ? CLICK_OK : CLICK_RETRY;
         case OP_A_WMCLICK: {
@@ -3272,6 +3374,14 @@ click_result do_action(const Step *s) {
             synth_chord_set(s->a, s->b, false);
             ui_log("; hotkey %s released", s->text);
             break;
+        case OP_A_HOTKEYDOWN:
+            synth_chord_set(s->a, s->b, true);
+            ui_log("; hotkeydown %s -- vk 0x%02x mods 0x%x held (synthesised, until hotkeyup)", s->text, s->a, s->b);
+            break;
+        case OP_A_HOTKEYUP:
+            synth_chord_set(s->a, s->b, false);
+            ui_log("; hotkeyup %s released", s->text);
+            break;
         case OP_A_TYPE: {
             // ONE CHARACTER PER RING DRAIN. The modifier state is a single process-wide table, so it
             // can only be correct for one character at a time -- pushing the whole string at once
@@ -3419,6 +3529,150 @@ click_result do_action(const Step *s) {
         case OP_A_DUMP:
             MH_UIDrive_DumpWidgets();
             break;
+        case OP_A_LOGBUILD: {
+            // D11: the armed building type (_G_LLM_BUILD_PLACEMENT_ID), the Shift latch, and how many of the local player's
+            // buildings of that type exist (placed = building_id == type with a position; a slot never used reads all zero).
+            // `type=` is the id armed now, or the one named by the last `logbuild` that saw one armed, so a disarmed line
+            // still counts the type the walk is placing.
+            static int32_t last_type = 0;
+            const int32_t  armed     = *(const volatile int32_t *)mh::addr::_G_LLM_BUILD_PLACEMENT_ID;
+            if (armed > 0) last_type = armed;
+            const uint32_t player = *(const volatile uint16_t *)mh::addr::PlayerSide;
+            const auto    *bl     = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::addr::buildings) + (player & 7u) * 100;
+            int            placed = 0;
+            for (int i = 0; i < 100; ++i)
+                if ((int32_t)bl[i].building_id == last_type && last_type > 0 && (bl[i].x | bl[i].y) != 0) ++placed;
+            const int      shift = (((*(const volatile uint8_t *)mh::addr::_G_LLM_KEY_LSHIFT_HELD) |
+                                (*(const volatile uint8_t *)mh::addr::_G_LLM_KEY_RSHIFT_HELD)) &
+                               1);
+            const int32_t *res   = reinterpret_cast<const int32_t *>(mh::addr::player_resources) + (player & 7u) * 10;
+            char           line[240];
+            const int      len = wsprintfA(line, "; [build] %s armed=%d type=%d shift=%d placed=%d res=%d,%d,%d,%d,%d,%d\n", s->text, (int)armed,
+                                           (int)last_type, shift, placed, (int)res[1], (int)res[2], (int)res[3], (int)res[4], (int)res[5], (int)res[6]);
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            mh_logq_write(g_mark_vid, line, len);
+            ui_log("; [script] %s", line);
+            break;
+        }
+        case OP_A_REVEAL: {
+            const uint32_t pl = *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
+            auto          *to = reinterpret_cast<mh::game::mh_map_tile_object_data *>(0x00d1ec80u);
+            for (int dx = 0; dx < s->c; ++dx)
+                for (int dy = 0; dy < s->c; ++dy) to[(((s->a + dx) & 63) << 8) | ((s->b + dy) & 63)].visibility |= (uint8_t)(1u << pl);
+            ui_log("; [script] reveal %d %d %d", s->a, s->b, s->c);
+            break;
+        }
+        case OP_A_CAMTO:
+            mh::call::llm_map_cam_set_col(s->a);
+            mh::call::llm_map_cam_set_row(s->b);
+            ui_log("; [script] camto %d %d", s->a, s->b);
+            break;
+        case OP_A_WATCH:
+            g_a1_player = s->a;
+            ui_log("; [script] watch %d", s->a);
+            break;
+        case OP_A_REMOVEBLDG: {
+            const uint32_t player = g_a1_player >= 0 ? (uint32_t)g_a1_player & 7u : *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
+            auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::addr::buildings) + player * 100;
+            int            slot   = 0;
+            for (int i = 1; i < 100 && !slot; ++i)
+                if (bl[i].building_id != 0 && (int)bl[i].x == s->a && (int)bl[i].y == s->b) slot = i;
+            if (slot) bl[slot].state = 3; // BLDG_STATE_DISMANTLE_FINISH
+            ui_log("; [script] removebldg player %d tile %d,%d -> slot %d", (int)player, s->a, s->b, slot);
+            break;
+        }
+        case OP_A_DELSAVE: {
+            char path[96];
+            wsprintfA(path, "save\\%s.sav", s->text);
+            const BOOL ok = DeleteFileA(path);
+            ui_log("; [script] delsave %s -> %d", path, (int)ok);
+            break;
+        }
+        case OP_A_SAVEGAME: {
+            char name[64];
+            copy_trim(name, sizeof(name), s->text);
+            const int rc = mh::call::game_SaveGame(name);
+            ui_log("; [script] savegame %s -> %d", name, rc);
+            break;
+        }
+        case OP_A_LOGBLDGS:
+        case OP_A_LIFTOFF: {
+            // mods:A1. cfg Building[100] @0x00d9ec80 (stride 2114): +type, +energy (max), +electric_power.
+            const uint32_t player = g_a1_player >= 0 ? (uint32_t)g_a1_player & 7u : *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
+            auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::addr::buildings) + player * 100;
+            const auto    *cfgb   = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(0x00d9ec80u);
+            const int      planet = *(const volatile uint16_t *)mh::addr::G_PLANET_INDEX;
+            const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(mh::addr::_G_LLM_STRAT_PLAYERS) + player;
+            const auto    *pw     = reinterpret_cast<const mh::game::mh_llm_strat_power_stats *>(mh::addr::_G_LLM_STRAT_POWER_STATS) + player;
+            const auto    *pop    = reinterpret_cast<const mh::game::mh_llm_strat_pop_stats *>(mh::addr::_G_LLM_STRAT_POP_STATS) + player;
+            const int32_t *res    = reinterpret_cast<const int32_t *>(mh::addr::player_resources) + player * 10;
+            char           line[400];
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            if (s->op == OP_A_LIFTOFF) {
+                for (int i = 1; i < 100; ++i) {
+                    auto &b = bl[i];
+                    if (b.building_id == 0 || b.energy <= 0.0) continue;
+                    const uint8_t t = cfgb[b.building_id].type;
+                    if (t != 0x06 && t != 0x1a) continue;
+                    const int len = wsprintfA(line, "; [a1] liftoff player=%d slot=%d id=%d state=%d -> 0x7c\n", (int)player, i, (int)b.building_id, (int)b.state);
+                    mh_logq_write(g_mark_vid, line, len);
+                    b.state = 0x7c;
+                }
+                break;
+            }
+            int len = wsprintfA(line, "; [a1] %s planet=%d primary=%d pmu=%d alive=%d gen=%d con=%d pgen=%d pcon=%d ratio_x1000=%d pop=%d emp=%d res=%d,%d,%d,%d,%d,%d,%d\n",
+                                s->text, planet, (int)prof->primary_mother_bldg[planet & 31], (int)prof->primary_mother_unit[planet & 31],
+                                (int)prof->buildings_alive[planet & 31], (int)pw->generated, (int)pw->consumed, (int)pw->prev_generated,
+                                (int)pw->prev_consumed, (int)(pw->ratio * 1000.0), (int)pop->pop_total, (int)pop->workers_employed, (int)res[0],
+                                (int)res[1], (int)res[2], (int)res[3], (int)res[4], (int)res[5], (int)res[6]);
+            mh_logq_write(g_mark_vid, line, len);
+            for (int i = 1; i < 100; ++i) {
+                const auto &b = bl[i];
+                if (b.building_id == 0 && (b.x | b.y) == 0) continue;
+                if (s->rect[4] && ((int)b.x < s->rect[0] || (int)b.y < s->rect[1] || (int)b.x > s->rect[2] || (int)b.y > s->rect[3])) continue;
+                const auto &cb = cfgb[b.building_id];
+                len            = wsprintfA(line, ";   [a1] %s slot=%d id=%d type=%d at=%d,%d state=%d flags=%d online=%d energy_x10=%d/%d prog_x100=%d eff_x1000=%d workers=%d epow=%d\n",
+                                           s->text, i, (int)b.building_id, (int)cb.type, (int)b.x, (int)b.y, (int)b.state, (int)b.built_flags, (int)b.online_state,
+                                           (int)(b.energy * 10.0), (int)(cb.energy * 10.0), (int)(b.cycle_progress * 100.0), (int)(b.efficiency * 1000.0),
+                                           (int)b.current_workers, (int)cb.electric_power);
+                mh_logq_write(g_mark_vid, line, len);
+            }
+            break;
+        }
+        case OP_A_LOGGOAL: {
+            // mods:MM4C: where the selected units are heading. Control group 0 (count + uint16 roster ids), each unit's
+            // goal_x / goal_y (map_object_unit +0x86 / +0x87, the move-order destination tile) read from units[PlayerSide].
+            const uint8_t *grp = (const uint8_t *)mh::addr::_G_LLM_STRAT_CTRL_GROUPS;
+            int            n   = *(const int32_t *)grp;
+            if (n < 0 || n > 200) n = 0;
+            uint16_t ids[200];
+            for (int i = 0; i < n; ++i) ids[i] = *(const uint16_t *)(grp + 4 + 2 * i);
+            for (int i = 1; i < n; ++i)
+                for (int j = i; j > 0 && ids[j - 1] > ids[j]; --j) {
+                    const uint16_t t = ids[j];
+                    ids[j] = ids[j - 1], ids[j - 1] = t;
+                }
+            unsigned side = *(const uint16_t *)mh::addr::PlayerSide;
+            if (s->a >= 0) { // `@side:id`: that one unit, whoever owns it
+                side   = (unsigned)s->a;
+                n      = 1;
+                ids[0] = (uint16_t)s->b;
+            }
+            const uint8_t *un = (const uint8_t *)mh::addr::units + (size_t)(side & 7) * 23300;
+            char           line[1500];
+            int            len = wsprintfA(line, "; [goal] %s n=%d goals=", s->text, n);
+            for (int i = 0; i < n && len < (int)sizeof(line) - 24; ++i) {
+                const uint8_t *u = un + (size_t)(ids[i] % 100) * 233;
+                len += wsprintfA(line + len, "%s%u:%u:%u", i ? "," : "", (unsigned)ids[i], (unsigned)u[0x86], (unsigned)u[0x87]);
+            }
+            len += wsprintfA(line + len, " side=%u", side);
+            line[len++] = '\n';
+            line[len]   = 0;
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            mh_logq_write(g_mark_vid, line, len);
+            ui_log("; [script] %s", line);
+            break;
+        }
         case OP_A_LOGSEL: {
             // RES12: the selection the last drag produced -- control group 0 (the selected units; count + uint16 ids at
             // _G_LLM_STRAT_CTRL_GROUPS) and the selected building -- sorted, so two runs compare as sets. Also the camera
@@ -3492,6 +3746,9 @@ void script_tick() {
         if (s->retry_ms) s->retry_clk0 = game_clock_ms();
     }
     const DWORD step_ms = GetTickCount() - g_step_t0;
+    // `gzdone` waits on a BACKGROUND THREAD (the recording compressor), so its budget is wall time (120 s), not frames: a headless lane
+    // presents ~9000 fps, which turns the registry's 81000-frame budget into ~9 s -- less than the compressor needs on a loaded box
+    // (tooling:TL-SPREC-LOADRED: TIMEOUT at `gzdone 3` after 81001 frames = 8.8 s, the .gz files complete moments later).
     if (is_wait_op(s->op)) {
         if (wait_satisfied(s)) {
             // Frames AND milliseconds: the frame count is what the timeout is budgeted in, the ms is
@@ -3522,7 +3779,7 @@ void script_tick() {
                    s->retry_tries, g_cur, s->retry_ms, s->retry_back, g_steps[g_cur - s->retry_back].raw);
             g_cur -= s->retry_back;
             g_wait = 0;
-        } else if (++g_wait > g_timeout) {
+        } else if (s->op == OP_W_GZDONE ? (++g_wait, step_ms > 120000) : (++g_wait > g_timeout)) {
             ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s", g_cur, g_wait,
                    step_ms / 1000, step_ms % 1000, s->raw);
             if (s->op == OP_W_SETTLED)
@@ -3539,6 +3796,25 @@ void script_tick() {
             // only one a capture could never give.
             if (s->op == OP_W_FIELD) log_field(s->a);
             if (s->op == OP_W_WMSG) log_wmsg();
+            if (s->op == OP_W_LISTTOP || s->op == OP_W_HUDTOP || s->op == OP_W_INFOPAGE) { // D15: say what the row actually was
+                int cur = -1, cnt = -1, vis = -1;
+                if (s->op == OP_W_LISTTOP && s->a) {
+                    const uintptr_t pb = *(const uintptr_t *)((uintptr_t)(unsigned)s->a + 0x30);
+                    if (pb) {
+                        cur = *(const int *)(pb + 4 * 7);
+                        cnt = *(const int *)(pb + 4 * 6);
+                        vis = *(const int *)(pb + 4 * 3);
+                    }
+                } else if (s->op == OP_W_HUDTOP && s->a) {
+                    cur = *(const int *)((uintptr_t)(unsigned)s->a + 0x29);
+                    cnt = *(const int *)((uintptr_t)(unsigned)s->a + 0x2d);
+                } else if (s->op == OP_W_INFOPAGE) {
+                    cur = *(const int *)0x00654482u;
+                    cnt = *(const int *)0x0065451eu;
+                }
+                ui_log("; [script]   wanted %d, the game has top/page %d (count %d, visible rows %d)", s->op == OP_W_INFOPAGE ? s->a : s->b, cur,
+                       cnt, vis);
+            }
             if (s->op == OP_W_WLOBBY) log_wlobby();
             if (s->op == OP_W_SETTLED && g_settle_seen)
                 ui_log("; [script]   lobby geom at x=%d: frame_x=%d right_x=%d | at x=%d: frame_x=%d right_x=%d",
@@ -3639,7 +3915,10 @@ extern "C" void MH_UIDrive_OnPresent(void) {
         // ways a script finishes (end, running off the last step, a wait TIMEOUT, an action ABORT, a
         // predicate's own refusal) and a `layout 00000419` left behind by any of them would be a
         // side effect on the machine that outlives the run. One place, checked once per present.
-        if (g_script_done && !was_done) restore_layout();
+        if (g_script_done && !was_done) {
+            restore_layout();
+            memset(g_synth_vk, 0, sizeof(g_synth_vk)); // a `hotkeydown` left down by an aborted script
+        }
         return;
     }
 

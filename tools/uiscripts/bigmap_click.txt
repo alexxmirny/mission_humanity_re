@@ -1,0 +1,72 @@
+# bigmap_click -- mods:MM4B, a screen_seq step (one process, libmh bound, 1024x768, ini/bigmap_click.ini: [ui] bigmap_center=camera).
+# 2-almost (64 x 64), camera pinned with camto. Tab held: the overlay shows and the stock cursor is drawn ON TOP of it
+# (a_before / b_held_cursor). A left click on the overlay centres the camera on the clicked tile (c_clicked: the overlay is
+# camera-centred, so it re-centres on the new camera; d_released: the world at the new camera). The click must not reach the
+# world (logsel: the selection and the building panel are the same before and after). A right click on the overlay is swallowed.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 24 38
+gameclock +100
+cursorhold 600 400 6
+screensettled
+logsel before
+hotkeydown Tab
+cursorhold 300 200 10
+screensettled
+capture bigmap_click__a_held_cursor
+simclick 300 200
+cursorhold 300 200 10
+screensettled
+logsel after_click
+capture bigmap_click__b_clicked
+simrclick 500 500
+cursorhold 500 500 10
+screensettled
+logsel after_rclick
+capture bigmap_click__c_rclicked
+hotkeyup Tab
+cursorhold 600 400 10
+screensettled
+logsel released
+capture bigmap_click__d_released
+# a wrapped, camera-centred overlay: camera in the corner, so the image starts at tile 47 of 64. Click its left edge.
+camto 2 2
+gameclock +100
+cursorhold 600 400 6
+screensettled
+hotkeydown Tab
+cursorhold 215 400 10
+screensettled
+capture bigmap_click__e_wrapped_held
+simclick 215 400
+cursorhold 215 400 10
+screensettled
+logsel after_wrapped_click
+capture bigmap_click__f_wrapped_clicked
+# a drag: the button goes down on the overlay and the pointer moves on; the camera follows the pointer, nothing reaches the world
+presshold 300 300
+cursorhold 400 250 10
+cursorhold 500 450 10
+release 500 450
+cursorhold 500 450 10
+screensettled
+logsel after_drag
+capture bigmap_click__g_dragged
+hotkeyup Tab
+cursorhold 600 400 10
+screensettled
+logsel released_end
+# control: the same left click on the bare world (no overlay) DOES reach the game -- it drops the selected building (bldg 1 -> 0),
+# so "bldg unchanged" above proves the overlay click did not reach the world
+simclick 100 650
+cursorhold 100 650 10
+screensettled
+logsel control_world_click
+end

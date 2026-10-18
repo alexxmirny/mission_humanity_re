@@ -139,6 +139,9 @@ pub struct SubTab {
 pub struct Schema {
     pub subtabs: Vec<SubTab>,
     pub rows: Vec<Row>,
+    /// The order group headers appear in on a page (`launcher_schema.json` `group_order`); a group
+    /// not listed follows the listed ones in first-appearance order.
+    pub group_order: Vec<String>,
 }
 
 // ---- JSON shapes ---------------------------------------------------------------------------------
@@ -209,6 +212,8 @@ struct RawDoc {
     settings: Vec<RawRow>,
     #[serde(default)]
     overrides: BTreeMap<String, Extras>,
+    #[serde(default)]
+    group_order: Vec<String>,
 }
 
 fn value_text(v: &Value) -> String {
@@ -253,6 +258,7 @@ impl Schema {
         let mut overrides: BTreeMap<String, Extras> = BTreeMap::new();
         let mut subtabs: Vec<SubTab> = Vec::new();
         let mut raw_rows: Vec<RawRow> = Vec::new();
+        let mut group_order: Vec<String> = Vec::new();
         for d in docs {
             if d.schema_version > 1 {
                 return Err(format!("unsupported schema_version {}", d.schema_version));
@@ -266,6 +272,7 @@ impl Schema {
                 }
             }
             overrides.extend(d.overrides);
+            group_order.extend(d.group_order);
             raw_rows.extend(d.settings);
         }
 
@@ -382,7 +389,11 @@ impl Schema {
         if let Some(w) = ids.windows(2).find(|w| w[0] == w[1]) {
             return Err(format!("duplicate row id {}", w[0]));
         }
-        Ok(Schema { subtabs, rows })
+        Ok(Schema {
+            subtabs,
+            rows,
+            group_order,
+        })
     }
 
     pub fn row(&self, id: &str) -> Option<&Row> {
@@ -409,24 +420,49 @@ impl Schema {
             .filter(move |r| r.subtab == subtab && r.page == Page::Settings && !r.hidden)
     }
 
-    /// Rows for the Diagnostics page, grouped by `group` (ungrouped first, `None` -> `""`), in
-    /// schema order within a group and first-appearance order between groups.
-    pub fn diagnostics_groups(&self) -> Vec<(String, Vec<&Row>)> {
-        let mut out: Vec<(String, Vec<&Row>)> = Vec::new();
-        for r in self
-            .rows
-            .iter()
-            .filter(|r| r.page == Page::Diagnostics && !r.hidden)
-        {
+    /// `rows` split by `group`, in page order: ungrouped rows first (`None` -> `""`), then the
+    /// groups named in `group_order`, then any other group in first-appearance order. Within a
+    /// group the rows keep the order they came in.
+    pub fn group_rows<'a>(
+        &self,
+        rows: impl Iterator<Item = &'a Row>,
+    ) -> Vec<(String, Vec<&'a Row>)> {
+        let mut out: Vec<(String, Vec<&'a Row>)> = Vec::new();
+        for r in rows {
             let g = r.group.clone().unwrap_or_default();
             match out.iter_mut().find(|(n, _)| *n == g) {
                 Some((_, v)) => v.push(r),
                 None => out.push((g, vec![r])),
             }
         }
-        // Stable: ungrouped first, the rest in first-appearance order.
-        out.sort_by_key(|(g, _)| !g.is_empty());
+        // Stable sort: ungrouped (0), listed groups by their list position (1..), the rest last.
+        let rank = |g: &str| -> usize {
+            if g.is_empty() {
+                0
+            } else {
+                1 + self
+                    .group_order
+                    .iter()
+                    .position(|o| o == g)
+                    .unwrap_or(self.group_order.len())
+            }
+        };
+        out.sort_by_key(|(g, _)| rank(g));
         out
+    }
+
+    /// The visible rows of one Settings sub-tab, grouped (see `group_rows`).
+    pub fn groups_in_subtab<'a>(&'a self, subtab: &'a str) -> Vec<(String, Vec<&'a Row>)> {
+        self.group_rows(self.rows_in_subtab(subtab))
+    }
+
+    /// Rows for the Diagnostics page, grouped by `group` (see `group_rows`).
+    pub fn diagnostics_groups(&self) -> Vec<(String, Vec<&Row>)> {
+        self.group_rows(
+            self.rows
+                .iter()
+                .filter(|r| r.page == Page::Diagnostics && !r.hidden),
+        )
     }
 }
 
@@ -451,10 +487,7 @@ mod tests {
     fn settings_subtabs_follow_the_plan() {
         let s = Schema::builtin();
         let ids: Vec<&str> = s.settings_subtabs().iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            ["display", "language", "multiplayer", "gameplay", "updates"]
-        );
+        assert_eq!(ids, ["display", "gameplay", "multiplayer", "updates"]);
     }
 
     #[test]
@@ -489,8 +522,8 @@ mod tests {
             assert_eq!(r.page, Page::Diagnostics);
         }
         let groups = s.diagnostics_groups();
-        assert_eq!(groups[0].0, "", "ungrouped rows (log level) come first");
-        assert_eq!(groups[1].0, "compat");
+        let names: Vec<&str> = groups.iter().map(|(g, _)| g.as_str()).collect();
+        assert_eq!(names, ["logs", "compat"]);
     }
 
     /// RL13 done_when: a new registry row appears in the right sub-tab with no launcher code change.
@@ -547,7 +580,7 @@ mod tests {
         assert!(r.host && r.restart);
         assert_eq!(r.default, "2.0");
         assert_eq!(s.rows_in_subtab("gameplay").count(), 1);
-        // The committed schema carries the four turret rows (PT-SET1 S5): the tab is there, every row host-dictated.
+        // The committed schema carries the four turret rows (PT-SET1 S5) and the mods:A2 campaign row.
         let b = Schema::builtin();
         assert!(b.settings_subtabs().iter().any(|t| t.id == "gameplay"));
         let rows: Vec<&str> = b
@@ -560,10 +593,22 @@ mod tests {
                 "net.turret_reload_realtime_fix",
                 "net.turret_fire_rate_mult",
                 "net.turret_clip_fix",
-                "net.turret_fire_poll_fix"
+                "net.turret_fire_poll_fix",
+                "net.mother_free_build",
+                "net.mother_free_build_ai",
+                "net.improved_movement",
+                "net.group_movement",
+                "net.improved_combat",
+                "net.project_gate_fix",
+                "net.sp_sim_step_ms"
             ]
         );
-        assert!(b.rows_in_subtab("gameplay").all(|r| r.host && r.restart));
+        // Every gameplay row needs a restart; all but the F_LOCAL rows (mods:A2's campaign-only project_gate_fix, sp_sim_step_ms) are host-dictated.
+        assert!(b.rows_in_subtab("gameplay").all(|r| r.restart));
+        assert!(b
+            .rows_in_subtab("gameplay")
+            .all(|r| r.host
+                != matches!(r.id.as_str(), "net.project_gate_fix" | "net.sp_sim_step_ms")));
     }
 
     #[test]
@@ -580,5 +625,214 @@ mod tests {
             .contains("duplicate"));
         let v2 = r#"{"schema_version":2,"settings":[]}"#;
         assert!(Schema::from_json(v2, None).is_err());
+    }
+
+    fn ids(rows: &[&Row]) -> Vec<String> {
+        rows.iter().map(|r| r.id.clone()).collect()
+    }
+
+    /// LA20: every setting a player can see sits in exactly one group, a group is one run of rows
+    /// on one page, and no group is longer than seven rows.
+    #[test]
+    fn every_user_setting_is_in_exactly_one_group_of_at_most_seven_rows() {
+        let s = Schema::builtin();
+        let mut seen: Vec<String> = Vec::new();
+        type Groups<'a> = Vec<(String, Vec<&'a Row>)>;
+        let mut pages: Vec<(String, Groups)> = Vec::new();
+        for t in s.settings_subtabs() {
+            pages.push((t.id.clone(), s.groups_in_subtab(&t.id)));
+        }
+        pages.push(("diagnostics".into(), s.diagnostics_groups()));
+        for (page, groups) in &pages {
+            let mut names: Vec<&str> = Vec::new();
+            for (g, rows) in groups {
+                assert!(!g.is_empty(), "{page}: ungrouped rows {:?}", ids(rows));
+                assert!(
+                    !names.contains(&g.as_str()),
+                    "{page}: group {g} appears twice"
+                );
+                names.push(g);
+                assert!(
+                    (1..=7).contains(&rows.len()),
+                    "{page}/{g}: {} rows {:?}",
+                    rows.len(),
+                    ids(rows)
+                );
+                seen.extend(rows.iter().map(|r| r.id.clone()));
+            }
+        }
+        // Walk the schema itself: every non-hidden row was reached once, and nothing else.
+        let mut want: Vec<String> = s
+            .rows
+            .iter()
+            .filter(|r| !r.hidden)
+            .map(|r| r.id.clone())
+            .collect();
+        want.sort();
+        seen.sort();
+        assert_eq!(seen, want);
+        // A group id never straddles two pages or two tabs.
+        let mut home: BTreeMap<&str, &str> = BTreeMap::new();
+        for (page, groups) in &pages {
+            for (g, _) in groups {
+                assert_eq!(
+                    *home.entry(g).or_insert(page),
+                    page,
+                    "group {g} on two pages"
+                );
+            }
+        }
+        // Every group has a place in the header order.
+        for (_, groups) in &pages {
+            for (g, _) in groups {
+                assert!(s.group_order.contains(g), "{g} missing from group_order");
+            }
+        }
+    }
+
+    #[test]
+    fn the_la20_layout_matches_the_plan() {
+        let s = Schema::builtin();
+        let shape = |tab: &str| -> Vec<(String, Vec<String>)> {
+            s.groups_in_subtab(tab)
+                .into_iter()
+                .map(|(g, rows)| (g, ids(&rows)))
+                .collect()
+        };
+        let g = |name: &str, rows: &[&str]| {
+            (
+                name.to_string(),
+                rows.iter().map(|r| r.to_string()).collect::<Vec<_>>(),
+            )
+        };
+        assert_eq!(
+            shape("display"),
+            [
+                g(
+                    "display",
+                    &[
+                        "video.resolution",
+                        "video.window",
+                        "video.scale",
+                        "video.filter",
+                        "video.vsync",
+                        "video.fps_limit",
+                        "video.mouse_clip"
+                    ]
+                ),
+                g(
+                    "interface",
+                    &[
+                        "ui.shift_rearm_build",
+                        "ui.minimap_plus",
+                        "ui.bigmap",
+                        "ui.bigmap_center",
+                        "ui.bigmap_key",
+                        "ui.bigmap_orders"
+                    ]
+                ),
+                g("mouse", &["input.wheel_zoom", "input.wheel_lists"]),
+                g("language", &["lang.pack"]),
+            ]
+        );
+        assert_eq!(
+            shape("gameplay"),
+            [
+                g(
+                    "turrets",
+                    &[
+                        "net.turret_reload_realtime_fix",
+                        "net.turret_fire_rate_mult",
+                        "net.turret_clip_fix",
+                        "net.turret_fire_poll_fix"
+                    ]
+                ),
+                g(
+                    "building",
+                    &["net.mother_free_build", "net.mother_free_build_ai"]
+                ),
+                g(
+                    "units",
+                    &[
+                        "net.improved_movement",
+                        "net.group_movement",
+                        "net.improved_combat"
+                    ]
+                ),
+                g("campaign", &["net.project_gate_fix", "net.sp_sim_step_ms"]),
+            ]
+        );
+        assert_eq!(
+            shape("multiplayer"),
+            [
+                g(
+                    "connection",
+                    &["launcher.relay_mode", "net.force_relay", "net.port"]
+                ),
+                g("overlay", &["hud.net_indicator", "hud.net_indicator_key"]),
+            ]
+        );
+        assert_eq!(
+            shape("updates"),
+            [g("updates", &["launcher.channel", "launcher.discord"])]
+        );
+        let diag: Vec<(String, Vec<String>)> = s
+            .diagnostics_groups()
+            .into_iter()
+            .map(|(g, rows)| (g, ids(&rows)))
+            .collect();
+        assert_eq!(
+            diag,
+            [
+                g(
+                    "logs",
+                    &[
+                        "log.level",
+                        "log.keep_sessions",
+                        "log.keep_days",
+                        "desync.state_record"
+                    ]
+                ),
+                g("compat", &["video.backend", "input.backend"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn dependent_rows_name_their_parent_and_every_host_row_is_flagged() {
+        let s = Schema::builtin();
+        for (child, parent) in [
+            (
+                "net.turret_fire_rate_mult",
+                "net.turret_reload_realtime_fix",
+            ),
+            ("net.mother_free_build_ai", "net.mother_free_build"),
+            ("ui.bigmap_center", "ui.bigmap"),
+            ("ui.bigmap_key", "ui.bigmap"),
+            ("ui.bigmap_orders", "ui.bigmap"),
+            ("hud.net_indicator_key", "hud.net_indicator"),
+        ] {
+            let r = s.row(child).unwrap();
+            assert_eq!(
+                r.visible_if.as_ref(),
+                Some(&(parent.to_string(), "1".to_string())),
+                "{child}"
+            );
+            assert_eq!(s.row(parent).unwrap().kind, Kind::Bool);
+            assert_eq!(
+                r.group,
+                s.row(parent).unwrap().group,
+                "{child} stays in its parent group"
+            );
+        }
+        // The Host badge reads `host`; the generated schema sets it from F_HOSTSYNC.
+        let host: Vec<&str> = s
+            .rows
+            .iter()
+            .filter(|r| r.host)
+            .map(|r| r.id.as_str())
+            .collect();
+        assert_eq!(host.len(), 9, "{host:?}");
+        assert!(host.iter().all(|id| id.starts_with("net.")));
     }
 }

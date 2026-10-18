@@ -1,0 +1,23 @@
+# bigmap_start -- mods:MM4, a screen_seq step (one process, libmh bound, 1024x768, ini/bigmap_start.ini: [ui] bigmap_center=start).
+# 2-almost (64 x 64, the only deployed save), camera pinned with camto, then Tab held (the harness chord table) and released.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 24 38
+gameclock +100
+cursorhold 600 400 6
+screensettled
+hotkeydown Tab
+cursorhold 600 400 10
+screensettled
+capture bigmap_start__held
+hotkeyup Tab
+cursorhold 600 400 10
+screensettled
+end

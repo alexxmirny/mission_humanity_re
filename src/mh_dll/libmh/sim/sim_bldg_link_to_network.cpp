@@ -6,6 +6,8 @@
 //
 #include "sim/sim_bldg_link_to_network.h"
 
+#include "sim/sim_mother_free.h" // mods:A1 mother_free_plant_root
+
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -34,6 +36,8 @@ namespace {
 // _A_SHUTTLE/_H_SHUTTLE (0x0c/0x20/0x0d/0x21) -- all agree with the CMP immediates read directly off
 // this function's own asm (0x0049236b, 0x00492394, 0x004923bf, 0x004923e8, 0x00492422, 0x0049244b,
 // 0x00492694, 0x004926d1, 0x0049272b, 0x00492768, 0x004927c2, 0x004927ff).
+inline constexpr uint8_t BLDG_TYPE_A_PLANT   = 0x03; // mods:A1
+inline constexpr uint8_t BLDG_TYPE_H_PLANT   = 0x17;
 inline constexpr uint8_t BLDG_TYPE_A_TURRET  = 0x05;
 inline constexpr uint8_t BLDG_TYPE_A_MOTHER  = 0x06;
 inline constexpr uint8_t BLDG_TYPE_A_PORT    = 0x0c;
@@ -75,7 +79,11 @@ void bldg_link_to_network_if_adjacent(const sim_view &v, const bldg_link_to_netw
     }
 
     // ---- classification 2/3 (0x00492402-0x00492460): mothers recurse straight into the flood-fill --
-    if (type == BLDG_TYPE_H_MOTHER || type == BLDG_TYPE_A_MOTHER) {
+    // mods:A1 ([net] mother_free_build): so does a POWER PLANT while its owner has no primary mother on this planet (retail
+    // splice: net_lockstep.cpp mother_free_link_stub at 0x00492422). Otherwise a lone plant keeps built_flags 2 and never builds.
+    const bool plant_root = (type == BLDG_TYPE_H_PLANT || type == BLDG_TYPE_A_PLANT) &&
+                            mother_free_plant_root(v, (uint32_t)player, *v.planet_index);
+    if (type == BLDG_TYPE_H_MOTHER || type == BLDG_TYPE_A_MOTHER || plant_root) {
         gc.bldg_propagate_network_connectivity(player, (int32_t)index);
         return;
     }

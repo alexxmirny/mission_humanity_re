@@ -1,0 +1,58 @@
+{
+ "capture_lobby_team__t1_client_ffa.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t2_client_team.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t3_client_after_probe.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ],
+ "capture_lobby_team__t5_client_ffa.png": [
+  [
+   388,
+   46,
+   226,
+   48
+  ],
+  [
+   313,
+   100,
+   100,
+   62
+  ]
+ ]
+}

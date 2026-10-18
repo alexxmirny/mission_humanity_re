@@ -779,6 +779,41 @@ void test_sim_tick_rig_fixed_step_loop() {
         mh::lockstep::detail::sim_tick(w.st(), recording_calls(), rig);
         check("rig loop is a no-op in mode 3", g_log.sim_steps == 2 && w.clock == 0.5);
     }
+    { // the SP catch-up CAP (sp_step_cap): a long stall runs at most `cap` steps and the rest is DROPPED.
+        mh::lockstep::reimpl_fixes capped = rig;
+        capped.sp_step_cap                = 10;
+        world w;
+        w.mode     = 2;
+        w.clock    = 0.0;
+        w.sub_step = 0.02;
+        w.total    = 20.0; // a 20 s stall
+        g_log.reset();
+        mh::lockstep::detail::sim_tick(w.st(), recording_calls(), capped);
+        check("cap: a 20 s stall runs exactly the cap", g_log.sim_steps == 10);
+        check("cap: the remainder is dropped (TOTAL := clock)", w.total == w.clock && w.clock > 0.199 && w.clock < 0.201);
+        w.total += 0.05; // the next frame is a normal one: 2 whole steps, 0.01 carried
+        g_log.reset();
+        mh::lockstep::detail::sim_tick(w.st(), recording_calls(), capped);
+        check("cap: a normal frame afterwards is untouched", g_log.sim_steps == 2);
+    }
+    { // below the cap nothing changes; and the cap never applies in mode 3.
+        mh::lockstep::reimpl_fixes capped = rig;
+        capped.sp_step_cap                = 10;
+        world w;
+        w.mode     = 2;
+        w.sub_step = 0.02;
+        w.total    = 0.1;
+        g_log.reset();
+        mh::lockstep::detail::sim_tick(w.st(), recording_calls(), capped);
+        check("cap: 5 steps is under a cap of 10", g_log.sim_steps == 5 && w.total == 0.1);
+        world m;
+        m.mode     = mh::lockstep::SESSION_MP_LOCKSTEP;
+        m.sub_step = 0.02;
+        m.total    = 1.0;
+        g_log.reset();
+        mh::lockstep::detail::sim_tick(m.st(), recording_calls(), capped);
+        check("cap: not applied in mode 3", g_log.sim_steps >= 49 && g_log.sim_steps <= 50);
+    }
     { // release_due: stock SP NEVER calls it (sim_tick's mode-3 branch is its only caller in the whole
         // image), so forcing the loop starts calling it. Measured on the SP oracle, `order_pending`
         // never changes over 15000 steps -- nothing reaches the pending lane -- so the guard keeps it

@@ -124,6 +124,10 @@ struct issue_view {
     // `unit_proto_id`. The per-TYPE table: the move wrappers read default op-code bytes out of it to
     // decide which order code to pack.
     const mh::game::mh_cfg_final_struct_Unit *cfg_units;
+    // cfg_final_struct_Weapon[] (RID_WEAPON), indexed by a weapon slot's id. Read ONLY by the mods:M1C
+    // [net] attack_range_footprint rule (sim/sim_attack_range_footprint.h: range_min > 1 keeps the centre); a
+    // hand-built fixture view leaves it null, which the rule reads as "keep the centre".
+    const mh::game::mh_cfg_final_struct_Weapon *cfg_weapons = nullptr;
     // map_object_unit_storage[] (RID_UNIT_STORAGE @0x00c727c0) -- the exit tiles the storage-exit
     // wrappers read.
     const mh::game::mh_map_object_unit_storage *unit_storage;

@@ -26,6 +26,7 @@
 //
 #include "sim/resid/sim_bldg_try_begin_placement.h"
 #include "sim/sim_bldg_pay_costs.h"
+#include "sim/sim_mother_free.h" // mods:A1
 
 #include <vector>
 
@@ -317,6 +318,47 @@ void run_bldg_try_begin_placement_tests() {
         ck_eq((uint32_t)detail::bldg_pay_build_cost(fx.view(), paying, PLAYER, BUILDING_IDX), 2u + 0x89u,
               "T4e: pay_build_cost refuses with the probe's code");
         ck_eq((uint32_t)spends.size(), 0u, "T4e: and charges nothing on a refusal");
+    }
+
+    // =================================================================================================
+    // A1 -- mods:A1 ([net] mother_free_build): the primary-mother gate reads OPEN for a covered player. The gate cell is
+    // 0 (no mothership); PLAYER is human unless the case says otherwise.
+    // =================================================================================================
+    {
+        struct a1_case {
+            const char *what;
+            bool        on, ai_opt, player_is_ai;
+            int32_t     mother;
+            int         want; // 1 = the gate passes (the probe runs, placement begins), 0 = the silent refusal
+        };
+        const a1_case cases[] = {
+            {"key off, no mother (retail)", false, false, false, 0, 0},
+            {"key on, no mother, human", true, false, false, 0, 1},
+            {"key on, no mother, AI player, _ai off", true, false, true, 0, 0},
+            {"key on, no mother, AI player, _ai on", true, true, true, 0, 1},
+            {"key off, _ai on (the AI flag alone does nothing)", false, true, true, 0, 0},
+            {"key on, mother present: unchanged", true, false, false, 555, 1},
+            {"key off, mother present: unchanged", false, false, false, 555, 1},
+        };
+        for (const a1_case &c : cases) {
+            fx.reset();
+            reset_recorders();
+            fx.planet_index = PLANET;
+            seed_mother_bldg(fx, c.mother);
+            seed_write_sentinels(fx);
+            fx.players[PLAYER].ai_enabled = c.player_is_ai ? 1 : 0;
+            set_mother_free_build(c.on, c.ai_opt);
+            sim_store own = fx.store();
+            g_own         = &own;
+            g_pay_returns.push_back(0);
+            const int result = detail::bldg_try_begin_placement(fx.view(), own, g_calls, PLAYER, BUILDING_IDX);
+            char      msg[160];
+            snprintf(msg, sizeof(msg), "A1 try_begin_placement: %s -> result %d", c.what, c.want);
+            ck_eq((uint32_t)result, (uint32_t)c.want, msg);
+            snprintf(msg, sizeof(msg), "A1 try_begin_placement: %s -> the affordability probe %s", c.what, c.want ? "runs" : "is not reached");
+            ck_eq((uint32_t)g_pay_calls.size(), (uint32_t)c.want, msg);
+        }
+        set_mother_free_build(false, false);
     }
 }
 

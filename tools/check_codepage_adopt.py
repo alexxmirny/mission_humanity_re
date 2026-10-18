@@ -6,7 +6,8 @@ peer and `[input] codepage` is a purely local setting, so two peers pinned 1252 
 negotiate anything: both advertise / echo CHAT_ENCODING_UTF8 (65001) and the host admits. The
 refusal half now stages a PRE-MP-LANG peer (`[input] chat_legacy_codepage=1`, which puts its 8-bit
 codepage on the wire the way an F3c build did) and asserts it is refused by name AND told. The file
-keeps its name because the two registry rows (codepage_adopt / codepage_refused) keep theirs.
+keeps its name from the four registry rows it served (codepage_adopt / codepage_refused / name_forged / build_refused),
+now segments of lobby_seq: pass `--client N` to judge client N of that row.
 
 WHY A CHECKER, NOT PIXELS. The two F3c scenarios (tools/test_ui.py codepage_adopt / codepage_refused)
 walk the same menus as client_join and render the same frames; what they claim is written in the two
@@ -41,6 +42,7 @@ session directory, so it lands in the run directory above it).
 
 import argparse
 import os
+import re
 import sys
 
 AGREE_NEEDLE = "; MP-LANG: chat encoding "
@@ -161,8 +163,64 @@ def verdict(expect, host_text, client_text):
     return ok, out
 
 
+_TS = re.compile(r"^\[(\d\d):(\d\d):(\d\d)\.(\d\d\d)\]")
+WINDOW_TAIL_S = 0.5  # host lines logged this long after the client's last line still belong to it
+
+
+def _ts(line):
+    m = _TS.match(line)
+    if not m:
+        return None
+    h, mi, se, ms = (int(x) for x in m.groups())
+    return h * 3600 + mi * 60 + se + ms / 1000.0
+
+
+def scope_host_to_client(host_text, client_text):
+    """tooling:TL-SUITE-FOLD step 4 -- ONE host session serves a SEQUENCE of clients, so its log holds
+    every client's JOIN. Keep only the host lines logged while THIS client's process was running: from
+    its first log line to its last (+WINDOW_TAIL_S). Clients never overlap (the runner ends one before
+    launching the next), so the windows partition the host log. A line with no timestamp stays with the
+    line before it. Returns (scoped_text, (t0, t1)) or (host_text, None) when the client log carries no
+    timestamps (the caller then refuses -- an unscoped host log would read every segment's JOIN)."""
+    stamps = [t for t in (_ts(ln) for ln in client_text.splitlines()) if t is not None]
+    if not stamps:
+        return host_text, None
+    t0, t1 = min(stamps), max(stamps) + WINDOW_TAIL_S
+    keep, inside = [], False
+    for ln in host_text.splitlines():
+        t = _ts(ln)
+        if t is not None:
+            inside = t0 <= t <= t1
+        if inside:
+            keep.append(ln)
+    return chr(10).join(keep), (t0, t1)
+
+
 def selftest():
     fails = 0
+
+    # --- the sequence scoping: another client's JOIN outside this client's window must not count
+    def stamp(t, msg):
+        return "[%02d:%02d:%02d.000] %s" % (t // 3600, t // 60 % 60, t % 60, msg)
+
+    host = chr(10).join(
+        [
+            stamp(
+                100,
+                "; S4 JOIN from 1 'client' for 'g' -> REFUSED (input codepage mismatch; ours 65001, theirs 1251 -- x)",
+            ),
+            stamp(200, "; S4 JOIN from 1 'client' for 'g' -> ADMITTED (open slot/map gate)"),
+            stamp(300, "; S4 JOIN from 1 'Kie' for 'g' -> ADMITTED (open slot/map gate)"),
+        ]
+    )
+    cli = chr(10).join([stamp(190, "; boot"), stamp(205, "; MP-LANG: chat encoding 65001 agreed")])
+    scoped, win = scope_host_to_client(host, cli)
+    if "REFUSED" in scoped or "'Kie'" in scoped or "ADMITTED" not in scoped or win is None:
+        fails += 1
+        print("selftest FAIL: scope_host_to_client kept the wrong lines: %r" % scoped)
+    if scope_host_to_client(host, "no stamps here")[1] is not None:
+        fails += 1
+        print("selftest FAIL: an unstamped client log must report no window")
 
     def case(name, expect, host, client, want):
         nonlocal fails
@@ -287,11 +345,26 @@ def main(argv):
     )
     ap.add_argument("--expect", choices=("agree", "refused", "forged", "build"), default="agree")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument(
+        "--client",
+        type=int,
+        default=0,
+        help="client sequence row (client_sequence): dirs are <host> <client 1> .. <client N>; judge "
+        "client K (1-based) against only the host lines logged during ITS process's lifetime",
+    )
     ap.add_argument("dirs", nargs="*", help="<host run dir> <client run dir>")
     a = ap.parse_args(argv)
     if a.selftest:
         return selftest()
-    if len(a.dirs) != 2:
+    if a.client:
+        if not 1 <= a.client < len(a.dirs):
+            print(
+                "check_codepage_adopt: --client %d but %d run directories were handed over "
+                "(host + clients)" % (a.client, len(a.dirs))
+            )
+            return 2
+        a.dirs = [a.dirs[0], a.dirs[a.client]]
+    elif len(a.dirs) != 2:
         print(
             "check_codepage_adopt: need exactly two run directories (host, client); got %d"
             % len(a.dirs)
@@ -300,11 +373,30 @@ def main(argv):
     texts = []
     for role, d in zip(("host", "client"), a.dirs):
         logs = collect_logs(d)
+        if a.client and role == "client":
+            # a sequence lane can hold older runs (a rerun reuses it): judge, and take the host window
+            # from, ONLY the run directory test_ui handed over -- never the lane's history above it
+            # (the session directory is a SIBLING of the process directory, named by the same ISO
+            # stamp, so "this run" = every log dir stamped at or after the handed one)
+            since = os.path.basename(os.path.abspath(d))[:20]
+            logs = [(p, t) for p, t in logs if os.path.basename(os.path.dirname(p))[:20] >= since]
         if not logs:
             print("check_codepage_adopt: no mh_net.log under %s (%s)" % (d, role))
             return 2
         print("  %s: %d mh_net.log(s) under %s" % (role, len(logs), d))
         texts.append("\n".join(t for _p, t in logs))
+    if a.client:
+        texts[0], win = scope_host_to_client(texts[0], texts[1])
+        if win is None:
+            print(
+                "check_codepage_adopt: client %d's log carries no timestamps; cannot scope the host"
+                % a.client
+            )
+            return 2
+        print(
+            "  host log scoped to client %d's window %.1f..%.1f s of day"
+            % (a.client, win[0], win[1])
+        )
     ok, lines = verdict(a.expect, texts[0], texts[1])
     for ln in lines:
         print("  " + ln)

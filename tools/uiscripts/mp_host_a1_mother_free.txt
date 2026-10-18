@@ -1,0 +1,62 @@
+# mods:A1 HOST walk -- build without a mothership in a 2-peer lockstep match (rows a1_mother_free_mp_c1 / a1_mother_free_mp / _off).
+# Pair with mp_client_a1_mother_free.txt. The HOST's ini and the CLIENT's ini disagree ([net] mother_free_build=1 vs 0): the
+# client must adopt the host's value (`; gameplay: ADOPTED` in its net log) and run it in its SIM, or the host's construction
+# order is refused on the client alone and the lockstep hash pair diverges. Both motherships land, the harness fixture
+# (a1_at) sends them up again (primary_mother_bldg 0 on both peers, the landing's stock still there), and each peer places a
+# Reactor with the gate open. tools/check_a1_mother_free.py --mp reads the `; [a1]` lines of both peers (the Reactor exists and is
+# connected, built_flags 3, at placement) and the ADOPTED / PUBLISHED lines.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: the mothership lands (shift+right-click: order 0x10 move + 0x18 deploy), a Reactor P0 is placed and finished
+# (the mother is still there), then the harness fixture (a1_at / a1_need) sends the mothership up again -- the game's own TO_UNIT
+# lift-off, the same write on every peer from sim state alone -- so the planet is mother-less with a finished plant (a player
+# without any building is out of the game, so the lift-off waits for it). A second Reactor P1 is placed with the gate open.
+absent Network players
+gameclock 3000
+rclick 480 330 shift
+gameclock 22000
+simclick 890 215
+gameclock 23000
+simclick 905 275
+gameclock 24000
+logbuild h_armed
+capture h_armed
+simclick 300 250
+gameclock 25000
+logbldgs h_p0
+gameclock 50000
+logbldgs h_lifted
+simclick 890 215
+gameclock 51000
+simclick 905 275
+gameclock 52000
+simclick 420 250
+gameclock 53000
+logbldgs h_p1
+gameclock 75000
+logbldgs h_later
+capture h_later
+gameclock 80000
+end

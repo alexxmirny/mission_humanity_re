@@ -5,6 +5,7 @@
 // declared-need padding field this file references.
 //
 #include "sim/sim_projectile_tick.h"
+#include "sim/sim_projectile_facing.h" // mods:M1C [net] projectile_facing_fix
 
 #include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -227,9 +228,12 @@ void projectile_tick(const sim_view &v, sim_store &own, const projectile_tick_ca
     // 0x004413f6-0x00441468: facing/anim-stride advance, only when a duration recompute happened
     // above (i.e. every tick except one whose weapon_id trips the provably-dead sentinel).
     if (recompute_facing) {
-        const int32_t new_facing   = c.dir_from_to(p.x, p.y, static_cast<int32_t>(imp_x),
-                                                   static_cast<int32_t>(imp_y_vis));
-        const int32_t delta_facing = new_facing - p.facing;
+        const int32_t new_facing = c.dir_from_to(p.x, p.y, static_cast<int32_t>(imp_x),
+                                                 static_cast<int32_t>(imp_y_vis));
+        // [net] projectile_facing_fix (mods:M1C; retail carrier: combat_proto.cpp at 0x00441424): the difference wrapped
+        // into -12..11, 0 for weapon types 5/6 (sim/sim_projectile_facing.h). Off = the original's raw difference.
+        const int32_t delta_facing = projectile_facing_fix() ? projectile_facing_delta(new_facing - p.facing, w.type)
+                                                             : new_facing - p.facing;
         const int32_t stride       = c.fx_anim_dir_frame_stride(w.bullet_anim);
         p.anim_loop_frame += delta_facing * stride;
         p.anim_frame += delta_facing * stride;

@@ -1,0 +1,86 @@
+# mods:MM4: mp_host_start.txt, then the HOST (one peer only) holds the big-map key (Tab) while the lockstep match runs.
+#
+# The big map draws pixels from the present hook and reads game memory and never moves the camera except for a CLICK on it
+# (mods:MM4B: a click or drag centres the camera). A RIGHT click on it gives the selected units the side minimap's order
+# (mods:MM4C): the host selects its Pioneer (unit 1) and right-clicks the overlay twice below; the order goes through the stock
+# issuers, i.e. the lockstep queue, so it lands on both peers. The client script (mp_client_start_bigmap.txt) reads the host's
+# unit's goal at the same sim time and `tools/check_bigmap.py --orders-mp` compares the two goals. `test_ui.py --determinism --det-bigmap` runs this on the host and the stock mp_client_start.txt on the client;
+# mp_analyze must still report ALL PAIRS IDENTICAL with the overlay shown on one peer for most of the match. Three holds with
+# the sim running in between (a hold, a release with the ground repainting, a second hold), the last one left DOWN when the
+# script ends is released by the harness.
+#
+# Pair with mp_client_start.txt.
+
+settled value:110
+capture m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture m2_lobby_ready
+clickl Start
+
+absent Network players
+gameclock 6000
+capture m3_launched
+rawfocus 1
+# mods:MM4C: a held drag round the landing ship selects the Pioneer (unit 1 of the host's side)
+cursorhold 200 200 10
+presshold 5 5
+cursorhold 5 5 6
+cursorhold 470 440 12
+release 470 440
+gameclock +100
+logsel host_selected
+loggoal host_selected
+hotkeydown Tab
+gameclock +1500
+cursorhold 400 300 10
+capture m4_bigmap_held
+log HOST holds the big map (1)
+# mods:MM4C: the first order, a right click on the overlay (pixel (250,235) = tile (166,48): the camera-centred overlay is 1 px per tile)
+simrclick 250 235
+cursorhold 250 235 10
+log HOST right-clicked the big map: an order for the Pioneer
+# mods:MM4B: the host CLICKS the overlay (the camera moves, on the host only: view state; the Pioneer stays selected), then
+# right-clicks it again at the same pixel: the overlay re-centred on the new camera, so that is another tile and the second order
+simclick 300 200
+cursorhold 300 200 10
+simrclick 300 200
+cursorhold 300 200 10
+log HOST clicked the big map: the camera moved on the host only, then a second order
+hotkeyup Tab
+gameclock +500
+cursorhold 400 300 10
+capture m5_bigmap_released
+hotkeydown Tab
+gameclock +2500
+cursorhold 400 300 10
+capture m6_bigmap_held_again
+# and drags across it: the camera follows the pointer
+presshold 300 300
+cursorhold 400 250 10
+cursorhold 500 350 10
+release 500 350
+cursorhold 500 350 10
+log HOST holds the big map (2) -- the peers must still agree
+hotkeyup Tab
+gameclock +500
+# both peers read the Pioneer's goal at the same sim time, long after the last order has run
+gameclock 14000
+loggoal host_final
+end

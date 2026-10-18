@@ -339,6 +339,98 @@ def check_client(path, text, claim_hash, expect_nothing):
             )
 
 
+# tooling:TL-SUITE-FOLD step 5 -- MANY JOINERS IN ONE MATCH (map_xfer). `--client N` judges ONE joiner:
+# its own log, and the host lines that name it. Joiner N is named `client` (N=1) / `clientN`, lives on a
+# lane ending `_cN`, and the host logs `'clientN'` in every per-peer line.
+RE_QUOTED_CLIENT = re.compile(r"'(client\d*)'")
+
+
+def client_name(n):
+    return "client" if n == 1 else "client%d" % n
+
+
+def is_client_lane(path, n):
+    lab = peer_label(path)
+    return lab == client_name(n) or re.search(r"_c%d$" % n, lab) is not None
+
+
+def scope_host(htext, cname):
+    """The host log minus every per-peer line that names a DIFFERENT joiner."""
+    keep = []
+    for ln in htext.split("\n"):
+        m = RE_QUOTED_CLIENT.search(ln)
+        if m and m.group(1) != cname:
+            continue
+        keep.append(ln)
+    return "\n".join(keep)
+
+
+# tooling:TL-SUITE-FOLD step 5 -- a client SEQUENCE (map_tcp): joiners come one after another, all named
+# `client`, so the host lines cannot be told apart by name. They are told apart by TIME: keep the host lines
+# logged while THIS joiner's process ran (its first log line to its last, plus a short tail). The host's
+# per-lobby claim lines (written before any joiner exists) are kept whatever their time.
+RE_STAMP = re.compile(r"^\[(\d\d):(\d\d):(\d\d)\.(\d\d\d)\]")
+RE_HOST_CLAIMS = re.compile(r"; \[map\] host (claim|noclaim|nocarry)\b")
+WINDOW_TAIL_S = 0.5
+
+
+def _stamp(line):
+    m = RE_STAMP.match(line)
+    if not m:
+        return None
+    h, mi, se, ms = (int(x) for x in m.groups())
+    return h * 3600 + mi * 60 + se + ms / 1000.0
+
+
+def scope_host_to_window(host_text, client_text):
+    """(scoped host text, (t0, t1)) -- or (host_text, None) when the client log has no stamps."""
+    stamps = [t for t in (_stamp(ln) for ln in client_text.split("\n")) if t is not None]
+    if not stamps:
+        return host_text, None
+    t0, t1 = min(stamps), max(stamps) + WINDOW_TAIL_S
+    keep, inside = [], False
+    for ln in host_text.split("\n"):
+        t = _stamp(ln)
+        if t is not None:
+            inside = t0 <= t <= t1
+        if inside or RE_HOST_CLAIMS.search(ln):
+            keep.append(ln)
+    return "\n".join(keep), (t0, t1)
+
+
+def check_gate_client(htext, cname, hl):
+    """The Start gate stayed SHUT for this joiner's whole download.
+
+    Read off the host's gate transitions (`start REFUSED` / `start OK` are logged on change only): the
+    last transition before the joiner's `holds the map` line must be a REFUSED (the gate was shut when
+    its download finished -- an OK in between means Start was released with this peer still
+    downloading), and an OK must follow it. A joiner that never `needs` the map is not a download case.
+    """
+    needs = re.search(r"; \[map\] peer (\d+) '%s' needs the map" % re.escape(cname), htext)
+    holds = re.search(r"; \[map\] peer (\d+) '%s' holds the map" % re.escape(cname), htext)
+    if not needs:
+        fail("%s: no `peer ... '%s' needs the map` line -- not a download case" % (hl, cname))
+        return
+    if not holds or holds.start() < needs.start():
+        fail("%s: '%s' needed the map but the host never logged that it then held it" % (hl, cname))
+        return
+    last = None
+    for m in re.finditer(
+        RE_START_REFUSED.pattern + "|" + RE_START_OK.pattern, htext[: holds.start()]
+    ):
+        last = m.group(0)
+    if last is None or "REFUSED" not in last:
+        fail(
+            "%s: the Start gate was NOT shut while '%s' downloaded (the last gate line before its "
+            "`holds the map` is %s)" % (hl, cname, "`start OK`" if last else "absent")
+        )
+        return
+    if not RE_START_OK.search(htext, holds.end()):
+        fail("%s: the gate never reopened after '%s' finished (`start OK` missing)" % (hl, cname))
+        return
+    note("host held Start through '%s' download, then released it" % cname)
+
+
 def main(argv=None):
     del FAILS[:], NOTES[:]
     ap = argparse.ArgumentParser(
@@ -397,6 +489,21 @@ def main(argv=None):
         "host logged `transfer to peer N CANCELLED` and the module's `snapshot SEND to player N "
         "CANCELLED ... tx idle`, for the same peer, BEFORE any link drop",
     )
+    ap.add_argument(
+        "--client",
+        type=int,
+        default=0,
+        metavar="N",
+        help="tooling:TL-SUITE-FOLD step 5: the row has several joiners; judge joiner N alone -- its "
+        "own log (lane `*_cN`) and only the host lines that name it. --expect-gate then means the "
+        "gate stayed shut for N's whole download",
+    )
+    ap.add_argument(
+        "--sequence",
+        action="store_true",
+        help="with --client N: the joiners ran one AFTER another against one host session (all named "
+        "`client`), so scope the host log to joiner N's process lifetime instead of to its name",
+    )
     args = ap.parse_args(argv)
     if args.selftest:
         return selftest()
@@ -412,6 +519,24 @@ def main(argv=None):
             print("  - %s" % f)
         return 1
     hpath, htext = host
+    htext_full = htext
+    if args.client:
+        cname = client_name(args.client)
+        clients = [(p, t) for p, t in clients if is_client_lane(p, args.client)]
+        if args.sequence and clients:
+            htext, win = scope_host_to_window(htext, clients[0][1])
+            if win is None:
+                fail(
+                    "joiner %d's log carries no timestamps; the host log cannot be scoped"
+                    % args.client
+                )
+            htext_full = htext
+        else:
+            htext = scope_host(htext, cname)
+        if not clients:
+            fail(
+                "no log for joiner %d (a lane ending `_c%d`) was given" % (args.client, args.client)
+            )
 
     claim = RE_HOST_CLAIM.search(htext)
     if not claim:
@@ -469,7 +594,9 @@ def main(argv=None):
     if args.expect_leave_cancel:
         check_leave_cancel(hpath, htext)
 
-    if args.expect_gate:
+    if args.expect_gate and args.client:
+        check_gate_client(htext_full, client_name(args.client), peer_label(hpath))
+    elif args.expect_gate:
         held = RE_START_REFUSED.search(htext)
         if not held:
             fail(
@@ -930,6 +1057,25 @@ LR_HOST_RUN_NO_GONE = (
     "; [map] start OK -- every joiner reports the map we advertised\n" % (HASH_OK, HASH_OK)
 )
 
+# tooling:TL-SUITE-FOLD step 5 -- a FOUR-joiner host log, as map_xfer measures it: client 1 downloads
+# alone (gate shut), clients 2 and 3 join after it and download one after another, client 4 holds the map.
+MX_HOST = (
+    "; [map] peer 1 'client' needs the map (has=none want=%(h)s)\n"
+    "; [map] send armed to peer 1 'client' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client' to finish downloading the map\n"
+    "; [map] peer 1 'client' holds the map (sha=%(h)s) -- nothing to transfer\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n"
+    "; [map] peer 2 'client2' needs the map (has=%(n)s want=%(h)s)\n"
+    "; [map] peer 3 'client3' needs the map (has=none want=%(h)s)\n"
+    "; [map] peer 4 'client4' holds the map (sha=%(h)s) -- nothing to transfer\n"
+    "; [map] send armed to peer 2 'client2' (462065 B of blue monday.mpm)\n"
+    "; [map] start REFUSED -- waiting for 'client2' to finish downloading the map\n"
+    "; [map] peer 2 'client2' holds the map (sha=%(h)s) -- nothing to transfer\n"
+    "; [map] send armed to peer 3 'client3' (462065 B of blue monday.mpm)\n"
+    "; [map] peer 3 'client3' holds the map (sha=%(h)s) -- nothing to transfer\n"
+    "; [map] start OK -- every joiner reports the map we advertised\n"
+) % {"h": HASH_OK, "n": HASH_NO}
+
 
 def _plant(root, lane, runs):
     """Lay a peer out the way a lane is: <lane>/logs/<run>/mh_net.log, one file per run."""
@@ -1359,6 +1505,138 @@ def selftest():
             "  %-4s --expect-gate: the MENU dir handed over, session dirs after it are read (rc=%s)"
             % ("ok" if ok else "FAIL", got)
         )
+        # ---- tooling:TL-SUITE-FOLD step 5 --client N (several joiners in one match) ----
+        mx_have = [
+            "; [map] client want blue monday.mpm sha=%s size=462065\n"
+            "; [map] local before blue monday.mpm sha=%s size=462065\n" % (HASH_OK, HASH_OK),
+            "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK,
+        ]
+        mx_released_early = MX_HOST.replace(
+            "; [map] send armed to peer 3 'client3'",
+            "; [map] start OK -- every joiner reports the map we advertised\n"
+            "; [map] send armed to peer 3 'client3'",
+        )
+        mx_cases = [
+            # (name, host text, {lane: client runs}, argv flags, want)
+            (
+                "--client 1 --expect-gate: the downloader that held Start alone is GREEN",
+                MX_HOST,
+                {"client": [CL_MENU, CL_RUN]},
+                ["--expect-gate", "--client", "1"],
+                0,
+            ),
+            (
+                "--client 3 --expect-gate: the gate shut with clients 2 and 3 downloading is GREEN",
+                MX_HOST,
+                {"ui_x_c3": [CL_MENU, CL_RUN]},
+                ["--expect-gate", "--client", "3"],
+                0,
+            ),
+            (
+                "--client 3 --expect-gate: Start released while client 3 still downloaded is red",
+                mx_released_early,
+                {"ui_x_c3": [CL_MENU, CL_RUN]},
+                ["--expect-gate", "--client", "3"],
+                1,
+            ),
+            (
+                "--client 2: a client 2 that stored nothing is red though the other joiners did",
+                MX_HOST,
+                {"ui_x_c2": [CL_MENU, ""]},
+                ["--expect-gate", "--client", "2"],
+                1,
+            ),
+            (
+                "--client 4 --expect-nothing: the holder, beside three other joiners' transfers, is GREEN",
+                MX_HOST,
+                {"ui_x_c4": mx_have},
+                ["--expect-nothing", "--client", "4"],
+                0,
+            ),
+            (
+                "--client 4 --expect-nothing: a transfer armed TO client 4 is red",
+                MX_HOST + "; [map] send armed to peer 4 'client4' (462065 B of blue monday.mpm)\n",
+                {"ui_x_c4": mx_have},
+                ["--expect-nothing", "--client", "4"],
+                1,
+            ),
+            (
+                "--client 2: no log for joiner 2 is red",
+                MX_HOST,
+                {"ui_x_c3": [CL_MENU, CL_RUN]},
+                ["--expect-gate", "--client", "2"],
+                1,
+            ),
+        ]
+        for j, (name, host_text, lanes, flags, want) in enumerate(mx_cases):
+            case = os.path.join(root, "mx%d" % j)
+            h = _plant(case, "host", [HOST_MENU, host_text])
+            argv = flags + [h] + [_plant(case, ln, runs) for ln, runs in lanes.items()]
+            got = main(argv)
+            ok = got == want
+            bad += 0 if ok else 1
+            cases.append(None)
+            print("  %-4s %s (rc=%s, wanted %s)" % ("ok" if ok else "FAIL", name, got, want))
+
+        # ---- tooling:TL-SUITE-FOLD step 5 --sequence (joiners one after another, all named `client`) ----
+        def st(sec, text):  # stamp every line of `text` at second-of-day `sec`
+            return "".join(
+                "[%02d:%02d:%02d.000] %s\n" % (sec // 3600, sec // 60 % 60, sec % 60, ln)
+                for ln in text.splitlines()
+            )
+
+        seq_host = (
+            st(36000, HOST_NOCARRY.strip())
+            + st(36010, HOST_REFUSED_TCP.strip())
+            + st(
+                36300,
+                "; [map] peer 1 'client' holds the map (sha=%s) -- nothing to transfer\n"
+                "; [map] start OK -- every joiner reports the map we advertised" % HASH_OK,
+            )
+        )
+        seq_c1 = st(36005, "; boot") + st(36015, "; [map] client BLOCKED") + CL_MENU_TCP
+        seq_c2 = st(36290, "; boot") + st(36305, "; in match")
+        seq_c2_have = seq_c2 + CL_HAVE
+        seq_cases = [
+            (
+                "--sequence --client 1 --expect-refused: segment 1's refusal, judged in its own window -- GREEN",
+                ["--expect-refused", "--client", "1", "--sequence"],
+                {"ui_x_c1": [seq_c1]},
+                0,
+            ),
+            (
+                "--sequence --client 2 --expect-nothing: segment 2's clean start, the refusal outside its window -- GREEN",
+                ["--expect-nothing", "--client", "2", "--sequence"],
+                {
+                    "ui_x_c2": [
+                        seq_c2_have
+                        + "; [map] local after blue monday.mpm sha=%s size=462065\n" % HASH_OK
+                    ]
+                },
+                0,
+            ),
+            (
+                "--sequence --client 2 --expect-refused: no refusal inside client 2's window is red",
+                ["--expect-refused", "--client", "2", "--sequence"],
+                {"ui_x_c2": [seq_c2_have]},
+                1,
+            ),
+            (
+                "--sequence --client 1 --expect-refused: a `start OK` inside client 1's window is red",
+                ["--expect-refused", "--client", "1", "--sequence"],
+                {"ui_x_c1": [st(36005, "; boot") + st(36301, "; late") + CL_MENU_TCP]},
+                1,
+            ),
+        ]
+        for j, (name, flags, lanes, want) in enumerate(seq_cases):
+            case = os.path.join(root, "sq%d" % j)
+            h = _plant(case, "host", [HOST_MENU, seq_host])
+            argv = flags + [h] + [_plant(case, ln, runs) for ln, runs in lanes.items()]
+            got = main(argv)
+            ok = got == want
+            bad += 0 if ok else 1
+            cases.append(None)
+            print("  %-4s %s (rc=%s, wanted %s)" % ("ok" if ok else "FAIL", name, got, want))
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print(

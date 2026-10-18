@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "cdad1ca6550dd6ceff75007387f809779833f5f19d0e2c3b57d9a6bb60fa45aa"
+   "sha256": "afc5c658b5c26ea00591a8478e50e61c158a5642f9e521ef7a580f33c6187e71"
   },
   {
    "id": "harness_hash_kind_step",
@@ -192,6 +192,33 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "ini-cut lane B: harness key removal (rng_trace/hash_cost_both/rdump window arms); hashed bytes for an unchanged world unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-13",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mods:A2 harness on_sim_step: added ; PROGRESS probe + progress_conquer/acquire hooks, all gated by dev ini keys default 0; hashed bytes unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-13",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "mp:D47: step-keyed triggers read mstep() (g_step - g_match_base); identical to g_step with no segment or step_base 0, so the bytes fed to the hash for an unchanged world are unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-15",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "garage_probe(): observe-only harness probe (reads storage/pop/building fields, writes only the harness log), default off; no byte fed to the hash changes"
   },
   {
    "epoch": 1,

@@ -1,0 +1,59 @@
+# mp:X2 HOST (tooling:TL-SUITE-FOLD step 5) -- ONE host, FOUR joiners at once, each in a different starting state
+# for the host's map. Folds the old map_absent / map_conflict / map_absent_entry / map_have rows into one match:
+#
+#   client 1  pretend=none    map_absent        the map is missing -- Start is HELD, the map crosses channel C
+#   client 2  pretend=other   map_conflict      same name, other bytes -- it receives the host's content
+#   client 3  pretend=absent  map_absent_entry  the game cannot even OPEN the map at lobby entry (mp:X2e)
+#   client 4  (no knob)       map_have          already holds the content -- nothing is transferred
+#
+# The host walk is mp_host_map.txt's. The gate capture needs ONE downloader in flight (the Start-held frame
+# shows the status line naming that peer), so clients 2-4 park on `awaitsignal go` right before their Join click
+# and the host releases them after the frame is taken. Everything after that is concurrent: the gate stays shut
+# until the LAST download finishes, then Start is released once and the match launches for all five peers.
+#
+# Every check is per client: tools/check_map_transfer.py --client N judges ONE joiner against the host lines that
+# name it. Pair with mp_client_map_xfer_{a,b,c,d}.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# client 1 joins alone: the gate shuts on its JOIN (see mp_host_map.txt for why there is no awaitsignal here --
+# `disabled Start` must already be parked when the window opens).
+present Network players
+peers 1
+disabled Start
+capture map_absent__x1_start_held
+log HOST: Start is HELD -- client 1's map download is in flight
+signal go
+
+# the other three join now; the gate stays shut for as long as any download runs
+peers 4
+occ 5
+log HOST: all four joiners seated
+
+# every joiner has taken its lobby frame (the last one joins into an already open gate)
+awaitsignal lobbycap1
+awaitsignal lobbycap2
+awaitsignal lobbycap3
+awaitsignal lobbycap4
+enabled Start
+settled Start
+capture map_absent__x2_start_released
+clickl Start
+
+absent Network players
+gameclock 6000
+capture map_absent__x3_launched
+log HOST launched the match after every joiner's map was settled
+end

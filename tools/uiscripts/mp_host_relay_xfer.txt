@@ -1,0 +1,43 @@
+# R2 + X2d HOST (tooling:TL-SUITE-FOLD step 5) -- ONE host, TWO joiners at once, both THROUGH a relay (force_relay=1). Folds the
+# old relay_match and map_join_race rows into one three-peer match:
+#
+#   client 1  relay_match     the shipped client walk (typed server address) end to end through a relay process (mp:R2); the relay
+#                             mints the room and forwards datagrams (check_relay_rooms)
+#   client 2  map_join_race   joins from the FIRST browser with no saved server, and its first host advert is held until its JOIN has
+#                             gone out (the order the rc3 field match lost in); the JOIN itself must carry the map hash (mp:X2d)
+#
+# The host walk is mp_host_start.txt's, with the two clients' own `lobby` signals (each client tells the host it is in ITS lobby;
+# a Start clicked while a joiner has ~2 frames of lobby left cannot settle or capture, 2026-07-28). Pair with
+# mp_client_relay_xfer_a.txt / mp_client_relay_xfer_b.txt.
+
+settled value:110
+capture relay_match__m1_menu
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+awaitsignal lobby_a
+awaitsignal lobby_b
+occ 3
+enabled Start
+settled Start
+capture relay_match__m2_lobby_ready
+clickl Start
+
+# the match launches on all three peers; the same sim gate as every in-game capture (mp_host_start.txt explains 6000)
+absent Network players
+gameclock 6000
+capture relay_match__m3_launched
+log HOST launched the match (both relayed joiners connected)
+end

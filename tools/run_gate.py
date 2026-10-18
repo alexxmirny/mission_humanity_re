@@ -13,7 +13,7 @@ is the gate for big checkpoints, merges of a long-lived branch, and releases. `l
 iteration checkpoint: build (plain selftest exes only), both determinism oracles (det + spdet), the
 two recorded-session replays (abc_tutorial + abc_spcamp, SHIP ARM ONLY against the recording
 oracle: --ui-abc-arms A,C), inmem, lint, the plain selftest pass and a
-two-row UI smoke (menu_walk + match_launch_net) -- PLUS whatever the CHANGE-AWARE selection adds for
+two-row UI smoke (solo_walk + match_launch_net) -- PLUS whatever the CHANGE-AWARE selection adds for
 the files changed since the last FULL green (see LIGHT_RULES): C++ under libmh/ or mh_common/ forces
 the ASan pass back in (dead-ends G32 -- the heap-corruption class lives there), gfx/input/ui/net
 sources add the UI rows that exercise them, an edited uiscripts file adds the rows that use it. The
@@ -66,6 +66,14 @@ PY = sys.executable
 LOG_DIR = os.path.join(REPO, "tmp", "gate")
 
 
+# tooling:TL-RELGATE-FOLD (1): every `vm` unit is `first` so the VM chain is dispatched ahead of the local units the
+# moment the VM slot frees, instead of waiting behind whatever the suite/selftests happen to hold (measured: the
+# slot sat idle ~630 s after det in the 64.8-min release gate). det is rank 2 and leads; the others share rank 1 and
+# run longest-first among themselves. `first` only orders -- a unit that does not fit still reserves its cores
+# (pick_units), so the rest of the roster backfills around it rather than starving it.
+VM_CHAIN_FIRST = 1
+
+
 # The roster. `weight` = the cores the unit roughly occupies (game processes + build load);
 # `timeout` = the wall-clock kill bound, generous on purpose -- a stuck unit is reported as
 # TIMEOUT, never silently waited out past it. Longest-wall units first: the scheduler starts
@@ -82,6 +90,10 @@ def units(args):
                 "--ship-pacing",
                 "--steps",
                 str(args.steps),
+                # mods:M1H: the synthetic moving-unit workload (D6) on the SHIPPED movement/combat defaults, so the 2-peer
+                # hash compare covers improved_movement / group_movement / improved_combat ON (it was idle without this).
+                "--harness-extra",
+                "synth_move=1",
             ],
             # WEIGHT 2 AND STARTED FIRST (fork F4H). It was 0 -- "the peers run ON the VMs; this box
             # only orchestrates over ssh, so charging it a core would delay a real local unit for
@@ -99,7 +111,8 @@ def units(args):
             # without a special case in the dispatcher: the suite's 26 lane boots no longer fit in
             # the remaining budget at t0, so they run in the slot det leaves ~200 s later.
             "weight": 2,
-            "first": True,
+            # rank 2: det leads the VM chain (every other VM unit is `first: 1`, see host_migration_rows / TL-RELGATE-FOLD)
+            "first": 2,
             # THE VM SLOT (gate diet block 5b): det is the roster's original VM-driving row -- see
             # the scheduler's `free_vm` note below for why this is now a marker other rows share
             # rather than an unstated assumption.
@@ -125,6 +138,7 @@ def units(args):
             # weight 3, not det's 2: this shape ALSO provisions a THIRD peer as a local DET3 lane
             # (the sim-fenced side) beside the two VM vCPUs.
             "weight": 3,
+            "first": VM_CHAIN_FIRST,
             "vm": True,
             "timeout": 1200,
         },
@@ -144,6 +158,7 @@ def units(args):
             ],
             # weight 2, matching det: two VM vCPUs, no local lane.
             "weight": 2,
+            "first": VM_CHAIN_FIRST,
             "vm": True,
             "timeout": 900,
         },
@@ -229,7 +244,16 @@ def units(args):
         {
             "name": "abc_spcamp",
             "why": "step 3c -- the campaign session, three arms (A/B parallel since 2026-09-10)",
-            "cmd": [PY, os.path.join(REPO, "tools", "ui_abc.py"), "--ui-abc", "spcamp_solo"],
+            # sp_retail_oracle.ini: the RECORDINGS are retail sessions (variable step, retail movement/combat); the shipped defaults are a fixed
+            # 20 ms step and improved_movement/group_movement/improved_combat ON, so the ship arm is pinned back (user, 2026-10-16/17: no re-recording).
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "ui_abc.py"),
+                "--ui-abc",
+                "spcamp_solo",
+                "--ui-abc-ini",
+                os.path.join(REPO, "tools", "uiscripts", "ini", "sp_retail_oracle.ini"),
+            ],
             "weight": 2,
             "timeout": 1800,
         },
@@ -246,6 +270,9 @@ def units(args):
                 "tutorial_solo",
                 "--ui-slot",
                 "2",
+                # the recording is a variable-step session; see abc_spcamp
+                "--ui-abc-ini",
+                os.path.join(REPO, "tools", "uiscripts", "ini", "sp_retail_oracle.ini"),
             ],
             "weight": 2,
             "timeout": 1200,
@@ -278,6 +305,25 @@ def units(args):
                 "424242",
             ],
             "weight": 1,  # one local lane, two sequential headless arms
+            "timeout": 1800,
+        },
+        {
+            # 2026-10-16: the FIXED-STEP single-player check. spdet runs both arms at the retail variable step
+            # (sp_sim_step_ms=0) so it still proves ship == retail; this unit proves the shipped default (20 ms) is
+            # reproducible: idle vs CPU-loaded vs idle, no pin_wallclock, per-step clock + state hashes identical, and the
+            # sp_sim_step_ms=0 control must differ (a vacuous comparison cannot pass).
+            "name": "spdet_fixed",
+            "why": "single-player fixed step (20 ms): identical per-step hashes idle vs under CPU load, no pin_wallclock",
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "det_arms.py"),
+                "--sp-fixed-determinism",
+                "--steps",
+                "1500",
+                "--sp-seed",
+                "424242",
+            ],
+            "weight": 1,
             "timeout": 1800,
         },
         {
@@ -329,24 +375,22 @@ def units(args):
         },
     ]
     if getattr(args, "release", False):
-        # mp:U53 (2026-10-02): the 3-peer elimination arms -- host defeated (survivors play on
-        # IDENTICAL) and client defeated (mp:U56's pinned roster flip). RELEASE ONLY: ~4 min per arm
-        # on the 3-peer topology (VM host, VM client, a local DET3 lane), and the full gate's wall cap
-        # has no room for it; same topology class as u19j_gpfg3, so the same weight.
+        # mp:U58 (was the third arm of the old `u53_elim` unit): the 3-peer GS2 arm stays on the VM pair -- it is the
+        # one elimination-family arm whose proof is a silent CLIENT on a real second machine. Its two siblings
+        # (host-elim / client-elim, mp:U53/U56) moved to the all-local `hm_local` batch (tooling:TL-RELGATE-FOLD).
         rows.append(
             {
-                "name": "u53_elim",
-                "why": "release -- mp:U53/U56 3-peer eliminations + mp:U58 3-peer GS2: host defeated, client "
-                "defeated, survivors IDENTICAL to the end",
+                "name": "u58_gs2",
+                "why": "release -- mp:U58 3-peer GS2: a silent client is dropped by the survivors, GS2 watches slot 2 "
+                "from BOTH survivors (VM host + VM client + a local DET3 lane)",
                 "cmd": [
                     PY,
                     os.path.join(REPO, "tools", "det_arms.py"),
                     "--determinism",
-                    "--u53-host-elim",
-                    "--u53-client-elim",
-                    "--u58-gs2-3peer",  # mp:U58: GS2 watches slot 2 from BOTH survivors
+                    "--u58-gs2-3peer",
                 ],
                 "weight": 3,
+                "first": VM_CHAIN_FIRST,
                 "vm": True,
                 "timeout": 1200,
             }
@@ -357,82 +401,56 @@ def units(args):
 
 def host_migration_rows():
     """mp:U65 (HM-M8): the host-migration arms (plan section 11: handover, crash failover, the 4-peer failure cases), RELEASE TIER only.
-    Every row is a 3- or 4-peer match on the rig (VM host + VM client + local DET lanes), so they are all
-    `vm: True` and run one after another. `budget_s` is the MEASURED wall (2026-10-03, one clean run each, the
-    VMs warm) rounded up; `diet_reds` goes red at 1.5x it. Each arm costs ~1-3 min, mostly match boot + the
-    hashed steps + the post-failover run-out, so none can be shortened without losing the
-    ">= 1000 steps IDENTICAL after the incident" clause they assert."""
+
+    tooling:TL-RELGATE-FOLD split them by what each arm needs from the rig:
+      * VM chain (`vm: True`, one after another, `first`): `hm_crash` (the direct crash failover, the VM+network path)
+        `hm_u64_part` (partition + heal: the shim's control port 6699 is a machine singleton, so they cannot be local)
+        and `hm_u64_newhub` (measured 4/8 PASS local under load, 1/1 on the VM: not folded). Each arm is a 3- or 4-peer match: VM host + VM client + local DET lanes.
+      * `hm_local`: EVERY other host-migration arm, ALL-LOCAL and 3-wide (tools/rig_parallel.py `--preset hm_local`):
+        the three crash variants (relay, configuration (1), relay + configuration (1) -- boot/config properties, not
+        network ones), the planned-handover arms (quit, exit, hub_migration=0 negative), the two elimination arms
+        (mp:U53/U56) and the two 4-peer election arms (elect4, double; `newhub` stays on the VM, see below). Same det_arms children, same
+        checkers (check_u62/u63/u53/u64), so the same verdicts and thresholds as on the VM pair.
+    `budget_s` is the MEASURED wall rounded up; `diet_reds` goes red at 1.5x it."""
     det = [PY, os.path.join(REPO, "tools", "det_arms.py"), "--determinism"]
-    one_arm = "one 3-peer arm: match boot + 4000 steps + failover"
+    one_arm = "one 3-peer arm: match boot + 2400 steps + failover"
     # (name, why, extra flags, weight, budget_s, long_why)
     spec = [
         (
-            "hm_handover",
-            "mp:U62 planned handover: ESC-quit and graceful exit hand the hub over (survivors IDENTICAL, stall < 1 s) "
-            "+ the hub_migration=0 negative arm (U55's outcome 8)",
-            ["--u62-host-quit", "--u62-host-exit", "--u62-neg"],
-            3,
-            600,
-            "three 3-peer arms back to back (match boot + 4000 steps each; the negative arm waits out U55's 58 s end)",
-        ),
-        (
             "hm_crash",
-            "mp:U63 crash failover, direct, reimpl: TerminateProcess of the hub, survivors elect and play on IDENTICAL, "
-            "stall <= 6 s + the negative arm",
-            ["--u63-crash", "--u63-neg"],
-            3,
-            400,
-            "a 3-peer crash arm plus the negative arm that waits out U55's 58 s end",
-        ),
-        (
-            "hm_crash_relay",
-            "mp:U63 crash failover through a local mh_relay (relay-room fallback), reimpl",
-            ["--u63-crash", "--u55-relay"],
+            "mp:U63 crash failover, direct, reimpl, on the VM pair: TerminateProcess of the hub, survivors elect and play "
+            "on IDENTICAL, stall <= 6 s",
+            ["--u63-crash"],
             3,
             200,
             one_arm,
         ),
         (
-            "hm_crash_c1",
-            "mp:U63 crash failover in configuration (1) (mode=original): the retail emitters carry the failover",
-            ["--u63-crash", "--u53-config1"],
+            "hm_u64_newhub",
+            "mp:U64 4-peer: the elected hub is lost too (newhub: the second failover among the two left, 3 of 3 of its "
+            "epoch), on the VM pair -- local 4-peer measured 4/8 PASS under load, so this one arm was not folded",
+            ["--u64", "newhub"],
             3,
-            200,
-            one_arm,
-        ),
-        (
-            "hm_crash_relay_c1",
-            "mp:U63 crash failover, relay AND configuration (1)",
-            ["--u63-crash", "--u55-relay", "--u53-config1"],
-            3,
-            200,
-            one_arm,
-        ),
-        (
-            "hm_u64_elect",
-            "mp:U64 4-peer: min-RTT election (elect4: client 2 elected, ranking 2>3>1), new hub lost (newhub: second "
-            "failover) and the double loss that ends both survivors (double: even split -> MINORITY)",
-            ["--u64", "elect4", "--u64", "newhub", "--u64", "double"],
-            4,
-            600,
-            "three 4-peer arms (2400-3000 hashed steps each, two failovers in newhub)",
+            250,
+            "one 4-peer arm (2600 hashed steps, two failovers)",
         ),
         (
             "hm_u64_part",
             "mp:U64 4-peer partition (the cut-off hub ends outcome 8, three survivors play on) and the heal (the old "
             "host's traffic is dropped, no second election)",
             ["--u64", "partition", "--u64", "heal"],
-            4,
+            3,
             250,
             "two 4-peer arms (partition ~100 s, heal ~125 s)",
         ),
     ]
-    return [
+    rows = [
         {
             "name": name,
             "why": "release -- " + why,
             "cmd": det + flags,
             "weight": weight,
+            "first": VM_CHAIN_FIRST,
             "vm": True,
             "timeout": max(900, budget * 2),
             "budget_s": budget,
@@ -440,6 +458,32 @@ def host_migration_rows():
         }
         for name, why, flags, weight, budget, long_why in spec
     ]
+    rows.append(
+        {
+            "name": "hm_local",
+            "why": "release -- mp:U62/U63/U64/U53/U56 host-migration + elimination arms, ALL-LOCAL 3-wide: crash variants "
+            "(relay, config 1, both), planned handover (quit, exit, hub_migration=0 negative), host/client elimination, "
+            "4-peer elect4 / double",
+            "cmd": [
+                PY,
+                os.path.join(REPO, "tools", "rig_parallel.py"),
+                "--parallel",
+                "3",
+                "--preset",
+                "hm_local",
+                "--tag",
+                "gate",
+            ],
+            # 3 arms at once, 3-4 frame-capped (mostly sleeping) game processes each: ~1 core per arm, like the
+            # suite's net pool (NET_JOB_WEIGHT), not 12 cores
+            "weight": 3,
+            "timeout": 2400,
+            "budget_s": 1000,
+            "long_why": "ten all-local arms 3-wide (four rounds of ~200 s: two 4-peer arms of 2400-3000 hashed steps, "
+            "the arm that waits out U55's 58 s end, the crash variants and the two eliminations)",
+        }
+    )
+    return rows
 
 
 # Expected wall seconds per unit when no measured record exists yet -- ONLY a scheduling hint
@@ -461,23 +505,22 @@ DUR_HINTS = {
     # 71 s alone (host+client VM match plus the scp backup/push/restore).
     "u19j_gpfg3": 480,
     "x2a_map_variant": 90,
-    # mp:U53 release unit: two 3-peer arms, ~3-4 min each measured standalone (2026-10-02).
-    "u53_elim": 600,  # +mp:U58 gs2 arm (~2 min)
-    # mp:U65 host-migration release units: measured 2026-10-03 (one clean run each)
-    "hm_handover": 545,
-    "hm_crash": 364,
-    "hm_crash_relay": 185,
-    "hm_crash_c1": 183,
-    "hm_crash_relay_c1": 186,
-    "hm_u64_elect": 546,
+    # release units after tooling:TL-RELGATE-FOLD (ESTIMATES until the first measured run self-corrects them):
+    # the VM chain keeps u58_gs2 (was the third arm of u53_elim), hm_crash (one arm now) and hm_u64_part; every
+    # other host-migration / elimination arm runs in the all-local hm_local batch.
+    "u58_gs2": 75,
+    "hm_crash": 130,
+    "hm_u64_newhub": 180,
     "hm_u64_part": 228,
+    "hm_local": 900,
     "abc_tutorial": 120,
     "spdet": 100,
+    "spdet_fixed": 250,
     "libref": 75,
     "lint": 60,
     "inmem": 10,
     # the light profile's own two rows (TL-GATE12): a warm plain selftest pass is ~26 s of suites,
-    # the two smoke rows ~60 s of lane time (menu_walk 14 s + match_launch_net 45 s, 2026-09-28).
+    # the two smoke rows ~60 s of lane time (solo_walk, which folded menu_walk and 14 other rows, ~60-80 s; match_launch_net 45 s).
     "selftests_plain": 60,
     # light, transport change: ASan without the loopback suites + plain with them (option A,
     # 2026-10-03): ~594 s full minus ~160 s of loopback ASan -- self-corrects at the first run.
@@ -517,9 +560,10 @@ SUITE_WALL_MAX = int(23.5 * 60)
 # 25 min since 2026-09-29: the suite cap above plus the ~4 min the other units run after it (the
 # last two full gates: 1297 s, 1508 s wall).
 GATE_WALL_MAX = 25 * 60
-# 75 min for `--release` (mp:U65): the host-migration units add ~37 min of strictly serial VM rig time (one rig, one
-# `vm` slot) to the full gate, so the release profile is held to its own cap; each unit still answers to its budget_s.
-RELEASE_GATE_WALL_MAX = 75 * 60
+# 45 min for `--release` since 2026-10-18 (was 75, mp:U65): tooling:TL-RELGATE-FOLD moved most host-migration arms to the
+# all-local `hm_local` batch and put the VM chain first; the first quiet-box run measured 30.0 min (was 64.8). 1.5x it,
+# so a load-slow run still fits; each unit still answers to its budget_s.
+RELEASE_GATE_WALL_MAX = 45 * 60
 # What one --suite-net-jobs slot costs the core budget (block 3): two capped game processes that
 # sleep most of every frame. Measured: avg 0.11 CPU-busy games per game, i.e. ~0.22 of a core per
 # job; 1/3 keeps ~50 % headroom. It was 0.5 for the first diet gate (2026-09-24), which priced the
@@ -559,8 +603,8 @@ FULL_DUE_DAYS = 3
 FALLBACK_DEPTH = 10
 # Always in the light gate: one solo menu walk and one 2-peer MP launch through the real
 # menu->lobby->Start (configuration (1) on the shipped ini).
-SMOKE_ROWS = ("menu_walk", "match_launch_net")
-LIGHT_BASE_UNITS = ("det", "spdet", "abc_tutorial", "abc_spcamp", "inmem", "lint")
+SMOKE_ROWS = ("solo_walk", "match_launch_net")
+LIGHT_BASE_UNITS = ("det", "spdet", "spdet_fixed", "abc_tutorial", "abc_spcamp", "inmem", "lint")
 # The two recorded-session units, which the light profile runs as `--ui-abc-arms A,C` (light_units).
 LIGHT_ABC_UNITS = ("abc_tutorial", "abc_spcamp")
 # The selftest unit's own long pole, MEASURED 2026-09-29 (plain pass, one run each): these six are
@@ -577,11 +621,13 @@ LOOPBACK_SUITES = (
     "udprelinktest",
 )
 
-_GFX_ROWS = ("win_resize", "res_walk", "font_guard", "boot_snapshot", "gx1_overlay_residue")
-_INPUT_ROWS = ("type_ascii", "key_repeat", "esc_menu", "imgui_swallow", "imgui_hover")
-_UI_ROWS = ("esc_menu", "stats_panel", "debug_overlay", "tact_panel", "ip_cancel", "no_net_lobby")
-_NET_ROWS = ("client_join", "relay_match", "graceful_quit", "link_death", "net_hud")
-_MAP_ROWS = ("map_have", "map_absent")
+_GFX_ROWS = ("overlay_seq", "res_walk")
+_INPUT_ROWS = ("ship_walk", "overlay_seq")
+_UI_ROWS = ("overlay_seq", "screen_seq", "no_net_walk")
+# Rows of several processes (solo_steps) whose smoke run is ONE cheap step (test_ui.py --step), not the whole sequence.
+SMOKE_STEPS = {"overlay_seq": "win_resize", "screen_seq": "tact_panel"}
+_NET_ROWS = ("lobby_seq", "relay_xfer", "graceful_quit", "link_death_seq", "net_hud_scroll")
+_MAP_ROWS = ("map_xfer",)
 _CXX = r"\.(c|cc|cpp|cxx|h|hpp|inl)$"
 # (label, path regex, extra units, extra UI rows). First-class data so `--plan` can say WHY each
 # addition happened and --selftest can prove every named row still exists in the registry.
@@ -722,6 +768,8 @@ def light_selection(files, tests=None, registry_rows=()):
             names = set()
             if len(parts) > 3 and parts[2] == "baselines":
                 names.add(parts[3])
+                # a baseline dir is a SCRIPT label: for a solo_steps row it is a step's script, not the row's name
+                names.update(n for n, blob in blobs if '"%s.txt"' % parts[3] in blob)
             elif parts[-1] == "registry.yaml":
                 names.update(registry_rows)
             else:
@@ -1066,8 +1114,9 @@ def smoke_units(args, sel, files, tests=()):
                     "1",
                     "--net-jobs",
                     "1",
-                    row,
-                ],
+                ]
+                + (["--step", SMOKE_STEPS[row]] if row in SMOKE_STEPS else [])
+                + [row],
                 "weight": 2,
                 "timeout": 600,
                 "ui_rows": [row],
@@ -1256,13 +1305,18 @@ def _selftest_light():
     -- except the one row that checks every LIGHT_RULES/SMOKE_ROWS name against the live registry."""
     ok = True
     tests = [
-        {"name": "menu_walk", "kind": "solo", "script": "mp_menu_walk.txt"},
-        {"name": "win_resize", "kind": "solo", "script": "win_resize.txt"},
+        {"name": "solo_walk", "kind": "solo", "script": "solo_walk.txt"},
         {
-            "name": "imgui_hover",
+            "name": "overlay_seq",
             "kind": "solo",
-            "script": "imgui_hover.txt",
-            "extra_ini": "tools/uiscripts/ini/imgui_hover.ini",
+            "solo_steps": [
+                {"name": "win_resize", "script": "win_resize.txt"},
+                {
+                    "name": "imgui_hover",
+                    "script": "imgui_hover.txt",
+                    "extra_ini": "tools/uiscripts/ini/imgui_hover.ini",
+                },
+            ],
         },
     ]
     # Fixture paths are FAKE on purpose (the rules must classify a file that does not exist yet), so
@@ -1293,10 +1347,10 @@ def _selftest_light():
         ("mh_common header forces ASan", ["hdr"], True, set(), set()),
         ("a libmh .md does not", ["md"], False, {"libref"}, set()),
         ("vcxproj forces ASan", ["proj"], True, {"libref"}, set()),
-        ("gfx -> gfx rows", ["gfx"], False, set(), {"win_resize"}),
-        ("uiscript -> its row", ["txt"], False, set(), {"imgui_hover"}),
-        ("ini -> its row", ["ini"], False, set(), {"imgui_hover"}),
-        ("baseline dir -> its row", ["png"], False, set(), {"win_resize"}),
+        ("gfx -> gfx rows", ["gfx"], False, set(), {"overlay_seq"}),
+        ("uiscript -> its row", ["txt"], False, set(), {"overlay_seq"}),
+        ("ini -> its row", ["ini"], False, set(), {"overlay_seq"}),
+        ("baseline dir -> its row", ["png"], False, set(), {"overlay_seq"}),
         ("tools/*.py -> nothing extra", ["tool"], False, set(), set()),
         ("net seam -> u19j", ["net"], False, {"u19j_gpfg3"}, set()),
     ]
@@ -1316,8 +1370,8 @@ def _selftest_light():
     hit = s["unmapped"] == [fx["new"]]
     print("  %-34s %s" % ("an unmapped source is NAMED", "ok" if hit else "XX"))
     ok = ok and hit
-    s = light_selection([fx["reg"]], tests, registry_rows={"win_resize"})
-    hit = s["rows"] == {"win_resize"}
+    s = light_selection([fx["reg"]], tests, registry_rows={"overlay_seq"})
+    hit = s["rows"] == {"overlay_seq"}
     print("  %-34s %s" % ("a registry hunk -> the row it edits", "ok" if hit else "XX"))
     ok = ok and hit
 
@@ -1343,6 +1397,65 @@ def _selftest_light():
     sp, wall = simulate(vm2, 7)
     hit = sp["b"][0] == 50 and wall == 100
     print("  %-34s %s" % ("the VM slot still serialises", "ok" if hit else "XX"))
+    ok = ok and hit
+
+    # tooling:TL-RELGATE-FOLD (1): a `first` VM unit waiting for the slot reserves the cores it will need when the slot
+    # frees, so the chain starts the instant det ends -- instead of waiting (measured ~630 s) for the selftests' core
+    # while shorter units backfill every core det releases.
+    def chain(first):
+        return [
+            row("det", 123, 2, first=2, vm=True),
+            row("chainA", 230, 3, first=first, vm=True),
+            row("chainB", 57, 2, first=first, vm=True),
+            row("suite", 1050, 4),
+            row("sel", 755, 1),
+            row("abc", 224, 2),
+        ]
+
+    sp, wall = simulate(chain(1), 7)
+    sp_old, wall_old = simulate(chain(0), 7)
+    hit = (
+        sp["det"][0] == 0
+        and sp["chainA"][0] == 123
+        and sp["chainB"][0] == sp["chainA"][1]
+        and sp_old["chainA"][0] >= 700
+        and sp["chainB"][1] < sp_old["chainA"][0]
+    )
+    print(
+        "  %-34s %s  chainA starts %s (was %s)"
+        % (
+            "VM chain starts when det ends",
+            "ok" if hit else "XX",
+            sp["chainA"][0],
+            sp_old["chainA"][0],
+        )
+    )
+    ok = ok and hit
+    # `first` orders the chain only: rank 2 (det) still leads, and a non-VM unit never jumps a VM one
+    hit = [r["name"] for r in priority(chain(1))][:3] == ["det", "chainA", "chainB"]
+    print("  %-34s %s" % ("priority: det, then the VM chain", "ok" if hit else "XX"))
+    ok = ok and hit
+    # the shipped release roster really carries the marker (a unit that lost it would silently queue behind cores)
+    rel = [
+        r
+        for r in units(argparse.Namespace(**dict(vars(_selftest_args()), release=True)))
+        if r.get("vm")
+    ]
+    hit = (
+        {r["name"] for r in rel}
+        >= {
+            "det",
+            "u19j_gpfg3",
+            "x2a_map_variant",
+            "u58_gs2",
+            "hm_crash",
+            "hm_u64_newhub",
+            "hm_u64_part",
+        }
+        and all(r.get("first") for r in rel)
+        and max(rel, key=lambda r: r.get("first") or 0)["name"] == "det"
+    )
+    print("  %-34s %s" % ("release roster: every VM unit `first`", "ok" if hit else "XX"))
     ok = ok and hit
     # the light replays are ship-only, and ui_abc refuses every arm set but A,B,C / A,C
     lrows = light_units(_selftest_args(), light_selection([], []), [])
@@ -1471,7 +1584,7 @@ def _selftest_smoke(fx, tests):
     sel = light_selection([fx["gfx"], fx["ui"]], tests)
     chk(
         "smoke: at most ONE ui row",
-        smoke_ui_row(sel, tests) == "win_resize",
+        smoke_ui_row(sel, tests) == "overlay_seq",
         smoke_ui_row(sel, tests),
     )
     t2 = [
@@ -1556,19 +1669,36 @@ def load_durations(rows, records=(TIMINGS,)):
 # when det finished. The live dispatcher and `--plan`'s simulated timeline call the SAME function,
 # so the plan is the schedule the run would take if every unit ran its recorded duration.
 def priority(rows):
-    """det-style `first` rows, then longest expected wall, then widest."""
-    return sorted(rows, key=lambda r: (not r.get("first"), -r["dur"], -r["weight"]))
+    """`first` rows (a higher `first` value leads: det=2, the VM chain=1), then longest expected wall, then widest."""
+    return sorted(rows, key=lambda r: (-int(r.get("first") or 0), -r["dur"], -r["weight"]))
 
 
 def pick_units(pending, free, free_vm, running, now, cores):
     """PURE: the units of `pending` (priority order) to start at `now`.
 
-    free / free_vm = idle cores / VM slots; running = [(expected_end, weight)] of what holds cores.
-    A unit waiting only for the VM slot never takes the reservation (the VM pair is its own queue)."""
+    free / free_vm = idle cores / VM slots; running = [(expected_end, weight[, is_vm])] of what holds cores.
+    A unit waiting only for the VM slot never takes the reservation (the VM pair is its own queue) -- EXCEPT a `first`
+    one (tooling:TL-RELGATE-FOLD): the VM chain is the gate's critical path, so a `first` VM unit that has to wait for
+    the slot reserves the cores it will need AT THE MOMENT THE SLOT FREES (the running VM unit's expected end, or later
+    if the cores free later). Lower-priority units then backfill only if they end before that moment or fit beside it,
+    so the chain starts the instant the slot frees instead of waiting (measured: ~630 s) behind cores held by units that
+    could have started after it."""
     start, run, resv = [], list(running), None
     for r in pending:
         w = min(r["weight"], cores)
         if r.get("vm") and free_vm < 1:
+            if r.get("first") and resv is None:
+                slot_free = min((x[0] for x in run if len(x) > 2 and x[2]), default=now)
+                acc, shadow = free, max(slot_free, now)
+                # cores that come back by the time the slot frees, then (if still short) as later units end
+                acc += sum(x[1] for x in run if x[0] <= shadow)
+                for x in sorted(run):
+                    if acc >= w:
+                        break
+                    if x[0] > shadow:
+                        acc += x[1]
+                        shadow = max(x[0], now)
+                resv = [shadow, acc - w]
             continue
         if resv is not None:
             if w > free:
@@ -1579,18 +1709,18 @@ def pick_units(pending, free, free_vm, running, now, cores):
                 resv[1] -= w
         elif w > free:
             acc, shadow = free, now
-            for end, rw in sorted(run):
+            for x in sorted(run):
                 if acc >= w:
                     break
-                acc += rw
-                shadow = max(end, now)
+                acc += x[1]
+                shadow = max(x[0], now)
             resv = [shadow, acc - w]
             continue
         start.append(r)
         free -= w
         if r.get("vm"):
             free_vm -= 1
-        run.append((now + r["dur"], w))
+        run.append((now + r["dur"], w, bool(r.get("vm"))))
     return start
 
 
@@ -1599,7 +1729,9 @@ def simulate(rows, cores):
     pending, running, spans, now = priority(rows), [], {}, 0.0
     free, free_vm = cores, 1
     while pending or running:
-        for r in pick_units(pending, free, free_vm, [(e, w) for e, w, _r in running], now, cores):
+        for r in pick_units(
+            pending, free, free_vm, [(e, w, bool(_r.get("vm"))) for e, w, _r in running], now, cores
+        ):
             w = min(r["weight"], cores)
             free -= w
             free_vm -= 1 if r.get("vm") else 0
@@ -2119,7 +2251,7 @@ def main():
                             free_vm[0] -= 1
                         pending.remove(r)
                         running.add(r["name"])
-                        ends[r["name"]] = (now + r["dur"], w)
+                        ends[r["name"]] = (now + r["dur"], w, bool(r.get("vm")))
                         threading.Thread(target=run_unit, args=(r, w), daemon=True).start()
                     if pending or running:
                         # a timed wait: an over-running unit moves the reservation, and the

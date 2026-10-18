@@ -4,6 +4,7 @@
 // banner for the aliased-out-pointer preserved bug and the unbacked-enum literal derivation.
 //
 #include "sim/sim_unit_state_attack_building.h"
+#include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 
 #include "addr/mh_calls.gen.h"          // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"                // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -90,8 +91,14 @@ void unit_state_attack_building(const sim_view &v, sim_store &own,
     // two identical pointers literally and relies on the real llm_strat_bldg_get_coords, called
     // through mh::call::, to reproduce the original's own memory effect), re-plan around the building,
     // notify, and commit the newly selected weapon.
-    c.bldg_get_coords(static_cast<uint16_t>(target_owner), static_cast<int32_t>(target_slot),
-                      &u.target_fine_x, &u.target_fine_x);
+    // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's REAIM splice at 0x00484fc6): the
+    // footprint tile nearest this unit into target_fine_x AND target_fine_y (fixes the aliased pair). Off = the
+    // original's aliased call.
+    if (!(attack_range_footprint() &&
+          footprint_aim_of_view(v, u, player, target_owner, static_cast<int32_t>(target_slot), &u.target_fine_x,
+                                &u.target_fine_y)))
+        c.bldg_get_coords(static_cast<uint16_t>(target_owner), static_cast<int32_t>(target_slot),
+                          &u.target_fine_x, &u.target_fine_x);
     c.unit_set_state_order(ATTACK_BUILDING_ORDER_GROUP_MARSHAL, ATTACK_BUILDING_STATE_ATTACK_BUILDING);
     c.unit_notify_status(player, unit_index, ATTACK_BUILDING_NOTIFY_REPLAN);
     u.selected_weapon = selected;
