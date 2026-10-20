@@ -55,6 +55,7 @@
 #include "sim/sim_attack_range_footprint.h" // the shared aim-tile rule (header-only)
 #include "sim/sim_projectile_facing.h"      // mods:M1C projectile_facing_fix (header-only)
 #include "net_internal.h"                   // seam_log
+#include "seams/move_carrier.h"             // mods:M1H: site states, requested values, stub hit counters
 
 int g_sqm_rt = 0; // [net] move_squad_merge_fix in force
 int g_arf_rt = 0; // [net] attack_range_footprint in force
@@ -226,6 +227,7 @@ __declspec(naked) void sqm_stub() {
     __asm {
         cmp   g_sqm_rt, 0
         je    s_cmp
+        inc   dword ptr [g_mv_hit + 4 * MVH_SQM]
         pushad
         push  ebp
         call  sqm_accept
@@ -245,6 +247,7 @@ __declspec(naked) void arf_issue_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    i_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_ISSUE]
         call  dword ptr [g_fn_bgc]
         pushad
         push  ebp
@@ -263,6 +266,7 @@ __declspec(naked) void arf_jit_point_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    jp_go
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_JIT_POINT]
         pushad
         push  dword ptr [esp + 40]
         push  dword ptr [esp + 40]
@@ -279,6 +283,7 @@ __declspec(naked) void arf_jit_offset_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    jo_go
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_JIT_OFFSET]
         pushad
         push  dword ptr [esp + 40]
         push  dword ptr [esp + 40]
@@ -297,6 +302,7 @@ __declspec(naked) void arf_walk_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    w_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_WALK]
         pushad
         push  ecx
         push  ebx
@@ -314,6 +320,7 @@ __declspec(naked) void arf_fire_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    f_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_FIRE]
         pushad
         push  ecx
         push  ebx
@@ -332,6 +339,7 @@ __declspec(naked) void arf_reaim_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    r_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_REAIM]
         pushad
         call  arf_reaim_fix
         test  eax, eax
@@ -346,6 +354,7 @@ __declspec(naked) void arf_step_stub() {
     __asm {
         cmp   g_arf_rt, 0
         je    st_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARF_STEP]
         pushad
         push  ecx
         push  ebx
@@ -436,6 +445,7 @@ __declspec(naked) void pff_stub() {
         sub   edx, dword ptr [eax + 0x59]        // replaced: delta = new facing - facing
         cmp   g_pff_rt, 0
         je    pff_done
+        inc   dword ptr [g_mv_hit + 4 * MVH_PFF]
         push  ecx
         push  eax                                // the projectile
         push  edx                                // the delta
@@ -470,26 +480,28 @@ void install_combat_proto() {
     struct site {
         uintptr_t at, callee;
         void (*stub)();
-        const char *owner;
+        const char            *owner;
+        mh::seams::mv::site_id id; // mods:M1H: the carrier report's name for the site
     };
     const site sites[] = {
-        {ADDR_ARF_ISSUE_REPOS, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition"},
-        {ADDR_ARF_ISSUE_ALT, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition_alt_enqueue"},
-        {ADDR_ARF_ISSUE_ENQ, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition_enqueue"},
-        {ADDR_ARF_ISSUE_ATK, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building"},
-        {ADDR_ARF_JIT_REPOS, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building_reposition"},
-        {ADDR_ARF_JIT_ENQ, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building_reposition_enqueue"},
-        {ADDR_ARF_JIT_ATK, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building"},
-        {ADDR_ARF_JIT_ALT, FN_RANDOM_OFFSET, arf_jit_offset_stub, "llm_strat_unit_order_attack_building_reposition_alt_enqueue"},
-        {ADDR_ARF_JIT_WALK, FN_RANDOM_OFFSET, arf_jit_offset_stub, "llm_strat_unit_state_move_walker"},
-        {ADDR_ARF_WALK, FN_BLDG_GET_COORDS, arf_walk_stub, "llm_strat_unit_state_move_walker"},
-        {ADDR_ARF_FIRE, FN_BLDG_GET_COORDS, arf_fire_stub, "llm_strat_unit_fire_weapon"},
-        {ADDR_ARF_REAIM, FN_BLDG_GET_COORDS, arf_reaim_stub, "llm_strat_unit_state_attack_building"},
-        {ADDR_ARF_STEP, FN_BLDG_GET_COORDS, arf_step_stub, "llm_strat_unit_group_step_ground"},
+        {ADDR_ARF_ISSUE_REPOS, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition", mh::seams::mv::SITE_ARF_ISSUE_REPOS},
+        {ADDR_ARF_ISSUE_ALT, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition_alt_enqueue", mh::seams::mv::SITE_ARF_ISSUE_ALT},
+        {ADDR_ARF_ISSUE_ENQ, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building_reposition_enqueue", mh::seams::mv::SITE_ARF_ISSUE_ENQ},
+        {ADDR_ARF_ISSUE_ATK, FN_BLDG_GET_COORDS, arf_issue_stub, "llm_strat_unit_order_attack_building", mh::seams::mv::SITE_ARF_ISSUE_ATK},
+        {ADDR_ARF_JIT_REPOS, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building_reposition", mh::seams::mv::SITE_ARF_JIT_REPOS},
+        {ADDR_ARF_JIT_ENQ, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building_reposition_enqueue", mh::seams::mv::SITE_ARF_JIT_ENQ},
+        {ADDR_ARF_JIT_ATK, FN_RANDOM_POINT, arf_jit_point_stub, "llm_strat_unit_order_attack_building", mh::seams::mv::SITE_ARF_JIT_ATK},
+        {ADDR_ARF_JIT_ALT, FN_RANDOM_OFFSET, arf_jit_offset_stub, "llm_strat_unit_order_attack_building_reposition_alt_enqueue", mh::seams::mv::SITE_ARF_JIT_ALT},
+        {ADDR_ARF_JIT_WALK, FN_RANDOM_OFFSET, arf_jit_offset_stub, "llm_strat_unit_state_move_walker", mh::seams::mv::SITE_ARF_JIT_WALK},
+        {ADDR_ARF_WALK, FN_BLDG_GET_COORDS, arf_walk_stub, "llm_strat_unit_state_move_walker", mh::seams::mv::SITE_ARF_WALK},
+        {ADDR_ARF_FIRE, FN_BLDG_GET_COORDS, arf_fire_stub, "llm_strat_unit_fire_weapon", mh::seams::mv::SITE_ARF_FIRE},
+        {ADDR_ARF_REAIM, FN_BLDG_GET_COORDS, arf_reaim_stub, "llm_strat_unit_state_attack_building", mh::seams::mv::SITE_ARF_REAIM},
+        {ADDR_ARF_STEP, FN_BLDG_GET_COORDS, arf_step_stub, "llm_strat_unit_group_step_ground", mh::seams::mv::SITE_ARF_STEP},
     };
     int carried = 0, displaced = 0, bad = 0;
     for (const site &s : sites) {
         const int r = arf_site(s.at, s.callee, s.stub, s.owner);
+        mh::seams::mv::note_site(s.id, r == 1 ? 1 : (r == 2 ? -2 : -1));
         if (r == 1) ++carried;
         else if (r == 2) ++displaced;
         else ++bad;
@@ -511,59 +523,38 @@ void install_combat_proto() {
     } else {
         g_sqm_state = -1;
     }
+    mh::seams::mv::note_site(mh::seams::mv::SITE_SQM, g_sqm_state == 1 ? 1 : (g_sqm_state == 2 ? -2 : -1));
     char b[300];
     wsprintfA(b, "; combat prototype splices (mods:M1C): attack_range_footprint %d carried / %d displaced (libmh twin) / %d MISMATCHED; "
                  "squad merge %s\n",
               carried, displaced, bad, g_sqm_state == 1 ? "carried" : (g_sqm_state == 2 ? "DISPLACED (libmh twin)" : "MISMATCHED"));
     seam_log(b);
     install_projectile_facing();
+    mh::seams::mv::note_site(mh::seams::mv::SITE_PFF, g_pff_state == 1 ? 1 : (g_pff_state == 2 ? -2 : -1));
     wsprintfA(b, "; combat prototype splice (mods:M1C): projectile facing %s\n",
               g_pff_state == 1 ? "carried" : (g_pff_state == 2 ? "DISPLACED (libmh twin)" : "MISMATCHED"));
     seam_log(b);
 }
 
+// The setters set the stubs' gates and tell the carrier report (move_carrier.cpp) the requested value; the report -- late, once the
+// unit-state table is filled -- is the one line per key ("retail splice" / "libmh twin" / "NOT ACTIVE: ...").
 int mh_set_attack_range_footprint(int on) {
     on       = on != 0;
     g_arf_rt = (on && g_arf_state == 1) ? 1 : 0;
-    char b[260];
-    if (on) {
-        if (g_arf_rt)
-            wsprintfA(b, "; combat prototype [net] attack_range_footprint=1 active (mods:M1C): range to a building is measured to its nearest "
-                         "footprint tile\n");
-        else wsprintfA(b, "; combat prototype [net] attack_range_footprint=1 NOT ACTIVE (mods:M1C): a splice MISMATCHED\n");
-        seam_log(b);
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_ATTACK_RANGE_FOOTPRINT, on, 0);
     return (on == 0 || g_arf_rt) ? 1 : 0;
 }
 
 int mh_set_move_squad_merge_fix(int on) {
     on       = on != 0;
     g_sqm_rt = (on && g_sqm_state == 1) ? 1 : 0;
-    if (on) {
-        char b[260];
-        if (g_sqm_rt)
-            wsprintfA(b, "; move prototype [net] move_squad_merge_fix=1 active (mods:M1C): a squad merges into a settled soldier that is "
-                         "firing (it stops attacking)\n");
-        else if (g_sqm_state == 2)
-            wsprintfA(b, "; move prototype [net] move_squad_merge_fix=1 carried by libmh (squad_merge promoted)\n");
-        else wsprintfA(b, "; move prototype [net] move_squad_merge_fix=1 NOT ACTIVE (mods:M1C): the CMP at 0x0047ebe1 MISMATCHED\n");
-        seam_log(b);
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_SQUAD_MERGE, on, 0);
     return (on == 0 || g_sqm_rt || g_sqm_state == 2) ? 1 : 0;
 }
 
 int mh_set_projectile_facing_fix(int on) {
     on       = on != 0;
     g_pff_rt = (on && g_pff_state == 1) ? 1 : 0;
-    if (on) {
-        char b[260];
-        if (g_pff_rt)
-            wsprintfA(b, "; combat prototype [net] projectile_facing_fix=1 active (mods:M1C): a flying shot's sprite no longer jumps "
-                         "when its direction crosses the 24/1 facing boundary\n");
-        else if (g_pff_state == 2)
-            wsprintfA(b, "; combat prototype [net] projectile_facing_fix=1 carried by libmh (projectile_tick promoted)\n");
-        else wsprintfA(b, "; combat prototype [net] projectile_facing_fix=1 NOT ACTIVE (mods:M1C): the bytes at 0x00441424 MISMATCHED\n");
-        seam_log(b);
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_PROJECTILE_FACING, on, 0);
     return (on == 0 || g_pff_rt || g_pff_state == 2) ? 1 : 0;
 }

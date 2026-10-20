@@ -37,6 +37,7 @@
     <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="seams\ui_worker_click.cpp" />
+    <ClCompile Include="seams\ui_walker_frames.cpp" />
     <ClCompile Include="seams\ui_minimap_box.cpp" />
     <ClCompile Include="seams\ui_minimap_plus.cpp" />
     <ClCompile Include="seams\ui_bigmap.cpp" />
@@ -55,8 +56,11 @@
     <ClCompile Include="seams\snd_trace.cpp" />
     <ClCompile Include="seams\move_proto_blocked.cpp" />
     <ClCompile Include="seams\move_proto_nudge.cpp" />
+    <ClCompile Include="seams\move_proto_respond.cpp" />
+    <ClCompile Include="seams\door_hold.cpp" />
     <ClCompile Include="seams\move_proto_arrival.cpp" />
     <ClCompile Include="seams\move_proto_speed.cpp" />
+    <ClCompile Include="seams\move_carrier.cpp" />
     <ClCompile Include="seams\combat_proto.cpp" />
     <ClCompile Include="seams\ui_pause.cpp" />
     <ClCompile Include="seams\strat_pre_input.cpp" />

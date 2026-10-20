@@ -25,14 +25,14 @@ namespace mh::sim {
 // the type into sim_state.h is what makes one of these assertable.
 //   _G_LLM_PROD_SHUTTLE_SLOTS                  stride       out of scope: SHUTTLES_PER_PLAYER / const prod_shuttle_slot src/mh_dll/libmh/sim/sim_player_presence_lost.cpp:166
 //   _G_LLM_STRAT_DEPLOY_FORMATION_STENCIL      UNMEASURED   out of scope: 7 / const uint8_t            src/mh_dll/libmh/sim/libtrans/sim_lt_deploy_squad.cpp:85
-//   _G_LLM_STRAT_HEADING_CANDIDATE_TABLE       stride       out of scope: GROUP_STEP_GROUND_CANDIDATE_SLOTS / const heading_slot src/mh_dll/libmh/sim/sim_unit_group_step_ground.cpp:130
+//   _G_LLM_STRAT_HEADING_CANDIDATE_TABLE       stride       out of scope: GROUP_STEP_GROUND_CANDIDATE_SLOTS / const heading_slot src/mh_dll/libmh/sim/sim_unit_group_step_ground.cpp:131
 //   System                                     stride       out of scope: SYSTEM_STRIDE_INTS / const int32_t src/mh_dll/libmh/sim/sim_game_notify_system_available.cpp:54
 
-// _G_LLM_MAP_DIR_STEP_DELTAS -- map_dir_step_deltas, indexed [row * 2 + i] at src/mh_dll/libmh/sim/sim_group_move_order_pathfind.cpp:345
+// _G_LLM_MAP_DIR_STEP_DELTAS -- map_dir_step_deltas, indexed [row * 2 + i] at src/mh_dll/libmh/sim/sim_group_move_order_pathfind.cpp:382
 static_assert(::mh::state::reach_of(::mh::state::RID_MAP_DIR_STEP_DELTAS) > (2) * sizeof(const uint8_t),
               "_G_LLM_MAP_DIR_STEP_DELTAS is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 
-// _G_LLM_MAP_REGION_ROUTE_STEP_DELTAS -- region_route_step_deltas, indexed [row * 4 + i] at src/mh_dll/libmh/sim/sim_map_region_routing.cpp:46
+// _G_LLM_MAP_REGION_ROUTE_STEP_DELTAS -- region_route_step_deltas, indexed [row * 4 + i] at src/mh_dll/libmh/sim/sim_map_region_routing.cpp:52
 static_assert(::mh::state::reach_of(::mh::state::RID_MAP_REGION_ROUTE_STEP_DELTAS) > (4) * sizeof(const uint8_t),
               "_G_LLM_MAP_REGION_ROUTE_STEP_DELTAS is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 
@@ -60,7 +60,7 @@ static_assert(::mh::state::reach_of(::mh::state::RID_STRAT_DEATH_ANIM_TABLE) > (
 static_assert(::mh::state::reach_of(::mh::state::RID_STRAT_DIR8_STEP_OFFSETS) > (2) * sizeof(const int8_t),
               "_G_LLM_STRAT_DIR8_STEP_OFFSETS is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 
-// _G_LLM_STRAT_GROUP_MEMBER_TILE -- group_member_tile, indexed [row * 2 + i] at src/mh_dll/libmh/sim/sim_group_move_order_commit.cpp:89
+// _G_LLM_STRAT_GROUP_MEMBER_TILE -- group_member_tile, indexed [row * 2 + i] at src/mh_dll/libmh/sim/sim_group_move_order_commit.cpp:130
 static_assert(::mh::state::reach_of(::mh::state::RID_STRAT_GROUP_MEMBER_TILE) > (2) * sizeof(const uint8_t),
               "_G_LLM_STRAT_GROUP_MEMBER_TILE is claimed at ONE ROW or less of the stride it is indexed by: only row 0 is in the region. The stride and the index site are named in the comment above. Widen the claim -- a `size` on its view entry in tools/data/dll_addr_manifest.json is the Tree/MOVE_MICROSTEPS precedent.");
 

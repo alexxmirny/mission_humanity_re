@@ -34,6 +34,8 @@
 #include <cstring>
 #include <vector>
 
+#include "sim/move/twin_hit_c.h"
+#include "sim/sim_attack_range_footprint.h"
 #include "sim/sim_bldg_alive.h"
 #include "sim/sim_group_scratch_centroid.h"
 #include "sim/sim_order_enqueue.h"
@@ -368,6 +370,11 @@ void run_path_solver_tests();
 // SIM1-G2 (2026-08-20): llm_strat_slot_dist_to_ref -- NOT SHADOWABLE (0 tracked write
 // cells). llm_strat_claim_free_slots_within_dist (same TU) is rig-verified T1 separately (1277 calls).
 void run_path_slot_dist_tests();
+// mods:M1H lane B (2026-10-18): the route-planner prototype keys -- the pure rules (sim/move/*.h) and their libmh twins (flood, pathfind
+// centroid, detour). The commit / slot_dist twin cases are T10/T11 and case (e) of those suites.
+void run_move_proto_planner_tests();
+// mods:M1H (flood lane): [net] route_flood_exact -- the bucket-queue flood (sim/move/flood.h) vs the FIFO and a reference Dijkstra, and its libmh twin.
+void run_move_proto_flood_tests();
 // SIM1-G2 (2026-08-20): llm_map_region_find_nearest_valid_tile,
 // llm_strat_pathfind_find_closer_visible_tile, llm_map_region_walk_to_valid_tile -- all three NOT
 // SHADOWABLE (0 tracked write cells). Case (d) is a regression test for a real ADD-vs-OR passable[]
@@ -1301,6 +1308,74 @@ void test_unit_order_attack_building_reposition_alt_enqueue() {
     ck(g_sim_log.notify_calls == 0, "reposition_alt: in-range arm does not notify");
 }
 
+// mods:M1C [net] attack_range_footprint on the ALT enqueue twin (retail ISSUE_ALT 0x0046c24a / JIT_ALT 0x0046c3f3 splices): the aim
+// point is the nearest occupied footprint tile, and the in-range jitter re-centres first. Key off = the retail test above.
+void test_unit_order_attack_building_reposition_alt_enqueue_footprint() {
+    sim_fixture f;
+    f.geom.bw_mask = 0x1fff;
+    f.geom.bh_mask = 0x7ff;
+    // building (player 1, index 3): type 5, origin tile (10,2), a 3x3 footprint; the attacker stands at tile (2,2).
+    building &b      = f.buildings[1 * BUILDINGS_PER_PLAYER + 3];
+    b.building_id    = 5;
+    b.x              = 10;
+    b.y              = 2;
+    cfg_building &cb = f.cfg_buildings[5];
+    cb.width         = 3;
+    cb.height        = 3;
+    memset(cb.area, 0, sizeof(cb.area));
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) cb.area[i][j] = 1;
+    f.u(0, 6).unit_proto_id = 0;
+    f.u(0, 6).x             = 2;
+    f.u(0, 6).y             = 2;
+    sim_view v              = f.view();
+
+    set_attack_range_footprint(true);
+    // OUT OF RANGE: tile/fine fields are the nearest footprint tile (10,2) centre = (336,80), not the bldg_get_coords centre (320,64).
+    f.cfg_units[0].move_op_arg = 0x14;
+    g_sim_log.reset();
+    g_sim_log.in_range_return = 0;
+    g_sim_log.coord_fine_x    = 320;
+    g_sim_log.coord_fine_y    = 64;
+    const uint32_t alt_before = mvc::twin_hit_counts()[mvc::TS_ARF_ISSUE_ALT];
+    detail::unit_order_attack_building_reposition_alt_enqueue(v, recording_sim_calls(), 0, 6, 1, 3, 5);
+    ck(g_sim_log.set_fields[0] == std::make_pair(0, 10) && g_sim_log.set_fields[1] == std::make_pair(1, 2) &&
+           g_sim_log.set_fields[2] == std::make_pair(3, 336) && g_sim_log.set_fields[3] == std::make_pair(4, 80),
+       "reposition_alt + attack_range_footprint: the aim point is the nearest footprint tile's centre");
+    ck(mvc::twin_hit_counts()[mvc::TS_ARF_ISSUE_ALT] == alt_before + 1, "reposition_alt + attack_range_footprint: the ISSUE_ALT twin counter moved");
+
+    // IN RANGE: the jitter point is re-centred (a bldg_get_coords call) before the random offset, as retail's JIT_ALT splice does.
+    f.cfg_units[0].move_op_arg = 10;
+    g_sim_log.reset();
+    g_sim_log.in_range_return    = 1;
+    g_sim_log.is_boarding_return = 0;
+    g_sim_log.coord_fine_x       = 320;
+    g_sim_log.coord_fine_y       = 64;
+    g_sim_log.footprint_fine_x   = 640;
+    g_sim_log.footprint_fine_y   = 96;
+    const uint32_t jit_before    = mvc::twin_hit_counts()[mvc::TS_ARF_JIT_ALT];
+    detail::unit_order_attack_building_reposition_alt_enqueue(v, recording_sim_calls(), 0, 6, 1, 3, 5);
+    ck(g_sim_log.footprint_calls == 1, "reposition_alt + attack_range_footprint: in-range arm still jitters exactly once");
+    ck(g_sim_log.set_fields[2] == std::make_pair(3, 336) && g_sim_log.set_fields[3] == std::make_pair(4, 80),
+       "reposition_alt + attack_range_footprint: the initial pass carries the footprint aim");
+    ck(g_sim_log.set_fields[9] == std::make_pair(3, 640) && g_sim_log.set_fields[10] == std::make_pair(4, 96),
+       "reposition_alt + attack_range_footprint: the jittered point overwrites the fine fields");
+    ck(mvc::twin_hit_counts()[mvc::TS_ARF_JIT_ALT] == jit_before + 1, "reposition_alt + attack_range_footprint: the JIT_ALT twin counter moved");
+    set_attack_range_footprint(false);
+
+    // KEY OFF with the same records: the centre (320,64) as before, no counter.
+    f.cfg_units[0].move_op_arg = 0x14;
+    g_sim_log.reset();
+    g_sim_log.in_range_return = 0;
+    g_sim_log.coord_fine_x    = 320;
+    g_sim_log.coord_fine_y    = 64;
+    const uint32_t off_before = mvc::twin_hit_counts()[mvc::TS_ARF_ISSUE_ALT];
+    detail::unit_order_attack_building_reposition_alt_enqueue(v, recording_sim_calls(), 0, 6, 1, 3, 5);
+    ck(g_sim_log.set_fields[2] == std::make_pair(3, 320) && g_sim_log.set_fields[3] == std::make_pair(4, 64),
+       "reposition_alt, key off: the aim point is the footprint centre (retail)");
+    ck(mvc::twin_hit_counts()[mvc::TS_ARF_ISSUE_ALT] == off_before, "reposition_alt, key off: no twin counter");
+}
+
 void test_unit_order_auto_launch_from_storage_enqueue() {
     sim_fixture f;
     sim_view    v                                     = f.view();
@@ -1720,6 +1795,7 @@ int run_simtest() {
     test_unit_order_attack_unit_enqueue();
     test_unit_order_attack_building_enqueue();
     test_unit_order_attack_building_reposition_alt_enqueue();
+    test_unit_order_attack_building_reposition_alt_enqueue_footprint();
     test_unit_order_auto_launch_from_storage_enqueue();
     test_bldg_order_activate_upgrade_restart_construction_enqueue();
     test_bldg_order_repair_cycle_start_enqueue();
@@ -1996,6 +2072,8 @@ int run_simtest() {
     mh::sim::test::run_path_step_check_and_request_detour_tests();
     mh::sim::test::run_path_solver_tests();
     mh::sim::test::run_path_slot_dist_tests();
+    mh::sim::test::run_move_proto_planner_tests(); // mods:M1H lane B
+    mh::sim::test::run_move_proto_flood_tests();   // mods:M1H flood lane
     mh::sim::test::run_map_region_tile_find_tests();
     mh::sim::test::run_unit_path_queue_count_tests();
     mh::sim::test::run_unit_state_plot_turn_path_tests();

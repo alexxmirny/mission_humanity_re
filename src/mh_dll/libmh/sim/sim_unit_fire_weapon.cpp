@@ -5,6 +5,7 @@
 //
 #include "sim/sim_unit_fire_weapon.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
+#include "sim/move/twin_hit_c.h"            // mods:M1H: twin hit counters
 
 #include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -94,9 +95,11 @@ void unit_fire_weapon(const sim_view &v, sim_store &own, const unit_fire_weapon_
     if ((target_ref & 0x40u) != 0) {
         // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's FIRE splice at 0x0048bbce):
         // the auto mode's range is measured to the footprint tile nearest this unit.
-        if (!(attack_range_footprint() &&
-              footprint_aim_of_view(v, u, player, target_ref & 0xfu, static_cast<int32_t>(target_index),
-                                    &range_check_fine_x, &range_check_fine_y)))
+        if (attack_range_footprint() &&
+            footprint_aim_of_view(v, u, player, target_ref & 0xfu, static_cast<int32_t>(target_index),
+                                  &range_check_fine_x, &range_check_fine_y))
+            mh::sim::mvc::twin_hit(mh::sim::mvc::TS_ARF_FIRE);
+        else
             mh::sim::bldg_get_coords(static_cast<uint16_t>(target_ref & 0xfu), target_index,
                                      &range_check_fine_x, &range_check_fine_y);
     }

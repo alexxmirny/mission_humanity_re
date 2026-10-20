@@ -1,0 +1,33 @@
+# mp:GH1 HOST walk for gameplay_trailer_dropped -- host Start with `[net] start_gameplay_trailer=0` (the FLAG_START carries
+# the slot array and NO gameplay-settings trailer). Pair with mp_client_start_refused.txt: the joiner must refuse that START
+# and land back on the browser, so no match is ever played; this host only starts it and logs. The assertion is the
+# post_check (tools/check_pt2_turret_rate.py --expect-start-refused), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+capture gh1_host_lobby
+clickl Start
+
+# the host enters the match; the client refuses and leaves. Nothing more to drive here.
+absent Network players
+log GH1 host: Start sent without the gameplay trailer
+end

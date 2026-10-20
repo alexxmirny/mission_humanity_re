@@ -23,6 +23,7 @@
 #include "sim/sim_projectile_facing.h"                    // mods:M1C set_projectile_facing_fix
 #include "sim/sim_merge_goal.h"                           // mods:M1X set_move_merge_goal_fix
 #include "sim/sim_attack_range_footprint.h"               // mods:M1C set_attack_range_footprint
+#include "sim/sim_move_fixes.h"                           // mods:M1H set_move_fixes (the planner / walker / marshal keys without a twin yet)
 #include "orders/order_queue.h"                           // ST1: the order counts come from their OWNER, not a second binding
 
 #include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE / the entry-thunk shapes
@@ -719,6 +720,42 @@ void                set_fixes(const reimpl_fixes &f) {
     mh::sim::set_move_merge_goal_fix(f.move_merge_goal_fix);                                    // mods:M1X
     mh::sim::set_projectile_facing_fix(f.projectile_facing_fix);                                // mods:M1C
     mh::sim::set_attack_range_footprint(f.attack_range_footprint);                              // mods:M1C
+    {
+        // mods:M1H lane A: the remaining movement keys -> the switchboard the lane B / C twins read (sim/sim_move_fixes.h).
+        mh::sim::move_fixes mf;
+        mf.centroid_wrap_fix         = f.move_centroid_wrap_fix;
+        mf.detour_slot_guard         = f.move_detour_slot_guard;
+        mf.flood_queue_guard         = f.move_flood_queue_guard;
+        mf.route_cost_mode           = f.route_cost_mode;
+        mf.route_cost_base           = f.route_cost_base;
+        mf.route_cost_ring4          = f.route_cost_ring4;
+        mf.route_cost_ring8          = f.route_cost_ring8;
+        mf.route_cost_ring16         = f.route_cost_ring16;
+        mf.route_gap_wave_full       = f.route_gap_wave_full;
+        mf.route_corridor_mode       = f.route_corridor_mode;
+        mf.route_flood_exact         = f.route_flood_exact;
+        mf.distinct_goals            = f.move_distinct_goals;
+        mf.near_enough               = f.move_near_enough;
+        mf.route_through_idle        = f.move_route_through_idle;
+        mf.block_wait_ms             = f.move_block_wait_ms;
+        mf.keep_sidestep             = f.move_keep_sidestep;
+        mf.repath_cooldown_ms        = f.move_repath_cooldown_ms;
+        mf.nudge_idle                = f.move_nudge_idle;
+        mf.claim_leader              = f.move_claim_leader;
+        mf.swap_headon               = f.move_swap_headon;
+        mf.group_speed               = f.move_group_speed;
+        mf.reverse_now               = f.move_reverse_now;
+        mf.turn_rate                 = f.move_turn_rate;
+        mf.route_through_moving      = f.move_route_through_moving;
+        mf.route_through_moving_cost = f.move_route_through_moving_cost;
+        mf.route_through_replanning  = f.move_route_through_replanning;
+        mf.block_reset_moving        = f.move_block_reset_moving;
+        mf.replan_detour_cap         = f.move_replan_detour_cap;
+        mf.formation_click           = f.move_formation_click;
+        mf.enter_queue               = f.move_enter_queue;
+        mf.storage_door_hold         = f.storage_door_hold;
+        mh::sim::set_move_fixes(mf);
+    }
 }
 
 // The seam vocabulary `lockstep_seams=` may name. The first nine are install_promotion's table in the

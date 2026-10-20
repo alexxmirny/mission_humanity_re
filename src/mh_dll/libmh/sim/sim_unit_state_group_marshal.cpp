@@ -4,6 +4,13 @@
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "sim/move/group_speed.h" // mods:M1H lane C: move_group_speed (4a), the commit half
+#include "sim/move/near_enough.h" // mods:M1H lane C: move_near_enough (2b) + the on-goal stop
+#include "sim/move/nudge.h"       // mods:M1H lane C: the marshal no-path nudge / swap sites (3e-4)
+#include "sim/move/replan_cap.h"  // mods:M1DT fix 4b: refuse a block-wait detour route
+#include "sim/move/twin_hit_c.h"
+#include "sim/move/world_c.h"
+#include "sim/sim_move_fixes.h" // mods:M1H lane A: the key values the twins read
 
 namespace mh::sim {
 
@@ -24,6 +31,10 @@ const unit_state_group_marshal_calls &live_unit_state_group_marshal_calls() {
         MH_LIBMH_BIND(llm_strat_unit_order_move_auto),
         MH_LIBMH_BIND(llm_strat_unit_set_state_of),
         MH_LIBMH_BIND(llm_unit_set_order_param),
+        MH_LIBMH_BIND(llm_strat_fow_remove_sight),
+        MH_LIBMH_BIND(map_fow_UpdateFoWPlus),
+        MH_LIBMH_BIND(llm_strat_unit_soldiers_set_heading),
+        MH_LIBMH_BIND(llm_strat_path_make_single_step),
     };
     return c;
 }
@@ -184,6 +195,14 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
         c.group_move_order_commit(static_cast<int32_t>(ref_x), static_cast<int32_t>(ref_y), player,
                                   leg_count, move_group_id, is_move_flag, attack_class);
 
+        // mods:M1H lane C [net] move_group_speed (retail carrier: the splice at 0x00482897, right after the commit call): a mixed-speed
+        // move wave walks at its slowest member's speed. Off = nothing runs.
+        if (move_fix().group_speed) {
+            mvc::libmh_speed_world sw{v, own, player};
+            if (mvc::group_speed_apply(sw, player, leg_count, static_cast<int32_t>(is_move_flag), static_cast<uint32_t>(move_group_id)).mixed)
+                mvc::twin_hit(mvc::TS_SPEED_COMMIT);
+        }
+
         for (int32_t w = 0; w < leg_count; ++w) {
             --remaining_count;
 
@@ -197,9 +216,21 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                 own.tick_budget() = 0.0; // 0x00482921-0x0048292b: zeroes BOTH dwords of the double.
             }
 
+            const move_fixes     &mf = move_fix();
+            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon};
+            const bool            nudging = nk.nudge || nk.swap; // the marshal sites ask for these two keys only
+
             if (member.path_slot_id == 0xffu) {
                 // 0x00482954-0x0048297c: no path slot assigned yet -- small clock bump, next.
-                member.activity_clock += 2.0; // _DAT_0050145a, read-memory-confirmed 2.0
+                // mods:M1H lane C [net] move_nudge_idle / move_swap_headon, 3e-4 (retail carrier: the splice at 0x00482954): the member
+                // asks the friend on its next tile to make room or trade tiles; handled = skip the clock bump.
+                bool handled = false;
+                if (nudging) {
+                    mvc::twin_hit(mvc::TS_MK);
+                    mvc::libmh_world<unit_state_group_marshal_calls> mw{v, own, c};
+                    handled = mvc::mk_decide(mw, nk, player, static_cast<uint32_t>(unit_idx));
+                }
+                if (!handled) member.activity_clock += 2.0; // _DAT_0050145a, read-memory-confirmed 2.0
             } else if (v.path_buffers[static_cast<uint32_t>(player) * PATH_WAYPOINTS_PER_PLAYER +
                                       static_cast<uint32_t>(member.path_slot_id) * PATH_WAYPOINTS_PER_SLOT +
                                       0]
@@ -208,9 +239,18 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                 // ---- 0x00482981-0x00482ce9: path exhausted or blocked ------------------------------
                 c.path_free_slot(player, unit_idx);
 
-                bool redirected = false;
-                if (member.order == GM_ORDER_ATTACK_BUILDING || member.order == GM_ORDER_ATTACK_UNIT_RETURN ||
-                    member.order == GM_ORDER_ATTACK_UNIT) {
+                // mods:M1H lane C 3e-4, the second marshal site (retail carrier: the splice at 0x004829e2, right after the slot was
+                // freed): same decision; handled = skip the rest of this branch (attack re-issue / retry count / give-up).
+                bool handled2 = false;
+                if (nudging) {
+                    mvc::twin_hit(mvc::TS_MK2);
+                    mvc::libmh_world<unit_state_group_marshal_calls> mw{v, own, c};
+                    handled2 = mvc::mk_decide(mw, nk, player, static_cast<uint32_t>(unit_idx));
+                }
+
+                bool redirected = handled2;
+                if (!handled2 && (member.order == GM_ORDER_ATTACK_BUILDING || member.order == GM_ORDER_ATTACK_UNIT_RETURN ||
+                                  member.order == GM_ORDER_ATTACK_UNIT)) {
                     // 0x00482a48-0x00482b45: still in weapon range of its own target -> just re-issue
                     // the attack order in place instead of retrying the move.
                     const int32_t member_attack_class = c.target_class(
@@ -227,6 +267,21 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                 if (!redirected) {
                     // 0x00482b45-0x00482ce2: bump the retry counter; escalate at >=4.
                     ++member.path_blocked_retry_count;
+                    // mods:M1H lane C [net] move_near_enough (+ the on-goal stop of move_distinct_goals), 2b (retail carrier: the splice at
+                    // 0x00482b5b, right after the INC): when the unit may stop here the counter jumps to 4 and the give-up branch below runs now.
+                    if (mf.distinct_goals || mf.near_enough > 0 || mf.formation_click > 0) { // mods:M1G 4b: kept members have an empty path and stop here
+                        mvc::twin_hit(mvc::TS_ARR_RETRY);
+                        mvc::libmh_world<unit_state_group_marshal_calls> mw{v, own, c};
+                        const int                                        r  = mf.near_enough > 10 ? 10 : mf.near_enough;
+                        const mvc::ne_stop                               st = mvc::near_enough_check(mw, player, unit_idx, r);
+                        if (st != mvc::ne_stop::no) {
+                            member.path_blocked_retry_count = 4; // the retail give-up branch runs now
+                            mh::ai::ai_say("; arrival (mods:M1X) p%u u%u stops at (%d,%d), goal (%d,%d): %s (libmh twin)\n", static_cast<unsigned>(player),
+                                           static_cast<unsigned>(unit_idx), static_cast<int>(member.x), static_cast<int>(member.y),
+                                           static_cast<int>(member.goal_x), static_cast<int>(member.goal_y),
+                                           st == mvc::ne_stop::on_goal ? "on its goal" : "near enough to a goal a friend holds");
+                        }
+                    }
                     if (member.path_blocked_retry_count < 4) {
                         member.activity_clock += 2.0; // _DAT_00501462, read-memory-confirmed 2.0
                     } else {
@@ -245,6 +300,15 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                         own.passable_at(member.x, member.y) = 0;
                     }
                 }
+            } else if (mf.replan_detour_cap > 0 && (mvc::twin_hit(mvc::TS_CAPOK), mvc::rc_should_refuse(member, mf.replan_detour_cap, map_width_mask(v), map_height_mask(v),
+                                                                                                        [&](uint32_t slot, int entry) -> const path_waypoint & {
+                                                                                                            return v.path_buffers[static_cast<uint32_t>(player) * PATH_WAYPOINTS_PER_PLAYER +
+                                                                                                                                  slot * PATH_WAYPOINTS_PER_SLOT + static_cast<uint32_t>(entry)];
+                                                                                                        }))) {
+                // mods:M1DT fix 4b (retail carrier: the splice at 0x00482cee, move_proto_blocked.cpp): the route the block-wait replan just got is
+                // far longer than the straight way -- discard it and plan again in 2 s (retail's own no-path retry idiom), at most 3 times.
+                c.path_free_slot(player, unit_idx);
+                member.activity_clock += 2.0;
             } else {
                 // ---- 0x00482cee-0x00482ebb: good path -- settle this member into the new state -----
                 const cfg_unit &member_proto = v.cfg_units[member.unit_proto_id];

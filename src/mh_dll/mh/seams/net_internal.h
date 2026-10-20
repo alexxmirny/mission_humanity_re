@@ -356,6 +356,7 @@ void mh_set_route_cost_mode(int mode);
 void mh_set_route_cost_base(int v);
 void mh_set_route_cost_ring(int which, int v); // which = 4 / 8 / 16
 void mh_set_route_gap_wave_full(int n);        // the LAST route-cost row: logs the whole set
+void mh_set_route_flood_exact(int on);         // mods:M1H: the bucket-queue flood (call AFTER mh_set_route_corridor_mode)
 void mh_set_route_corridor_mode(int mode);     // mods:M1C: 0 retail / 1 corridor+adjacent / 2 all regions / 3 measure only
 // mods:M1X lane B (seams/move_proto_blocked.cpp): the blocked-unit protocol splice + its setters.
 void install_move_proto_blocked();
@@ -363,21 +364,35 @@ void mh_set_move_block_wait_ms(int ms);
 void mh_set_move_keep_sidestep(int on);
 void mh_set_move_repath_cooldown_ms(int ms);
 // mods:M1N (seams/move_proto_nudge.cpp): nudge an idle blocker / claim a turning leader's tile / head-on swap by stepping.
-void install_move_proto_nudge();             // called from install_move_proto_blocked
-int  mh_set_move_nudge_idle(int on);         // 1 = in force, 0 = refused
-int  mh_set_move_claim_leader(int on);       // 1 = in force, 0 = refused
-int  mh_set_move_swap_headon(int on);        // 1 = in force, 0 = refused
-int  mh_set_move_route_through_idle(int on); // mods:M1N 3e-5: 1 = in force, 0 = refused (needs move_nudge_idle=1 at plan time)
-void install_move_proto_arrival();           // mods:M1X arrival (seams/move_proto_arrival.cpp), from install_move_proto
-int  mh_set_move_distinct_goals(int on);     // mods:M1X 2a
-int  mh_set_move_near_enough(int r);         // mods:M1X 2b: R tiles, 0 = retail
-int  mh_set_move_merge_goal_fix(int on);     // mods:M1X: 1 = in force (or carried by the libmh twin), 0 = refused
-void install_move_proto_speed();             // mods:M1X lane C (move_proto_speed.cpp), called from install_move_proto
-int  mh_set_move_group_speed(int on);        // mods:M1X: 1 = in force, 0 = refused
-void install_combat_proto();                 // mods:M1C (seams/combat_proto.cpp), called from install_move_proto
-int  mh_set_move_squad_merge_fix(int on);    // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
-int  mh_set_attack_range_footprint(int on);  // mods:M1C: 1 = in force, 0 = refused
-int  mh_set_projectile_facing_fix(int on);   // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
+void install_move_proto_nudge();               // called from install_move_proto_blocked
+int  mh_set_move_nudge_idle(int on);           // 1 = in force, 0 = refused
+int  mh_set_move_claim_leader(int on);         // 1 = in force, 0 = refused
+int  mh_set_move_swap_headon(int on);          // 1 = in force, 0 = refused
+int  mh_set_move_route_through_moving(int on); // mods:M1N 3e-6: a walking friend's tile is open to the planner too (1 = in force)
+void mh_set_move_route_through_moving_cost(int level);
+int  mh_set_move_route_through_replanning(int on); // mods:M1DT fix 2: own re-planning (state 0x0a) units are open to the planner too
+void mh_set_move_enter_queue(int on);              // mods:M1BE: ORDER 0x24 units wait behind an entering friend, exempt from the block-wait / sidestep / cooldown keys
+void mh_set_storage_door_hold(int on);             // mods:M1BE: an open storage door stays open while an entering friend is within 2 tiles (seams/door_hold.cpp)
+void install_door_hold();                          // mods:M1BE (seams/door_hold.cpp), called from install_move_proto_blocked
+void mh_set_move_block_reset_moving(int on);       // mods:M1DT fix 4a: the block-wait budget restarts when the blocker changes to a walking friend
+void mh_set_move_replan_detour_cap(int pct);       // mods:M1DT fix 4b: refuse a block-wait replan longer than pct % of the straight distance (0 = off) // ... priced at cost level 0..4 (sim/move/route_through.h rt_move_cost_bits)
+int  mh_set_move_formation_click(int n);           // mods:M1G 4b: formation from the click (sim/move/formation.h): 0 off, 1..2 = old keep rule (slack N - 1), 3 = moves as one; 1 = in force
+void mv_rt_open();                                 // mods:M1DT fix A': open the route-through bracket around a planner re-run (move_proto_nudge.cpp)
+void mv_rt_close();                                // ... and close it again
+int  mh_set_move_route_through_idle(int on);       // mods:M1N 3e-5: 1 = in force, 0 = refused (needs move_nudge_idle=1 at plan time)
+void install_move_proto_arrival();                 // mods:M1X arrival (seams/move_proto_arrival.cpp), from install_move_proto
+int  mh_set_move_distinct_goals(int on);           // mods:M1X 2a
+int  mh_set_move_near_enough(int r);               // mods:M1X 2b: R tiles, 0 = retail
+int  mh_set_move_merge_goal_fix(int on);           // mods:M1X: 1 = in force (or carried by the libmh twin), 0 = refused
+void install_move_proto_respond();                 // mods:M1G 4c (seams/move_proto_respond.cpp), called from install_move_proto_blocked
+void mh_set_move_reverse_now(int on);              // mods:M1G 4c: slide back at once when the new goal lies behind
+void mh_set_move_turn_rate(int k);                 // mods:M1G 4c: walker turns 2^k times faster (0 = retail)
+void install_move_proto_speed();                   // mods:M1X lane C (move_proto_speed.cpp), called from install_move_proto
+int  mh_set_move_group_speed(int on);              // mods:M1X: 1 = in force, 0 = refused
+void install_combat_proto();                       // mods:M1C (seams/combat_proto.cpp), called from install_move_proto
+int  mh_set_move_squad_merge_fix(int on);          // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
+int  mh_set_attack_range_footprint(int on);        // mods:M1C: 1 = in force, 0 = refused
+int  mh_set_projectile_facing_fix(int on);         // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
 
 // ---- cross-TU surface of net_discovery.cpp (synth session / browser / S2-S4 discovery+join) --
 void mp_host_advertise_session(); // S2: build + broadcast the host's SESSION_INFO (~1 Hz)

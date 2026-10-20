@@ -13,6 +13,8 @@
 // the same IEEE-754 double sqrt, so the expected values are identical.
 //
 #include "sim/sim_path_slot_dist.h"
+#include "sim/sim_move_fixes.h" // mods:M1H lane B: case (e) drives move_centroid_wrap_fix
+#include "sim/move/planner_hits.h"
 
 #include "sim_test_support.h"
 
@@ -104,6 +106,43 @@ void run_path_slot_dist_tests() {
         ck_eq((uint32_t)r, 6u,
               "slot_dist_to_ref: X-axis wrap (dx=250>half_width=50) -> wrapped dx=-6, dist=6, "
               "NOT the raw unwrapped 250");
+    }
+
+    // ---- (e) [net] move_centroid_wrap_fix (mods:M1H lane B; the libmh twin of the retail splice at 0x004cbdb0 / 0x004cbdc3, rule in
+    // sim/move/wrap.h): retail folds only a delta ABOVE +half; with the key on a delta BELOW -half is folded the other way too.
+    {
+        const move_fixes saved = move_fix();
+        auto             run   = [&](bool on, int32_t col, int32_t row, int32_t ref_x, int32_t ref_y) {
+            sim_fixture fx;
+            fx.reset();
+            sim_store own                         = fx.store();
+            fx.group_move_scratch[2].tile_col     = col;
+            fx.group_move_scratch[2].tile_row     = row;
+            own.group_move_dist_ref_x_mut()       = ref_x;
+            own.group_move_dist_ref_y_mut()       = ref_y;
+            own.group_move_dist_half_width_mut()  = 100;
+            own.group_move_dist_half_height_mut() = 40;
+            fx.map_width                          = 256;
+            fx.map_height                         = 128;
+            move_fixes mf;
+            mf.centroid_wrap_fix = on;
+            set_move_fixes(mf);
+            sim_view v = fx.view();
+            return (uint32_t)detail::slot_dist_to_ref(v, own, mock_calls(), 2);
+        };
+        mh::sim::move::planner_hits_reset();
+        ck_eq(run(false, 5, 7, 250, 7), 245u, "slot_dist_to_ref (e): key off: dx=-245 (< -half) is NOT folded (retail): dist 245");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_SLOT_X), 0u, "slot_dist_to_ref (e): key off counts no hit");
+        ck_eq(run(true, 5, 7, 250, 7), 11u, "slot_dist_to_ref (e): key on: dx=-245 folds by +256 -> 11");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_SLOT_X), 1u, "slot_dist_to_ref (e): ... and counts the x hit");
+        ck_eq(run(false, 3, 3, 3, 120), 117u, "slot_dist_to_ref (e): key off, y axis: dy=-117 (< -half) stays");
+        ck_eq(run(true, 3, 3, 3, 120), 11u, "slot_dist_to_ref (e): key on, y axis: dy=-117 folds by +128 -> 11");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_SLOT_Y), 1u, "slot_dist_to_ref (e): ... and counts the y hit");
+        ck_eq(run(true, 250, 7, 5, 7), 11u, "slot_dist_to_ref (e): key on, the positive side (dx=245 > half) folds as in retail -> 11");
+        ck_eq(run(false, 250, 7, 5, 7), 11u, "slot_dist_to_ref (e): ... and key off is the same");
+        ck_eq(run(true, 0, 7, 100, 7), 100u, "slot_dist_to_ref (e): key on, dx == -half is not folded (strictly below)");
+        ck_eq(run(true, 20, 7, 10, 7), 10u, "slot_dist_to_ref (e): key on, a delta inside the half extent is untouched");
+        set_move_fixes(saved);
     }
 }
 

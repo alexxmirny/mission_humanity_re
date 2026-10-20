@@ -783,6 +783,10 @@
     <ClCompile Include="sim_map_region_split_selftest.cpp" />
     <ClCompile Include="sim_map_region_tile_find_selftest.cpp" />
     <ClCompile Include="sim_map_wrap_delta_xy_selftest.cpp" />
+    <ClCompile Include="sim_move_proto_selftest.cpp" />
+    <ClCompile Include="sim_move_proto_selftest_flood.cpp" />
+    <ClCompile Include="sim_move_proto_selftest_resp.cpp" />
+    <ClCompile Include="sim_move_proto_selftest_walker.cpp" />
     <ClCompile Include="sim_new_game_init_selftest.cpp" />
     <ClCompile Include="sim_order_issue_0xf_adjacent_selftest.cpp" />
     <ClCompile Include="sim_path_slot_dist_selftest.cpp" />

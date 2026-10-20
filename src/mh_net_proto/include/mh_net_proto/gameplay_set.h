@@ -12,13 +12,13 @@
 
 namespace mh_net_proto {
 
-constexpr int          GAMEPLAY_MAX_ENTRIES = 32;
+constexpr int          GAMEPLAY_MAX_ENTRIES = 64; // was 32 until 0.2.1-rc2: 34 synced rows silently lost the last two
 constexpr std::uint8_t GAMEPLAY_FORMAT      = 1;
 constexpr std::uint8_t GAMEPLAY_T_INT       = 1;
 constexpr std::uint8_t GAMEPLAY_T_F64       = 2;
 constexpr std::uint8_t GAMEPLAY_T_STR       = 3; // reserved: never encoded, rejected on decode
 constexpr std::size_t  GAMEPLAY_HDR_BYTES   = 4;
-constexpr std::size_t  GAMEPLAY_MAX_ENCODED = GAMEPLAY_HDR_BYTES + GAMEPLAY_MAX_ENTRIES * (4 + 1 + 8); // 420
+constexpr std::size_t  GAMEPLAY_MAX_ENCODED = GAMEPLAY_HDR_BYTES + GAMEPLAY_MAX_ENTRIES * (4 + 1 + 8); // 836
 
 struct GameplayEntry {
     std::uint32_t key_id = 0;

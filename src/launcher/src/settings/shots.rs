@@ -409,6 +409,110 @@ fn the_hotkey_row_captures_a_chord_and_esc_cancels() {
     assert_eq!(h.state().model.value("hud.net_indicator_key"), "none");
 }
 
+/// The big-map key is documented as "hold Tab": Tab must be capturable (not eaten by focus
+/// traversal), a different key must be settable, and Revert must restore the value AND the text.
+#[test]
+fn the_bigmap_hotkey_takes_tab_and_revert_restores_it() {
+    i18n::set_locale(Locale::En);
+    let mut fx = fixture(Schema::builtin());
+    fx.model
+        .load(Some(b"[ui]\r\nbigmap=1\r\nbigmap_key=F9\r\n"), &fx.store);
+    fx.state.subtab = fx
+        .model
+        .schema()
+        .row("ui.bigmap_key")
+        .unwrap()
+        .subtab
+        .clone();
+    let mut h = harness(fx);
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "F9");
+    // Tab while listening is captured, not used to move focus.
+    h.get_by_label("F9").click();
+    h.run();
+    h.run();
+    assert!(h.query_by_label("Press a key...").is_some(), "capturing");
+    h.key_press(egui::Key::Tab);
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "Tab");
+    assert!(h.query_by_label("Press a key...").is_none());
+    assert!(h.query_by_label("Tab").is_some());
+    // Another key, then Revert: back to what is on disk, in the model and on the button.
+    h.get_by_label("Tab").click();
+    h.run();
+    h.run();
+    h.key_press(egui::Key::O);
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "O");
+    assert!(h.query_by_label("O").is_some());
+    h.state_mut().model.revert();
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "F9");
+    assert!(h.query_by_label("F9").is_some(), "text refreshed");
+    assert!(h.query_by_label("O").is_none());
+    // Escape still cancels a capture.
+    h.get_by_label("F9").click();
+    h.run();
+    h.run();
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(h.query_by_label("Press a key...").is_none());
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "F9");
+}
+
+/// The shipped default (`Tab`, no key in the ini): set another key, Revert, and Tab is back.
+#[test]
+fn reverting_the_bigmap_hotkey_restores_the_default_tab() {
+    i18n::set_locale(Locale::En);
+    let mut fx = fixture(Schema::builtin());
+    fx.model.load(
+        Some(
+            b"[ui]
+bigmap=1
+",
+        ),
+        &fx.store,
+    );
+    fx.state.subtab = fx
+        .model
+        .schema()
+        .row("ui.bigmap_key")
+        .unwrap()
+        .subtab
+        .clone();
+    let mut h = harness(fx);
+    h.run();
+    assert!(h.query_by_label("Tab").is_some());
+    h.get_by_label("Tab").click();
+    h.run();
+    h.run();
+    h.key_press(egui::Key::O);
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "O");
+    assert!(h.state().model.is_dirty());
+    h.state_mut().model.revert();
+    h.run();
+    assert_eq!(h.state().model.value("ui.bigmap_key"), "Tab");
+    assert!(h.query_by_label("Tab").is_some(), "text refreshed");
+    assert!(h.query_by_label("O").is_none());
+}
+
+/// A hotkey row that does not opt in to named keys still refuses Tab (the game would read it as T).
+#[test]
+fn the_net_indicator_hotkey_still_refuses_tab_and_keeps_focus_traversal_off() {
+    i18n::set_locale(Locale::En);
+    let mut fx = fixture(Schema::builtin());
+    fx.state.subtab = "multiplayer".into();
+    let mut h = harness(fx);
+    h.run();
+    h.get_by_label("Ctrl+Alt+N").click();
+    h.run();
+    h.run();
+    h.key_press(egui::Key::Tab);
+    h.run();
+    assert_eq!(h.state().model.value("hud.net_indicator_key"), "Ctrl+Alt+N");
+}
+
 /// RL13 done_when, rendered: a registry row nobody wrote code or strings for appears in its
 /// sub-tab with a humanised label.
 #[test]
@@ -617,4 +721,33 @@ fn harness_wgpu(fx: Fx) -> Harness<'static, Fx> {
         })
         .wgpu()
         .build_ui_state(window, fx)
+}
+
+/// Review frames of the big-map hotkey row: default Tab, listening, O set, after Revert.
+#[test]
+fn bigmap_hotkey_review_frames() {
+    let Some(dir) = std::env::var_os("MH_UI_REVIEW_DIR") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    i18n::set_locale(Locale::En);
+    let mut fx = fixture(Schema::builtin());
+    fx.model.load(Some(b"[ui]\r\nbigmap=1\r\n"), &fx.store);
+    fx.state.subtab = "display".into();
+    let mut h = harness_wgpu(fx);
+    save(&mut h, &dir, "bigmap_key_1_default_tab");
+    h.get_by_label("Tab").click();
+    h.run();
+    h.run();
+    save(&mut h, &dir, "bigmap_key_2_listening");
+    h.key_press(egui::Key::O);
+    save(&mut h, &dir, "bigmap_key_3_set_o");
+    h.state_mut().model.revert();
+    save(&mut h, &dir, "bigmap_key_4_after_revert");
+    h.get_by_label("Tab").click();
+    h.run();
+    h.run();
+    h.key_press(egui::Key::Tab);
+    save(&mut h, &dir, "bigmap_key_5_tab_captured");
 }

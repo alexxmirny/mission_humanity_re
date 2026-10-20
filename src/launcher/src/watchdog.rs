@@ -12,9 +12,12 @@
 //! * The watchdog thread polls twice a second. When the heartbeat is older than `FREEZE_MS` it
 //!   writes ONE `ui: FROZEN for N s in phase <p>` line, and `ui: recovered after N s` once the beat
 //!   moves again -- at most one pair per freeze, however long it lasts.
-//! * The first freeze of a run also writes `launcher_freeze.dmp` (MiniDumpNormal: thread stacks +
-//!   module list, with the UI thread as the "faulting" one) beside `launcher.log`, so the next
-//!   report carries the stack Windows' own hang report did not.
+//! * Every freeze writes its own `launcher_freeze_<UTC stamp>.dmp` (MiniDumpNormal: thread stacks +
+//!   module list, with the UI thread as the "faulting" one) beside `launcher.log`, newest
+//!   `DUMP_KEEP` kept, so the next report carries the stack Windows' own hang report did not.
+//! * dist LA22: `langhook.rs` reports the window message the UI thread is INSIDE (`msg_enter` /
+//!   `msg_leave`), and the FROZEN line names it -- a stall in `DefWindowProcW` is invisible to the
+//!   phase breadcrumbs, which only know our own code.
 //!
 //! What is NOT a freeze: a modal phase (`modal:` prefix -- a file dialog pumps its own messages and
 //! waits on the player, not on a process), and the gap between frames while the window is minimised
@@ -26,7 +29,7 @@
 //! watchdog must never be what blocks the thread it watches.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -38,8 +41,12 @@ pub const FREEZE_MS: u64 = 3000;
 const POLL: Duration = Duration::from_millis(500);
 /// The idle repaint cadence that keeps an unused window beating.
 pub const IDLE_REPAINT: Duration = Duration::from_secs(1);
-/// The dump's file name, beside launcher.log. One per machine: a new freeze overwrites it.
-pub const DUMP_FILE: &str = "launcher_freeze.dmp";
+/// Dump file name prefix / suffix, beside launcher.log: `launcher_freeze_<stamp>.dmp`. The pre-LA22
+/// single `launcher_freeze.dmp` also matches `is_dump_name`, so an old one is still reported/pruned.
+const DUMP_PREFIX: &str = "launcher_freeze";
+const DUMP_SUFFIX: &str = ".dmp";
+/// How many freeze dumps are kept; the oldest beyond this are deleted.
+pub const DUMP_KEEP: usize = 5;
 /// A dump bigger than this is deleted again (a Normal dump of this process is well under 5 MB).
 const DUMP_MAX: u64 = 32 << 20;
 /// The phase name of the gap between two frames.
@@ -54,6 +61,9 @@ struct Beat {
     /// The window is minimised: no frames are expected between frames.
     idle_ok: AtomicBool,
     ui_tid: AtomicU32,
+    /// The window message the UI thread is inside right now (0 = none) and its window.
+    cur_msg: AtomicU32,
+    cur_hwnd: AtomicUsize,
 }
 
 impl Beat {
@@ -64,6 +74,8 @@ impl Beat {
             phase: Mutex::new(BETWEEN_FRAMES),
             idle_ok: AtomicBool::new(false),
             ui_tid: AtomicU32::new(0),
+            cur_msg: AtomicU32::new(0),
+            cur_hwnd: AtomicUsize::new(0),
         }
     }
 
@@ -96,6 +108,10 @@ impl Beat {
             beats,
             phase: self.phase.lock().map(|g| *g).unwrap_or(BETWEEN_FRAMES),
             idle_ok: self.idle_ok.load(Ordering::Relaxed),
+            msg: match self.cur_msg.load(Ordering::Relaxed) {
+                0 => None,
+                m => Some((m, self.cur_hwnd.load(Ordering::Relaxed))),
+            },
         }
     }
 }
@@ -112,6 +128,28 @@ fn epoch() -> Instant {
 
 fn now_ms() -> u64 {
     epoch().elapsed().as_millis() as u64
+}
+
+/// The UI thread is entering window message `msg` for `hwnd` (called from the subclass proc).
+/// Returns the enclosing message to hand back to `msg_leave` (messages nest: a sent message
+/// arrives while another is being dispatched).
+pub fn msg_enter(hwnd: usize, msg: u32) -> (u32, usize) {
+    let b = beat();
+    let prev = (
+        b.cur_msg.swap(msg, Ordering::Relaxed),
+        b.cur_hwnd.swap(hwnd, Ordering::Relaxed),
+    );
+    if b.ui_tid.load(Ordering::Relaxed) == 0 {
+        b.ui_tid.store(current_tid(), Ordering::Relaxed);
+    }
+    prev
+}
+
+/// The message entered by the matching `msg_enter` has returned.
+pub fn msg_leave(prev: (u32, usize)) {
+    let b = beat();
+    b.cur_hwnd.store(prev.1, Ordering::Relaxed);
+    b.cur_msg.store(prev.0, Ordering::Relaxed);
 }
 
 /// Start of an egui frame (UI thread).
@@ -177,18 +215,35 @@ pub struct Snapshot {
     pub beats: u64,
     pub phase: &'static str,
     pub idle_ok: bool,
+    /// The window message (id, hwnd) the UI thread was inside when looked at.
+    pub msg: Option<(u32, usize)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
-    Frozen { secs: u64, phase: &'static str },
-    Recovered { secs: u64 },
+    Frozen {
+        secs: u64,
+        phase: &'static str,
+        msg: Option<(u32, usize)>,
+    },
+    Recovered {
+        secs: u64,
+    },
 }
 
 impl Event {
     pub fn line(&self) -> String {
         match self {
-            Event::Frozen { secs, phase } => format!("ui: FROZEN for {secs} s in phase {phase}"),
+            Event::Frozen { secs, phase, msg } => {
+                let mut l = format!("ui: FROZEN for {secs} s in phase {phase}");
+                if let Some((m, h)) = msg {
+                    l.push_str(&format!(
+                        ", inside window message {} ({m:#x}) for hwnd {h:#x}",
+                        msg_name(*m)
+                    ));
+                }
+                l
+            }
             Event::Recovered { secs } => format!("ui: recovered after {secs} s"),
         }
     }
@@ -220,10 +275,82 @@ impl Detector {
             return Some(Event::Frozen {
                 secs: age / 1000,
                 phase: s.phase,
+                msg: s.msg,
             });
         }
         None
     }
+}
+
+/// Names for the messages a freeze has been (or plausibly will be) caught in.
+pub fn msg_name(m: u32) -> &'static str {
+    match m {
+        0x0001 => "WM_CREATE",
+        0x0005 => "WM_SIZE",
+        0x0006 => "WM_ACTIVATE",
+        0x0007 => "WM_SETFOCUS",
+        0x000F => "WM_PAINT",
+        0x0010 => "WM_CLOSE",
+        0x0014 => "WM_ERASEBKGND",
+        0x001C => "WM_ACTIVATEAPP",
+        0x0024 => "WM_GETMINMAXINFO",
+        0x0046 => "WM_WINDOWPOSCHANGING",
+        0x0047 => "WM_WINDOWPOSCHANGED",
+        0x004E => "WM_NOTIFY",
+        0x0050 => "WM_INPUTLANGCHANGEREQUEST",
+        0x0051 => "WM_INPUTLANGCHANGE",
+        0x0085 => "WM_NCPAINT",
+        0x0086 => "WM_NCACTIVATE",
+        0x0100 => "WM_KEYDOWN",
+        0x0101 => "WM_KEYUP",
+        0x0102 => "WM_CHAR",
+        0x0104 => "WM_SYSKEYDOWN",
+        0x010D => "WM_IME_STARTCOMPOSITION",
+        0x010F => "WM_IME_COMPOSITION",
+        0x0112 => "WM_SYSCOMMAND",
+        0x0113 => "WM_TIMER",
+        0x0200 => "WM_MOUSEMOVE",
+        0x0281 => "WM_IME_SETCONTEXT",
+        0x0282 => "WM_IME_NOTIFY",
+        0x0319 => "WM_APPCOMMAND",
+        0x0400..=0x7FFF => "WM_USER+",
+        0x8000..=0xBFFF => "WM_APP+",
+        _ => "message",
+    }
+}
+
+// ---- dump files ----------------------------------------------------------------------------
+
+/// `launcher_freeze_<stamp>.dmp`, or the pre-LA22 `launcher_freeze.dmp`.
+pub fn is_dump_name(name: &str) -> bool {
+    name.starts_with(DUMP_PREFIX) && name.ends_with(DUMP_SUFFIX)
+}
+
+/// The freeze dumps in `dir`, newest name first (the stamp sorts; the legacy name sorts last).
+pub fn dump_files(dir: &Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(is_dump_name))
+        .map(|e| e.path())
+        .collect();
+    v.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    v
+}
+
+/// Delete all but the newest `keep` dumps in `dir`.
+pub fn prune_dumps(dir: &Path, keep: usize) {
+    for old in dump_files(dir).into_iter().skip(keep) {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+fn new_dump_name() -> String {
+    format!(
+        "{DUMP_PREFIX}_{}{DUMP_SUFFIX}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S")
+    )
 }
 
 // ---- the thread ----------------------------------------------------------------------------
@@ -239,21 +366,23 @@ pub fn start(log_dir: PathBuf) {
         .name("ui-watchdog".into())
         .spawn(move || {
             let mut det = Detector::default();
-            let mut dumped = false;
             loop {
                 std::thread::sleep(POLL);
                 if let Some(ev) = det.step(beat().snapshot()) {
                     log::line(ev.line());
-                    if matches!(ev, Event::Frozen { .. }) && !dumped {
-                        dumped = true;
+                    if matches!(ev, Event::Frozen { .. }) {
                         let tid = beat().ui_tid.load(Ordering::Relaxed);
-                        let dest = log_dir.join(DUMP_FILE);
+                        let dest = log_dir.join(new_dump_name());
+                        let dir = log_dir.clone();
                         // Its own thread: dbghelp serialises on a process-wide lock, and if the
                         // UI thread is frozen INSIDE a dump of the game, this call waits with it.
                         // The watchdog must keep watching to log the recovery.
                         let _ = std::thread::Builder::new()
                             .name("ui-freeze-dump".into())
-                            .spawn(move || write_dump(tid, &dest));
+                            .spawn(move || {
+                                write_dump(tid, &dest);
+                                prune_dumps(&dir, DUMP_KEEP);
+                            });
                     }
                 }
             }
@@ -324,6 +453,7 @@ mod tests {
             beats,
             phase,
             idle_ok,
+            msg: None,
         }
     }
 
@@ -342,7 +472,8 @@ mod tests {
             ev,
             Some(Event::Frozen {
                 secs: 4,
-                phase: "refresh_matches"
+                phase: "refresh_matches",
+                msg: None
             })
         );
         assert_eq!(
@@ -383,6 +514,52 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn frozen_line_names_the_window_message() {
+        let mut d = Detector::default();
+        let mut sn = snap(9000, 1000, 3, BETWEEN_FRAMES, false);
+        sn.msg = Some((0x50, 0x1a2b));
+        let ev = d.step(sn).unwrap();
+        assert_eq!(
+            ev.line(),
+            "ui: FROZEN for 8 s in phase between frames, inside window message \
+             WM_INPUTLANGCHANGEREQUEST (0x50) for hwnd 0x1a2b"
+        );
+    }
+
+    #[test]
+    fn snapshot_reports_the_current_message() {
+        let b: &'static Beat = Box::leak(Box::new(Beat::new()));
+        assert_eq!(b.snapshot().msg, None);
+        b.cur_msg.store(0x50, Ordering::Relaxed);
+        b.cur_hwnd.store(7, Ordering::Relaxed);
+        assert_eq!(b.snapshot().msg, Some((0x50, 7)));
+    }
+
+    #[test]
+    fn dump_names_sort_and_prune() {
+        assert!(is_dump_name("launcher_freeze.dmp"));
+        assert!(is_dump_name("launcher_freeze_20261019T100102.dmp"));
+        assert!(!is_dump_name("launcher.log"));
+        let dir = std::env::temp_dir().join(format!("mh_wd_prune_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..8 {
+            std::fs::write(
+                dir.join(format!("launcher_freeze_2026101{i}T000000.dmp")),
+                b"x",
+            )
+            .unwrap();
+        }
+        std::fs::write(dir.join("launcher.log"), b"x").unwrap();
+        prune_dumps(&dir, DUMP_KEEP);
+        let left = dump_files(&dir);
+        assert_eq!(left.len(), DUMP_KEEP);
+        assert!(left[0].to_string_lossy().ends_with("20261017T000000.dmp"));
+        assert!(dir.join("launcher.log").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

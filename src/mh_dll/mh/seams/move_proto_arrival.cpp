@@ -63,16 +63,23 @@
 #include <cstdint>
 #include <cstring>
 
-#include "seams/net_internal.h" // seam_log + the setter declarations
-#include "hook/patch.h"         // patch_bytes_guarded
-#include "hook/promoted.h"      // promoted_owner_of
-#include "sim/sim_merge_goal.h" // mods:M1X move_merge_goal_fix: the shared goal search (header-only)
+#include "seams/net_internal.h"     // seam_log + the setter declarations
+#include "seams/move_carrier.h"     // mods:M1H: site states, requested values, stub hit counters
+#include "hook/patch.h"             // patch_bytes_guarded
+#include "hook/promoted.h"          // promoted_owner_of
+#include "sim/sim_merge_goal.h"     // mods:M1X move_merge_goal_fix: the shared goal search (header-only)
+#include "sim/move/arrival.h"       // mods:M1H move_distinct_goals: the shared decision (header-only)
+#include "sim/move/near_enough.h"   // mods:M1H move_near_enough (2b) + the on-goal stop: the shared decision (header-only)
+#include "sim/move/route_through.h" // mods:M1G 4b: the undo list the formation reads (true_passable)
+#include "sim/move/formation.h"     // mods:M1G 4b move_formation_click: the shared decision (header-only)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
-int g_arr_distinct_rt = 0; // move_distinct_goals in force (0/1)
-int g_arr_near_r      = 0; // move_near_enough R in force (0 = off)
-int g_arr_merge_rt    = 0; // move_merge_goal_fix in force (0/1)
+int            g_arr_distinct_rt = 0; // move_distinct_goals in force (0/1)
+int            g_arr_near_r      = 0; // move_near_enough R in force (0 = off)
+int            g_arr_merge_rt    = 0; // move_merge_goal_fix in force (0/1)
+extern "C" int g_fc_on;               // move_formation_click in force (0 off, 1..3; defined with the 0x0041c9ce stub, move_proto_nudge.cpp)
+extern "C" int g_fc_handled;          // the formation handled this commit: the 2a stub below skips arrival_after_pathfind once (set by mv_fc_run's caller)
 
 namespace {
 
@@ -101,73 +108,19 @@ constexpr uintptr_t A_PATHFIND     = 0x0041ca37; // llm_strat_group_move_order_p
 static_assert(A_PATHFIND == 0x0041ca37u, "call_pathfind's inline asm spells this address literally");
 
 // unit record fields
-constexpr uint32_t U_ORDER = 0x04, U_STATE = 0x06, U_ENERGY = 0x18, U_X = 0x84, U_Y = 0x85, U_GOAL_X = 0x86, U_GOAL_Y = 0x87,
-                   U_RETRY = 0xab, U_GROUP = 0xc6;
-constexpr uint16_t ORDER_MOVE = 0x0f, ORDER_STOP_TO_DEFAULT = 0x01, ST_MARSHAL = 0x0a, ST_MOVE_HOP = 0x0c, ST_MOVE = 0x0f;
-constexpr int      SEARCH_R  = 8;   // ring-search radius around a formation tile / the goal
-constexpr int      MAX_TAKEN = 128; // other units' goals (at most 100 per player)
+constexpr uint32_t U_ORDER = 0x04, U_STATE = 0x06, U_X = 0x84, U_Y = 0x85, U_GOAL_X = 0x86, U_GOAL_Y = 0x87,
+                   U_PATH_SLOT = 0xaa, U_RETRY = 0xab, U_GROUP = 0xc6;
+constexpr uintptr_t A_PATHBUF = 0x00aee8c0; // _G_LLM_STRAT_PATH_BUFFERS: player * 0xea60 + slot * 0x258 + entry * 2, {byte heading; byte run_length}
 
 template <class T>
 T rd(uintptr_t a) { return *reinterpret_cast<const volatile T *>(a); }
 template <class T>
 void wr(uintptr_t a, T v) { *reinterpret_cast<volatile T *>(a) = v; }
-bool is_plain_move(uint16_t order) { return order == ORDER_MOVE || order == ORDER_STOP_TO_DEFAULT; }
 
 uintptr_t unit_at(uint32_t p, uint32_t i) { return A_UNITS + p * PLAYER_STRIDE + i * UNIT_SIZE; }
 uint32_t  tidx(uint32_t x, uint32_t y) { return ((x & 0xffu) << 8) | (y & 0xffu); }
 uint32_t  region_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8); }
 uint32_t  field_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8 + 4) >> 8; }
-
-// One commit's view: what makes a tile acceptable as a member's goal.
-struct pick_ctx {
-    uint32_t owner_bit;
-    bool     field_fresh; // the region flood was last seeded at the goal
-    uint32_t goal_region; // fallback reachability: same nav region as the goal
-    uint32_t taken[MAX_TAKEN + 256];
-    int      n_taken;
-    uint32_t mask; // path wrap mask (map width - 1)
-};
-
-bool is_taken(const pick_ctx &c, uint32_t t) {
-    for (int k = 0; k < c.n_taken; ++k)
-        if (c.taken[k] == t) return true;
-    return false;
-}
-
-bool tile_free(const pick_ctx &c, uint32_t t) {
-    if (rd<uint8_t>(A_PASSABLE + t) == 0) return false;
-    if ((rd<uint8_t>(A_FOG_DISC + t) & c.owner_bit) == 0) return false;
-    if (c.field_fresh) {
-        const uint32_t f = field_of(t);
-        if (f == 0 || f == 0xffffffu) return false;
-    } else {
-        const uint32_t r = region_of(t);
-        if (r == 0 || r != c.goal_region) return false;
-    }
-    return !is_taken(c, t);
-}
-
-// Nearest free tile around (cx,cy) within SEARCH_R (not the centre itself): ring by ring, smallest dx*dx+dy*dy, ties by
-// scan order. Returns 0xffffffff when none.
-uint32_t search_near(const pick_ctx &c, uint32_t cx, uint32_t cy) {
-    uint32_t best = 0xffffffffu;
-    int      bd2  = 0x7fffffff;
-    for (int r = 1; r <= SEARCH_R; ++r) {
-        for (int dx = -r; dx <= r; ++dx) {
-            for (int dy = -r; dy <= r; ++dy) {
-                if (dx != -r && dx != r && dy != -r && dy != r) continue; // ring r only
-                const int d2 = dx * dx + dy * dy;
-                if (d2 >= bd2) continue;
-                const uint32_t t = tidx((cx + (uint32_t)dx) & c.mask, (cy + (uint32_t)dy) & c.mask);
-                if (!tile_free(c, t)) continue;
-                best = t;
-                bd2  = d2;
-            }
-        }
-        if (best != 0xffffffffu && bd2 <= (r + 1) * (r + 1)) break; // no tile further out can be nearer
-    }
-    return best;
-}
 
 void call_pathfind(uint32_t mode, uint32_t target) {
     __asm {
@@ -180,158 +133,152 @@ void call_pathfind(uint32_t mode, uint32_t target) {
     }
 }
 
+// The decision is sim/move/arrival.h (shared with the libmh twin, sim_group_move_order_commit.cpp); this is its live-memory World.
+struct arrival_live_world {
+    uint32_t path_mask() { return rd<uint32_t>(A_WRAP_MASK); }
+    uint32_t owner() { return rd<uint32_t>(A_GRP_OWNER); }
+    int32_t  member_count() { return rd<int32_t>(A_GRP_COUNT); }
+    int32_t  unit_limit() { return 100; } // the splice's unit_at() strides are the stock 100-slot rows
+    uint32_t goal_x() { return rd<uint32_t>(A_GOAL_X); }
+    uint32_t goal_y() { return rd<uint32_t>(A_GOAL_Y); }
+    void     set_goal(int32_t x, int32_t y) {
+        wr<int32_t>(A_GOAL_X, x);
+        wr<int32_t>(A_GOAL_Y, y);
+    }
+    uint32_t anchor_x() { return rd<uint32_t>(A_ANCHOR_X); }
+    uint32_t anchor_y() { return rd<uint32_t>(A_ANCHOR_Y); }
+    uint32_t centroid_x() { return rd<uint32_t>(A_GRP_CENT_X); }
+    uint32_t centroid_y() { return rd<uint32_t>(A_GRP_CENT_X + 4); }
+    uint32_t member_handle(int32_t m) { return rd<uint32_t>(A_GRP_MEMBERS + static_cast<uint32_t>(m) * 6); }
+    uint8_t  member_col(int32_t m) { return rd<uint8_t>(A_GRP_MEMBERS + static_cast<uint32_t>(m) * 6 + 4); }
+    uint8_t  member_row(int32_t m) { return rd<uint8_t>(A_GRP_MEMBERS + static_cast<uint32_t>(m) * 6 + 5); }
+    uint8_t  tile_byte(int32_t m, int k) { return rd<uint8_t>(A_GRP_TILE + static_cast<uint32_t>(m) * 2 + static_cast<uint32_t>(k)); }
+    void     set_tile_byte(int32_t m, int k, uint8_t b) { wr<uint8_t>(A_GRP_TILE + static_cast<uint32_t>(m) * 2 + static_cast<uint32_t>(k), b); }
+    uint8_t  passable(uint32_t t) { return rd<uint8_t>(A_PASSABLE + t); }
+    uint8_t  fog(uint32_t t) { return rd<uint8_t>(A_FOG_DISC + t); }
+    uint32_t region_of(uint32_t t) { return ::region_of(t); }
+    uint32_t field_of(uint32_t t) { return ::field_of(t); }
+    bool     unit(uint32_t owner_, uint32_t i, mh::sim::move::arr_unit *out) {
+        const uintptr_t u = unit_at(owner_, i);
+        out->order        = rd<uint16_t>(u + U_ORDER);
+        out->state        = rd<uint16_t>(u + U_STATE);
+        out->goal_x       = rd<uint8_t>(u + U_GOAL_X);
+        out->goal_y       = rd<uint8_t>(u + U_GOAL_Y);
+        out->group        = rd<int32_t>(u + U_GROUP);
+        out->x            = rd<uint8_t>(u + U_X);
+        out->y            = rd<uint8_t>(u + U_Y);
+        out->path_slot    = rd<uint8_t>(u + U_PATH_SLOT);
+        return true;
+    }
+    void set_unit_goal(uint32_t owner_, uint32_t i, uint8_t x, uint8_t y) {
+        const uintptr_t u = unit_at(owner_, i);
+        wr<uint8_t>(u + U_GOAL_X, x);
+        wr<uint8_t>(u + U_GOAL_Y, y);
+    }
+    // mods:M1DT fix A' (rc17 dig, cause A): the re-run is bracketed like the first run, so settled walkers / 0x0a units / idle friends the
+    // route-through keys open for the first run are open for this one too (they were walls, and the re-plan took the long way round).
+    // mv_rt_open / mv_rt_close are no-ops with every route-through key off.
+    void rerun_pathfind(uint32_t mode, uint32_t target) {
+        mv_rt_open();
+        call_pathfind(mode, target); // 0x0041ca37 directly; the bracket is the one around it
+        mv_rt_close();
+    }
+    void log_single(uint32_t owner_, uint32_t ui, uint32_t gx, uint32_t gy, bool moved, uint32_t tx, uint32_t ty) {
+        char b[200];
+        wsprintfA(b, "; arrival (mods:M1X) p%u u%u single: goal (%u,%u) taken/blocked -> %s (%u,%u)\n", owner_, ui, gx, gy,
+                  moved ? "moved to" : "no free tile, kept", tx, ty);
+        seam_log(b);
+    }
+    void log_wave(uint32_t owner_, int32_t n, uint32_t gx, uint32_t gy, bool fresh, int kept, int moved, int failed) {
+        char b[200];
+        wsprintfA(b, "; arrival (mods:M1X) p%u wave n=%d goal (%u,%u) field %s: kept %d, moved %d, no free tile %d\n", owner_, n, gx, gy,
+                  fresh ? "fresh" : "stale", kept, moved, failed);
+        seam_log(b);
+    }
+};
+
+// mods:M1G 4b move_formation_click: arrival.h's World plus what sim/move/formation.h reads (live memory, like its parent).
+struct formation_live_world : arrival_live_world {
+    const mh::sim::move::rt_undo *undo = nullptr; // the route-through bracket's undo list: the passable bytes as they were BEFORE it opened tiles
+    bool                          true_passable(uint32_t t) {
+        for (int k = 0; k < undo->n; ++k)
+            if (undo->flat[k] == t) return undo->pass[k] != 0;
+        return passable(t) != 0;
+    }
+    // 0 = nobody, u >= 1 = a unit of `owner_` stands there, -1 = a unit mark of anyone else
+    int32_t occupant(uint32_t owner_, uint32_t t) {
+        const auto &o = *reinterpret_cast<const mh::game::mh_map_tile_object_data *>(A_TILE_OBJECTS + t * 8u);
+        if ((o.class_owner & 0x80u) == 0 || o.building == 0) return 0;
+        return (o.class_owner & 0xfu) == owner_ ? static_cast<int32_t>(o.building) : -1;
+    }
+    bool unit(uint32_t owner_, uint32_t i, mh::sim::move::arr_unit *out) { return arrival_live_world::unit(owner_, i, out); }
+    void set_member_count(int32_t n) { wr<int32_t>(A_GRP_COUNT, n); }
+    void set_member(int32_t m, uint32_t handle, uint8_t col, uint8_t row) {
+        const uintptr_t e = A_GRP_MEMBERS + static_cast<uint32_t>(m) * 6;
+        wr<uint32_t>(e, handle);
+        wr<uint8_t>(e + 4, col);
+        wr<uint8_t>(e + 5, row);
+    }
+    void set_centroid(uint32_t x, uint32_t y) {
+        wr<uint32_t>(A_GRP_CENT_X, x);
+        wr<uint32_t>(A_GRP_CENT_X + 4, y);
+    }
+    void     run_pathfind(uint32_t mode, uint32_t target) { call_pathfind(mode, target); } // the bracket is already open
+    uint32_t path_first_run(uint32_t owner_, uint32_t slot) { return rd<uint8_t>(A_PATHBUF + owner_ * 0xea60u + slot * 0x258u + 1u); }
+    void     path_terminate(uint32_t owner_, uint32_t slot) { wr<uint16_t>(A_PATHBUF + owner_ * 0xea60u + slot * 0x258u, 0); }
+    void     log_assign(uint32_t owner_, uint32_t ui, uint32_t from, uint32_t to, int how) {
+        static int lines;
+        if (lines++ >= 400) return;
+        char b[160];
+        wsprintfA(b, "; M1G FC assign p%u u%u (%u,%u) -> (%u,%u) %s\n", owner_, ui, from >> 8, from & 0xffu, to >> 8, to & 0xffu, how == 1 ? "kept" : (how == 2 ? "moved" : "retail"));
+        seam_log(b);
+    }
+    void log_adjust(uint32_t owner_, uint32_t ui, uint32_t wanted, uint32_t got) {
+        static int lines;
+        if (lines++ >= 200) return;
+        char b[160];
+        wsprintfA(b, "; M1G FC adjust p%u u%u wanted (%u,%u) got (%u,%u)\n", owner_, ui, wanted >> 8, wanted & 0xffu, got >> 8, got & 0xffu);
+        seam_log(b);
+    }
+    void log_fc(uint32_t owner_, int n, int kept, int filled, int retail, int rk, int replans, int reused) {
+        static int lines;
+        if (lines++ >= 200) return;
+        char b[200];
+        wsprintfA(b, "; M1G FC p%u n=%d kept=%d filled=%d retail=%d rk=%d replans=%d reused=%d\n", owner_, n, kept, filled, retail, rk, replans, reused);
+        seam_log(b);
+    }
+};
+
 // Runs at commit 0x0041c9d3, after pathfind returned. Arguments are commit's own stack parameters.
 void __cdecl arrival_after_pathfind(int32_t group_id, uint32_t mode, uint32_t target) {
-    if (!g_arr_distinct_rt || group_id == 0 || mode == 0) return;
-    const int32_t n = rd<int32_t>(A_GRP_COUNT);
-    if (n < 1 || n > 256) return;
-    const uint32_t owner = rd<uint32_t>(A_GRP_OWNER) & 7u;
-
-    pick_ctx c; // this call's scratch, on the stack: nothing survives the call
-    c.mask            = rd<uint32_t>(A_WRAP_MASK) & 0xffu;
-    c.owner_bit       = 1u << owner;
-    const uint32_t gx = rd<uint32_t>(A_GOAL_X) & c.mask, gy = rd<uint32_t>(A_GOAL_Y) & c.mask;
-    const uint32_t g     = tidx(gx, gy);
-    c.field_fresh        = field_of(g) == 1u;
-    c.goal_region        = region_of(g);
-    const uint32_t click = tidx(rd<uint32_t>(A_ANCHOR_X) & c.mask, rd<uint32_t>(A_ANCHOR_Y) & c.mask);
-
-    // Goals other units of this group already hold (not this wave's members).
-    c.n_taken = 0;
-    for (uint32_t i = 0; i < 100; ++i) {
-        bool member = false;
-        for (int32_t m = 0; m < n; ++m)
-            if (rd<uint32_t>(A_GRP_MEMBERS + (uint32_t)m * 6) == i) {
-                member = true;
-                break;
-            }
-        if (member) continue;
-        const uintptr_t u = unit_at(owner, i);
-        if (rd<int32_t>(u + U_GROUP) != group_id) continue;
-        const uint16_t st   = rd<uint16_t>(u + U_STATE);
-        const uint32_t goal = tidx(rd<uint8_t>(u + U_GOAL_X), rd<uint8_t>(u + U_GOAL_Y));
-        if (!(st == ST_MOVE || st == ST_MOVE_HOP || (st == ST_MARSHAL && goal != click))) continue;
-        if (c.n_taken < MAX_TAKEN) c.taken[c.n_taken++] = goal;
-    }
-
-    int kept = 0, moved = 0, failed = 0;
-    if (n == 1) {
-        const uint32_t  ui = rd<uint32_t>(A_GRP_MEMBERS);
-        const uintptr_t u  = unit_at(owner, ui % 100u);
-        if (ui >= 100 || !is_plain_move(rd<uint16_t>(u + U_ORDER))) return;
-        if (tile_free(c, g)) return; // the route's goal is free: retail
-        const uint32_t t = search_near(c, gx, gy);
-        if (t == 0xffffffffu) {
-            failed = 1;
-        } else {
-            wr<int32_t>(A_GOAL_X, (int32_t)(t >> 8));
-            wr<int32_t>(A_GOAL_Y, (int32_t)(t & 0xffu));
-            call_pathfind(mode, target); // re-plan the wave of one to T (frees + refills its path slot)
-            wr<uint8_t>(u + U_GOAL_X, (uint8_t)(t >> 8));
-            wr<uint8_t>(u + U_GOAL_Y, (uint8_t)(t & 0xffu));
-            moved = 1;
-        }
-        char b[200];
-        wsprintfA(b, "; arrival (mods:M1X) p%u u%u single: goal (%u,%u) taken/blocked -> %s (%u,%u)\n", owner, ui, gx, gy,
-                  moved ? "moved to" : "no free tile, kept", moved ? (t >> 8) : gx, moved ? (t & 0xffu) : gy);
-        seam_log(b);
-        return;
-    }
-
-    // Multi-member wave.
-    const uint32_t cx = rd<uint32_t>(A_GRP_CENT_X) & 0xffu, cy = rd<uint32_t>(A_GRP_CENT_X + 4) & 0xffu;
-    uint32_t       form[256];
-    uint8_t        state[256]; // 0 = not ours (keep retail tile), 1 = pending, 2 = assigned
-    for (int32_t m = 0; m < n; ++m) {
-        const uintptr_t mem = A_GRP_MEMBERS + (uint32_t)m * 6;
-        const uint32_t  ui  = rd<uint32_t>(mem);
-        const uint8_t   dc  = (uint8_t)((uint8_t)cx - rd<uint8_t>(mem + 4));
-        const uint8_t   dr  = (uint8_t)((uint8_t)cy - rd<uint8_t>(mem + 5));
-        form[m]             = tidx((uint8_t)((uint8_t)gx - dc) & c.mask, (uint8_t)((uint8_t)gy - dr) & c.mask);
-        state[m]            = (ui < 100 && is_plain_move(rd<uint16_t>(unit_at(owner, ui) + U_ORDER))) ? 1 : 0;
-        if (state[m] == 0) c.taken[c.n_taken++] = tidx(rd<uint8_t>(A_GRP_TILE + m * 2), rd<uint8_t>(A_GRP_TILE + m * 2 + 1));
-    }
-    for (int32_t m = 0; m < n; ++m) { // pass 1: formation tiles that are free
-        if (state[m] != 1 || !tile_free(c, form[m])) continue;
-        state[m]             = 2;
-        c.taken[c.n_taken++] = form[m];
-        const uint32_t old   = tidx(rd<uint8_t>(A_GRP_TILE + m * 2), rd<uint8_t>(A_GRP_TILE + m * 2 + 1));
-        if (old != form[m]) ++moved;
-        else ++kept;
-        wr<uint8_t>(A_GRP_TILE + m * 2, (uint8_t)(form[m] >> 8));
-        wr<uint8_t>(A_GRP_TILE + m * 2 + 1, (uint8_t)(form[m] & 0xffu));
-    }
-    for (int32_t m = 0; m < n; ++m) { // pass 2: the rest take the nearest free tile
-        if (state[m] != 1) continue;
-        uint32_t t = search_near(c, form[m] >> 8, form[m] & 0xffu);
-        if (t == 0xffffffffu) t = tile_free(c, g) ? g : search_near(c, gx, gy);
-        const uint32_t old = tidx(rd<uint8_t>(A_GRP_TILE + m * 2), rd<uint8_t>(A_GRP_TILE + m * 2 + 1));
-        if (t == 0xffffffffu) {
-            ++failed;
-            t = old; // retail tile
-        } else {
-            ++moved;
-            wr<uint8_t>(A_GRP_TILE + m * 2, (uint8_t)(t >> 8));
-            wr<uint8_t>(A_GRP_TILE + m * 2 + 1, (uint8_t)(t & 0xffu));
-        }
-        c.taken[c.n_taken++] = t;
-        state[m]             = 2;
-    }
-    char b[200];
-    wsprintfA(b, "; arrival (mods:M1X) p%u wave n=%d goal (%u,%u) field %s: kept %d, moved %d, no free tile %d\n", owner, n, gx, gy,
-              c.field_fresh ? "fresh" : "stale", kept, moved, failed);
-    seam_log(b);
+    if (!g_arr_distinct_rt) return;
+    arrival_live_world w;
+    mh::sim::move::arrival_after_pathfind(w, group_id, mode, target);
 }
 
-uint32_t isqrt(uint32_t v) {
-    uint32_t r = 0;
-    while ((r + 1) * (r + 1) <= v) ++r;
-    return r;
-}
-
-int wrap_dist(int a, int b, int size) {
-    int d = a - b;
-    if (d < 0) d = -d;
-    if (size > 0 && d > size / 2) d = size - d;
-    return d;
-}
+// The decision is sim/move/near_enough.h (shared with the libmh twin, sim_unit_state_group_marshal.cpp); this is its live-memory World.
+// Raw stock 100-slot rows (unit_at / A_TILE_OBJECTS), exactly what the splice always read: the retail marshal's EAX is a stock offset.
+struct ne_live_world {
+    const mh::game::mh_map_object_unit *unit(uint32_t p, int32_t i) {
+        if (p >= 8 || i < 0 || i >= mh::sim::mvc::NE_ROSTER) return nullptr;
+        return reinterpret_cast<const mh::game::mh_map_object_unit *>(unit_at(p, static_cast<uint32_t>(i)));
+    }
+    uint8_t                                  pass(uint32_t x, uint32_t y) { return rd<uint8_t>(A_PASSABLE + tidx(x, y)); }
+    const mh::game::mh_map_tile_object_data &tile(uint32_t x, uint32_t y) { return *reinterpret_cast<const mh::game::mh_map_tile_object_data *>(A_TILE_OBJECTS + tidx(x, y) * 8u); }
+    int32_t                                  map_w() { return rd<int32_t>(A_MAP_W); }
+    int32_t                                  map_h() { return rd<int32_t>(A_MAP_H); }
+};
 
 // Runs at marshal 0x00482b5b after the retry INC. `unit_off` = player*0x5b04 + index*0xe9 (the marshal's EAX).
 void __cdecl arrival_retry_check(uint32_t unit_off) {
-    const uint32_t  p = rd<uint16_t>(A_CUR_PLAYER) & 7u;
-    const uintptr_t u = A_UNITS + unit_off;
-    if (!is_plain_move(rd<uint16_t>(u + U_ORDER))) return;
-    const uint32_t idx = (unit_off - p * PLAYER_STRIDE) / UNIT_SIZE;
-    const int      x = rd<uint8_t>(u + U_X), y = rd<uint8_t>(u + U_Y), gx = rd<uint8_t>(u + U_GOAL_X), gy = rd<uint8_t>(u + U_GOAL_Y);
-    const char    *why = nullptr;
-    if (x == gx && y == gy) {
-        why = "on its goal";
-    } else if (g_arr_near_r > 0) {
-        const uint32_t g = tidx((uint32_t)gx, (uint32_t)gy);
-        if (rd<uint8_t>(A_PASSABLE + g) != 0) return;
-        if (rd<uint8_t>(A_TILE_OBJECTS + g * 8 + 6) != (uint8_t)(0x80u | p)) return;
-        const uint32_t occ = rd<uint16_t>(A_TILE_OBJECTS + g * 8 + 2);
-        if (occ >= 100 || occ == idx) return;
-        const uint16_t ost = rd<uint16_t>(unit_at(p, occ) + U_STATE);
-        if (ost == ST_MARSHAL || ost == ST_MOVE_HOP || ost == ST_MOVE) return;
-        const int32_t gid = rd<int32_t>(u + U_GROUP);
-        uint32_t      n   = 1;
-        if (gid != 0) {
-            n = 0;
-            for (uint32_t i = 0; i < 100; ++i) {
-                const uintptr_t w = unit_at(p, i);
-                const uint64_t  e = rd<uint64_t>(w + U_ENERGY); // energy > 0.0, read as bits (no x87/SSE use)
-                if (rd<int32_t>(w + U_GROUP) == gid && (e >> 63) == 0 && (e & 0x7fffffffffffffffull) != 0) ++n;
-            }
-            if (n < 1) n = 1;
-        }
-        const int dx = wrap_dist(x, gx, rd<int32_t>(A_MAP_W)), dy = wrap_dist(y, gy, rd<int32_t>(A_MAP_H));
-        const int d = dx > dy ? dx : dy;
-        if (d > g_arr_near_r + (int)isqrt(n)) return;
-        why = "near enough to a goal a friend holds";
-    } else {
-        return;
-    }
+    const uint32_t  p   = rd<uint16_t>(A_CUR_PLAYER) & 7u;
+    const uintptr_t u   = A_UNITS + unit_off;
+    const uint32_t  idx = (unit_off - p * PLAYER_STRIDE) / UNIT_SIZE;
+    ne_live_world   w;
+    const auto      st = mh::sim::mvc::near_enough_check(w, p, static_cast<int32_t>(idx), g_arr_near_r);
+    if (st == mh::sim::mvc::ne_stop::no) return;
+    const char *why = st == mh::sim::mvc::ne_stop::on_goal ? "on its goal" : "near enough to a goal a friend holds";
+    const int   x = rd<uint8_t>(u + U_X), y = rd<uint8_t>(u + U_Y), gx = rd<uint8_t>(u + U_GOAL_X), gy = rd<uint8_t>(u + U_GOAL_Y);
     wr<uint8_t>(u + U_RETRY, 4); // the retail give-up branch runs now
     char b[200];
     wsprintfA(b, "; arrival (mods:M1X) p%u u%u stops at (%d,%d), goal (%d,%d): %s\n", p, idx, x, y, gx, gy, why);
@@ -373,8 +320,14 @@ int       g_mg_handled        = 0;          // merge_goal_pick's verdict, carrie
 // clang-format off
 __declspec(naked) void mv_arr_commit_stub() {
     __asm {
+        cmp   g_fc_handled, 0                    // mods:M1G 4b: the formation planned this commit inside the bracket -- 2a is skipped, once
+        je    ac_nofc
+        mov   g_fc_handled, 0
+        jmp   ac_done
+    ac_nofc:
         cmp   g_arr_distinct_rt, 0
         je    ac_done
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARR_COMMIT]
         pushad
         push  dword ptr [ebp + 0x10]             // commit's target_class
         push  dword ptr [ebp + 0x0c]             // commit's is_plain_move_flag
@@ -393,6 +346,7 @@ __declspec(naked) void mv_merge_goal_stub() {
     __asm {
         cmp   g_arr_merge_rt, 0
         je    mg_retail
+        inc   dword ptr [g_mv_hit + 4 * MVH_MERGE_GOAL]
         pushad
         push  dword ptr [esp + 40]               // centre row  (32 pushad + ret + col)
         push  dword ptr [esp + 40]               // centre col  (shifted by the push above)
@@ -418,9 +372,12 @@ __declspec(naked) void mv_arr_retry_stub() {
         inc   byte ptr [eax + 0xdd8cf3]          // path_blocked_retry_count++ (replaced)
         cmp   g_arr_distinct_rt, 0
         jne   ar_check
+        cmp   g_fc_on, 0                         // mods:M1G 4b: kept members have an empty path and must stop here, not retry
+        jne   ar_check
         cmp   g_arr_near_r, 0
         je    ar_done
     ar_check:
+        inc   dword ptr [g_mv_hit + 4 * MVH_ARR_RETRY]
         pushad
         push  eax
         call  arrival_retry_check
@@ -462,20 +419,40 @@ int arr_patch(uintptr_t addr, const uint8_t *expect, int len, void (*stub)()) {
     return ok ? 1 : -1;
 }
 
-void arr_log_key(const char *key, int v, int state, const char *what) {
-    char b[360];
-    if (state == 1) wsprintfA(b, "; move prototype [net] %s=%d active (mods:M1X): %s\n", key, v, what);
-    else wsprintfA(b, "; move prototype [net] %s=%d NOT ACTIVE (mods:M1X): %s\n", key, v, arr_state_name(state));
-    seam_log(b);
-}
-
 } // namespace
+
+// mods:M1G 4b. Runs at commit 0x0041c9ce, inside the route-through bracket, right after the retail plan (move_proto_nudge.cpp's rt_stub).
+// `undo` is the bracket's list (a mh::sim::move::rt_undo). Returns 1 = handled (the 2a stub skips this commit).
+int mv_fc_run(int32_t group_id, uint32_t mode, uint32_t target, const void *undo) {
+    formation_live_world w;
+    w.undo = static_cast<const mh::sim::move::rt_undo *>(undo);
+    LARGE_INTEGER t0, t1, fq; // the per-commit cost of the formation (the planner runs inside it included); logging only, never read back by the sim
+    QueryPerformanceCounter(&t0);
+    const int handled = mh::sim::move::formation_after_pathfind(w, group_id, mode, target, g_fc_on - 1) ? 1 : 0;
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&fq);
+    static uint32_t cnt, tot, mx;
+    const uint32_t  us = static_cast<uint32_t>((t1.QuadPart - t0.QuadPart) * 1000000 / (fq.QuadPart ? fq.QuadPart : 1));
+    if (!handled) return handled; // the commits it declined (a lone Ctrl-click, an attack) cost nothing worth reporting
+    ++cnt;
+    tot += us;
+    if (us > mx) mx = us;
+    if (cnt <= 8 || cnt % 16 == 0) {
+        char b[160];
+        wsprintfA(b, "; M1G FC cost commits=%u us_total=%u us_last=%u us_max=%u\n", cnt, tot, us, mx);
+        seam_log(b);
+    }
+    return handled;
+}
 
 // Called once from install_move_proto (net_lockstep.cpp).
 void install_move_proto_arrival() {
     g_arr_state_commit = arr_patch(ADDR_ARR_COMMIT, ARR_COMMIT_EXPECT, 7, mv_arr_commit_stub);
     g_arr_state_retry  = arr_patch(ADDR_ARR_RETRY, ARR_RETRY_EXPECT, 13, mv_arr_retry_stub);
     g_arr_state_merge  = arr_patch(ADDR_MV_MERGE_GOAL, MV_MERGE_GOAL_EXPECT, 5, mv_merge_goal_stub);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_ARR_COMMIT, g_arr_state_commit);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_ARR_RETRY, g_arr_state_retry);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_MERGE_GOAL, g_arr_state_merge);
     char b[320];
     wsprintfA(b, "; move prototype splices (mods:M1X arrival): commit %s, marshal retry %s, merge goal %s\n", arr_state_name(g_arr_state_commit),
               arr_state_name(g_arr_state_retry), arr_state_name(g_arr_state_merge));
@@ -487,7 +464,7 @@ int mh_set_move_distinct_goals(int on) {
     on                = on != 0;
     const int st      = (g_arr_state_commit == 1 && g_arr_state_retry == 1) ? 1 : (g_arr_state_commit != 1 ? g_arr_state_commit : g_arr_state_retry);
     g_arr_distinct_rt = on && st == 1;
-    if (on) arr_log_key("move_distinct_goals", 1, st, "every group member gets its own free goal tile (formation tile kept when free)");
+    mh::seams::mv::request(mh::seams::mv::KEY_DISTINCT_GOALS, on, 0); // the honest line comes from the carrier report (move_carrier.cpp)
     return g_arr_distinct_rt == on;
 }
 
@@ -495,7 +472,7 @@ int mh_set_move_distinct_goals(int on) {
 int mh_set_move_near_enough(int r) {
     r            = r < 0 ? 0 : (r > 10 ? 10 : r);
     g_arr_near_r = (r > 0 && g_arr_state_retry == 1) ? r : 0;
-    if (r > 0) arr_log_key("move_near_enough", r, g_arr_state_retry, "a failed replan within R + sqrt(group) of a goal a parked friend holds stops there");
+    mh::seams::mv::request(mh::seams::mv::KEY_NEAR_ENOUGH, r, 0);
     return (g_arr_near_r > 0) == (r > 0);
 }
 
@@ -503,12 +480,6 @@ int mh_set_move_near_enough(int r) {
 int mh_set_move_merge_goal_fix(int on) {
     on             = on != 0;
     g_arr_merge_rt = on && g_arr_state_merge == 1;
-    if (on) {
-        if (g_arr_state_merge == -2)
-            seam_log("; move prototype [net] move_merge_goal_fix=1 carried by libmh (group_move_order_pathfind promoted)\n");
-        else
-            arr_log_key("move_merge_goal_fix", 1, g_arr_state_merge,
-                        "a squad merge walks to the nearest reachable tile next to the target soldier (retail: the first closer tile of a spiral)");
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_MERGE_GOAL, on, 0);
     return (g_arr_merge_rt == on) || g_arr_state_merge == -2;
 }

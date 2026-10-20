@@ -2494,6 +2494,8 @@
     <ClCompile Include="..\mh\seams\gameplay_hooks.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_blocked.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_nudge.cpp" />
+    <ClCompile Include="..\mh\seams\move_proto_respond.cpp" />
+    <ClCompile Include="..\mh\seams\door_hold.cpp" />
     <ClCompile Include="..\mh\config\gameplay.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
     <ClCompile Include="..\mh\seams\lang_pack.cpp" />
@@ -2506,6 +2508,7 @@
     <ClCompile Include="..\mh\seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_cancel_task.cpp" />
     <ClCompile Include="..\mh\seams\ui_worker_click.cpp" />
+    <ClCompile Include="..\mh\seams\ui_walker_frames.cpp" />
     <ClCompile Include="..\mh\seams\ui_minimap_box.cpp" />
     <ClCompile Include="..\mh\seams\ui_minimap_plus.cpp" />
     <ClCompile Include="..\mh\seams\ui_bigmap.cpp" />
@@ -2530,6 +2533,7 @@
     <ClCompile Include="..\mh\seams\snd_trace.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_arrival.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_speed.cpp" />
+    <ClCompile Include="..\mh\seams\move_carrier.cpp" />
     <ClCompile Include="..\mh\seams\combat_proto.cpp" />
     <ClCompile Include="..\mh\seams\ui_pause.cpp" />
     <ClCompile Include="..\mh\seams\strat_pre_input.cpp" />

@@ -329,6 +329,43 @@ tests:
       - [tools/check_drag_box.py, --wide, --segment, res_drag_wide_orig, --session, '3']
     tol: 0.0
     desc: 'original configuration: Shift keeping a building type armed, the drag-select box at 1920x1056 (eight drags and the wider-than-half-the-map ones) and the strategic side-panel lists, all drawn by the retail bodies'
+  # walker_turn (render only, 2026-10-18 dig): a Centaur turning 180 degrees in place. The retail walker frame table (_G_LLM_STRAT_WALKER_FRAME_TABLE,
+  # 0x00ae1df8) is filled for 8 of the 24 facings, so a turning walker flashed the north image on 2 of 3 notches; [ui] walker_turn_frames_fix=1
+  # (default) fills the other 16 after the retail init (seams/ui_walker_frames.cpp, pure rule seams/walker_frames.h). Shipped configuration
+  # (mh.dll without libmh.dll); retail movement pinned so the turn timing is the retail one. The 6-taalor-6-c save is the user's rc14 playtest save.
+  - name: walker_turn
+    budget_s: 30
+    budget_evidence: "5 s solo, three green runs (2026-10-18), floored at 30 (BUDGET_FLOOR_S); the walk is one load, two orders and 13 captures"
+    kind: solo
+    script: walker_turn.txt
+    omit_satellite: [libmh.dll]
+    deploy_save: 6-taalor-6-c
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    tol: 0.0
+    desc: 'a Centaur ordered back the way it came turns 180 degrees in place: twelve captures, one per sim step, show it rotating through its own rest frames instead of flashing the north image (shipped configuration, no libmh)'
+  # rep_fidelity (tooling:TL-REPORT-REPLAY-FIDELITY, 2026-10-18): a player report replays FROM THE REPORT ONLY. The walk records ~26 s of the
+  # user's rc14 planet-6 campaign save (walkers mid-path at the first step, a Centaur sent back and forth, the game speed changed up and
+  # down) with the shipped recorder; the post-check replays that recording over four different carrier saves (the row's own, planet 5,
+  # planet 7, ayy30) and every field checkpoint hash must match on all of them. A scene dump imported over a carrier used to keep the
+  # CARRIER's bytes wherever the capture mistook a data dword for a pointer (848 `passable` words), so the replay diverged by step 256
+  # on any other save. Shipped configuration (no libmh); the recorder is on through rep_fidelity.ini.
+  - name: rep_fidelity
+    budget_s: 140
+    budget_evidence: "105 s solo, three green runs (2026-10-18; the 26 s walk is ~65 s of wall time headless, the four replays ~10 s each) x1.3"
+    long_why: "one 26 s game-time recording (a process start plus the walk) and four offline replays of it, one lane each (~25 s per carrier)"
+    kind: solo
+    script: rep_fidelity.txt
+    omit_satellite: [libmh.dll]
+    deploy_save: 6-taalor-6-c
+    extra_ini: [tools/uiscripts/ini/rep_fidelity.ini]
+    net_extra: improved_movement=1;group_movement=1;improved_combat=1;project_gate_fix=1;move_reverse_now=1;move_turn_rate=0
+    timeout_frames: 400000
+    post_check:
+      - tools/check_report_replay.py
+    # the frame is not the verdict (real-time pacing moves every pixel): the post_check is, so the capture only has to exist
+    tol: 100.0
+    desc: 'the recorder a player report carries, on a 26 s planet-6 campaign walk (units mid-path, orders back and forth, speed keys): the recording replays with every checkpoint identical over four different carrier saves, so a report needs no particular save'
   # satellite_seq (tooling:TL-SUITE-FOLD step 8, user 2026-10-15): the solo rows whose subject is WHICH satellite DLL sits beside
   # mh.dll, one PROCESS per step on one lane (solo_steps). Replaced rows: harness_absent, module_absent, cfg_newgame_restore_ship,
   # res_drag_stock. A lane's satellite set is just the files in its folder, so the runner sets it per step (test_ui.set_lane_satellites
@@ -680,6 +717,46 @@ tests:
       net_extra: transport=udp;sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2.0;turret_fire_poll_fix=1
       post_check: [[tools/check_pt5_turret_poll.py, --expect, fixed, --step-ms, "20"]]
     desc: 'PT-FIX2 / PT-SET1 / PT-FIX4 / PT-FIX5: the turret fire-rate, host-wins, clip and fire-poll proofs, one 2-peer match per step -- an unshared weapon-8 and weapon-21 turret fire as each fix models; both peers agree, hashes IDENTICAL'
+  # mp:GH1 (2026-10-20): a joiner could enter through retail's own 0x0a route without adopting the host's gameplay settings
+  # (silent rules mismatch -> desync). gameplay_retail_route forces exactly that route: the client's lobby driver is held out of
+  # the way (`entry_settle_ticks=100000`), so the only entry is retail's 0x0a handler -> begin_map_load. Same fixture as
+  # turret_seq's gameplay_host_wins (host mult 3.0, client ini 1.0): before the fix the client logs no ADOPTED line and shoots at
+  # its own rate (check_pt2_turret_rate --expect-adopted RED + hash mismatch); with it ADOPTED == PUBLISHED, equal applied hash.
+  - name: gameplay_retail_route
+    budget_s: 85
+    budget_evidence: "measured 63 s (unfixed repro), 66 s, 64 s, 64 s on the local rig 2026-10-20 (two 2-peer boots + one 2200-step match, run beside gameplay_trailer_dropped); x 1.3 = 83, rounded to 85"
+    kind: multi
+    share_lanes: ship_fix_a
+    omit_satellite: [libmh.dll]
+    host: mp_host_pt2_turret_rate.txt
+    clients: [mp_client_idle.txt]
+    net_extra: transport=udp;sim_step_ms=20;turret_fire_poll_fix=0;turret_fire_rate_mult=3.0
+    net_extra_client: turret_fire_rate_mult=1.0;turret_reload_realtime_fix=0;entry_settle_ticks=100000
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    harness_extra: region_hash_step=50;synth_move=0;pt2_at=100;pt2_player=0;pt2_target=1;pt2_shots=20;pt2_tail=6000
+    timeout: 420
+    post_check: [[tools/check_pt2_turret_rate.py, --expect, fixed, --step-ms, '20', --mult, '3.0', --expect-adopted]]
+    post_check_peers: true
+    post_check_session: true  # the PUBLISHED / ADOPTED / applied-hash lines are in the SESSION net log
+    desc: 'GH1: the client enters by retail''s own 0x0a route (its lobby driver held out) and still ADOPTS the host''s gameplay set -- equal applied hash, both shoot at the host''s rate, hashes IDENTICAL'
+  # mp:GH1: the host's START carries the slots but NO gameplay trailer (`[net] start_gameplay_trailer=0`). The joiner must REFUSE it:
+  # no adoption, no entry, back on the browser with `Refused: no host settings`. No match is played, hence no hash compare.
+  - name: gameplay_trailer_dropped
+    budget_s: 30
+    budget_evidence: "measured 22 s, 23 s, 22 s, 23 s on the local rig 2026-10-20 (two 2-peer boots, no match is played); x 1.3 = 30"
+    kind: multi
+    no_hash_why: 'the client refuses the Start and never enters a match; the verdict is the refusal + bounce in its log and the browser notice'
+    share_lanes: ship_fix_a
+    omit_satellite: [libmh.dll]
+    host: mp_host_start_refused.txt
+    clients: [mp_client_start_refused.txt]
+    net_extra: transport=udp;start_gameplay_trailer=0
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    timeout: 300
+    post_check: [tools/check_pt2_turret_rate.py, --expect-start-refused]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'GH1: a START without the gameplay settings is REFUSED by the joiner -- logged, bounced to the browser with the notice, never adopted, never entered'
   # mp:D36: the rc4 rematch shape -- the host LANDS in match 1 (the landing grant goes into the
   # gains-only resource_spent), then rematches a FRESH client process on a shorter-named map.
   # rematch_play cannot see this: its joiner is the same process and nobody lands.
@@ -1227,6 +1304,40 @@ tests:
     ]
     post_check_peers: true
     desc: 'U40/RM1/U41b: a match ENDS, the host re-creates in the same instance, the client re-discovers + re-joins (no ghost slot); the SECOND match enters as clean as the first and stays in lockstep past 12 s; ending it too gives a second queue rollup with its own high-water'
+  # map_xfer_twice (mp:X2j, 2026-10-19): the joiner downloads the map in TWO lobbies of ONE process. host_rematch's walk with
+  # `map_test_pretend=absent`, so each lobby makes the joiner fetch the map over channel C. Pre-fix the second transfer never reached the
+  # joiner's Receiver (the receive frontier survived the first download) and the walk stuck at game 2's `enabled Start`.
+  - name: map_xfer_twice
+    budget_s: 90
+    budget_evidence: "measured solo 2026-10-20: 60 s and 67 s (udp), 64 s (relay), headless; x 1.3 = 87, rounded to 90 (host_rematch, same walk, is 85)"
+    kind: multi
+    no_hash_why: 'two matches in one process: the harness step counter is not reset per match, and match 1 ends by a quit'
+    host: mp_host_map_xfer_twice.txt
+    clients: [mp_client_map_xfer_twice.txt]
+    net_extra: transport=udp;map_test_pretend=absent
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    timeout: 300
+    post_check: [
+      [tools/check_map_xfer_twice.py],
+    ]
+    post_check_peers: true
+    desc: 'X2j: the joiner downloads the host''s map in lobby 1, plays, returns, and downloads it AGAIN in lobby 2 of the same process (UDP) -- the second download reaches READY and Start works without restarting'
+  - name: map_xfer_twice_relay
+    budget_s: 90
+    budget_evidence: "measured solo 2026-10-20: 60 s and 67 s (udp), 64 s (relay), headless; x 1.3 = 87, rounded to 90 (host_rematch, same walk, is 85)"
+    kind: multi
+    no_hash_why: 'two matches in one process: the harness step counter is not reset per match, and match 1 ends by a quit'
+    host: mp_host_map_xfer_twice.txt
+    clients: [mp_client_map_xfer_twice.txt]
+    relay: true
+    net_extra: transport=udp;force_relay=1;map_test_pretend=absent
+    extra_ini: tools/uiscripts/ini/video_640.ini
+    timeout: 300
+    post_check: [
+      [tools/check_map_xfer_twice.py],
+    ]
+    post_check_peers: true
+    desc: 'X2j: map_xfer_twice through a relay (both peers force_relay) -- the second download in one process completes over the relayed channel C'
   - name: direct_dial_with_relay_set
     budget_s: 30  # gate diet: max measured (gate 18s, n2 19s, n6 20s) x 1.3
     kind: multi
@@ -2473,94 +2584,976 @@ tests:
     post_check_peers: true
     post_check_session: true
     desc: 'mods:A1: the same 2-peer walk with libmh.dll bound (the promoted twins carry the rule)'
-  # mods:M1N field fix (user playtest rc10, 2026-10-16): units stuck in group-move marshal (state 0x0a, no path) beside a friend in a
-  # one-tile corridor. Verdict = the probe's `; MV ORDERSUM` lines + the seam's `; M1N *-marshal` lines (tools/check_mv_marshal.py), not a frame.
-  - name: m1n_marshal_idle
-    budget_s: 30
-    budget_evidence: "4-9 s solo, pin_wallclock, three green runs (2026-10-16), floored at 30 (BUDGET_FLOOR_S)"
+  # BEGIN m1h
+  # mods:M1H (2026-10-18): the movement preset (improved_movement + group_movement + improved_combat) on its fixtures F1-F10, one PROCESS per fixture
+  # (solo_steps). m1h_ship = libmh.dll absent (the shipped configuration, the retail splices carry every key), m1h_orig = + [config] mode=original,
+  # m1h_lib = libmh bound (the twins; mv_waves=0 so the pathfind rebind is armed), m1h_off = the three masters 0 (retail outcome, no key reported, no
+  # counter moved; tier release). Every step: pin_wallclock + pinned clock, synth_move=0, one start-frame capture (identical in every arm, so one
+  # baseline per fixture serves all four rows), the verdict from tools/check_m1h.py (outcome + hit counters + carrier text). m1h_twin_eq runs six
+  # fixtures twice, splice then twin, and demands a step-identical state hash; attack_range_footprint is ON in all of them (the ALT enqueue twin once diverged; fixed 2026-10-18).
+  # The m1h_mp_moving* rows build five nd cases on both peers of a fresh 2-peer match: shipped, libmh, and the MIXED pair (host shipped, client libmh).
+  # They replaced the six m1n_* rows (asserts folded: tools/check_m1h.py header).
+  - name: m1h_ship
+    budget_s: 260
+    budget_evidence: "165 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 138 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 195 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
+    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
-    script: m1n_marshal_idle.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_marshal_idle.csv;stop_step=2800;mv_player=0
-    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0
-    timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, idle]
-    post_check_session: true
-    tol: 0.0
-    desc: 'mods:M1N field fix (the marshal no-path site: move_route_through_idle=0 keeps the planner cutting the route short), shipped configuration (no libmh): unit 12 is ordered through a one-tile corridor whose only other occupant is an idle friend -- retail stalls at its tile and gives up; with the fix the two trade tiles and the order arrives with no stall'
-  - name: m1n_marshal_headon
-    budget_s: 30
-    budget_evidence: "4-9 s solo, pin_wallclock, three green runs (2026-10-16), floored at 30 (BUDGET_FLOOR_S)"
-    kind: solo
-    script: m1n_marshal_headon.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_marshal_headon.csv;stop_step=2800;mv_player=0
-    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_nudge_idle=0
-    timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, headon]
-    post_check_session: true
-    tol: 0.0
-    desc: 'mods:M1N field fix, shipped configuration (no libmh): with the idle-friend key off unit 12 stalls behind the idle unit 1; unit 1 is then ordered north through it, both are marshal-stuck head-on and trade tiles -- both orders arrive'
-  - name: m1n_marshal_off
-    tier: release  # the fix-off negative: retail's stall is the control, not a regression check of the fix
-    budget_s: 30
-    budget_evidence: "4-9 s solo, pin_wallclock, three green runs (2026-10-16), floored at 30 (BUDGET_FLOOR_S)"
-    kind: solo
-    script: m1n_marshal_off.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_marshal_headon.csv;stop_step=2800;mv_player=0
-    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_nudge_idle=0;move_swap_headon=0
-    timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, 'off']
-    post_check_session: true
-    tol: 0.0
-    desc: 'mods:M1N field fix, negative control (keys 0 = retail): the same replay stalls and gives up exactly as in the rc10 playtest -- the fix is the only thing that changes it'
-  # mods:M1N follow-up 2 (user playtest rc11, 2026-10-17, "more like a corner"): the route planner treated an idle friend in the x=14 corridor as
-  # a wall and cut the goal short to a dead-end pocket. Verdict = `; MV ORDERSUM` + `; M1N route-through` / `; M1N nudge|swap` lines
-  # (tools/check_mv_marshal.py --case corner|cornoff), not a frame.
-  - name: m1n_route_corner
-    budget_s: 30
-    budget_evidence: "4-10 s solo, pin_wallclock, several green runs (2026-10-17), floored at 30 (BUDGET_FLOOR_S)"
-    kind: solo
-    script: m1n_route_corner.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5-1
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_route_corner.csv;stop_step=2800;mv_player=0
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
     timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, corner]
     post_check_session: true
     tol: 0.0
-    desc: 'mods:M1N follow-up 2, shipped configuration (no libmh): unit 1 is ordered out of the corner past the idle unit 12 standing in the x=14 corridor -- the route planner now sees the friend as open ground, the unit walks up the corridor, unit 12 makes room and the order arrives (retail cut the goal short to a dead-end pocket and gave up)'
-  - name: m1n_route_corner_off
-    tier: release  # the fix-off negative: retail's dead-end is the control, not a regression check of the fix
-    budget_s: 30
-    budget_evidence: "4-10 s solo, pin_wallclock, several green runs (2026-10-17), floored at 30 (BUDGET_FLOOR_S)"
+    desc: 'mods:M1H movement preset (improved_movement + group_movement + improved_combat), SHIPPED configuration (libmh.dll absent): the retail splices carry every key. One process per fixture; tools/check_m1h.py asserts each fixture''s outcome, that its keys'' splice hit counters are > 0 and that the carrier line says `retail splice`'
+    solo_steps:
+      - name: f1_corner
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'ship']
+      - name: f2_corridor
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'ship']
+      - name: f3_headon
+        script: m1h_f3.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f3.csv;mv_player=0;stop_step=1900
+        # f3 tests the marshal-site swap (3e-4), not mods:M1DT: with move_route_through_replanning on, the friend waiting in state 0x0a is open ground and the pair no longer needs the swap
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_nudge_idle=0;move_route_through_replanning=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f3, --arm, 'ship']
+      - name: f4_kofu
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        # f4 tests the centroid wrap, not 4c or the route planner: the preset's move_reverse_now re-orders mid-slide, and (mode=original) move_route_through_moving reroutes the group; either way the group no longer straddles the seam at order 3 (cent_x=0)
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_reverse_now=0;move_route_through_moving=0;move_route_through_replanning=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'ship']
+      - name: f5_nd
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=12;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f5, --arm, 'ship']
+      - name: f11_route_moving
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'ship']
+      - name: f12_replanning_wall
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'ship']
+      - name: f13_block_queue
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_moving=0;move_route_through_replanning=0;move_block_wait_ms=450;move_block_reset_moving=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'ship']
+      - name: f14_fc_inplace
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'ship']
+      - name: f15_fc_far
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'ship']
+      - name: f16_fc_wall
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'ship']
+      - name: f17_hop_wall
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'ship']
+      - name: f18_fc_below
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'ship']
+      - name: f19_fc_spread
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'ship']
+      - name: f20_fc_thin_wall
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'ship']
+      - name: f21_door_queue
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'ship']
+      - name: f21n_door_nofix
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_enter_queue=0;storage_door_hold=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21n, --arm, 'ship']
+      - name: f6_speed
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'ship']
+      - name: f7_attack
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'ship']
+      - name: f8_merge
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        omit_satellite: [libmh.dll]
+        tol: 0.0005
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'ship']
+      - name: f9_guards
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_nudge_idle=0;move_swap_headon=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'ship']
+      - name: d2_marshal
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, d2, --arm, 'ship']
+      - name: d5_claim
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=3;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_claim_leader=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, d5, --arm, 'ship']
+      - name: d7_heading
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, d7, --arm, 'ship']
+      - name: f10_bigmap
+        script: m1h_f10.txt
+        harness_extra: pf_at=300;pf_player=0;pf_n=8;pf_pick=2;pf_reveal=1;pf_deferred=1;pf_spread=3;pf_tail=1500;pf_sample=100;stop_step=3700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;route_corridor_mode=2;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f10, --arm, 'ship']
+
+  - name: m1h_orig
+    budget_s: 275
+    budget_evidence: "177 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 139 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 196 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
+    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
-    script: m1n_route_corner_off.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5-1
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_route_corner.csv;stop_step=2800;mv_player=0
-    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0
-    timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, cornoff]
-    post_check_session: true
-    tol: 0.0
-    desc: 'mods:M1N follow-up 2, negative control (move_route_through_idle=0): the same order is cut short to the dead-end pocket and does not arrive, exactly as in the rc11 playtest'
-  - name: m1n_route_corridor
-    budget_s: 30
-    budget_evidence: "4-10 s solo, pin_wallclock, several green runs (2026-10-17), floored at 30 (BUDGET_FLOOR_S)"
-    kind: solo
-    script: m1n_route_corridor.txt
-    omit_satellite: [libmh.dll]
-    deploy_save: 7-abigan-5
-    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1n_marshal_idle.csv;stop_step=2800;mv_player=0
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
     timeout_frames: 2000000
-    post_check: [tools/check_mv_marshal.py, --case, corridor]
+    post_check_session: true
+    tol: 0.005
+    desc: 'mods:M1H movement preset, [config] mode=original (rollback_original.ini, libmh absent): the same fixtures as m1h_ship, the same asserts'
+    solo_steps:
+      - name: f1_corner
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'orig']
+      - name: f2_corridor
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'orig']
+      - name: f3_headon
+        script: m1h_f3.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f3.csv;mv_player=0;stop_step=1900
+        # f3 tests the marshal-site swap (3e-4), not mods:M1DT: with move_route_through_replanning on, the friend waiting in state 0x0a is open ground and the pair no longer needs the swap
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_nudge_idle=0;move_route_through_replanning=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f3, --arm, 'orig']
+      - name: f4_kofu
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        # f4 tests the centroid wrap, not 4c or the route planner: the preset's move_reverse_now re-orders mid-slide, and (mode=original) move_route_through_moving reroutes the group; either way the group no longer straddles the seam at order 3 (cent_x=0)
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_reverse_now=0;move_route_through_moving=0;move_route_through_replanning=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'orig']
+      - name: f5_nd
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=12;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f5, --arm, 'orig']
+      - name: f11_route_moving
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'orig']
+      - name: f12_replanning_wall
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'orig']
+      - name: f13_block_queue
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_moving=0;move_route_through_replanning=0;move_block_wait_ms=450;move_block_reset_moving=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'orig']
+      - name: f14_fc_inplace
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'orig']
+      - name: f15_fc_far
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'orig']
+      - name: f16_fc_wall
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'orig']
+      - name: f17_hop_wall
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'orig']
+      - name: f18_fc_below
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'orig']
+      - name: f19_fc_spread
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'orig']
+      - name: f20_fc_thin_wall
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'orig']
+      - name: f21_door_queue
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'orig']
+      - name: f6_speed
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'orig']
+      - name: f7_attack
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'orig']
+      - name: f8_merge
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'orig']
+      - name: f9_guards
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_nudge_idle=0;move_swap_headon=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'orig']
+      - name: d2_marshal
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, d2, --arm, 'orig']
+      - name: d5_claim
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=3;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_claim_leader=1
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, d5, --arm, 'orig']
+      - name: d7_heading
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        post_check: [tools/check_m1h.py, --case, d7, --arm, 'orig']
+      - name: f10_bigmap
+        script: m1h_f10.txt
+        harness_extra: pf_at=300;pf_player=0;pf_n=8;pf_pick=2;pf_reveal=1;pf_deferred=1;pf_spread=3;pf_tail=1500;pf_sample=100;stop_step=3700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;route_corridor_mode=2;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        extra_ini: tools/uiscripts/ini/rollback_original.ini
+        tol: 0.02
+        post_check: [tools/check_m1h.py, --case, f10, --arm, 'orig']
+
+  - name: m1h_lib
+    budget_s: 410
+    budget_evidence: "268 s for the 19 steps with libmh bound on a quiet machine (2026-10-19, F14-F16 joined; it was 227 s for 16) x1.3; libmh makes each step 2-3x slower than m1h_ship; cause C fixture F17 +10 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +25 s: measured 293 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +20 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +20 s."
+    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
+    kind: solo
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
+    timeout_frames: 2000000
     post_check_session: true
     tol: 0.0
-    desc: 'mods:M1N follow-up 2, shipped configuration (no libmh), default keys: the m1n_marshal_idle order -- the route planner now routes straight through the idle friend in the one-tile corridor and the walker trades tiles with it (no push ahead, no stall)'
+    desc: 'mods:M1H movement preset, libmh BOUND (mv_waves=0 so the pathfind rebind is armed): the libmh twins carry every key; the carrier line must say `libmh twin` and the twin hit counters must be > 0. Same outcomes as m1h_ship'
+    solo_steps:
+      - name: f1_corner
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'lib']
+      - name: f2_corridor
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'lib']
+      - name: f3_headon
+        script: m1h_f3.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f3.csv;mv_player=0;stop_step=1900
+        # f3 tests the marshal-site swap (3e-4), not mods:M1DT: with move_route_through_replanning on, the friend waiting in state 0x0a is open ground and the pair no longer needs the swap
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_nudge_idle=0;move_route_through_replanning=0;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f3, --arm, 'lib']
+      - name: f4_kofu
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        # f4 tests the centroid wrap, not 4c or the route planner: the preset's move_reverse_now re-orders mid-slide, and (mode=original) move_route_through_moving reroutes the group; either way the group no longer straddles the seam at order 3 (cent_x=0)
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_reverse_now=0;move_route_through_moving=0;move_route_through_replanning=0;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'lib']
+      - name: f5_nd
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=12;nd_at=1500;nd_player=0;stop_step=3300
+        post_check: [tools/check_m1h.py, --case, f5, --arm, 'lib']
+      - name: f11_route_moving
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'lib']
+      - name: f12_replanning_wall
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'lib']
+      - name: f13_block_queue
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_moving=0;move_route_through_replanning=0;move_block_wait_ms=450;move_block_reset_moving=1;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'lib']
+      - name: f14_fc_inplace
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'lib']
+      - name: f15_fc_far
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'lib']
+      - name: f16_fc_wall
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'lib']
+      - name: f17_hop_wall
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'lib']
+      - name: f18_fc_below
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'lib']
+      - name: f19_fc_spread
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'lib']
+      - name: f20_fc_thin_wall
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'lib']
+      - name: f21_door_queue
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'lib']
+      - name: f6_speed
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'lib']
+      - name: f7_attack
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'lib']
+      - name: f8_merge
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        tol: 0.0005
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'lib']
+      - name: f9_guards
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_nudge_idle=0;move_swap_headon=0
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'lib']
+      - name: d2_marshal
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, d2, --arm, 'lib']
+      - name: d5_claim
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=3;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_claim_leader=1
+        post_check: [tools/check_m1h.py, --case, d5, --arm, 'lib']
+      - name: d7_heading
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=0
+        post_check: [tools/check_m1h.py, --case, d7, --arm, 'lib']
+      - name: f10_bigmap
+        script: m1h_f10.txt
+        harness_extra: pf_at=300;pf_player=0;pf_n=8;pf_pick=2;pf_reveal=1;pf_deferred=1;pf_spread=3;pf_tail=1500;pf_sample=100;stop_step=3700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;route_corridor_mode=2;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f10, --arm, 'lib']
+
+  - name: m1h_off
+    budget_s: 215
+    budget_evidence: "134 s for the 16 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 110 s for 13) x1.3; cause C fixture F17 +7 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +15 s: measured 149 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
+    long_why: "eighteen single-process steps, each replaying a recorded or scripted movement case to its end"
+    tier: release  # the fix-off negative: retail's stalls are the control, not a regression check of the fix
+    kind: solo
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=0;group_movement=0;improved_combat=0
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
+    timeout_frames: 2000000
+    post_check_session: true
+    tol: 0.0
+    desc: 'mods:M1H negative control: the three masters 0 (retail), libmh absent -- every fixture shows the retail outcome (the rc10/rc11 stalls and dead ends), no key is reported, no splice or twin hit counter moves'
+    solo_steps:
+      - name: f1_corner
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'off']
+      - name: f2_corridor
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'off']
+      - name: f3_headon
+        script: m1h_f3.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f3.csv;mv_player=0;stop_step=1900
+        # f3 tests the marshal-site swap (3e-4), not mods:M1DT: with move_route_through_replanning on, the friend waiting in state 0x0a is open ground and the pair no longer needs the swap
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f3, --arm, 'off']
+      - name: f4_kofu
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'off']
+      - name: f5_nd
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=12;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f5, --arm, 'off']
+      - name: f11_route_moving
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'off']
+      - name: f12_replanning_wall
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'off']
+      - name: f13_block_queue
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'off']
+      - name: f14_fc_inplace
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'off']
+      - name: f15_fc_far
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'off']
+      - name: f16_fc_wall
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'off']
+      - name: f17_hop_wall
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'off']
+      - name: f18_fc_below
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'off']
+      - name: f19_fc_spread
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'off']
+      - name: f20_fc_thin_wall
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'off']
+      - name: f21_door_queue
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'off']
+      - name: f6_speed
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'off']
+      - name: f7_attack
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'off']
+      - name: f8_merge
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        omit_satellite: [libmh.dll]
+        tol: 0.0005
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'off']
+      - name: f9_guards
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'off']
+      - name: f10_bigmap
+        script: m1h_f10.txt
+        harness_extra: pf_at=300;pf_player=0;pf_n=8;pf_pick=2;pf_reveal=1;pf_deferred=1;pf_spread=3;pf_tail=1500;pf_sample=100;stop_step=3700
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f10, --arm, 'off']
+
+  - name: m1h_twin_eq
+    budget_s: 510
+    budget_evidence: "316 s for the 28 steps (2026-10-19, the F14-F16 pairs joined; it was 241 s for 22) x1.3; cause C fixture eq_f17 pair +8 s +14 s measured 2026-10-19 (machine loaded by other agents), budget +30 s; M1G 4b v3 four steps (eq_f18/eq_f19 ship + lib) +40 s: measured 341 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix F20 pair (eq_f20 ship + lib) +30 s: ~8 s + ~20 s measured on a quiet machine (2026-10-20)."
+    long_why: "thirty-two single-process steps (sixteen fixtures, each once with libmh absent and once with it bound), the libmh ones 2-3x slower"
+    kind: solo
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
+    timeout_frames: 2000000
+    post_check_session: true
+    tol: 0.0
+    desc: 'mods:M1H twin == splice: each fixture runs twice, libmh absent (the retail splices) and libmh bound (the twins); the second step demands a step-identical per-step state hash against the first (check_m1h.py --vs ship). attack_range_footprint is ON (it follows improved_combat); the ALT enqueue twin carried no footprint rule until 2026-10-18 and diverged from step 24 of f8'
+    solo_steps:
+      - name: eq_f1_ship
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'ship', --tag, teq_f1]
+      - name: eq_f1_lib
+        script: m1h_f1.txt
+        deploy_save: 7-abigan-5-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f1.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f1, --arm, 'lib', --tag, teq_f1, --vs, ship]
+      - name: eq_f2_ship
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'ship', --tag, teq_f2]
+      - name: eq_f2_lib
+        script: m1h_f2.txt
+        deploy_save: 7-abigan-5
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f2.csv;mv_player=0;stop_step=1700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f2, --arm, 'lib', --tag, teq_f2, --vs, ship]
+      - name: eq_f9_ship
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_nudge_idle=0;move_swap_headon=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'ship', --tag, teq_f9]
+      - name: eq_f9_lib
+        script: m1h_f9.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=6;nd_at=1500;nd_player=0;mv_oob_fill=1;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_idle=0;move_nudge_idle=0;move_swap_headon=0
+        post_check: [tools/check_m1h.py, --case, f9, --arm, 'lib', --tag, teq_f9, --vs, ship]
+      - name: eq_f4_ship
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_reverse_now=0;move_route_through_moving=0;move_route_through_replanning=0;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'ship', --tag, teq_f4]
+      - name: eq_f4_lib
+        script: m1h_f4.txt
+        deploy_save: 5-kofu-c
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f4.csv;mv_player=0;mv_tail=600;stop_step=7100
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_reverse_now=0;move_route_through_moving=0;move_route_through_replanning=0;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f4, --arm, 'lib', --tag, teq_f4, --vs, ship]
+      - name: eq_f8_ship
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        tol: 0.0005
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'ship', --tag, teq_f8]
+      - name: eq_f8_lib
+        script: m1h_f8.txt
+        deploy_save: nortus-1
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f8.csv;mv_player=0;mv_tail=2500;stop_step=8500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        tol: 0.0005
+        post_check: [tools/check_m1h.py, --case, f8, --arm, 'lib', --tag, teq_f8, --vs, ship]
+      - name: eq_d5_ship
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=3;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_claim_leader=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, d5, --arm, 'ship', --tag, teq_d5]
+      - name: eq_d5_lib
+        script: m1h_f5.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=3;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_claim_leader=1
+        post_check: [tools/check_m1h.py, --case, d5, --arm, 'lib', --tag, teq_d5, --vs, ship]
+      - name: eq_f6_ship
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'ship', --tag, teq_f6]
+      - name: eq_f6_lib
+        script: m1h_f6.txt
+        deploy_save: ayy30-tests
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f6.csv;mv_player=0;mv_tail=1200;stop_step=5500
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f6, --arm, 'lib', --tag, teq_f6, --vs, ship]
+      - name: eq_f7_ship
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'ship', --tag, teq_f7]
+      - name: eq_f7_lib
+        script: m1h_f7.txt
+        deploy_save: 2-almost
+        harness_extra: mv_replay=@UISCRIPTS@/m1h_f7.csv;mv_player=0;mv_tail=3500;stop_step=7700
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f7, --arm, 'lib', --tag, teq_f7, --vs, ship]
+      - name: eq_f11_ship
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'ship', --tag, teq_f11]
+      - name: eq_f12_ship
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'ship', --tag, teq_f12]
+      - name: eq_f13_ship
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_moving=0;move_route_through_replanning=0;move_block_wait_ms=450;move_block_reset_moving=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'ship', --tag, teq_f13]
+      - name: eq_f14_ship
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'ship', --tag, teq_f14]
+      - name: eq_f15_ship
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'ship', --tag, teq_f15]
+      - name: eq_f16_ship
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'ship', --tag, teq_f16]
+      - name: eq_f17_ship
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'ship', --tag, teq_f17]
+      - name: eq_f18_ship
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'ship', --tag, teq_f18]
+      - name: eq_f19_ship
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'ship', --tag, teq_f19]
+      - name: eq_f20_ship
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'ship', --tag, teq_f20]
+      - name: eq_f21_ship
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'ship', --tag, teq_f21]
+      - name: eq_f11_lib
+        script: m1h_f11.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=7;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f11, --arm, 'lib', --tag, teq_f11, --vs, ship]
+      - name: eq_f12_lib
+        script: m1h_f12.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=8;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f12, --arm, 'lib', --tag, teq_f12, --vs, ship]
+      - name: eq_f13_lib
+        script: m1h_f13.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_case=9;nd_len=1;nd_at=1500;nd_player=0;stop_step=3300
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_route_through_moving=0;move_route_through_replanning=0;move_block_wait_ms=450;move_block_reset_moving=1;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f13, --arm, 'lib', --tag, teq_f13, --vs, ship]
+      - name: eq_f14_lib
+        script: m1h_f14.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=1;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f14, --arm, 'lib', --tag, teq_f14, --vs, ship]
+      - name: eq_f15_lib
+        script: m1h_f15.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=2;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f15, --arm, 'lib', --tag, teq_f15, --vs, ship]
+      - name: eq_f16_lib
+        script: m1h_f16.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=3;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f16, --arm, 'lib', --tag, teq_f16, --vs, ship]
+      - name: eq_f17_lib
+        script: m1h_f17.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
+        post_check: [tools/check_m1h.py, --case, f17, --arm, 'lib', --tag, teq_f17, --vs, ship]
+
+      - name: eq_f18_lib
+        script: m1h_f18.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=6;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f18, --arm, 'lib', --tag, teq_f18, --vs, ship]
+      - name: eq_f19_lib
+        script: m1h_f19.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=7;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f19, --arm, 'lib', --tag, teq_f19, --vs, ship]
+      - name: eq_f20_lib
+        script: m1h_f20.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_fc=8;nd_fc_at=1500;nd_player=0;nd_tail=1100;stop_step=2900
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f20, --arm, 'lib', --tag, teq_f20, --vs, ship]
+      - name: eq_f21_lib
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [tools/check_m1h.py, --case, f21, --arm, 'lib', --tag, teq_f21, --vs, ship]
+
+  - name: m1h_mp_moving
+    budget_s: 117
+    budget_evidence: "measured 89-90 s x3 (2026-10-19, nd cases 8 + 9 joined the sequence, 7 cases; it was 63-65 s with 5) x1.3"
+    kind: multi
+    host: mp_host_m1h_moving.txt
+    clients: [mp_client_m1h_moving.txt]
+    omit_satellite: [libmh.dll]
+    net_extra: transport=udp;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: region_hash_step=50;synth_move=0;nd_case=1245789;nd_at=600;nd_player=0;nd_fc=4;nd_fc_at=700;nd_tail=1800
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/log_debug.ini]
+    timeout: 420
+    post_check: [[tools/check_m1h.py, --mp, --arm, 'ship']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'mods:M1H 2-peer moving fixture, libmh.dll omitted on both peers (the shipped configuration): the harness nd probe builds seven cases on EVERY peer from a fresh match (nd_case=12457 -- nudge an idle blocker, head-on swap in a one-tile corridor, an idle friend routed through the corridor, a mixed-speed group against a lone unit, a mover behind a column of walking friends) and moves the units through the real right-click path; the lockstep pair stays ALL PAIRS IDENTICAL, both peers print the same `; ND VERDICT` lines and `; M1N` lines, and the retail splice hit counters for those cases are > 0'
+
+  - name: m1h_mp_moving_mixed
+    budget_s: 117
+    budget_evidence: "measured 89-90 s x3 (2026-10-19, nd cases 8 + 9 joined the sequence, 7 cases; it was 63-65 s with 5) x1.3"
+    kind: multi
+    host: mp_host_m1h_moving.txt
+    clients: [mp_client_m1h_moving.txt]
+    omit_satellite: [host:libmh.dll]
+    net_extra: transport=udp;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: region_hash_step=50;synth_move=0;nd_case=1245789;nd_at=600;nd_player=0;nd_fc=4;nd_fc_at=700;nd_tail=1800
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/log_debug.ini]
+    timeout: 420
+    post_check: [[tools/check_m1h.py, --mp, --arm, 'mixed']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'mods:M1H 2-peer moving fixture, MIXED pair: the host WITHOUT libmh.dll (the retail splices carry the keys) against a client WITH it (the libmh twins carry them) -- the strongest twin oracle there is: one match, the same lockstep step, ALL PAIRS IDENTICAL proves twin == splice on the nd cases (nudge, swap, route-through, mixed-speed group), and each peer''s carrier lines and hit counters name its own carrier'
+
+  - name: m1h_mp_moving_lib
+    budget_s: 117
+    budget_evidence: "measured 89-90 s x3 (2026-10-19, nd cases 8 + 9 joined the sequence, 7 cases; it was 63-65 s with 5) x1.3"
+    kind: multi
+    host: mp_host_m1h_moving.txt
+    clients: [mp_client_m1h_moving.txt]
+    net_extra: transport=udp;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: region_hash_step=50;synth_move=0;nd_case=1245789;nd_at=600;nd_player=0;nd_fc=4;nd_fc_at=700;nd_tail=1800
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/log_debug.ini]
+    timeout: 420
+    post_check: [[tools/check_m1h.py, --mp, --arm, 'lib']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'mods:M1H 2-peer moving fixture with libmh BOUND on both peers: the same five nd cases, carried by the libmh twins; ALL PAIRS IDENTICAL, equal ND VERDICT / M1N lines on both peers, twin hit counters > 0'
+
+  # END m1h

@@ -173,6 +173,12 @@ DWORD    g_need_since = 0;
 
 uint8_t *g_rx_buf     = nullptr; // the client's delivery buffer (MAP_MAX_BYTES, on first need)
 bool     g_rejoin_due = false;   // a stored download owes the host a re-JOIN (see client_tick)
+// mp:X2j -- channel C's receive frontier survives a finished download (udp_channel_c.cpp keeps it
+// across conn drops and endpoint restarts), so the NEXT map download in the same process would count
+// its chunks as duplicates and never reach the Receiver. Entering CS_NEED therefore owes one
+// MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX) -- main thread only, so client_resolve_now (which can run
+// on the recv thread, via client_on_advert) only SETS this; client_tick pays it before the first poll.
+bool g_discard_owed = false;
 // mp:X2d -- what the LAST JOIN told the host we hold (client_my_hash is only ever asked by a JOIN
 // builder). client_resolve_now compares against it: a resolve that changes the answer after the host
 // was told owes it a re-JOIN, download or not. Without it a JOIN that raced ahead of the advert
@@ -1213,8 +1219,9 @@ void client_resolve_now() {
                       g_want_map);
             mlog(g_line);
         } else {
-            g_cs         = CS_NEED;
-            g_need_since = GetTickCount();
+            g_cs           = CS_NEED;
+            g_need_since   = GetTickCount();
+            g_discard_owed = true; // mp:X2j -- paid by client_tick, on the main thread
             mlog("; [map] client resolve missing -- waiting for the host's copy over channel C\n");
         }
     }
@@ -1293,6 +1300,13 @@ void client_tick() {
         return;
     }
     if (g_cs != CS_NEED) return;
+    if (g_discard_owed) { // mp:X2j -- rewind channel C to chunk 0 before the first poll of this download
+        g_discard_owed = false;
+        const int did  = MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX);
+        wsprintfA(g_line, "; [map] client entered NEED -- channel C receive side %s (mp:X2j)\n",
+                  did ? "rewound to chunk 0" : "has nothing to rewind (TCP or no module)");
+        mlog(g_line);
+    }
     if (g_rx_buf == nullptr) {
         g_rx_buf = (uint8_t *)VirtualAlloc(nullptr, MAP_MAX_BYTES, MEM_RESERVE | MEM_COMMIT,
                                            PAGE_READWRITE);
@@ -1551,6 +1565,10 @@ void session_reset() {
     g_host_map[0]       = '\0';
     g_host_claim        = false;
     g_rejoin_due        = false;
+    g_discard_owed      = false;
+    // mp:X2j -- the lobby that ends here may have left channel C's frontier past a finished (or
+    // abandoned) download; the next lobby's transfer starts from chunk 0 on the sender. Main thread.
+    MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX);
     memset(g_host_hash, 0, HASH_N);
     memset(g_my_hash, 0, HASH_N);
     gate_open(); // hands the DISABLED bit back to retail if we were the ones holding it

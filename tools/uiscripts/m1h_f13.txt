@@ -1,0 +1,17 @@
+# mods:M1N 3e-6 -- fixture F13 (f13_block_queue, move_block_reset_moving + move_replan_detour_cap): load 5-kofu-c and let the harness probe (nd_case=9: eight units in a blob queue through a one-tile gap in a 17-tile wall) (the row's harness_extra) run the case. The verdict is NOT a frame:
+# tools/check_m1h.py reads the probe's `; MV ...` / `; ND ...` lines and the seams' `; move ...` lines of the session directory.
+# One capture, right after the load: the START frame is identical in every arm (ship / orig / lib / off), so one baseline serves all four rows.
+# The wait afterwards only has to outlast the probe (the harness ends the process at stop_step).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+capture m1h_f13
+gameclock +44920
+log m1h_f13: probe finished
+end

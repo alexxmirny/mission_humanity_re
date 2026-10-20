@@ -725,6 +725,43 @@ struct reimpl_fixes {
     // Initialiser = faithful stock.
     bool attack_range_footprint = false;
 
+    // mods:M1H lane A -- the rest of the improved_movement / group_movement keys, plumbed to libmh so a libmh body can carry them (the
+    // twins land in lanes B / C; sim/sim_move_fixes.h holds the values they read). Each is the host-synced value of the [net] key of the
+    // same name (F_HOSTSYNC, dev keys under the launcher switches). They do NOTHING in libmh until a twin reads them, and the retail
+    // splices in mh.dll are what carries a key when libmh is absent. The initialisers are the faithful stock: flags off, numeric knobs at
+    // their retail values (route_cost_base/ring4/ring8/ring16 = 1/4/8/16), so a build that never calls set_fixes is the original.
+    bool move_centroid_wrap_fix         = false;
+    bool move_detour_slot_guard         = false;
+    bool move_flood_queue_guard         = false;
+    int  route_cost_mode                = 0;
+    int  route_cost_base                = 1;
+    int  route_cost_ring4               = 4;
+    int  route_cost_ring8               = 8;
+    int  route_cost_ring16              = 16;
+    int  route_gap_wave_full            = 0;
+    int  route_corridor_mode            = 0;
+    bool route_flood_exact              = false;
+    int  move_block_wait_ms             = 0;
+    bool move_keep_sidestep             = false;
+    int  move_repath_cooldown_ms        = 0;
+    bool move_distinct_goals            = false;
+    int  move_near_enough               = 0;
+    bool move_group_speed               = false;
+    bool move_nudge_idle                = false;
+    bool move_claim_leader              = false;
+    bool move_swap_headon               = false;
+    bool move_route_through_idle        = false;
+    bool move_route_through_moving      = false; // mods:M1N 3e-6: a walking friend's tile is open to the planner
+    int  move_route_through_moving_cost = 0;     // ... priced at this cost level (0..4)
+    bool move_route_through_replanning  = false; // mods:M1DT fix 2: a re-planning (state 0x0a) friend's tile is open to the planner too
+    bool move_block_reset_moving        = false; // mods:M1DT fix 4a: the block-wait budget restarts when the blocker changes to a walking friend
+    int  move_replan_detour_cap         = 0;     // mods:M1DT fix 4b: percent of the straight distance a block-wait replan may take (0 = off)
+    bool move_enter_queue               = false; // mods:M1BE: ORDER 0x24 units wait behind an entering friend and ignore the block-wait / sidestep / cooldown keys
+    bool storage_door_hold              = false; // mods:M1BE: an open storage door stays open while an entering friend is within 2 tiles
+    int  move_formation_click           = 0;     // mods:M1G 4b: 0 off, 1..2 = the old keep rule (N - 1 rings of slack), 3 = the formation moves as one
+    bool move_reverse_now               = false; // mods:M1G 4c: slide back at once when a new goal lies behind
+    int  move_turn_rate                 = 0;     // mods:M1G 4c: walker turn speed x 2^k (0 retail, 0..2)
+
     // [net] player_left_pin_fix -- MP U56: a NATURAL elimination of a human is observed by every peer's
     // own sim at the same step (llm_strat_player_presence_lost(p, 0)), but the eliminated peer's
     // CTL_PLAYER_LEFT used to flip that player's HUMAN/DEFEATED/GONE flags AT RECEIVE TIME -- a different

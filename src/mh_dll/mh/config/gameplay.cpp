@@ -21,14 +21,32 @@ const char *source_name(Source s) {
 
 static void log_line(const char *s) { seam_log(s); }
 
-static char g_cur_sum[192] = "";
-static char g_cur_src[16]  = "local";
+static char g_cur_sum[2048] = "";
+static char g_cur_src[16]   = "local";
 
 static const char *source_tag(Source s) { return s == Source::LOCAL ? "local" : (s == Source::PUBLISHED ? "published" : "adopted"); }
 
 void current(char *summary, int summary_cap, char *src, int src_cap) {
     if (summary && summary_cap > 0) lstrcpynA(summary, g_cur_sum, summary_cap);
     if (src && src_cap > 0) lstrcpynA(src, g_cur_src, src_cap);
+}
+
+uint32_t current_hash() {
+    uint32_t h = 2166136261u;
+    for (const char *c = g_cur_sum; *c; ++c) h = (h ^ (uint8_t)*c) * 16777619u;
+    return h;
+}
+
+void note(const char *text) {
+    char line[320];
+    snprintf(line, sizeof(line), "; gameplay: %s\n", text);
+    seam_log(line);
+}
+
+void log_applied_hash() {
+    char line[64];
+    snprintf(line, sizeof(line), "; gameplay: applied hash=%08x\n", current_hash());
+    seam_log(line);
 }
 
 mh_net_proto::GameplaySet local_set() {
@@ -65,9 +83,9 @@ static void apply_impl(const mh_net_proto::GameplaySet &set, Source src, const c
     mh::lockstep::reimpl_fixes fx  = mh::lockstep::fixes();
     const int                  ran = dispatch<mh::lockstep::reimpl_fixes>(sp, n, v, hk, nh, fx);
     if (mh::config::ours_run()) mh::lockstep::set_fixes(fx);
-    char sum[400];
+    char sum[2048];
     summary_text(sp, n, v, sum, sizeof(sum));
-    char line[640];
+    char line[2400];
     snprintf(line, sizeof(line), "; gameplay: %s%s%s%s%s [%d key(s), %d hook(s)]\n", source_name(src), sum[0] ? " " : "", sum,
              why ? " -- " : "", why ? why : "", n, ran);
     seam_log(line);

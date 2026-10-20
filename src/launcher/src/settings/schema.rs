@@ -163,6 +163,8 @@ struct Extras {
     mirror: Option<String>,
     /// Insert this row before the row with this id (ignored when that row does not exist).
     before: Option<String>,
+    /// A hotkey row that also accepts the named keys (Tab, Space, ...): adds the `named` option.
+    named: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -338,7 +340,16 @@ impl Schema {
                 default,
                 label: r.label,
                 subtab: r.subtab.clone(),
-                options: r.options.iter().map(value_text).collect(),
+                options: {
+                    let mut o: Vec<String> = r.options.iter().map(value_text).collect();
+                    if kind == Kind::Hotkey
+                        && ov.named.or(ex.named).unwrap_or(false)
+                        && !o.iter().any(|x| x == "named")
+                    {
+                        o.push("named".to_string());
+                    }
+                    o
+                },
                 experimental: r.experimental,
                 restart: r.restart,
                 pending: r.pending,

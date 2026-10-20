@@ -1,6 +1,10 @@
 #include "sim/sim_group_move_order_pathfind.h"
-#include "sim/sim_merge_goal.h"  // mods:M1X [net] move_merge_goal_fix
-#include "sim/sim_stack_guard.h" // LIFT-TABLE S5: the stack probe is libmh-internal, not a host service
+#include "sim/sim_merge_goal.h"    // mods:M1X [net] move_merge_goal_fix
+#include "sim/sim_move_fixes.h"    // mods:M1H the planner keys' switchboard (move_fix())
+#include "sim/move/wrap.h"         // mods:M1H [net] move_centroid_wrap_fix
+#include "sim/move/corridor.h"     // mods:M1H [net] route_corridor_mode
+#include "sim/move/planner_hits.h" // mods:M1H the twins' hit counters
+#include "sim/sim_stack_guard.h"   // LIFT-TABLE S5: the stack probe is libmh-internal, not a host service
 
 #include "addr/mh_calls.gen.h" // typed callables for the ORIGINAL functions this closure still calls out to
 #include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -41,6 +45,29 @@ namespace {
 // (tile_x<<8)|tile_y -- the codebase's standard flat passable/tile index (matches
 // sim_store::passable_at()'s own indexing convention).
 inline uint32_t flat_idx(uint32_t x, uint32_t y) { return (x << 8) | y; }
+
+// mods:M1H [net] route_corridor_mode: the active region list as move::corridor_widen walks it.
+struct corridor_regions {
+    using handle = llm_map_region *;
+    llm_map_region *head_;
+    handle          head() { return head_; }
+    handle          next(handle r) { return r->next; }
+    int32_t        &mark(handle r) { return r->route_mark; }
+    uint32_t        cells(handle r) { return r->cell_count; }
+    uint32_t        neighbor_count(handle r) { return r->neighbor_count; }
+    handle          neighbor(handle r, uint32_t i) { return r->neighbors[i]; }
+};
+
+// Twin of the retail splice at 0x0041d06c (mh/seams/net_lockstep.cpp mv_corr_stub): runs right after the member-region marking.
+void corridor_after_mark(const sim_view &v, int mode) {
+    move::planner_hit(move::PH_CORR);
+    corridor_regions            cr{*v.region_list_head};
+    const move::corridor_result r   = move::corridor_widen(mode, cr);
+    uint32_t                   &deq = move::flood_dequeues();
+    mh::ai::ai_say("; corridor (mods:M1C) mode=%d members=%d regions marked %d -> %d of %d, region cells eligible=%u, flood dequeues since last wave=%u\n", mode,
+                   static_cast<int>(*v.group_member_count), r.before, r.after, r.regions, r.cells, deq);
+    deq = 0;
+}
 
 } // namespace
 
@@ -86,6 +113,7 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
         int32_t       row_accum = 0;
         const int32_t map_w     = *v.map_width;
         const int32_t map_h     = *v.map_height;
+        const bool    wrap_fix  = move_fix().centroid_wrap_fix;
         for (int32_t i = 1; i < member_count; ++i) {
             // 0x0041caa4-0x0041cafd: wrapped delta on the column axis. THE HALVING IDIOM: bit-identical
             // to C's `/2` for every int32 input (see sim_pathfind_route_leg_group_and_sort.cpp's
@@ -93,7 +121,11 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             int32_t delta_col = static_cast<int32_t>(v.group_members[i].cur_col) -
                                 static_cast<int32_t>(v.group_members[0].cur_col);
             if (-map_w / 2 < delta_col) {
-                if (map_w / 2 < delta_col) delta_col = 0x80 - delta_col;
+                if (map_w / 2 < delta_col) {
+                    // [net] move_centroid_wrap_fix (mods:M1H; twin of the retail splice at 0x0041caf2): `d - width`, not `0x80 - d`.
+                    delta_col = move::centroid_wrap_delta(delta_col, map_w, wrap_fix);
+                    if (wrap_fix) move::planner_hit(move::PH_CENT_X);
+                }
             } else {
                 delta_col += map_w;
             }
@@ -103,7 +135,10 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             int32_t delta_row = static_cast<int32_t>(v.group_members[i].cur_row) -
                                 static_cast<int32_t>(v.group_members[0].cur_row);
             if (-map_h / 2 < delta_row) {
-                if (map_h / 2 < delta_row) delta_row = 0x80 - delta_row;
+                if (map_h / 2 < delta_row) {
+                    delta_row = move::centroid_wrap_delta(delta_row, map_h, wrap_fix); // ... and the y axis (0x0041cb51)
+                    if (wrap_fix) move::planner_hit(move::PH_CENT_Y);
+                }
             } else {
                 delta_row += map_h;
             }
@@ -290,6 +325,8 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
         // flood below is scoped to that subgraph (same pre-pass sim_group_plan_formation_positions.cpp
         // performs INLINE for a different member/goal pair; here it is entirely inside the callee).
         c.pathfind_mark_group_member_regions();
+        // [net] route_corridor_mode (mods:M1H; twin of the retail splice at 0x0041d06c): widen which regions the flood may enter.
+        if (const int cor_mode = move::corridor_clamp_mode(move_fix().route_corridor_mode); cor_mode != 0) corridor_after_mark(v, cor_mode);
         const int32_t flood_result =
             c.region_flood_reachable(static_cast<int32_t>(from_packed), static_cast<int32_t>(to_packed));
         if (flood_result == 0) {

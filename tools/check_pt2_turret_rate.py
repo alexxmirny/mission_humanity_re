@@ -35,6 +35,10 @@ lower bound use it), and `--expect-adopted` adds clause 5: the host's net log ha
 line, the client's has `; gameplay: ADOPTED from host <summary>` with the SAME summary (and that summary says
 turret_fire_rate_mult=M), and the client's last turret-reload-realtime banner is the arm's (the client's own ini
 said otherwise, so the host's value reached it). Clause 3 then measures BOTH peers at the host's rate.
+
+GH1 (`gameplay_retail_route`, `gameplay_trailer_dropped`): `--expect-adopted` also requires clause 6 -- both peers log
+`; gameplay: applied hash=<8 hex>` (written after the apply) and the two are equal. `--expect-start-refused`
+(dropped-trailer row, host `[net] start_gameplay_trailer=0`) judges the client's REFUSAL of that START instead (R1-R4).
 """
 
 import argparse
@@ -69,6 +73,7 @@ FIRE_RE = re.compile(
 
 PUBLISHED_RE = re.compile(r"; gameplay: PUBLISHED (\S+)")
 ADOPTED_RE = re.compile(r"; gameplay: ADOPTED from host (\S+)")
+HASH_RE = re.compile(r"; gameplay: applied hash=([0-9a-fA-F]{8})")
 
 
 def summary_mult(summary):
@@ -105,6 +110,19 @@ def adoption_fails(host_net, client_net, mult, expect):
                 "clause 5: the adopted summary says turret_fire_rate_mult=%s, expected %g"
                 % (m, mult)
             )
+    # GH1 clause 6: both peers logged the short hash of the values they APPLIED at match start, and they are equal
+    # (the summaries above are text the client could in principle log without applying; the hash line is written
+    # after the apply on both sides).
+    hh = [m[1] for m in map(HASH_RE.search, host_net) if m]
+    ch = [m[1] for m in map(HASH_RE.search, client_net) if m]
+    if not hh:
+        fails.append("clause 6: the host's net log has no `; gameplay: applied hash=` line")
+    if not ch:
+        fails.append("clause 6: the client's net log has no `; gameplay: applied hash=` line")
+    if hh and ch and hh[-1] != ch[-1]:
+        fails.append(
+            "clause 6: applied gameplay hash differs: host %s, client %s" % (hh[-1], ch[-1])
+        )
     want = ON if expect == "fixed" else OFF
     # the boot banner is in the process log, the adoption's in the session log: order by the [hh:mm:ss.mmm] prefix
     banners = sorted(
@@ -256,6 +274,37 @@ def check(host_dir, client_dir, expect, step_ms, min_overlap=1000, mult=MULT, ex
     return fails, "overlap=%d mismatches=%d %s" % (ov, n, table)
 
 
+REFUSED_RE = re.compile(r"; gameplay: Start REFUSED \((?P<why>[^)]*)\)")
+BOUNCE = "GH1: Start refused -> synthesising retail 0x0e"
+STEP_RE = re.compile(r"^\d+ [0-9A-Fa-f]{16} ")
+
+
+def refused_fails(host_dir, client_dir):
+    """GH1 (`gameplay_trailer_dropped`): the host's START carried NO gameplay settings -- the client must REFUSE it.
+
+    Clause R1 the host really sent the START without a trailer (`0 B gameplay trailer`); R2 the client logged the
+    refusal and the bounce; R3 it never adopted; R4 it never hashed a sim step (no
+    match started). The browser notice itself is asserted by the client's UI script (`present Refused: ...`)."""
+    fails = []
+    host_net = check_cancel_task.net_log_lines(host_dir)
+    client_net = check_cancel_task.net_log_lines(client_dir)
+    if not any("; gameplay: START trailer sent: 0 B" in ln for ln in host_net):
+        fails.append("R1: the host did not log `; gameplay: START trailer sent: 0 B`")
+    ref = [m for m in map(REFUSED_RE.search, client_net) if m]
+    if not ref:
+        fails.append("R2: the client's net log has no `; gameplay: Start REFUSED (...)` line")
+    if not any(BOUNCE in ln for ln in client_net):
+        fails.append(
+            "R2: the client's net log has no `%s` line (no bounce to the browser)" % BOUNCE
+        )
+    if any("; gameplay: ADOPTED from host" in ln for ln in client_net):
+        fails.append("R3: the client logged `ADOPTED from host` despite the refusal")
+    steps = sum(1 for ln in check_storage_purge.harness_log_lines(client_dir) if STEP_RE.match(ln))
+    if steps:
+        fails.append("R4: the client hashed %d sim step(s) -- a match started" % steps)
+    return fails, "refused=%s steps=%d" % (ref[-1]["why"] if ref else None, steps)
+
+
 # ---- selftest ------------------------------------------------------------------------------------
 
 
@@ -370,8 +419,11 @@ def selftest():
     ]
     # PT-SET1: the host's gameplay set reaches the client (mult 3.0 is separable from retail and from 2.0 at both steps)
     sm = "turret_reload_realtime_fix=1;turret_fire_rate_mult=3;turret_clip_fix=0;turret_fire_poll_fix=0"
-    pub = "; gameplay: PUBLISHED %s [4 key(s), 4 hook(s)]\n" % sm
-    ado = "; gameplay: ADOPTED from host %s -- START trailer [4 key(s), 4 hook(s)]\n" % sm
+    pub = "; gameplay: PUBLISHED %s [4 key(s), 4 hook(s)]\n; gameplay: applied hash=1a2b3c4d\n" % sm
+    ado = (
+        "; gameplay: ADOPTED from host %s -- START trailer [4 key(s), 4 hook(s)]\n"
+        "; gameplay: applied hash=1a2b3c4d\n" % sm
+    )
     ad = dict(
         banner="on",
         dt=0.02,
@@ -406,6 +458,20 @@ def selftest():
             ),
             False,
         ),
+        (
+            "adopted NEG: applied hashes differ",
+            "fixed",
+            20,
+            dict(ad, gp_client=ado.replace("1a2b3c4d", "deadbeef")),
+            False,
+        ),
+        (
+            "adopted NEG: client logged no applied hash",
+            "fixed",
+            20,
+            dict(ad, gp_client=ado.replace("; gameplay: applied hash=1a2b3c4d\n", "")),
+            False,
+        ),
         ("adopted NEG: client banner stayed OFF", "fixed", 20, dict(ad, cbanner="off"), False),
         ("adopted NEG: shots at mult 2.0 timing", "fixed", 10, dict(ad, dt=0.01, mult=2.0), False),
     ]
@@ -426,6 +492,34 @@ def selftest():
         ok = (not fails) == want_ok
         print("  %-60s %s" % (label, "ok" if ok else "FAIL (%s)" % (fails[:1] or "passed")))
         bad += 0 if ok else 1
+    # GH1: the dropped-trailer START must be REFUSED (no adopt, no entry, no sim step on the client)
+    hs = "; gameplay: START trailer sent: %d B\n"
+    cl = (
+        "; gameplay: the host's START carried no gameplay trailer\n"
+        "; gameplay: Start REFUSED (no host settings) -- the match is not entered; leaving the lobby\n"
+        "; GH1: Start refused -> synthesising retail 0x0e (leave to browser, the notice names the reason)\n"
+    )
+    refcases = [
+        ("refused: dropped trailer, client bounced", hs % 0, cl, 0, True),
+        ("refused NEG: host sent the trailer", hs % 40, cl, 0, False),
+        ("refused NEG: no refusal logged", hs % 0, "", 0, False),
+        ("refused NEG: no bounce logged", hs % 0, cl.split("; GH1")[0], 0, False),
+        (
+            "refused NEG: client adopted anyway",
+            hs % 0,
+            cl + "; gameplay: ADOPTED from host x\n",
+            0,
+            False,
+        ),
+        ("refused NEG: client hashed steps", hs % 0, cl, 400, False),
+    ]
+    for j, (label, hgp, cgp, csteps, want_ok) in enumerate(refcases):
+        host = plant(tmp, "r%d_host" % j, "on", 0.02, True, gp=hgp)
+        client = plant(tmp, "r%d_client" % j, "on", 0.02, True, steps=csteps, gp=cgp)
+        fails, _ = refused_fails(host, client)
+        ok = (not fails) == want_ok
+        print("  %-60s %s" % (label, "ok" if ok else "FAIL (%s)" % (fails[:1] or "passed")))
+        bad += 0 if ok else 1
     print("check_pt2_turret_rate selftest: %s" % ("PASS" if not bad else "FAIL (%d)" % bad))
     return 1 if bad else 0
 
@@ -443,10 +537,23 @@ def main(argv=None):
         action="store_true",
         help="PT-SET1: the client's net log ADOPTED the host's PUBLISHED gameplay summary",
     )
+    ap.add_argument(
+        "--expect-start-refused",
+        action="store_true",
+        help="GH1: the host's START carried no gameplay settings; the client must refuse it (R1-R4)",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
         return selftest()
+    if a.expect_start_refused:
+        if len(a.dirs) != 2:
+            ap.error("--expect-start-refused takes the host and client run dirs")
+        fails, summary = refused_fails(a.dirs[0], a.dirs[1])
+        print("check_pt2_turret_rate (start refused): %s" % summary)
+        for f in fails:
+            print("  FAIL: " + f)
+        return 1 if fails else 0
     if len(a.dirs) != 2 or not a.expect or not a.step_ms:
         ap.error("--expect fixed|retail, --step-ms and the two run dirs are required")
     fails, summary = check(

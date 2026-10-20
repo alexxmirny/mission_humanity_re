@@ -29,6 +29,7 @@ static bool g_group_master = false;
 static int  gm(const mh_gameplay::value &v, int preset, int retail) { return v.i >= 0 ? v.i : (g_group_master ? preset : retail); }
 // mods:M1C [net] improved_combat -- the launcher switch over the combat prototypes (today: attack_range_footprint). Same
 // -1 = follow-the-switch rule; its row precedes the rows that follow it in ini_keys.def.
+static int  g_cor_resolved  = 0; // the resolved route_corridor_mode (route_flood_exact's default follows it)
 static bool g_combat_master = false;
 static int  cb(const mh_gameplay::value &v, int preset, int retail) { return v.i >= 0 ? v.i : (g_combat_master ? preset : retail); }
 
@@ -42,26 +43,151 @@ static const hook_row k_hooks[] = {
     {"net", "improved_movement", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { g_move_master = v.i != 0; }},
     {"net", "group_movement", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { g_group_master = v.i != 0; }},
     {"net", "improved_combat", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { g_combat_master = v.i != 0; }},
-    {"net", "move_centroid_wrap_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_centroid_wrap_fix(mv(v, 1, 0)); }},
-    {"net", "move_detour_slot_guard", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_detour_slot_guard(mv(v, 1, 0)); }},
-    {"net", "move_flood_queue_guard", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_flood_queue_guard(mv(v, 1, 0)); }},
-    {"net", "route_cost_mode", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_cost_mode(mv(v, 1, 0)); }},
-    {"net", "route_cost_base", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_cost_base(mv(v, 1, 1)); }},
-    {"net", "route_cost_ring4", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_cost_ring(4, mv(v, 1, 4)); }},
-    {"net", "route_cost_ring8", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_cost_ring(8, mv(v, 2, 8)); }},
-    {"net", "route_cost_ring16", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_cost_ring(16, mv(v, 3, 16)); }},
-    {"net", "route_gap_wave_full", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_gap_wave_full(mv(v, 6, 0)); }},
-    {"net", "route_corridor_mode", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_route_corridor_mode(mv(v, 1, 0)); }},
-    {"net", "move_block_wait_ms", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_block_wait_ms(mv(v, 1500, 0)); }},
-    {"net", "move_keep_sidestep", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_keep_sidestep(mv(v, 1, 0)); }},
-    {"net", "move_repath_cooldown_ms", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_repath_cooldown_ms(mv(v, 500, 0)); }},
-    {"net", "move_distinct_goals", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_distinct_goals(mv(v, 1, 0)); }},
-    {"net", "move_near_enough", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_near_enough(mv(v, 1, 0)); }},
-    {"net", "move_group_speed", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_group_speed(gm(v, 1, 0)); }},
-    {"net", "move_nudge_idle", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_nudge_idle(mv(v, 1, 0)); }},
-    {"net", "move_claim_leader", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_claim_leader(mv(v, 0, 0)); }},
-    {"net", "move_swap_headon", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_swap_headon(mv(v, 1, 0)); }},
-    {"net", "move_route_through_idle", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_move_route_through_idle(mv(v, 1, 0)); }},
+    {"net", "move_centroid_wrap_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on              = mv(v, 1, 0);
+         fx.move_centroid_wrap_fix = on != 0;
+         mh_set_move_centroid_wrap_fix(on);
+     }},
+    {"net", "move_detour_slot_guard", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on              = mv(v, 1, 0);
+         fx.move_detour_slot_guard = on != 0;
+         mh_set_move_detour_slot_guard(on);
+     }},
+    {"net", "move_flood_queue_guard", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on              = mv(v, 1, 0);
+         fx.move_flood_queue_guard = on != 0;
+         mh_set_move_flood_queue_guard(on);
+     }},
+    {"net", "route_cost_mode", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on       = mv(v, 1, 0);
+         fx.route_cost_mode = on;
+         mh_set_route_cost_mode(on);
+     }},
+    {"net", "route_cost_base", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on       = mv(v, 1, 1);
+         fx.route_cost_base = on;
+         mh_set_route_cost_base(on);
+     }},
+    {"net", "route_cost_ring4", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 4);
+         fx.route_cost_ring4 = on;
+         mh_set_route_cost_ring(4, on);
+     }},
+    {"net", "route_cost_ring8", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 2, 8);
+         fx.route_cost_ring8 = on;
+         mh_set_route_cost_ring(8, on);
+     }},
+    {"net", "route_cost_ring16", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on         = mv(v, 3, 16);
+         fx.route_cost_ring16 = on;
+         mh_set_route_cost_ring(16, on);
+     }},
+    {"net", "route_gap_wave_full", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on           = mv(v, 6, 0);
+         fx.route_gap_wave_full = on;
+         mh_set_route_gap_wave_full(on);
+     }},
+    {"net", "route_corridor_mode", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on           = mv(v, 1, 0);
+         fx.route_corridor_mode = on;
+         g_cor_resolved         = on;
+         mh_set_route_corridor_mode(on);
+     }},
+    // mods:M1H route_flood_exact: -1 follows route_corridor_mode (ON exactly when the resolved mode is 2: the whole-map flood is
+    // unbounded work with the retail FIFO), 0 forces the retail FIFO, 1 forces the exact flood. Row order: after route_corridor_mode.
+    {"net", "route_flood_exact", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on         = v.i >= 0 ? (v.i != 0) : (g_cor_resolved == 2 ? 1 : 0);
+         fx.route_flood_exact = on != 0;
+         mh_set_route_flood_exact(on);
+     }},
+    {"net", "move_block_wait_ms", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on          = mv(v, 1500, 0);
+         fx.move_block_wait_ms = on;
+         mh_set_move_block_wait_ms(on);
+     }},
+    {"net", "move_keep_sidestep", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on          = mv(v, 1, 0);
+         fx.move_keep_sidestep = on != 0;
+         mh_set_move_keep_sidestep(on);
+     }},
+    {"net", "move_repath_cooldown_ms", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on               = mv(v, 500, 0);
+         fx.move_repath_cooldown_ms = on;
+         mh_set_move_repath_cooldown_ms(on);
+     }},
+    {"net", "move_distinct_goals", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on           = mv(v, 1, 0);
+         fx.move_distinct_goals = on != 0;
+         mh_set_move_distinct_goals(on);
+     }},
+    {"net", "move_near_enough", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 0);
+         fx.move_near_enough = on;
+         mh_set_move_near_enough(on);
+     }},
+    {"net", "move_group_speed", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = gm(v, 1, 0);
+         fx.move_group_speed = on != 0;
+         mh_set_move_group_speed(on);
+     }},
+    {"net", "move_nudge_idle", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on       = mv(v, 1, 0);
+         fx.move_nudge_idle = on != 0;
+         mh_set_move_nudge_idle(on);
+     }},
+    {"net", "move_claim_leader", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on         = mv(v, 0, 0);
+         fx.move_claim_leader = on != 0;
+         mh_set_move_claim_leader(on);
+     }},
+    {"net", "move_swap_headon", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 0);
+         fx.move_swap_headon = on != 0;
+         mh_set_move_swap_headon(on);
+     }},
+    {"net", "move_route_through_idle", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on               = mv(v, 1, 0);
+         fx.move_route_through_idle = on != 0;
+         mh_set_move_route_through_idle(on);
+     }},
+    {"net", "move_route_through_moving_cost", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int k                       = mv(v, 0, 0); // mods:M1DT: preset 0 (user playtest rc16: cost 0 moves as expected, cost 3 was worse)
+         fx.move_route_through_moving_cost = k < 0 ? 0 : (k > 4 ? 4 : k);
+         mh_set_move_route_through_moving_cost(k);
+     }},
+    {"net", "move_route_through_moving", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on                 = mv(v, 1, 0);
+         fx.move_route_through_moving = on != 0;
+         mh_set_move_route_through_moving(on);
+     }},
+    // mods:M1DT fix 2: own units in state 0x0a (re-planning) are open ground to the planner too (shares the moving cost level).
+    {"net", "move_route_through_replanning", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on                     = mv(v, 1, 0);
+         fx.move_route_through_replanning = on != 0;
+         mh_set_move_route_through_replanning(on);
+     }},
+    // mods:M1DT fix 4a: the block-wait budget restarts when the unit in the way changes to a walking friend. NOT in the preset (0): on the 20-order
+    // benchmark it adds four 53-89 step stalls behind walking friends and, with 2 + 4b on, no gain (tmp/m1dt/RESULTS.md); flip the 0 to 1 to ship it.
+    {"net", "move_block_reset_moving", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on               = mv(v, 0, 0);
+         fx.move_block_reset_moving = on != 0;
+         mh_set_move_block_reset_moving(on);
+     }},
+    // mods:M1DT fix 4b: a block-wait replan longer than N percent of the straight distance is discarded (bounded) and retried later.
+    {"net", "move_replan_detour_cap", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int pct             = mv(v, 150, 0);
+         fx.move_replan_detour_cap = pct < 0 ? 0 : (pct > 1000 ? 1000 : pct);
+         mh_set_move_replan_detour_cap(pct);
+     }},
+    // mods:M1G 4b: formation from the click (sim/move/formation.h). 0 off (retail); 1..2 = the keep rule (members already standing on the click's
+    // target set stay, N - 1 rings of slack; the rest go to the remaining tiles by total squared distance); 3 = the formation moves as one
+    // (the whole order is planned together: a compact group is shifted rigidly, a spread one is gathered into a block). Clamped 1..3.
+    {"net", "move_formation_click", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int n             = mv(v, 3, 0);
+         fx.move_formation_click = n <= 0 ? 0 : (n > 3 ? 3 : n);
+         mh_set_move_formation_click(n);
+     }},
     {"net", "move_attack_heading_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
          const int on               = mv(v, 1, 0);
          fx.move_attack_heading_fix = on != 0;
@@ -76,6 +202,29 @@ static const hook_row k_hooks[] = {
          const int on           = mv(v, 1, 0);
          fx.move_merge_goal_fix = on != 0;
          mh_set_move_merge_goal_fix(on);
+     }},
+    {"net", "move_reverse_now", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 0);
+         fx.move_reverse_now = on != 0;
+         mh_set_move_reverse_now(on);
+     }},
+    {"net", "move_turn_rate", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int k       = mv(v, 0, 0); // preset 0 = retail: the playtester sets it by hand (user, 2026-10-18)
+         fx.move_turn_rate = k < 0 ? 0 : (k > 2 ? 2 : k);
+         mh_set_move_turn_rate(k);
+     }},
+    // mods:M1BE: soldiers ordered into a storage queue at its door. move_enter_queue: ORDER 0x24 units ignore move_block_wait_ms /
+    // move_keep_sidestep / move_repath_cooldown_ms and wait behind an entering friend; storage_door_hold: the open door stays open while an
+    // entering friend is within 2 tiles of the door tile.
+    {"net", "move_enter_queue", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 0);
+         fx.move_enter_queue = on != 0;
+         mh_set_move_enter_queue(on);
+     }},
+    {"net", "storage_door_hold", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on         = mv(v, 1, 0);
+         fx.storage_door_hold = on != 0;
+         mh_set_storage_door_hold(on);
      }},
     {"net", "attack_range_footprint", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
          const int on              = cb(v, 1, 0);

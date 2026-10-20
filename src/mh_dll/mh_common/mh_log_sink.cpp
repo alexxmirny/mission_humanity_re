@@ -122,7 +122,8 @@ inline bool ends_with_ci(const char *s, const char *suffix) {
 inline long long now_us() {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    return (t.QuadPart * 1000000LL) / g_qpc_freq.QuadPart;
+    // split: t * 1e6 overflows int64 after 10.67 days of uptime at a 10 MHz counter
+    return (t.QuadPart / g_qpc_freq.QuadPart) * 1000000LL + (t.QuadPart % g_qpc_freq.QuadPart) * 1000000LL / g_qpc_freq.QuadPart;
 }
 
 // ---- producer ------------------------------------------------------------------------------------

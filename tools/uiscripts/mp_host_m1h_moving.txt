@@ -1,0 +1,38 @@
+# mods:M1H HOST walk -- the host of the m1h_mp_moving rows: a 2-peer lockstep match in which the harness's nd probe (nd_case=1245789: an idle
+# blocker nudged aside, a head-on swap in a one-tile corridor, an idle friend routed through, a mixed-speed group against a lone unit, a mover behind a column of walking friends)
+# builds its cases on EVERY peer from the fresh match and moves the units through the real right-click path. The verdict is the pair of
+# logs, not a frame: tools/check_m1h.py --mp compares the two peers' `; ND VERDICT` lines and reads the hit counters; the runner's
+# lockstep compare (mp_analyze) gives ALL PAIRS IDENTICAL. One capture per peer (the fresh match, past the reveal saturation) keeps the
+# script a UI-path row. Pair with mp_client_m1h_moving.txt.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+
+absent Network players
+gameclock 6000
+capture m1h_mp_start
+rclick 480 330 shift
+gameclock 66000
+log HOST m1h moving cases done
+end

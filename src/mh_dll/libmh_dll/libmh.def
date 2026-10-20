@@ -17,6 +17,7 @@ LIBRARY libmh
 EXPORTS
     ?ai_say@ai@mh@@YAXPBDZZ
     ?arm_from_config@rebind@mh@@YAX_N@Z
+    ?armed@rebind@mh@@YA_NH@Z
     ?bind_relocated@state@mh@@YAHPAXIABUrelocation_opts@12@PAUrelocation_report@12@@Z
     ?bind_stock@state@mh@@YAHXZ
     ?capture@world@state@mh@@YAHPAXIPAIABUcapture_params@123@@Z

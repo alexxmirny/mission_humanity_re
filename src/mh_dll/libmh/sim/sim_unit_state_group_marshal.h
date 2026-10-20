@@ -37,6 +37,12 @@ struct unit_state_group_marshal_calls {
                                  uint32_t y);                                        // @0x0046a56d
     void (*unit_set_state_of)(int32_t player, int32_t unit_index, int16_t state);    // @0x004869b0
     void (*unit_set_order_param)(int32_t player, int32_t unit_index, int16_t param); // @0x0048696f
+    // ---- mods:M1H lane C: the calls the nudge / swap twin (sim/move/nudge.h) makes on top of the above. APPENDED so a fixture that
+    // aggregate-initialises the first fifteen keeps compiling; a fixture that turns the nudge keys on must supply them.
+    void (*fow_remove_sight)(uint32_t player, int32_t x, int32_t y, uint8_t radius);              // @0x00496868
+    void (*map_fow_UpdateFoWPlus)(uint32_t player, uint32_t x, uint32_t y, uint8_t sight);        // @0x0049681a
+    void (*unit_soldiers_set_heading)(uint16_t player, int32_t unit_index, uint8_t sprite_frame); // @0x00489ab6
+    int32_t (*path_make_single_step)(uint32_t player, int32_t unit_idx);                          // @0x0049561f
 };
 
 const unit_state_group_marshal_calls &live_unit_state_group_marshal_calls();

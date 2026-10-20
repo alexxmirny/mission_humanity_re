@@ -1073,7 +1073,25 @@ struct Config {
     int mv_fx       = 0;
     int mv_fx_frame = 2051;
     // ---- mods:M1N: the nudge / claim / swap case probe (nd_tick): nd_case 1 = nudge an idle blocker, 2 = head-on swap in a
-    // one-tile corridor, 3 = claim a turning leader's tile. Starts at step nd_at once nd_player has landed. `; ND ...` lines.
+    // one-tile corridor, 3 = claim a turning leader's tile, 4 = (mods:M1H) an idle friend inside a one-tile corridor with the mover
+    // routed through it (3e-5 route-through + the walker's swap-trade), 5 = (mods:M1H) a two-proto (mixed-speed) group going through
+    // the corridor against a single unit coming the other way (group speed, arrival, the marshal sites). Starts at step nd_at once
+    // nd_player has landed. `; ND ...` lines.
+    // 6 = (mods:M1H, the slot-0xff fixture) the case-2 corridor with the mover ordered through it and a parked friend that APPEARS
+    // inside it nd_delay steps after the order: the walker is blocked with every sidestep walled off, so unit_path_detour recurses on
+    // the parked occupant (path_slot_id 0xff).
+    // 7 = (mods:M1N 3e-6, move_route_through_moving) a column of two friends walking through the case-2 corridor to a goal beyond W's, and
+    // W (behind them) ordered 3 steps after the column: the planner meets friends that are WALKING but settled (turning to face
+    // the order, waiting). W is unit k=0 of the verdict, the column k=1 (front) and k=2.
+    // 8 = (mods:M1DT fix 2, move_route_through_replanning) the case-2 corridor with a friend inside it that is held in state 0x0a (group
+    // marshal, waiting its batch: state poked, activity_clock +1.5 s, on every peer) while W, west of the corridor, is ordered through it
+    // to a goal beyond: the planner meets a re-planning friend. W is unit k=0 of the verdict, the friend k=1.
+    // 9 = (mods:M1DT fix 4, move_block_reset_moving / move_replan_detour_cap) a vertical wall 17 tiles tall with a one-tile gap
+    // (the corridor, nd_len=1), eight units in a blob west of the gap ordered together through it to a goal just beyond: the followers
+    // wait in the queue; once a wait runs out the replan has to go round the wall's end (the detour the keys prevent).
+    // nd_case > 9 is a SEQUENCE written as decimal digits (mods:M1H; the registry has no list-typed harness key and ini_keys.def is
+    // not this lane's): nd_case=1245 runs cases 1, 2, 4 and 5 one after the other, each starting 60 steps after the previous
+    // case's `; ND TOTAL`, one `; ND VERDICT` set per case.
     int nd_case   = 0;
     int nd_at     = 0;   // first step the probe may act (0 = off)
     int nd_player = 0;   // player whose units are created and moved
@@ -1083,6 +1101,15 @@ struct Config {
     int nd_delay  = 100; // case 1: steps after the order before the idle blocker appears
     int nd_len    = 4;   // case 2: corridor length in tiles (1..12)
     int nd_tail   = 2500; // steps to observe after the order
+    // ---- mods:M1G 4b: the formation-from-the-click fixtures (fc_tick): nd_fc 1 = in place, 2 = far, 3 = wall, 4 = re-order, 6 = one tile below the blob (5 is the cause-C hop fixture), 7 = a spread group; starts at nd_fc_at
+    // (0 = off; after the nd probe's last case when that is on too), nd_fcn units (4..99), player nd_player, anchor nd_x/nd_y, nd_tail steps.
+    int nd_fc    = 0;
+    int nd_fc_at = 0;
+    int nd_fcn   = 16;
+    // ---- mods:M1BE: the door-queue fixture F21 (door_tick): nd_door 1 = infantry ordered into a barracks of nd_player; starts at nd_door_at (0 = off);
+    // nd_fcn soldiers (4..40), nd_tail steps after the order.
+    int nd_door    = 0;
+    int nd_door_at = 0;
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -1804,6 +1831,11 @@ void load_config() {
     g_cfg.nd_len               = mh_ini_get_int("harness", "nd_len", g_cfg.nd_len, g_ini_path);
     g_cfg.nd_delay             = mh_ini_get_int("harness", "nd_delay", g_cfg.nd_delay, g_ini_path);
     g_cfg.nd_tail              = mh_ini_get_int("harness", "nd_tail", g_cfg.nd_tail, g_ini_path);
+    g_cfg.nd_fc                = mh_ini_get_int("harness", "nd_fc", g_cfg.nd_fc, g_ini_path);
+    g_cfg.nd_fc_at             = mh_ini_get_int("harness", "nd_fc_at", g_cfg.nd_fc_at, g_ini_path);
+    g_cfg.nd_fcn               = mh_ini_get_int("harness", "nd_fcn", g_cfg.nd_fcn, g_ini_path);
+    g_cfg.nd_door              = mh_ini_get_int("harness", "nd_door", g_cfg.nd_door, g_ini_path);
+    g_cfg.nd_door_at           = mh_ini_get_int("harness", "nd_door_at", g_cfg.nd_door_at, g_ini_path);
     g_cfg.conq_phase_timeout   = mh_ini_get_int("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
     g_cfg.all_ai               = mh_ini_get_int("harness", "all_ai", g_cfg.all_ai, g_ini_path);
     g_cfg.all_ai_observer      = mh_ini_get_int("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
@@ -9118,7 +9150,7 @@ void pf_tick() {
 //   ND VERDICT per unit: arrival step (-1 = not), tiles stepped, replans (entries into state 0xa after the first), wait steps
 //              (steps in state 0xf, settled, retry byte > 0), max retry byte; ND TOTAL the case summary
 enum { ND_PREP = 0, ND_FIND, ND_ORDER, ND_WATCH, ND_FINISHED, ND_FAILED };
-constexpr int ND_MAX_U = 4;
+constexpr int ND_MAX_U = 10;
 int           g_nd_phase = ND_PREP;
 uint32_t      g_nd_from = 0, g_nd_mark = 0, g_nd_order_at = 0;
 int           g_nd_cfg = 0, g_nd_ax = 0, g_nd_ay = 0, g_nd_n = 0, g_nd_live = 0, g_nd_bx = 0, g_nd_by = 0, g_nd_bstate = 0;
@@ -9129,6 +9161,21 @@ struct nd_track {
     bool     seen_marshal;
 };
 nd_track g_nd_tr[ND_MAX_U];
+// mods:M1H: the case sequence (nd_case digits), the step gate of the CURRENT case, and the second proto of case 5.
+int  g_nd_list[8], g_nd_list_n = 0, g_nd_idx = 0, g_nd_cfg2 = 0;
+bool g_nd_list_init = false;
+int  g_nd_gate      = 0;
+int  nd_case_now() {
+    if (!g_nd_list_init) {
+        g_nd_list_init = true;
+        g_nd_gate      = g_cfg.nd_at;
+        int digits[8], nd = 0;
+        for (int v = g_cfg.nd_case; v > 0 && nd < 8; v /= 10) digits[nd++] = v % 10;
+        for (int i = nd - 1; i >= 0; --i)
+            if (digits[i] > 0) g_nd_list[g_nd_list_n++] = digits[i];
+    }
+    return g_nd_idx < g_nd_list_n ? g_nd_list[g_nd_idx] : 0;
+}
 
 void nd_fail(const char *why) {
     char m[224];
@@ -9149,7 +9196,12 @@ bool nd_clear_rect(int x0, int y0, int w, int h, uint32_t mw, uint32_t mh_) {
 }
 
 void nd_tick() {
-    if (g_cfg.nd_case <= 0 || g_cfg.nd_at <= 0 || g_step < (uint32_t)g_cfg.nd_at || g_nd_phase >= ND_FINISHED) return;
+    if (g_cfg.nd_case <= 0 || g_cfg.nd_at <= 0) return;
+    // mods:M1H F9: the slot-0xff fixture. mv_oob_fill=N pre-fills player (mv_player+2)'s slot 55 on the FIRST scan and every later
+    // scan reports a path-buffer write no unit owns (`; MV OOBW`), exactly as the replay probe does; opt-in so other nd runs pay nothing.
+    if (g_cfg.mv_oob && g_cfg.mv_oob_fill > 0) mv_oob_scan();
+    const int kcase = nd_case_now();
+    if (kcase <= 0 || g_step < (uint32_t)g_nd_gate || g_nd_phase >= ND_FINISHED) return;
     const unsigned p = (unsigned)g_cfg.nd_player;
     if (p >= 8) return nd_fail("nd_player out of range");
     auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
@@ -9162,7 +9214,6 @@ void nd_tick() {
     if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
     if (g_nd_from == 0) g_nd_from = g_step;
     if (g_nd_phase != ND_WATCH && (int)(g_step - g_nd_from) > 3000) return nd_fail("phase timeout");
-    const int kcase = g_cfg.nd_case;
     switch (g_nd_phase) {
         case ND_PREP: {
             // (no mother gate: a loaded save has its world already; nd_at must be after the load)
@@ -9178,12 +9229,22 @@ void nd_tick() {
                     }
             }
             if (g_nd_cfg <= 0) return nd_fail("no ground proto in the cfg");
+            g_nd_cfg2 = 0;
+            if (kcase == 5) { // mods:M1H: the SLOWEST plain ground class, so the two members of the group walk at different speeds
+                double worst = -1.0;
+                for (int k = 1; k < 512; ++k)
+                    if (U[k].move_op_code == 0x0f && U[k].soldier_count == 0 && U[k].type >= 1 && U[k].type <= 0x0e && U[k].step_speed[p] > worst) {
+                        worst     = U[k].step_speed[p];
+                        g_nd_cfg2 = k;
+                    }
+                if (g_nd_cfg2 <= 0 || g_nd_cfg2 == g_nd_cfg || !(U[g_nd_cfg2].step_speed[p] > U[g_nd_cfg].step_speed[p])) return nd_fail("no second, slower ground proto");
+            }
             // the rectangle: nd_len is the corridor length (case 2); width covers both goals
             const int len = g_cfg.nd_len < 1 ? 1 : (g_cfg.nd_len > 12 ? 12 : g_cfg.nd_len);
-            const int w   = kcase == 2 ? len + 10 : 14;
+            const int w   = kcase == 7 ? len + 13 : ((kcase == 2 || kcase == 4 || kcase == 5 || kcase == 6 || kcase == 8 || kcase == 9) ? len + 10 : 14);
             const int h   = 5;
-            g_nd_ax = g_cfg.nd_x;
-            g_nd_ay = g_cfg.nd_y;
+            g_nd_ax = g_nd_idx == 0 ? g_cfg.nd_x : -1; // an explicit anchor serves the FIRST case only; later ones search for a clear rectangle
+            g_nd_ay = g_nd_idx == 0 ? g_cfg.nd_y : -1;
             if (g_nd_ax < 0) {
                 const int lx = (int)prof[p].landing_x[planet] + 4, ly = (int)prof[p].landing_y[planet] + 4;
                 for (int rad = 0; rad < 60 && g_nd_ax < 0; ++rad)
@@ -9209,12 +9270,56 @@ void nd_tick() {
                 g_nd_bx = wrapx(ax + 7), g_nd_by = ay; // B appears here AFTER the order (the planner treats a settled unit as a wall)
                 g_nd_gx[0] = wrapx(ax + 11), g_nd_gy[0] = ay;
                 g_nd_gx[1] = -1, g_nd_gy[1] = -1;
-            } else if (kcase == 2) { // U1 west going east, U2 east going west
-                g_nd_n = 2;
-                cx[0] = wrapx(ax + 2), cy[0] = ay;
-                cx[1] = wrapx(ax + 5 + len), cy[1] = ay;
-                g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
-                g_nd_gx[1] = wrapx(ax + 0), g_nd_gy[1] = ay;
+            } else if (kcase == 2 || kcase == 4 || kcase == 5 || kcase == 6 || kcase == 7 || kcase == 8 || kcase == 9) {
+                // 2: U1 west going east, U2 east going west.  4 (mods:M1H): the mover west going east THROUGH the corridor, an idle friend
+                // standing inside it (never ordered).  5 (mods:M1H): a two-proto group west going east, a third unit east going west.
+                g_nd_n = (kcase == 5 || kcase == 7) ? 3 : (kcase == 9 ? 8 : 2);
+                if (kcase == 9) {
+                    static const int off[8][2] = {{1, 0}, {2, 0}, {3, 0}, {1, -1}, {2, -1}, {3, -1}, {1, 1}, {2, 1}};
+                    for (int k = 0; k < 8; ++k) {
+                        cx[k] = wrapx(ax + off[k][0]), cy[k] = wrapy(ay + off[k][1]);
+                        g_nd_gx[k] = wrapx(ax + 7 + len), g_nd_gy[k] = ay;
+                    }
+                } else if (kcase == 8) {
+                    cx[0] = wrapx(ax + 2), cy[0] = ay; // W
+                    cx[1] = wrapx(ax + 4 + (len > 1 ? 1 : 0)), cy[1] = ay; // F, inside the corridor
+                    g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                    g_nd_gx[1] = wrapx(ax + 10 + len), g_nd_gy[1] = ay;
+                } else if (kcase == 7) {
+                    cx[0] = wrapx(ax + 2), cy[0] = ay; // W, behind the column
+                    cx[1] = wrapx(ax + 5), cy[1] = ay; // the front of the column
+                    cx[2] = wrapx(ax + 4), cy[2] = ay;
+                    g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                    g_nd_gx[1] = g_nd_gx[2] = wrapx(ax + 10 + len);
+                    g_nd_gy[1] = g_nd_gy[2] = ay;
+                } else if (kcase == 6) {
+                    cx[0] = wrapx(ax + 2), cy[0] = ay;
+                    g_nd_bx = wrapx(ax + 6), g_nd_by = ay; // the parked friend appears here AFTER the order
+                    g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                    g_nd_gx[1] = -1, g_nd_gy[1] = -1;
+                } else if (kcase == 4) {
+                    cx[0] = wrapx(ax + 2), cy[0] = ay;
+                    cx[1] = wrapx(ax + 4 + (len > 1 ? 1 : 0)), cy[1] = ay;
+                    g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                    g_nd_gx[1] = -1, g_nd_gy[1] = -1;
+                } else if (kcase == 5) {
+                    cx[0] = wrapx(ax + 1), cy[0] = ay;
+                    cx[1] = wrapx(ax + 2), cy[1] = ay;
+                    cx[2] = wrapx(ax + 5 + len), cy[2] = ay;
+                    g_nd_gx[0] = g_nd_gx[1] = wrapx(ax + 7 + len);
+                    g_nd_gy[0] = g_nd_gy[1] = ay;
+                    g_nd_gx[2] = wrapx(ax + 0), g_nd_gy[2] = ay;
+                } else {
+                    cx[0] = wrapx(ax + 2), cy[0] = ay;
+                    cx[1] = wrapx(ax + 5 + len), cy[1] = ay;
+                    g_nd_gx[0] = wrapx(ax + 7 + len), g_nd_gy[0] = ay;
+                    g_nd_gx[1] = wrapx(ax + 0), g_nd_gy[1] = ay;
+                }
+                if (kcase == 8 || kcase == 9) // the wall: the whole column x = ax + 4, except the lane (a one-tile gap)
+                    for (int d = 1; d <= 8; ++d) {
+                        *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4) << 8) | (uint32_t)wrapy(ay - d)]) = 0;
+                        *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4) << 8) | (uint32_t)wrapy(ay + d)]) = 0;
+                    }
                 for (int a = 0; a < len; ++a) { // the corridor walls: the rows beside the lane
                     *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4 + a) << 8) | (uint32_t)wrapy(ay - 1)]) = 0;
                     *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(ax + 4 + a) << 8) | (uint32_t)wrapy(ay + 1)]) = 0;
@@ -9235,9 +9340,10 @@ void nd_tick() {
                       (unsigned long)mh_, p, g_nd_cfg, (unsigned)U[g_nd_cfg].type, ax, ay, len, g_nd_n);
             append_line(g_log_path, m);
             for (int i = 0; i < 100; ++i) g_nd_existed[i] = un[i].energy > 0.0;
-            g_nd_live = kcase == 1 ? 1 : g_nd_n;
+            g_nd_live = (kcase == 1 || kcase == 6) ? 1 : g_nd_n;
             if (side == p)
-                for (int k = 0; k < g_nd_live; ++k) mh::call::llm_strat_order_create_unit_debug((uint32_t)cx[k], (uint32_t)cy[k], (uint32_t)(g_nd_cfg + 1), p);
+                for (int k = 0; k < g_nd_live; ++k)
+                    mh::call::llm_strat_order_create_unit_debug((uint32_t)cx[k], (uint32_t)cy[k], (uint32_t)((kcase == 5 && k == 1 ? g_nd_cfg2 : g_nd_cfg) + 1), p);
             g_nd_phase = ND_FIND;
             g_nd_from  = 0;
             return;
@@ -9245,7 +9351,10 @@ void nd_tick() {
         case ND_FIND: {
             int found = 0;
             for (int i = 1; i < 100 && found < g_nd_live; ++i)
-                if (!g_nd_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_nd_cfg || (int)un[i].unit_proto_id == g_nd_cfg + 1)) g_nd_unit[found++] = i;
+                if (!g_nd_existed[i] && un[i].energy > 0.0 &&
+                    ((int)un[i].unit_proto_id == g_nd_cfg || (int)un[i].unit_proto_id == g_nd_cfg + 1 ||
+                     (g_nd_cfg2 > 0 && ((int)un[i].unit_proto_id == g_nd_cfg2 || (int)un[i].unit_proto_id == g_nd_cfg2 + 1))))
+                    g_nd_unit[found++] = i;
             if (found < g_nd_live) return;
             for (int k = 0; k < g_nd_live; ++k) {
                 const auto &u = un[g_nd_unit[k]];
@@ -9264,10 +9373,27 @@ void nd_tick() {
                 un[g_nd_unit[0]].facing_target = un[g_nd_unit[0]].facing_current = 19;
             }
             if (side == p) {
-                if (kcase == 1) {
+                if (kcase == 9) {
+                    for (int k = 0; k < 8; ++k) mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[k], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                } else if (kcase == 1 || kcase == 4 || kcase == 6 || kcase == 8) {
                     mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
                     mh::call::llm_unit_ctrl_group_activate(9);
                     mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                } else if (kcase == 7) { // the column first; W follows in ND_WATCH
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[1], 9);
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[2], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[1], g_nd_gy[1], 0x8000);
+                } else if (kcase == 5) {
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[1], 9);
+                    mh::call::llm_unit_ctrl_group_activate(9);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[2], 8);
+                    mh::call::llm_unit_ctrl_group_activate(8);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[2], g_nd_gy[2], 0x8000);
                 } else if (kcase == 2) {
                     mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 9);
                     mh::call::llm_unit_ctrl_group_activate(9);
@@ -9281,6 +9407,15 @@ void nd_tick() {
                     mh::call::llm_unit_ctrl_group_activate(9);
                     mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
                 }
+            }
+            if (kcase == 8) { // F waits its batch in the marshal state for 1.5 s of game clock (the same value on every peer, the same step)
+                auto &f = un[g_nd_unit[1]];
+                f.state = 0x0a;
+                f.order = 0x0f;
+                f.goal_x = (uint8_t)g_nd_gx[1];
+                f.goal_y = (uint8_t)g_nd_gy[1];
+                f.path_blocked_retry_count = 0;
+                f.activity_clock = *reinterpret_cast<const double *>(mh::state::hash_base(IDX_CLOCK)) + 1.5;
             }
             for (int k = 0; k < g_nd_live; ++k) {
                 const auto &u = un[g_nd_unit[k]];
@@ -9297,7 +9432,17 @@ void nd_tick() {
         case ND_WATCH: {
             const int el   = (int)(g_step - g_nd_order_at);
             bool      busy = false;
-            if (kcase == 1 && g_nd_live == 1) { // the late idle blocker
+            if (kcase == 7 && g_nd_bstate == 0 && el >= 3) { // W follows the column 3 steps after the column's order (the friends are still turning in place)
+                g_nd_bstate = 1;
+                if (side == p) {
+                    mh::call::llm_strat_unit_ctrl_group_assign(g_nd_unit[0], 8);
+                    mh::call::llm_unit_ctrl_group_activate(8);
+                    mh::call::llm_strat_group_issue_move_order_deferred(g_nd_gx[0], g_nd_gy[0], 0x8000);
+                }
+                wsprintfA(m, "; ND ORDER2 step=%lu el=%d unit=%d goal=%d,%d (W, behind the column)\n", g_step, el, g_nd_unit[0], g_nd_gx[0], g_nd_gy[0]);
+                append_line(g_log_path, m);
+            }
+            if ((kcase == 1 || kcase == 6) && g_nd_live == 1) { // the late idle blocker
                 if (g_nd_bstate == 0 && el >= g_cfg.nd_delay) {
                     g_nd_bstate = 1;
                     for (int i = 0; i < 100; ++i) g_nd_existed[i] = un[i].energy > 0.0;
@@ -9339,7 +9484,7 @@ void nd_tick() {
                 t.retry = u.path_blocked_retry_count;
                 if (u.state == 0x0f || u.state == 0x0a || u.state == 0x0c || u.state == 0x36) busy = true;
             }
-            if (el < g_cfg.nd_tail && (busy || el < 60 || g_nd_live < g_nd_n)) return;
+            if (el < g_cfg.nd_tail && (busy || el < 60 || g_nd_live < g_nd_n || (kcase == 7 && g_nd_bstate == 0))) return;
             int tiles = 0, waits = 0, repl = 0;
             for (int k = 0; k < g_nd_live; ++k) {
                 const auto &u = un[g_nd_unit[k]];
@@ -9354,6 +9499,502 @@ void nd_tick() {
             wsprintfA(m, "; ND TOTAL case=%d steps=%d tiles=%d replans=%d wait_steps=%d\n", kcase, el, tiles, repl, waits);
             append_line(g_log_path, m);
             g_nd_phase = ND_FINISHED;
+            if (g_nd_idx + 1 < g_nd_list_n) { // mods:M1H: the next case of the sequence starts 60 steps from now, from a clean slate
+                ++g_nd_idx;
+                g_nd_gate   = (int)g_step + 60;
+                g_nd_phase  = ND_PREP;
+                g_nd_from   = 0;
+                g_nd_bstate = 0;
+                g_nd_live   = 0;
+                g_nd_cfg2   = 0;
+            }
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- mods:M1G 4b: the formation-from-the-click fixtures (nd_fc) ---------------------------------------------------------------------
+// One blob of nd_fcn (default 16) idle ground units in a clear rectangle near player nd_player's landing site, ordered with ONE right-click
+// through the real path (control group 9 + llm_strat_group_issue_move_order_deferred), then watched until it stops. Same placement and rules as
+// nd_tick: after the step's hash, outside the HASH-INPUT span, the units and (case 3) the wall are created the same way on every peer.
+//   nd_fc=1 IN PLACE  click the blob's centre tile.
+//   nd_fc=2 FAR       click 10 tiles east of the blob's centre in open ground.
+//   nd_fc=3 WALL      a vertical wall (passable plane poked on every peer at the same step) 6 tiles east of the blob; click the tile west of it
+//                     (one tile from the edge).
+//   nd_fc=5 HOP WALL  (mods:M1DT cause C) a 17-tile wall with a one-tile gap 3 tiles east of the blob, the click 6 tiles beyond the gap; nd_delay steps after the
+//                     order (default 100) the whole group is RE-ORDERED onto its own current centroid while it streams through the gap (the earlier waves of that
+//                     marshal call hop in state 0x0c and are walls to the later waves' plans unless move_route_through_replanning opens them).
+//   nd_fc=4 RE-ORDER  the FAR click, then 160 steps later (about 3 tiles on) the in-place click on the blob's original centre while it is still walking (the
+//                     waves of one, the kept members, the 2a skip -- the 2-peer rows run this one).
+//   nd_fc=6 BELOW     (move-as-one rule, F18) the click is the tile one below the blob's bottom edge (cx, y0 + rows): the blob moves as one by (0,2), nobody crosses.
+//   nd_fc=7 SPREAD    (move-as-one rule, F19) 16 units on a fixed scatter of an 11x11 square (the offline model's S5, python random seed 7), the click at its centre
+//                     (offset 6,6): the group gathers into a 4x4 block. nd_fcn is forced to 16.
+//   nd_fc=8 THIN WALL (0.2.1 hotfix, F20) a ONE-tile wall column 9 tiles tall, 3 tiles east of the blob's right edge, free ground on BOTH sides; the click is the tile
+//                     just west of it, on the wall's middle row. Geometric ring order puts the far side's tiles (one step away by the ring, ~9 by path) in the group's
+//                     target set; the path-distance ranking keeps every target on the click's side. FC SETUP's wall_x is the wall column.
+// Starts at step nd_fc_at (0 = off) and, when the nd probe is also on, after its last case. Lines in the harness log:
+//   FC SETUP / FC UNIT (start) / FC ORDER / FC VERDICT per unit (end, tiles stepped, straight distance) / FC TOTAL (the numbers the checker reads):
+//   tiles = sum of tiles stepped, straight = sum of Chebyshev start->end, moved = units that stepped at all, maxcheb = largest Chebyshev
+//   distance of an end tile from the (last) click, dup = units that share their end tile, maxratio = worst walked*100/max(straight,1),
+//   onwall = units that ended inside the wall column, idle = units that ended in a non-moving state.
+enum { FC_PREP = 0, FC_FIND, FC_ORDER, FC_WATCH, FC_FINISHED, FC_FAILED };
+constexpr int FC_MAXU = 100;
+int           g_fc_phase = FC_PREP, g_fc_n = 0, g_fc_cfg = 0, g_fc_ax = 0, g_fc_ay = 0, g_fc_cols = 0, g_fc_rows = 0;
+int           g_fc_cx = 0, g_fc_cy = 0, g_fc_gx = 0, g_fc_gy = 0, g_fc_wx = -1, g_fc_state2 = 0;
+uint32_t      g_fc_from = 0, g_fc_mark = 0, g_fc_order_at = 0;
+int           g_fc_lastmove = 0; // steps after the (first) order of the last tile change of any unit
+int           g_fc_unit[FC_MAXU], g_fc_sx[FC_MAXU], g_fc_sy[FC_MAXU], g_fc_px[FC_MAXU], g_fc_py[FC_MAXU], g_fc_tiles[FC_MAXU];
+bool          g_fc_existed[100];
+
+void fc_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; FC FAIL step=%lu phase=%d: %s\n", g_step, g_fc_phase, why);
+    append_line(g_log_path, m);
+    g_fc_phase = FC_FAILED;
+}
+
+void fc_issue(int gx, int gy) {
+    for (int k = 0; k < g_fc_n; ++k) mh::call::llm_strat_unit_ctrl_group_assign(g_fc_unit[k], 9);
+    mh::call::llm_unit_ctrl_group_activate(9);
+    mh::call::llm_strat_group_issue_move_order_deferred(gx, gy, 0x8000);
+}
+
+void fc_tick() {
+    const int fcase = g_cfg.nd_fc;
+    if (fcase <= 0 || fcase > 8 || g_cfg.nd_fc_at <= 0 || g_step < (uint32_t)g_cfg.nd_fc_at || g_fc_phase >= FC_FINISHED) return;
+    if (g_cfg.nd_case > 0 && g_cfg.nd_at > 0 && !(g_nd_phase == ND_FAILED || (g_nd_phase == ND_FINISHED && g_nd_idx + 1 >= g_nd_list_n))) return; // the nd cases first
+    const unsigned p = (unsigned)g_cfg.nd_player;
+    if (p >= 8) return fc_fail("nd_player out of range");
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    char           m[512];
+    if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_fc_from == 0) g_fc_from = g_step;
+    if (g_fc_phase != FC_WATCH && (int)(g_step - g_fc_from) > 3000) return fc_fail("phase timeout");
+    auto wrapx = [&](int x) { return (int)((uint32_t)(x + (int)mw) % mw); };
+    auto wrapy = [&](int y) { return (int)((uint32_t)(y + (int)mh_) % mh_); };
+    switch (g_fc_phase) {
+        case FC_PREP: {
+            g_fc_cfg = g_cfg.nd_proto;
+            if (g_fc_cfg == 0) {
+                double best = 1e30;
+                for (int k = 1; k < 512; ++k)
+                    if (U[k].move_op_code == 0x0f && U[k].soldier_count == 0 && U[k].type >= 1 && U[k].type <= 0x0e && U[k].step_speed[p] > 0.0 && U[k].step_speed[p] < best) {
+                        best     = U[k].step_speed[p];
+                        g_fc_cfg = k;
+                    }
+            }
+            if (g_fc_cfg <= 0) return fc_fail("no ground proto in the cfg");
+            g_fc_n = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > FC_MAXU - 1 ? FC_MAXU - 1 : g_cfg.nd_fcn);
+            if (fcase == 7) g_fc_n = 16;
+            g_fc_cols = 1;
+            while (g_fc_cols * g_fc_cols < g_fc_n) ++g_fc_cols;
+            g_fc_rows   = (g_fc_n + g_fc_cols - 1) / g_fc_cols;
+            const int w = fcase == 7 ? 15 : g_fc_cols + 18, h = fcase == 7 ? 15 : g_fc_rows + 6; // nd_fc=7: the 11x11 scatter at +2,+2 and a margin
+            g_fc_ax = g_cfg.nd_x;
+            g_fc_ay = g_cfg.nd_y;
+            if (g_fc_ax < 0) {
+                const int lx = (int)prof[p].landing_x[planet] + 4, ly = (int)prof[p].landing_y[planet] + 4;
+                for (int rad = 0; rad < 60 && g_fc_ax < 0; ++rad)
+                    for (int dx = -rad; dx <= rad && g_fc_ax < 0; ++dx)
+                        for (int dy = -rad; dy <= rad && g_fc_ax < 0; ++dy) {
+                            if ((dx < 0 ? -dx : dx) != rad && (dy < 0 ? -dy : dy) != rad) continue;
+                            if (nd_clear_rect(lx + dx, ly + dy, w, h, mw, mh_)) {
+                                g_fc_ax = wrapx(lx + dx);
+                                g_fc_ay = wrapy(ly + dy);
+                            }
+                        }
+                if (g_fc_ax < 0) return fc_fail("no clear rectangle near the landing site");
+            }
+            // the blob: columns x0.. x0+cols-1, rows y0.. (row-major, n cells); its centre tile is the in-place click
+            const int x0 = g_fc_ax + 2, y0 = g_fc_ay + 2;
+            g_fc_cx = wrapx(x0 + g_fc_cols / 2);
+            g_fc_cy = wrapy(y0 + g_fc_rows / 2);
+            g_fc_wx = -1;
+            if (fcase == 1) {
+                g_fc_gx = g_fc_cx, g_fc_gy = g_fc_cy;
+            } else if (fcase == 3) { // the wall, 6 tiles east of the blob's right edge, the whole height of the rectangle
+                g_fc_wx = wrapx(x0 + g_fc_cols + 5);
+                for (int d = 0; d < h; ++d) *(uint8_t *)(&pf_passable()[((uint32_t)g_fc_wx << 8) | (uint32_t)wrapy(g_fc_ay + d)]) = 0;
+                g_fc_gx = wrapx(g_fc_wx - 1), g_fc_gy = g_fc_cy;
+            } else if (fcase == 8) { // F20: a 9-tall one-tile wall 3 tiles east of the blob's right edge, centred on the blob's row; the click is the tile west of its middle
+                g_fc_wx = wrapx(x0 + g_fc_cols + 3);
+                for (int d = -4; d <= 4; ++d) *(uint8_t *)(&pf_passable()[((uint32_t)g_fc_wx << 8) | (uint32_t)wrapy(g_fc_cy + d)]) = 0;
+                g_fc_gx = wrapx(g_fc_wx - 1), g_fc_gy = g_fc_cy;
+            } else if (fcase == 5) { // mods:M1DT cause C: a 17-tile wall 3 tiles east of the blob with a ONE-tile gap on the blob's centre row; the click is 6 tiles beyond it
+                const int wx = wrapx(x0 + g_fc_cols + 3);
+                for (int d = 1; d <= 8; ++d) {
+                    *(uint8_t *)(&pf_passable()[((uint32_t)wx << 8) | (uint32_t)wrapy(g_fc_cy - d)]) = 0;
+                    *(uint8_t *)(&pf_passable()[((uint32_t)wx << 8) | (uint32_t)wrapy(g_fc_cy + d)]) = 0;
+                }
+                g_fc_gx = wrapx(wx + 6), g_fc_gy = g_fc_cy;
+            } else if (fcase == 6) { // one tile below the bottom edge of the blob (rows y0 .. y0 + rows - 1)
+                g_fc_gx = g_fc_cx, g_fc_gy = wrapy(y0 + g_fc_rows);
+            } else if (fcase == 7) { // the scatter's centre
+                g_fc_cx = wrapx(x0 + 6), g_fc_cy = wrapy(y0 + 6);
+                g_fc_gx = g_fc_cx, g_fc_gy = g_fc_cy;
+            } else { // 2 and 4: 10 tiles east of the centre
+                g_fc_gx = wrapx(g_fc_cx + 10), g_fc_gy = g_fc_cy;
+            }
+            {   // fog: the whole rectangle discovered, so no goal gets clamped
+                uint8_t *disc = reinterpret_cast<uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
+                for (int a = 0; a < w; ++a)
+                    for (int b = 0; b < h; ++b) disc[((uint32_t)wrapx(g_fc_ax + a) << 8) | (uint32_t)wrapy(g_fc_ay + b)] |= (uint8_t)(1u << p);
+            }
+            wsprintfA(m, "; FC SETUP step=%lu case=%d map=%lux%lu player=%u proto=%d anchor=%d,%d n=%d blob=%dx%d centre=%d,%d click=%d,%d wall_x=%d\n", g_step, fcase, (unsigned long)mw,
+                      (unsigned long)mh_, p, g_fc_cfg, g_fc_ax, g_fc_ay, g_fc_n, g_fc_cols, g_fc_rows, g_fc_cx, g_fc_cy, g_fc_gx, g_fc_gy, g_fc_wx);
+            append_line(g_log_path, m);
+            for (int i = 0; i < 100; ++i) g_fc_existed[i] = un[i].energy > 0.0;
+            if (side == p)
+                for (int k = 0; k < g_fc_n; ++k) {
+                    // nd_fc=7: the offline model's S5 scatter (python random seed 7, 16 distinct cells of an 11x11 square), else the row-major blob
+                    static const int8_t SCATTER[16][2] = {{5, 2}, {6, 10}, {0, 1}, {8, 1}, {5, 9}, {0, 8}, {3, 0}, {1, 6}, {6, 1}, {3, 1}, {8, 6}, {0, 9}, {1, 3}, {10, 10}, {9, 0}, {9, 9}};
+                    const int           ux = fcase == 7 ? SCATTER[k][0] : k % g_fc_cols, uy = fcase == 7 ? SCATTER[k][1] : k / g_fc_cols;
+                    mh::call::llm_strat_order_create_unit_debug((uint32_t)wrapx(x0 + ux), (uint32_t)wrapy(y0 + uy), (uint32_t)(g_fc_cfg + 1), p);
+                }
+            g_fc_phase = FC_FIND;
+            g_fc_from  = 0;
+            return;
+        }
+        case FC_FIND: {
+            int found = 0;
+            for (int i = 1; i < 100 && found < g_fc_n; ++i)
+                if (!g_fc_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_fc_cfg || (int)un[i].unit_proto_id == g_fc_cfg + 1)) g_fc_unit[found++] = i;
+            if (found < g_fc_n) return;
+            for (int k = 0; k < g_fc_n; ++k) {
+                const auto &u = un[g_fc_unit[k]];
+                g_fc_sx[k] = g_fc_px[k] = (int)u.x;
+                g_fc_sy[k] = g_fc_py[k] = (int)u.y;
+                g_fc_tiles[k] = 0;
+                wsprintfA(m, "; FC UNIT k=%d unit=%d xy=%d,%d state=0x%02x order=0x%02x\n", k, g_fc_unit[k], (int)u.x, (int)u.y, (unsigned)u.state, (unsigned)u.order);
+                append_line(g_log_path, m);
+            }
+            g_fc_phase = FC_ORDER;
+            g_fc_mark  = g_step;
+            g_fc_from  = 0;
+            return;
+        }
+        case FC_ORDER: {
+            if (g_step < g_fc_mark + 40) return; // let the created units settle (state 1)
+            if (side == p) fc_issue(g_fc_gx, g_fc_gy);
+            wsprintfA(m, "; FC ORDER step=%lu click=%d,%d %s\n", g_step, g_fc_gx, g_fc_gy, side == p ? "issued here" : "the owner peer issues it");
+            append_line(g_log_path, m);
+            g_fc_order_at = g_step;
+            g_fc_phase    = FC_WATCH;
+            g_fc_from     = 0;
+            g_fc_state2   = 0;
+            return;
+        }
+        case FC_WATCH: {
+            const int el = (int)(g_step - g_fc_order_at);
+            if ((fcase == 4 && g_fc_state2 == 0 && el >= 160) || (fcase == 5 && g_fc_state2 == 0 && el >= g_cfg.nd_delay)) { // the re-order: back onto the blob's original centre while it is still walking
+                g_fc_state2 = 1;
+                g_fc_gx     = g_fc_cx;
+                g_fc_gy     = g_fc_cy;
+                if (fcase == 5) { // case 5 (cause C): the click is the group's CURRENT centroid (integer mean): members near it get empty walks and wait in state 0x0c while the rest is planned
+                    int sx = 0, sy = 0;
+                    for (int k = 0; k < g_fc_n; ++k) sx += (int)un[g_fc_unit[k]].x, sy += (int)un[g_fc_unit[k]].y;
+                    g_fc_gx = sx / g_fc_n;
+                    g_fc_gy = sy / g_fc_n;
+                }
+                if (side == p) fc_issue(g_fc_gx, g_fc_gy);
+                wsprintfA(m, "; FC ORDER2 step=%lu el=%d click=%d,%d\n", g_step, el, g_fc_gx, g_fc_gy);
+                append_line(g_log_path, m);
+            }
+            bool busy = false;
+            for (int k = 0; k < g_fc_n; ++k) {
+                const auto &u = un[g_fc_unit[k]];
+                if ((int)u.x != g_fc_px[k] || (int)u.y != g_fc_py[k]) {
+                    ++g_fc_tiles[k];
+                    g_fc_lastmove = el;
+                    g_fc_px[k]    = (int)u.x;
+                    g_fc_py[k]    = (int)u.y;
+                }
+                if (u.state == 0x0f || u.state == 0x0a || u.state == 0x0c || u.state == 0x36) busy = true;
+            }
+            if (el < g_cfg.nd_tail && (busy || el < 60 || ((fcase == 4 || fcase == 5) && g_fc_state2 == 0))) return;
+            int tiles = 0, straight = 0, moved = 0, maxcheb = 0, dup = 0, maxratio = 0, onwall = 0, idle = 0, maxt = 0;
+            int minx = 1 << 20, maxx = -(1 << 20), miny = 1 << 20, maxy = -(1 << 20), rigid = 0;
+            for (int k = 0; k < g_fc_n; ++k) {
+                const auto &u = un[g_fc_unit[k]];
+                const int   ex = (int)u.x, ey = (int)u.y;
+                { // the end box, wrap-aware: offsets from the click on the torus
+                    int bx = ex - g_fc_gx, by = ey - g_fc_gy;
+                    if (bx > (int)mw / 2) bx -= (int)mw;
+                    if (bx < -(int)mw / 2) bx += (int)mw;
+                    if (by > (int)mh_ / 2) by -= (int)mh_;
+                    if (by < -(int)mh_ / 2) by += (int)mh_;
+                    if (bx < minx) minx = bx;
+                    if (bx > maxx) maxx = bx;
+                    if (by < miny) miny = by;
+                    if (by > maxy) maxy = by;
+                }
+                auto cheb = [&](int ax_, int ay_, int bx, int by) { // Chebyshev distance on the torus
+                    int dx = ax_ - bx, dy = ay_ - by;
+                    dx = dx < 0 ? -dx : dx, dy = dy < 0 ? -dy : dy;
+                    if (dx > (int)mw / 2) dx = (int)mw - dx;
+                    if (dy > (int)mh_ / 2) dy = (int)mh_ - dy;
+                    return dx > dy ? dx : dy;
+                };
+                const int st = cheb(g_fc_sx[k], g_fc_sy[k], ex, ey), cc = cheb(ex, ey, g_fc_gx, g_fc_gy);
+                const int ratio = g_fc_tiles[k] * 100 / (st > 0 ? st : 1);
+                tiles += g_fc_tiles[k];
+                straight += st;
+                if (g_fc_tiles[k] > 0) ++moved;
+                if (g_fc_tiles[k] > maxt) maxt = g_fc_tiles[k];
+                if (cc > maxcheb) maxcheb = cc;
+                if (ratio > maxratio) maxratio = ratio;
+                if (g_fc_wx >= 0 && ex == g_fc_wx) ++onwall;
+                if (u.state != 0x0f && u.state != 0x0a && u.state != 0x0c && u.state != 0x36) ++idle;
+                for (int j = 0; j < k; ++j)
+                    if ((int)un[g_fc_unit[j]].x == ex && (int)un[g_fc_unit[j]].y == ey) {
+                        ++dup;
+                        break;
+                    }
+                wsprintfA(m, "; FC VERDICT case=%d k=%d unit=%d start=%d,%d end=%d,%d tiles=%d straight=%d cheb_click=%d state=0x%02x\n", fcase, k, g_fc_unit[k], g_fc_sx[k], g_fc_sy[k], ex, ey,
+                          g_fc_tiles[k], st, cc, (unsigned)u.state);
+                append_line(g_log_path, m);
+            }
+            for (int a = 0; a < g_fc_n; ++a) { // rigid = the most units sharing one move vector (end - start)
+                int same = 0;
+                for (int b = 0; b < g_fc_n; ++b)
+                    if ((((int)un[g_fc_unit[b]].x - g_fc_sx[b] - ((int)un[g_fc_unit[a]].x - g_fc_sx[a])) % (int)mw + (int)mw) % (int)mw == 0 &&
+                        (((int)un[g_fc_unit[b]].y - g_fc_sy[b] - ((int)un[g_fc_unit[a]].y - g_fc_sy[a])) % (int)mh_ + (int)mh_) % (int)mh_ == 0) ++same;
+                if (same > rigid) rigid = same;
+            }
+            wsprintfA(m, "; FC TOTAL case=%d steps=%d n=%d tiles=%d straight=%d moved=%d maxtiles=%d maxcheb=%d dup=%d maxratio=%d onwall=%d idle=%d bw=%d bh=%d rigid=%d lastmove=%d\n", fcase, el, g_fc_n, tiles, straight, moved, maxt,
+                      maxcheb, dup, maxratio, onwall, idle, maxx - minx + 1, maxy - miny + 1, rigid, g_fc_lastmove);
+            append_line(g_log_path, m);
+            g_fc_phase = FC_FINISHED;
+            return;
+        }
+        default: return;
+    }
+}
+
+// ---- mods:M1BE: the door-queue fixture F21 (nd_door) ---------------------------------------------------------------------------------------
+// A group of nd_fcn (default 16) soldiers ordered into a barracks through the real group enter order (control group 9 +
+// llm_strat_group_issue_enter_building_order(storage slot)). Player nd_player's operational barracks of its race (human 0x1c, alien 0x07) is
+// used as it stands in the save (5-kofu-c holds an alien one at efficiency about 0.68, so its door cycle is slow like the report's 0.533); with none,
+// one is ordered with order 0xf2 next to an own building (the d38 route) and built to operational. The soldiers (the slowest ground proto the
+// barracks accepts) are created in a clear block on a diagonal of the storage's door tile, 6+ tiles away: they hop onto the door tile diagonally,
+// slower than the previous soldier walks in, which leaves the door idle between entrants. Starts at step nd_door_at (0 = off). Lines:
+//   DR SETUP / DR UNIT / DR ORDER / DR DOCK (a unit joined docked_units) / DR GIVEUP (a unit left the order outside) / DR CLOSE (door 2 -> 4)
+//   DR TOTAL steps=<order to the end> n=<units> docked=<n> giveups=<n> closes=<n> firstdock=<step after the order> lastdock=<...> eff=<per mille>
+enum { DR_PREP = 0, DR_BUILD, DR_UNITS, DR_FIND, DR_ORDER, DR_WATCH, DR_FINISHED, DR_FAILED };
+unsigned g_dr_want = 0;
+int      g_dr_phase = DR_PREP, g_dr_mb = 0, g_dr_n = 0, g_dr_bcfg = 0, g_dr_ucfg = 0, g_dr_slot = 0, g_dr_bidx = 0, g_dr_try = 0;
+uint32_t g_dr_from = 0, g_dr_mark = 0, g_dr_order_at = 0;
+int      g_dr_unit[FC_MAXU];
+bool     g_dr_existed[100], g_dr_gaveup[FC_MAXU], g_dr_dockedu[FC_MAXU];
+int      g_dr_giveups = 0, g_dr_closes = 0, g_dr_first = -1, g_dr_last = -1, g_dr_door_prev = 0;
+
+void dr_fail(const char *why) {
+    char m[224];
+    wsprintfA(m, "; DR FAIL step=%lu phase=%d: %s\n", g_step, g_dr_phase, why);
+    append_line(g_log_path, m);
+    g_dr_phase = DR_FAILED;
+}
+
+// The player's first operational storage slot (built_flags 3, online) whose building is a barracks of type `want`, or 0.
+int dr_find_storage(unsigned p, const mh::game::mh_cfg_final_struct_Building *B, unsigned want) {
+    const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    const auto *b  = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    for (int s = 1; s < 25; ++s) {
+        const int bi = st[s].b_index;
+        if (bi <= 0 || bi >= 100) continue;
+        if (b[bi].building_id != 0 && B[b[bi].building_id].type == want && b[bi].built_flags == 3 && b[bi].online_state != 0 && b[bi].energy > 0.0) return s;
+    }
+    return 0;
+}
+
+void door_tick() {
+    if (g_cfg.nd_door <= 0 || g_cfg.nd_door_at <= 0 || g_step < (uint32_t)g_cfg.nd_door_at || g_dr_phase >= DR_FINISHED) return;
+    const unsigned p = (unsigned)g_cfg.nd_player;
+    if (p >= 8) return dr_fail("nd_player out of range");
+    auto          *un     = reinterpret_cast<mh::game::mh_map_object_unit *>(mh::state::hash_base(g_idx_units)) + p * 100u;
+    auto          *st     = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::state::hash_base(g_idx_bldgs)) + p * 100u;
+    const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(ADDR_PLAYERS_PROF);
+    const auto    *U      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    const auto    *B      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+    const unsigned planet = *reinterpret_cast<const uint32_t *>(ADDR_PLANET_IDX);
+    const unsigned side   = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
+    char           m[512];
+    if (planet >= 32 || mw < 8 || mw > 256 || mh_ < 8 || mh_ > 256) return;
+    if (g_dr_from == 0) g_dr_from = g_step;
+    if (g_dr_phase < DR_WATCH && (int)(g_step - g_dr_from) > 9000) return dr_fail("phase timeout");
+    auto wrapx = [&](int x) { return (int)((uint32_t)(x + (int)mw) % mw); };
+    auto wrapy = [&](int y) { return (int)((uint32_t)(y + (int)mh_) % mh_); };
+    switch (g_dr_phase) {
+        case DR_PREP: {
+            // the anchor for a new barracks: the landed mother ship, else any live mother ship, else any live building (a loaded save need not set the landed slot)
+            int mb = prof[p].primary_mother_bldg[planet];
+            if (mb <= 0 || mb >= 100) {
+                mb = 0;
+                for (int i = 1; i < 100 && mb == 0; ++i)
+                    if (bl[i].building_id != 0 && bl[i].energy > 0.0 && (B[bl[i].building_id].type == 0x06u || B[bl[i].building_id].type == 0x1au)) mb = i;
+                for (int i = 1; i < 100 && mb == 0; ++i)
+                    if (bl[i].building_id != 0 && bl[i].energy > 0.0) mb = i;
+            }
+            if (mb <= 0) return; // no building yet
+            g_dr_mb             = mb;
+            const unsigned want = prof[p].race == 2u ? 0x07u : 0x1cu;
+            g_dr_want           = want;
+            g_dr_bcfg           = 0;
+            for (int i = 1; i < 100 && g_dr_bcfg == 0; ++i)
+                if (B[i].type == want) g_dr_bcfg = i;
+            if (g_dr_bcfg == 0) return dr_fail("no cfg barracks for this race");
+            // the unit: an infantry proto of the race that this very barracks accepts (the game's own storage_type_accepts_unit), soldiers first
+            // the SLOWEST one: the report's soldiers hop onto the door tile slower than the previous soldier walks in, which is what leaves the door idle
+            double slowest = 1e30;
+            for (unsigned k = 1; k < 100u; ++k)
+                if (U[k].move_op_code == 0x0f && U[k].step_speed[p] > 0.0 && U[k].step_speed[p] < slowest && mh::call::llm_strat_storage_type_accepts_unit((uint32_t)g_dr_bcfg, (uint16_t)k) != 0) {
+                    slowest   = U[k].step_speed[p];
+                    g_dr_ucfg = (int)k;
+                }
+            if (g_dr_ucfg == 0) return dr_fail("no infantry proto the barracks accepts");
+            g_dr_n     = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > 40 ? 40 : g_cfg.nd_fcn);
+            g_dr_phase = DR_BUILD;
+            g_dr_mark  = 0;
+            wsprintfA(m, "; DR SETUP step=%lu player=%u race=%u barracks_cfg=%d type=0x%02x unit_cfg=%d n=%d\n", g_step, p, (unsigned)prof[p].race, g_dr_bcfg,
+                      (unsigned)B[g_dr_bcfg].type, g_dr_ucfg, g_dr_n);
+            append_line(g_log_path, m);
+            return;
+        }
+        case DR_BUILD: {
+            const int s = dr_find_storage(p, B, g_dr_want);
+            if (s != 0) {
+                g_dr_slot  = s;
+                g_dr_bidx  = st[s].b_index;
+                g_dr_phase = DR_UNITS;
+                wsprintfA(m, "; DR BARRACKS step=%lu slot=%d building=%d door=%d,%d eff=%d\n", g_step, s, g_dr_bidx, (int)st[s].exit_tile_x, (int)st[s].exit_tile_y,
+                          (int)(bl[g_dr_bidx].efficiency * 1000.0));
+                append_line(g_log_path, m);
+                return;
+            }
+            // (re)issue the construction every 600 steps at the next candidate offset until a barracks shows up
+            if (g_dr_mark == 0 || g_step >= g_dr_mark + 600) {
+                static const int OFF[6][2] = {{-6, 0}, {6, 0}, {0, 6}, {0, -6}, {-9, 3}, {9, -3}};
+                int              have      = 0;
+                for (int i = 1; i < 100; ++i)
+                    if (bl[i].building_id != 0 && B[bl[i].building_id].type == g_dr_want) ++have;
+                if (have == 0 && g_dr_try < 6) {
+                    const int mb = g_dr_mb;
+                    const int bx = wrapx((int)bl[mb].x + OFF[g_dr_try][0]), by = wrapy((int)bl[mb].y + OFF[g_dr_try][1]);
+                    ++g_dr_try;
+                    if (side == p) mh::call::llm_strat_order_queue_construction_debug((uint32_t)bx, (uint32_t)by, (uint32_t)g_dr_bcfg, p);
+                    wsprintfA(m, "; DR BUILD step=%lu try=%d at %d,%d %s\n", g_step, g_dr_try, bx, by, side == p ? "issued here" : "the owner peer issues it");
+                    append_line(g_log_path, m);
+                }
+                g_dr_mark = g_step;
+            }
+            return;
+        }
+        case DR_UNITS: {
+            const int dx = (int)st[g_dr_slot].exit_tile_x, dy = (int)st[g_dr_slot].exit_tile_y;
+            int       cols = 1;
+            while (cols * cols < g_dr_n) ++cols;
+            const int rows = (g_dr_n + cols - 1) / cols;
+            int       ax = -1, ay = -1;
+            // the block sits on a DIAGONAL of the door first (the report's soldiers hop onto the door tile diagonally, which is slower than the previous soldier's walk-in)
+            for (int rad = 6; rad < 30 && ax < 0; ++rad)
+                for (int sx = -1; sx <= 1 && ax < 0; sx += 2)
+                    for (int sy = -1; sy <= 1 && ax < 0; sy += 2) {
+                        const int ox = sx * rad - (sx > 0 ? 0 : cols - 1), oy = sy * rad - (sy > 0 ? 0 : rows - 1);
+                        if (nd_clear_rect(dx + ox, dy + oy, cols, rows, mw, mh_)) {
+                            ax = wrapx(dx + ox);
+                            ay = wrapy(dy + oy);
+                        }
+                    }
+            for (int rad = 4; rad < 30 && ax < 0; ++rad)
+                for (int ox = -rad; ox <= rad && ax < 0; ++ox)
+                    for (int oy = -rad; oy <= rad && ax < 0; ++oy) {
+                        if ((ox < 0 ? -ox : ox) != rad && (oy < 0 ? -oy : oy) != rad) continue;
+                        if (nd_clear_rect(dx + ox, dy + oy, cols, rows, mw, mh_)) {
+                            ax = wrapx(dx + ox);
+                            ay = wrapy(dy + oy);
+                        }
+                    }
+            if (ax < 0) return dr_fail("no clear block near the door");
+            { // fog: the block and the barracks surroundings discovered
+                uint8_t *disc = reinterpret_cast<uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
+                for (int a = -20; a < 21 + cols; ++a)
+                    for (int b = -20; b < 21 + rows; ++b) disc[((uint32_t)wrapx(ax + a) << 8) | (uint32_t)wrapy(ay + b)] |= (uint8_t)(1u << p);
+            }
+            for (int i = 0; i < 100; ++i) g_dr_existed[i] = un[i].energy > 0.0;
+            if (side == p)
+                for (int k = 0; k < g_dr_n; ++k)
+                    mh::call::llm_strat_order_create_unit_debug((uint32_t)wrapx(ax + k % cols), (uint32_t)wrapy(ay + k / cols), (uint32_t)(g_dr_ucfg + 1), p);
+            wsprintfA(m, "; DR BLOCK step=%lu at %d,%d %dx%d door=%d,%d\n", g_step, ax, ay, cols, rows, dx, dy);
+            append_line(g_log_path, m);
+            g_dr_phase = DR_FIND;
+            return;
+        }
+        case DR_FIND: {
+            int found = 0;
+            for (int i = 1; i < 100 && found < g_dr_n; ++i)
+                if (!g_dr_existed[i] && un[i].energy > 0.0 && ((int)un[i].unit_proto_id == g_dr_ucfg || (int)un[i].unit_proto_id == g_dr_ucfg + 1)) g_dr_unit[found++] = i;
+            if (found < g_dr_n) return;
+            g_dr_phase = DR_ORDER;
+            g_dr_mark  = g_step;
+            return;
+        }
+        case DR_ORDER: {
+            if (g_step < g_dr_mark + 40) return; // let the created units settle
+            if (side == p) {
+                for (int k = 0; k < g_dr_n; ++k) mh::call::llm_strat_unit_ctrl_group_assign(g_dr_unit[k], 9);
+                mh::call::llm_unit_ctrl_group_activate(9);
+                mh::call::llm_strat_group_issue_enter_building_order((uint32_t)g_dr_slot, 0, 0);
+            }
+            g_dr_order_at  = g_step;
+            g_dr_door_prev = bl[g_dr_bidx].online_state;
+            wsprintfA(m, "; DR ORDER step=%lu slot=%d n=%d %s\n", g_step, g_dr_slot, g_dr_n, side == p ? "issued here" : "the owner peer issues it");
+            append_line(g_log_path, m);
+            g_dr_phase = DR_WATCH;
+            return;
+        }
+        case DR_WATCH: {
+            const int el = (int)(g_step - g_dr_order_at);
+            const int door = bl[g_dr_bidx].online_state;
+            if (g_dr_door_prev == 2 && door == 4) {
+                ++g_dr_closes;
+                wsprintfA(m, "; DR CLOSE step=%lu el=%d\n", g_step, el);
+                append_line(g_log_path, m);
+            }
+            g_dr_door_prev = door;
+            int ndocked    = 0;
+            for (int k = 0; k < g_dr_n; ++k) {
+                bool docked = false;
+                for (int i = 0; i < st[g_dr_slot].docked_count && i < 50; ++i) docked |= (st[g_dr_slot].docked_units[i] == g_dr_unit[k]);
+                if (docked) {
+                    ++ndocked;
+                    if (!g_dr_dockedu[k]) {
+                        g_dr_dockedu[k] = true;
+                        if (g_dr_first < 0) g_dr_first = el;
+                        g_dr_last = el;
+                        wsprintfA(m, "; DR DOCK step=%lu el=%d unit=%d\n", g_step, el, g_dr_unit[k]);
+                        append_line(g_log_path, m);
+                    }
+                } else if (!g_dr_dockedu[k] && !g_dr_gaveup[k] && el > 30 && un[g_dr_unit[k]].order != 0x24 && un[g_dr_unit[k]].state == 1) {
+                    g_dr_gaveup[k] = true;
+                    ++g_dr_giveups;
+                    wsprintfA(m, "; DR GIVEUP step=%lu el=%d unit=%d at %d,%d\n", g_step, el, g_dr_unit[k], (int)un[g_dr_unit[k]].x, (int)un[g_dr_unit[k]].y);
+                    append_line(g_log_path, m);
+                }
+            }
+            if (ndocked + g_dr_giveups >= g_dr_n || el >= g_cfg.nd_tail) {
+                wsprintfA(m, "; DR TOTAL steps=%d n=%d docked=%d giveups=%d closes=%d firstdock=%d lastdock=%d eff=%d\n", el, g_dr_n, ndocked, g_dr_giveups, g_dr_closes, g_dr_first,
+                          g_dr_last, (int)(bl[g_dr_bidx].efficiency * 1000.0));
+                append_line(g_log_path, m);
+                g_dr_phase = DR_FINISHED;
+            }
             return;
         }
         default: return;
@@ -11031,6 +11672,8 @@ void on_sim_step() {
     pf_tick();           // mods:M1 S0 -- the ground path-trace probe (same placement)
     mv_tick();           // mods:M1R -- the recorded-move replay probe (same placement)
     nd_tick();           // mods:M1N -- the nudge / claim / swap case probe (same placement)
+    fc_tick();           // mods:M1G 4b -- the formation-from-the-click fixtures (same placement)
+    door_tick();         // mods:M1BE -- the door-queue fixture F21 (same placement)
     pip_tick();          // hotfix rc9.4 bldg_pip_guard -- the bad-pip fixture (same placement)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits

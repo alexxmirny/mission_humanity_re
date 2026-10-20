@@ -582,6 +582,17 @@ log D19: entered game mode 5 (big map) from the strategic view
 key 0x19
 gamemode 2
 log D19: returned to the live strategic view (mode 2)
+# While the chat/console line is open the bound key is TEXT, not pause (user rc19: P could not be typed
+# in chat). Shift+Enter opens the line, a typed "pP" must land in it and the mode must stay 2; Esc
+# closes the line again without sending.
+layout 00000409
+key 0x1c shift
+type pP
+field chat pP
+gamemode 2
+layout default
+key 0x01
+log D19: P typed into the chat line stays text (no pause)
 # -- back to the main menu
 key 0x01
 settled Quit game

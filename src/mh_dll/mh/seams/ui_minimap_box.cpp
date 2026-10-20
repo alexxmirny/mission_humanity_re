@@ -24,7 +24,7 @@ namespace {
 constexpr uintptr_t BOX_W   = 0x00824fa0u; // _G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_W
 constexpr uintptr_t BOX_H   = 0x00824fa8u; // _G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_H
 constexpr uintptr_t BOX_OFS = 0x00824facu; // _G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_OFS (bytes, from the minimap origin)
-constexpr uintptr_t ZOOM    = 0x005586eeu; // _G_LLM_STRAT_MINIMAP_ZOOM_MODE (1/2/4, 5 on the 256-wide maps)
+constexpr uintptr_t ZOOM    = 0x005586eeu; // _G_LLM_STRAT_MINIMAP_ZOOM_MODE (1/2/4; retail never writes 5)
 
 constexpr int      MAP_PX  = 128;     // the minimap is 128x128 px at every zoom mode
 constexpr uint16_t BOX_RGB = 0xdeffu; // the stock colour (mov ax,0xdeff)

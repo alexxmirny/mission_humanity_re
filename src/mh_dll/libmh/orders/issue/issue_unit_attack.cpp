@@ -27,6 +27,7 @@
 //
 #include "orders/issue/issue_unit_attack.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
+#include "sim/move/twin_hit_c.h"            // mods:M1H: twin hit counters
 
 
 namespace mh::orders::issue {
@@ -301,6 +302,7 @@ void detail::unit_order_attack_building_reposition(const issue_view &v, const or
                                        (uint32_t)(uint16_t)target_player, target_bldg_idx, &aim_x, &aim_y)) {
         target_x = (uint32_t)aim_x;
         target_y = (uint32_t)aim_y;
+        mh::sim::mvc::twin_hit(mh::sim::mvc::TS_ARF_ISSUE_REPOS);
     }
 
     if (weapon == 0xffffffffu) {
@@ -332,9 +334,11 @@ void detail::unit_order_attack_building_reposition(const issue_view &v, const or
             // documentation fidelity, not because either value is read on the other side.
             // attack_range_footprint: the in-range jitter spreads the aim around the CENTRE, as retail (JITTER splice
             // at 0x0046c19e) -- put the point back first.
-            if (mh::sim::attack_range_footprint())
+            if (mh::sim::attack_range_footprint()) {
                 c.bldg_get_coords((uint16_t)target_player, target_bldg_idx, reinterpret_cast<int32_t *>(&target_x),
                                   reinterpret_cast<int32_t *>(&target_y));
+                mh::sim::mvc::twin_hit(mh::sim::mvc::TS_ARF_JIT_REPOS);
+            }
             detail::bldg_footprint_random_point(v, s, c, attacker_player,
                                                 (uint32_t)attacker_unit_idx, target_player,
                                                 target_bldg_idx, &target_x, &target_y);

@@ -1,0 +1,35 @@
+# mp:GH1 CLIENT walk for gameplay_trailer_dropped: the host's START carries NO gameplay settings, so this joiner must
+# REFUSE it (never play on its own local values) and be bounced back to the browser with the reason on the status line.
+# Same join walk as mp_client_idle.txt up to the lobby; then, instead of the match, the destination is the browser.
+# Asserted here: the lobby goes away, the browser is back (`Join game`) and the notice is up. The post_check reads the
+# logs (refusal + bounce logged, no ADOPTED, no entry, no hashed sim step).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+
+# THE BOUNCE: the Start arrives, the client refuses it, and leaves the way a Cancel does.
+absent Network players
+onscreen Join game
+present Refused: no host settings
+# let the browser finish its slide-in/rescan, then re-gate on the notice (the same discipline as mp_client_join_refused.txt)
+settled Join game
+present Refused: no host settings
+capture gh1_refused_browser
+log CLIENT: host Start refused (no gameplay settings) -> back on the browser, notice up
+end

@@ -24,6 +24,9 @@
 //
 #include "sim/sim_order_dispatch.h"
 
+#include "sim/move/respond.h" // mods:M1G 4c: move_reverse_now key-on case
+#include "sim/move/twin_hit_c.h"
+#include "sim/sim_move_fixes.h"
 #include "sim_dispatch_calls.gen.h"
 #include "sim_test_support.h"
 
@@ -666,6 +669,73 @@ void test_u49_undock_reentry() {
     ck(applied == 0 && left == 0, "U49 fix on: a 0x20 to a non-boarding unit is dropped (as retail)");
 }
 
+// ---- mods:M1G 4c: [net] move_reverse_now on the RETAIN path ---------------------------------------------------------------------
+// A ground unit sliding east into N = (20, 10) (came from O = (19, 10)) is given a move whose goal lies west of O. Key off = retail (the
+// record is kept, the unit untouched); key on = the unit slides back first, the record is still kept exactly as retail keeps it.
+int  g_rv_rm = 0, g_rv_up = 0;
+void rv_fow_rm(uint32_t, int32_t, int32_t, uint8_t) { ++g_rv_rm; }
+void rv_fow_up(uint32_t, uint32_t, uint32_t, uint8_t) { ++g_rv_up; }
+void rv_sold(uint16_t, int32_t, uint8_t) {}
+
+void test_move_reverse_now() {
+    const mvc::respond_calls stubs = {&rv_fow_rm, &rv_fow_up, &rv_sold};
+    struct restore {
+        mh::sim::move_fixes saved = mh::sim::move_fix();
+        ~restore() {
+            mh::sim::set_move_fixes(saved);
+            mvc::g_respond_calls_override = nullptr;
+        }
+    } guard;
+    mvc::g_respond_calls_override = &stubs;
+    for (int on = 0; on < 2; ++on) {
+        for (int goal_behind = 1; goal_behind >= 0; --goal_behind) {
+            sim_fixture f;
+            seed_deferring_unit(f, 9);
+            f.map_dir_step_deltas[19 * 2]     = 1; // heading 19 = east (+1, 0)
+            f.map_dir_step_deltas[19 * 2 + 1] = 0;
+            f.cfg_units[PROTO].move_op_code   = 0x0f;
+            f.cfg_units[PROTO].move_op_arg    = 0x0a;
+            unit &u                           = f.u(PLAYER, 9);
+            u.x = 20, u.y = 10, u.facing_target = 19, u.facing_current = 19, u.move_microstep = 8, u.origin_tile_was_passable = 7;
+            f.t(20, 10).building         = 9;
+            f.t(20, 10).class_owner      = static_cast<uint8_t>(PLAYER | 0x80);
+            f.passable[(20u << 8) | 10u] = 5;
+            f.passable[(19u << 8) | 10u] = 1;
+            sim_view  v                  = f.view();
+            sim_store own                = f.store();
+            f.order_queue[0]             = make_record(ORDER_KIND_UNIT_EX, 0, 0x0a);
+            f.order_queue[0].unit_index  = 9;
+            f.order_queue[0].args[0]     = goal_behind ? 10 : 40;
+            f.order_queue[0].args[1]     = 10;
+            f.order_queue_count          = 1;
+            mh::sim::move_fixes mf;
+            mf.reverse_now = on != 0;
+            mh::sim::set_move_fixes(mf);
+            g_rv_rm = g_rv_up    = 0;
+            const uint32_t hits0 = mvc::twin_hit_counts()[mvc::TS_REVERSE];
+            dc().reset();
+            dispatch_calls c = rec::recording_calls();
+            detail::order_queue_dispatch(v, own, c);
+            ck_eq((uint32_t)f.order_queue_count, 1u, "reverse_now: the record is kept (retain path unchanged), key on or off");
+            ck_eq((uint32_t)u.order_queued, 1u, "reverse_now: order_queued set exactly as retail");
+            if (on && goal_behind) {
+                ck(u.x == 19 && u.y == 10 && u.facing_target == 7 && u.facing_current == 7 && u.move_microstep == 22,
+                   "reverse_now ON, goal behind: slid back to O, facing flipped, ms 8 -> 22");
+                ck(f.t(19, 10).building == 9 && f.t(20, 10).building == 0 && f.passable[(19u << 8) | 10u] == 5 && f.passable[(20u << 8) | 10u] == 7 &&
+                       u.origin_tile_was_passable == 1,
+                   "reverse_now ON: tile records / passable / origin mirrored");
+                ck(g_rv_rm == 1 && g_rv_up == 1, "reverse_now ON: fog sight removed at N and added at O");
+                ck_eq(mvc::twin_hit_counts()[mvc::TS_REVERSE] - hits0, 1u, "reverse_now ON: the twin hit counter ticked once");
+            } else {
+                ck(u.x == 20 && u.facing_target == 19 && u.move_microstep == 8 && f.t(20, 10).building == 9,
+                   on ? "reverse_now ON, goal ahead: the unit is untouched (retail)" : "reverse_now OFF: the unit is untouched (retail)");
+                ck(g_rv_rm == 0 && g_rv_up == 0, "no fog calls without a reverse");
+                ck_eq(mvc::twin_hit_counts()[mvc::TS_REVERSE] - hits0, 0u, "no twin hit without a reverse");
+            }
+        }
+    }
+}
+
 void run_dispatch_spine_tests() {
     test_dispatch_observer_wiring();
     test_decode_tables();
@@ -675,6 +745,7 @@ void run_dispatch_spine_tests() {
     test_loop_bound_is_reread();
     test_lockstep_extend();
     test_u49_undock_reentry();
+    test_move_reverse_now();
 }
 
 } // namespace mh::sim::test

@@ -38,7 +38,10 @@ constexpr uintptr_t ADDR_MODE    = mh::addr::_G_LLM_GAME_MODE;
 constexpr uintptr_t ADDR_SESSION = mh::addr::_G_LLM_GAME_SESSION_MODE;
 constexpr uintptr_t KEVENTS      = mh::addr::_G_LLM_INPUT_KEY_EVENTS;
 constexpr uintptr_t KREADIDX     = mh::addr::_G_LLM_INPUT_KEY_READ_IDX;
-constexpr uintptr_t KWRITEIDX    = mh::addr::_G_LLM_INPUT_KEY_WRITE_IDX;
+// UI-only state, a raw VA on purpose (same as ui_bigmap.cpp: a manifest data entry would renumber the
+// state-registry RIDs). 0 = no chat/console line open; while one is, the bound key is TEXT, not pause.
+constexpr uintptr_t ADDR_CHAT_MODE = 0x005d01d8u;
+constexpr uintptr_t KWRITEIDX      = mh::addr::_G_LLM_INPUT_KEY_WRITE_IDX;
 
 constexpr uint32_t RING_MASK           = 0x7f; // 128 slots, indices advance &0x7f (both producers do this)
 constexpr uint32_t EV_DOWN             = 0x100;
@@ -46,13 +49,13 @@ constexpr uint8_t  MODE_STRAT          = 2;
 constexpr uint8_t  MODE_PAUSED         = 5;
 constexpr uint8_t  SESSION_MP_LOCKSTEP = 3;
 
-constexpr uint32_t DEFAULT_KEY = 0x19; // P (PC set-1) -- the conventional pause key, and free: the
-                                       // stock strategic hotkey ladder never compares against 0x19
-                                       // (the hotkey map lists the claimed set). `key=0x45` binds
-                                       // the real Pause/Break key instead, at the cost of NumLock
-                                       // aliasing onto it (both arrive as 0x45 after the ring's
-                                       // &0x7f mask).
-constexpr int LOG_FIRST = 20;          // log this many entries, then go quiet
+constexpr uint32_t DEFAULT_KEY = 0; // unbound, as shipped. `key=0x19` binds P (PC set-1) -- the
+                                    // conventional pause key, and free: the stock strategic hotkey
+                                    // ladder never compares against 0x19 (the hotkey map lists the
+                                    // claimed set). `key=0x45` binds the real Pause/Break key
+                                    // instead, at the cost of NumLock aliasing onto it (both
+                                    // arrive as 0x45 after the ring's &0x7f mask).
+constexpr int LOG_FIRST = 20;       // log this many entries, then go quiet
 
 uint32_t g_key    = DEFAULT_KEY;
 long     g_enters = 0;
@@ -98,6 +101,7 @@ void on_strat_input() {
     if (!g_key) return;
     if (*(volatile uint8_t *)ADDR_MODE != MODE_STRAT) return;             // live strategic view only
     if (*(volatile uint8_t *)ADDR_SESSION == SESSION_MP_LOCKSTEP) return; // never pause one side of a match
+    if (*(volatile uint32_t *)ADDR_CHAT_MODE != 0) return;                // typing in the chat line (user rc19)
 
     const uint32_t r     = *(volatile uint32_t *)KREADIDX;
     bool           enter = false;
@@ -127,8 +131,9 @@ extern "C" int MH_Pause_Install(void) {
     char ini[MAX_PATH];
     mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
 
-    // Default ON with no ini (ship semantics -- the point of the feature is that a player gets the
-    // pause screen back). `key=0` unbinds it and leaves the game exactly as it shipped.
+    // Default OFF, the same as the shipped value (ini_keys.def fixes [pause] key=0): a dev-unlocked
+    // install with no [pause] line used to get P bound and lose P in the chat line (user rc19).
+    // `key=0x19` binds P; `key=0` unbinds it and leaves the game exactly as it shipped.
     g_key = (uint32_t)mh_ini_get_int("pause", "key", (int)DEFAULT_KEY, ini);
     if (g_key > 0x7f) {
         pz_log("; pause DISARMED: [pause] key=0x%02x is outside the 7-bit scancode range", g_key);

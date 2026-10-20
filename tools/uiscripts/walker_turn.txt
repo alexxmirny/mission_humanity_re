@@ -1,0 +1,48 @@
+# Walker U-turn (render only): a Centaur (alien Walker1) on the user's rc14 planet-6 save walks 4 tiles west, stops, and is ordered
+# back east, so it turns 180 degrees in place (12 notches, one per sim step). The retail frame table fills only 8 of the 24
+# facings (llm_strat_walker_frame_blend_table_init), so most notches drew the north rest image; [ui] walker_turn_frames_fix=1
+# (the default) fills the other 16 and the captures u00..u11 show the walker rotating through distinct images. Shipped
+# configuration (no libmh). `rclick` (three presents) rather than `simrclick`, so the first capture is one step after the order.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+camto 183 237
+reveal 190 246 12
+gameclock +300
+# select the lone Centaur (unit 23, tile 194,242) and send it 4 tiles west; wait for it to arrive and stand still
+simclick 367 172
+gameclock +100
+simrclick 250 172
+gameclock +5000
+capture pre
+# the U-turn: order it back east; one capture per sim step (20 ms) while it turns
+rclick 367 172
+gameclock +20
+capture u00
+gameclock +20
+capture u01
+gameclock +20
+capture u02
+gameclock +20
+capture u03
+gameclock +20
+capture u04
+gameclock +20
+capture u05
+gameclock +20
+capture u06
+gameclock +20
+capture u07
+gameclock +20
+capture u08
+gameclock +20
+capture u09
+gameclock +20
+capture u10
+gameclock +20
+capture u11
+end

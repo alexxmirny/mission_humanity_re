@@ -1,5 +1,9 @@
 #include "sim/sim_unit_path_detour.h"
 
+#include "sim/sim_move_fixes.h"    // mods:M1H [net] move_detour_slot_guard (move_fix())
+#include "sim/move/guards.h"       // mods:M1H the shared guard rule
+#include "sim/move/planner_hits.h" // mods:M1H the twins' hit counters
+
 #include "addr/mh_calls.gen.h"  // mh::call::llm_strat_unit_path_queue_splice -- bound live below
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -151,6 +155,13 @@ int32_t unit_path_detour(const sim_view &v, sim_store &own, const unit_path_deto
     // recurse through the public wrapper instead, which was wrong -- that brief was corrected
     // on 2026-08-20; this is the fix.
     if (alt_unit_idx != 0) {
+        // [net] move_detour_slot_guard (mods:M1H; twin of the retail splice at 0x0042172e, sim/move/guards.h): an occupant with
+        // no path slot (path_slot_id 0xff) would index past the player's 100 slots -- skip the recursion, "no detour".
+        const bool guard = move_fix().detour_slot_guard;
+        if (guard) {
+            move::planner_hit(move::PH_DETOUR);
+            if (move::detour_skip_occupant(true, unit_of(v, static_cast<uint32_t>(player), alt_unit_idx).path_slot_id)) return 1;
+        }
         return unit_path_detour(v, own, c, player, alt_unit_idx, 0);
     }
     return 1;

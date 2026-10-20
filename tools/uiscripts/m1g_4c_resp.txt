@@ -1,0 +1,20 @@
+# mods:M1G 4c -- fixtures F12 (walk, reverse mid-slide: move_reverse_now) and F13 (U-turn from rest: move_turn_rate) on the loaded
+# 'Unit movement test' save (5-kofu-c). Deploy the save with --deploy-save 5-kofu-c; the orders are tools/uiscripts/m1g_4c_f12a.csv / _f12b.csv / _f13.csv fed to the
+# harness with [harness] mv_replay=<abs path> (same hand-off as m1_mv_replay.txt); the verdict is the `; MV ...` lines in mh_harness.log plus the
+# carrier's `; move hits reverse=N turn=N` (splice) / `; move twin hits reverse|turn=N` (libmh twin) lines in mh_net.log. A probe, NOT a registered row
+# until lane D folds it into its preset rows.
+# Run: python tools/ui_test.py m1g_4c_resp.txt --deploy-save 5-kofu-c --host-dir <lane> --harness --steps 1600 \
+#   --harness-extra "synth_move=0;pin_wallclock=1;mv_replay=<abs csv>;mv_oob=1;mv_tail=6000" --net-extra "improved_movement=1;..."
+# Expected (pin_wallclock, libmh absent == libmh-bound per-step hash): F12a reverse fires at step 683 ("M1G reverse ... ms 4", hits reverse=1), dispatch 688, first onward tile 693
+# (off: 710 / 721). F12b reverse at 703 (ms 24), dispatch 728, onward 733 (off: 710 / 721). F13 (move_turn_rate 0/1/2): dispatch 700, first tile change 710 / 706 / 704 (turn hits > 0).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +330000
+log mv: save loaded, handing the run to the harness's mv_replay probe
+end

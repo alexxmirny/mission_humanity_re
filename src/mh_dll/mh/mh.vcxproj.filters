@@ -133,6 +133,9 @@
     <ClCompile Include="seams\ui_worker_click.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_walker_frames.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_minimap_box.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -187,10 +190,19 @@
     <ClCompile Include="seams\move_proto_nudge.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\move_proto_respond.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\door_hold.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\move_proto_arrival.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\move_proto_speed.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\move_carrier.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\combat_proto.cpp">

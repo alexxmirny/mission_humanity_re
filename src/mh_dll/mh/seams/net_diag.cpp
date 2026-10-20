@@ -314,12 +314,14 @@ void temporal_capture(int id) {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     TemporalEvt *e = &g_tev[g_tev_n];
-    e->qpc         = g_qpc_freq.QuadPart ? (t.QuadPart * 1000000LL) / g_qpc_freq.QuadPart : t.QuadPart;
-    e->id          = id;
-    e->clk         = tev_ms(ADDR_GAME_CLOCK);
-    e->tot         = tev_ms(ADDR_TOTAL_TIME);
-    e->com         = tev_ms(ADDR_COMMITTED());
-    e->loc         = tev_ms(ADDR_LOCAL_HORIZON);
+    // split: t * 1e6 overflows int64 after 10.67 days of uptime at a 10 MHz counter
+    e->qpc = g_qpc_freq.QuadPart ? (t.QuadPart / g_qpc_freq.QuadPart) * 1000000LL + (t.QuadPart % g_qpc_freq.QuadPart) * 1000000LL / g_qpc_freq.QuadPart
+                                 : t.QuadPart;
+    e->id  = id;
+    e->clk = tev_ms(ADDR_GAME_CLOCK);
+    e->tot = tev_ms(ADDR_TOTAL_TIME);
+    e->com = tev_ms(ADDR_COMMITTED());
+    e->loc = tev_ms(ADDR_LOCAL_HORIZON);
     g_tev_n++;
 }
 

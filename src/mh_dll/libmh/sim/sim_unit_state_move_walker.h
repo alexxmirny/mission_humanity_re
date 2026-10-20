@@ -45,6 +45,12 @@ struct unit_state_move_walker_calls {
     void (*unit_soldiers_set_heading)(uint16_t player, int32_t unit_index,
                                       uint8_t sprite_frame);                // @0x00489ab6
     int32_t (*unit_walk_step_allowed)(uint32_t player, int32_t unit_index); // @0x0048c79a
+    // ---- mods:M1H lane C: the calls the nudge / swap / claim twin (sim/move/nudge.h) makes on top of the above. APPENDED so a fixture
+    // that aggregate-initialises the first nineteen keeps compiling; a fixture that turns the nudge keys on must supply them.
+    int32_t (*path_make_single_step)(uint32_t player, int32_t unit_idx);             // @0x0049561f
+    void (*path_free_slot)(uint16_t player, int32_t unit_index);                     // @0x004969e8
+    void (*unit_set_order_param)(int32_t player, int32_t unit_index, int16_t param); // @0x0048696f
+    void (*unit_set_state_of)(int32_t player, int32_t unit_index, int16_t state);    // @0x004869b0
 };
 
 const unit_state_move_walker_calls &live_unit_state_move_walker_calls();

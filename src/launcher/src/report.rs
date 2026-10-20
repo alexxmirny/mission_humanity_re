@@ -2165,22 +2165,25 @@ fn collect(
     if let Some(dmp) = input.minidump {
         set.file(dump, dmp, "minidump.dmp".to_string());
     }
-    // The UI-freeze watchdog's dump of the launcher itself (watchdog.rs), beside launcher.log --
-    // only a recent one: an old freeze is not what a report filed today is about.
-    if let Some(fd) = input
-        .launcher_log
-        .as_deref()
-        .and_then(Path::parent)
-        .map(|d| d.join(crate::watchdog::DUMP_FILE))
-        .filter(|p| {
-            std::fs::metadata(p)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.elapsed().ok())
-                .is_some_and(|age| age < std::time::Duration::from_secs(7 * 24 * 3600))
-        })
-    {
-        set.file(dump, &fd, "launcher/ui_freeze.dmp".to_string());
+    // The UI-freeze watchdog's dumps of the launcher itself (watchdog.rs), beside launcher.log --
+    // only recent ones (an old freeze is not what a report filed today is about), newest
+    // `DUMP_KEEP` of them (dist LA22: one dump per freeze).
+    if let Some(dir) = input.launcher_log.as_deref().and_then(Path::parent) {
+        for fd in crate::watchdog::dump_files(dir)
+            .into_iter()
+            .take(crate::watchdog::DUMP_KEEP)
+            .filter(|p| {
+                std::fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .is_some_and(|age| age < std::time::Duration::from_secs(7 * 24 * 3600))
+            })
+        {
+            let leaf = fd.file_name().unwrap_or_default().to_string_lossy();
+            let leaf = leaf.replacen("launcher_freeze", "ui_freeze", 1);
+            set.file(dump, &fd, format!("launcher/{leaf}"));
+        }
     }
 
     set.shed_order.extend(optional_groups.iter().rev());

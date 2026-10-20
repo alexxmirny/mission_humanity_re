@@ -222,7 +222,7 @@ struct fixup_trailer_header { // 32 bytes
     uint32_t hashed_skipped;  // capture diagnostics, outside the checksum's meaning
     uint32_t unmapped;        //   (a value >= 0x10000 landing in no mapped range: an integer, mostly)
     uint32_t zeroed_skipped_blocks;
-    uint32_t reserved; // 0
+    uint32_t reserved; // capture diagnostic: pointer-looking dwords skipped inside SAVE/HASH regions (0 in blobs before TL-REPORT-REPLAY-FIDELITY)
 };
 struct fixup_module {  // 40 bytes
     char     name[28]; // lowercase basename, NUL-padded ("mh.dll")

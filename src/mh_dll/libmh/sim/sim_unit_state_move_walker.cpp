@@ -6,6 +6,12 @@
 //
 #include "sim/sim_unit_state_move_walker.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
+#include "sim/move/blocked.h"               // mods:M1H lane C: the blocked-unit protocol (3b/3c/3d), shared with the retail splice
+#include "sim/move/group_speed.h"           // mods:M1H lane C: the walk half of move_group_speed (4a)
+#include "sim/move/respond.h"               // mods:M1G 4c: move_turn_rate
+#include "sim/move/nudge.h"                 // mods:M1H lane C: nudge / claim / swap (3e-1/2/3)
+#include "sim/move/world_c.h"
+#include "sim/sim_move_fixes.h" // mods:M1H lane A: the key values the twins read
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -36,6 +42,10 @@ const unit_state_move_walker_calls &live_unit_state_move_walker_calls() {
         MH_LIBMH_BIND(map_fow_UpdateFoWPlus),
         MH_LIBMH_BIND(llm_strat_unit_soldiers_set_heading),
         MH_LIBMH_BIND(llm_strat_unit_walk_step_allowed),
+        MH_LIBMH_BIND(llm_strat_path_make_single_step),
+        MH_LIBMH_BIND(llm_strat_path_free_slot),
+        MH_LIBMH_BIND(llm_unit_set_order_param),
+        MH_LIBMH_BIND(llm_strat_unit_set_state_of),
     };
     return c;
 }
@@ -243,9 +253,11 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                 // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's WALK splice at
                 // 0x0047d016): the unit's REAL target and its nearest footprint tile. Off = the original's
                 // (player, unit_index) arguments, a building index that is the attacker's own unit index.
-                if (!(attack_range_footprint() && u.target_ref != 0 &&
-                      footprint_aim_of_view(v, u, player, ref_owner(static_cast<uint32_t>(u.target_ref)),
-                                            static_cast<int32_t>(static_cast<uint16_t>(u.target_index)), &fine_x, &fine_y)))
+                if (attack_range_footprint() && u.target_ref != 0 &&
+                    footprint_aim_of_view(v, u, player, ref_owner(static_cast<uint32_t>(u.target_ref)),
+                                          static_cast<int32_t>(static_cast<uint16_t>(u.target_index)), &fine_x, &fine_y))
+                    mvc::twin_hit(mvc::TS_ARF_WALK);
+                else
                     c.bldg_get_coords(player, unit_index, &fine_x, &fine_y);
             } else {
                 fine_x = u.target_fine_x;
@@ -270,10 +282,12 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
             // are uint32_t * (TACT1-P C6, 2026-09-04) -- same 32-bit quantity, cast at this site.
             // attack_range_footprint: the jitter spreads the aim around the CENTRE, as retail (retail carrier: the
             // JITTER splice at 0x0047d114) -- target_fine holds the aim tile here, so put it back first.
-            if (attack_range_footprint())
+            if (attack_range_footprint()) {
                 c.bldg_get_coords(static_cast<uint16_t>(target_owner),
                                   static_cast<int32_t>(static_cast<uint16_t>(u.target_index)), &u.target_fine_x,
                                   &u.target_fine_y);
+                mvc::twin_hit(mvc::TS_ARF_JIT_WALK);
+            }
             c.bldg_footprint_random_offset(player, static_cast<uint32_t>(unit_index), target_owner,
                                            static_cast<int32_t>(static_cast<uint16_t>(u.target_index)),
                                            reinterpret_cast<uint32_t *>(&u.target_fine_x),
@@ -307,20 +321,58 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
 
         if (own.passable_at(new_x, new_y) == 0 || own.tile_object_at(new_x, new_y).building != 0) {
             // 0x0047d4fc-0x0047d574: destination is blocked -- request a detour, escalate retries.
-            const int32_t detour_requested =
-                c.path_step_check_and_request_detour(old_x, old_y, static_cast<int32_t>(new_x),
-                                                     static_cast<int32_t>(new_y));
-            if (detour_requested != 0) {
-                u.path_blocked_retry_count = 0xc9;
+            //
+            // mods:M1H lane C: the movement prototypes that ride this block (retail carriers: the CALL splice at 0x0047d508 for the
+            // nudge / claim / swap keys, the 38-byte splice at 0x0047d50d for the blocked-unit protocol; both DEAD code when libmh owns
+            // this handler, so the twin carries the keys). All keys off = the retail block below, byte for byte.
+            const move_fixes     &mf               = move_fix();
+            int32_t               detour_requested = -1;
+            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon, mf.enter_queue};
+            if (nk.nudge || nk.claim || nk.swap || nk.enter) {
+                mvc::libmh_world<unit_state_move_walker_calls> mw{v, own, c};
+                detour_requested = mvc::nd_decide(mw, nk, old_x, old_y, new_x, new_y); // -1 = run the retail check
             }
-            const uint8_t old_retry_count = u.path_blocked_retry_count;
-            u.path_blocked_retry_count += 1;
-            if (old_retry_count < 0xc9) { // asm: CMP DL,0xc8; JBE (unsigned <=0xc8, i.e. <0xc9)
-                u.activity_clock += MOVE_WALKER_BLOCKED_ACTIVITY_BUMP;
+            if (detour_requested < 0)
+                detour_requested = c.path_step_check_and_request_detour(old_x, old_y, static_cast<int32_t>(new_x),
+                                                                        static_cast<int32_t>(new_y));
+            const mvc::blocked_params bp = mvc::make_blocked_params(mf.block_wait_ms, mf.keep_sidestep, mf.repath_cooldown_ms, mf.block_reset_moving,
+                                                                    mf.replan_detour_cap, mf.enter_queue);
+            if (!bp.active()) {
+                if (detour_requested != 0) {
+                    u.path_blocked_retry_count = 0xc9;
+                }
+                const uint8_t old_retry_count = u.path_blocked_retry_count;
+                u.path_blocked_retry_count += 1;
+                if (old_retry_count < 0xc9) { // asm: CMP DL,0xc8; JBE (unsigned <=0xc8, i.e. <0xc9)
+                    u.activity_clock += MOVE_WALKER_BLOCKED_ACTIVITY_BUMP;
+                } else {
+                    u.path_blocked_retry_count = 0;
+                    c.unit_set_state(MOVE_WALKER_STATE_GROUP_MARSHAL);
+                    c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_REPLAN);
+                }
             } else {
-                u.path_blocked_retry_count = 0;
-                c.unit_set_state(MOVE_WALKER_STATE_GROUP_MARSHAL);
-                c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_REPLAN);
+                mvc::twin_hit(mvc::TS_BLOCKED);
+                // mods:M1DT 4a: who stands on the destination tile (an own unit; walking = a ground mover in state 0x0f)
+                mvc::blocker_info bi;
+                if (bp.reset_moving) {
+                    const auto &bt = own.tile_object_at(new_x, new_y);
+                    if (bt.building != 0 && bt.class_owner == static_cast<uint8_t>(player | 0x80u) && bt.building < v.caps.units) {
+                        const unit &bu    = own.unit_at(player, bt.building);
+                        bi.idx            = bt.building;
+                        const uint64_t eb = [](double d) { uint64_t r; std::memcpy(&r, &d, 8); return r; }(bu.energy);
+                        bi.walking_friend = bu.state == 0x0f && v.cfg_units[bu.unit_proto_id].move_op_code == 0x0f && (eb >> 63) == 0 && (eb << 1) != 0;
+                    }
+                }
+                switch (mvc::blocked_decide(u, detour_requested != 0, bp, [&](uint32_t slot, int entry) -> path_waypoint & { return own.path_buffer_at(player, static_cast<int32_t>(slot), entry); }, bi)) {
+                    case mvc::blocked_next::wait: u.activity_clock += MOVE_WALKER_BLOCKED_ACTIVITY_BUMP; break;
+                    case mvc::blocked_next::replan:
+                        if (bp.cd_on && !mvc::blocked_enter_exempt(bp, u)) u.activity_clock += bp.cd_s; // move_repath_cooldown_ms (mods:M1BE: not for an entering unit): the marshal does not run for that long
+                        u.path_blocked_retry_count = 0;
+                        c.unit_set_state(MOVE_WALKER_STATE_GROUP_MARSHAL);
+                        c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_REPLAN);
+                        break;
+                    case mvc::blocked_next::done: break; // a kept sidestep
+                }
             }
             own.tick_budget() = 0.0;
             return;
@@ -351,8 +403,14 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
         // Terrain-cost update, EXACT ORDER per the disassembly (0x0047d3d1-0x0047d3f1): the new tile's
         // passable value (widened to double) is ADDED to the current move_step_speed_scale first, THEN
         // the sum is halved -- an averaging filter, not an overwrite.
-        u.move_step_speed_scale = static_cast<double>(own.passable_at(new_x, new_y)) + u.move_step_speed_scale;
-        u.move_step_speed_scale = u.move_step_speed_scale * MOVE_WALKER_TERRAIN_SCALE_MULT;
+        // mods:M1H lane C [net] move_group_speed (retail carrier: the 38-byte splice at 0x0047d3d1): a TAGGED scale >= 1.0 is the group's
+        // speed ratio and is kept; anything else takes the retail averaging below.
+        if (move_fix().group_speed && mvc::gs_keep_scale(u.move_step_speed_scale)) {
+            mvc::twin_hit(mvc::TS_SPEED_WALK);
+        } else {
+            u.move_step_speed_scale = static_cast<double>(own.passable_at(new_x, new_y)) + u.move_step_speed_scale;
+            u.move_step_speed_scale = u.move_step_speed_scale * MOVE_WALKER_TERRAIN_SCALE_MULT;
+        }
 
         own.passable_at(new_x, new_y) = 5;
         u.x                           = static_cast<uint8_t>(new_x);
@@ -377,7 +435,12 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
     }
 
     // ---- TURN: facing does not yet point the right way -------------------------------------------
-    const double turn_cost = v.cfg_units[u.unit_proto_id].turn_speed[player] * u.move_step_speed_scale;
+    double turn_cost = v.cfg_units[u.unit_proto_id].turn_speed[player] * u.move_step_speed_scale;
+    // mods:M1G 4c [net] move_turn_rate (retail carrier: the 9-byte splice at 0x0047d5b4, seams/move_proto_respond.cpp): x 2^-k, exact.
+    if (const int tk = mvc::turn_rate_clamp(move_fix().turn_rate)) {
+        turn_cost *= mvc::turn_scale(tk);
+        mvc::twin_hit(mvc::TS_TURN);
+    }
     if (own.tick_budget() < turn_cost) {
         // 0x0047d5cb-0x0047d5f0: same carryover idiom as the two budget gates above.
         u.activity_clock -= own.tick_budget();

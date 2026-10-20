@@ -2,14 +2,14 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 185,
+  "distinct_callees": 186,
   "config_measures": {
    "hosted": {
-    "sites": 1562,
+    "sites": 1573,
     "distinct": 746
    },
    "hosted_gates_off": {
-    "sites": 1562,
+    "sites": 1573,
     "distinct": 746
    },
    "hosted_ship": {
@@ -22,7 +22,7 @@
     "distinct": 2
    },
    "config_dependent": {
-    "sites": 1439,
+    "sites": 1450,
     "distinct": 714
    },
    "vendored_crt": {
@@ -37,7 +37,7 @@
   "by_status": {
    "dead": 2,
    "original": 119,
-   "translated": 64
+   "translated": 65
   },
   "modules": {
    "desync": {
@@ -53,9 +53,9 @@
     "outward_distinct": 0
    },
    "seams": {
-    "sites": 301,
-    "distinct": 178,
-    "outward_sites": 182,
+    "sites": 326,
+    "distinct": 179,
+    "outward_sites": 189,
     "outward_distinct": 119
    },
    "sim": {
@@ -1001,9 +1001,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -1035,9 +1035,9 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 12,
+   "sites": 18,
    "modules": {
-    "seams": 12
+    "seams": 18
    }
   },
   {
@@ -1070,9 +1070,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 10,
+   "sites": 12,
    "modules": {
-    "seams": 10
+    "seams": 12
    }
   },
   {
@@ -1114,9 +1114,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 5,
+   "sites": 6,
    "modules": {
-    "seams": 5
+    "seams": 6
    }
   },
   {
@@ -1169,9 +1169,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": false,
-   "sites": 3,
+   "sites": 2,
    "modules": {
-    "seams": 3
+    "seams": 2
    }
   },
   {
@@ -1302,6 +1302,17 @@
    }
   },
   {
+   "name": "llm_strat_storage_type_accepts_unit",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_target_release_ref",
    "status": "translated",
    "domain": "sim",
@@ -1362,9 +1373,9 @@
    "domain": "sim",
    "tier": "T3",
    "promoted": true,
-   "sites": 9,
+   "sites": 18,
    "modules": {
-    "seams": 9
+    "seams": 18
    }
   },
   {
@@ -1450,9 +1461,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": false,
-   "sites": 3,
+   "sites": 2,
    "modules": {
-    "seams": 3
+    "seams": 2
    }
   },
   {
@@ -2036,9 +2047,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 8,
+   "sites": 15,
    "modules": {
-    "seams": 8
+    "seams": 15
    },
    "adjudication": null
   },

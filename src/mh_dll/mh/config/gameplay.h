@@ -54,6 +54,14 @@ void restore_local(const char *why);
 // last apply(), excluding restore_local().
 void current(char *summary, int summary_cap, char *src, int src_cap);
 
+// GH1: FNV-1a of the last apply()'s summary text -- one short number per peer to compare in the logs.
+uint32_t current_hash();
+
+// GH1: one line in mh_net.log (the file the rig checkers read): `; gameplay: <text>`.
+void note(const char *text);
+// GH1: `; gameplay: applied hash=<current_hash()>` -- written by BOTH peers right after their apply.
+void log_applied_hash();
+
 const char *source_name(Source s);
 
 } // namespace mh::gameplay

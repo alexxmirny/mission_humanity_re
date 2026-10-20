@@ -4848,7 +4848,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_fog_of_war.h",
-   "sites": 13,
+   "sites": 14,
    "addr": 4810856
   },
   {
@@ -5537,7 +5537,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_unit_path_free_slot.h",
-   "sites": 15,
+   "sites": 16,
    "addr": 4811240
   },
   {
@@ -5550,7 +5550,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_path_make_single_step.h",
-   "sites": 1,
+   "sites": 3,
    "addr": 4806175
   },
   {
@@ -7760,7 +7760,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_unit_set_state_of.h",
-   "sites": 9,
+   "sites": 10,
    "addr": 4745648
   },
   {
@@ -7825,7 +7825,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_unit_soldier_chain.h",
-   "sites": 4,
+   "sites": 5,
    "addr": 4758198
   },
   {
@@ -9138,7 +9138,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_order_enqueue.h",
-   "sites": 3,
+   "sites": 4,
    "addr": 4745583
   },
   {
@@ -9255,7 +9255,7 @@
    "seam_kind": "FROZEN",
    "domain": "sim",
    "header": "sim/sim_fog_of_war.h",
-   "sites": 14,
+   "sites": 15,
    "addr": 4810778
   },
   {

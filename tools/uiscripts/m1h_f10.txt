@@ -1,0 +1,35 @@
+# mods:M1H F10 -- the big-map flood fixture, solo: a 1-human + 1-AI skirmish on the lobby's default map (256x256), reached through the real menu;
+# the mother is landed with a shift+right-click and the rest is the harness's pf_* probe (create a ground group of 8, give it the player's group
+# move across the map, trace it). The verdict is NOT a frame: tools/check_m1h.py --case f10 reads the `; PF ...` lines and the hit counters.
+# One capture right after the landing (identical in every arm). The lobby start is the first thing in the file because a campaign save has no
+# 256x256 map: the flood (llm_map_region_flood_reachable) only gets a front big enough to matter on a big map.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+capture m1h_f10
+gameclock +30000
+log m1h_f10: probe finished
+end

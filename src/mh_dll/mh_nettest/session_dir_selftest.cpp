@@ -161,6 +161,14 @@ void section_rl15() {
     mh_sd_copy(r.gameplay_src, sizeof(r.gameplay_src), "adopted");
     mh_session_json(&r, js, sizeof(js));
     check("session.json: gameplay + gameplay_src", has(js, "\"gameplay\": \"turret_fire_rate_mult=3;turret_clip_fix=0\"") && has(js, "\"gameplay_src\": \"adopted\""));
+    { // TL-REPORT-REPLAY-FIDELITY: every host-synced key (37+ rows, ~1 KB) must survive -- the old 192-byte field cut the tail
+        char big[1800];
+        int  w = 0;
+        for (int i = 0; i < 60 && w < 1500; ++i) w += snprintf(big + w, sizeof(big) - w, "%skey_number_%02d_padding=-1", i ? ";" : "", i);
+        mh_sd_copy(r.gameplay, sizeof(r.gameplay), big);
+        mh_session_json(&r, js, sizeof(js));
+        check("session.json: a ~1.5 KB gameplay string is kept whole", has(js, big) && w > 1000);
+    }
     mh_sd_copy(r.outcome, MH_SESSION_TEXT_CAP, mh_session_outcome("gameover", false));
     mh_session_json(&r, js, sizeof(js));
     check("session.json: outcome finished after the close", has(js, "\"outcome\": \"finished\""));

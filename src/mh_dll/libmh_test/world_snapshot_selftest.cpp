@@ -341,6 +341,10 @@ bool fx_has_hash_slice(region_id r) {
     return false;
 }
 
+bool fx_sim_data(region_id r) {
+    return (REGIONS[r].manifests & (MF_SAVE | MF_HASH)) != 0;
+}
+
 bool fx_view_owned(region_id r) {
     const uint8_t f = REGIONS[r].manifests;
     return (f & MF_VIEW) != 0 && (f & (MF_SAVE | MF_HASH)) == 0;
@@ -354,6 +358,16 @@ int fx_pick(bool view, int avoid) {
         if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || fx_has_hash_slice(b.rid)) continue;
         if (fx_view_owned(b.rid) != view) continue;
         return i;
+    }
+    return -1;
+}
+
+// Pick a SAVE/HASH-owned block (sim DATA) with no hash slice, of at least 64 bytes.
+int fx_pick_sim_data(int avoid) {
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const auto &b = WORLD_SNAPSHOT_BLOCKS[i];
+        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || fx_has_hash_slice(b.rid)) continue;
+        if (fx_sim_data(b.rid)) return i;
     }
     return -1;
 }
@@ -586,6 +600,36 @@ int arm_fixup(arena &a, uint32_t masks) {
         }
     }
 
+    // ---- F9: sim DATA (SAVE/HASH regions) gets no entry, whatever it looks like (TL-REPORT-REPLAY-FIDELITY) ----
+    {
+        const int sd = fx_pick_sim_data(-1);
+        ck(sd >= 0, "F9: found a SAVE/HASH-owned block");
+        if (sd >= 0) {
+            const region_id rsd = WORLD_SNAPSHOT_BLOCKS[sd].rid;
+            a.fill(0);
+            setw(rsd, 0, H + 8u);       // a heap-shaped value (a passable plane word, a double's high half...)
+            setw(rsd, 8, X1 + 0x40u);   // a (foreign) DLL-shaped value: ddraw.dll below, not ours
+            setw(rsd, 16, 0x7777ABCDu); // ASCII padding (unmapped in the synthetic process: no entry either way)
+            mk_map(true, false);
+            ck(do_capture(m) == WORLD_OK, "F9: capture succeeds");
+            ck(fx_entry(blob, sd, 0) == 0 && fx_entry(blob, sd, 8) == 0 && fx_entry(blob, sd, 16) == 0,
+               "F9: no PRESERVE/REBASE entry for pointer-shaped data inside a SAVE/HASH region");
+            size_t               tl = 0;
+            const uint8_t       *t  = fx_trailer(blob, &tl);
+            fixup_trailer_header th;
+            std::memcpy(&th, t, sizeof(th));
+            ck(th.reserved >= 2u, "F9: ... and the skip is counted in the trailer's diagnostic word");
+            a.fill(0xCD);
+            setw(rsd, 0, 0x0BADBEEFu); // the receiver's own bytes here must NOT survive the import
+            fx_resolver_ctx rc  = {X2, STAMP, SIZE, true};
+            module_resolver res = {&fx_resolve, &rc};
+            ck(fixup_prepare(blob, got, *plan, &res) == 0 && import(blob, got) == WORLD_OK, "F9: import");
+            fixup_apply(*plan, nullptr);
+            ck(getw(rsd, 0) == H + 8u && getw(rsd, 8) == X1 + 0x40u && getw(rsd, 16) == 0x7777ABCDu,
+               "F9: the importer takes the DUMP's bytes verbatim (a replay no longer depends on the carrier)");
+        }
+    }
+
     // ---- F5: refusals are all-or-nothing -------------------------------------------------------------
     {
         a.fill(0);
@@ -769,18 +813,21 @@ int arm_fixup(arena &a, uint32_t masks) {
         const uint32_t hv32 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(heap));
         const uint32_t sv32 = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&exe_static));
         a.fill(0);
-        setw(rhs, 0, sv32);
+        // the pointers live in a VIEW-owned holder (presentation state: the only place a real process-local
+        // pointer can sit once SAVE/HASH regions are sim data, F9); the same values in a sim-owned holder
+        // get NO entry
+        setw(rhv, 0, sv32);
+        setw(rhv, 4, hv32 + 4u);
+        setw(rhv, 8, kfn);
         setw(rhs, 4, hv32 + 4u);
         setw(rhs, 8, kfn);
         ck(do_capture(nullptr) == WORLD_OK, "F7: capture with the REAL address map succeeds");
-        ck(fx_entry(blob, hs, 0) == 0, "F7: a pointer into the exe's own image is NOT an entry (mh.exe is not ASLR'd)");
-        ck(fx_entry(blob, hs, 4) == FIXUP_PRESERVE, "F7: a CRT-heap pointer is PRESERVE");
-        char     nm[28] = {0};
-        uint32_t arg    = 0;
-        ck(fx_entry(blob, hs, 8, &arg, nullptr, nm) == FIXUP_REBASE && std::strcmp(nm, kname) == 0 &&
-               arg == kfn - static_cast<uint32_t>(reinterpret_cast<uintptr_t>(k32)),
-           "F7: a pointer into a system DLL is REBASE (that module's name, rva) -- a foreign module, resolved by name");
-        printf("    F7 system DLL classified as: %s\n", nm);
+        ck(fx_entry(blob, hv, 0) == 0, "F7: a pointer into the exe's own image is NOT an entry (mh.exe is not ASLR'd)");
+        ck(fx_entry(blob, hv, 4) == FIXUP_PRESERVE, "F7: a CRT-heap pointer is PRESERVE");
+        ck(fx_entry(blob, hv, 8) == FIXUP_PRESERVE,
+           "F7: a pointer into a system DLL in a view-owned holder is PRESERVE (the receiver owns its screen)");
+        ck(fx_entry(blob, hs, 4) == 0 && fx_entry(blob, hs, 8) == 0,
+           "F7: ... and the same two values inside a sim-owned (SAVE/HASH) holder are data: no entry");
         size_t              tl = 0;
         const uint8_t      *t  = fx_trailer(blob, &tl);
         const fixup_summary sm = fixup_summarize(t, tl);
@@ -798,7 +845,7 @@ int arm_fixup(arena &a, uint32_t masks) {
         ck(import(blob, got) == WORLD_OK, "F7: import");
         fixup_stats fs;
         fixup_apply(*plan, &fs);
-        ck(fs.changed == 0 && getw(rhs, 8) == kfn, "F7: an in-process re-import changes 0 values");
+        ck(fs.changed == 0 && getw(rhv, 8) == kfn, "F7: an in-process re-import changes 0 values");
         std::free(heap);
     }
 

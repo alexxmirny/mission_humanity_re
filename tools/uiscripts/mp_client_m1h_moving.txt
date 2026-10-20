@@ -1,0 +1,36 @@
+# mods:M1H CLIENT walk -- the host of the m1h_mp_moving rows: a 2-peer lockstep match in which the harness's nd probe (nd_case=1245789: an idle
+# blocker nudged aside, a head-on swap in a one-tile corridor, an idle friend routed through, a mixed-speed group against a lone unit, a mover behind a column of walking friends)
+# builds its cases on EVERY peer from the fresh match and moves the units through the real right-click path. The verdict is the pair of
+# logs, not a frame: tools/check_m1h.py --mp compares the two peers' `; ND VERDICT` lines and reads the hit counters; the runner's
+# lockstep compare (mp_analyze) gives ALL PAIRS IDENTICAL. One capture per peer (the fresh match, past the reveal saturation) keeps the
+# script a UI-path row. Pair with mp_host_m1h_moving.txt.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: wait for the host's Start -> the lobby screen goes away when the match launches
+present Network players
+# Tell the HOST we are really in our lobby. Its `peers 1` only means the TRANSPORT connected, which
+# happens about a second before this point -- clicking Start there left us ~2 frames of lobby, too few
+# to settle or capture (2026-07-28). The runner ferries this marker to the host's `awaitsignal lobby`.
+signal lobby
+settled Cancel
+absent Network players
+gameclock 6000
+capture m1h_mp_start
+rclick 480 330 shift
+gameclock 66000
+log CLIENT m1h moving cases done
+end

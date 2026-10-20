@@ -621,7 +621,14 @@ bool g_entry_started   = false;
 int  g_entry_ticks     = 0;
 int  g_entry_hb        = 0;
 bool g_host_start_done = false;
-bool g_gp_adopted      = false; // PT-SET1: the client applied this Start's gameplay set (per lobby, like the latches above)
+// GH1: the client's adopt of the host's Start (slots + gameplay set), per lobby like the latches above.
+// mp_client_adopt_start() is the only writer; REFUSED also arms the bounce back to the browser.
+enum class StartAdopt : uint8_t { PENDING,
+                                  ADOPTED,
+                                  REFUSED };
+StartAdopt  g_start_adopt         = StartAdopt::PENDING;
+bool        g_start_refuse_posted = false; // a refusal waits for MH_Seam_PollRecv to bounce the lobby
+const char *g_start_refuse_reason = "";    // <= 20 chars (the browser notice budget), static text
 } // namespace
 bool bml_hook_armed(); // mp:D36: is the begin_map_load run-before hook installed?
 namespace {
@@ -929,7 +936,7 @@ extern "C" void MH_MP_RearmLobbyEntry(void) {
     g_entry_ticks     = 0;
     g_entry_hb        = 0;
     g_host_start_done = false;
-    g_gp_adopted      = false;
+    g_start_adopt     = StartAdopt::PENDING;
     lg("; RM1: match over -> lobby entry prep RE-ARMED for the next lobby (client driver + host Start prep)");
 }
 
@@ -1148,6 +1155,94 @@ void log_lobby_state(bool is_host, const char *when) {
     }
 }
 
+// GH1: the client's one adopt point. The host's FLAG_START carries its authoritative slot array and the
+// gameplay-settings trailer; both must be applied BEFORE players/turrets are built, on EVERY client entry
+// route: this driver, and retail's own 0x0a handler (llm_lobby_host_net_dispatch case 2 @0x004c04f7 ->
+// llm_lobby_begin_map_load, which on_begin_map_load hooks) on a client whose driver is still in its
+// settle window. Idempotent per lobby. A Start without a slot array or without a decodable settings set
+// is REFUSED, never papered over with local values (silent rules mismatch = desync): the caller must not
+// enter the match when this returns false.
+bool mp_client_refuse_start(const char *reason) {
+    g_start_adopt         = StartAdopt::REFUSED;
+    g_start_refuse_reason = reason;
+    g_start_refuse_posted = true;
+    char why[96];
+    wsprintfA(why, "Start REFUSED (%s) -- the match is not entered; leaving the lobby", reason);
+    mh::gameplay::note(why); // mh_net.log (lg is mh_launch.log): the rig checker reads this one
+    lg("; gameplay: %s", why);
+    return false;
+}
+
+bool mp_client_adopt_start() {
+    if (g_start_adopt == StartAdopt::ADOPTED) return true;
+    if (g_start_adopt == StartAdopt::REFUSED) return false;
+    const int     slot = mp_lobby_slot(false);
+    unsigned char hs[SLOT_STRIDE * 8];
+    const int     n = MH_Seam_TakeStartSlots(hs, sizeof(hs));
+    if (n != (int)sizeof(hs)) return mp_client_refuse_start("no host Start");
+    unsigned char                   gb[MH_NET_MAX_PAYLOAD];
+    const int                       gl = MH_Seam_TakeStartGameplay(gb, sizeof(gb));
+    mh_net_proto::GameplaySet       gs;
+    const mh_net_proto::GameplayErr ge = gl > 0 ? mh_net_proto::gameplay_set_decode(gb, (size_t)gl, gs) : mh_net_proto::GameplayErr::Truncated;
+    if (gl <= 0 || ge != mh_net_proto::GameplayErr::Ok) {
+        mh::gameplay::note(gl > 0 ? mh_net_proto::gameplay_err_text(ge) : "the host's START carried no gameplay trailer");
+        return mp_client_refuse_start("no host settings");
+    }
+    int occ;
+    {
+        // DIFF BEFORE OVERWRITING, and log it. Adopting the host's array makes the peers agree
+        // whatever happened, so without this the interesting event -- "the host and I disagreed at
+        // Start, and my copy just lost" -- would be silently repaired and never observed. That is
+        // precisely how the 2026-08-28 desync stayed invisible for eight minutes. A disagreement
+        // here is EXPECTED and benign (a slot edit in flight); a disagreement that recurs every
+        // match is a bug in the lobby sync, and this line is what would show it.
+        // THE RELATION ROW (+0x0d..+0x14) IS EXCLUDED FROM THIS COMPARISON, and that is measured,
+        // not assumed. The host runs mp_set_lobby_relations_nxn() BEFORE it snapshots, and we run
+        // ours a few lines BELOW this adopt, so at this instant the host's rows read 02 02 and
+        // ours still read 00 00 -- a guaranteed, structural difference on every single match.
+        // Comparing it made this line fire every time with every named field identical (measured
+        // on the 2026-08-29 rig run: "bytes differing: 0d 0e"), which is an alarm that trains you
+        // to ignore it -- the mostly-green-occasionally-red oracle this ledger refuses elsewhere.
+        // Both peers recompute the row from the (now identical) adopted array immediately after,
+        // and D18 made that computation agree, so nothing is lost by not checking it here.
+        constexpr int        REL_OFF = 0x0d, REL_LEN = 8;
+        const unsigned char *mine = (const unsigned char *)ADDR_LOBBY_SLOTS;
+        for (int si = 0; si < 8; ++si) {
+            const unsigned char *a = mine + si * SLOT_STRIDE, *b = hs + si * SLOT_STRIDE;
+            char                 offs[160];
+            int                  no = 0;
+            for (int k = 0; k < SLOT_STRIDE && no < 128; ++k) {
+                if (k == REL_OFF) k += REL_LEN - 1; // skip the relation row, see above
+                else if (a[k] != b[k]) no += wsprintfA(offs + no, " %02x", k);
+            }
+            offs[no] = 0;
+            if (no == 0) continue; // agrees on everything that matters here
+            // Name the fields the 2026-08-28 desync actually turned on rather than dumping 0x39
+            // bytes: status@+0x0b, player_id@+0x01, race@+0x05, color@+0x06 -- plus the raw offsets
+            // so a difference in a field nobody has named yet is still diagnosable.
+            lg("; U28 SLOT DIFF at Start slot[%d]: ours status=%d pid=%d race=%d color=%d | HOST "
+               "status=%d pid=%d race=%d color=%d -- taking the host's; bytes differing:%s",
+               si, a[0x0b], *(const int *)(a + 0x01), a[0x05], a[0x06], b[0x0b],
+               *(const int *)(b + 0x01), b[0x05], b[0x06], offs);
+        }
+        memcpy((void *)ADDR_LOBBY_SLOTS, hs, sizeof(hs));
+        occ = lobby_slots_occupied(); // recompute from the host's array, not ours
+        // mp:GS1(b): re-resolve OUR OWN array index against the array we just adopted -- it was
+        // computed from our PRE-adoption copy above, and the one case a "U28 SLOT DIFF" line above
+        // can name is our own row moving (a slot edit in flight right at Start). Cheap and
+        // idempotent when nothing moved; the alternative is a PlayerSide that silently outlives its
+        // own array. LOCALIDX (the wire id, `slot`) does not depend on this array at all.
+        const int array_idx           = mp_lobby_array_index(false);
+        *(int *)ADDR_NET_PLAYERSIDE() = array_idx;
+        *(int *)ADDR_NET_LOCALIDX     = slot;
+        lg("; U28: adopted the host's authoritative lobby slots at Start (occ=%d, PlayerSide=%d)", occ, array_idx);
+    }
+    mh::gameplay::apply(gs, mh::gameplay::Source::ADOPTED);
+    mh::gameplay::log_applied_hash();
+    g_start_adopt = StartAdopt::ADOPTED;
+    return true;
+}
+
 // g_entry_started / g_entry_ticks / g_entry_hb: defined beside mp_set_lobby_relations_nxn (mp:RM1).
 constexpr int ENTRY_SETTLE_TICKS = 60; // ~1 s of lobby frames after 2 slots are synced (stabilize)
 void          mp_lobby_entry_tick(bool is_host) {
@@ -1208,7 +1303,10 @@ void          mp_lobby_entry_tick(bool is_host) {
                is_host ? "host" : "join", occ, want, MH_Net_PeerCount(), *(int *)ADDR_NET_PCOUNT);
         return;
     }
-    if (++g_entry_ticks < ENTRY_SETTLE_TICKS) return;
+    // [net] entry_settle_ticks (C_DEV, GH1 test knob): a huge value keeps this driver out of the way so the
+    // client can only enter by retail's own 0x0a route -- the route GH1 fixed. Read once per process.
+    static const int settle_ticks = net_ini_int("entry_settle_ticks", ENTRY_SETTLE_TICKS);
+    if (++g_entry_ticks < settle_ticks) return;
     // Manual-menu client: don't enter until the host's selected map has propagated (else the client
     // session_begins on its own synth map and desyncs). The host broadcasts current_map_data each lobby
     // frame; net_seams intercepts it into current_map_data and flags MH_MP_MapReceived. (Force-entry: the
@@ -1229,80 +1327,15 @@ void          mp_lobby_entry_tick(bool is_host) {
     // than ours. Everything downstream is recomputed from the adopted bytes, `occ` included: it was
     // sampled near the top of this function from our own slots, and using that stale value here would
     // reintroduce the disagreement one field to the left.
+    // GH1: that adopt (slots + gameplay set) is mp_client_adopt_start(), shared with the retail 0x0a entry
+    // route (on_begin_map_load) -- the route that never passes through this driver. A refusal ends this
+    // driver for the lobby; the bounce back to the browser is MH_Seam_PollRecv's.
     if (!is_host && g_verb == VERB_NONE && g_manual_mp) {
-        unsigned char hs[SLOT_STRIDE * 8];
-        int           n = MH_Seam_TakeStartSlots(hs, sizeof(hs));
-        if (n == (int)sizeof(hs)) {
-            // DIFF BEFORE OVERWRITING, and log it. Adopting the host's array makes the peers agree
-            // whatever happened, so without this the interesting event -- "the host and I disagreed at
-            // Start, and my copy just lost" -- would be silently repaired and never observed. That is
-            // precisely how the 2026-08-28 desync stayed invisible for eight minutes. A disagreement
-            // here is EXPECTED and benign (a slot edit in flight); a disagreement that recurs every
-            // match is a bug in the lobby sync, and this line is what would show it.
-            // THE RELATION ROW (+0x0d..+0x14) IS EXCLUDED FROM THIS COMPARISON, and that is measured,
-            // not assumed. The host runs mp_set_lobby_relations_nxn() BEFORE it snapshots, and we run
-            // ours a few lines BELOW this adopt, so at this instant the host's rows read 02 02 and
-            // ours still read 00 00 -- a guaranteed, structural difference on every single match.
-            // Comparing it made this line fire every time with every named field identical (measured
-            // on the 2026-08-29 rig run: "bytes differing: 0d 0e"), which is an alarm that trains you
-            // to ignore it -- the mostly-green-occasionally-red oracle this ledger refuses elsewhere.
-            // Both peers recompute the row from the (now identical) adopted array immediately after,
-            // and D18 made that computation agree, so nothing is lost by not checking it here.
-            constexpr int        REL_OFF = 0x0d, REL_LEN = 8;
-            const unsigned char *mine = (const unsigned char *)ADDR_LOBBY_SLOTS;
-            for (int si = 0; si < 8; ++si) {
-                const unsigned char *a = mine + si * SLOT_STRIDE, *b = hs + si * SLOT_STRIDE;
-                char                 offs[160];
-                int                  no = 0;
-                for (int k = 0; k < SLOT_STRIDE && no < 128; ++k) {
-                    if (k == REL_OFF) k += REL_LEN - 1; // skip the relation row, see above
-                    else if (a[k] != b[k]) no += wsprintfA(offs + no, " %02x", k);
-                }
-                offs[no] = 0;
-                if (no == 0) continue; // agrees on everything that matters here
-                // Name the fields the 2026-08-28 desync actually turned on rather than dumping 0x39
-                // bytes: status@+0x0b, player_id@+0x01, race@+0x05, color@+0x06 -- plus the raw offsets
-                // so a difference in a field nobody has named yet is still diagnosable.
-                lg("; U28 SLOT DIFF at Start slot[%d]: ours status=%d pid=%d race=%d color=%d | HOST "
-                                     "status=%d pid=%d race=%d color=%d -- taking the host's; bytes differing:%s",
-                            si, a[0x0b], *(const int *)(a + 0x01), a[0x05], a[0x06], b[0x0b],
-                            *(const int *)(b + 0x01), b[0x05], b[0x06], offs);
-            }
-            memcpy((void *)ADDR_LOBBY_SLOTS, hs, sizeof(hs));
-            occ = lobby_slots_occupied(); // recompute from the host's array, not ours
-            // mp:GS1(b): re-resolve OUR OWN array index against the array we just adopted -- it was
-            // computed from our PRE-adoption copy above, and the one case a "U28 SLOT DIFF" line above
-            // can name is our own row moving (a slot edit in flight right at Start). Cheap and
-            // idempotent when nothing moved; the alternative is a PlayerSide that silently outlives its
-            // own array. LOCALIDX (the wire id, `slot`) does not depend on this array at all.
-            const int array_idx           = mp_lobby_array_index(is_host);
-            *(int *)ADDR_NET_PLAYERSIDE() = array_idx;
-            *(int *)ADDR_NET_LOCALIDX     = slot;
-            lg("; U28: adopted the host's authoritative lobby slots at Start (occ=%d, PlayerSide=%d)", occ, array_idx);
-        } else {
-            // Not fatal, and deliberately loud: the host sent the legacy bare signal, so we are back
-            // to each peer building from its own copy -- the exact configuration that desynced on
-            // 2026-08-28. Almost always a build mismatch between the peers.
-            lg("; U28: host sent NO slot payload with Start -- building from OUR OWN slots (occ=%d). "
-                                 "Peers on different builds? This is the pre-U28 desync configuration.",
-                        occ);
+        if (!mp_client_adopt_start()) {
+            g_entry_started = true;
+            return;
         }
-    }
-    // PT-SET1: adopt the host's gameplay settings at the same point as its slots -- before begin_map_load,
-    // so anything the match creation reads (PT-FIX4's turret creation) already sees the host's values.
-    if (!is_host && g_verb == VERB_NONE && g_manual_mp && !g_gp_adopted) {
-        g_gp_adopted = true;
-        unsigned char                   gb[MH_NET_MAX_PAYLOAD];
-        const int                       gl = MH_Seam_TakeStartGameplay(gb, sizeof(gb));
-        mh_net_proto::GameplaySet       gs;
-        const mh_net_proto::GameplayErr ge = gl > 0 ? mh_net_proto::gameplay_set_decode(gb, (size_t)gl, gs) : mh_net_proto::GameplayErr::Truncated;
-        if (gl > 0 && ge == mh_net_proto::GameplayErr::Ok) {
-            mh::gameplay::apply(gs, mh::gameplay::Source::ADOPTED);
-        } else {
-            lg("; gameplay: %s -- using this client's OWN local values (host-synced settings may differ from the host's)",
-               gl > 0 ? mh_net_proto::gameplay_err_text(ge) : "the host's START carried no gameplay trailer");
-            mh::gameplay::apply_local(mh::gameplay::Source::LOCAL, "host set missing or undecodable");
-        }
+        occ = lobby_slots_occupied(); // recomputed from the adopted array, not the pre-adopt sample above
     }
     // Symmetric enemy relations: build_players_from_slots copies slot bytes +0x0d.. -> Players.relation[]
     // then sets ONLY the local player's row (Players[PlayerSide].relation[i]=2) -> the peers end with
@@ -1585,6 +1618,14 @@ void on_menu_tick() {
                 memset((void *)ADDR_LOBBY_SLOTS, 0, SLOT_STRIDE * 8);
                 MH_MP_ResetMapReceived();
                 MH_Seam_ClearStartReceived();
+                // GH1: a REFUSED Start ends with the bounce to the browser; the NEXT lobby starts clean
+                // (an ADOPTED one stays latched until the match-end re-arm, as before).
+                if (g_start_adopt == StartAdopt::REFUSED) {
+                    g_start_adopt         = StartAdopt::PENDING;
+                    g_start_refuse_posted = false;
+                    g_entry_started       = false;
+                    g_entry_ticks         = 0;
+                }
                 lg("; U29: left the lobby screen -> lobby model torn down (slots cleared, map + Start "
                    "flags reset; occ=%d map=%d)",
                    lobby_slots_occupied(), MH_MP_MapReceived());
@@ -1837,6 +1878,15 @@ extern "C" void MH_MP_ArmManualLobby(void) {
     ensure_begin_map_load_hook(); // U2: intercept the lobby Start button (begin_map_load) for host prep + FLAG_START
 }
 
+// GH1: net_seams' MH_Seam_PollRecv asks once per frame whether a refused Start is waiting; 1 (once) fills
+// *reason with the static text for the browser notice, and the caller synthesises the retail 0x0e.
+extern "C" int MH_MP_TakeStartRefused(const char **reason) {
+    if (!g_start_refuse_posted) return 0;
+    g_start_refuse_posted = false;
+    if (reason) *reason = g_start_refuse_reason;
+    return 1;
+}
+
 // True only for a PURE manual-menu MP session (hand-clicked, no launch verb). net_seams gates ALL the
 // manual host-side lobby work (peer-table mirror, map broadcast, host auto-entry) on this so a
 // force-entry run (VERB_MP_*_LOBBY) keeps its own proven, deterministic path completely untouched.
@@ -1890,6 +1940,16 @@ void on_begin_map_load() {
         g_bml_refuse = 1;
         return;
     }
+    // GH1: a CLIENT's every entry passes here, including retail's own 0x0a handler on a joiner whose lobby
+    // driver is still settling (the driver never runs for it). Adopt the host's Start before anything is
+    // built -- this hook runs BEFORE llm_lobby_begin_map_load registers the async step that calls
+    // build_players_from_slots / session_begin_multi -- or swallow the load (g_bml_refuse) and bounce.
+    // Lobby screen + a live transport only: a client-flagged begin_map_load elsewhere is not an MP join.
+    if (!is_host && MH_Net_IsStarted() && *(unsigned *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == mh::addr::lobby_widget_origin) {
+        if (!mp_client_adopt_start()) g_bml_refuse = 1;
+        else mp_clear_match_residue();
+        return;
+    }
     // mp:D36 -- EVERY peer's entry into a manual-lobby match passes here (host Start, the client's
     // own driver, and retail's START handler on a joiner whose driver never ran), before
     // session_begin_multi rebuilds Planets[31] and lands the players. See mp_clear_match_residue.
@@ -1926,8 +1986,14 @@ void on_begin_map_load() {
         memcpy(fr, (const void *)ADDR_LOBBY_SLOTS, SLOT_STRIDE * 8);
         const mh_net_proto::GameplaySet gp = mh::gameplay::local_set();
         mh::gameplay::apply(gp, mh::gameplay::Source::PUBLISHED);
-        const size_t tl = mh_net_proto::gameplay_set_encode(gp, fr + SLOT_STRIDE * 8);
-        if (tl == 0) lg("; gameplay: FAILED to encode the trailer -- the START carries slots only (clients keep their own values)");
+        mh::gameplay::log_applied_hash();
+        // [net] start_gameplay_trailer=0 (C_DEV, GH1 test knob): send the START WITHOUT the settings, to
+        // prove the joiner refuses it rather than playing its own values.
+        const size_t tl = net_ini_int("start_gameplay_trailer", 1) != 0 ? mh_net_proto::gameplay_set_encode(gp, fr + SLOT_STRIDE * 8) : 0;
+        char         trailer_note[48];
+        wsprintfA(trailer_note, "START trailer sent: %d B", (int)tl);
+        mh::gameplay::note(trailer_note);
+        if (tl == 0 && net_ini_int("start_gameplay_trailer", 1) != 0) lg("; gameplay: FAILED to encode the trailer -- the START carries slots only (clients keep their own values)");
         static_assert(SLOT_STRIDE * 8 + mh_net_proto::GAMEPLAY_MAX_ENCODED <= MH_NET_MAX_PAYLOAD, "START frame exceeds the payload cap");
         MH_Net_SendStart(fr, (int)(SLOT_STRIDE * 8 + tl));
         g_entry_started = true;

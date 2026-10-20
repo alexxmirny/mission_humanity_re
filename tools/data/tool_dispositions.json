@@ -94,6 +94,11 @@
       "why": "mp:D35: the configuration-(1) (no libmh.dll) build-click rows' cross-peer post_check -- with the mh.dll seam's charge-free probe (ship default) the host logs the probe line and the pair stays IDENTICAL with the in-band desync watch clean; with [net] build_probe_free=0 (the reproduction arm) the retail pay + re-grant diverges pK_ai_econ, never heals, and the watch logs *** DESYNC",
       "evidence": "invoked by tools/test_ui.py's d35_buildclick_c1 / d35_buildclick_c1_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
     },
+    "check_m1h.py": {
+      "class": "keep",
+      "why": "mods:M1H -- the post_check of the m1h_ship / m1h_orig / m1h_lib / m1h_off / m1h_twin_eq* / m1h_mp_moving* UI rows: judges each movement-preset fixture from the logs (the outcome, the splice or twin hit counters, the carrier text, the ND VERDICT / M1N lines of both peers) and compares a shipped run's per-step state hash with a libmh run's (--vs, --hash-cmp)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's m1h_* rows (post_check, post_check_session, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
     "check_mv_marshal.py": {
       "class": "keep",
       "why": "mods:M1N field fix (rc10 playtest, 2026-10-16) -- the m1n_marshal_idle / m1n_marshal_headon / m1n_marshal_off UI rows' post_check: reads the `; MV ORDERSUM` lines of the harness mv_replay probe and the seam's `; M1N *-marshal` lines and asserts a unit stalled in group-move marshal beside a friend in a one-tile corridor gets past it (and, with the keys at 0, that retail still stalls)",
@@ -274,6 +279,11 @@
       "class": "keep",
       "why": "mp:X2 -- the two peers agreed about a map they disagreed about: the host claimed content, the joiner stored it under the content-addressed name outside the map directory, its own file is byte-unchanged, and the host held Start meanwhile. Needs BOTH peers logs, so a single-lane checker could only ever report half the claim",
       "evidence": "invoked by tools/lint_repo.py (--selftest, the planted negative cases) and by tools/test_ui.py (map_xfer, map_tcp post_check_peers)"
+    },
+    "check_map_xfer_twice.py": {
+      "class": "keep",
+      "why": "mp:X2j: the map_xfer_twice / map_xfer_twice_relay UI scenarios' cross-peer post_check -- a joiner that downloaded a map in lobby 1 must download it AGAIN in lobby 2 of the same process: the host armed and finished two transfers and released Start twice, the joiner stored twice (the stale channel C receive frontier made the second transfer a no-op)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's map_xfer_twice + map_xfer_twice_relay rows (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
     "check_module_bind.py": {
       "class": "keep",
@@ -1649,6 +1659,12 @@
       "class": "keep",
       "why": "RES12: the drag-select box behaves as in vanilla -- the rows res_drag_stock (the game's own corner conversion at a stock-sized view) and res_drag_box / res_drag_box_orig (1920x1056) run the same scripted drags and one order; this holds each against the committed vanilla record tools/data/drag_box_vanilla.json (world box, camera, selected unit ids, player orders, outline) and refuses an inverted outline or a guard skip. Absence of a drag is RED",
       "evidence": "the res_drag_stock, res_drag_box and res_drag_box_orig rows in tools/uiscripts/registry.yaml name it as a post_check; `check_drag_box.py --selftest` plants every negative and is run by hand",
+      "hand_run": true
+    },
+    "check_report_replay.py": {
+      "class": "keep",
+      "why": "tooling:TL-REPORT-REPLAY-FIDELITY: a player report replays from the report only -- takes the recording the rep_fidelity row just made and replays it with replay_match_segment.py (--raw-fixups: the dump as recorded) over four different carrier saves (the row's own, planet 5, planet 7, ayy30); every field checkpoint hash must match on every carrier, so a capture that mistakes sim data for pointers (the scene import then keeps the carrier's bytes) goes RED",
+      "evidence": "the rep_fidelity row in tools/uiscripts/registry.yaml names it as its post_check; `check_report_replay.py --selftest` plants every negative and is run by hand",
       "hand_run": true
     },
     "check_shift_rearm.py": {

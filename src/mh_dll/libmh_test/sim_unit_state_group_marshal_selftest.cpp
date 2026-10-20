@@ -81,6 +81,9 @@
 //      down to the front. } while (remaining_count>0) (0x00482f1a-0x00482f1e JG).
 //
 #include "sim/sim_unit_state_group_marshal.h"
+#include "sim/move/group_speed.h" // mods:M1H lane C
+#include "sim/move/twin_hit_c.h"
+#include "sim/sim_move_fixes.h"
 
 #include <cstdint>
 #include <cstring>
@@ -1304,6 +1307,182 @@ void test_t12_neighbour_non_corruption(sim_fixture &fx) {
     ck_eq((uint32_t)fx.passable[(5u << 8) | 5u], 3u, "T12: sanity -- the run DID restore self's own tile");
 }
 
+
+// =====================================================================================================
+// T13..T15 -- mods:M1H lane C: the movement-prototype TWINS in the marshal body (retail carriers: the splices at 0x00482b5b,
+// 0x00482897, 0x00482954 / 0x004829e2). KEY OFF = the retail behaviour every case above pins; key ON = the shared decision
+// (sim/move/*.h) at the place the splice sits. The decisions themselves are proven in sim_move_proto_selftest_walker.cpp.
+// =====================================================================================================
+struct m1h_fixes_guard {
+    mh::sim::move_fixes saved = mh::sim::move_fix();
+    ~m1h_fixes_guard() { mh::sim::set_move_fixes(saved); }
+};
+
+// a stuck member: plain move, a spent path (run_length 0) -> the "path exhausted" branch, retry counting
+unit &m1h_stuck_member(sim_fixture &fx, uint16_t player, uint16_t index, uint8_t goal_x, uint8_t goal_y) {
+    unit &u                                                                                          = fx.u(player, index);
+    fx.cur_unit_ptr                                                                                  = &u;
+    fx.view_cur_player                                                                               = player;
+    fx.view_cur_index                                                                                = index;
+    u.order                                                                                          = 0x0f;
+    u.move_group_id                                                                                  = 200;
+    u.x                                                                                              = 1;
+    u.y                                                                                              = 1;
+    u.goal_x                                                                                         = goal_x;
+    u.goal_y                                                                                         = goal_y;
+    u.path_slot_id                                                                                   = 5;
+    u.activity_clock                                                                                 = 1.0;
+    g_saved_passable_seed[index]                                                                     = 44;
+    fx.path_buffers[player * PATH_WAYPOINTS_PER_PLAYER + 5 * PATH_WAYPOINTS_PER_SLOT + 0].run_length = 0;
+    return u;
+}
+
+void test_t13_near_enough_twin(sim_fixture &fx) {
+    m1h_fixes_guard guard;
+    // off: the retail first retry (count 1 < 4: clock += 2.0)
+    {
+        mh::sim::set_move_fixes({});
+        begin(fx);
+        unit &u = m1h_stuck_member(fx, 4, 1, 1, 1); // standing on its goal
+        run(fx);
+        ck_eq(u.path_blocked_retry_count, 1u, "T13a: keys off: retry 1");
+        ck_eq_d(u.activity_clock, 3.0, "T13a: keys off: clock += 2.0, no give-up");
+        ck(g_set_state_order_of_calls.empty(), "T13a: keys off: no give-up call");
+    }
+    // distinct_goals on (the on-goal stop): the counter jumps to 4 and the retail give-up branch runs now
+    {
+        mh::sim::move_fixes mf;
+        mf.distinct_goals = true;
+        mh::sim::set_move_fixes(mf);
+        begin(fx);
+        unit &u = m1h_stuck_member(fx, 4, 1, 1, 1);
+        run(fx);
+        ck_eq(u.path_blocked_retry_count, 4u, "T13b: on its goal: the retry counter is 4");
+        ck(g_set_state_order_of_calls.size() == 1 && g_set_state_order_of_calls[0].player == 4 && g_set_state_order_of_calls[0].idx == 1 &&
+               g_set_state_order_of_calls[0].state == 1,
+           "T13b: the give-up branch ran at once: STOP_TO_DEFAULT");
+        ck_eq_d(u.activity_clock, 1.0, "T13b: no clock bump");
+        ck_eq(fx.passable[(1u << 8) | 1u], 0u, "T13b: passable under the unit = 0 (the retail give-up write)");
+    }
+    // near_enough = 2 with a parked friend on the goal tile (2 tiles away)
+    for (int r : {0, 1, 2}) {
+        mh::sim::move_fixes mf;
+        mf.near_enough = r;
+        mh::sim::set_move_fixes(mf);
+        begin(fx);
+        unit &u                     = m1h_stuck_member(fx, 4, 1, 3, 1);
+        fx.t(3, 1).building         = 7;
+        fx.t(3, 1).class_owner      = 0x84; // player 4
+        fx.passable[(3u << 8) | 1u] = 0;
+        fx.u(4, 7).state            = 1;
+        run(fx);
+        // distance 2 <= R + isqrt(1) = R + 1  <=>  R >= 1
+        ck_eq(u.path_blocked_retry_count, r >= 1 ? 4u : 1u, r >= 1 ? "T13c: R >= 1: stops near the goal a friend holds" : "T13c: R = 0: retail retry");
+    }
+}
+
+void test_t14_group_speed_twin(sim_fixture &fx) {
+    m1h_fixes_guard guard;
+    for (int on = 0; on < 2; ++on) {
+        mh::sim::move_fixes mf;
+        mf.group_speed = on != 0;
+        mh::sim::set_move_fixes(mf);
+        begin(fx);
+        fx.cfg_units[5].step_speed[0] = 2.0;
+        fx.cfg_units[6].step_speed[0] = 4.0;
+        unit &u                       = fx.u(0, 1);
+        fx.cur_unit_ptr               = &u;
+        fx.view_cur_player            = 0;
+        fx.view_cur_index             = 1;
+        u.state                       = GM_STATE_GROUP_MARSHAL;
+        u.order                       = 9;
+        u.move_group_id               = 55;
+        u.goal_x                      = 20;
+        u.goal_y                      = 20;
+        u.x                           = 2;
+        u.y                           = 2;
+        u.unit_proto_id               = 5;
+        u.path_slot_id                = 0xff;
+        u.energy                      = 5.0;
+        u.move_step_speed_scale       = 1.0;
+        unit &p                       = fx.u(0, 2);
+        p.state                       = GM_STATE_GROUP_MARSHAL;
+        p.order                       = 9;
+        p.move_group_id               = 55;
+        p.goal_x                      = 20;
+        p.goal_y                      = 20;
+        p.x                           = 3;
+        p.y                           = 3;
+        p.unit_proto_id               = 6;
+        p.path_slot_id                = 0xff;
+        p.energy                      = 5.0;
+        p.move_step_speed_scale       = 1.0;
+        g_route_sort_leg_count_ret    = 2;
+        run(fx);
+        ck(g_commit_calls.size() == 1 && g_commit_calls[0].leg_count == 2, "T14: one commit of a two-member wave");
+        if (on) {
+            ck(u.move_step_speed_scale == mh::sim::mvc::gs_ratio(4.0, 2.0) && mh::sim::mvc::gs_is_tagged(u.move_step_speed_scale),
+               "T14a: group_speed on: the faster member is slowed to the slowest (tagged 4/2)");
+            ck(p.move_step_speed_scale == 1.0, "T14b: the slowest member keeps 1.0");
+        } else {
+            ck(u.move_step_speed_scale == 1.0 && p.move_step_speed_scale == 1.0, "T14c: group_speed off: scales untouched (retail)");
+        }
+    }
+}
+
+void test_t15_marshal_nudge_twin(sim_fixture &fx) {
+    m1h_fixes_guard      guard;
+    static const uint8_t table[56] = {0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x01, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                      0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+                                      0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    for (int on = 0; on < 2; ++on) {
+        mh::sim::move_fixes mf;
+        mf.nudge_idle = on != 0;
+        mh::sim::set_move_fixes(mf);
+        begin(fx);
+        std::memcpy(fx.map_dir_step_deltas.data(), table, sizeof(table));
+        fx.cfg_units[5].move_op_code    = 0x0f;
+        fx.cfg_units[5].default_op_code = 1;
+        unit &u                         = fx.u(0, 1);
+        fx.cur_unit_ptr                 = &u;
+        fx.view_cur_player              = 0;
+        fx.view_cur_index               = 1;
+        u.state                         = GM_STATE_GROUP_MARSHAL;
+        u.order                         = 0x0f;
+        u.unit_proto_id                 = 5;
+        u.x                             = 10;
+        u.y                             = 10;
+        u.goal_x                        = 10;
+        u.goal_y                        = 14;
+        u.path_slot_id                  = 0xff;
+        u.move_microstep                = 0x1f;
+        u.activity_clock                = 100.0;
+        unit &b                         = fx.u(0, 2);
+        b.state                         = 1; // idle
+        b.unit_proto_id                 = 5;
+        b.x                             = 10;
+        b.y                             = 11;
+        b.energy                        = 5.0;
+        b.move_microstep                = 0x1f;
+        b.facing_target                 = 7;
+        fx.t(10, 11).building           = 2;
+        fx.t(10, 11).class_owner        = 0x80;
+        for (uint32_t x = 9; x <= 11; ++x)
+            for (uint32_t y = 10; y <= 12; ++y) fx.passable[(x << 8) | y] = 1;
+        fx.passable[(10u << 8) | 10u] = 0;
+        fx.passable[(10u << 8) | 11u] = 0;
+        const uint32_t hits_before    = mh::sim::mvc::twin_hit_counts()[mh::sim::mvc::TS_MK];
+        run(fx);
+        ck_eq_d(u.activity_clock, 102.0, "T15: the member retries: the retail clock bump still applies after a nudge");
+        if (on) {
+            ck(b.state == 0x36 && b.goal_x == 9 && b.goal_y == 11 && b.order == 1, "T15a: nudge_idle on: the idle friend is sent to (9,11) through state 0x36");
+            ck(mh::sim::mvc::twin_hit_counts()[mh::sim::mvc::TS_MK] == hits_before + 1, "T15b: the twin hit counter moved");
+        } else {
+            ck(b.state == 1, "T15c: nudge_idle off: the friend is left alone");
+        }
+    }
+}
+
 } // namespace
 
 void run_unit_state_group_marshal_tests() {
@@ -1320,6 +1499,9 @@ void run_unit_state_group_marshal_tests() {
     test_t10_goal_overwrite_suppressed_by_zero_group(fx);
     test_t11_wave_compaction(fx);
     test_t12_neighbour_non_corruption(fx);
+    test_t13_near_enough_twin(fx);
+    test_t14_group_speed_twin(fx);
+    test_t15_marshal_nudge_twin(fx);
 }
 
 } // namespace mh::sim::test

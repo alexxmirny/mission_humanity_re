@@ -36,6 +36,12 @@
 #include "seams/ui_net_indicator.h"    // mp:L1 MH_NetIndicator_OnPresent -- the player-visible indicator
 #include "seams/gone_peer_guard.h"     // mp:U19i gone_peer_frame_guard's byte-patch carrier
 #include "seams/bldg_pip_guard.h"      // hotfix rc9.4 bldg_pip_guard's byte-patch carriers
+#include "seams/move_carrier.h"        // mods:M1H: the honest carrier report + the splice hit counters
+#include "sim/move/wrap.h"             // mods:M1H: the planner keys' pure rules, shared with the libmh twins
+#include "sim/move/guards.h"           //   (move_centroid_wrap_fix, move_detour_slot_guard, move_flood_queue_guard)
+#include "sim/move/route_cost.h"       //   (route_cost_*)
+#include "sim/move/corridor.h"         //   (route_corridor_mode)
+#include "sim/move/flood.h"            //   (route_flood_exact)
 #include "include/mh_uidrive_export.h" // MH_UIDrive_OnPresent (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_harness_export.h" // MH_Harness_RebindSimTick -- C6 sim_tick promotion by rebind
 #include "include/mh_log_sink.h"       // LOG1: the async log sink (frametime + lockstep logs)
@@ -563,6 +569,7 @@ void on_present() {
     frame_watchdog_beat();         // mp:P17: stamp the main-thread frame beat the freeze watchdog reads
     MH_MP_CaptureBootResidue();    // mp:D45: one-shot, first idle main-menu frame (cheap when done)
     MH_Libmh_OnPresent();          // F4D's standing arm: report the spine-boundary crossing counters
+    mh::seams::mv::on_present();   // mods:M1H: the movement/combat carrier report (once the unit-state table is filled) + hit counters
     ensure_key_once();             // first frame: make sure the host has a key it can share
     mp_session_solo_tick();        // SES8: a single-player match opens its own session directory
     mp_presence_tick();            // RL15: presence.json on a state change (file I/O on a worker thread)
@@ -669,7 +676,9 @@ eager_done:
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     // microseconds since an arbitrary origin (analyzer only uses deltas)
-    long long us = g_qpc_freq.QuadPart ? (t.QuadPart * 1000000LL) / g_qpc_freq.QuadPart : t.QuadPart;
+    // split: t * 1e6 overflows int64 after 10.67 days of uptime at a 10 MHz counter
+    long long us = g_qpc_freq.QuadPart ? (t.QuadPart / g_qpc_freq.QuadPart) * 1000000LL + (t.QuadPart % g_qpc_freq.QuadPart) * 1000000LL / g_qpc_freq.QuadPart
+                                       : t.QuadPart;
     if (g_ft_prev_us < 0) {
         // First present of this file: no interval yet to judge or window. Log it unconditionally --
         // it anchors find_lobby_clip_qpc's qpc_us/wall-clock join (mp_analyze.py), which needs row 0.
@@ -4567,6 +4576,11 @@ void install_mother_free_build() {
 //   route_cost_mode/base/ring4/ring8/ring16, route_gap_wave_full   the flood's READ of a cell's cost (0x00424f7f, `(low byte) << 8`
 //                            added to the neighbour): the low terrain_flags byte is mapped through route_cost_calc(). The stored bits are
 //                            never changed. See route_cost_calc for the formula; the defaults reproduce retail exactly.
+//   route_flood_exact        (mods:M1H) the start of the flood's phase 2 (0x00424f3a: seed the queue, loop): with the key on (default: ON when
+//                            route_corridor_mode=2) the stub runs sim/move/flood.h's bucket-queue flood in C over the same cell array and
+//                            jumps to the result tail 0x00425072; off = the retail bytes' own FIFO loop. A second splice at the tail
+//                            (and one at the function's first instruction, 0x00424ee8) only stamp the cost line (`; flood cost mode=.. exact=.. cells=.. deq=.. work=.. us=..`, when
+//                            route_corridor_mode != 0).
 //   route_corridor_mode      (mods:M1C) the CALL to llm_strat_pathfind_mark_group_member_regions 0x00420919 in llm_strat_group_move_order_pathfind
 //                            (0x0041d06c), the last step before the flood: after the original marks the member regions, widen which nav
 //                            regions carry a non-zero route_mark (the flood's eligibility test, with passable != 0). 1 = every region
@@ -4582,57 +4596,48 @@ int                 g_rc_ring8         = 8;  // proximity bit 8   (retail 8)
 int                 g_rc_ring16        = 16; // proximity bit 16  (retail 16)
 int                 g_rc_wave_full     = 0;  // route_gap_wave_full: N, 0 = off
 int                 g_cor_mode         = 0;  // route_corridor_mode (0 retail, 1 corridor + adjacent, 2 all regions, 3 measure only)
-uint32_t            g_flood_deq        = 0;  // flood dequeues since the last corridor stub call (counted in mv_flood_c_stub)
+int                 g_fe_on            = 0;  // route_flood_exact resolved ON and both sites carried
+int                 g_fm_exact         = 0;  // the flood in flight ran the exact path (measurement)
+uint32_t            g_fm_deq0          = 0;  // g_flood_deq at the flood's phase-2 start
+LARGE_INTEGER       g_fm_t0{};               // QPC at the flood's phase-2 start (measurement only; never read by the sim)
+uint32_t            g_flood_deq    = 0;      // flood dequeues since the last corridor stub call (counted in mv_flood_c_stub)
 constexpr uintptr_t ADDR_MV_CENT_X = 0x0041caf2, ADDR_MV_CENT_Y = 0x0041cb51, ADDR_MV_SLOT_X = 0x004cbdb0,
                     ADDR_MV_SLOT_Y = 0x004cbdc3, ADDR_MV_DETOUR = 0x0042172e, ADDR_MV_FLOOD_Q = 0x00424f62,
-                    ADDR_MV_FLOOD_C = 0x00424f7f, ADDR_MV_CORR = 0x0041d06c;
-const uint8_t MV_CENT_X_EXPECT[8]  = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
-const uint8_t MV_CENT_Y_EXPECT[8]  = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
-const uint8_t MV_SLOT_X_EXPECT[19] = {0x8B, 0x45, 0xE0, 0x3B, 0x05, 0xC0, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x84, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE0};
-const uint8_t MV_SLOT_Y_EXPECT[19] = {0x8B, 0x45, 0xE4, 0x3B, 0x05, 0xBC, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x64, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE4};
-const uint8_t MV_DETOUR_EXPECT[6]  = {0x83, 0x7D, 0xD4, 0x00, 0x74, 0x12};
-const uint8_t MV_FLOOD_Q_EXPECT[8] = {0x39, 0xF7, 0x0F, 0x84, 0x08, 0x01, 0x00, 0x00};
-const uint8_t MV_FLOOD_C_EXPECT[9] = {0x81, 0xE2, 0xFF, 0x00, 0x00, 0x00, 0xC1, 0xE2, 0x08};
-const uint8_t MV_CORR_EXPECT[5]    = {0xE8, 0xA8, 0x38, 0x00, 0x00}; // CALL 0x00420919 (llm_strat_pathfind_mark_group_member_regions)
+                    ADDR_MV_FLOOD_C = 0x00424f7f, ADDR_MV_CORR = 0x0041d06c, ADDR_MV_FLOOD_X = 0x00424f3a,
+                    ADDR_MV_FLOOD_END = 0x00425072, ADDR_MV_FLOOD_BEGIN = 0x00424ee8;
+const uint8_t MV_CENT_X_EXPECT[8]      = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
+const uint8_t MV_CENT_Y_EXPECT[8]      = {0xB8, 0x80, 0x00, 0x00, 0x00, 0x2B, 0x45, 0xAC};
+const uint8_t MV_SLOT_X_EXPECT[19]     = {0x8B, 0x45, 0xE0, 0x3B, 0x05, 0xC0, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x84, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE0};
+const uint8_t MV_SLOT_Y_EXPECT[19]     = {0x8B, 0x45, 0xE4, 0x3B, 0x05, 0xBC, 0x54, 0xE6, 0x00, 0x7E, 0x08, 0xA1, 0x64, 0x50, 0x82, 0x00, 0x29, 0x45, 0xE4};
+const uint8_t MV_DETOUR_EXPECT[6]      = {0x83, 0x7D, 0xD4, 0x00, 0x74, 0x12};
+const uint8_t MV_FLOOD_Q_EXPECT[8]     = {0x39, 0xF7, 0x0F, 0x84, 0x08, 0x01, 0x00, 0x00};
+const uint8_t MV_FLOOD_C_EXPECT[9]     = {0x81, 0xE2, 0xFF, 0x00, 0x00, 0x00, 0xC1, 0xE2, 0x08};
+const uint8_t MV_FLOOD_X_EXPECT[10]    = {0x31, 0xFF, 0xBE, 0x01, 0x00, 0x00, 0x00, 0x8B, 0x5D, 0x0C}; // xor edi,edi ; mov esi,1 ; mov ebx,[ebp+0xc]
+const uint8_t MV_FLOOD_BEGIN_EXPECT[6] = {0x8B, 0x15, 0x84, 0x50, 0x82, 0x00};                         // mov edx,[map_width]
+const uint8_t MV_FLOOD_END_EXPECT[8]   = {0x8B, 0x5D, 0x08, 0xB8, 0x01, 0x00, 0x00, 0x00};             // mov ebx,[ebp+8] ; mov eax,1
+const uint8_t MV_CORR_EXPECT[5]        = {0xE8, 0xA8, 0x38, 0x00, 0x00};                               // CALL 0x00420919 (llm_strat_pathfind_mark_group_member_regions)
 
 // mods:M1C -- the corridor widening, run right after the retail member-region marking. llm_map_region (1056 bytes): +4 cell_count, +8
 // neighbor_count, +12 neighbors[128], +1036 next, +1048 route_mark. The active list head is 0x0051de7c. Mode 1 marks (3) every region that
 // neighbours a marked one (the set is computed from the marks as they were on entry: a region marked 3 never expands, so list order
 // cannot matter); mode 2 marks (3) every region; mode 3 changes nothing. Logs one line per wave when the key is on.
-static uint8_t *cor_next(uint8_t *r) { return *reinterpret_cast<uint8_t **>(r + 1036); }
-static int32_t &cor_mark(uint8_t *r) { return *reinterpret_cast<int32_t *>(r + 1048); }
+// The widening itself is sim/move/corridor.h (shared with the libmh twin); this is its live-memory region accessor.
+struct cor_regions {
+    using handle = uint8_t *;
+    handle   head() { return *reinterpret_cast<uint8_t **>(0x0051de7cu); }
+    handle   next(handle r) { return *reinterpret_cast<uint8_t **>(r + 1036); }
+    int32_t &mark(handle r) { return *reinterpret_cast<int32_t *>(r + 1048); }
+    uint32_t cells(handle r) { return *reinterpret_cast<uint32_t *>(r + 4); }
+    uint32_t neighbor_count(handle r) { return *reinterpret_cast<uint32_t *>(r + 8); }
+    handle   neighbor(handle r, uint32_t i) { return reinterpret_cast<uint8_t **>(r + 12)[i]; }
+};
 static void __cdecl corridor_widen() {
-    const int mode    = g_cor_mode;
-    uint8_t  *head    = *reinterpret_cast<uint8_t **>(0x0051de7cu);
-    int       regions = 0, before = 0;
-    for (uint8_t *r = head; r; r = cor_next(r)) {
-        ++regions;
-        if (cor_mark(r) != 0) ++before;
-    }
-    if (mode == 1) {
-        for (uint8_t *r = head; r; r = cor_next(r)) {
-            const int32_t m = cor_mark(r);
-            if (m != 1 && m != 2) continue; // only the entry marks expand (3 is ours)
-            const uint32_t n = *reinterpret_cast<uint32_t *>(r + 8);
-            for (uint32_t i = 0; i < n && i < 128; ++i) {
-                uint8_t *nb = reinterpret_cast<uint8_t **>(r + 12)[i];
-                if (nb && cor_mark(nb) == 0) cor_mark(nb) = 3;
-            }
-        }
-    } else if (mode == 2) {
-        for (uint8_t *r = head; r; r = cor_next(r))
-            if (cor_mark(r) == 0) cor_mark(r) = 3;
-    }
-    int      after = 0;
-    uint32_t cells = 0;
-    for (uint8_t *r = head; r; r = cor_next(r))
-        if (cor_mark(r) != 0) {
-            ++after;
-            cells += *reinterpret_cast<uint32_t *>(r + 4);
-        }
-    char b[240];
+    const int                            mode = g_cor_mode;
+    cor_regions                          regs;
+    const mh::sim::move::corridor_result res = mh::sim::move::corridor_widen(mode, regs);
+    char                                 b[240];
     wsprintfA(b, "; corridor (mods:M1C) mode=%d members=%d regions marked %d -> %d of %d, region cells eligible=%u, flood dequeues since last wave=%u\n", mode,
-              *reinterpret_cast<const volatile int32_t *>(0x0051de38u), before, after, regions, cells, g_flood_deq);
+              *reinterpret_cast<const volatile int32_t *>(0x0051de38u), res.before, res.after, res.regions, res.cells, g_flood_deq);
     g_flood_deq = 0;
     seam_log(b);
 }
@@ -4644,87 +4649,146 @@ static void __cdecl corridor_widen() {
 // With the defaults (1/4/8/16, wave_full 0) the result equals `low`. Integer only, no state: deterministic.
 // cdecl, preserves EBX/ESI/EDI (MSVC); the stub saves EAX/ECX.
 static uint32_t __cdecl route_cost_calc(uint32_t low) {
-    uint32_t cost = low & ~0x1Du; // bits other than passable and the three rings, raw
-    if (low & 1u) cost += (uint32_t)g_rc_base;
-    uint32_t ring = ((low & 4u) ? (uint32_t)g_rc_ring4 : 0u) + ((low & 8u) ? (uint32_t)g_rc_ring8 : 0u) + ((low & 16u) ? (uint32_t)g_rc_ring16 : 0u);
-    if (g_rc_wave_full > 0) {
-        int n = *reinterpret_cast<const volatile int32_t *>(0x0051de38u); // _G_LLM_STRAT_GROUP_MEMBER_COUNT
-        if (n < 1) n = 1;
-        if (n > g_rc_wave_full) n = g_rc_wave_full;
-        ring = ring * (uint32_t)n / (uint32_t)g_rc_wave_full;
-    }
-    return cost + ring;
+    // The formula is sim/move/route_cost.h (shared with the libmh twin); the globals are the setters' already-clamped values.
+    mh::sim::move::route_cost_params p;
+    p.base      = g_rc_base;
+    p.ring4     = g_rc_ring4;
+    p.ring8     = g_rc_ring8;
+    p.ring16    = g_rc_ring16;
+    p.wave_full = g_rc_wave_full;
+    return mh::sim::move::route_cost_calc(p, low, *reinterpret_cast<const volatile int32_t *>(0x0051de38u)); // _G_LLM_STRAT_GROUP_MEMBER_COUNT
+}
+
+// The decisions of the centroid / slot_dist / detour / flood-queue splices are the pure rules of sim/move/{wrap,guards}.h (shared with
+// the libmh twins); the naked stubs only marshal the registers / stack slots in and the result out. Each helper is cdecl: it may
+// clobber EAX/ECX/EDX only, and the stubs save whatever the replaced instructions did not already clobber.
+static int32_t __cdecl mv_cent_calc(int32_t d, int32_t size, int hit_id) {
+    const bool fix = g_move_centroid_rt != 0;
+    if (fix) ++g_mv_hit[hit_id];
+    return mh::sim::move::centroid_wrap_delta(d, size, fix);
+}
+static int32_t __cdecl mv_slot_calc(int32_t d, int32_t half, int32_t size, int hit_id) {
+    bool          fired = false;
+    const int32_t r     = mh::sim::move::slot_wrap_delta(d, half, size, g_move_centroid_rt != 0, &fired);
+    if (fired) ++g_mv_hit[hit_id];
+    return r;
+}
+// 1 = skip the recursion into the occupant (its path_slot_id is 0xff). player / alt as the stub reads them from pathfind's frame.
+static int __cdecl mv_detour_skip(int32_t player, int32_t alt) {
+    ++g_mv_hit[MVH_DETOUR];
+    const uint8_t slot = *reinterpret_cast<const volatile uint8_t *>(0x00dd8cf2u + static_cast<uint32_t>(player) * 0x5b04u + static_cast<uint32_t>(alt) * 0xe9u);
+    return mh::sim::move::detour_skip_occupant(true, slot) ? 1 : 0;
+}
+// 1 = the ring holds 0xff8 or more pending entries: stop the flood.
+static int __cdecl mv_flood_full(uint32_t read_idx, uint32_t write_idx) {
+    ++g_mv_hit[MVH_FLOOD_Q];
+    return mh::sim::move::flood_queue_full(true, read_idx, write_idx) ? 1 : 0;
+}
+
+// ---- mods:M1H route_flood_exact (sim/move/flood.h) ------------------------------------------------------------------------------
+// The flood's cells: terrain_flags words at 0x00688ac8 + flat*8 (flat = (col<<8)|row), eligibility/distance in the high 24 bits.
+struct fe_cells {
+    uint32_t &flags(uint32_t flat) { return *reinterpret_cast<uint32_t *>(0x00688ac8u + flat * 8u); }
+};
+// Measurement start/end (route_corridor_mode != 0 only): QPC around phase 2 + the work counters. Log only; the sim never reads them.
+static void __cdecl fm_begin() {
+    g_fm_exact = 0;
+    g_fm_deq0  = g_flood_deq;
+    QueryPerformanceCounter(&g_fm_t0);
+}
+static void __cdecl fm_end() {
+    LARGE_INTEGER t1, fq;
+    QueryPerformanceCounter(&t1);
+    QueryPerformanceFrequency(&fq);
+    const DWORD    us    = fq.QuadPart ? static_cast<DWORD>((t1.QuadPart - g_fm_t0.QuadPart) * 1000000 / fq.QuadPart) : 0;
+    const uint32_t cells = *reinterpret_cast<const volatile uint32_t *>(0x00825084u) * *reinterpret_cast<const volatile uint32_t *>(0x00825064u);
+    const uint32_t deq   = g_flood_deq - g_fm_deq0;
+    char           b[200];
+    wsprintfA(b, "; flood cost mode=%d exact=%d cells=%u deq=%u work=%u us=%u\n", g_cor_mode, g_fm_exact, cells, deq, cells + 5u * deq, us);
+    seam_log(b);
+}
+// 1 = phase 2 was run here (the stub then jumps to the result tail); 0 = not applicable (seed outside the scratch): retail loop.
+static int __cdecl fe_run(uint32_t seed) {
+    if (seed >= mh::sim::move::FLOOD_FLAT_CELLS) return 0;
+    mh::sim::move::route_cost_params p;
+    p.base             = g_rc_base;
+    p.ring4            = g_rc_ring4;
+    p.ring8            = g_rc_ring8;
+    p.ring16           = g_rc_ring16;
+    p.wave_full        = g_rc_wave_full;
+    const int32_t wave = *reinterpret_cast<const volatile int32_t *>(0x0051de38u);
+    uint32_t      cost[mh::sim::move::FLOOD_COST_ENTRIES];
+    for (uint32_t low = 0; low < mh::sim::move::FLOOD_COST_ENTRIES; ++low) cost[low] = g_rc_mode ? mh::sim::move::route_cost_calc(p, low, wave) : low;
+    fe_cells                                cells;
+    const mh::sim::move::flood_exact_result r = mh::sim::move::flood_exact(cells, seed, *reinterpret_cast<const volatile uint32_t *>(0x00708b1cu), cost);
+    ++g_mv_hit[MVH_FLOOD_EXACT];
+    g_flood_deq += r.settled;
+    g_fm_exact = 1;
+    if (r.overflow) seam_log("; flood exact: 24-bit distance overflow, relaxations dropped\n");
+    return 1;
 }
 
 // clang-format off
+// 0x0041caf2 / 0x0041cb51: `mov eax,0x80 ; sub eax,[ebp-0x54]` (8 bytes) becomes CALL + 3 NOP; the result goes in EAX. Replaced
+// instructions clobbered EAX and the flags only, so ECX/EDX are saved.
 __declspec(naked) void mv_cent_x_stub() {
     __asm {
-        cmp   g_move_centroid_rt, 0
-        jne   mx_fix
-        mov   eax, 0x80                          // the two instructions this stub replaced
-        sub   eax, dword ptr [ebp - 0x54]
-        ret
-    mx_fix:
-        mov   eax, dword ptr [ebp - 0x54]
-        sub   eax, dword ptr ds:[0x00825084]     // d - map_width
+        push  ecx
+        push  edx
+        push  MVH_CENT_X
+        push  dword ptr ds:[0x00825084]          // map_width
+        push  dword ptr [ebp - 0x54]             // d (the frame is EBP-based: the pushes above do not shift it)
+        call  mv_cent_calc
+        add   esp, 12
+        pop   edx
+        pop   ecx
         ret
     }
 }
 
 __declspec(naked) void mv_cent_y_stub() {
     __asm {
-        cmp   g_move_centroid_rt, 0
-        jne   my_fix
-        mov   eax, 0x80
-        sub   eax, dword ptr [ebp - 0x54]
-        ret
-    my_fix:
-        mov   eax, dword ptr [ebp - 0x54]
-        sub   eax, dword ptr ds:[0x00825064]     // d - map_height
+        push  ecx
+        push  edx
+        push  MVH_CENT_Y
+        push  dword ptr ds:[0x00825064]          // map_height
+        push  dword ptr [ebp - 0x54]
+        call  mv_cent_calc
+        add   esp, 12
+        pop   edx
+        pop   ecx
         ret
     }
 }
 
+// 0x004cbdb0 / 0x004cbdc3 (19 bytes each, CALL + NOPs): the block `if (dx > half) dx -= width` of slot_dist_to_ref, now also the
+// `dx < -half` fold with the key on. The replaced block clobbered EAX, EDX (ECX untouched) and the flags.
 __declspec(naked) void mv_slot_x_stub() {
     __asm {
-        mov   eax, dword ptr [ebp - 0x20]        // the block this stub replaced: if (dx > half) dx -= width
-        cmp   eax, dword ptr ds:[0x00e654c0]
-        jle   sx_chk
-        mov   eax, dword ptr ds:[0x00825084]
-        sub   dword ptr [ebp - 0x20], eax
-        ret
-    sx_chk:
-        cmp   g_move_centroid_rt, 0
-        je    sx_done
-        mov   edx, dword ptr ds:[0x00e654c0]
-        neg   edx
-        cmp   eax, edx
-        jge   sx_done
-        mov   eax, dword ptr ds:[0x00825084]     // dx < -half: dx += width
-        add   dword ptr [ebp - 0x20], eax
-    sx_done:
+        push  ecx
+        push  MVH_SLOT_X
+        push  dword ptr ds:[0x00825084]          // map_width
+        push  dword ptr ds:[0x00e654c0]          // half width
+        push  dword ptr [ebp - 0x20]             // dx
+        call  mv_slot_calc
+        add   esp, 16
+        mov   dword ptr [ebp - 0x20], eax
+        pop   ecx
         ret
     }
 }
 
 __declspec(naked) void mv_slot_y_stub() {
     __asm {
-        mov   eax, dword ptr [ebp - 0x1c]
-        cmp   eax, dword ptr ds:[0x00e654bc]
-        jle   sy_chk
-        mov   eax, dword ptr ds:[0x00825064]
-        sub   dword ptr [ebp - 0x1c], eax
-        ret
-    sy_chk:
-        cmp   g_move_centroid_rt, 0
-        je    sy_done
-        mov   edx, dword ptr ds:[0x00e654bc]
-        neg   edx
-        cmp   eax, edx
-        jge   sy_done
-        mov   eax, dword ptr ds:[0x00825064]
-        add   dword ptr [ebp - 0x1c], eax
-    sy_done:
+        push  ecx
+        push  MVH_SLOT_Y
+        push  dword ptr ds:[0x00825064]          // map_height
+        push  dword ptr ds:[0x00e654bc]          // half height
+        push  dword ptr [ebp - 0x1c]             // dy
+        call  mv_slot_calc
+        add   esp, 16
+        mov   dword ptr [ebp - 0x1c], eax
+        pop   ecx
         ret
     }
 }
@@ -4737,13 +4801,14 @@ __declspec(naked) void mv_detour_stub() {
         je    md_none
         cmp   g_move_detour_rt, 0
         je    md_go
-        mov   eax, dword ptr [ebp - 0x34]        // player
-        imul  eax, eax, 0x5b04
-        mov   edx, dword ptr [ebp - 0x2c]        // occupant unit index
-        imul  edx, edx, 0xe9
-        add   eax, edx
-        cmp   byte ptr [eax + 0xdd8cf2], 0xff    // occupant path_slot_id: 0xff = no slot, do not splice into it
-        je    md_none
+        push  ecx
+        push  dword ptr [ebp - 0x2c]             // occupant unit index
+        push  dword ptr [ebp - 0x34]             // player
+        call  mv_detour_skip
+        add   esp, 8
+        pop   ecx
+        test  eax, eax
+        jnz   md_none
     md_go:
         ret
     md_none:
@@ -4760,11 +4825,16 @@ __declspec(naked) void mv_flood_q_stub() {
         je    mf_done
         cmp   g_move_flood_rt, 0
         je    mf_go
-        mov   eax, esi
-        sub   eax, edi
-        and   eax, 0xfff                         // entries pending in the 4096-slot ring
-        cmp   eax, 0xff8
-        jae   mf_done
+        push  ecx
+        push  edx
+        push  esi                                // write cursor
+        push  edi                                // read cursor
+        call  mv_flood_full
+        add   esp, 8
+        pop   edx
+        pop   ecx
+        test  eax, eax
+        jnz   mf_done
     mf_go:
         ret
     mf_done:
@@ -4781,6 +4851,7 @@ __declspec(naked) void mv_flood_c_stub() {
         inc   dword ptr g_flood_deq              // one dequeued cell per call (mods:M1C measurement)
         cmp   g_rc_mode, 0
         je    mc_shl
+        inc   dword ptr [g_mv_hit + 4 * MVH_FLOOD_C]
         push  eax
         push  ecx
         push  edx
@@ -4803,6 +4874,7 @@ __declspec(naked) void mv_corr_stub() {
         call  eax
         cmp   g_cor_mode, 0
         je    mk_done
+        inc   dword ptr [g_mv_hit + 4 * MVH_CORR]
         pushad
         pushfd
         call  corridor_widen
@@ -4812,10 +4884,61 @@ __declspec(naked) void mv_corr_stub() {
         ret
     }
 }
+
+// 0x00424f3a: `xor edi,edi ; mov esi,1 ; mov ebx,[ebp+0xc]` (10 bytes, the start of phase 2) becomes CALL + 5 NOP. EAX/ECX/EDX are dead
+// here (phase 1 left them; phase 2 reloads each before use). Key on and the seed in range: run the bucket-queue flood in C and
+// continue at the result tail; else the three replaced instructions.
+__declspec(naked) void mv_flood_x_stub() {
+    __asm {
+        cmp   g_fe_on, 0
+        je    fx_plain
+        push  dword ptr [ebp + 0xc]              // seed = start_cell
+        call  fe_run
+        add   esp, 4
+        test  eax, eax
+        jz    fx_plain
+        add   esp, 4                             // drop our return address
+        mov   eax, 0x00425072
+        jmp   eax
+    fx_plain:
+        xor   edi, edi
+        mov   esi, 1
+        mov   ebx, dword ptr [ebp + 0xc]
+        ret
+    }
+}
+
+// 0x00424ee8: `mov edx,[map_width]` (6 bytes, the first instruction after the prologue's pushes) becomes CALL + NOP: the measurement start
+// stamp, so the cost line times the whole flood call (phase 1 sweep + phase 2). EAX/ECX/EDX are free here.
+__declspec(naked) void mv_flood_begin_stub() {
+    __asm {
+        cmp   g_cor_mode, 0
+        je    fb_done
+        call  fm_begin
+    fb_done:
+        mov   edx, dword ptr ds:[0x00825084]
+        ret
+    }
+}
+
+// 0x00425072: `mov ebx,[ebp+8] ; mov eax,1` (8 bytes, the result tail) becomes CALL + 3 NOP; the measurement end stamp. EAX/EDX are
+// loaded after; EBX/ESI/EDI are preserved by the cdecl helper.
+__declspec(naked) void mv_flood_end_stub() {
+    __asm {
+        cmp   g_cor_mode, 0
+        je    fz_done
+        call  fm_end
+    fz_done:
+        mov   ebx, dword ptr [ebp + 8]
+        mov   eax, 1
+        ret
+    }
+}
 // clang-format on
 
 // Per key group: 0 = not installed, 1 = carried, -1 = a site MISMATCHED, -2 = a site DISPLACED (libmh owns the function).
 int         g_mv_state_fc_req = 0;
+int         g_mv_state_fx = 0, g_mv_state_fe = 0, g_mv_state_fb = 0;
 int         g_mv_state_cent = 0, g_mv_state_det = 0, g_mv_state_fq = 0, g_mv_state_fc = 0, g_mv_state_cor = 0;
 const char *mv_state_name(int s) { return s == 1 ? "carried" : (s == -1 ? "a splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns the function; no twin)" : "not installed")); }
 
@@ -4837,6 +4960,9 @@ static int mv_patch(uintptr_t addr, const uint8_t *expect, int len, void (*stub)
         case ADDR_MV_FLOOD_Q: ok = patch_bytes_guarded(ADDR_MV_FLOOD_Q, expect, repl, len); break;
         case ADDR_MV_FLOOD_C: ok = patch_bytes_guarded(ADDR_MV_FLOOD_C, expect, repl, len); break;
         case ADDR_MV_CORR: ok = patch_bytes_guarded(ADDR_MV_CORR, expect, repl, len); break;
+        case ADDR_MV_FLOOD_X: ok = patch_bytes_guarded(ADDR_MV_FLOOD_X, expect, repl, len); break;
+        case ADDR_MV_FLOOD_END: ok = patch_bytes_guarded(ADDR_MV_FLOOD_END, expect, repl, len); break;
+        case ADDR_MV_FLOOD_BEGIN: ok = patch_bytes_guarded(ADDR_MV_FLOOD_BEGIN, expect, repl, len); break;
     }
     if (!ok) {
         refuse_uncarried_fix(knob, addr, owner);
@@ -4857,6 +4983,21 @@ void install_move_proto() {
     g_mv_state_fq   = mv_patch(ADDR_MV_FLOOD_Q, MV_FLOOD_Q_EXPECT, 8, mv_flood_q_stub, "llm_map_region_flood_reachable", "move_flood_queue_guard");
     g_mv_state_fc   = mv_patch(ADDR_MV_FLOOD_C, MV_FLOOD_C_EXPECT, 9, mv_flood_c_stub, "llm_map_region_flood_reachable", "route_cost_mode");
     g_mv_state_cor  = mv_patch(ADDR_MV_CORR, MV_CORR_EXPECT, 5, mv_corr_stub, "llm_strat_group_move_order_pathfind", "route_corridor_mode");
+    g_mv_state_fx   = mv_patch(ADDR_MV_FLOOD_X, MV_FLOOD_X_EXPECT, 10, mv_flood_x_stub, "llm_map_region_flood_reachable", "route_flood_exact");
+    g_mv_state_fb   = mv_patch(ADDR_MV_FLOOD_BEGIN, MV_FLOOD_BEGIN_EXPECT, 6, mv_flood_begin_stub, "llm_map_region_flood_reachable", "route_flood_exact");
+    g_mv_state_fe   = mv_patch(ADDR_MV_FLOOD_END, MV_FLOOD_END_EXPECT, 8, mv_flood_end_stub, "llm_map_region_flood_reachable", "route_flood_exact");
+    // mods:M1H: tell the carrier report each site's install state (it decides, late, whether the site is actually reached)
+    mh::seams::mv::note_site(mh::seams::mv::SITE_CENT_X, cx);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_CENT_Y, cy);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_SLOT_X, sx);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_SLOT_Y, sy);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_DETOUR, g_mv_state_det);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FLOOD_Q, g_mv_state_fq);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FLOOD_C, g_mv_state_fc);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_CORR, g_mv_state_cor);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FLOOD_X, g_mv_state_fx);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FLOOD_END, g_mv_state_fe);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FLOOD_BEGIN, g_mv_state_fb);
     install_move_proto_arrival(); // mods:M1X lane A (seams/move_proto_arrival.cpp)
     char b[360];
     wsprintfA(b, "; move prototype splices (mods:M1P): centroid %s, detour guard %s, flood queue guard %s, route cost %s, corridor %s\n", mv_state_name(g_mv_state_cent),
@@ -7077,71 +7218,65 @@ int mh_set_mother_free_build_ai(int on) {
     return taken == on;
 }
 
-// mods:M1P -- the movement-prototype setters (seams/gameplay_hooks.cpp). Every one logs ONE line per change when its key is on (value +
-// "active", or "NOT ACTIVE" with the reason), so a playtest's mh_net.log shows what was on. 1 = in force, 0 = refused.
-static int mv_set_flag(int *rt, int on, int state, const char *key, const char *what) {
+// mods:M1P -- the movement-prototype setters (seams/gameplay_hooks.cpp). They set the splice's runtime gate and tell the carrier report
+// (seams/move_carrier.cpp, mods:M1H) the requested value; THAT report -- made late, once the unit-state table is filled -- is the one
+// line per key in mh_net.log ("retail splice" / "libmh twin" / "NOT ACTIVE: ..."). A setter no longer claims "active" itself: whether
+// the retail splice is reached at all depends on which handlers libmh put in the dispatch table. 1 = in force, 0 = refused.
+static int mv_set_flag(int *rt, int on, int state, mh::seams::mv::key_id key) {
     on        = on != 0;
     int taken = on && state == 1;
     *rt       = taken;
-    if (on) {
-        char b[360];
-        if (taken) wsprintfA(b, "; move prototype [net] %s=1 active (mods:M1P): %s\n", key, what);
-        else wsprintfA(b, "; move prototype [net] %s=1 NOT ACTIVE (mods:M1P): %s\n", key, mv_state_name(state));
-        seam_log(b);
-    }
+    mh::seams::mv::request(key, on, 0);
     return taken == on;
 }
 
-int mh_set_move_centroid_wrap_fix(int on) { return mv_set_flag(&g_move_centroid_rt, on, g_mv_state_cent, "move_centroid_wrap_fix", "group centre and slot distance wrap by the real map width/height"); }
-int mh_set_move_detour_slot_guard(int on) { return mv_set_flag(&g_move_detour_rt, on, g_mv_state_det, "move_detour_slot_guard", "no sidestep splice into an occupant that has no path slot"); }
-int mh_set_move_flood_queue_guard(int on) { return mv_set_flag(&g_move_flood_rt, on, g_mv_state_fq, "move_flood_queue_guard", "route flood stops before its 4096-entry queue laps itself"); }
+int mh_set_move_centroid_wrap_fix(int on) { return mv_set_flag(&g_move_centroid_rt, on, g_mv_state_cent, mh::seams::mv::KEY_CENTROID_WRAP); }
+int mh_set_move_detour_slot_guard(int on) { return mv_set_flag(&g_move_detour_rt, on, g_mv_state_det, mh::seams::mv::KEY_DETOUR_GUARD); }
+int mh_set_move_flood_queue_guard(int on) { return mv_set_flag(&g_move_flood_rt, on, g_mv_state_fq, mh::seams::mv::KEY_FLOOD_GUARD); }
 
 static int mv_clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 // mods:M1C route_corridor_mode: 0 retail, 1 corridor + adjacent regions, 2 all regions, 3 retail + a per-wave measurement log line.
 void mh_set_route_corridor_mode(int mode) {
     mode = mv_clamp(mode, 0, 3);
-    char b[300];
-    if (mode != 0 && g_mv_state_cor != 1) {
-        g_cor_mode = 0;
-        wsprintfA(b, "; move prototype [net] route_corridor_mode=%d NOT ACTIVE (mods:M1C): %s\n", mode, mv_state_name(g_mv_state_cor));
-        seam_log(b);
-        return;
-    }
-    g_cor_mode = mode;
-    if (mode != 0) {
-        wsprintfA(b, "; move prototype [net] route_corridor_mode=%d active (mods:M1C): %s\n", mode,
-                  mode == 1 ? "the route flood also covers every nav region next to the corridor" : (mode == 2 ? "the route flood covers every nav region (no corridor restriction)" : "retail corridor, measurement lines only"));
-        seam_log(b);
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_CORRIDOR_MODE, mode, 0);
+    g_cor_mode = (mode != 0 && g_mv_state_cor == 1) ? mode : 0;
+}
+
+// mods:M1H route_flood_exact (1 = the bucket-queue flood in phase 2; hook order: after route_corridor_mode).
+void mh_set_route_flood_exact(int on) {
+    on = on != 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_FLOOD_EXACT, on, 0);
+    g_fe_on = (on && g_mv_state_fx == 1 && g_mv_state_fe == 1) ? 1 : 0;
 }
 
 void mh_set_route_cost_mode(int mode) {
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_COST_MODE, mode, 0);
     g_rc_mode         = (mode != 0 && g_mv_state_fc == 1) ? 1 : 0;
     g_mv_state_fc_req = mode != 0;
 }
-void mh_set_route_cost_base(int v) { g_rc_base = mv_clamp(v, 1, 100); }
+void mh_set_route_cost_base(int v) {
+    g_rc_base = mv_clamp(v, 1, 100);
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_COST_BASE, g_rc_base, 1);
+}
 void mh_set_route_cost_ring(int which, int v) {
     v = mv_clamp(v, 0, 100);
-    if (which == 4) g_rc_ring4 = v;
-    else if (which == 8) g_rc_ring8 = v;
-    else g_rc_ring16 = v;
+    if (which == 4) {
+        g_rc_ring4 = v;
+        mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_COST_RING4, v, 4);
+    } else if (which == 8) {
+        g_rc_ring8 = v;
+        mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_COST_RING8, v, 8);
+    } else {
+        g_rc_ring16 = v;
+        mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_COST_RING16, v, 16);
+    }
 }
-// The LAST route-cost row in registry order: it logs the whole set once.
+// The LAST route-cost row in registry order. route_gap_wave_full only matters with route_cost_mode=1 (the retail cost has no ring part to scale).
 void mh_set_route_gap_wave_full(int n) {
     g_rc_wave_full = mv_clamp(n, 0, 64);
-    if (!g_mv_state_fc_req && g_rc_wave_full == 0) return;
-    char b[400];
-    if (g_rc_mode == 0 && g_mv_state_fc_req == 0) {
-        wsprintfA(b, "; move prototype [net] route_gap_wave_full=%d IGNORED (mods:M1P): it needs route_cost_mode=1\n", g_rc_wave_full);
-    } else if (g_mv_state_fc_req && g_mv_state_fc != 1) {
-        wsprintfA(b, "; move prototype [net] route_cost_mode=1 NOT ACTIVE (mods:M1P): %s\n", mv_state_name(g_mv_state_fc));
-        g_rc_wave_full = 0;
-    } else {
-        wsprintfA(b, "; move prototype [net] route_cost_mode=%d active (mods:M1P): cost base=%d ring4=%d ring8=%d ring16=%d wave_full=%d (retail 1/4/8/16/0)\n", g_rc_mode,
-                  g_rc_base, g_rc_ring4, g_rc_ring8, g_rc_ring16, g_rc_wave_full);
-    }
-    seam_log(b);
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_GAP_WAVE_FULL, g_rc_wave_full, 0);
+    if (g_mv_state_fc_req && g_mv_state_fc != 1) g_rc_wave_full = 0;
 }
 
 // The primary-mother gate for the DLL's own UI code (ui_bldg_rearm.cpp): does [net] mother_free_build cover `player`?

@@ -5,6 +5,10 @@
 //
 #include "sim/sim_path_slot_dist.h"
 
+#include "sim/sim_move_fixes.h"    // mods:M1H [net] move_centroid_wrap_fix (move_fix())
+#include "sim/move/wrap.h"         // mods:M1H the shared wrap rule
+#include "sim/move/planner_hits.h" // mods:M1H the twins' hit counters
+
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -95,10 +99,18 @@ int32_t slot_dist_to_ref(const sim_view &v, sim_store &own, const slot_dist_to_r
     // extent -- `dx > half_width` (signed JLE skips the subtract), then subtract the FULL map width
     // (*v.map_width, not half_width) once. Same shape as sim_geom_toroidal.cpp's wrap helper, hand-
     // derived here per translator-brief rule 4 (no new cross-TU helper for one reused shape).
-    if (dx > own.group_move_dist_half_width_mut()) dx -= *v.map_width;
+    //
+    // [net] move_centroid_wrap_fix (mods:M1H; twin of the retail splice at 0x004cbdb0 / 0x004cbdc3, sim/move/wrap.h): with the key
+    // on, a delta below -half is folded the other way (+ the extent) too. Key off = the retail positive-side-only fold above.
+    const bool wrap_fix = move_fix().centroid_wrap_fix;
+    bool       fired    = false;
+    dx                  = move::slot_wrap_delta(dx, own.group_move_dist_half_width_mut(), *v.map_width, wrap_fix, &fired);
+    if (fired) move::planner_hit(move::PH_SLOT_X);
 
     // 0x004cbdc3-0x004cbdd6: same wrap on the Y axis against half_height/map_height.
-    if (dy > own.group_move_dist_half_height_mut()) dy -= *v.map_height;
+    fired = false;
+    dy    = move::slot_wrap_delta(dy, own.group_move_dist_half_height_mut(), *v.map_height, wrap_fix, &fired);
+    if (fired) move::planner_hit(move::PH_SLOT_Y);
 
     // 0x004cbdd6-0x004cbde6: dist_sq = dx*dx + dy*dy -- ordinary 32-bit signed multiply/add,
     // WRAPPING on overflow (widened to double only by the FILD that follows, matching

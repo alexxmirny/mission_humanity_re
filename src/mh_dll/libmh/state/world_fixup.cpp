@@ -330,7 +330,7 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
     for (int i = 0; i < ADDR_MAP_MAX_MODULES; ++i) used_mod[i] = -1;
     fixup_module mods[FIXUP_MAX_MODULES];
 
-    uint32_t n_ent = 0, hashed_skipped = 0, unmapped = 0, zeroed_blocks = 0;
+    uint32_t n_ent = 0, hashed_skipped = 0, unmapped = 0, zeroed_blocks = 0, sim_owned_skipped = 0;
     int      rc = 0;
 
     size_t off = sizeof(blob_header);
@@ -343,6 +343,7 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
             continue;
         }
         const bool holder_view = view_owned(b.rid);
+        const bool sim_owned   = (mh::state::REGIONS[b.rid].manifests & (mh::state::MF_SAVE | mh::state::MF_HASH)) != 0;
         // this block's hashed windows, BY ADDRESS. A block is a save-table RUN (`reach` bytes from the
         // region's base), not the region: GAME_SESSION_MODE is a 4-byte region whose block is 1623 bytes
         // and covers the whole `Players` table. Matching hash slices by rid alone missed every hashed
@@ -420,6 +421,21 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
                 ++hashed_skipped;
                 continue;
             }
+            // TL-REPORT-REPLAY-FIDELITY: a savegame-carried (SAVE) or hashed region is SIM DATA, and a save is
+            // loaded into another process, so no process-local pointer can live in it. A dword in one that merely
+            // falls inside a mapped range of THIS process (passable tile marks 0x01000001, the cfg tables' double
+            // high words and ASCII padding, path-step bytes, fog) is a coincidence, and a PRESERVE/REBASE entry for
+            // it made the importer keep its OWN bytes (the carrier's) or write a module base there: 848 `passable`
+            // dwords of a field dump, so a replay over a different carrier save saw other tile occupancy and
+            // diverged by step 256. REGION entries (an exact hit on a relocated region's span) are the host's own
+            // description of its layout and stay.
+            // (A REBASE into one of OUR modules and a REGION hit stay: those name our own images/regions, which the
+            // importer identity-checks; the junk was PRESERVE and REBASE into foreign system DLLs.)
+            if (sim_owned && kind != FIXUP_REGION &&
+                !(kind == FIXUP_REBASE && (map.mod[am_idx].m.flags & FIXUP_MOD_OURS) != 0)) {
+                ++sim_owned_skipped;
+                continue;
+            }
             if (kind == FIXUP_REBASE) {
                 if (used_mod[am_idx] < 0) {
                     if (nused >= static_cast<int>(FIXUP_MAX_MODULES)) {
@@ -459,6 +475,7 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
             h.hashed_skipped        = hashed_skipped;
             h.unmapped              = unmapped;
             h.zeroed_skipped_blocks = zeroed_blocks;
+            h.reserved              = sim_owned_skipped; // diagnostic, outside the checksum (was always 0)
             std::memcpy(out, &h, sizeof(h));
             std::memcpy(out + sizeof(h), mods, nused * sizeof(fixup_module));
             std::memcpy(out + sizeof(h) + nused * sizeof(fixup_module), ent,

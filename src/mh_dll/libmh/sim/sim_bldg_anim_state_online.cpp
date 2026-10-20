@@ -6,6 +6,10 @@
 //
 #include "sim/sim_bldg_anim_state_online.h"
 
+#include "sim/move/enter_queue.h" // mods:M1BE: storage_door_hold (dh_entering_near)
+#include "sim/move/twin_hit_c.h"
+#include "sim/sim_move_fixes.h"
+
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -55,6 +59,32 @@ bool door_is_idle(const sim_view &v, sim_store &own, uint16_t player, uint8_t su
     (void)v;
     unit_storage &st = own.storage_at(player, sub_id);
     return st.door_mutex_unit == 0 && st.door_waiter_count == 0;
+}
+
+// mods:M1BE storage_door_hold: the door state OPEN (2) goes to closing only when the door is idle AND no entering friend of this storage
+// is near the door tile (sim/move/enter_queue.h, the same rule the retail splices in seams/door_hold.cpp run). Key off = door_is_idle.
+using unit_rec_t = mh::sim::unit; // the world's member below is NAMED unit
+using tile_rec_t = mh::sim::tile_object;
+struct door_hold_world {
+    const sim_view &v;
+    sim_store      &own;
+    unit_rec_t     *unit(uint32_t player, int32_t idx) {
+        if (player >= 8 || idx < 0 || idx >= v.caps.units) return nullptr;
+        return &own.unit_at(player, idx);
+    }
+    tile_rec_t &tile(uint32_t x, uint32_t y) { return own.tile_object_at(static_cast<int32_t>(x), static_cast<int32_t>(y)); }
+    uint32_t    mask_x() { return v.geom->width_mask; }
+    uint32_t    mask_y() { return v.geom->height_mask; }
+    int32_t     unit_limit() { return v.caps.units; }
+    void        hit_dh() { mvc::twin_hit(mvc::TS_DH); }
+};
+
+bool door_may_close(const sim_view &v, sim_store &own, uint16_t player, uint8_t sub_id) {
+    if (!door_is_idle(v, own, player, sub_id)) return false;
+    if (!move_fix().storage_door_hold) return true;
+    const unit_storage &st = own.storage_at(player, sub_id);
+    door_hold_world     w{v, own};
+    return !mvc::dh_entering_near(w, player, sub_id, st.exit_tile_x, st.exit_tile_y);
 }
 
 // llm_strat_bldg_anim_state_airfield_a's online-state switch, pulled out of its while-loop into its own
@@ -151,7 +181,7 @@ void bldg_anim_state_barracks_garage_a(const sim_view &v, sim_store &own, uint32
                 }
                 break;
             case 2:
-                if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+                if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                     anim_slot_set(b, slot, cfg_anim_slot_get(cb, 4));
                     b.online_state = 4;
                 } else {
@@ -212,7 +242,7 @@ void bldg_anim_state_vehicles_h(const sim_view &v, sim_store &own, uint32_t unus
                     }
                     break;
                 case 2:
-                    if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+                    if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                         anim_slot_set(b, slot, cfg_anim_slot_get(cb, 3));
                         b.online_state = 4;
                     } else {
@@ -311,7 +341,7 @@ void bldg_anim_state_soldiers_h(const sim_view &v, sim_store &own, uint32_t unus
                 }
                 break;
             case 2:
-                if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+                if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                     anim_slot_set(b, slot, cfg_anim_slot_get(cb, 6));
                     b.online_state = 4;
                 } else {

@@ -1,0 +1,36 @@
+# Report-replay fidelity (tooling:TL-REPORT-REPLAY-FIDELITY): the walk that RECORDS the session a player report would carry. It loads the
+# user's rc14 planet-6 save (player 0 has walkers mid-path at the first step, the shape that diverged), sends the lone Centaur west, then
+# back east and west again, and changes the game speed up and down with the real speed keys ('=' 0x0d faster, '-' 0x0c slower) while units
+# walk: ~26 s of game time, the length of the rc14 report. The recording (mh_rec_*) is then replayed by tools/replay_match_segment.py over
+# several different carrier saves (tools/check_report_replay.py, the row's post_check) and every checkpoint must match the field's.
+# Shipped configuration (no libmh), [desync] order record + seed + scene dump on (rep_fidelity.ini).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+camto 183 237
+reveal 190 246 12
+gameclock +300
+simclick 367 172
+gameclock +100
+simrclick 250 172
+gameclock +2500
+keyhold 0x0d 6
+gameclock +2000
+simrclick 367 172
+gameclock +3000
+keyhold 0x0d 6
+gameclock +2000
+simrclick 250 172
+gameclock +3000
+keyhold 0x0c 6
+gameclock +2000
+keyhold 0x0c 6
+gameclock +2000
+simrclick 367 172
+gameclock +9000
+capture end
+end

@@ -346,7 +346,7 @@ struct MH_SessionRecord {
     // empty while no registry row is F_HOSTSYNC) and where they came from (local | published | adopted).
     // Sampled at the open and again at the close (the close wins, like the roster): a client opens with
     // its own values and closes with the host's. tools/replay_match_segment.py replays a match with them.
-    char gameplay[192];
+    char gameplay[2048];
     char gameplay_src[16];
 };
 

@@ -5,6 +5,8 @@
 // truncating divide by 32 (SAR/SBB idiom; confirmed value-for-value against C's `/` on a signed int).
 //
 #include "sim/sim_order_enqueue.h"
+#include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
+#include "sim/move/twin_hit_c.h"            // mods:M1H: twin hit counters
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -239,6 +241,12 @@ void unit_order_attack_building_reposition_alt_enqueue(const sim_view &v, const 
                                                        uint32_t weapon_id) {
     int32_t fine_x = 0, fine_y = 0;
     gc.bldg_get_coords(target_player, target_bldg_idx, &fine_x, &fine_y);
+    // [net] attack_range_footprint (mods:M1C; retail carrier: combat_proto.cpp's ISSUE_ALT splice at 0x0046c24a): the aim
+    // point is the footprint tile nearest the attacker instead of the centre (sim_attack_range_footprint.h).
+    if (attack_range_footprint() &&
+        footprint_aim_of_view(v, unit_of(v, player, unit_idx), (uint32_t)player, (uint32_t)target_player, target_bldg_idx, &fine_x,
+                              &fine_y))
+        mvc::twin_hit(mvc::TS_ARF_ISSUE_ALT);
 
     if (weapon_id == 0xffffffffu) weapon_id = gc.unit_select_weapon(player, unit_idx, 1u);
 
@@ -275,6 +283,11 @@ void unit_order_attack_building_reposition_alt_enqueue(const sim_view &v, const 
     // tile/fine scratch fields with the fresh point -- target owner/index/weapon from the first
     // pass are left as they were, faithfully (not "cleaned up" into a single random-offset call).
     // Same int32_t-local/uint32_t*-out-param cast as the first call above (TACT1-P C6, 2026-09-04).
+    // attack_range_footprint: the jitter spreads around the CENTRE, as retail (the JIT_ALT splice at 0x0046c3f3 re-centres first).
+    if (attack_range_footprint()) {
+        gc.bldg_get_coords(target_player, target_bldg_idx, &fine_x, &fine_y);
+        mvc::twin_hit(mvc::TS_ARF_JIT_ALT);
+    }
     gc.bldg_footprint_random_offset(player, (uint32_t)unit_idx, target_player, target_bldg_idx,
                                     reinterpret_cast<uint32_t *>(&fine_x),
                                     reinterpret_cast<uint32_t *>(&fine_y));

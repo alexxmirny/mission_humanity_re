@@ -28,6 +28,9 @@
 //
 #include "sim/rng_trace.h" // C-prime level 2: the defer-verdict note
 #include "sim/sim_order_dispatch.h"
+#include "sim/move/respond.h" // mods:M1G 4c: move_reverse_now (the retain path), shared with the retail splice
+#include "sim/move/world_c.h"
+#include "sim/sim_move_fixes.h" // mods:M1H lane A: the key values the twins read
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "addr/mh_export.gen.h" // the entry thunk that REPLACES the original when promoted
@@ -456,6 +459,17 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             }
 
             // ---- THE RETAIN PATH @0x00466bfe ----------------------------------------------------
+            // mods:M1G 4c [net] move_reverse_now (retail carrier: the 7-byte jump-splice at 0x00466bfe, seams/move_proto_respond.cpp -- dead
+            // code when libmh owns this dispatcher): a ground unit sliding between tiles that is given a move whose goal lies strictly
+            // nearer to the tile it came from slides back at once. Runs before the retain so the record is kept exactly as retail keeps it.
+            if (move_fix().reverse_now) {
+                static const mvc::respond_calls live_rc = {
+                    MH_LIBMH_BIND(llm_strat_fow_remove_sight), MH_LIBMH_BIND(map_fow_UpdateFoWPlus), MH_LIBMH_BIND(llm_strat_unit_soldiers_set_heading)};
+                const mvc::respond_calls            &rc = mvc::g_respond_calls_override ? *mvc::g_respond_calls_override : live_rc;
+                mvc::libmh_world<mvc::respond_calls> rw{v, own, rc};
+                if (mvc::reverse_try(rw, x.player, x.object_index, q.args[ARG_GOAL_X], q.args[ARG_GOAL_Y], static_cast<uint16_t>(q.order_code), boarding != 0))
+                    mvc::twin_hit(mvc::TS_REVERSE);
+            }
             // The ONE place `kept` moves, and the ONE place a record survives the pass.
             u.order_queued = 1; // 0x00466c0e -- set BEFORE the copy
 

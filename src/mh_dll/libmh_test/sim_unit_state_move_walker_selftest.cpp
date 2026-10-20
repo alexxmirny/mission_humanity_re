@@ -344,6 +344,8 @@ void call(sim_fixture &fx) {
 
 } // namespace
 
+void run_move_proto_walker_tests(); // mods:M1H lane C: sim_move_proto_selftest_walker.cpp
+
 void run_unit_state_move_walker_tests() {
     sim_fixture fx;
 
@@ -1191,6 +1193,8 @@ void run_unit_state_move_walker_tests() {
               "must NOT commit even though the full int32 return is nonzero -- a translation testing the whole int32 "
               "would wrongly commit here");
     }
+
+    run_move_proto_walker_tests(); // mods:M1H lane C: the walker / marshal movement-prototype twins (key-on cases, shared headers)
 }
 
 } // namespace mh::sim::test

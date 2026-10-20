@@ -113,6 +113,16 @@ inline int build_specs(const reg *regs, int nregs, spec *out, int cap) {
     return n;
 }
 
+// How many registry rows WANT to be synced (build_specs keeps at most cap of them; a count over
+// MAX_SPECS means rows are silently dropped -- gameplaytest fails on it).
+inline int eligible_specs(const reg *regs, int nregs) {
+    using namespace mh_ini_detail;
+    int n = 0;
+    for (int i = 0; i < nregs; ++i)
+        if ((regs[i].flags & F_HOSTSYNC) && (regs[i].type == T_BOOL || regs[i].type == T_INT || regs[i].type == T_FLOAT)) ++n;
+    return n;
+}
+
 // The live registry's synced specs (built once).
 inline const spec *host_specs(int *count) {
     static spec s_specs[MAX_SPECS];

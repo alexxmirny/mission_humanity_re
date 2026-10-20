@@ -385,6 +385,7 @@ VEHICLE_BY_PLANET = {
     2: os.path.join(_SAVES, "2-almost.sav"),
     5: os.path.join(_SAVES, "5-kofu-c.sav"),
     18: os.path.join(_SAVES, "ayy30.sav"),
+    6: os.path.join(_SAVES, "6-taalor-6-c.sav"),
 }
 
 
@@ -396,6 +397,96 @@ def pick_vehicle(seg):
         planet = None
     path = VEHICLE_BY_PLANET.get(planet)
     return path if path and os.path.isfile(path) else DEFAULT_VEHICLE_SAVE
+
+
+_MF_SAVE, _MF_HASH = "MF_SAVE", "MF_HASH"
+RAW_FIXUPS = False  # --raw-fixups: import the trailer as recorded
+
+
+def _region_flags_by_name():
+    """{region name: set of MF_* flag names} from the generated registry (src/mh_dll/mh/addr/mh_regions.gen.h)."""
+    path = os.path.join(REPO, "src", "mh_dll", "mh", "addr", "mh_regions.gen.h")
+    with open(path, encoding="utf-8") as fh:
+        t = fh.read()
+    i = t.index("REGIONS[RID_COUNT] = {")
+    j = t.index("\n};", i)
+    out = {}
+    for m in re.finditer(
+        r'^\s*\{"([^"]+)", MH_STOCK_BASE\(0x[0-9a-f]+u\), \d+u, \d+u, \w+, static_cast<uint8_t>\(([^)]*)\)',
+        t[i:j],
+        re.M,
+    ):
+        out[m.group(1)] = set(x.strip() for x in m.group(2).split("|"))
+    return out
+
+
+def _block_names():
+    """[(rid name, len, region name)] from mh_world_snapshot.gen.h -- the world blob's block order."""
+    path = os.path.join(REPO, "src", "mh_dll", "mh", "addr", "mh_world_snapshot.gen.h")
+    with open(path, encoding="utf-8") as fh:
+        t = fh.read()
+    return [(a, int(b), c) for a, b, c in re.findall(r'\{(RID_\w+), (\d+)u, "([^"]*)"\}', t)]
+
+
+def clean_scene_fixups(blob, flags=None, blocks=None):
+    """TL-REPORT-REPLAY-FIDELITY. -> (blob', dropped, kept). Drop every fixup entry that sits in a block of a
+    SAVE- or HASH-owned region.
+
+    The capture classified every dword >= 0x10000 that lands in a mapped range of the RECORDING process as
+    a process-local pointer (PRESERVE: the importer keeps its OWN dword there). In a savegame-carried
+    region that is data, never a pointer (passable planes, path-step buffers, fog, the cfg tables' double
+    high words...), so PRESERVE kept the CARRIER's bytes where the dump held the recording's: 71 `passable`
+    tiles (unit occupancy marks) differed on a different carrier, the walker saw a free/blocked tile the
+    field never saw, and the replay diverged by step 256. Dropping those entries makes the import take the
+    dump's bytes verbatim, so the carrier no longer matters. The trailer is plain data (count, FNV checksum,
+    header length), so an OLD report is repaired without its own binaries having to change. A blob this does
+    not recognise (no trailer, different block table) is returned untouched."""
+    import struct
+
+    HDR = 96
+    if len(blob) < HDR or blob[:6] != b"MHWRLD":
+        return blob, 0, 0
+    nav_off, nav_len, fix_len = struct.unpack_from("<III", blob, 84)
+    if fix_len < 32 or nav_off == 0 or nav_off + nav_len + fix_len > len(blob):
+        return blob, 0, 0
+    t = nav_off + nav_len
+    magic, ver, nmod, nent = struct.unpack_from("<IHHI", blob, t)
+    if magic != 0x5846484D or ver != 1 or 32 + nmod * 40 + nent * 16 != fix_len:
+        return blob, 0, 0
+    flags = flags if flags is not None else _region_flags_by_name()
+    blocks = blocks if blocks is not None else _block_names()
+    # the blob's own block walk must agree with the table we read the flags from, or we do not guess
+    o, i = HDR, 0
+    while o < nav_off and i < len(blocks):
+        _rid, ln = struct.unpack_from("<II", blob, o)
+        if ln != blocks[i][1]:
+            return blob, 0, 0
+        o += 8 + ln
+        i += 1
+    if o != nav_off or i != len(blocks):
+        return blob, 0, 0
+    drop = [bool(flags.get(blocks[k][2], set()) & {_MF_SAVE, _MF_HASH}) for k in range(len(blocks))]
+    mods = blob[t + 32 : t + 32 + nmod * 40]
+    ents = blob[t + 32 + nmod * 40 : t + fix_len]
+    keep = bytearray()
+    dropped = 0
+    for k in range(nent):
+        e = ents[k * 16 : (k + 1) * 16]
+        b = struct.unpack_from("<H", e, 0)[0]
+        if b < len(drop) and drop[b]:
+            dropped += 1
+        else:
+            keep += e
+    kept = nent - dropped
+    h = 2166136261
+    for c in mods + bytes(keep):
+        h = ((h ^ c) * 16777619) & 0xFFFFFFFF
+    hdr = bytearray(blob[t : t + 32])
+    struct.pack_into("<II", hdr, 8, kept, h)  # entry_count, checksum
+    new_fix = 32 + nmod * 40 + kept * 16
+    out = bytearray(blob[:t]) + hdr + mods + keep
+    struct.pack_into("<I", out, 92, new_fix)
+    return bytes(out), dropped, kept
 
 
 def scene_build_mismatch(blob_path, lane):
@@ -1191,56 +1282,194 @@ def auto_session_mode(rec):
     return 3 if rec.get("lockstep") else -1
 
 
-def host_sync_keys(schema_path=None):
-    """PT-SET1: [(key, default_text)] of the host-synced gameplay rows (settings_schema.json `host: true`)."""
-    path = schema_path or os.path.join(REPO, "src", "launcher", "settings_schema.json")
-    with open(path, encoding="utf-8") as fh:
-        doc = json.load(fh)
+INI_KEY_RE = re.compile(
+    r'MH_INI_KEY\(\s*"(\w+)"\s*,\s*"(\w+)"\s*,\s*(T_\w+)\s*,\s*"([^"]*)"\s*,\s*(C_\w+)\s*,\s*"[^"]*"\s*,\s*(S_\w+)\s*,\s*"[^"]*"\s*,\s*([^)]*)\)'
+)
+INI_KEYS_DEF = os.path.join(REPO, "src", "mh_dll", "mh", "config", "ini_keys.def")
+
+
+def gameplay_rows(def_path=None):
+    """TL-REPORT-REPLAY-FIDELITY: [(key, default_text, hostsync)] of every [net] bool/int/float registry row that
+    steers the sim: the F_HOSTSYNC rows (the host's value wins) plus the F_LOCAL rows of the gameplay settings
+    tab (S_GAMEPLAY, e.g. project_gate_fix). Parsed from ini_keys.def -- the registry itself, not a copy of its
+    key list -- so a row added there reaches the replay with no edit here."""
     out = []
-    for r in doc.get("settings", doc.get("rows", [])):
-        if r.get("host"):
-            d = r.get("default")
-            out.append((r["key"], repr(d) if isinstance(d, float) else str(int(d))))
+    with open(def_path or INI_KEYS_DEF, encoding="utf-8") as fh:
+        for line in fh:
+            m = INI_KEY_RE.search(line)
+            if not m or m.group(1) != "net" or m.group(3) not in ("T_BOOL", "T_INT", "T_FLOAT"):
+                continue
+            host = "F_HOSTSYNC" in m.group(7)
+            if host or m.group(6) == "S_GAMEPLAY":
+                out.append((m.group(2), m.group(4), host))
     return out
 
 
-def gameplay_net_extra(sj, user_extra="", keys=None):
-    """PT-SET1: the lane `--net-extra` that replays the recording with the gameplay settings it ran with.
+def host_sync_keys(def_path=None):
+    """PT-SET1: [(key, default_text)] of the host-synced gameplay rows (ini_keys.def F_HOSTSYNC)."""
+    return [(k, d) for k, d, h in gameplay_rows(def_path) if h]
 
-    session.json `gameplay` is "key=value;key=value" (ints %d, floats %.17g) -- exactly the net_extra
-    shape. Returns (net_extra, warning). A recording without the field (or an empty one: it predates the
-    rows) replays with the registry defaults, and the warning says so. Keys the registry no longer
-    knows are dropped with a note; keys the caller's own --net-extra already sets win."""
-    keys = host_sync_keys() if keys is None else keys
-    known = dict(keys)
-    taken = {kv.split("=", 1)[0].strip() for kv in user_extra.split(";") if "=" in kv}
-    raw = (sj or {}).get("gameplay")
-    notes = []
-    if isinstance(raw, str) and raw.strip():
-        vals = {}
-        for kv in raw.split(";"):
-            if "=" not in kv:
-                continue
+
+def _pairs(text):
+    """'k=v;k=v' -> ordered [(k, v)] (junk without '=' skipped)."""
+    out = []
+    for kv in (text or "").split(";"):
+        if "=" in kv:
             k, v = (x.strip() for x in kv.split("=", 1))
-            if k in known:
-                vals[k] = v
-            else:
-                notes.append("recorded key %r is not a gameplay row any more -- dropped" % k)
-        src = "recording (%s)" % ((sj or {}).get("gameplay_src") or "?")
-        for (
-            k,
-            d,
-        ) in keys:  # a key the recording lacks gets its registry default, not the lane's whatever
-            vals.setdefault(k, d)
-    else:
-        vals = dict(keys)
-        src = "registry defaults"
+            if k:
+                out.append((k, v))
+    return out
+
+
+# An OLD recorder cut session.json `gameplay` at 191 chars (char[192]); a string that long lost its tail.
+SUMMARY_CAP = 191
+LOG_GP_RE = re.compile(
+    r"; gameplay: (?:LOCAL|PUBLISHED|ADOPTED(?: from host)?) (\S+?)(?: -- .*?)?(?: \[(\d+) key\(s\))?\s*$"
+)
+
+
+def report_root(session_dir):
+    """The field report folder above a session folder (the one holding config/), or None."""
+    d = os.path.abspath(session_dir or "")
+    for _ in range(4):
+        if os.path.isfile(os.path.join(d, "config", "mh_net.ini")):
+            return d
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+    return None
+
+
+def parse_ini_text(text):
+    """Minimal ini -> {section(lower): {key(lower): value}} (';'/'#' comment lines)."""
+    out, sec = {}, None
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line[0] in ";#":
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            sec = line[1:-1].strip().lower()
+            out.setdefault(sec, {})
+        elif "=" in line and sec is not None:
+            k, v = line.split("=", 1)
+            out[sec][k.strip().lower()] = v.split(";", 1)[0].strip()
+    return out
+
+
+def carrier_of(session_dir):
+    """TL-REPORT-REPLAY-FIDELITY: what a report carries about the machine's config, for an OLD recording whose
+    session.json `gameplay` is truncated or absent: {"net": {key: value} from config/mh_net.ini [net],
+    "video": resolution or None, "log": [(key, value)] from the mh_net.log `; gameplay:` lines (a line cut
+    short by the old 400-char buffer loses its last pair -- detected by the "[N key(s)" count)}."""
+    res = {"net": {}, "video": None, "log": []}
+    root = report_root(session_dir)
+    if root:
+        try:
+            with open(
+                os.path.join(root, "config", "mh_net.ini"), encoding="utf-8", errors="replace"
+            ) as fh:
+                ini = parse_ini_text(fh.read())
+            res["net"] = dict(ini.get("net", {}))
+            res["video"] = (ini.get("video") or {}).get("resolution")
+        except OSError:
+            pass
+    lg = os.path.join(session_dir or "", "mh_net.log")
+    if os.path.isfile(lg):
+        best = []
+        with open(lg, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if "; gameplay: " not in line:
+                    continue
+                m = LOG_GP_RE.search(line.rstrip("\n"))
+                if not m:
+                    continue
+                toks = m.group(1).split(";")
+                cnt = re.search(r"\[(\d+) key\(s\)", line)
+                if cnt and len(toks) < int(cnt.group(1)):
+                    toks = toks[:-1]  # the old 400-char buffer cut the last token mid-pair
+                pr = _pairs(";".join(toks))
+                if len(pr) >= len(best):
+                    best = pr
+        res["log"] = best
+    return res
+
+
+def gameplay_net_extra(sj, user_extra="", keys=None, carrier=None, rows=None):
+    """The lane `--net-extra` that replays the recording with the gameplay settings it ran with.
+
+    PRECEDENCE (one pair per key, emitted once): the caller's own --net-extra (user wins, always) >
+    session.json `gameplay` ("key=value;..." ints %d floats %.17g) > the report's mh_net.log `; gameplay:`
+    line > the report's config/mh_net.ini [net] > the registry default. A gameplay-tab key that is not
+    host-synced (project_gate_fix) can only come from the ini. `keys` = [(key, default)] of the host-synced
+    rows (default: ini_keys.def); `rows` = gameplay_rows() shape. Returns (net_extra, warning, source).
+    Keys the registry no longer knows are dropped with a note."""
+    if keys is None:
+        rows = gameplay_rows() if rows is None else rows
+        keys = [(k, d) for k, d, h in rows if h]
+    elif rows is None:
+        rows = [(k, d, True) for k, d in keys]
+    known = {k for k, _, _ in rows}
+    local_rows = [(k, d) for k, d, h in rows if not h]
+    taken = {k for k, _ in _pairs(user_extra)}
+    carrier = carrier or {}
+    cnet = {k.lower(): v for k, v in (carrier.get("net") or {}).items()}
+    notes = []
+    vals, origin = {}, {}
+    raw = (sj or {}).get("gameplay")
+    rec_pairs = _pairs(raw) if isinstance(raw, str) and raw.strip() else []
+    if rec_pairs and len(raw) == SUMMARY_CAP:
+        rec_pairs = rec_pairs[:-1]  # the old recorder's tail is cut mid-pair
         notes.append(
-            "session.json has no `gameplay` field (a recording from before PT-SET1) -- replaying with "
-            "the registry defaults; a desync may be the settings, not the sim"
+            "session.json `gameplay` is %d chars (an old recorder's cap): its last pair was dropped"
+            % len(raw)
         )
-    pairs = ["%s=%s" % (k, vals[k]) for k, _ in keys if k not in taken]
+    for k, v in rec_pairs:
+        if k in known:
+            vals[k], origin[k] = v, "recording"
+        else:
+            notes.append("recorded key %r is not a gameplay row any more -- dropped" % k)
+    for k, v in carrier.get("log") or ():
+        if k in known and k not in vals:
+            vals[k], origin[k] = v, "mh_net.log"
+    for k, d in keys + local_rows:
+        if k not in vals and k in cnet:
+            vals[k], origin[k] = cnet[k], "mh_net.ini"
+    for k, d in keys:
+        if k not in vals:
+            vals[k], origin[k] = d, "registry default"
+    if not rec_pairs and not carrier.get("log"):
+        notes.append(
+            "session.json has no `gameplay` field (a recording from before PT-SET1, or an empty one) -- "
+            "replaying from the report's ini / registry defaults; a desync may be the settings, not the sim"
+        )
+    used = sorted({o for o in origin.values() if o != "recording"})
+    if rec_pairs:
+        src = "recording (%s)" % ((sj or {}).get("gameplay_src") or "?")
+        if used:
+            src += " + " + ", ".join(used)
+    else:
+        src = " + ".join(used) if used else "registry defaults"
+        if src == "registry default":
+            src = "registry defaults"
+    order = [k for k, _ in keys] + [k for k, _ in local_rows if k in vals]
+    pairs = ["%s=%s" % (k, vals[k]) for k in order if k not in taken]
     return ";".join(pairs), "; ".join(notes) if notes else None, src
+
+
+def video_fragment(resolution, outdir):
+    """An ini fragment file carrying the report's [video] resolution ("WxH"), or None."""
+    if not resolution or not re.fullmatch(r"\d{3,5}x\d{3,5}", resolution.strip()):
+        return None
+    path = os.path.join(outdir, "report_video.ini")
+    with open(path, "w", encoding="ascii", newline=chr(10)) as fh:
+        fh.write("[video]" + chr(10) + "resolution=%s" % resolution.strip() + chr(10))
+    return path
+
+
+def merge_net_extra(user_extra, gp_extra):
+    """The user's pairs first, the replayed gameplay after; gp_extra already omits every key the user set."""
+    return ";".join(x for x in (user_extra.strip(";"), gp_extra) if x)
 
 
 def hqueue_counts(sr, first, last):
@@ -1374,10 +1603,13 @@ def run_replay(
     session_mode=-1,
     extra_ini=(),
     hqueue=True,
+    dll="",
 ):
     import make_lane
     import ui_test
 
+    if dll:  # replay with THIS build's modules (a scene dump replays only with the build that recorded it)
+        ui_test.DLL_OVERRIDE = os.path.abspath(dll)
     lane = provision_lane(config)
     for k, dst in LANE_NAME.items():
         shutil.copyfile(rec["files"][k], os.path.join(lane, dst))
@@ -1386,11 +1618,35 @@ def run_replay(
     if os.path.isfile(wb_dst):
         os.remove(wb_dst)
     if rec.get("world_blob"):
-        shutil.copyfile(rec["world_blob"], wb_dst)
+        with open(rec["world_blob"], "rb") as fh:
+            wb = fh.read()
+        if not RAW_FIXUPS:
+            wb, dropped, kept = clean_scene_fixups(wb)
+            if dropped:
+                print(
+                    "  scene dump: dropped %d fixup entr%s inside SAVE/HASH regions (data dwords the capture "
+                    "mistook for pointers), kept %d -- the import takes the dump's bytes, not the carrier's"
+                    % (dropped, "y" if dropped == 1 else "ies", kept)
+                )
+        with open(wb_dst, "wb") as fh:
+            fh.write(wb)
         extra = list(extra or []) + ["world_in=1"]
         ui_test.refresh_satellites(
             lane
         )  # the lane's copies are what the launch will deploy: compare THOSE
+        if os.path.isfile(os.path.join(lane, "mh.dll")):
+            # the launch deploys it; compare THAT build, not the copy a previous replay left in the (reused) lane --
+            # without --dll the Release build is what the launch deploys, and a stale lane copy refused every dump
+            # recorded by the current build (found by the rep_fidelity row, 2026-10-18)
+            shutil.copy(ui_test.g_dll(), os.path.join(lane, "mh.dll"))
+        if dll and os.path.isfile(os.path.join(lane, "mh.dll")):
+            # every other module the lane already carries (mh_net_udp.dll is not a refreshed satellite)
+            src_dir = os.path.dirname(ui_test.g_dll())
+            for name in os.listdir(src_dir):
+                if name.lower().endswith(".dll") and name != "mh.dll":
+                    dst_f = os.path.join(lane, name)
+                    if os.path.isfile(dst_f):
+                        shutil.copy(os.path.join(src_dir, name), dst_f)
         why = scene_build_mismatch(wb_dst, lane)
         if why:
             print("replay_match_segment: REFUSED -- " + why)
@@ -1478,17 +1734,27 @@ def run_replay(
         "120",
         "--headless",
     ]
+    sess_dir = rec.get("snap_dir") or rec["dir"]
+    carrier = carrier_of(sess_dir)
     gp_extra, gp_note, gp_src = gameplay_net_extra(
-        _session_json(rec.get("snap_dir") or rec["dir"]), net_extra
+        _session_json(sess_dir), net_extra, carrier=carrier
     )
     print("  gameplay: %s from %s" % (gp_extra or "(none)", gp_src))
     if gp_note:
         print("  WARNING: " + gp_note)
-    net_extra = ";".join(x for x in (net_extra, gp_extra) if x)
+    net_extra = merge_net_extra(net_extra, gp_extra)
     if net_extra:
         argv += ["--net-extra", net_extra]
+    # the report's own [video] resolution (a 1280x960 scene crashes a 640x480 lane); the caller's
+    # --extra-ini fragments come AFTER it, so an explicit [video] there still wins
+    vid = video_fragment(carrier.get("video"), tmpd)
+    if vid:
+        print("  video: resolution=%s from the report's mh_net.ini" % carrier["video"])
+        argv += ["--extra-ini", vid]
     for frag in extra_ini:
         argv += ["--extra-ini", frag]
+    if dll:
+        argv += ["--dll", os.path.abspath(dll)]
     before = (
         set(
             _n
@@ -1621,8 +1887,24 @@ def main(argv=None):
         help="a field report or zip holding several sessions: the session folder (or a substring of "
         "its name) to replay; default the newest one that carries a recording",
     )
+    ap.add_argument(
+        "--dll",
+        default="",
+        metavar="PATH",
+        help="replay with THIS mh.dll and the satellites beside it instead of the Release build: a field "
+        "report's scene dump imports only into the build that recorded it (point at the report's own package)",
+    )
+    ap.add_argument(
+        "--raw-fixups",
+        action="store_true",
+        help="import the scene dump's fixup trailer AS RECORDED (the negative arm). Default: drop the "
+        "entries inside SAVE/HASH-owned regions (clean_scene_fixups) so the replay no longer depends on "
+        "the carrier save",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
+    global RAW_FIXUPS
+    RAW_FIXUPS = a.raw_fixups
     if a.selftest:
         return selftest()
     if not a.dir:
@@ -1748,6 +2030,7 @@ def main(argv=None):
             map_file=a.map_file,
             session_mode=smode,
             extra_ini=a.extra_ini,
+            dll=a.dll,
             hqueue=not a.no_hqueue,
         )
     except Refusal as e:
@@ -2545,6 +2828,76 @@ def selftest():
             and src == "registry defaults",
         )
     live = host_sync_keys()
+    # TL-REPORT-REPLAY-FIDELITY: the registry (ini_keys.def) is the key list -- every F_HOSTSYNC row,
+    # the dev move_* rows included, and no key list lives in this tool
+    defn = open(INI_KEYS_DEF, encoding="utf-8").read()
+    check(
+        "gameplay: host_sync_keys == every F_HOSTSYNC bool/int/float [net] row of ini_keys.def",
+        len(live)
+        == len(re.findall(r'MH_INI_KEY\("net", "\w+", T_(?:BOOL|INT|FLOAT)[^\n]*F_HOSTSYNC', defn))
+        and {"move_reverse_now", "move_turn_rate", "projectile_facing_fix"} <= {k for k, _ in live},
+    )
+    check(
+        "gameplay: the gameplay-tab F_LOCAL row project_gate_fix is a replay row (ini-sourced)",
+        ("project_gate_fix", "0", False) in gameplay_rows(),
+    )
+    # an OLD report: session.json cut at 191 chars, the key tail only in the carrier ini / mh_net.log
+    tmp2 = tempfile.mkdtemp(prefix="gp_carrier_")
+    try:
+        sess2 = os.path.join(tmp2, "logs", "s1")
+        os.makedirs(sess2)
+        os.makedirs(os.path.join(tmp2, "config"))
+        with open(os.path.join(tmp2, "config", "mh_net.ini"), "w") as fh:
+            fh.write(
+                "[net]\nproject_gate_fix=1\nmove_reverse_now=1\nmove_turn_rate=0\n[video]\nresolution=1280x960\n"
+            )
+        with open(os.path.join(sess2, "mh_net.log"), "w") as fh:
+            fh.write(
+                "[1] ; gameplay: LOCAL turret_clip_fix=1;route_c -- session closed [5 key(s), 5 hook(s)]\n"
+            )
+        car = carrier_of(sess2)
+        check(
+            "carrier: ini [net] + [video] + the log line (cut pair dropped) are read",
+            car["net"].get("project_gate_fix") == "1"
+            and car["video"] == "1280x960"
+            and car["log"] == [("turret_clip_fix", "1")],
+        )
+        sj_old = {"gameplay": ("turret_reload_realtime_fix=1;" * 8)[:191], "gameplay_src": "local"}
+        tk = [
+            ("turret_reload_realtime_fix", "1"),
+            ("move_reverse_now", "-1"),
+            ("move_turn_rate", "-1"),
+        ]
+        rw = [(k, d, True) for k, d in tk] + [("project_gate_fix", "0", False)]
+        ex, warn, src = gameplay_net_extra(sj_old, "", tk, car, rw)
+        check(
+            "gameplay: an old cut string -> keys from the report ini (move_reverse_now=1, move_turn_rate=0, project_gate_fix=1)",
+            "move_reverse_now=1" in ex
+            and "move_turn_rate=0" in ex
+            and "project_gate_fix=1" in ex
+            and ex.count("turret_reload_realtime_fix") == 1
+            and warn
+            and "cap" in warn,
+        )
+        ex, _, _ = gameplay_net_extra({}, "move_reverse_now=0", tk, car, rw)
+        check(
+            "gameplay: --net-extra overrides the recorded/ini value (one pair per key)",
+            "move_reverse_now" not in ex
+            and merge_net_extra("move_reverse_now=0", ex).count("move_reverse_now") == 1,
+        )
+        vf = video_fragment(car["video"], tmp2)
+        check(
+            "video: the report's resolution becomes a [video] fragment; junk is ignored",
+            vf
+            and open(vf).read() == "[video]\nresolution=1280x960\n"
+            and video_fragment("big", tmp2) is None
+            and video_fragment(None, tmp2) is None,
+        )
+        check(
+            "vehicle: planet 6 has a committed carrier save", os.path.isfile(VEHICLE_BY_PLANET[6])
+        )
+    finally:
+        shutil.rmtree(tmp2, ignore_errors=True)
     check(
         "gameplay: the live schema yields the four turret rows",
         [k for k, _ in live][:4]
@@ -2569,6 +2922,48 @@ def selftest():
     check(
         "hqueue_counts: per-step counts, uncovered steps unknown",
         got == [0xFFFFFFFF, 0, 0, 1, 1, 3, 0, 0xFFFFFFFF],
+    )
+    # clean_scene_fixups (TL-REPORT-REPLAY-FIDELITY): a synthetic 3-block blob, block 0 SAVE-owned, 1 VIEW-owned, 2 HASH-owned
+    blocks3 = [("RID_A", 8, "a"), ("RID_B", 8, "b"), ("RID_C", 8, "c")]
+    flags3 = {"a": {"MF_SAVE"}, "b": {"MF_VIEW"}, "c": {"MF_HASH", "MF_VIEW"}}
+
+    def mk_blob(entries, nav=b"NAV!"):
+        hdr = bytearray(96)
+        hdr[:8] = b"MHWRLD\x00\x01"
+        body = b"".join(struct.pack("<II", i, 8) + bytes(8) for i in range(3))
+        nav_off = 96 + len(body)
+        mods = bytes(40)
+        ents = b"".join(struct.pack("<HBBIII", b, k, 0, off, 0, 0) for b, k, off in entries)
+        h = 2166136261
+        for c in mods + ents:
+            h = ((h ^ c) * 16777619) & 0xFFFFFFFF
+        trailer = (
+            struct.pack("<IHHIIIIII", 0x5846484D, 1, 1, len(entries), h, 0, 0, 0, 0) + mods + ents
+        )
+        struct.pack_into("<III", hdr, 84, nav_off, len(nav), len(trailer))
+        return bytes(hdr) + body + nav + trailer
+
+    blob3 = mk_blob([(0, 3, 0), (0, 3, 4), (1, 3, 0), (2, 2, 4)])
+    out3, dropped3, kept3 = clean_scene_fixups(blob3, flags3, blocks3)
+    check(
+        "clean_scene_fixups: entries in SAVE / HASH blocks are dropped, VIEW kept",
+        (dropped3, kept3) == (3, 1),
+    )
+    t3 = struct.unpack_from("<III", out3, 84)
+    tr = out3[t3[0] + t3[1] :]
+    chk = 2166136261
+    for c in tr[32:]:
+        chk = ((chk ^ c) * 16777619) & 0xFFFFFFFF
+    check(
+        "clean_scene_fixups: count, header length and FNV checksum are rewritten consistently",
+        struct.unpack_from("<I", tr, 8)[0] == 1
+        and t3[2] == len(tr) == 32 + 40 + 16
+        and struct.unpack_from("<I", tr, 12)[0] == chk,
+    )
+    check(
+        "clean_scene_fixups: a blob it does not recognise comes back untouched",
+        clean_scene_fixups(blob3[:50], flags3, blocks3) == (blob3[:50], 0, 0)
+        and clean_scene_fixups(blob3, flags3, blocks3[:2]) == (blob3, 0, 0),
     )
     print("replay_match_segment selftest: %s" % ("PASS" if not fails else "FAIL (%d)" % len(fails)))
     return 1 if fails else 0

@@ -2049,6 +2049,7 @@ impl eframe::App for App {
         // kittest harness drives: the idle repaint keeps a visible window beating once a second so
         // a stall between frames is distinguishable from an idle window.
         crate::watchdog::frame_begin();
+        crate::langhook::install(); // a no-op once installed (dist LA22)
         self.show(ui);
         let minimized = ui.ctx().input(|i| i.viewport().minimized.unwrap_or(false));
         ui.ctx()

@@ -38,6 +38,8 @@
 // site -- so every Seed below feeds it a distinct sentinel and no case asserts on it.
 //
 #include "sim/sim_group_move_order_commit.h"
+#include "sim/sim_move_fixes.h" // mods:M1H lane B: T10 / T11 drive the planner keys
+#include "sim/move/planner_hits.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -525,6 +527,315 @@ void run_group_move_order_commit_tests() {
            "T9: route_step[1] (neighbour of the written route_step[0]) untouched");
         ck(member_untouched(fx, GUARD_MEMBER_IDX), "T9: group_members[70] (past member_count) untouched");
         ck(scratch_guard_untouched(fx), "T9: group_move_scratch[90] (past member_count) untouched");
+    }
+
+    // =================================================================================================
+    // T10 -- [net] move_route_through_idle, the libmh twin (mods:M1H lane B; the retail splice is
+    // mh/seams/move_proto_nudge.cpp rt_stub, both call sim/move/route_through.h). The wave planner must see an
+    // IDLE friend's tile as open for exactly ONE call and the plane must be byte-exact again right after.
+    // The key needs the nudge key too. Key off (or nudge off) = the retail commit, untouched.
+    // =================================================================================================
+    {
+        static sim_fixture *s_fx;
+        static int          s_calls;
+        static uint8_t      s_pass_friend, s_pass_goal, s_pass_walker, s_pass_enemy_row;
+        static uint32_t     s_flags_friend, s_flags_walker;
+        s_fx       = &fx;
+        auto probe = [](int32_t, uint8_t) {
+            ++s_calls;
+            sim_fixture &f   = *s_fx;
+            s_pass_friend    = f.passable[(size_t)((20 << 8) | 21)];
+            s_pass_goal      = f.passable[(size_t)((30 << 8) | 30)];
+            s_pass_walker    = f.passable[(size_t)((22 << 8) | 22)];
+            s_pass_enemy_row = f.passable[(size_t)((24 << 8) | 24)];
+            s_flags_friend   = f.region_grid[(size_t)(20 * MAP_GRID_DIM + 21)].terrain_flags;
+            s_flags_walker   = f.region_grid[(size_t)(22 * MAP_GRID_DIM + 22)].terrain_flags;
+        };
+        static const group_move_order_commit_calls probe_calls = {+probe, &rec_guard};
+
+        auto setup = [&]() {
+            fx.reset();
+            fx.map_width = 256; // a power of two: commit derives the path wrap mask from it
+            std::fill(fx.passable.begin(), fx.passable.end(), (uint8_t)1);
+            fx.cfg_units[2].move_op_code    = 0x0f;
+            fx.cfg_units[2].default_op_code = 1;
+            auto idle                       = [&](int idx, int x, int y, bool at_goal_or_wall) {
+                unit &u                                             = fx.units[(size_t)(3 * UNITS_PER_PLAYER + idx)];
+                u.unit_proto_id                                     = 2;
+                u.state                                             = 1;
+                u.order_queued                                      = 0;
+                u.move_microstep                                    = 0x1f;
+                u.origin_tile_was_passable                          = 1;
+                u.energy                                            = 10.0;
+                u.x                                                 = (uint8_t)x;
+                u.y                                                 = (uint8_t)y;
+                fx.tile_objects[(size_t)((x << 8) | y)].building    = (uint16_t)idx;
+                fx.tile_objects[(size_t)((x << 8) | y)].class_owner = 0x83;
+                fx.passable[(size_t)((x << 8) | y)]                 = 0;
+                (void)at_goal_or_wall;
+            };
+            idle(5, 20, 21, false); // the friend in the corridor
+            idle(6, 30, 30, true);  // an idle friend ON the goal tile: stays a wall
+            idle(8, 22, 22, false); // a walker: stays a wall
+            fx.units[(size_t)(3 * UNITS_PER_PLAYER + 8)].state = 0x0f;
+            idle(9, 24, 24, false); // another player's unit would not be visited, but a unit whose tile is owned by player 4 is no friend
+            fx.tile_objects[(size_t)((24 << 8) | 24)].class_owner          = 0x84;
+            fx.region_grid[(size_t)(20 * MAP_GRID_DIM + 21)].terrain_flags = 0x5501;
+            group_scratch_member &sc                                       = fx.group_move_scratch[0];
+            sc.tile_col                                                    = 10;
+            sc.tile_row                                                    = 10;
+            sc.unit_idx                                                    = 7;
+            fx.passable[(size_t)((10 << 8) | 10)]                          = 1;
+            s_calls                                                        = 0;
+            s_pass_friend = s_pass_goal = s_pass_walker = s_pass_enemy_row = 0xee;
+            s_flags_friend                                                 = 0;
+        };
+        auto run = [&]() {
+            sim_store own = fx.store();
+            detail::group_move_order_commit(fx.view(), own, probe_calls, 30, 30, 3, 1, 0x77, 0, 1);
+        };
+        const move_fixes saved = move_fix();
+
+        set_move_fixes(move_fixes{});
+        setup();
+        run();
+        ck(s_calls == 1 && s_pass_friend == 0, "T10a: key off: the planner sees the friend's tile as a wall (retail)");
+
+        move_fixes mf;
+        mf.route_through_idle = true; // nudge off
+        set_move_fixes(mf);
+        setup();
+        run();
+        ck(s_calls == 1 && s_pass_friend == 0, "T10b: route_through on but nudge off: still a wall (the nudge is what resolves the meeting)");
+
+        mf.nudge_idle = true;
+        set_move_fixes(mf);
+        setup();
+        const std::vector<uint8_t>             pass0 = fx.passable;
+        const std::vector<llm_map_region_cell> grid0 = fx.region_grid;
+        mh::sim::move::planner_hits_reset();
+        run();
+        ck(s_calls == 1, "T10c: both keys on: the planner is called exactly once");
+        ck(s_pass_friend == 1, "T10c: ... and sees the idle friend's tile open (its own origin value)");
+        ck_eq(s_flags_friend, 0x5501u | 0x1du, "T10c: ... priced like a tile pressed against a cliff (the cost byte gets 0x1d)");
+        ck(s_pass_goal == 0, "T10c: the goal tile (held by an idle friend) stays a wall");
+        ck(s_pass_walker == 0, "T10c: a walking unit stays a wall");
+        ck(s_pass_enemy_row == 0, "T10c: a tile owned by another player stays a wall");
+        ck(fx.passable == pass0, "T10c: after the call the passable plane is byte-exact again");
+        bool grid_same = grid0.size() == fx.region_grid.size();
+        for (size_t i = 0; grid_same && i < grid0.size(); ++i)
+            if (grid0[i].region != fx.region_grid[i].region || grid0[i].terrain_flags != fx.region_grid[i].terrain_flags) grid_same = false;
+        ck(grid_same, "T10c: ... and so is the region grid's cost word (no residue of the penalty)");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_RT), 1u, "T10c: the twin counted one hit");
+
+
+        // T10d: [net] move_route_through_moving (mods:M1N 3e-6): a WALKING friend's tile is open ground too; the idle friend stays a wall
+        // unless its own key is on; needs no nudge key.
+        move_fixes mm;
+        mm.route_through_moving      = true;
+        mm.route_through_moving_cost = 2;
+        set_move_fixes(mm);
+        setup();
+        const std::vector<uint8_t>             pass1 = fx.passable;
+        const std::vector<llm_map_region_cell> grid1 = fx.region_grid;
+        mh::sim::move::planner_hits_reset();
+        run();
+        ck(s_calls == 1, "T10d: moving key on: the planner is called exactly once");
+        ck(s_pass_walker == 1, "T10d: ... and sees the walking friend's tile open (its own origin value)");
+        ck_eq(s_flags_walker & 0xffu, 0x0du, "T10d: ... priced at cost level 2 (rings 4 and 8)");
+        ck(s_pass_friend == 0 && s_pass_goal == 0 && s_pass_enemy_row == 0, "T10d: idle friend, goal tile and another player's tile stay walls");
+        ck(fx.passable == pass1, "T10d: after the call the passable plane is byte-exact again");
+        bool grid_same2 = grid1.size() == fx.region_grid.size();
+        for (size_t i = 0; grid_same2 && i < grid1.size(); ++i)
+            if (grid1[i].region != fx.region_grid[i].region || grid1[i].terrain_flags != fx.region_grid[i].terrain_flags) grid_same2 = false;
+        ck(grid_same2, "T10d: ... and so is the region grid's cost word");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_RTM), 1u, "T10d: the twin counted one moving hit");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_RT), 0u, "T10d: ... and no idle hit");
+        mm.route_through_idle = true;
+        mm.nudge_idle         = true;
+        set_move_fixes(mm);
+        setup();
+        run();
+        ck(s_pass_walker == 1 && s_pass_friend == 1, "T10d: both keys on: walker and idle friend both open");
+
+        // T10e: [net] move_route_through_replanning (mods:M1DT fix 2): an own unit in the marshal state 0x0a is open ground too, at the shared
+        // cost level; with the key off it is a wall (retail), a walker stays a wall, needs no other key.
+        const size_t friend_slot = (size_t)(3 * UNITS_PER_PLAYER + 5);
+        set_move_fixes(move_fixes{});
+        setup();
+        fx.units[friend_slot].state = 0x0a;
+        run();
+        ck(s_calls == 1 && s_pass_friend == 0, "T10e: key off: a unit waiting in the marshal state is a wall (retail)");
+        move_fixes rp;
+        rp.route_through_replanning  = true;
+        rp.route_through_moving_cost = 0;
+        set_move_fixes(rp);
+        setup();
+        fx.units[friend_slot].state      = 0x0a;
+        const std::vector<uint8_t> pass2 = fx.passable;
+        mh::sim::move::planner_hits_reset();
+        run();
+        ck(s_calls == 1 && s_pass_friend == 1, "T10e: key on: the 0x0a unit's tile is open (its own origin value)");
+        ck_eq(s_flags_friend, 0x5501u, "T10e: ... at cost level 0 (the plain tile cost: the cost word is unchanged)");
+        ck(s_pass_walker == 0 && s_pass_goal == 0 && s_pass_enemy_row == 0, "T10e: the walker, the goal tile and another player's tile stay walls");
+        ck(fx.passable == pass2, "T10e: after the call the passable plane is byte-exact again");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_RTR), 1u, "T10e: the twin counted one replanning hit");
+        rp.route_through_moving_cost = 3;
+        set_move_fixes(rp);
+        setup();
+        fx.units[friend_slot].state = 0x0a;
+        run();
+        ck_eq(s_flags_friend, 0x5501u | 0x1du, "T10e: cost level 3 ORs the three ring bits into the cost word");
+
+        // T10f: cause C (folded into the same key): a unit in the one-tick hop state 0x0c (an earlier wave of the same marshal call) is open
+        // ground too; key off it is a wall; the tile is restored exactly.
+        set_move_fixes(move_fixes{});
+        setup();
+        fx.units[friend_slot].state = 0x0c;
+        run();
+        ck(s_calls == 1 && s_pass_friend == 0, "T10f: key off: a hopping unit (state 0x0c) is a wall (retail)");
+        rp.route_through_moving_cost = 0;
+        set_move_fixes(rp);
+        setup();
+        fx.units[friend_slot].state      = 0x0c;
+        const std::vector<uint8_t> pass3 = fx.passable;
+        run();
+        ck(s_calls == 1 && s_pass_friend == 1, "T10f: key on: the 0x0c unit's tile is open (cause C)");
+        ck(s_pass_walker == 0 && s_pass_goal == 0 && s_pass_enemy_row == 0, "T10f: the walker, the goal tile and another player's tile stay walls");
+        ck(fx.passable == pass3, "T10f: after the call the passable plane is byte-exact again");
+
+        set_move_fixes(saved);
+    }
+
+    // =================================================================================================
+    // T11 -- [net] move_distinct_goals, the libmh twin (mods:M1H lane B; the retail splice is
+    // mh/seams/move_proto_arrival.cpp mv_arr_commit_stub, both call sim/move/arrival.h). Single-member wave whose routed goal is
+    // blocked: the nearest free reachable tile becomes the goal and the planner is RE-RUN for it -- INSIDE the route-through bracket
+    // since mods:M1DT fix A' (the rc17 dig: unbracketed, the friends in a corridor were walls again), exactly as the retail splice does.
+    // =================================================================================================
+    {
+        static sim_fixture *s_fx;
+        static int          s_calls;
+        static int32_t      s_mode[4];
+        static uint8_t      s_pass_friend[4];
+        static int32_t      s_goal_x[4];
+        s_fx       = &fx;
+        auto probe = [](int32_t mode, uint8_t) {
+            if (s_calls < 4) {
+                s_mode[s_calls]        = mode;
+                s_pass_friend[s_calls] = s_fx->passable[(size_t)((20 << 8) | 21)];
+                s_goal_x[s_calls]      = s_fx->group_order_goal_x;
+            }
+            ++s_calls;
+        };
+        static const group_move_order_commit_calls probe_calls = {+probe, &rec_guard};
+
+        auto setup = [&]() {
+            fx.reset();
+            fx.map_width = 256; // a power of two: commit derives the path wrap mask from it
+            std::fill(fx.passable.begin(), fx.passable.end(), (uint8_t)1);
+            fx.passable[(size_t)((30 << 8) | 30)] = 0; // the click's tile is blocked
+            // the region flood was seeded at the goal (field value 1) and reached every tile around it (value 2)
+            for (int x = 20; x <= 40; ++x)
+                for (int y = 20; y <= 40; ++y) fx.region_grid[(size_t)(x * MAP_GRID_DIM + y)].terrain_flags = 0x200;
+            fx.region_grid[(size_t)(30 * MAP_GRID_DIM + 30)].terrain_flags = 0x100;
+            for (int x = 20; x <= 40; ++x)
+                for (int y = 20; y <= 40; ++y) fx.fog_of_war_bytes[(size_t)(0x80000 + ((x << 8) | y))] = 0xff; // discovered by everyone
+            unit &u                               = fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)];
+            u.order                               = 0x0f; // a fresh move
+            u.state                               = 0x0a;
+            u.move_group_id                       = 9;
+            group_scratch_member &sc              = fx.group_move_scratch[0];
+            sc.tile_col                           = 10;
+            sc.tile_row                           = 10;
+            sc.unit_idx                           = 7;
+            fx.passable[(size_t)((10 << 8) | 10)] = 1;
+            fx.cfg_units[2].move_op_code          = 0x0f;
+            fx.cfg_units[2].default_op_code       = 1;
+            // an idle friend in a corridor tile: only opened by the route-through bracket
+            unit &f                                               = fx.units[(size_t)(3 * UNITS_PER_PLAYER + 5)];
+            f.unit_proto_id                                       = 2;
+            f.state                                               = 1;
+            f.move_microstep                                      = 0x1f;
+            f.origin_tile_was_passable                            = 1;
+            f.energy                                              = 10.0;
+            f.x                                                   = 20;
+            f.y                                                   = 21;
+            fx.tile_objects[(size_t)((20 << 8) | 21)].building    = 5;
+            fx.tile_objects[(size_t)((20 << 8) | 21)].class_owner = 0x83;
+            fx.passable[(size_t)((20 << 8) | 21)]                 = 0;
+            s_calls                                               = 0;
+        };
+        auto run = [&](int32_t group_id) {
+            sim_store own = fx.store();
+            detail::group_move_order_commit(fx.view(), own, probe_calls, 30, 30, 3, 1, group_id, 1, 1);
+        };
+        const move_fixes saved = move_fix();
+
+        set_move_fixes(move_fixes{});
+        setup();
+        run(9);
+        ck(s_calls == 1 && fx.group_order_goal_x == 30 && fx.group_order_goal_y == 30, "T11a: key off: one planner call, the goal stays the click (retail)");
+        ck(fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)].goal_x == 0, "T11a: ... the unit's own goal is not written");
+
+        move_fixes mf;
+        mf.distinct_goals = true;
+        set_move_fixes(mf);
+        mh::sim::move::planner_hits_reset();
+        setup();
+        run(9);
+        ck(s_calls == 2, "T11b: key on, blocked goal: the planner is run again");
+        ck(s_mode[0] == 1 && s_mode[1] == 1, "T11b: ... with the same mode both times");
+        ck(fx.group_order_goal_x == 29 && fx.group_order_goal_y == 30, "T11b: the group goal is the nearest free tile (29,30)");
+        ck(fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)].goal_x == 29 && fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)].goal_y == 30,
+           "T11b: the unit's own goal is that tile");
+        ck(s_goal_x[1] == 29, "T11b: the re-run sees the NEW goal");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_ARR_COMMIT), 1u, "T11b: the twin counted one hit");
+
+        setup();
+        run(0);
+        ck(s_calls == 1 && fx.group_order_goal_x == 30, "T11c: key on, move_group_id 0: untouched");
+
+        // the order of the two keys: the re-run is inside its OWN route-through bracket (mods:M1DT fix A')
+        mf.route_through_idle = true;
+        mf.nudge_idle         = true;
+        set_move_fixes(mf);
+        setup();
+        run(9);
+        ck(s_calls == 2, "T11d: both keys on: first run + re-run");
+        ck(s_pass_friend[0] == 1, "T11d: the FIRST planner call is inside the route-through bracket (the friend's tile is open)");
+        ck(s_pass_friend[1] == 1, "T11d: the RE-RUN opens the same bracket (the friend's tile is open again) -- mods:M1DT fix A', as in the retail splice");
+        ck(fx.passable[(size_t)((20 << 8) | 21)] == 0, "T11d: and the plane is restored at the end");
+
+        // ---- T12: [net] move_formation_click, the commit twin (mods:M1G 4b; retail: the 0x0041c9ce stub, move_proto_nudge.cpp fc_after_pathfind).
+        // The formation runs INSIDE the bracket right after the first planner call; handled = 2a (arrival) is skipped for the commit.
+        mf.formation_click = 2;
+        set_move_fixes(mf);
+        mh::sim::move::planner_hits_reset();
+        setup();
+        run(9);
+        // the click (30,30) is blocked: the ring centre falls back to the goal (also blocked), so the first eligible tile in ring order is (29,30)
+        ck(s_calls == 2, "T12a: formation on: the retail plan, then ONE single-member plan to the member's tile (2a is skipped)");
+        ck(s_pass_friend[0] == 1 && s_pass_friend[1] == 1, "T12a: both planner calls are inside the route-through bracket");
+        ck(s_goal_x[1] == 29, "T12a: the second plan is to the formation tile (29,30)");
+        ck(fx.group_order_goal_x == 30 && fx.group_order_goal_y == 30, "T12a: the group goal is put back (30,30)");
+        ck(fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)].goal_x == 29 && fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)].goal_y == 30, "T12a: the unit's own goal is the tile");
+        ck(fx.group_member_count == 1 && fx.group_members[0].unit_handle == 7, "T12a: the wave scratch is put back (count 1, member 0)");
+        ck(fx.passable[(size_t)((20 << 8) | 21)] == 0, "T12a: the plane is restored at the end");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_FC), 1u, "T12a: the twin counted one formation hit");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_ARR_COMMIT), 0u, "T12a: ... and no arrival hit (handled)");
+
+        setup();
+        run(0);
+        ck(s_calls == 1 && fx.group_order_goal_x == 30, "T12b: formation on, move_group_id 0 (a lone Ctrl-click): untouched");
+
+        mf.formation_click = 0;
+        set_move_fixes(mf);
+        setup();
+        run(9);
+        ck(s_calls == 2 && fx.group_order_goal_x == 29, "T12c: formation off: 2a runs as before (the nearest free tile (29,30))");
+
+        set_move_fixes(saved);
     }
 }
 

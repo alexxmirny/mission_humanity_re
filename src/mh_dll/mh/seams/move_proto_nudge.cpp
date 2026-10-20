@@ -57,7 +57,8 @@
 // DETERMINISM: integer arithmetic only (no x87/SSE in the stub: the doubles that are compared are compared as raw bits), units
 // handled in the order the walker meets them, fixed neighbour scan order, no clock, no rand. Writes only fields the retail step
 // writes (unit record, tile_objects, passable, the path buffer, the fog). No new persistent state, no layout change.
-// If libmh promotes move_walker the site is DISPLACED and the keys log "NOT ACTIVE" (no libmh twin in this phase).
+// If libmh owns move_walker the site is DISPLACED and the libmh twin (sim/move/nudge.h, sim_unit_state_move_walker.cpp /
+// sim_unit_state_group_marshal.cpp) carries the keys; the late carrier report (move_carrier.cpp) says which.
 //
 // ---- 3e-4 THE MARSHAL NO-PATH SITE (field fix, user playtest rc10, 2026-10-16) -------------------------------------------------
 // The two splices above only run for a unit that is WALKING. In a one-tile corridor the wave planner cuts a unit's route short at an
@@ -80,6 +81,11 @@
 #include "hook/promoted.h" // promoted_owner_of
 #include "state/roster_caps.h"
 #include "seams/net_internal.h"
+#include "seams/move_carrier.h"     // mods:M1H: site states, requested values, stub hit counters
+#include "sim/move/nudge.h"         // mods:M1H lane C: the decision (3e-1..3e-4), shared with the libmh twin
+#include "sim/move/route_through.h" // mods:M1H lane B: move_route_through_idle's rule (rt_unmask / rt_restore), shared with the libmh twin
+#include "sim/move/blocked.h"       // mods:M1DT: blocker_info for the walker block site (move_proto_blocked.cpp)
+#include "sim/move/replan_cap.h"    // mods:M1DT fix 4b: the marshal check (mv_cap_refuse below)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -129,7 +135,7 @@ int g_mk_state  = 0; // the marshal splice: same codes as g_nd_state
 int g_nd_state  = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
 
 const char *nd_state_name(int s) {
-    return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns move_walker; no twin)" : "not installed"));
+    return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns move_walker; its twin carries the keys, see the carrier line)" : "not installed"));
 }
 
 // ---- state access (live bases: the hosted exe or the standalone host's own allocation) ---------------------------------------
@@ -153,162 +159,59 @@ uint8_t *path_of(uint32_t player, uint32_t slot) {
     return reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_STRAT_PATH_BUFFERS]) + (player * 30000u + slot * 300u) * 2u;
 }
 
-void heading_delta(int h, int *dx, int *dy) {
-    if (h < 1 || h > 24) {
-        *dx = *dy = 0;
-        return;
-    }
-    const int8_t *t = reinterpret_cast<const int8_t *>(ADDR_DIR_DELTA);
-    *dx             = t[h * 2];
-    *dy             = t[h * 2 + 1];
-}
-int heading_wrap(int h) { return ((h - 1) % 24 + 24) % 24 + 1; }
-int turn_notches(int a, int b) {
-    int d = a - b;
-    if (d < 0) d = -d;
-    d %= 24;
-    return d > 12 ? 24 - d : d;
-}
-
-// A unit's NEXT step as the walker will take it: the leg at its cursor, after the walker's own "skip a spent leg" rule. Returns the
-// heading (0 = the path ends / no path) and the cursor the leg sits at.
-int next_leg(const mh_map_object_unit &u, uint32_t player, int *cursor_out) {
-    if (u.path_slot_id >= 100) return 0;
-    int cur = u.path_cursor;
-    if (cur < 0 || cur >= PATH_ENTRIES - 1) return 0;
-    const uint8_t *e = path_of(player, u.path_slot_id);
-    if (e[cur * 2 + 1] == 0) ++cur; // spent leg
-    if (cur >= PATH_ENTRIES) return 0;
-    *cursor_out = cur;
-    return e[cur * 2];
-}
-
 uint64_t raw_bits(const double &d) {
     uint64_t v;
     memcpy(&v, &d, sizeof(v));
     return v;
 }
+bool unit_alive(const mh_map_object_unit &u) { return (raw_bits(u.energy) >> 63) == 0 && (raw_bits(u.energy) << 1) != 0; }
 
-// ---- 3e-1: where does the idle blocker go --------------------------------------------------------------------------------
-bool pick_nudge_tile(const mh_map_object_unit &b, int leg, uint32_t sx, uint32_t sy, uint32_t mask_x, uint32_t mask_y, uint32_t *ox, uint32_t *oy,
-                     bool *straight = nullptr) {
-    static const int ks[7] = {2, -2, 1, -1, 3, -3, 0}; // perpendicular, then the diagonals, then (last resort) straight ahead
-    int              best  = 1000;
-    if (straight) *straight = false;
-    for (int i = 0; i < 7; ++i) {
-        const int h = heading_wrap(leg + 3 * ks[i]);
-        int       dx, dy;
-        heading_delta(h, &dx, &dy);
-        if (!dx && !dy) continue;
-        const uint32_t nx = (b.x + static_cast<uint32_t>(dx)) & mask_x, ny = (b.y + static_cast<uint32_t>(dy)) & mask_y;
-        if (nx == sx && ny == sy) continue;
-        if (*pass_of(nx, ny) == 0 || tile_of(nx, ny)->building != 0) continue; // step_adjacent's own test: passable and unoccupied
-        const int score = turn_notches(b.facing_target, h) + (ks[i] == 0 ? 30 : 0);
-        if (score < best) {
-            best = score;
-            *ox  = nx;
-            *oy  = ny;
-            if (straight) *straight = ks[i] == 0;
-        }
+// The retail splice's WORLD for the shared decision (mh::sim::mvc, sim/move/nudge.h): live game memory + the game's own functions.
+struct splice_world {
+    mh_map_object_unit                   *unit(uint32_t player, int32_t idx) { return unit_rec(player, idx); }
+    const mh_cfg_final_struct_Unit       *cfg(const mh_map_object_unit &u) { return cfg_of(u); }
+    mh_map_tile_object_data              &tile(uint32_t x, uint32_t y) { return *tile_of(x, y); }
+    uint8_t                              &pass(uint32_t x, uint32_t y) { return *pass_of(x, y); }
+    mh::game::mh_llm_strat_path_waypoint *path(uint32_t player, uint32_t slot) {
+        return reinterpret_cast<mh::game::mh_llm_strat_path_waypoint *>(path_of(player, slot));
     }
-    return best < 1000;
-}
-
-// ---- 3e-2 / 3e-3: the exchange -------------------------------------------------------------------------------------------------
-void soldiers_clear_wander(uint32_t player, int32_t unit_index, mh_map_object_unit &u, const mh_cfg_final_struct_Unit &c, bool always_heading) {
-    if (c.soldier_count <= 0) return;
-    const auto     caps = mh::state::live_roster_caps();
-    const uint32_t si   = static_cast<uint32_t>(u.unit_above[0] | (u.unit_above[1] << 8));
-    auto          *sold = reinterpret_cast<mh_llm_strat_crew_soldier *>(mh::state::live().base[mh::state::RID_STRAT_SOLDIERS]);
-    if (!sold || si >= static_cast<uint32_t>(caps.soldiers)) {
-        if (always_heading) mh::call::llm_strat_unit_soldiers_set_heading(static_cast<uint16_t>(player), unit_index, u.facing_target);
-        return;
+    void dir_delta(int h, int *dx, int *dy) {
+        const int8_t *t = reinterpret_cast<const int8_t *>(ADDR_DIR_DELTA);
+        *dx             = t[h * 2];
+        *dy             = t[h * 2 + 1];
     }
-    mh_llm_strat_crew_soldier &s = sold[player * caps.soldiers + si];
-    if (s.idle_wander_flag != 0 || always_heading) {
-        mh::call::llm_strat_unit_soldiers_set_heading(static_cast<uint16_t>(player), unit_index, u.facing_target);
-        s.idle_wander_flag = 0;
+    uint32_t                   mask_x() { return reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->width_mask; }
+    uint32_t                   mask_y() { return reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->height_mask; }
+    const void                *game_clock() { return reinterpret_cast<const void *>(ADDR_CLOCK); }
+    mh_llm_strat_crew_soldier *soldier(uint32_t player, uint32_t si) {
+        const auto caps = mh::state::live_roster_caps();
+        auto      *sold = reinterpret_cast<mh_llm_strat_crew_soldier *>(mh::state::live().base[mh::state::RID_STRAT_SOLDIERS]);
+        if (!sold || si >= static_cast<uint32_t>(caps.soldiers)) return nullptr;
+        return &sold[player * caps.soldiers + si];
     }
-}
+    uint16_t cur_index() { return *reinterpret_cast<const uint16_t *>(ADDR_CUR_INDEX); }
 
-// A (acting, at S) and B (at T) trade tiles. claim = false: SWAP, both just take their next step. claim = true: B (the turning
-// leader) is moved onto S and gets one extra leg in front of its path (heading hA, run 1) so its path stays valid.
-void do_exchange(mh_map_object_unit &A, int32_t ai, mh_map_object_unit &B, int32_t bi, uint32_t player, bool claim, int hA, int cursA, int cursB) {
-    const uint32_t sx = A.x, sy = A.y, tx = B.x, ty = B.y;
-    const auto    *ca = cfg_of(A);
-    const auto    *cb = cfg_of(B);
+    void    fow_remove_sight(uint32_t player, int32_t x, int32_t y, uint8_t sight) { mh::call::llm_strat_fow_remove_sight(player, x, y, sight); }
+    void    fow_update(uint32_t player, uint32_t x, uint32_t y, uint8_t sight) { mh::call::map_fow_UpdateFoWPlus(player, x, y, sight); }
+    void    soldiers_set_heading(uint16_t player, int32_t idx, uint8_t h) { mh::call::llm_strat_unit_soldiers_set_heading(player, idx, h); }
+    int32_t make_single_step(uint32_t player, int32_t idx) { return mh::call::llm_strat_path_make_single_step(player, idx); }
+    void    free_slot(uint16_t player, int32_t idx) { mh::call::llm_strat_path_free_slot(player, idx); }
+    void    set_order_param(int32_t player, int32_t idx, int16_t param) { mh::call::llm_unit_set_order_param(player, idx, param); }
+    void    set_state_of(int32_t player, int32_t idx, int16_t state) { mh::call::llm_strat_unit_set_state_of(player, idx, state); }
+    void    notify_status(uint32_t player, int32_t idx, uint32_t code) { mh::call::llm_strat_unit_notify_status(player, idx, code); }
 
-    // tiles: each unit's new tile is claimed at once, each old tile is (re)claimed by the other one in the same tick
-    mh_map_tile_object_data *tS = tile_of(sx, sy), *tT = tile_of(tx, ty);
-    tS->building     = static_cast<uint16_t>(bi);
-    tS->class_owner  = static_cast<uint8_t>(player | 0x80u);
-    tT->building     = static_cast<uint16_t>(ai);
-    tT->class_owner  = static_cast<uint8_t>(player | 0x80u);
-    *pass_of(sx, sy) = 5;
-    *pass_of(tx, ty) = 5;
-    const uint8_t oa = A.origin_tile_was_passable, ob = B.origin_tile_was_passable;
-    A.origin_tile_was_passable = ob; // the underlying value of T is what B stood on
-    B.origin_tile_was_passable = oa;
-
-    // paths: A takes its step (the leg shrinks by one, like a normal step)
-    uint8_t *pa       = path_of(player, A.path_slot_id);
-    pa[cursA * 2 + 1] = static_cast<uint8_t>(pa[cursA * 2 + 1] - 1);
-    if (!claim) {
-        uint8_t *pb       = path_of(player, B.path_slot_id);
-        pb[cursB * 2 + 1] = static_cast<uint8_t>(pb[cursB * 2 + 1] - 1);
-        B.path_cursor     = cursB;
-    } else {
-        // room for one more entry: shift cursor..end (end sentinel included) up by one, write the return leg at the cursor
-        // (at cursB, the leg B would step next, so a spent leg behind the cursor is still skipped by the walker's own rule)
-        uint8_t *pb = path_of(player, B.path_slot_id);
-        int      e  = cursB;
-        while (e < PATH_ENTRIES - 1 && pb[e * 2] != 0) ++e; // e = index of the end sentinel (caller checked the room)
-        for (int i = e; i >= cursB; --i) {
-            pb[(i + 1) * 2]     = pb[i * 2];
-            pb[(i + 1) * 2 + 1] = pb[i * 2 + 1];
-        }
-        pb[cursB * 2]     = static_cast<uint8_t>(hA);
-        pb[cursB * 2 + 1] = 1;
-        const uint8_t rev = static_cast<uint8_t>(heading_wrap(hA + 12)); // the direction B slides: from T to S
-        B.facing_target   = rev;
-        B.facing_current  = rev;
+    // One log line per event (the header caps each kind at 200 per run): the evidence that a key fired, and where.
+    void note(const char *what, uint32_t player, int32_t ai, int32_t bi, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, int n) {
+        char b[200];
+        wsprintfA(b, "; M1N %s p%u unit %d at %u,%u / unit %d at %u,%u (%d)\n", what, player, (int)ai, sx, sy, (int)bi, dx, dy, n);
+        seam_log(b);
     }
+    void hit_nd() { mv_hit(MVH_ND); } // the walker's meeting decision runs (a key of this site is on)
+    void hit_eq() { mv_hit(MVH_EQ); } // mods:M1BE move_enter_queue: an entering unit waited behind an entering friend
+    void hit_mk() {}                  // the marshal stubs count in asm (mk_stub / mk2_stub)
+    void hit_mk2() {}
+};
 
-    A.x                        = static_cast<uint8_t>(tx);
-    A.y                        = static_cast<uint8_t>(ty);
-    B.x                        = static_cast<uint8_t>(sx);
-    B.y                        = static_cast<uint8_t>(sy);
-    A.move_microstep           = 0;
-    B.move_microstep           = 0;
-    A.path_blocked_retry_count = 0;
-    B.path_blocked_retry_count = 0;
-
-    // fog of war: each unit's sight leaves its old tile and arrives on its new one (same player: the counts net out except where
-    // the two sight radii differ)
-    mh::call::llm_strat_fow_remove_sight(player, static_cast<int32_t>(sx), static_cast<int32_t>(sy), ca->sight);
-    mh::call::llm_strat_fow_remove_sight(player, static_cast<int32_t>(tx), static_cast<int32_t>(ty), cb->sight);
-    mh::call::map_fow_UpdateFoWPlus(player, tx, ty, ca->sight);
-    mh::call::map_fow_UpdateFoWPlus(player, sx, sy, cb->sight);
-
-    soldiers_clear_wander(player, ai, A, *ca, false);
-    soldiers_clear_wander(player, bi, B, *cb, claim);
-}
-
-} // namespace
-
-// One log line per event (first 200 of each kind per run): the evidence that a key fired, and where.
-static void nd_note(const char *what, uint32_t player, int32_t ai, int32_t bi, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy) {
-    static int n[3];
-    const int  k = what[0] == 'n' ? 0 : (what[0] == 's' ? 1 : 2);
-    if (n[k]++ >= 200) return;
-    char b[200];
-    wsprintfA(b, "; M1N %s p%u unit %d at %u,%u / unit %d at %u,%u (%d)\n", what, player, (int)ai, sx, sy, (int)bi, dx, dy, n[k]);
-    seam_log(b);
-}
-
-namespace {
-// a walking unit A trades tiles with the IDLE friend B standing on the tile A wants (defined with the marshal helpers below)
-bool nd_trade(mh_map_object_unit &A, int32_t ai, mh_map_object_unit &B, int32_t bi, uint32_t player, int hA, int cursA);
 } // namespace
 
 // ---- the decision --------------------------------------------------------------------------------------------------------------
@@ -316,97 +219,27 @@ extern "C" {
 int       g_nd_nudge   = 0;             // [net] move_nudge_idle in force
 int       g_nd_claim   = 0;             // [net] move_claim_leader in force
 int       g_nd_swap    = 0;             // [net] move_swap_headon in force
+int       g_eq_on      = 0;             // [net] move_enter_queue in force (mods:M1BE; also read by move_proto_blocked.cpp)
 uintptr_t g_nd_orig_fn = FN_STEP_CHECK; // the stub's tail-jump target
 uintptr_t g_mk_ret     = ADDR_MK_RET;   // mk_stub: continue the retail clock-bump branch
 uintptr_t g_mk_skip    = ADDR_MK_SKIP;  // mk_stub: handled, next member
 uintptr_t g_mk2_ret    = ADDR_MK2_RET;  // mk2_stub: continue the retry branch
 int       g_rt_on      = 0;             // [net] move_route_through_idle in force
+int       g_rtm_on     = 0;             // [net] move_route_through_moving in force (mods:M1N 3e-6)
+int       g_rtm_cost   = 0;             // [net] move_route_through_moving_cost: the cost level (sim/move/route_through.h rt_move_cost_bits)
+int       g_rtr_on     = 0;             // [net] move_route_through_replanning in force (mods:M1DT fix 2)
 uintptr_t g_rt_orig_fn = FN_PATHFIND;   // rt_stub: the wave planner it wraps
+int       g_fc_on      = 0;             // [net] move_formation_click in force (mods:M1G 4b): 0 off, 1..2 = old keep rule with N - 1 rings of slack, 3 = the formation moves as one
+int       g_fc_handled = 0;             // the formation planned the commit that just ran (read once by the 2a stub, move_proto_arrival.cpp)
 }
+int mv_fc_run(int32_t group_id, uint32_t mode, uint32_t target, const void *undo); // move_proto_arrival.cpp: the formation over live memory
 
-// returns -1 = run the retail function; else its return value (0 = wait for the occupant)
+// returns -1 = run the retail function; else its return value (0 = "wait for the occupant")
+// The rule is mh::sim::mvc::nd_decide (sim/move/nudge.h): the same code the libmh twin runs.
 static int __cdecl nd_decide(uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy) {
-    if (!(g_nd_nudge | g_nd_claim | g_nd_swap)) return -1;
-    const mh_map_tile_object_data *tS = tile_of(sx, sy), *tT = tile_of(dx, dy);
-    if ((tS->class_owner & 0x80u) == 0 || (tT->class_owner & 0x80u) == 0) return -1; // a building / terrain blocks: retail
-    const uint32_t ap = tS->class_owner & 0xfu, bp = tT->class_owner & 0xfu;
-    if (ap != bp) return -1; // enemy / ally: retail
-    const int32_t ai = tS->building, bi = tT->building;
-    if (ai == bi) return -1;
-    mh_map_object_unit *A = unit_rec(ap, ai), *B = unit_rec(bp, bi);
-    if (!A || !B || A->x != sx || A->y != sy || B->x != dx || B->y != dy) return -1;
-    const mh_cfg_final_struct_Unit *ca = cfg_of(*A), *cb = cfg_of(*B);
-    if (!ca || !cb || ca->move_op_code != 0x0f || cb->move_op_code != 0x0f) return -1;  // ground movers only
-    if ((raw_bits(B->energy) >> 63) != 0 || (raw_bits(B->energy) << 1) == 0) return -1; // dead or dying: retail
-    if (A->state != ST_WALK || A->path_slot_id >= 100) return -1;
-
-    int       cursA = 0;
-    const int hA    = next_leg(*A, ap, &cursA);
-    if (hA == 0 || A->facing_target != hA) return -1;
-    int adx, ady;
-    heading_delta(hA, &adx, &ady);
-    const uint32_t mask_x = reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->width_mask;
-    const uint32_t mask_y = reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->height_mask;
-    if (((sx + static_cast<uint32_t>(adx)) & mask_x) != dx || ((sy + static_cast<uint32_t>(ady)) & mask_y) != dy) return -1; // not the walker's own step
-
-    // ---- 3e-1: an idle friend in the way -------------------------------------------------------------------------------
-    if (g_nd_nudge) {
-        if (B->state == ST_STEP_ADJACENT) return 0; // the nudge has been asked for, the unit has not started it yet
-        if (B->state == ST_IDLE && cb->default_op_code == ST_IDLE && B->order_queued == 0 && B->move_microstep >= MS_SETTLED) {
-            uint32_t nx, ny;
-            bool     straight = false;
-            if (pick_nudge_tile(*B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight)) {
-                // only straight ahead is free (a one-tile corridor): pushing the friend ahead of us tile after tile is worse than trading
-                // tiles with it, as the marshal site does (3e-4); the push stays as the fallback when the trade cannot be set up
-                if (straight && A->move_microstep >= MS_SETTLED && A->order_queued == 0 && nd_trade(*A, ai, *B, bi, ap, hA, cursA)) {
-                    nd_note("swap-trade", ap, ai, bi, sx, sy, dx, dy);
-                    return 0;
-                }
-                B->goal_x = static_cast<uint8_t>(nx);
-                B->goal_y = static_cast<uint8_t>(ny);
-                B->state  = ST_STEP_ADJACENT;
-                nd_note("nudge", ap, ai, bi, sx, sy, nx, ny);
-                B->order = ST_IDLE;
-                // a sleeping unit (clock ahead of the game clock) must not sit out its sleep before it makes room
-                if (raw_bits(B->activity_clock) > *reinterpret_cast<const uint64_t *>(ADDR_CLOCK)) memcpy(&B->activity_clock, reinterpret_cast<const void *>(ADDR_CLOCK), 8);
-                return 0;
-            }
-        }
-    }
-
-    // ---- 3e-3 / 3e-2: a walking friend ---------------------------------------------------------------------------------
-    if ((g_nd_swap | g_nd_claim) && B->state == ST_WALK && B->order_queued == 0 && A->order_queued == 0 &&
-        A->move_microstep >= MS_SETTLED && B->path_slot_id < 100) {
-        int       cursB = 0;
-        const int hB    = next_leg(*B, bp, &cursB);
-        if (hB != 0) {
-            int bdx, bdy;
-            heading_delta(hB, &bdx, &bdy);
-            const bool head_on = ((dx + static_cast<uint32_t>(bdx)) & mask_x) == sx && ((dy + static_cast<uint32_t>(bdy)) & mask_y) == sy;
-            if (head_on) {
-                if (!g_nd_swap) return -1;
-                // still sliding into its tile or still turning toward us: wait for it (its own blocked step would do the swap too)
-                if (B->move_microstep < MS_SETTLED || B->facing_target != hB) return 0;
-                nd_note("swap", ap, ai, bi, sx, sy, dx, dy);
-                do_exchange(*A, ai, *B, bi, ap, false, hA, cursA, cursB);
-                return 0;
-            }
-            if (g_nd_claim && B->move_microstep >= MS_SETTLED && B->facing_target != hB && B->path_blocked_retry_count == 0) {
-                const uint8_t *ea = path_of(ap, A->path_slot_id);
-                if (ea[cursA * 2 + 1] >= 2) { // F keeps going straight after this step
-                    const uint8_t *eb = path_of(bp, B->path_slot_id);
-                    int            e  = cursB;
-                    while (e < PATH_ENTRIES - 1 && eb[e * 2] != 0) ++e;
-                    if (e < PATH_ENTRIES - 2) { // room for one more entry behind the end sentinel
-                        nd_note("claim", ap, ai, bi, sx, sy, dx, dy);
-                        do_exchange(*A, ai, *B, bi, ap, true, hA, cursA, cursB);
-                        return 0;
-                    }
-                }
-            }
-        }
-    }
-    return -1;
+    if (!(g_nd_nudge | g_nd_claim | g_nd_swap | g_eq_on)) return -1;
+    splice_world w;
+    return mh::sim::mvc::nd_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0, g_eq_on != 0}, sx, sy, dx, dy);
 }
 
 // clang-format off
@@ -444,189 +277,25 @@ __declspec(naked) static void nd_stub() {
 // for the others, exactly as the retail success path does), then the tiles are traded. When the leg ends a unit that is not at its
 // goal goes back to marshal (walker path-end rule) and replans from its new tile; an idle friend has goal := the tile it was moved
 // to and order := STOP_TO_DEFAULT, so it ends idle there.
-namespace {
-
-int wrap_delta(uint32_t from, uint32_t to, uint32_t mask) {
-    int d = static_cast<int>((to - from) & mask);
-    if (d > static_cast<int>((mask + 1) / 2)) d -= static_cast<int>(mask + 1);
-    return d;
-}
-int sgn(int v) { return v > 0 ? 1 : (v < 0 ? -1 : 0); }
-
-// the principal heading (1,4,..,22) whose step delta is exactly (dx,dy); 0 if none
-int principal_heading(int dx, int dy) {
-    for (int h = 1; h <= 22; h += 3) {
-        int ex, ey;
-        heading_delta(h, &ex, &ey);
-        if (ex == dx && ey == dy) return h;
-    }
-    return 0;
-}
-
-bool unit_alive(const mh_map_object_unit &u) { return (raw_bits(u.energy) >> 63) == 0 && (raw_bits(u.energy) << 1) != 0; }
-
-// give u a one-leg path onto tile (tx,ty) (adjacent) through the game's own path_make_single_step, whose goal is the target tile for
-// the call; the unit's own goal is put back when keep_goal.
-bool one_leg(uint32_t player, int32_t idx, mh_map_object_unit &u, uint32_t tx, uint32_t ty, int expect, bool keep_goal) {
-    const uint8_t gx = u.goal_x, gy = u.goal_y;
-    u.goal_x         = static_cast<uint8_t>(tx);
-    u.goal_y         = static_cast<uint8_t>(ty);
-    const int32_t ok = mh::call::llm_strat_path_make_single_step(player, idx);
-    if (keep_goal) {
-        u.goal_x = gx;
-        u.goal_y = gy;
-    }
-    if (!ok) return false;
-    if (u.path_slot_id >= 100 || path_of(player, u.path_slot_id)[0] != static_cast<uint8_t>(expect)) {
-        mh::call::llm_strat_path_free_slot(static_cast<uint16_t>(player), idx);
-        return false;
-    }
-    return true;
-}
-
-// hand a unit that now holds a one-leg path to the walker the way the retail success path of the marshal does
-void to_walker(uint32_t player, int32_t idx, mh_map_object_unit &u, const mh_cfg_final_struct_Unit &c) {
-    if (u.order == static_cast<uint16_t>(c.move_op_code)) mh::call::llm_unit_set_order_param(static_cast<int32_t>(player), idx, 1);
-    const bool cur = idx == static_cast<int32_t>(*reinterpret_cast<const uint16_t *>(ADDR_CUR_INDEX));
-    mh::call::llm_strat_unit_set_state_of(static_cast<int32_t>(player), idx, static_cast<int16_t>(cur ? c.move_op_code : ST_HOP));
-    u.path_cursor              = 0;
-    u.path_blocked_retry_count = 0;
-    mh::call::llm_strat_unit_notify_status(player, idx, 100);
-}
-
-void face(mh_map_object_unit &u, const mh_cfg_final_struct_Unit &c, uint32_t player, int32_t idx, int h) {
-    u.facing_target  = static_cast<uint8_t>(h);
-    u.facing_current = static_cast<uint8_t>(h);
-    if (c.soldier_count > 0) mh::call::llm_strat_unit_soldiers_set_heading(static_cast<uint16_t>(player), idx, static_cast<uint8_t>(h));
-}
-
-// The walker's version of the corridor trade: A (walking, settled, its next leg heading hA at cursor cursA) steps onto B's tile and the idle
-// B onto A's. B gets a one-leg path from the game's own path_make_single_step (its goal = A's tile for that call), is turned toward it and
-// handed to the walker (state 0xc: it is not the ticking unit); do_exchange claims both tiles crosswise and A's leg shrinks like a normal step.
-// B's goal stays the tile it slides to and its order STOP_TO_DEFAULT, so it ends idle there. False = nothing was changed.
-bool nd_trade(mh_map_object_unit &A, int32_t ai, mh_map_object_unit &B, int32_t bi, uint32_t player, int hA, int cursA) {
-    const mh_cfg_final_struct_Unit *cb = cfg_of(B);
-    if (!cb) return false;
-    const uint32_t sx = A.x, sy = A.y;
-    const int      hB = heading_wrap(hA + 12);
-    if (!one_leg(player, bi, B, sx, sy, hB, false)) return false;
-    face(B, *cb, player, bi, hB);
-    do_exchange(A, ai, B, bi, player, false, hA, cursA, 0);
-    to_walker(player, bi, B, *cb);
-    B.order = ST_IDLE;
-    return true;
-}
-
-} // namespace
-
 // returns 1 = handled (skip the retail clock bump), 0 = run retail
+// The rule is mh::sim::mvc::mk_decide (sim/move/nudge.h): the same code the libmh twin runs.
 static int __cdecl mk_decide(uint32_t player, uint32_t idx) {
     if (!(g_nd_nudge | g_nd_swap)) return 0;
-    mh_map_object_unit *A = unit_rec(player, static_cast<int32_t>(idx));
-    if (!A) return 0;
-    const mh_cfg_final_struct_Unit *ca = cfg_of(*A);
-    if (!ca || ca->move_op_code != 0x0f || (A->order != 0x0f && A->order != ST_IDLE)) return 0; // a plain move (order 0x0f, or 1 once the planner has replanned it)
-    if (A->state != ST_MARSHAL || A->path_slot_id != 0xff || A->order_queued != 0 || A->move_microstep < MS_SETTLED) return 0;
-    const auto    *geom   = reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL]);
-    const uint32_t mask_x = geom->width_mask, mask_y = geom->height_mask;
-    const int      ddx = wrap_delta(A->x, A->goal_x, mask_x), ddy = wrap_delta(A->y, A->goal_y, mask_y);
-    if (!ddx && !ddy) return 0;
-    const int h0 = principal_heading(sgn(ddx), sgn(ddy));
-    if (!h0) return 0;
-    const int32_t ai = static_cast<int32_t>(idx);
-
-    // the tile the unit wants next, then (only when that one is a wall) its two flanks
-    const int hs[3] = {h0, heading_wrap(h0 - 3), heading_wrap(h0 + 3)};
-    for (int k = 0; k < 3; ++k) {
-        int dx, dy;
-        heading_delta(hs[k], &dx, &dy);
-        const uint32_t                 tx = (A->x + static_cast<uint32_t>(dx)) & mask_x, ty = (A->y + static_cast<uint32_t>(dy)) & mask_y;
-        const mh_map_tile_object_data *tT  = tile_of(tx, ty);
-        const bool                     occ = (tT->class_owner & 0x80u) != 0 && tT->building != 0;
-        if (!occ) {
-            if (*pass_of(tx, ty) == 0) continue; // a wall: look at the flank
-            return 0;                            // a free tile: the planner's business
-        }
-        if ((tT->class_owner & 0xfu) != player) return 0;
-        const int32_t bi = tT->building;
-        if (bi == ai) return 0;
-        mh_map_object_unit *B = unit_rec(player, bi);
-        if (!B || B->x != tx || B->y != ty) return 0;
-        const mh_cfg_final_struct_Unit *cb = cfg_of(*B);
-        if (!cb || cb->move_op_code != 0x0f || !unit_alive(*B) || B->move_microstep < MS_SETTLED) return 0;
-        const uint32_t sx = A->x, sy = A->y;
-        const int      hA = hs[k];
-        const int      hB = heading_wrap(hA + 12);
-
-        // ---- an idle friend ----
-        if (B->state == ST_STEP_ADJACENT) return 0; // already nudged, not started: keep waiting
-        if (g_nd_nudge && B->state == ST_IDLE && cb->default_op_code == ST_IDLE && B->order_queued == 0) {
-            uint32_t nx, ny;
-            bool     straight = false;
-            if (pick_nudge_tile(*B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight) && !straight) {
-                B->goal_x = static_cast<uint8_t>(nx);
-                B->goal_y = static_cast<uint8_t>(ny);
-                B->state  = ST_STEP_ADJACENT;
-                nd_note("nudge-marshal", player, ai, bi, sx, sy, nx, ny);
-                B->order = ST_IDLE;
-                if (raw_bits(B->activity_clock) > *reinterpret_cast<const uint64_t *>(ADDR_CLOCK)) memcpy(&B->activity_clock, reinterpret_cast<const void *>(ADDR_CLOCK), 8);
-                return 0; // retry soon (retail clock bump)
-            }
-            // no sidestep: trade tiles
-            if (!one_leg(player, ai, *A, tx, ty, hA, true)) return 0;
-            const uint8_t bgx = B->goal_x, bgy = B->goal_y;
-            if (!one_leg(player, bi, *B, sx, sy, hB, false)) {
-                mh::call::llm_strat_path_free_slot(static_cast<uint16_t>(player), ai);
-                B->goal_x = bgx;
-                B->goal_y = bgy;
-                return 0;
-            }
-            nd_note("swap-marshal", player, ai, bi, sx, sy, tx, ty);
-            face(*A, *ca, player, ai, hA);
-            face(*B, *cb, player, bi, hB);
-            do_exchange(*A, ai, *B, bi, player, false, hA, 0, 0);
-            to_walker(player, ai, *A, *ca);
-            to_walker(player, bi, *B, *cb);
-            B->order = ST_IDLE; // an idle friend stays "default" on arrival (goal = the tile it is sliding to)
-            return 1;
-        }
-
-        // ---- a friend that wants our tile (head-on) ----
-        if (!g_nd_swap || B->order_queued != 0) return 0;
-        int  cursB   = 0;
-        bool b_stuck = false;
-        if (B->state == ST_MARSHAL && B->path_slot_id == 0xff && (B->order == 0x0f || B->order == ST_IDLE)) {
-            if (B->move_group_id == A->move_group_id && B->goal_x == A->goal_x && B->goal_y == A->goal_y) return 0; // one group: the planner's
-            const int bdx = wrap_delta(B->x, B->goal_x, mask_x), bdy = wrap_delta(B->y, B->goal_y, mask_y);
-            if (principal_heading(sgn(bdx), sgn(bdy)) != hB) return 0; // not head-on
-            if (!one_leg(player, ai, *A, tx, ty, hA, true)) return 0;
-            if (!one_leg(player, bi, *B, sx, sy, hB, true)) {
-                mh::call::llm_strat_path_free_slot(static_cast<uint16_t>(player), ai);
-                return 0;
-            }
-            b_stuck = true;
-        } else if (B->state == ST_WALK && B->path_slot_id < 100) {
-            const int hb = next_leg(*B, player, &cursB);
-            if (hb != hB || B->facing_target != hB) return 0;
-            if (!one_leg(player, ai, *A, tx, ty, hA, true)) return 0;
-        } else {
-            return 0;
-        }
-        nd_note("swap-marshal", player, ai, bi, sx, sy, tx, ty);
-        face(*A, *ca, player, ai, hA);
-        if (b_stuck) face(*B, *cb, player, bi, hB);
-        do_exchange(*A, ai, *B, bi, player, false, hA, 0, cursB);
-        to_walker(player, ai, *A, *ca);
-        if (b_stuck) to_walker(player, bi, *B, *cb);
-        return 1;
-    }
-    return 0;
+    splice_world w;
+    return mh::sim::mvc::mk_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0}, player, idx) ? 1 : 0;
 }
 
 // clang-format off
 __declspec(naked) static void mk_stub() {
     __asm {
         pushad
+        cmp   g_nd_nudge, 0                     // mods:M1H hit counter: the decision runs only with nudge or swap on
+        jne   mk_cnt
+        cmp   g_nd_swap, 0
+        je    mk_nocnt
+    mk_cnt:
+        inc   dword ptr [g_mv_hit + 4 * MVH_MK]
+    mk_nocnt:
         push  dword ptr [ebp - 0x48]            // the member's unit index (the marshal's loop local)
         movzx eax, word ptr ds:[0x00e58144]     // _G_LLM_STRAT_CUR_PLAYER
         push  eax
@@ -646,6 +315,13 @@ __declspec(naked) static void mk_stub() {
 __declspec(naked) static void mk2_stub() {
     __asm {
         pushad
+        cmp   g_nd_nudge, 0
+        jne   mk2_cnt
+        cmp   g_nd_swap, 0
+        je    mk2_nocnt
+    mk2_cnt:
+        inc   dword ptr [g_mv_hit + 4 * MVH_MK2]
+    mk2_nocnt:
         push  dword ptr [ebp - 0x48]
         movzx eax, word ptr ds:[0x00e58144]
         push  eax
@@ -677,64 +353,103 @@ __declspec(naked) static void mk2_stub() {
 // goal logic is unchanged: a goal held by an idle friend is moved as today), walking / sleeping-in-order units, enemies, allies,
 // buildings and every unit of another player. Wave members are not touched (register_member already restored their tiles).
 // DETERMINISM: integer, units visited in index order, a fixed-size undo list, no clock, no rand; the same call on both peers.
+// The rule itself (which tiles are opened, the cost penalty, the byte-exact restore) is sim/move/route_through.h, shared with the libmh
+// twin (sim_group_move_order_commit.cpp); this is its live-memory World.
 namespace {
 
-constexpr int      RT_MAX = 1024;
-uint32_t           g_rt_undo[RT_MAX]; // flat (x << 8 | y) indices whose passable byte was lifted
-uint8_t            g_rt_low[RT_MAX];  // the cell's cached cost byte (terrain_flags low byte) before the penalty
-int                g_rt_n          = 0;
-constexpr uint32_t RT_PENALTY_BITS = 0x1d; // passable + the three proximity rings: costs like a tile pressed against a cliff
+mh::sim::move::rt_undo g_rt_undo;
 
-uint32_t *rt_cell_flags(uint32_t flat) {
-    return reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_MAP_REGION_GRID]) + flat * 8u + 4u);
-}
+struct rt_live_world {
+    int32_t unit_count() { return mh::state::live_roster_caps().units; }
+    bool    unit(uint32_t player, int32_t i, mh::sim::move::rt_unit *out) {
+        mh_map_object_unit *u = unit_rec(player, i);
+        if (!u) return false;
+        const mh_cfg_final_struct_Unit *c = cfg_of(*u);
+        if (!c) return false;
+        out->state                    = u->state;
+        out->order_queued             = u->order_queued;
+        out->move_microstep           = u->move_microstep;
+        out->origin_tile_was_passable = u->origin_tile_was_passable;
+        out->cfg_ground_idle          = c->move_op_code == 0x0f && c->default_op_code == ST_IDLE;
+        out->cfg_ground_move          = c->move_op_code == 0x0f;
+        out->alive                    = unit_alive(*u);
+        out->x                        = u->x;
+        out->y                        = u->y;
+        return true;
+    }
+    uint16_t  tile_building(uint32_t flat) { return tile_of(flat >> 8, flat & 0xffu)->building; }
+    uint8_t   tile_class_owner(uint32_t flat) { return tile_of(flat >> 8, flat & 0xffu)->class_owner; }
+    uint8_t  &passable(uint32_t flat) { return *pass_of(flat >> 8, flat & 0xffu); }
+    uint32_t &cell_flags(uint32_t flat) {
+        return *reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_MAP_REGION_GRID]) + flat * 8u + 4u);
+    }
+};
 
 } // namespace
 
 static void __cdecl rt_unmask() {
-    g_rt_n = 0;
-    if (!g_rt_on || !g_nd_nudge) return; // the nudge / trade is what resolves the meeting: no key, no change
+    g_rt_undo.n          = 0;
+    const bool idle_on   = g_rt_on && g_nd_nudge; // the nudge / trade is what resolves the idle meeting: no key, no change
+    const bool moving_on = g_rtm_on != 0;
+    const bool replan_on = g_rtr_on != 0;
+    if (!idle_on && !moving_on && !replan_on) return;
+    if (idle_on) mv_hit(MVH_RT);
+    if (moving_on) mv_hit(MVH_RTM);
+    if (replan_on) mv_hit(MVH_RTR);
     const auto    &live   = mh::state::live();
     const uint32_t player = *reinterpret_cast<const uint32_t *>(live.base[mh::state::RID_STRAT_GROUP_ORDER_OWNER]);
     const int32_t  goal_x = *reinterpret_cast<const int32_t *>(live.base[mh::state::RID_STRAT_GROUP_ORDER_GOAL_X]);
     const int32_t  goal_y = *reinterpret_cast<const int32_t *>(live.base[mh::state::RID_STRAT_GROUP_ORDER_GOAL_Y]);
-    const auto     caps   = mh::state::live_roster_caps();
     const auto    *geom   = reinterpret_cast<const mh_llm_strat_map_geom *>(live.base[mh::state::RID_GENERAL]);
     if (player >= 8 || !geom) return;
-    const uint32_t gx = static_cast<uint32_t>(goal_x) & geom->width_mask, gy = static_cast<uint32_t>(goal_y) & geom->height_mask;
-    for (int32_t i = 1; i < caps.units && g_rt_n < RT_MAX; ++i) {
-        mh_map_object_unit *u = unit_rec(player, i);
-        if (!u || u->state != ST_IDLE || u->order_queued != 0 || u->move_microstep < MS_SETTLED || u->origin_tile_was_passable == 0) continue;
-        const mh_cfg_final_struct_Unit *c = cfg_of(*u);
-        if (!c || c->move_op_code != 0x0f || c->default_op_code != ST_IDLE || !unit_alive(*u)) continue;
-        if (u->x == gx && u->y == gy) continue;
-        const mh_map_tile_object_data *t = tile_of(u->x, u->y);
-        if (t->building != i || t->class_owner != static_cast<uint8_t>(player | 0x80u)) continue;
-        uint8_t *p = pass_of(u->x, u->y);
-        if (*p != 0) continue;
-        *p                  = u->origin_tile_was_passable;
-        const uint32_t flat = (static_cast<uint32_t>(u->x) << 8) | u->y;
-        g_rt_low[g_rt_n]    = static_cast<uint8_t>(*rt_cell_flags(flat));
-        if (g_rt_on == 1) *rt_cell_flags(flat) |= RT_PENALTY_BITS;
-        g_rt_undo[g_rt_n++] = flat;
-    }
-    if (g_rt_n) {
+    rt_live_world w;
+    const int     opened    = mh::sim::move::rt_unmask(w, g_rt_undo, idle_on ? g_rt_on : 0, true, player, goal_x, goal_y, geom->width_mask, geom->height_mask);
+    const int     opened_mv = moving_on ? mh::sim::move::rt_unmask_moving(w, g_rt_undo, g_rtm_cost, player, goal_x, goal_y, geom->width_mask, geom->height_mask) : 0;
+    const int     opened_rp = replan_on ? mh::sim::move::rt_unmask_replanning(w, g_rt_undo, g_rtm_cost, player, goal_x, goal_y, geom->width_mask, geom->height_mask) : 0;
+    if (opened_rp) {
         static int n;
         if (n++ < 200) {
             char b[160];
-            wsprintfA(b, "; M1N route-through p%u idle friends opened=%d goal=%d,%d (%d)\n", player, g_rt_n, (int)gx, (int)gy, n);
+            wsprintfA(b, "; M1DT route-through p%u replanning friends opened=%d cost=%d goal=%d,%d (%d)\n", player, opened_rp, g_rtm_cost,
+                      (int)(static_cast<uint32_t>(goal_x) & geom->width_mask), (int)(static_cast<uint32_t>(goal_y) & geom->height_mask), n);
+            seam_log(b);
+        }
+    }
+    if (opened) {
+        static int n;
+        if (n++ < 200) {
+            char b[160];
+            wsprintfA(b, "; M1N route-through p%u idle friends opened=%d goal=%d,%d (%d)\n", player, opened, (int)(static_cast<uint32_t>(goal_x) & geom->width_mask),
+                      (int)(static_cast<uint32_t>(goal_y) & geom->height_mask), n);
+            seam_log(b);
+        }
+    }
+    if (opened_mv) {
+        static int n;
+        if (n++ < 200) {
+            char b[160];
+            wsprintfA(b, "; M1N route-through p%u walking friends opened=%d cost=%d goal=%d,%d (%d)\n", player, opened_mv, g_rtm_cost,
+                      (int)(static_cast<uint32_t>(goal_x) & geom->width_mask), (int)(static_cast<uint32_t>(goal_y) & geom->height_mask), n);
             seam_log(b);
         }
     }
 }
 
 static void __cdecl rt_restore() {
-    for (int k = 0; k < g_rt_n; ++k) {
-        *(reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_PASSABLE]) + g_rt_undo[k]) = 0;
-        uint32_t *f                                                                                    = rt_cell_flags(g_rt_undo[k]);
-        *f                                                                                             = (*f & 0xffffff00u) | g_rt_low[k];
-    }
-    g_rt_n = 0;
+    rt_live_world w;
+    mh::sim::move::rt_restore(w, g_rt_undo);
+}
+
+// mods:M1DT fix A': the SAME bracket around 2a's single re-run of the planner (move_proto_arrival.cpp, rerun_pathfind). With every
+// route-through key off rt_unmask() leaves the undo list empty and rt_restore() has nothing to put back.
+void mv_rt_open() { rt_unmask(); }
+void mv_rt_close() { rt_restore(); }
+
+// mods:M1G 4b: the formation from the click, inside the open bracket right after the retail plan. commit's frame is the stub caller's
+// (EBP unchanged): [ebp+8] = move_group_id, [ebp+0xc] = is_plain_move_flag, [ebp+0x10] = target_class, as mv_arr_commit_stub reads them.
+static void __cdecl fc_after_pathfind(int32_t group_id, uint32_t mode, uint32_t target) {
+    mv_hit(MVH_FC);
+    g_fc_handled = mv_fc_run(group_id, mode, target, &g_rt_undo);
 }
 
 // clang-format off
@@ -744,6 +459,16 @@ __declspec(naked) static void rt_stub() {
         call  rt_unmask
         popad
         call  dword ptr [g_rt_orig_fn]          // EAX = mode, EDX = target mask, exactly as the commit loaded them
+        cmp   g_fc_on, 0
+        je    rt_nofc
+        pushad                                  // mods:M1G 4b: the formation, in the bracket, after the retail plan (phase 1)
+        push  dword ptr [ebp + 0x10]            // commit's target_class
+        push  dword ptr [ebp + 0x0c]            // commit's is_plain_move_flag
+        push  dword ptr [ebp + 0x08]            // commit's move_group_id
+        call  fc_after_pathfind
+        add   esp, 12
+        popad
+    rt_nofc:
         pushad
         call  rt_restore
         popad
@@ -751,18 +476,6 @@ __declspec(naked) static void rt_stub() {
     }
 }
 // clang-format on
-
-namespace {
-
-bool nd_refuse(const char *key, int v) {
-    if (v == 0 || g_nd_state == 1) return false;
-    char b[260];
-    wsprintfA(b, "; move prototype [net] %s=%d NOT ACTIVE (mods:M1N): %s\n", key, v, nd_state_name(g_nd_state));
-    seam_log(b);
-    return true;
-}
-
-} // namespace
 
 void install_move_proto_nudge() {
     if (mh::hook::promoted_owner_of(ADDR_ND_CALL)) {
@@ -808,49 +521,131 @@ void install_move_proto_nudge() {
     }
     wsprintfA(b, "; move prototype splice (mods:M1N route planner, idle friends are not walls): %s\n", nd_state_name(g_rt_state));
     seam_log(b);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_ND, g_nd_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_MK, g_mk_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_MK2, g_mk2_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_RT, g_rt_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_RTM, g_rt_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_RTR, g_rt_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_FC, g_rt_state);
 }
 
+// The setters set the stubs' gates and tell the carrier report (move_carrier.cpp) the requested value; the report -- late, once the
+// unit-state table is filled -- is the one line per key ("retail splice" / "libmh twin" / "NOT ACTIVE: ...").
 int mh_set_move_nudge_idle(int on) {
     on         = on != 0;
     g_nd_nudge = 0;
-    if (!on || nd_refuse("move_nudge_idle", on)) return 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_NUDGE_IDLE, on, 0);
+    if (!on || g_nd_state != 1) return 0;
     g_nd_nudge = 1;
-    seam_log("; move prototype [net] move_nudge_idle=1 active (mods:M1N): a unit whose next tile holds an idle friendly ground unit asks it to step to a free "
-             "neighbour (state 0x36) and waits\n");
     return 1;
 }
 
 int mh_set_move_claim_leader(int on) {
     on         = on != 0;
     g_nd_claim = 0;
-    if (!on || nd_refuse("move_claim_leader", on)) return 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_CLAIM_LEADER, on, 0);
+    if (!on || g_nd_state != 1) return 0;
     g_nd_claim = 1;
-    seam_log("; move prototype [net] move_claim_leader=1 active (mods:M1N): a follower takes the tile of a friendly leader that is turning in place; the leader "
-             "steps back onto the follower's old tile and follows\n");
     return 1;
 }
 
 int mh_set_move_swap_headon(int on) {
     on        = on != 0;
     g_nd_swap = 0;
-    if (!on || nd_refuse("move_swap_headon", on)) return 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_SWAP_HEADON, on, 0);
+    if (!on || g_nd_state != 1) return 0;
     g_nd_swap = 1;
-    seam_log("; move prototype [net] move_swap_headon=1 active (mods:M1N): two friendly units meeting head-on both take their next step, through each other's "
-             "tile (no sidestep, no replan)\n");
     return 1;
+}
+
+int mv_bk_state(); // move_proto_blocked.cpp: the state of the blocked-unit splice (1 carried)
+
+// mods:M1BE: needs BOTH walker sites (the nudge CALL for the wait, the blocked block for the exemption), which sit in one function.
+void mh_set_move_enter_queue(int on) {
+    on      = on != 0;
+    g_eq_on = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_ENTER_QUEUE, on, 0);
+    if (!on || g_nd_state != 1 || mv_bk_state() != 1) return;
+    g_eq_on = 1;
 }
 
 int mh_set_move_route_through_idle(int on) {
     g_rt_on = 0;
-    if (on == 0) return 0;
-    if (g_rt_state != 1) {
-        char b[260];
-        wsprintfA(b, "; move prototype [net] move_route_through_idle=1 NOT ACTIVE (mods:M1N): %s\n", nd_state_name(g_rt_state));
-        seam_log(b);
-        return 0;
-    }
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_THROUGH_IDLE, on, 0);
+    if (on == 0 || g_rt_state != 1) return 0;
     g_rt_on = on == 2 ? 2 : 1; // 2 = measurement: open the tiles at the plain tile cost (no penalty)
-    seam_log("; move prototype [net] move_route_through_idle=1 active (mods:M1N): the route planner treats a tile held by an idle friendly ground unit as open "
-             "(needs move_nudge_idle=1: the unit that arrives there asks the friend to make room); the goal tile itself stays as it is\n");
     return 1;
+}
+
+// mods:M1N 3e-6: a WALKING friend's tile is open ground to the planner too (sim/move/route_through.h rt_unmask_moving), priced by `cost`.
+// Same splice as move_route_through_idle; needs no other key.
+int mh_set_move_route_through_moving(int on) {
+    g_rtm_on = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_THROUGH_MOVING, on, 0);
+    if (on == 0 || g_rt_state != 1) return 0;
+    g_rtm_on = 1;
+    return 1;
+}
+
+void mh_set_move_route_through_moving_cost(int level) {
+    g_rtm_cost = level < 0 ? 0 : (level > 4 ? 4 : level);
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_THROUGH_MOVING_COST, level, 0);
+}
+
+// mods:M1DT fix 2: an own unit in state 0x0a (re-planning) is open ground to the planner too (sim/move/route_through.h
+// rt_unmask_replanning), priced by the moving cost level. Same splice as move_route_through_idle; needs no other key.
+int mh_set_move_route_through_replanning(int on) {
+    g_rtr_on = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_ROUTE_THROUGH_REPLANNING, on, 0);
+    if (on == 0 || g_rt_state != 1) return 0;
+    g_rtr_on = 1;
+    return 1;
+}
+
+// mods:M1G 4b: 0 off (retail), 1..2 = old keep rule (N - 1 rings of slack), 3 = the formation moves as one (sim/move/formation.h). Same splice as move_route_through_idle.
+int mh_set_move_formation_click(int n) {
+    g_fc_on      = 0;
+    g_fc_handled = 0;
+    n            = n < 0 ? 0 : (n > 3 ? 3 : n);
+    mh::seams::mv::request(mh::seams::mv::KEY_FORMATION_CLICK, n, 0);
+    if (n == 0 || g_rt_state != 1) return 0;
+    g_fc_on = n;
+    return 1;
+}
+
+// ---- mods:M1DT: world access for the walker block site / the marshal check (move_proto_blocked.cpp) ------------------------------
+// Who stands on the walker's destination tile: an own unit's index, and whether it is a walking ground mover (state 0x0f, alive).
+void mv_blocker_info(uint32_t player, uint32_t x, uint32_t y, mh::sim::mvc::blocker_info *out) {
+    *out                       = mh::sim::mvc::blocker_info{};
+    mh_map_tile_object_data *t = tile_of(x, y);
+    if (t->building == 0 || t->class_owner != static_cast<uint8_t>(player | 0x80u)) return;
+    mh_map_object_unit *b = unit_rec(player, t->building);
+    if (!b) return;
+    const mh_cfg_final_struct_Unit *c = cfg_of(*b);
+    out->idx                          = t->building;
+    out->walking_friend               = b->state == ST_WALK && c && c->move_op_code == 0x0f && unit_alive(*b);
+}
+
+// The marshal good-path check. Returns the unit record (non-zero) when the route the planner just attached must be discarded: the path
+// slot is freed here (the caller advances the clock and skips the member), else 0.
+uintptr_t mv_cap_refuse(uint32_t player, uint32_t idx, int cap_pct) {
+    mh_map_object_unit *u = unit_rec(player, static_cast<int32_t>(idx));
+    if (!u) return 0;
+    const auto *geom = reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL]);
+    if (!geom) return 0;
+    mv_hit(MVH_CAPOK);
+    const bool refuse = mh::sim::mvc::rc_should_refuse(*u, cap_pct, geom->width_mask, geom->height_mask, [player](uint32_t slot, int entry) -> const mh::game::mh_llm_strat_path_waypoint & {
+        return reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(path_of(player, slot))[entry];
+    });
+    if (!refuse) return 0;
+    mh::call::llm_strat_path_free_slot(static_cast<uint16_t>(player), static_cast<int32_t>(idx));
+    static int n;
+    if (n++ < 200) {
+        char b[160];
+        wsprintfA(b, "; M1DT replan refused p%u unit %u at %u,%u goal %u,%u (refusal %d) (%d)\n", player, idx, (unsigned)u->x, (unsigned)u->y, (unsigned)u->goal_x,
+                  (unsigned)u->goal_y, (int)u->_pad_0xca[0] - 1, n);
+        seam_log(b);
+    }
+    return reinterpret_cast<uintptr_t>(u);
 }

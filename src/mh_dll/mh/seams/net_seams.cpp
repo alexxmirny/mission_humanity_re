@@ -55,6 +55,7 @@
 #include "include/mh_bldgrearm_export.h"    // MH_BldgRearm_Install (ui_bldg_rearm.cpp) -- D11 Shift+click keeps the placed building type armed
 #include "include/mh_buildprobe_export.h"   // MH_BuildProbe_Install (ui_bldg_build_probe.cpp) -- D35 the HUD build-click probe charges nothing (D25 in configuration (1))
 #include "include/mh_relanding_export.h"    // MH_Relanding_Install (sim_pioneer_refill.cpp) -- D37a a lockstep pioneer re-landing refills AI players only
+#include "include/mh_walkerframes_export.h" // MH_WalkerFrames_Install (ui_walker_frames.cpp) -- a turning walker draws its own rest image on every notch
 #include "include/mh_workerclick_export.h"  // MH_WorkerClick_Install (ui_worker_click.cpp) -- RES8 the worker +/- buttons order one worker on every press
 #include "include/mh_minimapplus_export.h"  // MH_MinimapPlus_Install (ui_minimap_plus.cpp) -- MM1-MM3 resources/corners/box at the minimap's widest zoom
 #include "include/mh_minimapbox_export.h"   // MH_MinimapBox_Install (ui_minimap_box.cpp) -- RES9 the minimap viewport box drawn clipped to the minimap
@@ -224,6 +225,7 @@ extern "C" int         MH_MP_ConsumeHostLeft(void);                             
 extern "C" void        MH_MP_MarkExitCauseLinkLost(void);                           // net_discovery -- U23: correct the cause to LINK_LOST
 extern "C" int         MH_MP_ConsumeExitCause(void);                                // net_discovery -- U23: 1 host-left, 2 link-lost, 3 join-refused (F3c), 0 Cancel
 extern "C" void        MH_MP_ClientOnJoinRefused(const char *reason);               // net_discovery -- F3c client (recv thread): the host refused our JOIN
+extern "C" int         MH_MP_TakeStartRefused(const char **reason);                 // launch.cpp -- GH1: the client refused the host's Start (no slots / no gameplay set)
 extern "C" int         MH_MP_TakeJoinRefused(void);                                 // net_discovery -- F3c: 1 once while a refusal is pending
 extern "C" int         MH_MP_HasJoined(int player_id);                              // net_discovery -- N2: 1 = this peer's own JOIN was admitted (mp:R6 hello replay)
 extern "C" int         MH_MP_JoinLinkPending(void);                                 // net_discovery -- mp:R2b: a clicked JOIN waits for the link into ITS room
@@ -1655,6 +1657,26 @@ extern "C" int MH_Seam_PollRecv(void) {
         MH_MP_MarkExitCauseJoinRefused(); // ...and correct the default HOST_LEFT cause to the refusal
         return RX_SIZE;
     }
+    // GH1: this client refused the host's Start (launch.cpp mp_client_adopt_start: no slot array or no
+    // decodable gameplay set). The load was swallowed at begin_map_load, so the lobby is still the active
+    // screen; leave it the way a Cancel does -- the retail 0x0e, no host-left bookkeeping, so on_lobby_finalize
+    // takes its Cancel branch and tells the host we LEFT (it has already started; it must not wait on us).
+    // The reason rides the browser notice, armed here (finalize's Cancel branch arms nothing).
+    {
+        const char *why = nullptr;
+        if (MH_MP_IsManual() && g_a.is_host && !*g_a.is_host &&
+            *(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == (void *)mh::addr::lobby_widget_origin && MH_MP_TakeStartRefused(&why)) {
+            seam_log("; GH1: Start refused -> synthesising retail 0x0e (leave to browser, the notice names the reason)\n");
+            memset(g_a.rx_type, 0, RX_SIZE);
+            g_a.rx_type[0]       = 0x0e;
+            *g_a.rx_sender_id    = 0;
+            *g_a.rx_crc_embedded = 0;
+            *g_a.rx_crc_computed = 0;
+            *g_a.rx_len          = RX_SIZE;
+            mh::ui::browser_notice_arm_refused(why);
+            return RX_SIZE;
+        }
+    }
     if (link_lost_in_lobby()) {
         seam_log("; R-live-ui: host link lost in the lobby -> synthesising retail 0x0e (leave to browser)\n");
         memset(g_a.rx_type, 0, RX_SIZE);
@@ -2363,6 +2385,7 @@ static int MH_Core_Arm(void) {
     MH_BuildProbe_Install();   // D35: the HUD build-click affordability probe charges nothing -- D25's fix where libmh is not bound (best-effort)
     MH_BldgRearm_Install();    // D11: Shift held through a placing click keeps the building type armed ([ui] shift_rearm_build; best-effort)
     MH_Relanding_Install();    // D37a: in a lockstep match a pioneer re-landing refills the starting stock for AI players only (best-effort)
+    MH_WalkerFrames_Install(); // M1G dig 2026-10-18: the walker facing-frame table's 16 unfilled facings, render only ([ui] walker_turn_frames_fix; best-effort)
     MH_WorkerClick_Install();  // RES8: the worker +/- buttons order one worker on every press, the first one included (best-effort)
     MH_MinimapPlus_Install();  // MM1-MM3: resources at every zoom, no round mask, the view box at the widest zoom ([ui] minimap_plus; best-effort)
     MH_MinimapBox_Install();   // RES9: the minimap viewport box is drawn clipped to the 128x128 minimap (best-effort)

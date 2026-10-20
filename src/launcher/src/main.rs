@@ -34,6 +34,7 @@ mod elevate;
 mod i18n;
 mod icon;
 mod install;
+mod langhook;
 mod launch;
 mod log;
 mod machine;
@@ -765,7 +766,11 @@ fn run_window(
         match eframe::run_native(
             "Mission Humanity",
             options,
-            Box::new(move |_cc| Ok(Box::new(App::new(layout, cfg, view, startup)))),
+            Box::new(move |_cc| {
+                // dist LA22: hook the window procedure on the UI thread, before the first message.
+                langhook::install();
+                Ok(Box::new(App::new(layout, cfg, view, startup)))
+            }),
         ) {
             Ok(()) => return Ok(()),
             Err(e) => {

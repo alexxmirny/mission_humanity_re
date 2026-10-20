@@ -598,10 +598,27 @@ fn hotkey(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
             .selected(capturing)
             .min_size(egui::vec2(120.0, 0.0)),
     );
-    if resp.on_hover_text(tr("hotkey.help")).clicked() {
+    let resp = resp.on_hover_text(tr("hotkey.help"));
+    if resp.clicked() {
         state.capturing = if capturing { None } else { Some(id.clone()) };
+        if !capturing {
+            resp.request_focus();
+        }
     }
     if capturing {
+        // Keep Tab (and the arrows) for the capture: without the lock egui's focus traversal eats
+        // Tab before this widget sees it. Esc stays ours (it cancels).
+        ui.memory_mut(|m| {
+            m.set_focus_lock_filter(
+                resp.id,
+                egui::EventFilter {
+                    tab: true,
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    escape: true,
+                },
+            )
+        });
         let events = ui.input(|i| i.events.clone());
         for ev in events {
             if let Event::Key {

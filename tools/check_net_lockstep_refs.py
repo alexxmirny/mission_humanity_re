@@ -185,7 +185,10 @@ LOCKSTEP_NS = ("lockstep",)
 # mh/lockstep only.
 SIM_NS = "sim"
 
-REF_RE = re.compile(r"\bmh::(lockstep|sim)::(?:detail::)?([A-Za-z_]\w*)")
+# `mh::sim::move::` (mods:M1H) is NOT closure: header-only pure decision rules (libmh/sim/move/*.h) that the
+# mh.dll splice and the libmh twin both inline, so both run one copy of the rule. No .cpp defines the
+# namespace, so a seam calling them links nothing from libmh. Excluded from the scan.
+REF_RE = re.compile(r"\bmh::(lockstep|sim)::(?!move::)(?:detail::)?([A-Za-z_]\w*)")
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"(lockstep/[^"]+)"', re.M)
 USING_NS_RE = re.compile(r"^\s*using\s+namespace\b", re.M)
 

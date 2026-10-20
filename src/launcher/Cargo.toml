@@ -164,6 +164,8 @@ windows-sys = { version = "0.61.2", features = [
     # desktop shell window's token for starting the game UN-elevated from an elevated launcher
     # (launch.rs). Nothing else from either module is linked.
     "Win32_UI_Shell",
+    # dist LA22: ActivateKeyboardLayout / GetKeyboardLayoutList for langhook.rs.
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

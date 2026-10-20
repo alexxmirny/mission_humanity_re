@@ -1321,7 +1321,7 @@
     "llm_strat_slot_dist_to_ref"
    ],
    "knob": "move_centroid_wrap_fix",
-   "carrier": null,
+   "carrier": "migrated:move_centroid_wrap_fix",
    "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. Pathfind: the `MOV EAX,0x80 ; SUB EAX,[EBP-0x54]` (guard B8 80 00 00 00 2B 45 AC; the wrap of a centroid delta beyond half the map, retail is only right for 128-wide maps) at 0x0041caf2 (x) and 0x0041cb51 (y) becomes CALL mv_cent_x/y_stub + 3 NOP; the stub with the key on yields d - map_width / d - map_height. slot_dist_to_ref: the 19-byte `if (dx > half) dx -= width` block at 0x004cbdb0 (x) / 0x004cbdc3 (y) becomes CALL mv_slot_x/y_stub + NOPs; with the key on it also folds dx < -half by + width. Carrier pending the libmh twin: if libmh promotes these functions the sites are DISPLACED and the key logs NOT ACTIVE."
   },
   {
@@ -1340,7 +1340,7 @@
     "llm_strat_unit_path_detour"
    ],
    "knob": "move_detour_slot_guard",
-   "carrier": null,
+   "carrier": "migrated:move_detour_slot_guard",
    "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. The tail `CMP dword [EBP-0x2c],0 ; JZ 0x00421746` (guard 83 7D D4 00 74 12; alternate/occupant unit index == 0 -> return 1) of llm_strat_unit_path_detour becomes CALL mv_detour_stub + NOP; the stub takes the JZ itself and, with the key on, also when the occupant's path_slot_id (the byte at player*0x5b04 + alt*0xe9 + 0xdd8cf2) is 0xff, so the recursion never splices into player*30000 + 255*300 (past the player's 100 slots). Carrier pending the libmh twin."
   },
   {
@@ -1359,7 +1359,7 @@
     "llm_map_region_flood_reachable"
    ],
    "knob": "move_flood_queue_guard",
-   "carrier": null,
+   "carrier": "migrated:move_flood_queue_guard",
    "note": "mods:M1P prototype (2026-10-13), default OFF, host-set. The loop top `CMP EDI,ESI ; JZ 0x00425072` (guard 39 F7 0F 84 08 01 00 00) of the 4096-slot ring flood becomes CALL mv_flood_q_stub + 3 NOP; the stub takes the JZ itself and, with the key on, also when 0xff8 entries are pending (the flood ends with a partial field instead of the write cursor lapping the read cursor). Carrier pending the libmh twin."
   },
   {
@@ -1378,7 +1378,7 @@
     "llm_map_region_flood_reachable"
    ],
    "knob": "route_cost_mode",
-   "carrier": null,
+   "carrier": "migrated:route_cost_mode",
    "note": "mods:M1P prototype (2026-10-13), default OFF (mode 0), host-set. The flood's read of the per-tile cost `AND EDX,0xff ; SHL EDX,8` (guard 81 E2 FF 00 00 00 C1 E2 08; the cell's low terrain_flags byte, added to the neighbour's upper 24 bits) becomes CALL mv_flood_c_stub + 4 NOP. With route_cost_mode=1 the stub maps the byte through route_cost_calc: bit0 -> route_cost_base, proximity bits 4/8/16 -> route_cost_ring4/8/16 (defaults 1/4/8/16 = retail exactly), optionally scaled by min(wave size, route_gap_wave_full)/route_gap_wave_full (wave size = _G_LLM_STRAT_GROUP_MEMBER_COUNT 0x0051de38). The stored terrain_flags bits are never changed. Carrier pending the libmh twin."
   },
   {
@@ -1397,8 +1397,65 @@
     "llm_strat_group_move_order_pathfind"
    ],
    "knob": "route_corridor_mode",
-   "carrier": null,
+   "carrier": "migrated:route_corridor_mode",
    "note": "mods:M1C prototype (2026-10-13), default OFF (mode 0), host-set. The `CALL llm_strat_pathfind_mark_group_member_regions` (guard E8 A8 38 00 00) just before the region flood becomes CALL mv_corr_stub: it runs the original (marks the member regions route_mark=2), then with the key on widens the flood's eligibility (a region with route_mark != 0 and a passable cell): mode 1 marks every region adjacent to a marked one, mode 2 marks every region, mode 3 only logs one measurement line per wave. Carrier pending the libmh twin: if libmh promotes llm_strat_group_move_order_pathfind the site is DISPLACED and the key logs NOT ACTIVE."
+  },
+  {
+   "id": "route_flood_exact",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_FLOOD_X"
+    }
+   ],
+   "addrs": [
+    "0x00424f3a"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_map_region_flood_reachable"
+   ],
+   "knob": "route_flood_exact",
+   "carrier": "migrated:route_flood_exact",
+   "note": "mods:M1H (2026-10-18), host-set, default -1 = ON when route_corridor_mode=2 else OFF. The start of llm_map_region_flood_reachable's phase 2 `XOR EDI,EDI ; MOV ESI,1 ; MOV EBX,[EBP+0xc]` (guard 31 FF BE 01 00 00 00 8B 5D 0C) becomes CALL mv_flood_x_stub + 5 NOP. Key on and the seed < 65536: the stub runs sim/move/flood.h flood_exact (Dial's bucket queue over the same cell array at 0x00688ac8: edge weight = the source cell's cost byte through route_cost_calc, each cell settled once, no 4096 ring) and jumps to the result tail 0x00425072; else the three replaced instructions and the retail FIFO loop. The field is identical to the FIFO's wherever the FIFO did not lap its ring. Carried in libmh by region_flood_reachable (same header)."
+  },
+  {
+   "id": "route_flood_exact_begin",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_FLOOD_BEGIN"
+    }
+   ],
+   "addrs": [
+    "0x00424ee8"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_map_region_flood_reachable"
+   ],
+   "knob": "route_flood_exact",
+   "carrier": "migrated:route_flood_exact",
+   "note": "mods:M1H (2026-10-18), measurement only. The first instruction after the prologue of llm_map_region_flood_reachable `MOV EDX,[0x00825084]` (guard 8B 15 84 50 82 00) becomes CALL mv_flood_begin_stub + NOP; with route_corridor_mode != 0 the stub stamps QPC (the start of the `; flood cost ... us=` line written by the route_flood_exact_end site). Behaviour is otherwise unchanged. Rides the route_flood_exact knob."
+  },
+  {
+   "id": "route_flood_exact_end",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_MV_FLOOD_END"
+    }
+   ],
+   "addrs": [
+    "0x00425072"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_map_region_flood_reachable"
+   ],
+   "knob": "route_flood_exact",
+   "carrier": "migrated:route_flood_exact",
+   "note": "mods:M1H (2026-10-18), measurement only. The result tail of llm_map_region_flood_reachable `MOV EBX,[EBP+8] ; MOV EAX,1` (guard 8B 5D 08 B8 01 00 00 00) becomes CALL mv_flood_end_stub + 3 NOP; with route_corridor_mode != 0 the stub logs `; flood cost mode=.. exact=.. cells=.. deq=.. work=.. us=..` (QPC around phase 2, entered at the route_flood_exact site). Behaviour is otherwise unchanged. Rides the route_flood_exact knob."
   },
   {
    "id": "move_blocked_protocol",
@@ -1416,8 +1473,8 @@
     "llm_strat_unit_state_move_walker"
    ],
    "knob": "move_block_wait_ms",
-   "carrier": null,
-   "note": "mods:M1X prototype (2026-10-14), default retail, host-set; keys move_block_wait_ms / move_keep_sidestep / move_repath_cooldown_ms. The blocked-step retry block after CALL llm_strat_path_step_check_and_request_detour (0x0047d50d..0x0047d532, 38 bytes, guard 85 C0 74 0C A1 E0 62 E1 00 C6 80 AB 00 00 00 C9 A1 E0 62 E1 00 8A 90 AB 00 00 00 FE 80 AB 00 00 00 80 FA C8 76 30) becomes CALL mv_blocked_stub + 33 NOP; the stub jumps to the retail continuations 0x0047d533 (replan) / 0x0047d563 (wait +0.05 s) / 0x0047d574 (done). Retail values reproduce the retail decision exactly. Carrier pending the libmh twin: if libmh promotes move_walker the site is DISPLACED and the keys log NOT ACTIVE."
+   "carrier": "migrated:move_block_wait_ms,move_keep_sidestep,move_repath_cooldown_ms,move_block_reset_moving,move_enter_queue",
+   "note": "mods:M1BE (2026-10-20): move_enter_queue exempts a unit with ORDER 0x24 from the wait limit, the kept sidestep and the cooldown of this stub (retail wait 201, no keep, no cooldown; sim/move/blocked.h blocked_enter_exempt). mods:M1DT (2026-10-19): the same stub also serves move_block_reset_moving (the wait budget restarts when the unit in the way changes to a walking friend: the stub reads the destination tile from the walker frame [EBP-0x24]/[EBP-0x20]) and tags a block-wait replan for move_replan_detour_cap (unit pad bytes, sim/move/replan_cap.h). mods:M1X prototype (2026-10-14), default retail, host-set; keys move_block_wait_ms / move_keep_sidestep / move_repath_cooldown_ms. The blocked-step retry block after CALL llm_strat_path_step_check_and_request_detour (0x0047d50d..0x0047d532, 38 bytes, guard 85 C0 74 0C A1 E0 62 E1 00 C6 80 AB 00 00 00 C9 A1 E0 62 E1 00 8A 90 AB 00 00 00 FE 80 AB 00 00 00 80 FA C8 76 30) becomes CALL mv_blocked_stub + 33 NOP; the stub jumps to the retail continuations 0x0047d533 (replan) / 0x0047d563 (wait +0.05 s) / 0x0047d574 (done). Retail values reproduce the retail decision exactly. Carried in libmh since mods:M1H lane C: the twin (sim/move/*.h, shared with this splice) runs in the libmh body of move_walker when libmh owns the handler (the unit-state table), so this splice is then dead code and the carrier line says libmh twin."
   },
   {
    "id": "move_nudge_claim_swap",
@@ -1435,8 +1492,8 @@
     "llm_strat_unit_state_move_walker"
    ],
    "knob": "move_nudge_idle",
-   "carrier": null,
-   "note": "mods:M1N prototype (2026-10-16), default retail, host-set; keys move_nudge_idle / move_claim_leader / move_swap_headon. The `CALL llm_strat_path_step_check_and_request_detour` in the walker's blocked-step block (guard E8 30 CD 01 00, the 5 bytes just before the M1X block at 0x0047d50d) is retargeted at a stub that asks nd_decide(): -1 = tail-jump to the retail function (every key at 0 is retail), else its value is the return (0 = wait for the occupant). Nudge: an idle same-player ground blocker gets state 0x36 (step_adjacent) toward a free neighbour. Swap / claim: the walker's step done for two units in one tick (tiles claimed crosswise, microstep 0, fog moved), so both slide through each other's tile; a claimed leader gets one extra leg in front of its path. 2026-10-17: when the only free neighbour of an idle blocker is straight ahead (a one-tile corridor) nd_decide now TRADES tiles with it (one-leg path from path_make_single_step, then the exchange) instead of pushing it ahead tile after tile. Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_move_walker the site is DISPLACED and the keys log NOT ACTIVE."
+   "carrier": "migrated:move_nudge_idle,move_claim_leader,move_swap_headon,move_enter_queue",
+   "note": "mods:M1BE (2026-10-20): the same stub also serves move_enter_queue: nd_decide() first asks eq_wait_behind_enterer (sim/move/enter_queue.h) -- a unit with ORDER 0x24 (enter a storage) whose next tile holds an own friend with the same order and the same home_storage_slot gets 0 (wait for the occupant) WITHOUT the retail check running, so no sidestep is spliced into its path. mods:M1N prototype (2026-10-16), default retail, host-set; keys move_nudge_idle / move_claim_leader / move_swap_headon. The `CALL llm_strat_path_step_check_and_request_detour` in the walker's blocked-step block (guard E8 30 CD 01 00, the 5 bytes just before the M1X block at 0x0047d50d) is retargeted at a stub that asks nd_decide(): -1 = tail-jump to the retail function (every key at 0 is retail), else its value is the return (0 = wait for the occupant). Nudge: an idle same-player ground blocker gets state 0x36 (step_adjacent) toward a free neighbour. Swap / claim: the walker's step done for two units in one tick (tiles claimed crosswise, microstep 0, fog moved), so both slide through each other's tile; a claimed leader gets one extra leg in front of its path. 2026-10-17: when the only free neighbour of an idle blocker is straight ahead (a one-tile corridor) nd_decide now TRADES tiles with it (one-leg path from path_make_single_step, then the exchange) instead of pushing it ahead tile after tile. Carried in libmh since mods:M1H lane C: the twin (sim/move/*.h, shared with this splice) runs in the libmh body of llm_strat_unit_state_move_walker when libmh owns the handler (the unit-state table), so this splice is then dead code and the carrier line says libmh twin."
   },
   {
    "id": "move_marshal_nudge_swap",
@@ -1459,8 +1516,63 @@
     "llm_strat_unit_state_group_marshal"
    ],
    "knob": "move_nudge_idle",
-   "carrier": null,
-   "note": "mods:M1N field fix (2026-10-16, user playtest rc10: units do not slide in a narrow corridor / cannot get past a friend). TWO jump-splices (same stub logic, 7 bytes each): (1) 0x00482954, the 7 bytes `MOVZX EAX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 05 44 81 E5 00) that open the `member has no path (slot 0xff)` branch of the wave-commit loop (the line before it is CMP path_slot_id,0xff / JNZ); (2) 0x004829e2, `MOVZX EDX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 15 44 81 E5 00) right after the `path exhausted / first step blocked` branch's llm_strat_path_free_slot call (rejoin 0x004829e9; a zero-length path lands here and counts retries toward giving up). Each goes to a stub that asks mk_decide(player, [EBP-0x48] = member unit index): 1 = handled (jump to the loop's per-member continue 0x004828ab, skipping the retail clock bump), 0 = run the displaced MOVZX and rejoin at 0x0048295b. A member the planner stalled in state 0x0a (the route was shortened at an idle friend's tile, or two friends meet head-on and both are marshal-stuck) either nudges the idle friend aside (state 0x36, as the walker case) or trades tiles with it (one-leg paths from path_make_single_step, then the walker exchange). Keys move_nudge_idle / move_swap_headon, so every key at 0 is byte-for-byte retail behaviour at runtime. Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_group_marshal the site is DISPLACED and the splice is not installed."
+   "carrier": "migrated:move_nudge_idle,move_swap_headon",
+   "note": "mods:M1N field fix (2026-10-16, user playtest rc10: units do not slide in a narrow corridor / cannot get past a friend). TWO jump-splices (same stub logic, 7 bytes each): (1) 0x00482954, the 7 bytes `MOVZX EAX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 05 44 81 E5 00) that open the `member has no path (slot 0xff)` branch of the wave-commit loop (the line before it is CMP path_slot_id,0xff / JNZ); (2) 0x004829e2, `MOVZX EDX,word [_G_LLM_STRAT_CUR_PLAYER]` (0F B7 15 44 81 E5 00) right after the `path exhausted / first step blocked` branch's llm_strat_path_free_slot call (rejoin 0x004829e9; a zero-length path lands here and counts retries toward giving up). Each goes to a stub that asks mk_decide(player, [EBP-0x48] = member unit index): 1 = handled (jump to the loop's per-member continue 0x004828ab, skipping the retail clock bump), 0 = run the displaced MOVZX and rejoin at 0x0048295b. A member the planner stalled in state 0x0a (the route was shortened at an idle friend's tile, or two friends meet head-on and both are marshal-stuck) either nudges the idle friend aside (state 0x36, as the walker case) or trades tiles with it (one-leg paths from path_make_single_step, then the walker exchange). Keys move_nudge_idle / move_swap_headon, so every key at 0 is byte-for-byte retail behaviour at runtime. Carried in libmh since mods:M1H lane C: the twin (sim/move/nudge.h, shared with this splice) runs in the libmh body of llm_strat_unit_state_group_marshal."
+  },
+  {
+   "id": "move_replan_detour_cap",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_blocked.cpp",
+     "expr": "ADDR_CAP_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00482cee"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_group_marshal"
+   ],
+   "knob": "move_replan_detour_cap",
+   "carrier": "migrated:move_replan_detour_cap",
+   "note": "mods:M1DT fix 4b (2026-10-19). Jump-splice (7 bytes, guard 0F B7 05 44 81 E5 00 = MOVZX EAX,word [_G_LLM_STRAT_CUR_PLAYER]) at the head of group_marshal's per-member GOOD-PATH branch (the sibling of the two no-path sites of move_marshal_nudge_swap). The stub asks cap_decide(player, [EBP-0x48]): when the member's last block-wait replan was tagged (walker block site, unit pad bytes) and the route the planner just attached is longer than cap percent of the straight distance (+2 tiles), the path slot is freed, activity_clock += 2.0 (x87) and the loop continues with the next member (0x004828ab) -- the unit stays in state 0x0a and plans again in 2 s, at most 3 refusals in a row. Key 0 / -1 without improved_movement = the stub only runs the displaced MOVZX."
+  },
+  {
+   "id": "storage_door_hold",
+   "sources": [
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_SOLDIERS"
+    },
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_VEHICLES"
+    },
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_BARRACKS"
+    }
+   ],
+   "addrs": [
+    "0x00477075",
+    "0x00476b81",
+    "0x004767ed"
+   ],
+   "lens": [
+    5,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_anim_state_soldiers_h",
+    "llm_strat_bldg_anim_state_vehicles_h",
+    "llm_strat_bldg_anim_state_barracks_garage_a"
+   ],
+   "knob": "storage_door_hold",
+   "carrier": "migrated:storage_door_hold",
+   "note": "mods:M1BE (2026-10-20), dev key, default -1 = follow improved_movement (on: 1), host-set. User playtest 0.2.1-rc22: a group ordered into a barracks enters one unit per ~4.7 s because the door closes in the ~1 s gap before the next soldier stands on the door tile (tmp/m1be/REPORT.md). The three storage-door building animation handlers (soldiers_h 0x00476e9d, vehicles_h 0x004769a9, barracks_garage_a 0x00476627) test `door_mutex_unit == 0 && door_waiter_count == 0` in the OPEN door state (online_state 2, caseD_2) to decide whether to close. The case opens with `MOV EAX,[CUR_BUILDING]` (guard A1 DC 62 E1 00, 5 bytes) which becomes `JMP stub`; the stub (pushad) asks dh_decide(): 1 = an own unit with ORDER 0x24 and home_storage_slot = this storage stands on the map within 2 tiles (Chebyshev, wrapped) of the storage's door tile (exit_tile_x/y), so jump to the handler's own open-hold branch (0x00477100 / 0x00476c0c / 0x00476878) and the door stays open; 0 = run the displaced MOV and continue at +5. Only a door that is otherwise idle is scanned. Units are scanned in index order, integer reads only, nothing written. The rule is sim/move/enter_queue.h dh_entering_near, shared with the libmh twin (sim_bldg_anim_state_online.cpp door_may_close). With libmh binding the building tick2 table these retail bodies are dead and the carrier line says libmh twin."
   },
   {
    "id": "move_route_through_idle",
@@ -1478,8 +1590,8 @@
     "llm_strat_group_move_order_commit"
    ],
    "knob": "move_route_through_idle",
-   "carrier": null,
-   "note": "mods:M1N follow-up 2 (2026-10-17, user playtest rc11 'more like a corner': an idle friend in a one-tile corridor was a wall for the route planner, so the goal was cut short to a dead-end pocket and the order given up). The 5-byte `CALL llm_strat_group_move_order_pathfind` (guard E8 64 00 00 00; its only caller) in llm_strat_group_move_order_commit is retargeted at a stub that (1) rt_unmask(): for every IDLE same-player ground unit of the order's owner (state 1, default op 1, no order queued, settled, alive, its tile claimed by it, passable byte 0; NOT the goal tile) writes the tile's own value (origin_tile_was_passable) into passable[]; for each such tile it also ORs the three proximity-ring bits (0x1d) into the region cell's cached cost byte (terrain_flags low byte, so the flood prices it like a tile pressed against a cliff and goes round a short crowd when it can; key value 2 skips this, measurement only); (2) calls the retail planner with the registers it was given (EAX mode, EDX target mask); (3) rt_restore(): puts the 0 and the old cost byte back. Every reader of passable[] inside the planner (flood eligibility, trace_route flank test, find_nearest_valid_tile, walk_to_valid_tile, the per-member walks) sees the same open tile for the one call. The walker then reaches the friend and move_nudge_idle (3e-1 / 3e-4) makes room. Key move_route_through_idle (-1 follows improved_movement) and needs move_nudge_idle=1 at plan time; every key at 0 = the stub only calls the retail function. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
+   "carrier": "migrated:move_route_through_idle,move_route_through_moving,move_route_through_replanning,move_formation_click",
+   "note": "mods:M1G 4b (2026-10-19): the SAME stub also serves move_formation_click (sim/move/formation.h): when the key is on it calls fc_after_pathfind() between the retail planner CALL and rt_restore(), i.e. INSIDE the open bracket, after the unchanged retail plan; the formation keeps members that already stand on the click's target set, assigns the rest by the Hungarian algorithm and plans each alone; handled = the 2a stub at 0x0041c9d3 skips that commit. mods:M1DT fix A' (2026-10-19): 2a's single-member re-run of the planner is bracketed by the same rt_unmask/rt_restore (mv_rt_open/mv_rt_close). mods:M1DT fix 2 (2026-10-19): the SAME stub also serves move_route_through_replanning: rt_unmask_replanning() opens the tile of every own ground unit in state 0x0a (group_marshal, waiting its batch), priced by move_route_through_moving_cost (default now 0). mods:M1DT cause C (2026-10-19, folded into the same key): rt_unmask_replanning() also opens the tile of every own ground unit in the one-tick hop state 0x0c (earlier waves of the same marshal call; it holds one tile, has not stepped yet). mods:M1N 3e-6 (2026-10-18, user request): the SAME stub also serves move_route_through_moving (+ move_route_through_moving_cost): rt_unmask_moving() opens the tile of every WALKING (state 0x0f) same-player ground unit (passable 0 settled / 5 sliding -> origin_tile_was_passable) and ORs the cost level's bits into the cell cost byte; restored exactly. No dependency on the nudge key. [Original 3e-5 note follows.] mods:M1N follow-up 2 (2026-10-17, user playtest rc11 'more like a corner': an idle friend in a one-tile corridor was a wall for the route planner, so the goal was cut short to a dead-end pocket and the order given up). The 5-byte `CALL llm_strat_group_move_order_pathfind` (guard E8 64 00 00 00; its only caller) in llm_strat_group_move_order_commit is retargeted at a stub that (1) rt_unmask(): for every IDLE same-player ground unit of the order's owner (state 1, default op 1, no order queued, settled, alive, its tile claimed by it, passable byte 0; NOT the goal tile) writes the tile's own value (origin_tile_was_passable) into passable[]; for each such tile it also ORs the three proximity-ring bits (0x1d) into the region cell's cached cost byte (terrain_flags low byte, so the flood prices it like a tile pressed against a cliff and goes round a short crowd when it can; key value 2 skips this, measurement only); (2) calls the retail planner with the registers it was given (EAX mode, EDX target mask); (3) rt_restore(): puts the 0 and the old cost byte back. Every reader of passable[] inside the planner (flood eligibility, trace_route flank test, find_nearest_valid_tile, walk_to_valid_tile, the per-member walks) sees the same open tile for the one call. The walker then reaches the friend and move_nudge_idle (3e-1 / 3e-4) makes room. Key move_route_through_idle (-1 follows improved_movement) and needs move_nudge_idle=1 at plan time; every key at 0 = the stub only calls the retail function. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
   },
   {
    "id": "diplo_order_dedup_fix",
@@ -2091,7 +2203,7 @@
     "llm_strat_group_move_order_commit"
    ],
    "knob": "move_distinct_goals",
-   "carrier": null,
+   "carrier": "migrated:move_distinct_goals",
    "note": "mods:M1X lane A prototype (2026-10-14), default OFF, host-set. Right after commit's CALL to llm_strat_group_move_order_pathfind, `CMP dword [0x0051de38],1` (guard 83 3D 38 DE 51 00 01) becomes CALL mv_arr_commit_stub + 2 NOP; the stub re-executes the CMP before returning (the JLE after it reads its flags). With the key on, for a plain move with move_group_id != 0: every member keeps its formation tile when free, else takes the nearest free reachable tile (written to _G_LLM_STRAT_GROUP_MEMBER_TILE, which commit copies and the marshal makes the goal); a wave of one whose goal another group member already holds is re-planned to the nearest free tile (pathfind run again) and its unit goal set there. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
   },
   {
@@ -2110,8 +2222,8 @@
     "llm_strat_unit_state_group_marshal"
    ],
    "knob": "move_near_enough",
-   "carrier": null,
-   "note": "mods:M1X lane A prototype (2026-10-14), default OFF, host-set (also used by move_distinct_goals). In the marshal's path-exhausted/blocked branch, `INC byte [EAX+0xdd8cf3] ; CMP byte [EAX+0xdd8cf3],4` (guard FE 80 F3 8C DD 00 80 B8 F3 8C DD 00 04; path_blocked_retry_count) becomes CALL mv_arr_retry_stub + 8 NOP; the stub does the INC, optionally sets the counter to 4, and re-executes the CMP (the JNC after it reads its flags). A plain-move unit (order 0x0f, or 0x01 on a replan) standing on its goal, or (move_near_enough=R) within R + isqrt(group size) tiles of a goal held by a parked unit of its own player, takes the retail give-up branch at once (STOP_TO_DEFAULT, notify 0x66, passable 0). Carrier pending the libmh twin: if libmh promotes llm_strat_unit_state_group_marshal the site is DISPLACED and the key logs NOT ACTIVE."
+   "carrier": "migrated:move_near_enough",
+   "note": "mods:M1X lane A prototype (2026-10-14), default OFF, host-set (also used by move_distinct_goals). In the marshal's path-exhausted/blocked branch, `INC byte [EAX+0xdd8cf3] ; CMP byte [EAX+0xdd8cf3],4` (guard FE 80 F3 8C DD 00 80 B8 F3 8C DD 00 04; path_blocked_retry_count) becomes CALL mv_arr_retry_stub + 8 NOP; the stub does the INC, optionally sets the counter to 4, and re-executes the CMP (the JNC after it reads its flags). A plain-move unit (order 0x0f, or 0x01 on a replan) standing on its goal, or (move_near_enough=R) within R + isqrt(group size) tiles of a goal held by a parked unit of its own player, takes the retail give-up branch at once (STOP_TO_DEFAULT, notify 0x66, passable 0). Carried in libmh since mods:M1H lane C: the twin (sim/move/*.h, shared with this splice) runs in the libmh body of llm_strat_unit_state_group_marshal when libmh owns the handler (the unit-state table), so this splice is then dead code and the carrier line says libmh twin."
   },
   {
    "id": "move_group_speed",
@@ -2135,8 +2247,8 @@
     "llm_strat_unit_state_move_walker"
    ],
    "knob": "move_group_speed",
-   "carrier": null,
-   "note": "mods:M1X lane C prototype (2026-10-14), default -1 = follow group_movement (on: 1), host-set. Marshal: the `MOV [EBP-0x34],0` (guard C7 45 CC 00 00 00 00) right after each wave's CALL llm_strat_group_move_order_commit becomes CALL mvs_commit_stub + 2 NOP; with the key on every ground member of the wave gets move_step_speed_scale = slowest step_speed / own step_speed, the slowest taken over the wave, every live ground unit of the player with the wave's move_group_id, and every queued unit record carrying it (move order; id 0 = the wave only), or 1.0. Walker: the 38-byte scale averaging at 0x0047d3d1 (FILD [EBP-0x50]; FADD/FSTP [EDX+0xae]; MOV EAX,[0x00e162e0]; FLD [EAX+0xae]; FMUL [0x005013c0]; FSTP [EAX+0xae]) becomes CALL mvs_walk_stub + 33 NOP; with the key on and scale >= 1.0 the scale is kept, else the retail averaging runs. Carrier pending the libmh twin: if libmh promotes either function the sites are DISPLACED and the key logs NOT ACTIVE."
+   "carrier": "migrated:move_group_speed",
+   "note": "mods:M1X lane C prototype (2026-10-14), default -1 = follow group_movement (on: 1), host-set. Marshal: the `MOV [EBP-0x34],0` (guard C7 45 CC 00 00 00 00) right after each wave's CALL llm_strat_group_move_order_commit becomes CALL mvs_commit_stub + 2 NOP; with the key on every ground member of the wave gets move_step_speed_scale = slowest step_speed / own step_speed, the slowest taken over the wave, every live ground unit of the player with the wave's move_group_id, and every queued unit record carrying it (move order; id 0 = the wave only), or 1.0. Walker: the 38-byte scale averaging at 0x0047d3d1 (FILD [EBP-0x50]; FADD/FSTP [EDX+0xae]; MOV EAX,[0x00e162e0]; FLD [EAX+0xae]; FMUL [0x005013c0]; FSTP [EAX+0xae]) becomes CALL mvs_walk_stub + 33 NOP; with the key on and scale >= 1.0 the scale is kept, else the retail averaging runs. Carried in libmh since mods:M1H lane C: the twins (sim/move/group_speed.h, shared with these splices) run in the libmh bodies of the marshal and the walker when libmh owns their handlers."
   },
   {
    "id": "move_attack_heading_fix",
@@ -2331,6 +2443,64 @@
    "knob": "desync.seed_record",
    "carrier": "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash",
    "note": "hotfix rc9.4 (crash triage 7908b: both crashes followed planet changes; a replay could not cross them): five CALL rel32 retargets, E8 -> E8 to a pushad thunk that calls replay_rec::note_boundary (state hash + game clock + the source file's size/FNV-1a 64, BEFORE the callee replaces the state) and tail-jumps to the original callee: llm_menu_loadgame_confirm -> llm_game_load (save_load, EAX = name, file save\\<name>.sav), SwitchToPlanet -> map_SavePlanetToDisk(old,1) after the production drain (planet_transition, target = [EBP-0x20], file save\\temp\\save%02d.dat unless G_PLANET_STATUS[target]==0 = generated), llm_tact_mission_end_return_to_strategic -> map_LoadPlanetFromDisk (tact_return), llm_menu_campaign_start_and_enter / llm_menu_campaign_start_confirm_cb -> llm_strat_planet_session_begin (new_game, EDX = reset flag). The first sim step after a note writes mh_rec_seed_<n>.bin(.gz) + a mh_rec_segments.txt line. OBSERVE ONLY: no game memory written, callee registers and return address unchanged."
+  },
+  {
+   "id": "move_reverse_now",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_respond.cpp",
+     "expr": "ADDR_RV_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00466bfe"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": "move_reverse_now",
+   "carrier": "migrated:move_reverse_now",
+   "note": "mods:M1G step 4c (2026-10-18), dev key, default -1 = follow improved_movement (on: 1), host-set. llm_strat_order_queue_dispatch's RETAIN path: the 7 bytes `IMUL EDX,[EBP-0x34],0x5b04` (guard 69 55 CC 04 5B 00 00) at 0x00466bfe, reached only for a record the dispatcher has already decided to DEFER (the unit is sliding between tiles in a movement state). JMP stub + 2 NOP. The stub (pushad) asks rs_reverse(player [EBP-0x34], unit [EBP-0x30], slot [EBP-0x24], boarding [EBP-0x28]): for a ground unit in the walker state mid-slide (microstep < 31) given a move record (order code = cfg move_op_code) whose goal is STRICTLY nearer (torus dist^2) to the tile it came from (O = N - delta(facing_target)) than to the tile it is sliding into (N), and O is free (passable not 0/5, no unit/building record), it does the walker's step backwards: N vacated (tile record cleared, passable restored from origin_tile_was_passable, fog sight removed), O claimed (record = unit, passable 5, origin_tile_was_passable = old passable[O], fog added), x,y = O, facing_target = facing_current = heading + 12 (one-frame 180 degree flip, playtest decides), move_microstep = 30 - ms (sprite position continuous), soldier heading. Then it re-runs the displaced IMUL and rejoins at 0x00466c05: the retail retain (order_queued = 1, record kept) is unchanged, the order applies at O on the next pass. Strict test = it cannot fire twice. Integer only, no new state. The rule is sim/move/respond.h, shared with the libmh twin (sim_order_dispatch.cpp retain path, gated by sim_move_fixes::reverse_now). The carrier line says retail splice / libmh twin: with libmh bound and sim_step promoted the dispatcher call lands in the libmh body, so this splice is unreached."
+  },
+  {
+   "id": "move_turn_rate",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_respond.cpp",
+     "expr": "ADDR_TR_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0047d5b4"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_state_move_walker"
+   ],
+   "knob": "move_turn_rate",
+   "carrier": "migrated:move_turn_rate",
+   "note": "mods:M1G step 4c (2026-10-18), dev key, default -1 = follow improved_movement but the preset value is 0 (retail): a playtester sets move_turn_rate=1 (2x) or 2 (4x) by hand, user decision. The walker's TURN branch computes turn_cost = cfg turn_speed[player] * move_step_speed_scale as `FLD [EAX+0xe4a0fd]; FMUL qword [EDX+0xae]; FSTP qword [EBP-0x40]` and spends it per heading notch (one notch per cost of tick budget). The 9 bytes `DC 8A AE 00 00 00 DD 5D C0` at 0x0047d5b4 become JMP stub + 4 NOP; the stub does the same FMUL, then (key on) FMUL by 2^-k (k = 1: 0.5, k = 2: 0.25), FSTP, and rejoins at 0x0047d5bd. Scaling by a power of two is exact in x87 and SSE2, so the splice and the libmh twin (sim_unit_state_move_walker.cpp turn branch, sim/move/respond.h turn_scale) agree bit for bit, and k = 0 is byte-identical retail (the stub skips the extra multiply). A balance change: every turn of every ground unit, at the order and at every path corner (units only turn in place at a tile boundary), is 2^k times faster."
+  },
+  {
+   "id": "walker_turn_frames_init_call",
+   "sources": [
+    {
+     "file": "mh/seams/ui_walker_frames.cpp",
+     "expr": "INIT_CALL_SITE"
+    }
+   ],
+   "addrs": [
+    "0x0045f067"
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_mode_init"
+   ],
+   "knob": "ui.walker_turn_frames_fix",
+   "carrier": null,
+   "note": "Render only (2026-10-18 dig): the CALL llm_strat_walker_frame_blend_table_init inside llm_strat_mode_init (E8 B7 19 00 00, boot stage 4) -> CALL a thunk that runs the retail init and then fills the 16 facings the retail loop (f = 1, 4, .. 22) leaves 0, so a walker turning in place draws its own rest image instead of the north one on 2 of every 3 notches. The table (_G_LLM_STRAT_WALKER_FRAME_TABLE 0x00ae1df8) is read only by the two renderers and is in no hashed or synced region.",
+   "rationale": "llm_strat_mode_init is a boot-stage init that is not promotable (no MH_EXPORT_REPLACE; libmh calls its own copies of the five bodies it owns, not this table init), so no carrier is needed; the installer also checks promoted_owner_of before the write. Guarded on the exact 5 original bytes."
   }
  ]
 }

@@ -1345,6 +1345,11 @@ def declare_checks(args):
         "mp:RM1 rematch-residue post-check -- the negative cases still fire (check_rematch_residue --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_rematch_residue.py"), "--selftest"],
     )
+    # mp:X2j. The second-download post-check (map_xfer_twice rows): a stuck second download goes red off planted logs.
+    check(
+        "mp:X2j map-xfer-twice post-check -- the negative cases still fire (check_map_xfer_twice --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_map_xfer_twice.py"), "--selftest"],
+    )
     # mp:D36. The rematch-vs-fresh-peer seed diff off planted lanes: the rc4 resource_spent residue and
     # a planets-tail-only residue must go red, a host that never landed must be REFUSED (not pass).
     check(
@@ -1455,6 +1460,13 @@ def declare_checks(args):
     check(
         "mods:M1N marshal post-check -- the negative cases still fire (check_mv_marshal --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_mv_marshal.py"), "--selftest"],
+    )
+    # mods:M1H. The m1h_* post-check runs only with the rig; its negatives -- a hit counter at 0, a carrier text of the wrong kind, a
+    # NOT ACTIVE key, a fixture outcome that is not the preset's (or, at retail, is), the two peers' ND VERDICT / M1N lines differing --
+    # are gated here off planted logs.
+    check(
+        "mods:M1H movement-preset post-check -- the negative cases still fire (check_m1h --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_m1h.py"), "--selftest"],
     )
     # mp:D47. The positive-control post-check (cfg_newgame_mp_poke) runs only with the rig; its clauses --
     # the poke's match step, its region, a late poke -- are gated here off planted logs.

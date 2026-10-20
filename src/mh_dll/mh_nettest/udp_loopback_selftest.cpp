@@ -438,7 +438,9 @@ static int64_t now_us() {
     if (f.QuadPart == 0) QueryPerformanceFrequency(&f);
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    return (int64_t)(t.QuadPart * 1000000 / f.QuadPart);
+    // Split so the multiply cannot overflow int64 (at 10 MHz it did after 10.67 days of uptime: the clock went
+    // negative and the relay arms dropped every datagram).
+    return (int64_t)(t.QuadPart / f.QuadPart) * 1000000 + (int64_t)(t.QuadPart % f.QuadPart) * 1000000 / f.QuadPart;
 }
 
 struct DelayRelay {

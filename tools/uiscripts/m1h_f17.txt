@@ -1,0 +1,17 @@
+# mods:M1G 4b -- fixture F17 (hop_wall, move_route_through_replanning, cause C): load 5-kofu-c and let the harness probe (nd_fc=5: a blob of 16 idle units ordered through the gap of a 17-tile wall and re-ordered while it streams through it) (the row's harness_extra) run the case. The verdict is NOT a frame:
+# tools/check_m1h.py reads the probe's `; FC ...` lines and the seams' `; move ...` lines of the session directory.
+# One capture, right after the load: the START frame is identical in every arm (ship / orig / lib / off), so one baseline serves all four rows.
+# The wait afterwards only has to outlast the probe (the harness ends the process at stop_step).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+capture m1h_f17
+gameclock +44920
+log m1h_f17: probe finished
+end

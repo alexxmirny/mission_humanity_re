@@ -2214,6 +2214,12 @@
     <ClCompile Include="..\mh\seams\move_proto_nudge.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\move_proto_respond.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\door_hold.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\config\gameplay.cpp">
       <Filter>mh\config</Filter>
     </ClCompile>
@@ -2246,6 +2252,9 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_worker_click.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_walker_frames.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_minimap_box.cpp">
@@ -2303,6 +2312,9 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\move_proto_speed.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\move_carrier.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\combat_proto.cpp">

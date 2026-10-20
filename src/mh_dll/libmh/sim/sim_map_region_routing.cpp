@@ -7,6 +7,12 @@
 //
 #include "sim/sim_map_region_routing.h"
 
+#include "sim/sim_move_fixes.h"    // mods:M1H the planner keys' switchboard (move_fix())
+#include "sim/move/guards.h"       // mods:M1H [net] move_flood_queue_guard
+#include "sim/move/flood.h"        // mods:M1H [net] route_flood_exact
+#include "sim/move/route_cost.h"   // mods:M1H [net] route_cost_*
+#include "sim/move/planner_hits.h" // mods:M1H the twins' hit counters
+
 #include "addr/mh_calls.gen.h"  // typed callables for the ORIGINAL functions this closure still calls out to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -266,12 +272,55 @@ int32_t region_flood_reachable(const sim_view &v, sim_store &own, int32_t query_
 
     const uint32_t wrap_mask = *v.region_coord_wrap_mask;
 
+    // mods:M1H -- the three planner keys that live in this loop (twins of the retail splices at 0x00424f62 / 0x00424f7f; the pure
+    // rules are sim/move/guards.h and sim/move/route_cost.h). All off = the retail loop below, word for word.
+    const move_fixes             &mf          = move_fix();
+    const bool                    queue_guard = mf.flood_queue_guard;
+    const bool                    cost_mode   = mf.route_cost_mode != 0;
+    const move::route_cost_params rc_params =
+        move::route_cost_params_clamped(mf.route_cost_base, mf.route_cost_ring4, mf.route_cost_ring8, mf.route_cost_ring16, mf.route_gap_wave_full);
+    const int32_t wave_size = *v.group_member_count;
+
+    // [net] route_flood_exact (mods:M1H; twin of the retail splice at 0x00424f3a): phase 2 as Dial's bucket queue (sim/move/flood.h).
+    // The seed is already written above; flood_exact re-writes it identically and settles every eligible cell once.
+    if (mf.route_flood_exact && static_cast<uint32_t>(start_cell) < move::FLOOD_FLAT_CELLS) {
+        move::planner_hit(move::PH_FLOOD_EXACT);
+        uint32_t cost[move::FLOOD_COST_ENTRIES];
+        for (uint32_t low = 0; low < move::FLOOD_COST_ENTRIES; ++low) cost[low] = cost_mode ? move::route_cost_calc(rc_params, low, wave_size) : low;
+        struct flood_cells {
+            sim_store &own;
+            uint32_t  &flags(uint32_t flat) { return own.region_cell_at(static_cast<int32_t>(flat >> 8), static_cast<int32_t>(flat & 0xFFu)).terrain_flags; }
+        } fcells{own};
+        const move::flood_exact_result fr = move::flood_exact(fcells, static_cast<uint32_t>(start_cell), wrap_mask, cost);
+        move::flood_dequeues() += fr.settled;
+        if (fr.overflow) mh::ai::ai_say("; flood exact: 24-bit distance overflow, relaxations dropped\n");
+        if (mf.route_corridor_mode != 0)
+            mh::ai::ai_say("; flood cost mode=%d exact=1 cells=%u deq=%u work=%u\n", mf.route_corridor_mode,
+                           static_cast<uint32_t>(*v.map_width) * static_cast<uint32_t>(*v.map_height), fr.settled,
+                           static_cast<uint32_t>(*v.map_width) * static_cast<uint32_t>(*v.map_height) + 5u * fr.settled);
+        const uint32_t q_upper_exact = cell_at(static_cast<uint32_t>(query_cell)).terrain_flags & 0xFFFFFF00u;
+        return (q_upper_exact != 0xFFFFFF00u) ? 1 : 0;
+    }
+    uint32_t fifo_deq0 = move::flood_dequeues();
+
     while (read_idx != write_idx) {
+        if (queue_guard) {
+            // [net] move_flood_queue_guard: stop when 0xff8 entries are pending instead of the write cursor lapping the read cursor.
+            move::planner_hit(move::PH_FLOOD_Q);
+            if (move::flood_queue_full(true, read_idx, write_idx)) break;
+        }
         const uint32_t cur     = own.region_flood_tile_at(read_idx);
         const uint32_t cur_raw = cell_at(cur).terrain_flags;
+        ++move::flood_dequeues(); // the corridor line's measurement (the retail splice counts the same dequeues)
         // propagate_value = (upper24) + (low_byte << 8) -- an ARITHMETIC add (0x00424f88), not a
         // bitwise OR: a low-byte value with bit 7 set can carry into byte2. Preserved as `+`.
-        const uint32_t propagate_value = (cur_raw & 0xFFFFFF00u) + ((cur_raw & 0xFFu) << 8);
+        // [net] route_cost_mode: the low byte goes through the cost table first (same defaults = the raw byte).
+        uint32_t cell_cost = cur_raw & 0xFFu;
+        if (cost_mode) {
+            move::planner_hit(move::PH_FLOOD_C);
+            cell_cost = move::route_cost_calc(rc_params, cell_cost, wave_size);
+        }
+        const uint32_t propagate_value = (cur_raw & 0xFFFFFF00u) + (cell_cost << 8);
 
         auto relax = [&](uint32_t nb_idx) {
             llm_map_region_cell &nb      = cell_at(nb_idx);
@@ -323,6 +372,11 @@ int32_t region_flood_reachable(const sim_view &v, sim_store &own, int32_t query_
     // 1 unless query_cell's upper-24-bits are STILL exactly the untouched-eligible sentinel
     // 0xffffff00 -- note a cell that was never eligible in phase 1 at all (upper24==0) also returns
     // 1 here, per the literal CMP; see uncertainties[].
+    if (mf.route_corridor_mode != 0) {
+        const uint32_t cells = static_cast<uint32_t>(*v.map_width) * static_cast<uint32_t>(*v.map_height);
+        const uint32_t deq   = move::flood_dequeues() - fifo_deq0;
+        mh::ai::ai_say("; flood cost mode=%d exact=0 cells=%u deq=%u work=%u\n", mf.route_corridor_mode, cells, deq, cells + 5u * deq);
+    }
     const uint32_t q_upper = cell_at(static_cast<uint32_t>(query_cell)).terrain_flags & 0xFFFFFF00u;
     return (q_upper != 0xFFFFFF00u) ? 1 : 0;
 }

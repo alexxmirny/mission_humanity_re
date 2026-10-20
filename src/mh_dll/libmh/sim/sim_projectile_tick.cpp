@@ -6,6 +6,7 @@
 //
 #include "sim/sim_projectile_tick.h"
 #include "sim/sim_projectile_facing.h" // mods:M1C [net] projectile_facing_fix
+#include "sim/move/twin_hit_c.h"       // mods:M1H: twin hit counters
 
 #include "addr/mh_calls.gen.h" // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"       // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -232,6 +233,7 @@ void projectile_tick(const sim_view &v, sim_store &own, const projectile_tick_ca
                                                  static_cast<int32_t>(imp_y_vis));
         // [net] projectile_facing_fix (mods:M1C; retail carrier: combat_proto.cpp at 0x00441424): the difference wrapped
         // into -12..11, 0 for weapon types 5/6 (sim/sim_projectile_facing.h). Off = the original's raw difference.
+        if (projectile_facing_fix()) mh::sim::mvc::twin_hit(mh::sim::mvc::TS_PFF);
         const int32_t delta_facing = projectile_facing_fix() ? projectile_facing_delta(new_facing - p.facing, w.type)
                                                              : new_facing - p.facing;
         const int32_t stride       = c.fx_anim_dir_frame_stride(w.bullet_anim);

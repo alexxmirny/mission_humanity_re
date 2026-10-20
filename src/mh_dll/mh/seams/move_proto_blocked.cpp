@@ -37,8 +37,8 @@
 //
 // Determinism: integer decisions on sim state only (unit record, path buffer), table order, no clock/rand; the one double add is a
 // constant computed once in the setter. No new persistent state: the retry byte, activity_clock and the path buffer are the unit's
-// own saved/hashed fields that retail already writes at this site. If libmh promotes move_walker the site is DISPLACED and the
-// keys log "NOT ACTIVE" (no libmh twin in this phase).
+// own saved/hashed fields that retail already writes at this site. If libmh owns move_walker the site is DISPLACED and the libmh twin
+// (sim/move/blocked.h, sim_unit_state_move_walker.cpp) carries the keys; the late carrier report (move_carrier.cpp) says so.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -50,7 +50,9 @@
 #include "hook/patch.h"    // patch_bytes_guarded
 #include "hook/promoted.h" // promoted_owner_of
 #include "seams/net_internal.h"
-#include "en_guard.h" // EN-only build gate
+#include "seams/move_carrier.h" // mods:M1H: site states, requested values, stub hit counters
+#include "en_guard.h"           // EN-only build gate
+#include "sim/move/blocked.h"   // mods:M1H lane C: the decision, shared with the libmh twin (sim_unit_state_move_walker.cpp)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -75,47 +77,52 @@ constexpr uintptr_t TO_DONE   = 0x0047d574; // budget = 0
 int g_bk_state = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
 
 const char *bk_state_name(int s) {
-    return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns move_walker; no twin)" : "not installed"));
+    return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns move_walker; its twin carries the keys, see the carrier line)" : "not installed"));
 }
 
 } // namespace
 
 // Runtime gates (read by the stub). Retail values: limit 201, keep 0, cooldown 0.
 extern "C" {
-int    g_bk_wait_limit = 201; // move_block_wait_ms -> retry limit
-int    g_bk_keep       = 0;   // move_keep_sidestep
-int    g_bk_cd_on      = 0;   // move_repath_cooldown_ms != 0
-double g_bk_cd_s       = 0.0; // the cooldown in seconds
+int        g_bk_wait_limit = 201;   // move_block_wait_ms -> retry limit
+int        g_bk_keep       = 0;     // move_keep_sidestep
+int        g_bk_cd_on      = 0;     // move_repath_cooldown_ms != 0
+double     g_bk_cd_s       = 0.0;   // the cooldown in seconds
+int        g_bk_reset      = 0;     // move_block_reset_moving (mods:M1DT)
+int        g_bk_cap        = 0;     // move_replan_detour_cap percent (mods:M1DT); 0 = off
+int        g_bk_cd_apply   = 0;     // this decision's cooldown applies (cd_on and the unit is not exempt, mods:M1BE)
+extern int g_eq_on;                 // move_enter_queue in force (move_proto_nudge.cpp)
+uintptr_t  g_cap_ret  = 0x00482cf5; // cap_stub: continue the retail good-path branch after the displaced MOVZX
+uintptr_t  g_cap_skip = 0x004828ab; // cap_stub: route refused, next member
+double     g_cap_two  = 2.0;        // the clock advance of a refused route (retail's no-path retry period, _DAT_0050145a)
 }
 
-// The decision: returns the retail continuation to jump to. Called with the detour result (EAX after CALL 0x0049a23d).
-static uintptr_t __cdecl bk_decide(int detour) {
-    uint8_t *u     = *reinterpret_cast<uint8_t **>(0x00e162e0u);
-    uint8_t  retry = u[0xab];
-    if (detour) {
-        if (!g_bk_keep || retry >= 0xc0) return TO_REPLAN;
-        const uint16_t order = *reinterpret_cast<uint16_t *>(u + 0x04);
-        if (order == 0x1a || order == 0x1b || order == 0x1c || order == 0x10 || order == 0x33) return TO_REPLAN;
-        const uint8_t slot = u[0xaa];
-        if (slot >= 100) return TO_REPLAN;
-        const int32_t cur = *reinterpret_cast<int32_t *>(u + 0xa6);
-        if (cur < 0 || cur + 2 >= 300) return TO_REPLAN;
-        const uint32_t player = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u);
-        uint8_t       *pb     = reinterpret_cast<uint8_t *>(0x00aee8c0u + player * 0xea60u + slot * 0x258u);
-        const uint8_t  leg    = u[0x2c]; // facing_target == the blocked leg's heading (move_walker only steps when they match)
-        const uint8_t  h      = pb[cur * 2];
-        if (h == 0 || h == leg) return TO_REPLAN;                               // no sidestep of OUR path was spliced (blocked by terrain/building, or the occupant got it)
-        const int k           = ((static_cast<int>(leg) - 1) % 6 == 0) ? 1 : 2; // cardinal: keep the probe step only
-        pb[(cur + k) * 2]     = 0;                                              // heading 0 = path end -> retail replan from there
-        pb[(cur + k) * 2 + 1] = 0;
-        u[0xab]               = static_cast<uint8_t>(retry + 0x40);
-        return TO_DONE;
+// The decision: returns the retail continuation to jump to. Called with the detour result (EAX after CALL 0x0049a23d). The rule itself
+// is mh::sim::mvc::blocked_decide (sim/move/blocked.h), the same code the libmh twin runs.
+void      mv_blocker_info(uint32_t player, uint32_t x, uint32_t y, mh::sim::mvc::blocker_info *out); // move_proto_nudge.cpp
+uintptr_t mv_cap_refuse(uint32_t player, uint32_t idx, int cap_pct);                                 // move_proto_nudge.cpp
+
+static uintptr_t __cdecl bk_decide(int detour, uint32_t nx, uint32_t ny) {
+    mh::sim::mvc::blocked_params p;
+    p.reset_moving = g_bk_reset != 0;
+    p.detour_cap   = g_bk_cap;
+    p.wait_limit   = g_bk_wait_limit;
+    p.keep         = g_bk_keep != 0;
+    p.cd_on        = g_bk_cd_on != 0;
+    p.cd_s         = g_bk_cd_s;
+    p.enter_queue  = g_eq_on != 0;
+    if (p.active()) mv_hit(MVH_BLOCKED); // the decision path runs (a key of this site is non-retail)
+    mh::game::mh_map_object_unit *u   = *reinterpret_cast<mh::game::mh_map_object_unit **>(0x00e162e0u);
+    g_bk_cd_apply                     = (p.cd_on && !mh::sim::mvc::blocked_enter_exempt(p, *u)) ? 1 : 0; // mods:M1BE: an entering unit has no cooldown
+    const uint32_t             player = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u);
+    uint8_t                   *pbase  = reinterpret_cast<uint8_t *>(0x00aee8c0u + player * 0xea60u); // this player's 100 path slots, 0x258 bytes each
+    mh::sim::mvc::blocker_info bi;
+    if (p.reset_moving) mv_blocker_info(player, nx, ny, &bi);
+    switch (mh::sim::mvc::blocked_decide(*u, detour != 0, p, [pbase](uint32_t slot, int entry) -> mh::game::mh_llm_strat_path_waypoint & { return *reinterpret_cast<mh::game::mh_llm_strat_path_waypoint *>(pbase + slot * 0x258u + static_cast<uint32_t>(entry) * 2u); }, bi)) {
+        case mh::sim::mvc::blocked_next::wait: return TO_WAIT;
+        case mh::sim::mvc::blocked_next::done: return TO_DONE;
+        default: return TO_REPLAN;
     }
-    if (static_cast<int>(retry) < g_bk_wait_limit) {
-        u[0xab] = static_cast<uint8_t>(retry + 1);
-        return TO_WAIT;
-    }
-    return TO_REPLAN;
 }
 
 // clang-format off
@@ -123,13 +130,15 @@ __declspec(naked) static void mv_blocked_stub() {
     __asm {
         add   esp, 4                             // never return to the NOP pad
         pushad
+        push  dword ptr [ebp - 0x20]             // the destination tile (mods:M1DT: the blocker is read off it): y, x
+        push  dword ptr [ebp - 0x24]
         push  eax
         call  bk_decide
-        add   esp, 4
+        add   esp, 12
         mov   dword ptr [esp + 28], eax          // the target rides out in the saved EAX slot
         cmp   eax, 0x0047d533                    // TO_REPLAN
         jne   bk_go
-        cmp   g_bk_cd_on, 0
+        cmp   g_bk_cd_apply, 0
         je    bk_go
         mov   eax, dword ptr ds:[0x00e162e0]     // CUR_UNIT
         fld   qword ptr [eax + 8]                // activity_clock += cooldown (retail idiom)
@@ -142,7 +151,58 @@ __declspec(naked) static void mv_blocked_stub() {
 }
 // clang-format on
 
+// ---- mods:M1DT fix 4b: the marshal good-path check --------------------------------------------------------------------------
+// llm_strat_unit_state_group_marshal 0x00482451, per-member loop: the good-path branch opens with `MOVZX EAX,word [CUR_PLAYER]`
+// (0F B7 05 44 81 E5 00, 7 bytes at 0x00482cee, the sibling of the two no-path sites in move_proto_nudge.cpp). The stub asks
+// cap_decide(player, [EBP-0x48] = the member's unit index): non-zero = the route is discarded (slot freed, clock += 2.0 here in x87 like
+// retail, jump to the loop's per-member continue 0x004828ab), 0 = run the displaced MOVZX and carry on.
+namespace {
+constexpr uintptr_t ADDR_CAP_SITE = 0x00482cee;
+const uint8_t       CAP_EXPECT[7] = {0x0F, 0xB7, 0x05, 0x44, 0x81, 0xE5, 0x00};
+int                 g_cap_state   = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
+} // namespace
+
+static uintptr_t __cdecl cap_decide(uint32_t player, uint32_t idx) {
+    if (g_bk_cap <= 0) return 0;
+    return mv_cap_refuse(player, idx, g_bk_cap);
+}
+
+// clang-format off
+__declspec(naked) static void cap_stub() {
+    __asm {
+        pushad
+        push  dword ptr [ebp - 0x48]            // the member's unit index (the marshal's loop local)
+        movzx eax, word ptr ds:[0x00e58144]     // _G_LLM_STRAT_CUR_PLAYER
+        push  eax
+        call  cap_decide
+        add   esp, 8
+        test  eax, eax
+        jnz   cap_refused
+        popad
+        movzx eax, word ptr ds:[0x00e58144]     // the displaced instruction
+        jmp   dword ptr [g_cap_ret]
+    cap_refused:
+        fld   qword ptr [eax + 8]               // activity_clock += 2.0 (retail idiom)
+        fadd  qword ptr g_cap_two
+        fstp  qword ptr [eax + 8]
+        popad
+        jmp   dword ptr [g_cap_skip]
+    }
+}
+// clang-format on
+
+int mv_bk_state() { return g_bk_state; }
+
 void install_move_proto_blocked() {
+    if (mh::hook::promoted_owner_of(ADDR_CAP_SITE)) {
+        g_cap_state = -2;
+    } else {
+        uint8_t       repl[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
+        const int32_t rel     = static_cast<int32_t>(reinterpret_cast<uintptr_t>(&cap_stub) - (ADDR_CAP_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        g_cap_state = mh::hook::patch_bytes_guarded(ADDR_CAP_SITE, CAP_EXPECT, repl, 7) ? 1 : -1;
+    }
+    mh::seams::mv::note_site(mh::seams::mv::SITE_CAPOK, g_cap_state);
     if (mh::hook::promoted_owner_of(ADDR_MV_BLOCKED)) {
         g_bk_state = -2;
     } else {
@@ -153,53 +213,61 @@ void install_move_proto_blocked() {
         for (int i = 5; i < 38; ++i) repl[i] = 0x90;
         g_bk_state = mh::hook::patch_bytes_guarded(ADDR_MV_BLOCKED, MV_BLOCKED_EXPECT, repl, 38) ? 1 : -1;
     }
+    mh::seams::mv::note_site(mh::seams::mv::SITE_BLOCKED, g_bk_state);
     char b[200];
     wsprintfA(b, "; move prototype splice (mods:M1X blocked-unit protocol): %s\n", bk_state_name(g_bk_state));
     seam_log(b);
-    install_move_proto_nudge(); // mods:M1N (seams/move_proto_nudge.cpp): the sibling splice on the CALL just before this block
+    install_move_proto_respond(); // mods:M1G 4c (seams/move_proto_respond.cpp): reverse_now + turn_rate
+    install_move_proto_nudge();   // mods:M1N (seams/move_proto_nudge.cpp): the sibling splice on the CALL just before this block
+    install_door_hold();          // mods:M1BE (seams/door_hold.cpp): the storage door state handlers
 }
 
-static int bk_clamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
-
-// Each setter logs one line when its key is non-retail: "active" with what it does, or "NOT ACTIVE" with the reason.
-static bool bk_refuse(const char *key, int v) {
-    if (v == 0 || g_bk_state == 1) return false;
-    char b[260];
-    wsprintfA(b, "; move prototype [net] %s=%d NOT ACTIVE (mods:M1X): %s\n", key, v, bk_state_name(g_bk_state));
-    seam_log(b);
-    return true;
-}
-
+// The setters set the stub's gate and tell the carrier report (move_carrier.cpp) the requested value; the report -- late, once the
+// unit-state table is filled -- is the one line per key ("retail splice" / "libmh twin" / "NOT ACTIVE: ...").
 void mh_set_move_block_wait_ms(int ms) {
-    ms              = bk_clamp(ms, 0, 10050);
+    ms              = mh::sim::mvc::blocked_clamp(ms, 0, 10050);
     g_bk_wait_limit = 201;
-    if (ms == 0 || bk_refuse("move_block_wait_ms", ms)) return;
-    g_bk_wait_limit = bk_clamp(ms / 50, 1, 201);
-    char b[260];
-    wsprintfA(b, "; move prototype [net] move_block_wait_ms=%d active (mods:M1X): a unit blocked by a walking/regrouping friend replans after %d retries (retail 201)\n", ms,
-              g_bk_wait_limit);
-    seam_log(b);
+    mh::seams::mv::request(mh::seams::mv::KEY_BLOCK_WAIT_MS, ms, 0);
+    if (ms == 0 || g_bk_state != 1) return;
+    g_bk_wait_limit = mh::sim::mvc::make_blocked_params(ms, false, 0).wait_limit;
+}
+
+// mods:M1DT fix 4a: the wait budget restarts when the unit in the way changes to a walking friend.
+void mh_set_move_block_reset_moving(int on) {
+    on         = on != 0;
+    g_bk_reset = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_BLOCK_RESET_MOVING, on, 0);
+    if (!on || g_bk_state != 1) return;
+    g_bk_reset = 1;
+}
+
+// mods:M1DT fix 4b: a block-wait replan longer than pct % of the straight distance is discarded (at most 3 times in a row).
+void mh_set_move_replan_detour_cap(int pct) {
+    pct      = mh::sim::mvc::blocked_clamp(pct, 0, 1000);
+    g_bk_cap = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_REPLAN_DETOUR_CAP, pct, 0);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_CAPOK, g_cap_state);
+    if (pct == 0 || g_bk_state != 1 || g_cap_state != 1) return;
+    g_bk_cap = pct;
 }
 
 void mh_set_move_keep_sidestep(int on) {
     on        = on != 0;
     g_bk_keep = 0;
-    if (!on || bk_refuse("move_keep_sidestep", on)) return;
+    mh::seams::mv::request(mh::seams::mv::KEY_KEEP_SIDESTEP, on, 0);
+    if (!on || g_bk_state != 1) return;
     g_bk_keep = 1;
-    seam_log("; move prototype [net] move_keep_sidestep=1 active (mods:M1X): a spliced sidestep is walked (path ends after it), then the unit replans; max 3 "
-             "sidesteps without a step taken\n");
 }
 
 void mh_set_move_repath_cooldown_ms(int ms) {
-    ms         = bk_clamp(ms, 0, 10000);
+    ms         = mh::sim::mvc::blocked_clamp(ms, 0, 10000);
     g_bk_cd_on = 0;
     g_bk_cd_s  = 0.0;
-    if (ms == 0 || bk_refuse("move_repath_cooldown_ms", ms)) return;
-    g_bk_cd_s  = static_cast<double>(ms) / 1000.0;
-    g_bk_cd_on = 1;
-    char b[260];
-    wsprintfA(b, "; move prototype [net] move_repath_cooldown_ms=%d active (mods:M1X): a blocked unit sent to replan sleeps %d ms first\n", ms, ms);
-    seam_log(b);
+    mh::seams::mv::request(mh::seams::mv::KEY_REPATH_COOLDOWN_MS, ms, 0);
+    if (ms == 0 || g_bk_state != 1) return;
+    const mh::sim::mvc::blocked_params bp = mh::sim::mvc::make_blocked_params(0, false, ms);
+    g_bk_cd_s                             = bp.cd_s;
+    g_bk_cd_on                            = bp.cd_on ? 1 : 0;
 }
 
 // ---- [net] move_attack_heading_fix (mods:M1X, 2026-10-14; tmp/m1/attack_stall.md) -----------------------------------------
@@ -218,33 +286,23 @@ const uint8_t       MV_ATK_HEADING_FIXED[3]  = {0x8A, 0x45, 0xE4};
 int                 g_ah_on                  = 0; // the byte currently in place: 0 retail, 1 fixed
 } // namespace
 
+// A runtime-flipped byte, not a stub: no hit counter. The carrier report learns the site state here (the byte is only touched when the key
+// is asked for): 1 flipped / already in place, -1 the bytes MISMATCHED, -2 the function's entry is claimed.
 int mh_set_move_attack_heading_fix(int on) {
     on = on != 0;
-    char b[260];
+    mh::seams::mv::request(mh::seams::mv::KEY_ATTACK_HEADING, on, 0);
     if (on == g_ah_on) {
-        if (on) {
-            wsprintfA(b, "; move prototype [net] move_attack_heading_fix=1 active (mods:M1X): a single unit's attack path records the heading it "
-                         "actually stepped\n");
-            seam_log(b);
-        }
+        if (on) mh::seams::mv::note_site(mh::seams::mv::SITE_ATK_HEADING, 1);
         return 1;
     }
     if (mh::hook::promoted_owner_of(ADDR_MV_ATK_HEADING)) {
-        if (on) seam_log("; move prototype [net] move_attack_heading_fix=1 NOT ACTIVE (mods:M1X): DISPLACED -- libmh owns "
-                         "llm_strat_pathfind_build_steps (its twin carries the key)\n");
+        mh::seams::mv::note_site(mh::seams::mv::SITE_ATK_HEADING, -2);
         return 0;
     }
     bool ok;
     if (on) ok = mh::hook::patch_bytes_guarded(ADDR_MV_ATK_HEADING, MV_ATK_HEADING_RETAIL, MV_ATK_HEADING_FIXED, 3);
     else ok = mh::hook::patch_bytes_guarded(ADDR_MV_ATK_HEADING, MV_ATK_HEADING_FIXED, MV_ATK_HEADING_RETAIL, 3);
     if (ok) g_ah_on = on;
-    if (on) {
-        if (ok)
-            wsprintfA(b, "; move prototype [net] move_attack_heading_fix=1 active (mods:M1X): a single unit's attack path records the heading it "
-                         "actually stepped\n");
-        else
-            wsprintfA(b, "; move prototype [net] move_attack_heading_fix=1 NOT ACTIVE (mods:M1X): the byte at 0x0041ec1d MISMATCHED\n");
-        seam_log(b);
-    }
+    if (on) mh::seams::mv::note_site(mh::seams::mv::SITE_ATK_HEADING, ok ? 1 : -1);
     return ok ? 1 : 0;
 }
