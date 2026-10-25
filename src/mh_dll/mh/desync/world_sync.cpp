@@ -17,6 +17,10 @@
 //
 #include "desync/world_sync.h"
 
+#include "caps/caps.h"   // PT-CAP8: canon_scatter after the world import
+#include "caps/orders.h" // PT-CAP9-U7c: finish_scatter after the MHOV apply
+#include "caps/ovf.h"    // PT-CAP8 S2: the MHOV trailer behind the fixup trailer
+
 #include <windows.h>
 
 #include <cstdarg>
@@ -131,7 +135,7 @@ void host_do_capture(int p, uint32_t S, uint64_t digest_prev) {
     uint32_t n_src[LIBMH_RESYNC_SOURCES];
     mh::orders::admission::counts(n_src);
 
-    const size_t need = w::capture_capacity();
+    const size_t need = w::capture_capacity() + (mh::caps::raised() ? mh::caps::ovf::max_bytes_world() : 0); // PT-CAP8 S2
     uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
     if (!blob) {
         WSAY("; [worldsync] CAPTURE peer=%d S=%lu FAILED: HeapAlloc(%lu)\n", p, (unsigned long)S, (unsigned long)need);
@@ -156,6 +160,8 @@ void host_do_capture(int p, uint32_t S, uint64_t digest_prev) {
         cp.step              = S;
         cp.mask_flags        = mf;
         rc                   = w::capture(blob, need, &got, cp);
+        if (rc == w::WORLD_OK && !mh::caps::ovf::append_to_world_blob(blob, &got, need)) // PT-CAP8 S2: overflow records behind the fixup trailer
+            rc = mh::caps::ovf::world_rc_refused(mh::caps::ovf::OVF_ERR_TOO_SMALL);
         if (rc == w::WORLD_OK && g_h.harness) g_h.harness(WS_CAPTURE, S, 0, blob, (uint32_t)got);
     }
     if (g_h.horizon_hold) g_h.horizon_hold(0);
@@ -411,7 +417,7 @@ bool m_step(uint32_t next_step) {
         return false;
     }
     if (!g_m.buf) {
-        g_m.cap = w::capture_capacity();
+        g_m.cap = w::capture_capacity() + (mh::caps::relocated() ? mh::caps::ovf::max_bytes_world() : 0); // PT-CAP8 S2
         g_m.buf = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, g_m.cap));
         if (!g_m.buf) {
             m_fail(0, next_step, RC_BAD_LEN, "cannot allocate the receive buffer");
@@ -481,6 +487,21 @@ bool m_step(uint32_t next_step) {
     QueryPerformanceFrequency(&f);
     QueryPerformanceCounter(&t0);
     if (g_h.horizon_hold) g_h.horizon_hold(1);
+    // PT-CAP8 S2: the overflow trailer is validated BEFORE the import so a refused one leaves the world untouched.
+    const uint8_t *ovf_tr  = nullptr;
+    size_t         ovf_len = 0;
+    {
+        const auto *bh = reinterpret_cast<const w::blob_header *>(g_m.buf);
+        ovf_tr         = mh::caps::ovf::world_trailer(g_m.buf, g_m.blob_len, bh->nav_offset, bh->nav_len, bh->fixup_len, &ovf_len);
+    }
+    if (ovf_tr) {
+        const int orc = mh::caps::raised() ? mh::caps::ovf::check(ovf_tr, ovf_len) : mh::caps::ovf::WORLD_ERR_CAPS_OVF;
+        if (orc != mh::caps::ovf::OVF_OK) {
+            if (g_h.horizon_hold) g_h.horizon_hold(0);
+            m_fail(S, next_step, orc, "overflow trailer refused (world untouched)");
+            return false;
+        }
+    }
     libmh_resync_report rep;
     memset(&rep, 0, sizeof(rep));
     rep.struct_size = sizeof(rep);
@@ -492,6 +513,12 @@ bool m_step(uint32_t next_step) {
         m_fail(S, next_step, rc, "libmh_import_world_resync refused (world untouched)");
         return false;
     }
+    mh::caps::canon_scatter(); // PT-CAP8 (D1): the import wrote the stock mirror -> publish it to the wide arrays (no-op unless relocated)
+    if (ovf_tr) {              // PT-CAP8 S2: the carried overflow records go in on top of the zeroed tails
+        const int orc = mh::caps::ovf::apply(ovf_tr, ovf_len);
+        WSAY("; [worldsync] overflow records applied rc=%d (%d records)\n", orc, mh::caps::ovf::record_count(ovf_tr, ovf_len));
+    }
+    mh::caps::orders::finish_scatter(); // PT-CAP9-U7c: the order counts the import carried (queue / pending / staging past their windows) come back with their tails, or stay clamped (logged)
     // From here the world IS the host's world at S. The re-admission is staged: arm-time cannot fail
     // (plan() passed before the first write); the per-step feed can, and aborts by name.
     mh::desync::rewind_for_world_sync(S, g_m.mb.digest_prev);
@@ -526,6 +553,8 @@ bool m_step(uint32_t next_step) {
 // public
 // ================================================================================================
 void set_hooks(const hooks &h) { g_h = h; }
+
+void set_fp2(uint64_t fp2) { g_fp2 = fp2; }
 
 void configure(const char *ini_path, int action, uint64_t fp2, void (*log)(const char *fmt, ...)) {
     (void)ini_path; // every tuning value is fixed; `action` is the only [desync] key world sync reads

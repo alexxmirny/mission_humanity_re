@@ -1,0 +1,38 @@
+# res_overlay_125 -- mods:RES21/RES23 (R720 fix): resolution=2048x1152 at Interface size 125 on a 2560x1440 screen (borderless d3d11, ini/res_overlay_125.ini). The fit zoom 1.25 already
+# gives the panel its 125% width, so the layout is the 100 base: the cursor and the ESC menu must be drawn by the game into the frame (tools/check_res_fallback.py fit_125).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winclient 2560 1440
+screensettled
+gameclock +100
+log res_overlay_125 frame_ready
+# a  the game cursor parked on a visible map pixel (frame (700,400)): the frame, the presenter's CPU twin and what the presenter put on screen
+cursorhold 700 400 6
+capture res_overlay_125_a_frame
+pcapture res_overlay_125_a
+bcapture res_overlay_125_a
+# b  the cursor moved to (1100,700): the frame and the presented image again (tools/check_res_fallback.py diffs a / b to find the one cursor source)
+cursorhold 1100 700 6
+capture res_overlay_125_b_frame
+bcapture res_overlay_125_b
+# c  the cursor back on a, then the ESC menu over the map: the frame, the CPU twin and the presented image
+cursorhold 700 400 6
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+screensettled
+cursorhold 700 400 6
+capture res_overlay_125_esc_frame
+pcapture res_overlay_125_esc
+bcapture res_overlay_125_esc
+log res_overlay_125 COMPLETE
+end

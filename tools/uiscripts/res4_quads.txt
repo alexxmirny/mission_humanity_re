@@ -1,0 +1,27 @@
+# res4_quads (mods:RES4 stages 1-2) -- where the scaled HUD lands.
+# [video] ui_scale=150 on a pinned 1920x1080 screen ([video] ui_screen), the game at 1856x1088 (the ideal frame for that
+# screen and scale; tools/uiscripts/ini/res4_quads.ini). The strategic view of 2-almost.sav, captured twice:
+#   res4_frame   `capture`: the game's own frame as rendered, unscaled -- the side panel is 160 px wide, the bottom strip
+#                32 px high, the map continues under neither;
+#   res4_150     `pcapture`: the PRESENTED image. The map is shown 1:1 at the screen's top left (1680 x 1032), the strip 1.5x
+#                under it (48 screen rows), the panel 1.5x down the right edge (240 screen columns): three quads tiling the
+#                whole 1920 x 1080 screen.
+# Placement is asserted by tools/check_ui_quads.py: it rebuilds the presented image from res4_frame with its own
+# implementation of the quad arithmetic and demands res4_150 equal it pixel for pixel, plus the layout line the presenter
+# logs in mh_video.log. (Stages 1-2 change the presenter only: the game still renders the same panel rows it always did.)
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +100
+capture res4_frame
+pcapture res4_150
+log res4 COMPLETE -- the strategic frame and its presented quad layout captured
+end

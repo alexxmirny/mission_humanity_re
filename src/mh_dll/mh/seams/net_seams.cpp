@@ -59,13 +59,17 @@
 #include "include/mh_workerclick_export.h"  // MH_WorkerClick_Install (ui_worker_click.cpp) -- RES8 the worker +/- buttons order one worker on every press
 #include "include/mh_minimapplus_export.h"  // MH_MinimapPlus_Install (ui_minimap_plus.cpp) -- MM1-MM3 resources/corners/box at the minimap's widest zoom
 #include "include/mh_minimapbox_export.h"   // MH_MinimapBox_Install (ui_minimap_box.cpp) -- RES9 the minimap viewport box drawn clipped to the minimap
+#include "include/mh_tactscroll_export.h"   // MH_TactScroll_Install (tact_scroll.cpp) -- TSCR1 the tactical camera scroll paced on the game clock
 #include "include/mh_crewreminder_export.h" // MH_CrewReminder_Install (ui_crew_reminder.cpp) -- hotfix rc9.4 the garage crew-shortage reminder
 #include "include/mh_infoguard_export.h"    // MH_InfoGuard_Install (ui_info_guard.cpp) -- U73 an info screen is never opened for a blank/stale entity (no "Cannot find info text" modal)
 #include "include/mh_infoavi_export.h"      // MH_InfoAvi_Install (ui_info_avi.cpp) -- X2g an info screen whose AVI will not open shows without video, never IDIVs by 0
 #include "include/mh_uidrive_export.h"      // MH_UIDrive_Install (ui_drive.cpp) -- UI automation Phase 2
 #include "include/mh_video_export.h"        // MH_Video_Install (video.cpp) -- D13 display-mode selection
+#include "include/mh_optscale_export.h"     // MH_OptScale_Install (ui_options_scale.cpp) -- RES4 the in-game Options "Interface size" row
 #include "include/mh_standalone_export.h"   // MH_Standalone_Install (standalone.cpp) -- boot a stock exe
 #include "include/mh_inmem_patch_export.h"  // MH_InMemPatch_Install (patch/inmem_install.cpp) -- F1E, default OFF
+#include "include/mh_caps_export.h"         // MH_Caps_Install / MH_Caps_DumpIfAsked (patch/caps_install.cpp) -- PT-CAP8 v0.2.2 relocated roster arrays
+#include "caps/caps.h"                      // PT-CAP8: note_sim_step / canon_gather in the sim-step feeder
 #include "include/mh_transport_present.h"   // F3F: is there a network transport at all -- NOT `[net] enable`
 #include "ui/lobby_ui.h"                    // D4: the UI-owned lobby/browser fixup module (mh/ui)
 #include "ui/lobby_ping.h"                  // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
@@ -805,6 +809,10 @@ extern "C" int  MH_Lockstep_WorldSyncState(void);         // net_lockstep.cpp, m
 extern "C" void MH_Lockstep_WorldSyncEnd(void);           // net_lockstep.cpp, mp:X3c
 namespace {
 void on_desync_sim_step() {
+    // PT-CAP8 (D1): the stock .bss arrays are the canonical MIRROR of the relocated wide arrays; refresh it BEFORE the
+    // per-step hash reads it. A no-op unless the relocation manifest is applied.
+    mh::caps::note_sim_step();
+    mh::caps::canon_gather();
     MH_Lockstep_StepPin(); // mp:D30 -- re-pin the lookahead at this step's clock (ship path)
     mh::desync::on_sim_step();
 }
@@ -1912,6 +1920,7 @@ static void late_order_scan(int sender, const unsigned char *buf, int len) {
                         *(const double *)mh::state::live_base(mh::state::RID_STRAT_SIM_STEP_INTERVAL);
                     uint16_t unit, own, code;
                     memcpy(&unit, buf + off + 1 + 0x08, 2);
+                    unit = (uint16_t)((unit & 0xff) | ((((unit >> 8) ^ unit) & 0x0f) << 8)); // O1c: the 12-bit index
                     memcpy(&own, buf + off + 1 + 0x0a, 2);
                     memcpy(&code, buf + off + 1 + 0x0e, 2);
                     char e[24], c[24], k[24], b[256];
@@ -2272,6 +2281,10 @@ static int MH_Core_Arm(void) {
     // the one refused. (F3B: it no longer sits behind `[net] enable` -- a static patch is not a
     // networking question, and that gate is the net arm's alone now. F3G gives `[patch] inmem` the
     // arm point it deserves on its own terms; this item only stops a networking key deciding it.)
+    // PT-CAP8 (v0.2.2): the relocated roster arrays + the staged limit layer. AFTER the C1 registry is populated (a reloc
+    // site inside a promoted body refuses the manifest) and BEFORE every detour/byte patch below (whichever arrives second is
+    // the one refused; the three composing hooks use patch_bytes_guarded_caps). Always logs one `; [caps]` line.
+    MH_Caps_Install(g_ini);
     MH_InMemPatch_Install(g_ini);
 
     // ---- THE NET ARM (F3 ruling Q1) -------------------------------------------------------------
@@ -2290,6 +2303,7 @@ static int MH_Core_Arm(void) {
     // PT-SET1: the F_HOSTSYNC gameplay settings, from this process's own ini (SP and the host's starting point;
     // a client re-applies the host's set at the match handoff). AFTER the core install so the hooks overlay the fixes it built.
     mh::gameplay::apply_local(mh::gameplay::Source::LOCAL);
+    MH_Caps_DumpIfAsked(g_ini); // PT-CAP8 parity: AFTER the settings apply, so a `raise=1` lane dumps the ON image
 
     // Promotions are installed above (reimpl_probe_install) and the byte patches just now, so this is
     // the first point at which the interlock can state the whole picture: which registered fixes were
@@ -2340,8 +2354,9 @@ static int MH_Core_Arm(void) {
     // detour (net_lockstep.cpp) -- after the g_ls_log loggers, same install order as pre-split.
     lockstep_install_present_gameover();
 
-    MH_UI_Arm();        // the MP menu/lobby surface: install_mp_bootstrap + MH_Menu_Install (F3B)
-    MH_Video_Install(); // D13: [video] size_mode -> pin the persisted display mode before the menu caches it
+    MH_UI_Arm();           // the MP menu/lobby surface: install_mp_bootstrap + MH_Menu_Install (F3B)
+    MH_Video_Install();    // D13: [video] size_mode -> pin the persisted display mode before the menu caches it
+    MH_OptScale_Install(); // RES4: the in-game Options screen's "Interface size" row ([video] ui_scale; best-effort)
     {
         // Stock-exe support: the runtime twins of the no_cd / run_without_focus manifests. Both
         // are inert (guard mismatch) on an exe that already carries the static patch.
@@ -2389,6 +2404,7 @@ static int MH_Core_Arm(void) {
     MH_WorkerClick_Install();  // RES8: the worker +/- buttons order one worker on every press, the first one included (best-effort)
     MH_MinimapPlus_Install();  // MM1-MM3: resources at every zoom, no round mask, the view box at the widest zoom ([ui] minimap_plus; best-effort)
     MH_MinimapBox_Install();   // RES9: the minimap viewport box is drawn clipped to the 128x128 minimap (best-effort)
+    MH_TactScroll_Install();   // TSCR1: [tactical] scroll_px_s -> the tactical camera scroll on the game clock (best-effort; 0 = retail)
     MH_CrewReminder_Install(); // hotfix rc9.4: a local vehicle waiting in its garage for crew re-shows the advisor text every 30 s (best-effort)
     MH_InfoAvi_Install();      // X2g: info-screen AVI open failure -> no-video screen, no CD prompt/box; the media tick never divides by a zero clip length (best-effort)
     MH_InfoGuard_Install();    // U73: entity info screen entry guard + the storage panel's stale info-request consume (best-effort)

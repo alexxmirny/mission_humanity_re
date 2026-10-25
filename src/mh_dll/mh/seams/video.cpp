@@ -53,11 +53,13 @@
 #include "en_guard.h"                  // EN-only build gate
 #include "hook/detour.h"               // install_trampoline / WATCOM_PROLOGUE
 #include "hook/patch.h"                // patch_bytes_guarded
+#include "gfx/ui_layout.h"             // RES4: ideal_render
 #include "gfx/ddraw_own.h"             // PT-GFX1: [video] backend=own -- the owned DirectDraw
 #include "input/dinput_own.h"          // PT-INPUT1: [input] backend=own -- the owned DirectInput
 #include "video_mode_guards.h"         // the mode-change crash guards (cursor clamp, galaxy background)
 #include "ui_panel_rows.h"             // RES7: the side-panel list tables grown for the tallest entry
 #include "gfx/res_list.h"              // RES3: the generated resolution list
+#include "gfx/classic_sizes.h"         // RES25: classic_sizes()
 #include "include/mh_mapzoom_export.h" // MH_MapZoom_ReseedWheel
 #include "include/mh_uiwheel_export.h" // MH_UiWheel_Reseed
 #include "addr/mh_calls.gen.h"         // RES6: llm_view_set_size_mode / llm_map_cam_set_col
@@ -791,16 +793,18 @@ void fix_options_label(int w, int h) {
 // =================================================================================================
 
 struct ResMode {
-    int w, h_req, h_render;
+    int w, h_req, h_render; // the RENDERED frame (w is a multiple of 32; h_render too) and the height asked of DirectDraw
+    int lw, lh;             // RES18: the session size the player chose -- the frame cropped to it; == w x h_render when nothing is cropped
 };
 // 19 modes qualify on a 2560x1440 desktop, so 12 was not merely tight -- it truncated in ENUMERATION
 // order (roughly ascending), which silently dropped the six LARGEST including the native one. Sized
 // with headroom, and any overflow is now reported rather than swallowed.
-constexpr int MAX_MODES = 24;
+constexpr int MAX_MODES = 48; // >= reslist::MAX_ENTRIES (RES24: the common sizes lengthen the list)
 ResMode       g_modes[MAX_MODES];
-int           g_pending_ix = -1; // index being applied through the mode-2 slot (-1 = none)
-int           g_applied_ix = -1; // the picker index the mode-2 slot was last applied for (-1 = none)
-void         *g_vsm_tramp  = nullptr;
+int           g_pending_ix       = -1;    // index being applied through the mode-2 slot (-1 = none)
+bool          g_galaxy_switching = false; // RES26: the galaxy screen's own switch to 1024x768 is inside llm_view_set_size_mode (not an Options apply)
+int           g_applied_ix       = -1;    // the picker index the mode-2 slot was last applied for (-1 = none)
+void         *g_vsm_tramp        = nullptr;
 wchar_t       g_labels[MAX_MODES][16];
 uint32_t      g_slots[MAX_MODES];
 uint32_t      g_table[MAX_MODES];
@@ -810,29 +814,35 @@ int g_modes_dropped = 0;
 // `dev` = the size came from an explicit dev key (modes=): it may exceed the no-wrap cap, with a warning. Every
 // other source (the generated list, the per-machine enumeration) drops a size whose view would wrap the
 // smallest (64-tile) map: the terrain would repeat while units and buildings are drawn once.
-void add_mode(int w, int h, bool dev = false) {
-    const int hr = h & ~31;
-    if (w < 640 || h < 480 || (w % 32) || hr < 480) return;
-    if ((w / 32) * (hr / 32) > MAX_TILES) return;
-    if (mh::gfx::reslist::view_wraps_smallest_map(w, hr)) {
+// `crop` (RES18, the owned presenter only): w x h is the session size as the player sees it, any size; the game renders it rounded up to the
+// 32 px tile grid and the presenter crops the picture back. Without it the size must be a multiple of 32 wide and renders h & ~31 rows.
+void add_mode(int w, int h, bool dev = false, bool crop = false) {
+    const int hr = crop ? mh::gfx::reslist::ceil32(h) : (h & ~31);
+    const int wr = crop ? mh::gfx::reslist::ceil32(w) : w;
+    if (w < 640 || h < 480 || (!crop && (w % 32)) || hr < 480) return;
+    if ((wr / 32) * (hr / 32) > MAX_TILES) return;
+    if (mh::gfx::reslist::view_wraps_smallest_map(wr, hr)) {
         if (!dev) {
-            vid_log("; [video] size %dx%d dropped -- its view would wrap a 64-tile map (limit %dx%d)", w, hr,
+            vid_log("; [video] size %dx%d dropped -- its view would wrap a 64-tile map (limit %dx%d)", wr, hr,
                     mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
             return;
         }
         vid_log("; [video] WARNING: modes= entry %dx%d is past the no-wrap limit %dx%d -- on a 64-tile map the "
                 "terrain shows twice and units appear in one copy",
-                w, hr, mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
+                wr, hr, mh::gfx::reslist::NOWRAP_W, mh::gfx::reslist::NOWRAP_H);
     }
+    const int lw = crop ? w : wr, lh = crop ? h : hr; // the size the player sees (a legacy 800x600 is the 800x576 it renders)
     for (int i = 0; i < g_nmodes; ++i)
-        if (g_modes[i].w == w && g_modes[i].h_render == hr) return; // dedupe (one entry per SIZE)
+        if (g_modes[i].lw == lw && g_modes[i].lh == lh) return; // dedupe (one entry per SIZE)
     if (g_nmodes >= MAX_MODES) {
         ++g_modes_dropped; // never silently: reported at arm time
         return;
     }
-    g_modes[g_nmodes].w        = w;
-    g_modes[g_nmodes].h_req    = h;
+    g_modes[g_nmodes].w        = wr;
+    g_modes[g_nmodes].h_req    = crop ? hr : h; // the owned display is asked for the rendered size
     g_modes[g_nmodes].h_render = hr;
+    g_modes[g_nmodes].lw       = lw;
+    g_modes[g_nmodes].lh       = lh;
     ++g_nmodes;
 }
 
@@ -896,26 +906,46 @@ bool build_generated_list(const char *ini, const char *spec) {
         if (!rl::parse_size(spec, &w, &h)) {
             vid_log("; [video] resolution=%s not recognised (auto | stock | WxH) -- using auto", spec);
             is_auto = true;
-        } else if (!rl::valid_size(w, rl::floor32(h))) {
-            vid_log("; [video] resolution=%dx%d REJECTED (multiple of 32 wide, 640x480..%dx%d -- the cap keeps the view "
+        } else if (!rl::valid_size(w, h)) {
+            vid_log("; [video] resolution=%dx%d REJECTED (640x480..%dx%d once rounded up to the 32px tile grid -- the cap keeps the view "
                     "from wrapping a 64-tile map --, <= %d tiles) -- using auto",
                     w, h, rl::CAP_W, rl::CAP_H, rl::MAX_TILES);
             is_auto = true;
         } else {
-            if (rl::floor32(h) != h)
-                vid_log("; [video] resolution=%dx%d: height snapped down to %d for the 32px tile grid", w, h,
-                        rl::floor32(h));
-            want = rl::entry{w, rl::floor32(h), rl::k_requested};
+            want = rl::entry{w, h, rl::k_requested}; // RES18: any size; the game renders it rounded up and the presenter crops it
         }
+    }
+    // RES4 stage 3: with [video] ui_scale above 100 and an automatic size, the session frame IS the ideal render for the
+    // desktop at that scale (map 1:1, side panel and strip drawn at s x as presenter quads): W = ceil32(Dv_w - 160 s) + 160,
+    // H = ceil32(Dv_h - 32 s) + 32, inside the RES3 caps. An explicit resolution=WxH is a frame the player chose: the
+    // presenter composes whatever frame it is given.
+    if (is_auto) {
+        const int uipct = mh::gfx::owned_resolve_ui_scale(ini); // a percentage, or auto = the monitor's display scale
+        if (uipct > mh::gfx::uilayout::MIN_PCT) {
+            const mh::gfx::uilayout::render_size ir = mh::gfx::uilayout::ideal_render(dw, dh, uipct);
+            if (ir.clamped)
+                vid_log("; [video] ui_scale=%d%% is too big for %dx%d (a 640x480 game must still fit) -- clamped to %d%%", uipct, dw, dh, ir.pct);
+            if (ir.pct > mh::gfx::uilayout::MIN_PCT && rl::valid_size(ir.w, ir.h)) {
+                want = rl::entry{ir.w, ir.h, rl::k_requested};
+                vid_log("; [video] ui_scale=%d%%%s: the session frame is %dx%d (map %dx%d 1:1 + panel %d + strip %d on %dx%d)", ir.pct, ir.snapped ? " (snapped to fit a whole panel row)" : "", ir.w, ir.h,
+                        ir.map_w, ir.map_h, ir.panel_w, ir.strip_h, dw, dh);
+            } else {
+                vid_log("; [video] ui_scale=%d%%: ideal frame %dx%d is not a valid size -- keeping the automatic one", uipct, ir.w, ir.h);
+            }
+        }
+    }
+    const bool owned = mh::gfx::owned_ddraw_active();
+    if (!owned) { // backend=system: the display must offer the mode, so only whole tiles (the legacy floor) -- no crop
+        want.w = rl::floor32(want.w);
+        want.h = rl::floor32(want.h);
     }
     int cnt = n;
     rl::insert_sorted(list, n, rl::MAX_ENTRIES, want, &cnt);
     n = cnt;
 
-    g_nmodes         = 0;
-    g_modes_dropped  = 0;
-    const bool owned = mh::gfx::owned_ddraw_active();
-    char       nearby[64];
+    g_nmodes        = 0;
+    g_modes_dropped = 0;
+    char nearby[64];
     for (int i = 0; i < n; ++i) {
         const rl::entry &e = list[i];
         if (i == 0) {
@@ -928,36 +958,42 @@ bool build_generated_list(const char *ini, const char *spec) {
             // Owned backends present any size, so the display height IS the render height and the picture is
             // centred (no unrendered bottom rows). Windows' own DirectDraw (backend=system) can only switch
             // to a mode the monitor enumerates.
-            if (!owned && !mode_is_available(e.w, e.h, nearby, sizeof(nearby))) {
-                vid_log("; [video] resolution list: %dx%d dropped -- backend=system and the display has no such mode",
-                        e.w, e.h);
-                continue;
-            }
-            add_mode(e.w, e.h);
+            if (!owned) {
+                const int fw = rl::floor32(e.w), fh = rl::floor32(e.h);
+                if (!mode_is_available(fw, fh, nearby, sizeof(nearby))) {
+                    vid_log("; [video] resolution list: %dx%d dropped -- backend=system and the display has no such mode", fw, fh);
+                    continue;
+                }
+                add_mode(fw, fh);
+            } else
+                add_mode(e.w, e.h, false, true); // RES18: exact; rendered rounded up, presented cropped
         }
     }
     int best = -1;
     for (int i = 0; i < g_nmodes; ++i)
-        if (g_modes[i].w == want.w && g_modes[i].h_render == want.h) best = i;
+        if (g_modes[i].lw == want.w && g_modes[i].lh == want.h) best = i;
     if (best < 0) {                        // the wanted size was filtered out: the largest listed entry that is not bigger
         for (int i = 2; i < g_nmodes; ++i) // the list is grouped by aspect, not ascending: take the largest by area
-            if ((long)g_modes[i].w * g_modes[i].h_render <= (long)want.w * want.h &&
-                (best < 2 || (long)g_modes[i].w * g_modes[i].h_render >
-                                 (long)g_modes[best].w * g_modes[best].h_render))
+            if ((long)g_modes[i].lw * g_modes[i].lh <= (long)want.w * want.h &&
+                (best < 2 || (long)g_modes[i].lw * g_modes[i].lh >
+                                 (long)g_modes[best].lw * g_modes[best].lh))
                 best = i;
         if (best < 0) best = 2;
-        vid_log("; [video] resolution: %dx%d is not available here -- using %dx%d", want.w, want.h, g_modes[best].w,
-                g_modes[best].h_render);
+        vid_log("; [video] resolution: %dx%d is not available here -- using %dx%d", want.w, want.h, g_modes[best].lw,
+                g_modes[best].lh);
     }
     g_res_chosen = best;
     g_res_armed  = true;
     g_desk_w     = dw;
     g_desk_h     = dh;
     vid_log("; [video] resolution=%s: desktop %dx%d, display scale %d%% -> %dx%d (entry %d of %d)", spec, dw, dh, pct,
-            g_modes[best].w, g_modes[best].h_render, best, g_nmodes);
+            g_modes[best].lw, g_modes[best].lh, best, g_nmodes);
+    if (g_modes[best].lw != g_modes[best].w || g_modes[best].lh != g_modes[best].h_render)
+        vid_log("; [video] crop: %dx%d renders as %dx%d and is presented cropped to %dx%d", g_modes[best].lw, g_modes[best].lh, g_modes[best].w,
+                g_modes[best].h_render, g_modes[best].lw, g_modes[best].lh);
     for (int i = 0; i < g_nmodes && i < n; ++i) {
         char      lab[64];
-        rl::entry e = rl::entry{g_modes[i].w, g_modes[i].h_render, i < 3 ? (int)rl::k_stock : (int)rl::k_native};
+        rl::entry e = rl::entry{g_modes[i].lw, g_modes[i].lh, i < 3 ? (int)rl::k_stock : (int)rl::k_native};
         rl::describe(e, dw, dh, lab, sizeof(lab));
         vid_log("; [video]   list [%d] %s", i, lab);
     }
@@ -1013,7 +1049,7 @@ void build_mode_list(const char *ini, const char *res_spec) {
     }
     for (int i = 2; i < g_nmodes; ++i) // simple insertion sort, ascending by pixel count
         for (int j = i; j > 2; --j) {
-            long a = (long)g_modes[j].w * g_modes[j].h_render, b = (long)g_modes[j - 1].w * g_modes[j - 1].h_render;
+            long a = (long)g_modes[j].lw * g_modes[j].lh, b = (long)g_modes[j - 1].lw * g_modes[j - 1].lh;
             if (a >= b) break;
             ResMode t      = g_modes[j];
             g_modes[j]     = g_modes[j - 1];
@@ -1040,7 +1076,7 @@ void fmt_label(wchar_t *out, int w, int h) {
 bool install_picker() {
     const uint32_t exp_tbl = 0x00645093u, exp_cnt = 3u;
     for (int i = 0; i < g_nmodes; ++i) {
-        fmt_label(g_labels[i], g_modes[i].w, g_modes[i].h_render); // label the RENDER size -- the truth
+        fmt_label(g_labels[i], g_modes[i].lw, g_modes[i].lh); // label the size the player gets (the picture), not the tile-rounded frame
         g_slots[i] = (uint32_t)(uintptr_t)g_labels[i];
         g_table[i] = (uint32_t)(uintptr_t)&g_slots[i];
     }
@@ -1063,7 +1099,7 @@ bool install_picker() {
                 "DROPPED (the native mode is added first, so it is not among them)",
                 g_modes_dropped, MAX_MODES);
     for (int i = 0; i < g_nmodes; ++i)
-        vid_log("; [video]   [%d] %dx%d%s", i, g_modes[i].w, g_modes[i].h_render,
+        vid_log("; [video]   [%d] %dx%d%s", i, g_modes[i].lw, g_modes[i].lh,
                 i < 2 ? "  (engine-native)" : "");
     return true;
 }
@@ -1128,38 +1164,49 @@ extern "C" int __cdecl on_view_set_mode_pre(int m) {
 // it to black on every size change; the strip is a pure HUD back-buffer (ground tiles copy it out).
 constexpr uintptr_t ADDR_STRIP_SURFACE = 0x00603b08; // pointer variable: the G_WIN_W x 32 px bottom strip
 size_t              g_strip_cap        = 0;          // bytes the boot allocation holds (sized for the largest entry)
+int                 g_strip_cleared_w  = 0;          // the width the strip surface was last laid out (cleared) for
 void                clear_strip_surface() {
     if (!g_strip_fix) return;
     void     *strip = *(void **)ADDR_STRIP_SURFACE;
     const int w     = *(const int *)mh::addr::G_WIN_W;
     if (!strip || w <= 0 || g_strip_cap == 0) return;
+    // RES19/RES23-S2: only a WIDTH change reinterprets the buffer (the pitch is G_WIN_W*2). Re-applying the mode that is already in force (the Options Ok
+    // after an Interface size change) leaves the strip's pixels valid -- and the game does not redraw them behind the menu, so zeroing them left the
+    // extension and the corner black until the game resumed.
+    if (w == g_strip_cleared_w) return;
     const size_t n = (size_t)w << 6;
     if (n > g_strip_cap) return; // never past the allocation
     ZeroMemory(strip, n);
+    g_strip_cleared_w = w;
 }
 
 // RES3: the picture is presented at its rendered size, centred. A whole-number ratio to the desktop is scaled by
 // whole multiples (pixel-exact); a fractional one fits with the [video] filter (area by default). A [video] scale
 // in the ini is the player's explicit choice and is never overridden.
 void apply_presentation_scale(int mode_ix) {
-    if (!g_res_armed || g_user_scale || !mh::gfx::owned_ddraw_active()) return;
+    if (!mh::gfx::owned_ddraw_active()) return;
     if (mode_ix < 0 || mode_ix >= g_nmodes) return;
-    const ResMode &m       = g_modes[mode_ix];
-    const bool     integer = mh::gfx::reslist::integer_scale_ok(g_desk_w, g_desk_h, m.w, m.h_render);
+    const ResMode &m = g_modes[mode_ix];
+    // RES18: the picture is the session size, the frame is its tile-rounded render; the presenter crops the one to the other. Set on EVERY applied
+    // mode (a stock mode clears it), whatever [video] scale says -- the crop is not a scaling choice.
+    mh::gfx::owned_set_crop(m.w, m.h_render, m.lw, m.lh);
+    if (!g_res_armed || g_user_scale) return;
+    const bool integer = mh::gfx::reslist::integer_scale_ok(g_desk_w, g_desk_h, m.lw, m.lh);
     mh::gfx::owned_set_integer_scale(integer);
     static int s_last_w = 0, s_last_h = 0;
-    if (s_last_w != m.w || s_last_h != m.h_render) { // once per size, not per call
-        s_last_w = m.w;
-        s_last_h = m.h_render;
-        vid_log("; [video] presentation: %dx%d on a %dx%d desktop -> %s scaling", m.w, m.h_render, g_desk_w, g_desk_h,
+    if (s_last_w != m.lw || s_last_h != m.lh) { // once per size, not per call
+        s_last_w = m.lw;
+        s_last_h = m.lh;
+        vid_log("; [video] presentation: %dx%d on a %dx%d desktop -> %s scaling", m.lw, m.lh, g_desk_w, g_desk_h,
                 integer ? "integer" : "fit");
     }
 }
 
 extern "C" int __cdecl on_view_set_mode_post(int applied) {
     clear_strip_surface();
-    mh::video::panel_rows_on_size_change(); // RES7: scroll bodies to the new height, rows past it hidden
-    apply_presentation_scale(g_pending_ix >= 0 ? g_pending_ix : applied);
+    apply_presentation_scale(g_pending_ix >= 0 ? g_pending_ix : applied); // (the crop it sets is part of the geometry committed next)
+    mh::video::panel_geometry_recommit(!g_galaxy_switching);              // RES23-S2: the HUD geometry of the new frame, before the tables follow it
+    mh::video::panel_rows_on_size_change();                               // RES7: scroll bodies to the new height, rows past it hidden
     if (g_pending_ix < 0) return applied;
     int ix       = g_pending_ix;
     g_pending_ix = -1;
@@ -1321,11 +1368,13 @@ extern "C" void __cdecl on_galaxy_open_pre() {
     if (g_modes[2].w != 1024 || g_modes[2].h_req != 768) return;            // slot 2 is not the stock mode
     if (rd_i(ADDR_WINDOW_W) == 1024 && rd_i(ADDR_WINDOW_H) == 768) return;  // already native
     const int old_w = rd_i(ADDR_VIEW_W), old_h = rd_i(ADDR_VIEW_H);
-    vid_log("; [video] galaxy native: %dx%d (picker %d) -> 1024x768 for the planet-select screen", rd_i(ADDR_WINDOW_W),
-            rd_i(ADDR_WINDOW_H), ix);
+    // (the SESSION size, RES18: the frame of a 1920x1080 session is 1920x1088)
+    vid_log("; [video] galaxy native: %dx%d (picker %d) -> 1024x768 for the planet-select screen", g_modes[ix].lw, g_modes[ix].lh, ix);
     cursor_capture();
+    g_galaxy_switching     = true;
     const int applied      = mh::call::llm_view_set_size_mode(2); // the detour: picker slot 2, a real change
-    *(int *)ADDR_SIZE_MODE = applied;                             // what llm_map_view_size_mode_apply stores
+    g_galaxy_switching     = false;
+    *(int *)ADDR_SIZE_MODE = applied; // what llm_map_view_size_mode_apply stores
     recenter_for_view_change(old_w, old_h);
     g_galaxy_prev_ix = ix;
     g_galaxy_active  = true;
@@ -2129,7 +2178,10 @@ extern "C" int MH_Video_Install(void) {
         mh::config::read_ini_string("video", "scale", "?", sc, sizeof(sc), ini);
         g_user_scale = !(sc[0] == '?' && sc[1] == 0);
     }
-    int picker_maxh = 0; // the armed picker's tallest entry (RES7)
+    int picker_maxh = 0;             // the armed picker's tallest entry (RES7)
+    if (mh::gfx::classic_sizes(ini)) // RES25: nothing below arms -- no picker, no generated list, no crop; the stock Screen size control stays
+        vid_log("; [video] classic sizes only: the in-game Screen size list is the game's own (640x480, 800x600, 1024x768); no resolution work, "
+                "Interface size scaling off");
     if (mh_ini_get_int("video", "picker", 0, ini) || !res_stock) {
         build_mode_list(ini, res_stock ? nullptr : res_spec);
         if (g_nmodes <= 3) {
@@ -2200,7 +2252,7 @@ extern "C" int MH_Video_Install(void) {
     }
     if (g_nmodes > 0 && g_size_mode < g_nmodes)
         vid_log("; [video] armed: size_mode=%d (%dx%d, entry of the %d-item picker list)", g_size_mode,
-                g_modes[g_size_mode].w, g_modes[g_size_mode].h_render, g_nmodes);
+                g_modes[g_size_mode].lw, g_modes[g_size_mode].lh, g_nmodes);
     else if (g_custom_w)
         vid_log("; [video] armed: size_mode=2 (custom %dx%d)", g_custom_w, g_custom_h);
     else

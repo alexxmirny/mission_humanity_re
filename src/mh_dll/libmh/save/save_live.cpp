@@ -10,7 +10,8 @@
 
 #include "addr/mh_addrs.gen.h"
 #include "addr/mh_calls.gen.h"
-#include "sim/libtrans/sim_lt_map_region_pool.h" // the rebound pool_reset
+#include "sim/libtrans/sim_lt_map_region_pool.h"          // the rebound pool_reset
+#include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h" // mods:UNL1 progress_recheck_after_load
 #include "addr/mh_export.gen.h"
 #include "addr/mh_regions.gen.h" // ST1: every block address is checked against the region registry
 #include "save/save_driver.h"
@@ -863,6 +864,11 @@ uint32_t run_ours_load_container(char *save_name) {
     // these two calls is load-bearing rather than incidental.
     MH_LIBMH_BIND(llm_snd_ambient_reseed_planet_event_times)(
         static_cast<int32_t>(planet), *binds().last_game_time);
+    // mods:UNL1 ([net] project_gate_fix): the retail call-splice at 0x00447b78 runs the unlock recheck right here, in front of
+    // the cam_jump_queue_clear call. Gated inside (switch on, single-player). It is NOT in the original, which is why it is a
+    // gated twin rather than a faithful step: retail never re-runs the unlock fixpoint after a load, so an unlock whose last
+    // prerequisite was met on another planet stayed unoffered here until something new was acquired.
+    mh::sim::progress_recheck_after_load();
     mh::state::evt::cam_jump_queue_clear();
     mh::state::evt::menu_placement_pending_clear();
     mh::state::evt::inv_viewport();

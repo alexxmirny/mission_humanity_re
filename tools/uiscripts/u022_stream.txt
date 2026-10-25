@@ -1,0 +1,24 @@
+# mods:M1WL -- fixture u022_stream (move_stream_heat): load 5-kofu-c and let the harness probe (nd_door + nd_stream: soldiers docked in the barracks, then ordered out to open ground ~30 tiles away) run the case. The verdict is NOT a frame:
+# tools/check_u022_stream.py reads the probe's `; ST TOTAL` line and the seams' `; move ...` lines of the session directory.
+# One capture, right after the load: the START frame is identical in every arm (ship / orig / lib / off), so one baseline serves all four rows.
+# The wait afterwards only has to outlast the probe (the harness ends the process at stop_step).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+capture u022_stream
+gameclock +60000
+gameclock +60000
+gameclock +60000
+gameclock +60000
+gameclock +60000
+gameclock +60000
+gameclock +60000
+gameclock +60000
+log u022_stream: probe finished
+end

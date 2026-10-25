@@ -1,0 +1,41 @@
+# patching:PT-CAP11 -- the cap-fill HOST walk with an AI OPPONENT, for the 2-peer determinism shape (tools/det_arms.py --det-caps --ai). Pair with
+# mp_client_idle.txt. mp_host_cap_fill.txt + the AI seated at slot index 2 (recipe of mp_host_start_ai.txt: the host holds row 0, the client row 1, the AI
+# row 2 -- so seat the client FIRST, then add the AI). Both peers run libmh-less with the host's `[caps] raise=1` adopted by the client, so the AI
+# scratch layer (src/patcher/cap_v022_aiscratch_EN.mh.patch.json) goes ON on both. The harness cap-fill fixture (cap_*: capf_tick in
+# mh_harness/harness.cpp) fills the HOST's roster (330 buildings) and, after its verdict, every peer feeds those buildings to the AI's engage /
+# scan-target adders (cap_ai_hammer=4). The assertion is the lockstep hash compare (+ the `; CAP` lines), not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby and seated (row 1), then add the AI at row 2 and Start.
+present Network players
+peers 1
+occ 2
+awaitsignal lobby
+click 70 149
+present Computer
+occ 3
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the host's mothership (shift+right-click), then run
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+gameclock 40000
+log cap ai done
+end

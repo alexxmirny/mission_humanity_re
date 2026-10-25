@@ -95,7 +95,9 @@ inline gs_result group_speed_apply(W &w, uint32_t player, int32_t legs, int32_t 
         }
         // ...and every unit whose record of this order still waits in the due-now queue (table order).
         const int32_t qn = w.queue_count();
-        for (int32_t k = 0; k < qn && k < 300; ++k) {
+        // (PT-CAP9-U5: the loop bound is the world's own count. It used to clamp at the vanilla 300 as well; with the order layer ON the
+        // queue holds up to 4096 records and the world's queue_count() is already bounded by the capacity of the array it points at.)
+        for (int32_t k = 0; k < qn; ++k) {
             const auto &q = w.queue(k);
             if ((q.owner_and_kind & 0xfu) != player || (q.owner_and_kind & 0xf0u) != 0x80u || static_cast<uint32_t>(q.args[12]) != mgid) continue;
             if (q.unit_index >= static_cast<uint32_t>(units)) continue;

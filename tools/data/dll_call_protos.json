@@ -15793,8 +15793,8 @@
   },
   {
    "va": "0x0043c323",
-   "name": "llm_tact_scroll_fade_step",
-   "cident": "llm_tact_scroll_fade_step",
+   "name": "llm_tact_blast_wipe_brighten_step",
+   "cident": "llm_tact_blast_wipe_brighten_step",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -80298,6 +80298,25 @@
      }
     }
    ],
+   "ret": {
+    "type": "void",
+    "ctype": "void",
+    "storage": "void"
+   },
+   "frame_bytes": 0
+  },
+  {
+   "va": "0x004d516c",
+   "name": "llm_strat_ai_engage_prune_unseen_candidates",
+   "cident": "llm_strat_ai_engage_prune_unseen_candidates",
+   "cc": "__watcall",
+   "cleanup": "callee",
+   "purge": null,
+   "size": 217,
+   "entry8": "0xa2f9e80000001868",
+   "steal": 5,
+   "status": "ok",
+   "params": [],
    "ret": {
     "type": "void",
     "ctype": "void",

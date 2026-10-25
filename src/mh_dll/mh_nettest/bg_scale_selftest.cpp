@@ -316,9 +316,23 @@ void test_cursor_and_index() {
     check("a zero window changes nothing", n == 0 && x == 900 && y == 900);
     check("galaxy index: stock modes 0/1/2 unchanged", galaxy_bg_mode(0) == 0 && galaxy_bg_mode(1) == 1 && galaxy_bg_mode(2) == 2);
     check("galaxy index: picker entries clamp to 2", galaxy_bg_mode(3) == 2 && galaxy_bg_mode(4) == 2 && galaxy_bg_mode(40) == 2);
-    check("panel filler: starts where the uncapped list would end (46 px rows, top 230), stock heights untouched",
-          panel_fill_y(1024, 230, 46, 750) == 230 + ((1024 - 230) / 46) * 46 && panel_fill_y(768, 230, 46, 750) == 750 &&
-              panel_fill_y(1152, 230, 0, 750) == 750 && panel_fill_y(1152, 230, 46, 750) >= 750);
+    {
+        int from = 0, to = 0, skip = 0;
+        // RES23-S3 / RES26: THE fill rule: teal from the game's rows end to the last whole slot of the frame (46 px rows, top 230), except the slot the visible edge cuts
+        // (pink, user 2026-10-23); stock heights draw nothing.
+        check("panel filler: tall frame, all visible -> teal from the capped end to the last whole slot, no skip",
+              panel_fill_plan(1024, 1024, 230, 46, 750, from, to, skip) && from == 750 && to == 230 + ((1024 - 230) / 46) * 46 && skip == -1);
+        check("panel filler: stock height (the rows already end on the last whole slot) draws nothing",
+              !panel_fill_plan(768, 768, 230, 46, 230 + ((768 - 230) / 46) * 46, from, to, skip) && from == to && skip == -1);
+        check("panel filler: a zero row height draws nothing", !panel_fill_plan(1152, 1152, 230, 0, 750, from, to, skip));
+        check("panel filler: Hp 533 of 800, rows end at 508 -> teal 508..768 but the slot the visible edge cuts (508) is pink",
+              panel_fill_plan(800, 533, 248, 52, 508, from, to, skip) && from == 508 && to == 768 && skip == 508);
+        check("panel filler: the slot below the cut one is a whole slot -> teal (not skipped)", skip != 560);
+        check("panel filler: visible edge on a slot boundary -> nothing is cut, no skip",
+              panel_fill_plan(800, 560, 248, 52, 560, from, to, skip) && skip == -1);
+        check("panel filler: the rows already reach the last whole slot -> nothing", !panel_fill_plan(800, 800, 248, 52, 768, from, to, skip));
+        check("panel filler: a frame at or below the panel top draws nothing", !panel_fill_plan(240, 240, 248, 52, 248, from, to, skip));
+    }
     check("panel rows: stock heights unchanged, taller capped at 768", panel_rows_height(480) == 480 && panel_rows_height(576) == 576 && panel_rows_height(704) == 704 && panel_rows_height(768) == 768 && panel_rows_height(1056) == 768 && panel_rows_height(1152) == 768);
 }
 

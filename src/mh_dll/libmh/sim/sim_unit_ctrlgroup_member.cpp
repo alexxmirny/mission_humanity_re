@@ -29,7 +29,12 @@ namespace detail {
 // ---- llm_strat_unit_ctrlgroup_add_member @0x00449401 (0x00449401-0x0044947d) -------------------
 void unit_ctrlgroup_add_member(const sim_view &v, sim_store &own, const unit_ctrlgroup_member_calls &c,
                                int32_t unit_id, int32_t *count_ptr, int32_t group_idx) {
-    // 0x00449420-0x00449433: append, no bounds check against the 200-entry array (matches original).
+    // patching:PT-CAP9-U6 (user, 2026-10-21: keep the cap): the group record holds 200 ids (count + uint16[200] = 404 B). The original appends
+    // with NO bounds check, which with more than 200 own units (raised units) writes past the record into the next group's count. Clamp: at
+    // 200 the unit is simply not selected -- nothing is written, counted, stamped or notified. Unreachable in a vanilla (<= 100 units)
+    // session, so every recorded oracle is unchanged; the retail splice (cap_v022_aiscratch_EN, 0x00449401) makes the same cut.
+    if (*count_ptr >= ctrlgroup_member_cap) return;
+    // 0x00449420-0x00449433: append (the original has no bounds check; the clamp above is the U6 repair).
     own.ctrl_group_at(group_idx).unit_ids[*count_ptr] = (uint16_t)unit_id;
     // 0x0044943a-0x0044943d.
     *count_ptr = *count_ptr + 1;

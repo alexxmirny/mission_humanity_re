@@ -1,0 +1,23 @@
+{
+  "_why": "patching:PT-CAP10. The powered-turret projectile test's end frame is judged STRUCTURALLY (a real strategic frame from a world holding 500 buildings and ~2700 live projectiles: non-black view, textured, the static HUD matching ref_ingame.png, the same reference as cap_fill_solo). The exact pixels are not the claim -- the verdict is tools/check_cap_turret.py over the logs.",
+  "_structural": {
+    "capture_cap_end.png": {
+      "ref": "ref_ingame.png",
+      "view_rect": [
+        0,
+        0,
+        864,
+        740
+      ],
+      "min_nonblack": 0.25,
+      "min_colors": 30,
+      "hud_rect": [
+        864,
+        250,
+        160,
+        480
+      ],
+      "hud_tol": 0.1
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# mods:PRJ1: load 8-ayatus-rl-4 (twin rocket launchers firing due south) and let ~6 game seconds of shots fly; the harness dumps the
+# projectile pool every sim step and tools/check_prj_facing.py judges it. The one capture (the start frame) only satisfies the runner; the verdict is the pool, not pixels (tol 1.0).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +200
+capture prj_facing_rl4
+gameclock +3000
+gameclock +3000
+log prj: done
+end

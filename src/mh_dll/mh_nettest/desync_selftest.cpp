@@ -20,6 +20,7 @@
 
 #include <vector>
 
+#include "caps/ovf.h"
 #include "desync/desync_watch.h"
 #include "desync/desync_wire2.h"
 #include "state/inc_state.h"
@@ -611,6 +612,152 @@ void run_v2_live_journal_check() {
 
 } // namespace
 
+// =================================================================================================
+// PT-CAP8 S2 -- the overflow extension in the live localiser: regions N..N+7 are slices of the wide arrays' tails
+// =================================================================================================
+namespace {
+
+namespace ovf = mh::caps::ovf;
+
+// A synthetic peer whose region vector is the real shape: ordinary regions first, then the eight extension slices (region
+// 1 + e here, N + e live). Block hashes and names are the extension's own, exactly the branches LiveLocHost takes for r >= N.
+constexpr int  OVR = 1 + ovf::SLICES;
+static uint8_t g_ovs[2][ovf::SLICES][ovf::MAX_SLICE_BYTES];
+
+struct ovf_host final : loc_host {
+    int      me;
+    wire_q  *out;
+    uint64_t fpv = 0x4321;
+    char     lines[64][256];
+    int      nlines        = 0;
+    int      regions_first = -2, regions_nd = -1;
+
+    static int     eidx(int r) { return r - 1; }
+    int            nregions() const override { return OVR; }
+    uint32_t       region_len(int r) const override { return r == 0 ? 16u : ovf::slice(eidx(r)).len; }
+    const char    *region_name(int r) const override { return r == 0 ? "tiny" : ovf::slice(eidx(r)).name; }
+    bool           excluded(int) const override { return false; }
+    uint64_t       fp() const override { return fpv; }
+    uint8_t        keep(int, uint32_t) override { return 0xff; }
+    const uint8_t *evidence(int r) override { return r == 0 ? g_state[me][0] : g_ovs[me][eidx(r)]; }
+    uint64_t       bh(int r, uint32_t b) {
+        const uint32_t len = region_len(r), off = b * 64, n = len - off < 64 ? len - off : 64;
+        if (r == 0) return ::mh::state::inc::block_hash(0, b, g_state[me][0] + off, n, nullptr);
+        return ovf::block_hash(eidx(r), b, g_ovs[me][eidx(r)] + off, n);
+    }
+    bool per_at(uint32_t, uint64_t *o) override {
+        for (int r = 0; r < OVR; ++r) {
+            uint64_t sum = 0;
+            for (uint32_t b = 0; b < nblocks_of(region_len(r)); ++b) sum += bh(r, b);
+            o[r] = sum;
+        }
+        return true;
+    }
+    bool     materialize(uint32_t) override { return true; }
+    uint64_t block_hash(int r, uint32_t b) override { return bh(r, b); }
+    void     send(const uint8_t *f, int len) override { out->push(f, len); }
+    void     log(const char *line) override {
+        if (nlines < 64) {
+            snprintf(lines[nlines], sizeof(lines[nlines]), "%s", line);
+            ++nlines;
+        }
+    }
+    void describe(int r, uint32_t off, char *o, size_t cap) override {
+        if (r == 0) {
+            if (cap) o[0] = 0;
+            return;
+        }
+        ovf::describe(eidx(r), off, o, cap);
+    }
+    void on_regions(int, uint32_t, int first, int nd) override {
+        regions_first = first;
+        regions_nd    = nd;
+    }
+    bool said(const char *needle) const {
+        for (int i = 0; i < nlines; ++i)
+            if (strstr(lines[i], needle)) return true;
+        return false;
+    }
+};
+
+int pump_ovf(localiser &la, ovf_host &ha, wire_q &a_out, localiser &lb, ovf_host &hb, wire_q &b_out) {
+    int moved = 0;
+    for (int guard = 0; guard < 1000; ++guard) {
+        bool any = false;
+        if (a_out.head < a_out.n) {
+            const wire_q::f &f = a_out.q[a_out.head++];
+            hdr              h;
+            if (frame_ok(f.b, f.len, OVR, h)) lb.on_frame(hb, 0, h, f.b + HDR_BYTES);
+            any = true;
+            ++moved;
+        }
+        if (b_out.head < b_out.n) {
+            const wire_q::f &f = b_out.q[b_out.head++];
+            hdr              h;
+            if (frame_ok(f.b, f.len, OVR, h)) la.on_frame(ha, 1, h, f.b + HDR_BYTES);
+            any = true;
+            ++moved;
+        }
+        if (!any) break;
+    }
+    return moved;
+}
+
+void run_ovf_extension_checks() {
+    // the wire: the extended vector fits, and an OFF peer's frame is not an ON peer's
+    {
+        uint8_t b[MAX_FRAME];
+        hdr     h;
+        put_hdr(b, T_REGIONS, 63 + ovf::SLICES, 0x77, 1200, 0, 0);
+        check("ovf: a REGIONS frame for the live 63 + 8 regions fits MAX_FRAME",
+              regions_size(63 + ovf::SLICES) <= MAX_FRAME && 63 + ovf::SLICES <= MAX_REGIONS);
+        check("ovf: ...and validates against an ON peer's region count",
+              frame_ok(b, regions_size(63 + ovf::SLICES), 63 + ovf::SLICES, h));
+        check("ovf: ...but an OFF peer (63 regions) refuses it, and an ON peer refuses an OFF peer's 63-region frame",
+              !frame_ok(b, regions_size(63 + ovf::SLICES), 63, h) && !frame_ok(b, regions_size(63), 63 + ovf::SLICES, h));
+        check("ovf: the ON fingerprint differs from the OFF one (a build mismatch, never a desync)",
+              v2::fp_v2(ovf::fp_on(0xabc), 2) != v2::fp_v2(0xabc, 2));
+    }
+    // the localiser reaches an extension slice's bytes and names them
+    fill_states();
+    uint32_t seed = 0xfeed;
+    for (int e = 0; e < ovf::SLICES; ++e)
+        for (uint32_t o = 0; o < ovf::slice(e).len; ++o) {
+            seed           = seed * 1103515245u + 12345u;
+            g_ovs[0][e][o] = (uint8_t)(seed >> 16);
+            g_ovs[1][e][o] = g_ovs[0][e][o];
+        }
+    const uint32_t o_b = 2u * ovf::slice(0).seg_len + 37u * 273u + 0x12u; // buildings p2 #137 +0x12
+    const uint32_t o_p = (2100u - 1500u) * 121u + 5u;                     // projectiles #2100 +0x5
+    g_ovs[1][0][o_b] ^= 0x21;
+    g_ovs[1][7][o_p] ^= 0x04;
+    ovf_host ha, hb;
+    ha.me  = 0;
+    ha.out = &g_qa;
+    hb.me  = 1;
+    hb.out = &g_qb;
+    g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
+    g_la.reset(4);
+    g_lb.reset(4);
+    g_la.on_local_mismatch(ha, 1200);
+    g_lb.on_local_mismatch(hb, 1200);
+    const int moved = pump_ovf(g_la, ha, g_qa, g_lb, hb, g_qb);
+    check("ovf: the exchange over a 9-region vector terminates", moved > 0 && moved < 200);
+    check("ovf: both peers name the first diverging region as the FIRST extension slice (ovf_buildings_p0_3)",
+          ha.regions_first == 1 && hb.regions_first == 1 && ha.regions_nd == 2 && hb.regions_nd == 2);
+    check("ovf: A names the buildings byte in slice 0 with the right bytes", has_result(g_la, 1, o_b, g_ovs[0][0][o_b], g_ovs[1][0][o_b]));
+    check("ovf: B names the same offset, bytes mirrored", has_result(g_lb, 1, o_b, g_ovs[1][0][o_b], g_ovs[0][0][o_b]));
+    check("ovf: the projectile slice (last, 302,500 bytes) is localised too", has_result(g_la, 8, o_p, g_ovs[0][7][o_p], g_ovs[1][7][o_p]));
+    check("ovf: exactly those two findings per side", g_la.nresults() == 2 && g_lb.nresults() == 2);
+    check("ovf: the LOCALISED line carries the extension's describe(): buildings p2 #137 +0x12",
+          ha.said("region=1 ovf_buildings_p0_3") && ha.said("= buildings p2 #137 +0x12"));
+    check("ovf: ...and the projectile one: projectiles p0 #2100 +0x5",
+          ha.said("region=8 ovf_projectiles") && ha.said("= projectiles p0 #2100 +0x5"));
+    check("ovf: one incident over a 436,800-byte slice stays under 6 KB per peer", g_la.bytes_sent() < 6 * 1024 && g_lb.bytes_sent() < 6 * 1024);
+}
+
+} // namespace
+
 int run_desynctest() {
     printf("=== desynctest (D21: a live match is told when the two sims stop agreeing) ===\n");
 
@@ -1043,6 +1190,7 @@ int run_desynctest() {
 
     run_v2_checks(FP); // mp:D44
     run_v2_live_journal_check();
+    run_ovf_extension_checks(); // PT-CAP8 S2
 
     printf("=== desynctest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

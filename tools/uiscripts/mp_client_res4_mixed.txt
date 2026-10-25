@@ -1,0 +1,24 @@
+# mods:RES4 stage 7 CLIENT -- mp_client_start.txt's walk at ui_scale=200 against a host at ui_scale=100. Pair with mp_host_res4_mixed.txt.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gameclock 6000
+pcapture m3_launched
+log CLIENT entered the match
+end

@@ -15,7 +15,7 @@
 #include "addr/mh_regions.gen.h" // mh::state::live(), RID_BUILDINGS / RID_BUILDING
 #include "addr/mh_structs.gen.h" // mh::game::mh_map_object_building / mh_cfg_final_struct_Building
 #include "hook/patch.h"          // patch_bytes_guarded
-#include "state/roster_caps.h"   // live_roster_caps(): the per-player building cap the host BOUND (500 on a cap-raised exe)
+#include "caps/caps.h"           // mh::caps::rec: the building array the game addresses (PT-CAP8)
 #include "hook/promoted.h"       // promoted_owner_of
 #include "net_internal.h"        // seam_log; g_ini
 #include "en_guard.h"            // EN-only build gate
@@ -45,11 +45,8 @@ void cancel_task(uint32_t player, uint32_t building_index) {
     }
     using mh::game::mh_cfg_final_struct_Building;
     using mh::game::mh_map_object_building;
-    const auto   &lv         = mh::state::live();
-    const int32_t per_player = mh::state::live_roster_caps().buildings; // derived, not the stock 100
-    const auto   *b          = reinterpret_cast<const mh_map_object_building *>(
-        lv.base[mh::state::RID_BUILDINGS] +
-        ((player & 0xf) * per_player + (building_index & 0xffff)) * sizeof(mh_map_object_building));
+    const auto &lv  = mh::state::live();
+    const auto *b   = mh::caps::rec<const mh_map_object_building>(mh::caps::BUILDINGS, player & 0xf, building_index & 0xffff); // the game's own row stride, not the stock 100
     const auto *cfg = reinterpret_cast<const mh_cfg_final_struct_Building *>(
         lv.base[mh::state::RID_BUILDING] + (uint32_t)b->building_id * sizeof(mh_cfg_final_struct_Building));
     const uint16_t idle = (uint16_t)(cfg->state_transition_ids[1] & 0xffff);

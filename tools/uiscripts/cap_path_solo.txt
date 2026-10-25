@@ -1,0 +1,33 @@
+# patching:PT-CAP9-U4 -- the 500-paths smoke of the path-slot rework. Same walk as cap_units_solo.txt; the harness unit-fill fixture (capu_*) fills 490 units, then the path fixture (path_*)
+# orders them in batches of 100 to one tile >= 60 BFS tiles away. The verdict is tools/check_cap_path.py over mh_net.log / mh_harness.log, not a frame. libmh.dll absent.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log path500: mother landing ordered, handing the run to the harness fixture
+gameclock 240000
+capture path500_end
+log path500: soak done
+end

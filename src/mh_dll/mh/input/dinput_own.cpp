@@ -520,6 +520,8 @@ struct OwnDevice final : IDirectInputDeviceA {
             v.box_h  = at<int>(ADDR_BOX_H);
             v.div    = at<int>(ADDR_DIVISOR);
             v.thr    = at<int>(ADDR_THRESHOLD);
+            mh::gfx::uilayout::layout quad_lay; // RES4: ui_scale in force -> the queue keeps a screen-space pointer
+            if (mh::gfx::owned_ui_layout(&quad_lay)) v.lay = &quad_lay;
             n += mq.produce(v, out ? out + n : nullptr, cap - n, g_seq);
             overflow = mq.take_overflow();
         } else {
@@ -972,6 +974,22 @@ bool harness_mouse_abs_game(int gx, int gy) {
             p.y = (LONG)(((long long)gy * 2 + 1) * cr.bottom / (2LL * bh));
         }
     }
+    ClientToScreen(h, &p);
+    RAWMOUSE m;
+    ZeroMemory(&m, sizeof(m));
+    m.usFlags = MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP;
+    m.lLastX  = pixel_to_norm(p.x, GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_CXVIRTUALSCREEN));
+    m.lLastY  = pixel_to_norm(p.y, GetSystemMetrics(SM_YVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN));
+    ++g_harness;
+    on_raw_mouse(m, GetTickCount(), true);
+    return true;
+}
+
+bool harness_mouse_abs_client(int cx, int cy) {
+    if (!g_active || !g_mouse) return false;
+    HWND h = g_mouse->hwnd;
+    if (!h) return false;
+    POINT p = {cx, cy};
     ClientToScreen(h, &p);
     RAWMOUSE m;
     ZeroMemory(&m, sizeof(m));

@@ -85,6 +85,7 @@ inline constexpr mh::hook::owner_range tombstone_dead_ranges[] = {
     {"llm_strat_ai_bldg_queue_has_type",                             0x004d39bbu, 0x004d3a26u}, // ai
     {"llm_strat_ai_unit_in_group",                                   0x004d48c8u, 0x004d48f9u}, // ai
     {"llm_strat_ai_group_split_half",                                0x004d4e6bu, 0x004d4f15u}, // ai
+    {"llm_strat_ai_engage_prune_unseen_candidates",                  0x004d516cu, 0x004d5244u}, // ai
     {"llm_strat_ai_engage_rank_candidates_by_range",                 0x004d5245u, 0x004d53adu}, // ai
     {"llm_strat_unit_order_attack_dispatch",                         0x004d5801u, 0x004d585du}, // orders_issue
     {"llm_strat_ai_unit_move_near_random_point",                     0x004d5fe7u, 0x004d601eu}, // ai
@@ -125,7 +126,7 @@ inline constexpr mh::hook::owner_range tombstone_dead_ranges[] = {
     {"llm_strat_ai_group_report_unit_states",                        0x004ee8eau, 0x004eec6bu}, // ai
     {"llm_strat_ai_tick_all_groups",                                 0x004eec6cu, 0x004eeebcu}, // ai CLAMPED from 0x004eef17 (shared tail / disjoint body)
 };
-inline constexpr int tombstone_dead_range_count = 107;
+inline constexpr int tombstone_dead_range_count = 108;
 
 // SAFE-END caps for the RUNTIME arms (promoted remainders, force_arm): for these
 // functions the flat [entry..end] contains bytes that are NOT exclusively theirs -- a

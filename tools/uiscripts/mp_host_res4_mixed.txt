@@ -1,0 +1,30 @@
+# mods:RES4 stage 7 HOST -- mp_host_start.txt's walk (host a game, wait for the client, Start) with the HOST at ui_scale=100 and the CLIENT at
+# ui_scale=200 (row res4_mixed_scale: extra_ini_host / extra_ini_client, a pinned desktop each). The row's verdict is the lockstep hash compare
+# of the two peers over the whole match (ALL PAIRS IDENTICAL): the presenter quads, the render size and the scaled input map are view state.
+# One in-game `pcapture` per peer at the same sim moment (gameclock 6000) is the visible evidence that each peer really ran its own scale.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gameclock 6000
+pcapture m3_launched
+log HOST launched the match (all peers connected)
+end

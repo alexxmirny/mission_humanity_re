@@ -1,0 +1,64 @@
+# res19_unit_panel -- mods:RES23-S2 / RES19: the side panel of a SELECTED UNIT GROUP (panel mode 2, not a building list) is redrawn at the new size when Interface
+# size changes. Same setup as res19_user_gdi (owned gdi, borderless 2560x1440 window, explicit 1280x960 frame, Interface size 200), but the two insect groups beside
+# the wrap seam are drag-selected first, so the panel shows the selected units' card. Interface size 200 -> 125 in Options, Ok; the ESC menu keeps the 200% panel
+# (latch); after Return to game the committed geometry owes every panel mode a redraw: the panel is the 125% one, filled to the strip, no stale/blank rows.
+# tools/check_res19_panel.py reads the logs and the bcaptures.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winclient 2560 1440
+screensettled
+gameclock +100
+log up19 frame_ready
+cursor 450 380
+cursor 450 380
+press 450 380
+cursorhold 800 700 6
+release 800 700
+gameclock +140
+logsel unit_group
+cursorhold 1000 700 6
+screensettled
+bcapture up_200
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 507
+settled Ok
+click 618 507
+settled Ok
+click 618 507
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture up_menu
+bcapture up_menu
+log up19 applied_in_menu
+
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 700 6
+screensettled
+gameclock +100
+pcapture up_resume
+bcapture up_resume
+gameclock +600
+screensettled
+bcapture up_later
+log up19 COMPLETE -- 200 -> 125 applied through Options, captured in the menu, after the resume and after 600 more ticks
+end

@@ -1,0 +1,37 @@
+# cap_ai_units_off: the cap_ai_solo.txt flow, ended a few game seconds after the AIHAMMER census (capu_ai_hammer_stop=1; the vanilla arrays are not soaked).
+# patching:PT-CAP8 hardening -- the cap-fill smoke (spec S1 8.2 item 8). A 1-human + 1-AI skirmish on the lobby's default map,
+# reached through the real menu; the mother is landed with a shift+right-click and the rest is the harness's cap-fill fixture
+# (cap_* keys: it places buildings through the game's own debug-construction order until the player is past every vanilla roster
+# cap, then holds). The verdict is the `; CAP ...` lines in mh_harness.log and the `[caps]` lines in mh_net.log
+# (tools/check_cap_fill.py), not a frame. Run with libmh.dll absent and `[caps] raise=1` (ini/caps_raise.ini).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log cap: mother landing ordered, handing the run to the harness fixture
+gameclock 18000
+capture cap_end
+log cap: off-arm census done
+end

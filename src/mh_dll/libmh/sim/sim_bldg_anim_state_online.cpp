@@ -108,7 +108,7 @@ void airfield_a_switch(const sim_view &v, sim_store &own, const cfg_building &cb
             }
             break;
         case 2:
-            if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+            if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                 anim_slot_set(b, 3, cfg_anim_slot_get(cb, 5));
                 b.online_state = 4;
             } else {
@@ -529,7 +529,7 @@ void bldg_anim_state_shuttle_a(const sim_view &v, sim_store &own, uint32_t unuse
                 }
                 break;
             case 2:
-                if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+                if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                     anim_slot_set(b, slot, cfg_anim_slot_get(cb, 5));
                     b.online_state = 4;
                 } else {
@@ -600,7 +600,7 @@ void bldg_anim_state_shuttle_h(const sim_view &v, sim_store &own, uint32_t unuse
                 }
                 break;
             case 2:
-                if (door_is_idle(v, own, *v.cur_player, b.sub_id)) {
+                if (door_may_close(v, own, *v.cur_player, b.sub_id)) {
                     anim_slot_set(b, slot, cfg_anim_slot_get(cb, 5));
                     b.online_state = 4;
                 } else {

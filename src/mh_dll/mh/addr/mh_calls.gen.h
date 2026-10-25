@@ -535,7 +535,7 @@ inline void llm_tact_view_shift_col_dec() { detail::s_void(0x0043c155u); }  // _
 inline void llm_tact_view_shift_row_inc() { detail::s_void(0x0043c1ddu); }  // __watcall 0x0043c1dd
 inline void llm_tact_view_shift_row_dec() { detail::s_void(0x0043c266u); }  // __watcall 0x0043c266
 inline void llm_tact_mark_view_tiles_dirty() { detail::s_void(0x0043c303u); }  // __watcall 0x0043c303
-inline void llm_tact_scroll_fade_step() { detail::s_void(0x0043c323u); }  // __watcall 0x0043c323
+inline void llm_tact_blast_wipe_brighten_step() { detail::s_void(0x0043c323u); }  // __watcall 0x0043c323
 inline void llm_tact_tile_clear_margin_patch() { detail::s_void(0x0043c39cu); }  // __mh_watcall_ecx_ebx_volatile 0x0043c39c
 inline void llm_tact_tile_overlay_refresh() { detail::s_void(0x0043c3dcu); }  // __watcall 0x0043c3dc
 inline void llm_tact_ui_minimap_draw_viewport_outline() { detail::s_void(0x0043c4f2u); }  // __mh_watcall_ecx_ebx_volatile 0x0043c4f2
@@ -1951,6 +1951,7 @@ inline int32_t llm_strat_ai_group_create(int32_t player_id) { return (int32_t)de
 inline void llm_strat_ai_group_split_half(uint32_t player, int32_t src_group_index) { detail::s_void_EAX_EDX(0x004d4e6bu, (uint32_t)player, (uint32_t)src_group_index); }  // __watcall 0x004d4e6b
 inline void llm_strat_ai_group_remove(int32_t player, uint32_t group_index) { detail::s_void_EAX_EDX(0x004d4f16u, (uint32_t)player, (uint32_t)group_index); }  // __watcall 0x004d4f16
 inline void llm_strat_ai_engage_candidate_add(uint32_t target_ref, int32_t target_index) { detail::s_void_EAX_EDX(0x004d50b3u, (uint32_t)target_ref, (uint32_t)target_index); }  // __watcall 0x004d50b3
+inline void llm_strat_ai_engage_prune_unseen_candidates() { detail::s_void(0x004d516cu); }  // __watcall 0x004d516c
 inline void llm_strat_ai_engage_rank_candidates_by_range(uint32_t source_ref, int32_t source_index) { detail::s_void_EAX_EDX(0x004d5245u, (uint32_t)source_ref, (uint32_t)source_index); }  // __mh_watcall_ecx_ebx_volatile 0x004d5245
 inline void llm_strat_ai_engage_sort_candidates_by_dist(uint32_t source_ref, int32_t source_index, int32_t inherited_sorted_flag) { detail::s_void_EAX_EDX_ESI(0x004d53aeu, (uint32_t)source_ref, (uint32_t)source_index, (uint32_t)inherited_sorted_flag); }  // __watcall 0x004d53ae
 inline void llm_strat_ai_engage_partition_turret_candidates() { detail::s_void(0x004d552bu); }  // __watcall 0x004d552b

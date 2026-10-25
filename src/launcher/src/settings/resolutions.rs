@@ -5,13 +5,15 @@
 //! entry for entry. The test vectors below are the ones `net_selftest.exe reslisttest` asserts; change both
 //! together. The rules (docs/view-scaling.md):
 //!
-//! * the three stock sizes lead; then the desktop divided by k in {1, 1.25, 1.5, 2, 2.5, 3, 4}, each floored
-//!   to the 32 px tile grid, then a 4:3 family from the same heights; every size is at least 640x480, never
+//! * the three stock sizes lead; then the fixed `COMMON` sizes (RES24: 800x600 .. 2048x1536 in 4:3, 1280x720 ..
+//!   3840x2160 in 16:9) that fit the desktop and `valid_size`; also the desktop divided by k in {1, 1.25, 1.5, 2, 2.5, 3, 4}, EXACT (RES18:
+//!   the game renders the size rounded up to the 32 px tile grid and the presenter crops it, so a 1080p desktop
+//!   gets 1920x1080, not 1920x1056), then a 4:3 family from the same heights (a size two sources both give keeps the earlier source's label); every size is at least 640x480, never
 //!   larger than the desktop, at most 2048x1600 (the view must fit the sprite window of the 64-tile
 //!   smallest map, see `CAP_W`), never wider than 16:9 (a wider desktop gets 16:9 sizes of its own
-//!   height, with side bars) and within 4096 tiles; after the stock three: every 4:3 size, then every 16:9
+//!   height, with side bars) and, rounded up to the grid, within the cap and 4096 tiles; after the stock three: every 4:3 size, then every 16:9
 //!   size, then the rest (`aspect_group`), each group ascending by area;
-//! * Auto is the desktop divided by the Windows display scale, floored to 32, never below 1024x768 and never
+//! * Auto is the desktop divided by the Windows display scale, exact, never below 1024x768 and never
 //!   above the desktop or the cap.
 //!
 //! The row's stored value is `stock` (the default), `auto` or `WxH`; never a list index.
@@ -53,12 +55,34 @@ pub const MAX_TILES: i32 = 4096;
 
 const K100: [i32; 7] = [100, 125, 150, 200, 250, 300, 400];
 
+/// RES24: common display sizes, 4:3 then 16:9, each offered when it fits the desktop and `valid_size` holds. 800x600 is
+/// a real 800x600 (renders 800x608, the presenter crops); the stock 800x576 entry stays separate.
+const COMMON: [(i32, i32); 15] = [
+    (800, 600),
+    (1024, 768),
+    (1152, 864),
+    (1280, 960),
+    (1400, 1050),
+    (1600, 1200),
+    (1920, 1440),
+    (2048, 1536),
+    (1280, 720),
+    (1366, 768),
+    (1600, 900),
+    (1920, 1080),
+    (2560, 1440),
+    (3200, 1800),
+    (3840, 2160),
+];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Stock,
     Native,
     FourThree,
     Requested,
+    /// RES24: one of the fixed common 4:3 / 16:9 sizes (`COMMON`).
+    Common,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,35 +100,40 @@ pub struct Desktop {
     pub scale_pct: i32,
 }
 
-pub fn floor32(v: i32) -> i32 {
-    v & !31
-}
-pub fn round32(v: i32) -> i32 {
-    (v + 16) & !31
+/// The frame the game renders for a `v`-pixel session size (RES18).
+pub fn ceil32(v: i32) -> i32 {
+    (v + 31) & !31
 }
 
-/// Is `w` x `h` no wider than 16:9, allowing for the height having been floored to 32 (1920x1056 is
-/// 1920x1080 floored)?
+/// The widest 16:9 width for a height, rounded UP: a 1366x768 panel is "16:9" (768 * 16 / 9 = 1365.3).
+fn wide169(h: i32) -> i32 {
+    (h * 16 + 8) / 9
+}
+
+/// Is `w` x `h` no wider than 16:9, with the width allowed to round up (1366x768 qualifies)?
 pub fn within_16x9(w: i32, h: i32) -> bool {
-    i64::from(w) * 9 <= i64::from(h + 31) * 16
+    w <= wide169(h)
 }
 
+/// A size the game can show (RES18): at least 640x480, and its `ceil32` render within the cap and 4096 tiles.
 pub fn valid_size(w: i32, h: i32) -> bool {
-    if w < MIN_W || h < MIN_H || w > CAP_W || h > CAP_H {
+    if w < MIN_W || h < MIN_H {
         return false;
     }
-    if (w & 31) != 0 || (h & 31) != 0 {
+    let (rw, rh) = (ceil32(w), ceil32(h));
+    if rw > CAP_W || rh > CAP_H {
         return false;
     }
-    (w / 32) * (h / 32) <= MAX_TILES
+    (rw / 32) * (rh / 32) <= MAX_TILES
 }
 
 fn area(e: &Entry) -> i64 {
     i64::from(e.w) * i64::from(e.h)
 }
 
-/// The tail's grouping after the stock three: 0 = 4:3, 1 = 16:9, 2 = everything else. Sizes are 32-snapped,
-/// so the tests allow for the snap: 4:3 when |3w - 4h| <= 96; 16:9 when -288 <= 9w - 16h <= 496.
+/// The tail's grouping after the stock three: 0 = 4:3, 1 = 16:9, 2 = everything else. Sizes are exact since
+/// RES18; the tests keep the old slack (a hand-typed or legacy 32-snapped size): 4:3 when |3w - 4h| <= 96;
+/// 16:9 when -288 <= 9w - 16h <= 496.
 pub fn aspect_group(w: i32, h: i32) -> i32 {
     let d43 = 3 * w - 4 * h;
     if (-96..=96).contains(&d43) {
@@ -139,41 +168,48 @@ pub fn generate(dw: i32, dh: i32) -> Vec<Entry> {
         return out;
     }
     for k in K100 {
-        let hh = dh * 100 / k; // the divided height before flooring: 16:9 is taken from it
-        let h = floor32(hh);
-        let w = floor32(dw * 100 / k).min(floor32(hh * 16 / 9)); // a wider desktop: side bars
+        let h = dh * 100 / k; // RES18: exact, not snapped to the tile grid
+        let mut w = dw * 100 / k;
+        if w > wide169(h) {
+            w = h * 16 / 9; // a wider desktop: 16:9 of its height, side bars
+        }
         if valid_size(w, h) && w <= dw && h <= dh {
             add(&mut out, w, h, Kind::Native);
         }
     }
     for k in K100 {
-        let h = floor32(dh * 100 / k);
-        let w = round32(h * 4 / 3);
+        let h = dh * 100 / k;
+        let w = (h * 4 + 1) / 3; // nearest whole pixel
         if valid_size(w, h) && w <= dw && h <= dh {
             add(&mut out, w, h, Kind::FourThree);
+        }
+    }
+    for (w, h) in COMMON {
+        if valid_size(w, h) && w <= dw && h <= dh {
+            add(&mut out, w, h, Kind::Common);
         }
     }
     out[3..].sort_by_key(tail_key);
     out
 }
 
-/// Auto: desktop / display scale, floored to 32, then clamped (see the module comment).
+/// Auto: desktop / display scale, exact, then clamped (see the module comment).
 pub fn auto_size(dw: i32, dh: i32, scale_pct: i32) -> Entry {
     let pct = if scale_pct <= 0 { 100 } else { scale_pct };
-    let mut w = floor32((i64::from(dw) * 100 / i64::from(pct)) as i32);
-    let mut h = floor32((i64::from(dh) * 100 / i64::from(pct)) as i32);
-    w = w.min(floor32(
-        (i64::from(dh) * 100 / i64::from(pct)) as i32 * 16 / 9,
-    )); // never wider than 16:9
+    let mut w = (i64::from(dw) * 100 / i64::from(pct)) as i32;
+    let mut h = (i64::from(dh) * 100 / i64::from(pct)) as i32;
+    if w > wide169(h) {
+        w = h * 16 / 9; // never wider than 16:9
+    }
     w = w.max(AUTO_MIN_W); // never below the largest stock UI ...
     h = h.max(AUTO_MIN_H);
-    if dw > 0 && w > floor32(dw) {
-        w = floor32(dw); // ... and never above the desktop (this one wins)
+    if dw > 0 && w > dw {
+        w = dw; // ... and never above the desktop (this one wins)
     }
-    if dh > 0 && h > floor32(dh) {
-        h = floor32(dh);
+    if dh > 0 && h > dh {
+        h = dh;
     }
-    if w > CAP_W || h > CAP_H {
+    if ceil32(w) > CAP_W || ceil32(h) > CAP_H {
         // over the cap: the largest generated "native" entry (it keeps the desktop's aspect)
         let best = generate(dw, dh)
             .into_iter()
@@ -241,6 +277,16 @@ pub fn describe(e: &Entry, dw: i32, dh: i32) -> String {
             1.0
         };
         let s100 = (sx.min(sy) * 100.0 + 0.5) as i32;
+        if e.kind == Kind::Common {
+            // RES24: a fixed common size is labelled by its aspect, not by a scale
+            t.push_str(match aspect_group(e.w, e.h) {
+                0 => "4:3",
+                1 => "16:9",
+                _ => "other",
+            });
+            t.push(')');
+            return t;
+        }
         if e.kind == Kind::FourThree {
             t.push_str("4:3, ");
         }
@@ -354,14 +400,19 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (672, 512),
-                (928, 704),
+                (720, 540),
+                (800, 600),
+                (960, 720),
                 (1152, 864),
-                (1408, 1056),
-                (960, 512),
-                (1280, 704),
+                (1280, 960),
+                (1400, 1050),
+                (1440, 1080),
+                (960, 540),
+                (1280, 720),
+                (1366, 768),
                 (1536, 864),
-                (1920, 1056)
+                (1600, 900),
+                (1920, 1080)
             ]
         );
         assert_eq!(
@@ -371,14 +422,21 @@ mod tests {
                 (800, 576),
                 (1024, 768),
                 (768, 576),
-                (928, 704),
+                (800, 600),
+                (960, 720),
+                (1152, 864),
                 (1280, 960),
+                (1400, 1050),
                 (1536, 1152),
+                (1600, 1200),
                 (1920, 1440),
-                (832, 480),
+                (853, 480),
                 (1024, 576),
-                (1280, 704),
-                (1696, 960),
+                (1280, 720),
+                (1366, 768),
+                (1600, 900),
+                (1706, 960),
+                (1920, 1080),
                 (2048, 1152)
             ]
         );
@@ -388,15 +446,22 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (672, 512),
-                (928, 704),
+                (720, 540),
+                (800, 600),
+                (960, 720),
                 (1152, 864),
-                (1408, 1056),
+                (1280, 960),
+                (1400, 1050),
+                (1440, 1080),
+                (1600, 1200),
                 (1920, 1440),
-                (960, 512),
-                (1280, 704),
+                (2048, 1536),
+                (960, 540),
+                (1280, 720),
+                (1366, 768),
                 (1536, 864),
-                (1920, 1056)
+                (1600, 900),
+                (1920, 1080)
             ]
         );
         assert_eq!(
@@ -405,15 +470,21 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (768, 576),
-                (1056, 800),
+                (800, 600),
+                (1067, 800),
+                (1152, 864),
                 (1280, 960),
-                (1568, 1184),
+                (1400, 1050),
+                (1600, 1200),
+                (1280, 720),
+                (1366, 768),
+                (1600, 900),
+                (1920, 1080),
                 (768, 480),
-                (960, 576),
+                (960, 600),
                 (1280, 800),
                 (1536, 960),
-                (1920, 1184)
+                (1920, 1200)
             ]
         );
         assert_eq!(
@@ -422,15 +493,26 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (672, 512),
-                (864, 640),
-                (1056, 800),
-                (1408, 1056),
-                (1696, 1280),
-                (832, 512),
+                (711, 533),
+                (800, 600),
+                (853, 640),
+                (1067, 800),
+                (1152, 864),
+                (1280, 960),
+                (1400, 1050),
+                (1421, 1066),
+                (1600, 1200),
+                (1707, 1280),
+                (1920, 1440),
+                (2048, 1536),
+                (1280, 720),
+                (1366, 768),
+                (1600, 900),
+                (1920, 1080),
+                (853, 533),
                 (1024, 640),
                 (1280, 800),
-                (1696, 1056),
+                (1706, 1066),
                 (2048, 1280)
             ]
         );
@@ -444,11 +526,13 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (672, 512),
-                (800, 608),
-                (896, 512),
-                (1088, 608),
-                (1344, 768)
+                (683, 512),
+                (800, 600),
+                (819, 614),
+                (910, 512),
+                (1092, 614),
+                (1280, 720),
+                (1366, 768)
             ]
         );
         assert_eq!(
@@ -457,12 +541,16 @@ mod tests {
                 (640, 480),
                 (800, 576),
                 (1024, 768),
-                (672, 512),
-                (896, 672),
-                (1056, 800),
+                (683, 512),
+                (800, 600),
+                (909, 682),
+                (1092, 819),
+                (1152, 864),
+                (1280, 960),
+                (1280, 720),
                 (640, 512),
-                (832, 672),
-                (1024, 800),
+                (853, 682),
+                (1024, 819),
                 (1280, 1024)
             ]
         );
@@ -474,24 +562,24 @@ mod tests {
             let e = auto_size(dw, dh, p);
             (e.w, e.h)
         };
-        assert_eq!(a(1920, 1080, 100), (1920, 1056));
-        assert_eq!(a(1920, 1080, 150), (1280, 768)); // 1280x704 would be below 1024x768 in height
+        assert_eq!(a(1920, 1080, 100), (1920, 1080));
+        assert_eq!(a(1920, 1080, 150), (1280, 768)); // 1280x720 would be below 1024x768 in height
         assert_eq!(a(2560, 1440, 100), (2048, 1152)); // 2560 is over the cap: the largest generated entry
         assert_eq!(a(2560, 1440, 125), (2048, 1152)); // 2560 / 1.25 = 2048: exactly the cap
         assert_eq!(a(2560, 1440, 200), (1280, 768));
-        assert_eq!(a(2560, 1440, 150), (1696, 960));
-        assert_eq!(a(3840, 2160, 100), (1920, 1056)); // over the cap: the largest generated entry
-        assert_eq!(a(3840, 2160, 150), (1920, 1056));
+        assert_eq!(a(2560, 1440, 150), (1706, 960));
+        assert_eq!(a(3840, 2160, 100), (1920, 1080)); // over the cap: the largest generated entry
+        assert_eq!(a(3840, 2160, 150), (1920, 1080));
         assert_eq!(a(2560, 1600, 100), (2048, 1280));
         assert_eq!(a(3440, 1440, 100), (2048, 1152)); // ultrawide: 16:9 of its own height
         assert_eq!(a(5120, 1440, 100), (2048, 1152));
-        assert_eq!(a(3840, 2160, 200), (1920, 1056));
-        assert_eq!(a(1920, 1200, 100), (1920, 1184));
-        assert_eq!(a(1366, 768, 100), (1344, 768));
+        assert_eq!(a(3840, 2160, 200), (1920, 1080));
+        assert_eq!(a(1920, 1200, 100), (1920, 1200));
+        assert_eq!(a(1366, 768, 100), (1366, 768));
         assert_eq!(a(1280, 1024, 100), (1280, 1024));
-        assert_eq!(a(1280, 720, 100), (1280, 704)); // never above the desktop beats never below 1024x768
+        assert_eq!(a(1280, 720, 100), (1280, 720)); // never above the desktop beats never below 1024x768
         assert_eq!(a(5120, 2880, 100), (2048, 1152));
-        assert_eq!(a(1920, 1080, 0), (1920, 1056)); // a bad scale reads as 100%
+        assert_eq!(a(1920, 1080, 0), (1920, 1080)); // a bad scale reads as 100%
     }
 
     #[test]
@@ -499,11 +587,15 @@ mod tests {
         let d = |e: Entry, dw, dh| describe(&e, dw, dh);
         let e = |w, h, kind| Entry { w, h, kind };
         assert_eq!(
-            d(e(1920, 1056, Kind::Native), 1920, 1080),
-            "1920x1056 (1:1, sharpest)"
+            d(e(1920, 1080, Kind::Native), 1920, 1080),
+            "1920x1080 (1:1, sharpest)"
         );
-        assert_eq!(d(e(1280, 704, Kind::Native), 1920, 1080), "1280x704 (1.5x)");
-        assert_eq!(d(e(960, 512, Kind::Native), 1920, 1080), "960x512 (2x)");
+        assert_eq!(
+            d(e(1920, 1056, Kind::Native), 1920, 1080),
+            "1920x1056 (1:1, sharpest)" // a legacy size
+        );
+        assert_eq!(d(e(1280, 720, Kind::Native), 1920, 1080), "1280x720 (1.5x)");
+        assert_eq!(d(e(960, 540, Kind::Native), 1920, 1080), "960x540 (2x)");
         assert_eq!(d(e(1536, 864, Kind::Native), 3840, 2160), "1536x864 (2.5x)");
         assert_eq!(
             d(e(2048, 1152, Kind::Native), 2560, 1440),
@@ -514,6 +606,11 @@ mod tests {
             "1408x1056 (4:3, 1:1)"
         );
         assert_eq!(d(e(640, 480, Kind::Stock), 1920, 1080), "640x480 (classic)");
+        assert_eq!(d(e(1600, 900, Kind::Common), 2560, 1440), "1600x900 (16:9)");
+        assert_eq!(
+            d(e(1400, 1050, Kind::Common), 2560, 1440),
+            "1400x1050 (4:3)"
+        );
     }
 
     #[test]
@@ -524,7 +621,11 @@ mod tests {
             assert_eq!(parse_size(bad), None, "{bad:?}");
         }
         assert!(valid_size(640, 480) && valid_size(2048, 1600));
-        assert!(!valid_size(1920, 1080) && !valid_size(2144, 1440) && !valid_size(608, 480));
+        // RES18: any size whose ceil32 render fits (1920x1080 renders 1920x1088)
+        assert!(valid_size(1920, 1080) && valid_size(1366, 768) && valid_size(2041, 1081));
+        assert!(!valid_size(2144, 1440) && !valid_size(608, 480) && !valid_size(640, 479));
+        assert!(!valid_size(2049, 1152) && !valid_size(2048, 1601));
+        assert_eq!((ceil32(1080), ceil32(1088), ceil32(1)), (1088, 1088, 32));
         assert!(
             !valid_size(2560, 1440) && !valid_size(2112, 1184) && !valid_size(2080, 1152),
             "past the sprite window of a 64-tile map"
@@ -533,8 +634,9 @@ mod tests {
         assert_eq!((CAP_W, CAP_H), (2048, 1600));
         assert_eq!((NOWRAP_W, NOWRAP_H), (2048, 1824));
         assert_eq!((CAP_W - 160) + K_X, MIN_MAP_TILES * 32);
-        assert!(within_16x9(1920, 1056) && within_16x9(2048, 1152) && within_16x9(1408, 1056));
-        assert!(!within_16x9(1696, 704) && !within_16x9(2560, 1080));
+        assert!(within_16x9(1920, 1080) && within_16x9(1366, 768) && within_16x9(2048, 1152));
+        assert!(within_16x9(1440, 1080));
+        assert!(!within_16x9(1696, 704) && !within_16x9(2560, 1080) && !within_16x9(1920, 1056));
     }
 
     #[test]
@@ -551,13 +653,13 @@ mod tests {
         assert_eq!(o[0].value, "stock");
         assert_eq!(o[0].label, "Classic sizes only");
         assert_eq!(o[1].value, "auto");
-        assert_eq!(o[1].label, "Auto (1920x1056)");
+        assert_eq!(o[1].label, "Auto (1920x1080)");
         assert_eq!(o[2].value, "640x480");
-        assert_eq!(o[5].value, "672x512"); // the generated tail starts with the 4:3 sizes
-        assert_eq!(o.last().unwrap().value, "1920x1056"); // and ends with the 16:9 ones here
+        assert_eq!(o[5].value, "720x540"); // the generated tail starts with the 4:3 sizes
+        assert_eq!(o.last().unwrap().value, "1920x1080"); // and ends with the 16:9 ones here
         assert!(o
             .iter()
-            .any(|x| x.value == "1280x704" && x.label == "1280x704 (1.5x)"));
+            .any(|x| x.value == "1280x720" && x.label == "1280x720 (1.5x)"));
         // Without a readable desktop: classic and Auto only -- never an empty row.
         let n = options(None, "Auto", "Classic sizes only");
         assert_eq!(n.len(), 2);
@@ -569,7 +671,7 @@ mod tests {
 
     #[test]
     fn auto_at_a_scale_the_list_lacks_is_still_selectable() {
-        // 1920x1080 at 125%: floor32(1536) x floor32(864) = 1536x864, already a list entry; 175% is not.
+        // Auto at 175% on 1080p is 1024x768 (the stock floor wins); whatever Auto picks must be selectable by value.
         let o = options(
             Some(Desktop {
                 w: 1920,

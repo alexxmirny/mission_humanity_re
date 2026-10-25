@@ -704,6 +704,105 @@ void run_group_move_order_commit_tests() {
         ck(s_pass_walker == 0 && s_pass_goal == 0 && s_pass_enemy_row == 0, "T10f: the walker, the goal tile and another player's tile stay walls");
         ck(fx.passable == pass3, "T10f: after the call the passable plane is byte-exact again");
 
+        // T10g: [net] move_stream_heat (mods:M1WL v2; the retail splice prices the same tiles inside rt_unmask, move_proto_nudge.cpp): a lone
+        // unit on a plain move whose group has 8 walkers sees the next steps of their paths priced, for the one call only.
+        static uint32_t s_heat_on_path, s_heat_off_path, s_heat_far, s_heat_beyond;
+        auto            probe_h = [](int32_t, uint8_t) {
+            ++s_calls;
+            sim_fixture &f  = *s_fx;
+            s_heat_on_path  = f.region_grid[(size_t)(105 * MAP_GRID_DIM + 60)].terrain_flags;
+            s_heat_off_path = f.region_grid[(size_t)(105 * MAP_GRID_DIM + 61)].terrain_flags;
+            s_heat_far      = f.region_grid[(size_t)(100 * MAP_GRID_DIM + 60)].terrain_flags;
+            s_heat_beyond   = f.region_grid[(size_t)(100 + 31) * MAP_GRID_DIM + 60].terrain_flags;
+        };
+        static const group_move_order_commit_calls probe_calls_h = {+probe_h, &rec_guard};
+        auto                                       setup_h       = [&](int walkers) {
+            fx.reset();
+            fx.map_width = 256;
+            std::fill(fx.passable.begin(), fx.passable.end(), (uint8_t)1);
+            for (auto &c : fx.region_grid) c.terrain_flags = 0x01u;
+            fx.map_dir_step_deltas[19 * 2]     = 1; // heading 19 = east
+            fx.map_dir_step_deltas[19 * 2 + 1] = 0;
+            for (int k = 0; k < walkers; ++k) {
+                unit &u           = fx.units[(size_t)(3 * UNITS_PER_PLAYER + 10 + k)];
+                u.unit_proto_id   = 2;
+                u.state           = 0x0f;
+                u.order           = 0x0f;
+                u.move_group_id   = 0x77;
+                u.energy          = 10.0;
+                u.x               = 100;
+                u.y               = (uint8_t)(60 + 2 * k);
+                u.path_slot_id    = (uint8_t)k;
+                u.path_cursor     = 0;
+                path_waypoint &wp = fx.path_buffers[(size_t)(3 * PATH_WAYPOINTS_PER_PLAYER + k * PATH_WAYPOINTS_PER_SLOT)];
+                wp.heading        = 19;
+                wp.run_length     = 30;
+            }
+            unit &me                              = fx.units[(size_t)(3 * UNITS_PER_PLAYER + 7)];
+            me.order                              = 0x0f;
+            me.state                              = 0x0a;
+            me.move_group_id                      = 0x77;
+            me.energy                             = 10.0;
+            group_scratch_member &sc              = fx.group_move_scratch[0];
+            sc.tile_col                           = 10;
+            sc.tile_row                           = 10;
+            sc.unit_idx                           = 7;
+            fx.passable[(size_t)((10 << 8) | 10)] = 1;
+            s_calls                               = 0;
+            s_heat_on_path = s_heat_off_path = s_heat_far = s_heat_beyond = 0xeeeeu;
+        };
+        auto run_h = [&](uint32_t plain) {
+            sim_store own = fx.store();
+            detail::group_move_order_commit(fx.view(), own, probe_calls_h, 130, 60, 3, 1, 0x77, plain, 1);
+        };
+        move_fixes sh;
+        sh.stream_heat = true;
+        set_move_fixes(sh);
+        setup_h(8);
+        std::vector<llm_map_region_cell> grid_h0 = fx.region_grid;
+        mh::sim::move::planner_hits_reset();
+        run_h(1);
+        ck(s_calls == 1, "T10g: stream heat on: the planner is called exactly once");
+        ck_eq(s_heat_on_path, 0x01u | 0x02u, "T10g: ... a tile one walker is about to walk is priced +2 for that call");
+        ck_eq(s_heat_off_path, 0x01u, "T10g: ... a tile between two walkers' rows stays plain");
+        ck_eq(s_heat_far, 0x01u, "T10g: ... and a walker's own start tile is untouched");
+        ck_eq(s_heat_beyond, 0x01u, "T10g: ... as is one past the end of a 30-step path");
+        bool grid_h_same = grid_h0.size() == fx.region_grid.size();
+        for (size_t i = 0; grid_h_same && i < grid_h0.size(); ++i)
+            if (grid_h0[i].region != fx.region_grid[i].region || grid_h0[i].terrain_flags != fx.region_grid[i].terrain_flags) grid_h_same = false;
+        ck(grid_h_same, "T10g: after the call the region grid is byte-exact again");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_SH), 1u, "T10g: the twin counted one stream_heat hit");
+        setup_h(7);
+        mh::sim::move::planner_hits_reset();
+        run_h(1);
+        ck_eq(s_heat_on_path, 0x01u, "T10g: 7 walking groupmates: below the gate, nothing is priced");
+        ck_eq(mh::sim::move::planner_hit_count(mh::sim::move::PH_SH), 0u, "T10g: ... and no hit is counted");
+        setup_h(8);
+        run_h(0);
+        ck_eq(s_heat_on_path, 0x01u, "T10g: an attack / merge plan (is_plain_move_flag 0) is not priced");
+        // mods:M1WL v3: the tuning keys reach the twin through move_fixes (the retail splice reads the same numbers from the hook)
+        sh.stream_heat_cost = 32;
+        set_move_fixes(sh);
+        setup_h(8);
+        run_h(1);
+        ck_eq(s_heat_on_path, 0x01u | 0x20u, "T10g: stream_heat_cost 32: the tile carries raw bit 0x20");
+        sh.stream_heat_cost      = 2;
+        sh.stream_heat_min_mates = 9;
+        set_move_fixes(sh);
+        setup_h(8);
+        run_h(1);
+        ck_eq(s_heat_on_path, 0x01u, "T10g: stream_heat_min_mates 9: eight walkers are below the gate");
+        sh.stream_heat_min_mates = 8;
+        sh.stream_heat_window    = 5;
+        set_move_fixes(sh);
+        setup_h(8);
+        run_h(1);
+        ck_eq(s_heat_on_path, 0x01u | 0x02u, "T10g: stream_heat_window 5: the fifth step (x 105) is still priced");
+        set_move_fixes(move_fixes{});
+        setup_h(8);
+        run_h(1);
+        ck_eq(s_heat_on_path, 0x01u, "T10g: key off: retail, nothing is priced");
+
         set_move_fixes(saved);
     }
 

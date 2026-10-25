@@ -1,0 +1,44 @@
+# res4_fit_click -- mods:RES17: the pointer through a FITTED layout (ini/res4_fit_click.ini): explicit 1024x768 frame, ui_scale=175, a 1280x1000 window.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+winsize 1280 1000
+winclient 1280 1000
+screensettled
+gameclock +100
+log res4_fit_click frame_ready
+pcapture res4_fc_view
+capture res4_fc_frame
+
+# a. the pointer on the enlarged map (k 1.28: client 600,400 -> frame ~260,312), on the strip and on the panel: the injected packet and the layout's
+#    inverse agree (scurpos compares them)
+rawmouse sabs 500 400
+scurpos 500 400
+rawmouse sabs 1190 309
+scurpos 1190 309
+capture res4_fc_cursor_panel
+pcapture res4_fc_cursor_panel_view
+
+# b. the Menu button on the scaled panel (frame 972,150), clicked there: the ESC menu opens
+rawmouse down l
+rawmouse up l
+present &Options
+settled &Options
+gamemode 3
+capture res4_fc_esc_frame
+pcapture res4_fc_esc
+log res4_fit_click menu_clicked_on_scaled_panel
+key 0x01
+gamemode 2
+log res4_fit_click COMPLETE -- the pointer maps through the fitted layout
+end

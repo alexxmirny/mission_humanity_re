@@ -95,6 +95,40 @@ void test_add_member_group_zero_appends_but_does_not_stamp_ctrl_group_id() {
        "add_member: the notify call still fires even for group_idx==0 (unconditional tail call)");
 }
 
+// patching:PT-CAP9-U6: a full group (200 ids) takes no more -- no write past the record, no count change, no stamp, no notify.
+void test_add_member_full_group_is_clamped() {
+    sim_fixture    f;
+    const sim_view v   = f.view();
+    sim_store      own = f.store();
+    f.player_side      = 1;
+
+    ctrl_group &g = own.ctrl_group_at(0);
+    g.count       = 200;
+    for (int i = 0; i < 200; ++i) g.unit_ids[i] = (uint16_t)(1000 + i);
+    ctrl_group &next = own.ctrl_group_at(1);
+    next.count       = 7; // the record the unclamped write would have corrupted (unit_ids[200] aliases the NEXT record's count)
+    unit &u          = own.unit_at(1, 60);
+    u.ctrl_group_id  = 99;
+
+    g_log.reset();
+    detail::unit_ctrlgroup_add_member(v, own, recording_calls(), /*unit_id=*/60, &g.count, /*group_idx=*/0);
+    ck_eq((uint32_t)g.count, 200u, "add_member: a full group (200) keeps count 200");
+    ck_eq((uint32_t)next.count, 7u, "add_member: a full group leaves the next group's record untouched");
+    ck_eq(g.unit_ids[199], 1199u, "add_member: a full group keeps its last id");
+    ck(g_log.select_calls == 0, "add_member: a clamped add does not notify (the unit is not selected)");
+
+    ctrl_group &g5 = own.ctrl_group_at(5);
+    g5.count       = 200;
+    detail::unit_ctrlgroup_add_member(v, own, recording_calls(), /*unit_id=*/60, &g5.count, /*group_idx=*/5);
+    ck_eq(u.ctrl_group_id, 99u, "add_member: a clamped add into group 5 does not stamp ctrl_group_id");
+    ck_eq((uint32_t)g5.count, 200u, "add_member: group 5 stays at 200");
+
+    g.count = 199; // the 200th still goes in
+    detail::unit_ctrlgroup_add_member(v, own, recording_calls(), /*unit_id=*/61, &g.count, /*group_idx=*/0);
+    ck_eq((uint32_t)g.count, 200u, "add_member: the 200th id is accepted");
+    ck_eq(g.unit_ids[199], 61u, "add_member: the 200th id lands in slot 199");
+}
+
 // ---- llm_strat_unit_ctrlgroup_remove_member @0x0044947e ------------------------------------------
 
 void test_remove_member_real_group_shift_compacts_and_clears_ctrl_group_id() {
@@ -193,6 +227,7 @@ void test_remove_member_absent_unit_id_is_array_noop_but_still_clears_and_notifi
 void run_unit_ctrlgroup_member_tests() {
     test_add_member_real_group_appends_and_stamps_ctrl_group_id();
     test_add_member_group_zero_appends_but_does_not_stamp_ctrl_group_id();
+    test_add_member_full_group_is_clamped();
     test_remove_member_real_group_shift_compacts_and_clears_ctrl_group_id();
     test_remove_member_group_zero_shift_compacts_but_does_not_clear_ctrl_group_id();
     test_remove_member_absent_unit_id_is_array_noop_but_still_clears_and_notifies();

@@ -1,0 +1,28 @@
+# mods:UNL1 -- the campaign unlock recheck on the USER's save (tools/uiscripts/saves/8-ayatus-rl-2.sav, the 0.2.2-rc2 playtest: planet 8, the spaceport
+# not offered although its requirements are met). A RAISED-limits save (the "rl"): it loads only with [caps] raise=1, i.e. libmh.dll absent.
+# Retail runs llm_progress_propagate_unlocks only on an acquire / New Game / MP start, so the load leaves unlock row 21 (V_alien_Port) unavailable and
+# building 18 (N_alien_Port) out of player 0's offer list. With [net] project_gate_fix=1 the call-splice in llm_game_load
+# (0x00447b78) re-runs the pass for the local player and the computer players: `; [port] loaded ... avail=1 list_has18=1`. OFF: 0 / 0, stock.
+# The transition half: SwitchToPlanet to the visited planet 1 and back to 8, `logport` between the switch and the arrival tail
+# (llm_strat_planet_transition_finalize, call-splice 0x0044d229) so the check sees what the tail changed. tools/check_port_unlock.py reads the lines.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +3000
+logport loaded
+log port: campaign save loaded (see mh_video.log `; [port] loaded`)
+capture port_loaded
+travel 1
+logport traveled_1
+arrive
+logport arrived_1
+travel 8
+logport traveled_8
+arrive
+logport arrived_8
+log port: back on planet 8 after the round trip
+end

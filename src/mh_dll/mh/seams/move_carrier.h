@@ -56,19 +56,23 @@ enum site_id : int {
     SITE_ARF_WALK,
     SITE_ARF_FIRE,
     SITE_ARF_REAIM,
-    SITE_ARF_STEP,      // ... walker / fire / re-aim / group step
-    SITE_FLOOD_X,       // 0x00424f3a  flood_reachable: phase 2 replaced by the bucket queue (route_flood_exact)
-    SITE_FLOOD_END,     // 0x00425072  flood_reachable: result tail (the cost measurement's end stamp)
-    SITE_FLOOD_BEGIN,   // 0x00424ee8  flood_reachable: first instruction after the prologue (the cost measurement's start stamp)
-    SITE_REVERSE,       // 0x00466bfe  dispatcher retain path: slide back at once (mods:M1G 4c)
-    SITE_TURN,          // 0x0047d5b4  walker turn branch: turn cost x 2^-k (mods:M1G 4c)
-    SITE_RTM,           // 0x0041c9ce  the SAME splice as SITE_RT, counted separately (move_route_through_moving)
-    SITE_RTR,           // 0x0041c9ce  the SAME splice again, counted separately (move_route_through_replanning, mods:M1DT)
-    SITE_CAPOK,         // 0x00482cee  marshal good-path branch: refuse a block-wait detour route (move_replan_detour_cap, mods:M1DT)
-    SITE_FC,            // 0x0041c9ce  the SAME splice again: formation from the click runs after the retail plan, inside the bracket (move_formation_click, mods:M1G 4b)
-    SITE_DOOR_SOLDIERS, // 0x00477075  soldiers_h anim state, case 2 (door open): keep it open for an entering friend (storage_door_hold, mods:M1BE)
-    SITE_DOOR_VEHICLES, // 0x00476b81  vehicles_h anim state, case 2
-    SITE_DOOR_BARRACKS, // 0x004767ed  barracks_garage_a anim state, case 2
+    SITE_ARF_STEP,       // ... walker / fire / re-aim / group step
+    SITE_FLOOD_X,        // 0x00424f3a  flood_reachable: phase 2 replaced by the bucket queue (route_flood_exact)
+    SITE_FLOOD_END,      // 0x00425072  flood_reachable: result tail (the cost measurement's end stamp)
+    SITE_FLOOD_BEGIN,    // 0x00424ee8  flood_reachable: first instruction after the prologue (the cost measurement's start stamp)
+    SITE_REVERSE,        // 0x00466bfe  dispatcher retain path: slide back at once (mods:M1G 4c)
+    SITE_TURN,           // 0x0047d5b4  walker turn branch: turn cost x 2^-k (mods:M1G 4c)
+    SITE_RTM,            // 0x0041c9ce  the SAME splice as SITE_RT, counted separately (move_route_through_moving)
+    SITE_RTR,            // 0x0041c9ce  the SAME splice again, counted separately (move_route_through_replanning, mods:M1DT)
+    SITE_CAPOK,          // 0x00482cee  marshal good-path branch: refuse a block-wait detour route (move_replan_detour_cap, mods:M1DT)
+    SITE_FC,             // 0x0041c9ce  the SAME splice again: formation from the click runs after the retail plan, inside the bracket (move_formation_click, mods:M1G 4b)
+    SITE_SH,             // 0x0041c9ce  the SAME splice again: the tiles of a stream's next 48 path steps are priced for a lone unit's plan (move_stream_heat, mods:M1WL v2)
+    SITE_DOOR_SOLDIERS,  // 0x00477075  soldiers_h anim state, case 2 (door open): keep it open for an entering friend (storage_door_hold, mods:M1BE)
+    SITE_DOOR_VEHICLES,  // 0x00476b81  vehicles_h anim state, case 2
+    SITE_DOOR_BARRACKS,  // 0x004767ed  barracks_garage_a anim state, case 2
+    SITE_DOOR_SHUTTLE_A, // 0x00477f92  shuttle_a anim state, open door close test (mods:M1SH)
+    SITE_DOOR_SHUTTLE_H, // 0x00478353  shuttle_h anim state, open door close test
+    SITE_DOOR_AIRFIELD,  // 0x00477a4e  airfield_a anim state, case 2
     SITE_COUNT
 };
 
@@ -112,6 +116,7 @@ enum mv_hit_id : int {
     MVH_FC,
     MVH_EQ, // mods:M1BE move_enter_queue: an entering unit waited behind an entering friend
     MVH_DH, // mods:M1BE storage_door_hold: an open door was kept open
+    MVH_SH, // mods:M1WL v2 move_stream_heat: a lone unit planned with a stream's tiles priced
     MVH_COUNT
 };
 
@@ -158,6 +163,7 @@ enum key_id : int {
     KEY_FORMATION_CLICK,
     KEY_ENTER_QUEUE,
     KEY_STORAGE_DOOR_HOLD,
+    KEY_STREAM_HEAT,
     KEY_COUNT
 };
 

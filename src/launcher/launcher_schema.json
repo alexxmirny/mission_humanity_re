@@ -71,6 +71,7 @@
     "turrets",
     "building",
     "units",
+    "limits",
     "campaign",
     "connection",
     "overlay",
@@ -126,6 +127,10 @@
     },
     "video.mouse_clip": {
       "group": "display"
+    },
+    "video.ui_scale": {
+      "group": "interface",
+      "disabled_if": { "row": "video.resolution", "equals": "stock" }
     },
     "ui.shift_rearm_build": {
       "group": "interface"
@@ -190,6 +195,9 @@
         "row": "net.mother_free_build",
         "equals": "1"
       }
+    },
+    "caps.raise": {
+      "group": "limits"
     },
     "net.improved_movement": {
       "group": "units"

@@ -1,0 +1,30 @@
+# res_notice_200 -- mods:RES20: the game's floating notice (llm_ui_print_floating_msg_red) at ui_scale=200 (ini/res4_s200.ini). The notice is drawn into the frame's map
+# area at (10,10); at ui_scale above 100 the DLL diverts the stock routine into a scratch and the presenter shows it scaled by the percentage, anchored at
+# the map's top left, so the text is as big as the panel's. `pcapture` before and after the notice: the difference is the notice's box;
+# tools/check_res_notice.py 200 demands its height is the 100% glyph height times the percentage, its top-left at (10,10) x the percentage, and
+# that the game frame (capture) holds NO notice pixels at ui_scale above 100 (it is an overlay).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+camto 41 52
+gameclock +100
+screensettled
+cursorhold 640 500 6
+pcapture res_notice_before
+capture res_notice_frame_before
+notice Order refused: not enough power for this
+gameclock +20
+cursorhold 640 500 6
+pcapture res_notice_after
+capture res_notice_frame_after
+log res_notice COMPLETE -- notice at 200%
+end

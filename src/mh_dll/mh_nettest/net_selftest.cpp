@@ -3421,6 +3421,7 @@ int run_bgscaletest();                          // bg_scale_selftest.cpp -- the 
 int run_reslisttest();                          // res_list_selftest.cpp -- the generated resolution list (RES3)
 int run_mapzoomtest();                          // map_zoom_selftest.cpp -- the strategic map zoom (RES2)
 int run_wheellisttest();                        // wheel_list_selftest.cpp -- the D15 wheel list scrolling arithmetic
+int run_uilayouttest();                         // ui_layout_selftest.cpp -- the RES4 ui_scale quad layout + inverse map
 int run_runctxtest(int argc, char **argv);      // LA13: where the logs root is (spawns itself)
 // udp_wire_selftest.cpp -- T0: the UDP packet format (plan D2). Its centre is a directory of
 // FIXTURE FILES that this suite and `cargo test -p relay` both read, because an encoder agreeing
@@ -3486,6 +3487,11 @@ int run_interlocktest();
 // (a moved guarded byte, an already-patched image, a site inside a promoted body, an unavailable
 // cave VA). Same argument as interlocktest: every one of them is about a write that must not happen.
 int run_patchtest();
+// caps_selftest.cpp -- PT-CAP8 slice B: the roster-geometry table (mh::caps). Stock geometry against hand-computed
+// VAs/strides for all nine arrays, the naked-stub mirrors through real inline asm, and configure()'s fake apply.
+int run_capstest();
+// ovf_selftest.cpp -- PT-CAP8 S2 slice E: the overflow extension (mh::caps::ovf) -- slice table, incremental tracker, folds, MHOV codec + every refusal.
+int run_ovftest();
 // gone_peer_guard_selftest.cpp -- mp:U19i: gone_peer_frame_guard's byte-patch carrier, the REAL naked
 // thunk driven against a fake buffer/emitter/frame. Its rig half (a config-(1) clean quit) cannot
 // show the damage the thunk prevents without a second, unguarded run; this arm shows both.
@@ -3630,6 +3636,8 @@ static const suite_row SUITE_TABLE[] = {
     {"launchtest",     true, adapt_void<run_launchtest>},
     {"interlocktest",  true, adapt_void<run_interlocktest>},
     {"patchtest",      true, adapt_void<run_patchtest>},
+    {"capstest",       true, adapt_void<run_capstest>},
+    {"ovftest",        true, adapt_void<run_ovftest>},
     {"gpfgtest",       true, adapt_void<run_gpfgtest>},
     {"tombstonetest",  true, adapt_void<run_tombstonetest>},
     {"hostapitest",    true, adapt_void<run_hostapitest>},
@@ -3680,6 +3688,7 @@ static const suite_row SUITE_TABLE[] = {
     // kernels (all four filters, both pixel formats). Pure: no device, no game memory.
     {"mapzoomtest",     true, adapt_void<run_mapzoomtest>},
     {"wheellisttest",   true, adapt_void<run_wheellisttest>},
+    {"uilayouttest",    true, adapt_void<run_uilayouttest>},
     // PT-INPUT1. The owned DirectInput's element conversion (mh/input/dinput_convert.h): scan code ->
     // DIK, DI5 repeat filtering + the focus-loss release set, the relative remainder carry, and the
     // absolute -> exact-delta walk against the game's own IDIV / doubling / clamp for every divisor

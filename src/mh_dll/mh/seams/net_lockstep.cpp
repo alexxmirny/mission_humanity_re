@@ -24,6 +24,7 @@
 
 #include "include/mh_net_export.h"
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
+#include "caps/caps.h"                 // PT-CAP8: mh::caps::rec + mh_caps_base/row_bytes for the roster-array stubs
                                        // where it IS, not where the binary put it
 #include "include/mh_net_key.h"        // MH_Key_Load -- mint mh_key.txt on the first frame (see ensure_key_once)
 #include "include/mh_capture_export.h" // MH_Capture_OnPresent (gfx_capture.cpp) -- UI frame capture
@@ -36,6 +37,7 @@
 #include "seams/ui_net_indicator.h"    // mp:L1 MH_NetIndicator_OnPresent -- the player-visible indicator
 #include "seams/gone_peer_guard.h"     // mp:U19i gone_peer_frame_guard's byte-patch carrier
 #include "seams/bldg_pip_guard.h"      // hotfix rc9.4 bldg_pip_guard's byte-patch carriers
+#include "seams/order_wide_index.h"    // O1c order_wide_index's byte-patch carriers
 #include "seams/move_carrier.h"        // mods:M1H: the honest carrier report + the splice hit counters
 #include "sim/move/wrap.h"             // mods:M1H: the planner keys' pure rules, shared with the libmh twins
 #include "sim/move/guards.h"           //   (move_centroid_wrap_fix, move_detour_slot_guard, move_flood_queue_guard)
@@ -91,6 +93,7 @@ extern "C" void MH_MP_DrainRelayNotice(void); // net_discovery -- mp:R4a: arm th
 
 using mh::hook::install_trampoline;
 using mh::hook::patch_bytes_guarded;
+using mh::hook::patch_bytes_guarded_caps; // PT-CAP8: the three hooks whose expect bytes the v0.2.2 relocation rewrites
 
 // mp:U19i -- gone_peer_frame_guard's byte-patch carrier (see seams/gone_peer_guard.h for the why).
 // Outside the anonymous namespace so net_selftest.exe's gpfgtest drives THIS thunk, not a copy.
@@ -351,6 +354,7 @@ double g_sp_sim_step             = 0.0; // [net] sp_sim_step_ms / 1000 -- the SI
                                         // SIM_STEP_INTERVAL to it whenever SESSION_MODE != 3. MP keeps g_sim_step.
 int g_project_gate_fix      = 0;        // [net] project_gate_fix -- mods:A2; twin + 2-byte NOP, DEFAULT OFF, campaign-only (not host-synced)
 int g_bldg_pip_guard        = 1;        // [net] bldg_pip_guard -- hotfix rc9.4; body + byte patches, DEFAULT ON, sim-affecting on illegal state only
+int g_order_wide_index      = 1;        // [net] order_wide_index -- O1c; 12-bit scheduled-lane order index, body + 4 byte patches, DEFAULT ON (C_DEV: shipped always on)
 int g_air_order_facing_fix  = 1;        // [net] air_order_facing_fix -- PT-FIX3; body + byte patch, DEFAULT ON, sim-affecting
 int g_diplo_order_dedup_fix = 1;        // [net] diplo_order_dedup_fix -- MP U45; body + byte patch, DEFAULT ON, sim-affecting
 int g_defang_xui            = 0;        // extend_ui_enter wait+mode8 pair (the DOMINANT ~2s mode-8 freeze): 0=live 1=NOP
@@ -551,6 +555,7 @@ void ensure_key_once() {
 extern "C" void MH_MP_CaptureBootResidue(void); // launch.cpp -- mp:D45: one-shot boot snapshot of the residue regions
 void            hub_leave_poll();               // mp:U62 -- defined with the other handover seams below
 void            fo_match_tick();                // mp:U63 -- defined with the other handover seams below
+void            caps_quiescent_tick();          // PT-CAP9-U8b -- defined beside fo_match_tick
 int             g_spectate_mask     = 1;        // [net] spectate_mask (default 1): 0 = never export the spectator bit (the U71 negative control)
 bool            g_spec_menu_reached = false;    // mp:U54: a spectator that chose Exit match is back at the idle main menu (the retail flag is not set on that route)
 void            spectator_tick();               // mp:U54/U71 -- defined with the retail spectate carriers below
@@ -579,6 +584,7 @@ void on_present() {
     spectator_tick();              // mp:U54/U71: the transport's spectator mask + a spectator that Exit-ed ends its session
     hub_leave_poll();              // mp:U62: a defeated hub that stayed has reached the main menu -> hand the hub over
     fo_match_tick();               // mp:U63: tell the transport whether a match is running (arms the crash failover)
+    caps_quiescent_tick();         // PT-CAP9-U8b: a session-close revert deferred out of the sim step runs once the main menu is reached
     mh::ui::browser_notice_tick(); // U23: keep the involuntary-exit notice on the browser status line
     MH_FontGuard_OnPresent();      // F2: [fonts] probe_text through the game's own font path, before overlay+capture
     MH_BigMap_OnPresent();         // mods:MM4: the big minimap while its key is held (before the indicator + debug overlay)
@@ -2742,6 +2748,29 @@ void fo_match_tick() {
     seam_log(b);
 }
 
+// PT-CAP9-U8b. The main menu is the quiescent point for the session close's deferred caps revert: no sim step -- and no modal opened from
+// inside one (the game-over dialog and the statistics page are: both run in GAME_MODE 3 with their own widget list) -- is on the stack there.
+// Measured: the retail route from a game over does not set the UI_IN_MAIN_MENU flag, and GAME_MODE 3 + MENU_STATE 3 is already true while the
+// game-over dialog is up (the revert then ran 12 ms after the session close, inside the step). What identifies the menu is its own widget
+// list: GAME_MODE 3, no active dialog, and the menu widget list is the main menu's (0x00653a7f; the overlay_dismiss rule makes mode 3 with
+// that list impossible anywhere but the menu). Per frame; one bool load when nothing is pending.
+void caps_quiescent_tick() {
+    if (!mh::caps::world_end_pending()) return;
+    constexpr uint32_t MAIN_MENU_LIST = mh::addr::mp_menu_container;
+    const bool         idle_menu      = *(const uint8_t *)mh::addr::_G_LLM_GAME_MODE == 3 && *(const uint32_t *)mh::addr::_G_LLM_UI_ACTIVE_DIALOG == 0 &&
+                           *(const uint32_t *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == MAIN_MENU_LIST;
+    // ...and it must HOLD for 30 consecutive presents (~0.5 s): the hand-over between two dialogs can show no dialog for a frame or two.
+    static int s_idle = 0;
+    if (*(const int *)ADDR_UI_IN_MAIN_MENU == 0 && !g_spec_menu_reached && !idle_menu) {
+        s_idle = 0;
+        return;
+    }
+    if (++s_idle >= 30) {
+        s_idle = 0;
+        mh::caps::quiescent_point();
+    }
+}
+
 // A defeated hub's player has left once the game says it is back at the main menu (the flag the game sets on
 // entering it and clears on entering gameplay). Per frame; two loads when nothing is armed.
 void hub_leave_poll() {
@@ -3762,10 +3791,12 @@ __declspec(naked) void undock_reentry_stub() {
         mov   eax, 0x00466cbc                 // not boarding: retail's `state == 0x20 / 0x23 -> drop` test
         jmp   eax
     boarding:
-        imul  edx, dword ptr [ebp - 0x34], 0x5b04
+        mov   edx, dword ptr [ebp - 0x34]
+        imul  edx, dword ptr [mh_caps_row_bytes + 4 * MH_CAPS_IDX_UNITS] // player * row_bytes (stock 0x5b04)
         imul  eax, dword ptr [ebp - 0x30], 0xe9
         add   eax, edx
-        movzx eax, word ptr [eax + 0x00dd8c4e] // unit.state
+        add   eax, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_UNITS]      // units base (stock 0x00dd8c48)
+        movzx eax, word ptr [eax + 6]          // unit.state (0x00dd8c4e = base + 6)
         cmp   eax, 0x1f
         je    apply
         cmp   eax, 0x20
@@ -3835,14 +3866,18 @@ __declspec(naked) void turret_reload_stub() {
         push  ebx
         cmp   g_turret_stub_owner, 0
         je    owner_ok
-        imul  ecx, eax, 0x6aa4                 // buildings[player]
+        mov   ecx, eax
+        imul  ecx, dword ptr [mh_caps_row_bytes + 4 * MH_CAPS_IDX_BUILDINGS] // buildings[player] (stock 0x6aa4)
         imul  ebx, edx, 0x111
         add   ecx, ebx
-        movzx ecx, byte ptr [ecx + 0x00c3d366] // building.sub_id
-        imul  ebx, eax, 0x6e0                  // turrets[player]
+        add   ecx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_BUILDINGS]
+        movzx ecx, byte ptr [ecx + 0xc6]       // building.sub_id (0x00c3d366 = base + 0xc6)
+        mov   ebx, eax
+        imul  ebx, dword ptr [mh_caps_row_bytes + 4 * MH_CAPS_IDX_TURRETS]   // turrets[player] (stock 0x6e0)
         imul  ecx, ecx, 0x37
         add   ebx, ecx
-        movzx ebx, word ptr [ebx + 0x00cc0fe0] // turret.b_index (owning building index)
+        add   ebx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_TURRETS]
+        movzx ebx, word ptr [ebx]              // turret.b_index (owning building index; 0x00cc0fe0 = base + 0)
         cmp   ebx, edx
         jne   not_owner
     owner_ok:
@@ -3923,17 +3958,20 @@ const uint8_t       TURRET_CLIP_REFILL_EXPECT[9] = {0x83, 0xB8, 0x0F, 0x10, 0xCC
 // clang-format off
 __declspec(naked) void turret_clip_create_stub() {
     __asm {
-        mov   byte ptr [eax + 0x00cc1005], 1   // the instruction this stub replaced: resupply_available = 1
+        push  edx
+        push  ecx
+        mov   ecx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_TURRETS] // turrets base (stock 0x00cc0fe0); EAX = the record's byte offset
+        mov   byte ptr [eax + ecx + 0x25], 1   // the instruction this stub replaced: resupply_available = 1 (0x00cc1005 = base + 0x25)
         cmp   g_turret_clip_fix_rt, 0
         je    done                             // key off: exactly retail
-        push  edx
-        movzx edx, byte ptr [eax + 0x00cc1004] // turret.weapon_id (non-zero on this path)
+        movzx edx, byte ptr [eax + ecx + 0x24] // turret.weapon_id (non-zero on this path)
         imul  edx, edx, 0x16c                  // Weapon[] stride
         mov   edx, dword ptr [edx + 0x00c3a5a2] // Weapon[weapon_id].ammo
-        mov   dword ptr [eax + 0x00cc100f], edx // turret.ammo
-        mov   dword ptr [eax + 0x00cc1013], -1  // turret.resupply_cycles_remaining = unlimited
-        pop   edx
+        mov   dword ptr [eax + ecx + 0x2f], edx // turret.ammo
+        mov   dword ptr [eax + ecx + 0x33], -1  // turret.resupply_cycles_remaining = unlimited
     done:
+        pop   ecx                              // (pops leave the flags alone)
+        pop   edx
         push  0x00462ac0
         ret
     }
@@ -3943,11 +3981,17 @@ __declspec(naked) void turret_clip_refill_stub() {
     __asm {
         cmp   g_turret_clip_fix_rt, 0
         je    retail
-        cmp   dword ptr [eax + 0x00cc100f], 0  // key on: refill for ammo <= 0 (signed)
+        push  edx
+        mov   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_TURRETS]
+        cmp   dword ptr [eax + edx + 0x2f], 0  // key on: refill for ammo <= 0 (signed)
+        pop   edx
         jg    skip
         jmp   refill
     retail:
-        cmp   dword ptr [eax + 0x00cc100f], 0  // the two retail instructions this stub replaced
+        push  edx
+        mov   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_TURRETS]
+        cmp   dword ptr [eax + edx + 0x2f], 0  // the retail compare this stub replaced (ammo, 0x00cc100f = base + 0x2f)
+        pop   edx
         jne   skip
     refill:
         push  0x0047c6d1
@@ -3971,7 +4015,7 @@ void install_turret_clip_fix() {
         uint8_t       repl[7] = {0xE9, 0, 0, 0, 0, 0x90, 0x90};
         const int32_t rel     = (int32_t)((uintptr_t)&turret_clip_create_stub - (ADDR_TURRET_CLIP_CREATE + 5));
         memcpy(repl + 1, &rel, sizeof(rel));
-        if (patch_bytes_guarded(ADDR_TURRET_CLIP_CREATE, TURRET_CLIP_CREATE_EXPECT, repl, 7)) {
+        if (patch_bytes_guarded_caps(ADDR_TURRET_CLIP_CREATE, TURRET_CLIP_CREATE_EXPECT, repl, 7)) {
             whatA = "PATCHED -- a new turret starts with ammo = Weapon.ammo, resupply_cycles_remaining = -1 (00462AB9)";
         } else {
             whatA = "MISMATCHED";
@@ -3983,7 +4027,7 @@ void install_turret_clip_fix() {
         uint8_t       repl[9] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90};
         const int32_t rel     = (int32_t)((uintptr_t)&turret_clip_refill_stub - (ADDR_TURRET_CLIP_REFILL + 5));
         memcpy(repl + 1, &rel, sizeof(rel));
-        if (patch_bytes_guarded(ADDR_TURRET_CLIP_REFILL, TURRET_CLIP_REFILL_EXPECT, repl, 9)) {
+        if (patch_bytes_guarded_caps(ADDR_TURRET_CLIP_REFILL, TURRET_CLIP_REFILL_EXPECT, repl, 9)) {
             whatB = "PATCHED -- stub at 0047C6C8 (refill for ammo <= 0 when on)";
         } else {
             whatB = "MISMATCHED";
@@ -4029,9 +4073,10 @@ __declspec(naked) void turret_fire_poll_stub() {
         movzx edx, byte ptr [eax + 0xc6]         // sub_id
         imul  edx, edx, 0x37                     // sizeof(turret)
         movzx eax, word ptr ds:[0x00e58144]      // cur_player
-        imul  eax, eax, 0x6e0                    // TURRETS_PER_PLAYER * sizeof(turret)
+        imul  eax, dword ptr [mh_caps_row_bytes + 4 * MH_CAPS_IDX_TURRETS] // turret row bytes (stock 0x6e0)
         add   edx, eax
-        cmp   byte ptr [edx + 0xcc1006], 0       // turret.reload_ready_flag
+        add   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_TURRETS]
+        cmp   byte ptr [edx + 0x26], 0           // turret.reload_ready_flag (0x00cc1006 = base + 0x26)
         je    no_skip                            // still reloading: retail loop
         mov   eax, dword ptr [ebp - 0x48]        // aim_heading
         sub   eax, dword ptr [ebp - 0x44]        // - target_bearing
@@ -4466,7 +4511,10 @@ __declspec(naked) void mother_free_link_stub() {
 
 __declspec(naked) void mother_free_seed_stub() {
     __asm {
-        cmp   word ptr [eax + 0xc3d2b7], 0       // the compare this stub replaced (plant online_state)
+        push  ecx
+        mov   ecx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_BUILDINGS]
+        cmp   word ptr [eax + ecx + 0x17], 0     // the compare this stub replaced (plant online_state; 0x00c3d2b7 = base + 0x17)
+        pop   ecx                                // (leaves the flags alone)
         jne   ms_ret                             // online: seeds (ZF=0)
         cmp   g_mother_free_rt, 0
         je    ms_ret                             // rule off: ZF=1, retail (not seeded)
@@ -4542,7 +4590,7 @@ void install_mother_free_build() {
             case ADDR_MF_PLACE: ok = patch_bytes_guarded(ADDR_MF_PLACE, s.expect, repl, s.len); break;
             case ADDR_MF_DISPATCH: ok = patch_bytes_guarded(ADDR_MF_DISPATCH, s.expect, repl, s.len); break;
             case ADDR_MF_LINK: ok = patch_bytes_guarded(ADDR_MF_LINK, s.expect, repl, s.len); break;
-            case ADDR_MF_SEED: ok = patch_bytes_guarded(ADDR_MF_SEED, s.expect, repl, s.len); break;
+            case ADDR_MF_SEED: ok = patch_bytes_guarded_caps(ADDR_MF_SEED, s.expect, repl, s.len); break;
         }
         if (ok) {
             ++patched;
@@ -4558,6 +4606,135 @@ void install_mother_free_build() {
     char b[300];
     // The "mother free build ON/OFF" banner is the gameplay setter's (mh_set_mother_free_build).
     wsprintfA(b, "; mother free build splice: installed, gate 0 until the gameplay settings apply: %s\n", what);
+    seam_log(b);
+}
+
+// mods:UNL1 -- the unlock-recheck BYTE-PATCH CARRIERS (two call-splices, always installed, runtime-gated by [net] project_gate_fix:
+// one "Tech tree fixes" switch drives both this and mods:A2's PROJECT-gate NOP).
+// Retail runs llm_progress_propagate_unlocks (the tech-tree unlock fixpoint) only from game_UpdateProgress (an ACQUIRE), New Game
+// (llm_strat_planet_session_begin) and MP session begin, so an unlock whose last prerequisite was met on ANOTHER planet never reaches
+// the current planet until something new is acquired there (the spaceport: deps Matka, Fabryka1 and planets 103 + 104 researched
+// elsewhere). A save load (llm_game_load) and a planet switch (llm_strat_planet_transition_finalize) never re-run it.
+//   site A  0x00447b78  llm_game_load, the apply tail's `CALL llm_cam_jump_queue_clear` (0x0044dd11), after the current planet is
+//                       re-loaded from its member and the clock resynced
+//   site B  0x0044d229  llm_strat_planet_transition_finalize's tail `CALL llm_map_cam_mark_viewport_dirty` (0x004a5a6b); also the
+//                       join point of the two `JE` skips above it, so every path through the function reaches it
+// Each CALL is retargeted to a stub that (switch on) runs progress_recheck_run() with every register and the flags preserved, then
+// tail-jumps to the original callee (`PUSH target / RET`: the stack is exactly the original CALL's). progress_recheck_run does nothing
+// unless the session is single-player (session_mode == 1); site B also requires a VISITED planet (G_PLANET_STATUS[planet] != 0).
+// It propagates for the local player (PlayerSide) first, then for every other player whose profile has status_flags bit0 (slot
+// enabled), ascending -- the filter game_UpdateProgress's own PLANET/SYSTEM arms use for "the other players". Every message the pass
+// can raise (game_SetEvent 15 / 7, the planet / system / upgrade notices) is gated on player == PlayerSide inside HandleProgress's
+// callees, so a computer player's pass is silent. The twin: libmh/sim/libtrans/sim_lt_progress_unlock_fixpoint.cpp
+// (progress_recheck_unlocks) called from save_live.cpp and sim_planet_transition_finalize.cpp.
+int                 g_progress_recheck_rt = 0; // read by the stubs; = project_gate_fix once the splices are carried, 0 = retail
+constexpr uintptr_t ADDR_PR_LOAD = 0x00447b78, ADDR_PR_ARRIVE = 0x0044d229;
+const uint8_t       PR_LOAD_EXPECT[5]   = {0xE8, 0x94, 0x61, 0x00, 0x00}; // CALL 0x0044dd11 llm_cam_jump_queue_clear
+const uint8_t       PR_ARRIVE_EXPECT[5] = {0xE8, 0x3D, 0x88, 0x05, 0x00}; // CALL 0x004a5a6b llm_map_cam_mark_viewport_dirty
+
+void __cdecl progress_recheck_run(int arrival) {
+    // _G_LLM_GAME_SESSION_MODE is a 4-byte region; 1 = SESSION_SP (campaign / single-player skirmish)
+    if (*(const volatile int32_t *)mh::addr::_G_LLM_GAME_SESSION_MODE != 1) return;
+    if (arrival) {
+        const uint32_t planet = (uint32_t)*(const volatile int32_t *)mh::addr::G_PLANET_INDEX & 31u;
+        if (((const volatile int32_t *)mh::addr::G_PLANET_STATUS)[planet] == 0) return; // E_PLANET_STATUS UNKNOWN: never visited
+    }
+    const uint16_t side = *(const volatile uint16_t *)mh::addr::PlayerSide;
+    int            n    = 1;
+    mh::call::llm_progress_propagate_unlocks(side);
+    for (uint32_t i = 0; i < 8; ++i) {
+        if (i == side) continue;
+        const uint32_t flags = *(const volatile uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + (uintptr_t)i * 0x740u);
+        if (flags & 1u) {
+            mh::call::llm_progress_propagate_unlocks((uint16_t)i);
+            ++n;
+        }
+    }
+    char b[160];
+    wsprintfA(b, "; progress recheck: %s pass ran for %d player(s), local side %u (mods:UNL1)\n", arrival ? "arrival" : "load", n, (unsigned)side);
+    seam_log(b);
+}
+
+// clang-format off
+__declspec(naked) void progress_recheck_load_stub() {
+    __asm {
+        cmp   g_progress_recheck_rt, 0
+        je    pl_go
+        pushfd
+        pushad
+        push  0
+        call  progress_recheck_run
+        add   esp, 4
+        popad
+        popfd
+    pl_go:
+        push  0x0044dd11                         // llm_cam_jump_queue_clear: the CALL this stub replaced
+        ret
+    }
+}
+
+__declspec(naked) void progress_recheck_arrive_stub() {
+    __asm {
+        cmp   g_progress_recheck_rt, 0
+        je    pa_go
+        pushfd
+        pushad
+        push  1
+        call  progress_recheck_run
+        add   esp, 4
+        popad
+        popfd
+    pa_go:
+        push  0x004a5a6b                         // llm_map_cam_mark_viewport_dirty: the CALL this stub replaced
+        ret
+    }
+}
+// clang-format on
+
+const char *g_pr_what    = "not installed";
+bool        g_pr_carried = false;
+
+void install_progress_recheck() {
+    struct pr_site {
+        uintptr_t addr;
+        void (*stub)();
+        const char *owner;
+    };
+    static const pr_site sites[] = {
+        {ADDR_PR_LOAD, progress_recheck_load_stub, "llm_game_load"},
+        {ADDR_PR_ARRIVE, progress_recheck_arrive_stub, "llm_strat_planet_transition_finalize"},
+    };
+    int patched = 0, displaced = 0, mismatched = 0;
+    for (const pr_site &s : sites) {
+        if (mh::hook::promoted_owner_of(s.addr)) {
+            ++displaced;
+            continue;
+        }
+        uint8_t       repl[5] = {0xE8, 0, 0, 0, 0};
+        const int32_t rel     = (int32_t)((uintptr_t)s.stub - (s.addr + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        bool ok = false;
+        // one literal expression per site: lint_dll_patches keys the manifest on (file, expr)
+        switch (s.addr) {
+            case ADDR_PR_LOAD: ok = patch_bytes_guarded(ADDR_PR_LOAD, PR_LOAD_EXPECT, repl, 5); break;
+            case ADDR_PR_ARRIVE: ok = patch_bytes_guarded(ADDR_PR_ARRIVE, PR_ARRIVE_EXPECT, repl, 5); break;
+        }
+        if (ok) {
+            ++patched;
+        } else {
+            ++mismatched;
+            refuse_uncarried_fix("project_gate_fix", s.addr, s.owner);
+        }
+    }
+    static char what[200];
+    wsprintfA(what, "%d site(s) PATCHED, %d DISPLACED (libmh owns them), %d MISMATCHED", patched, displaced, mismatched);
+    g_pr_what    = what;
+    g_pr_carried = mismatched == 0;
+    // Runtime gate: the one project_gate_fix switch (read from the ini before the installs; F_LOCAL + F_RESTART, so no later apply).
+    const int taken       = g_project_gate_fix != 0 && g_pr_carried;
+    g_progress_recheck_rt = taken;
+    char b[300];
+    wsprintfA(b, "; progress recheck splice: installed, %s ([net] project_gate_fix=%d, mods:UNL1): %s\n", taken ? "ON" : "OFF", g_project_gate_fix != 0, what);
     seam_log(b);
 }
 
@@ -4659,6 +4836,9 @@ static uint32_t __cdecl route_cost_calc(uint32_t low) {
     return mh::sim::move::route_cost_calc(p, low, *reinterpret_cast<const volatile int32_t *>(0x0051de38u)); // _G_LLM_STRAT_GROUP_MEMBER_COUNT
 }
 
+// mods:M1WL v4: the same cost the flood charges, for the stream heat's re-trace (sim/move/stream_heat.h sh_retrace).
+static uint32_t flood_cost_for_retrace(uint32_t low) { return g_rc_mode ? route_cost_calc(low) : low; }
+
 // The decisions of the centroid / slot_dist / detour / flood-queue splices are the pure rules of sim/move/{wrap,guards}.h (shared with
 // the libmh twins); the naked stubs only marshal the registers / stack slots in and the result out. Each helper is cdecl: it may
 // clobber EAX/ECX/EDX only, and the stubs save whatever the replaced instructions did not already clobber.
@@ -4676,7 +4856,7 @@ static int32_t __cdecl mv_slot_calc(int32_t d, int32_t half, int32_t size, int h
 // 1 = skip the recursion into the occupant (its path_slot_id is 0xff). player / alt as the stub reads them from pathfind's frame.
 static int __cdecl mv_detour_skip(int32_t player, int32_t alt) {
     ++g_mv_hit[MVH_DETOUR];
-    const uint8_t slot = *reinterpret_cast<const volatile uint8_t *>(0x00dd8cf2u + static_cast<uint32_t>(player) * 0x5b04u + static_cast<uint32_t>(alt) * 0xe9u);
+    const uint8_t slot = *(reinterpret_cast<const volatile uint8_t *>(mh::caps::rec<uint8_t>(mh::caps::UNITS, static_cast<uint32_t>(player), static_cast<uint32_t>(alt))) + 0xaa); // units[player][alt].path_slot_id (0x00dd8cf2 = base + 0xaa)
     return mh::sim::move::detour_skip_occupant(true, slot) ? 1 : 0;
 }
 // 1 = the ring holds 0xff8 or more pending entries: stop the flood.
@@ -6305,6 +6485,8 @@ void install_qpc_clock() {
 
 } // namespace
 
+uint32_t mv_flood_cost(uint32_t low) { return flood_cost_for_retrace(low); } // mods:M1WL v4 (declared in net_internal.h)
+
 // ---- SES1: the numbers the SESSION_BEGIN / SESSION_END records report ---------------------------
 //
 // It lives in THIS TU because this TU owns them: the game's cumulative stall counter, the two icon
@@ -6569,6 +6751,9 @@ void lockstep_install_core() {
     // value): a building pip_level outside 0..4 / pip_active_count outside 0..16 is zeroed before any reader
     // indexes the 4-entry A_OGIEN table with it (field crashes 0x0047908b / 0x004793e1).
     g_bldg_pip_guard = mh_ini_get_int("net", "bldg_pip_guard", 1, g_ini);
+    // O1c. DEFAULT ON, a strict superset of the vanilla order encoding (identical bytes for every index < 256); every peer
+    // must carry the same value once an index reaches 256. C_DEV: a release ignores the key, so it ships always on.
+    g_order_wide_index = mh_ini_get_int("net", "order_wide_index", 1, g_ini);
     // PT-FIX2 / PT-FIX4 / PT-FIX5 (turret_reload_realtime_fix, turret_fire_rate_mult, turret_clip_fix, turret_fire_poll_fix):
     // PT-SET1 host-synced gameplay rows -- NOT read here. config/gameplay.cpp reads them (boot: the local ini; match: the
     // host's published values) and the hooks in seams/gameplay_hooks.cpp call the mh_set_turret_* setters below.
@@ -6745,6 +6930,7 @@ void lockstep_install_core() {
         fx.undock_reentry_fix      = g_undock_reentry_fix != 0;      // U49, see install_undock_reentry_fix
         fx.turret_reload_owner_fix = g_turret_reload_owner_fix != 0; // PT-FIX1, see install_turret_reload_splice
         fx.bldg_pip_guard          = g_bldg_pip_guard != 0;          // hotfix rc9.4, see seams/bldg_pip_guard.cpp
+        fx.order_wide_index        = g_order_wide_index != 0;        // O1c, see seams/order_wide_index.cpp
         // PT-SET1: turret_reload_realtime_fix / turret_fire_rate_mult / turret_clip_fix / turret_fire_poll_fix are set by the
         // gameplay hooks (seams/gameplay_hooks.cpp), not here.
         fx.air_order_facing_fix = g_air_order_facing_fix != 0; // PT-FIX3, see install_air_order_facing_fix
@@ -6826,6 +7012,7 @@ void lockstep_install_core() {
     install_turret_clip_fix();                          // PT-FIX4 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
     install_turret_fire_poll_fix();                     // PT-FIX5 -- ALWAYS installed (runtime-gated stub), same three outcomes
     install_mother_free_build();                        // mods:A1 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
+    install_progress_recheck();                         // mods:UNL1 -- ALWAYS installed (runtime-gated stubs), same three outcomes per site
     install_move_proto();                               // mods:M1P -- ALWAYS installed (runtime-gated stubs), movement prototype keys
     if (g_project_gate_fix) install_project_gate_fix(); // mods:A2 -- same three outcomes
     {
@@ -6843,6 +7030,7 @@ void lockstep_install_core() {
     if (g_air_order_facing_fix) install_air_order_facing_fix(); // PT-FIX3 -- same three outcomes
     else seam_log("; air order facing fix OFF ([net] air_order_facing_fix=0, PT-FIX3): retail -- a helicopter at microstep 31 with a stale facing never applies its next order\n");
     install_bldg_pip_guard(g_bldg_pip_guard != 0);                      // hotfix rc9.4 -- per site PATCHED / DISPLACED / MISMATCHED
+    install_order_wide_index(g_order_wide_index != 0);                  // O1c -- four sites, per site PATCHED / DISPLACED / MISMATCHED
     if (g_overlay_dialog_guard) install_overlay_dialog_guard();         // mp:U44 -- retail carrier; per-site DISPLACED under promotion
     if (g_player_left_pin_fix) install_player_left_pin_fix();           // mp:U66 -- U56's pinned loser-flag flip (retail carriers)
     if (g_spectate_after_defeat) install_spectate();                    // mp:U54 -- spectate after defeat (retail carriers; displaced by promotion)

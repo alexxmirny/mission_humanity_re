@@ -43,14 +43,25 @@ by exactly the sites no interlock can ever fire on.
 
 `patch_bytes_guarded` writes at arbitrary addresses, not at entries, so a byte-exact overlap between
 a registered DLL patch and a manifest site is not answerable from the body-granular registry -- and
-it does not have to be, because it is decidable HERE, exactly, offline. Both collisions the corpus
-contains are the same benign shape (a manifest and its DLL twin carrying one fix), and both are
-listed by name rather than merely counted: an unexplained third one is the thing to notice.
+it does not have to be, because it is decidable HERE, exactly, offline.
+
+FULL EXTENTS (PT-CAP8 S0, 2026-10-19). The first version of this arm tested only a DLL patch's START
+address against a site's extent. A manifest site is a bare 4-byte operand carved out of an
+instruction; the DLL patch that replaces that instruction starts EARLIER and runs over it, so the
+start-address test saw nothing: six patches the shipped hooks depend on (turret_clip_fix,
+turret_clip_refill, mother_free_seed, move_near_enough, move_squad_merge_fix, move_reverse_now)
+overlap the grand cap raise and the census said zero. Now every registered DLL patch carries its
+byte length (`lens`, parallel to `addrs`, in dll_patch_manifest.json) and the test is interval
+intersection, classified start / interior / contains / straddle. A row that has `addrs` but no
+`lens` is REFUSED -- a missing length reads as 'no overlap'. `--verify-lens --exe PATH` proves each
+extent ends on an instruction boundary of the clean EN exe (local only; needs the binary).
+`cap_set_overlaps` is the subset against the v0.2.2 cap manifests.
 
 usage:
   python tools/check_inmem_composition.py            # re-derive and WRITE the extract
   python tools/check_inmem_composition.py --check    # re-derive and require byte-identity (lint)
   python tools/check_inmem_composition.py --selftest # the derivation's own negatives
+  python tools/check_inmem_composition.py --verify-lens [--exe PATH]  # lens end on instruction boundaries
 """
 
 import argparse
@@ -69,6 +80,15 @@ EN_FUNCTIONS = os.path.join(REPO, "tools", "data", "en_functions.json")
 PATCHES_HEADER = os.path.join(DLL, "mh", "addr", "mh_patches.gen.h")
 DLL_PATCH_MANIFEST = os.path.join(REPO, "tools", "data", "dll_patch_manifest.json")
 EXTRACT = os.path.join(REPO, "tools", "data", "inmem_composition_census.json")
+
+# The v0.2.2 cap manifests are picked up by name (cap_v022_reloc_EN + cap_v022_limits_EN). The July
+# grand + pool-caphike manifests are the generator's INPUT now and no longer part of the cap set; their
+# overlaps stay visible in `registered_patch_overlaps`.
+CAP_MANIFESTS = ()
+# PT-CAP9-U1: the v0.2.3 units/soldiers pair joins the cap set (cap_v023_units_reloc_EN + cap_v023_units_limits_EN).
+CAP_PREFIX = ("cap_v022_", "cap_v023_")
+ALLOW = os.path.join(REPO, "tools", "data", "cap_compose_allow.json")
+GUARD_HELPER = "patch_bytes_guarded_caps"
 
 # The widest entry steal any install in this tree takes; must equal ENTRY_WINDOW in
 # mh/hook/promoted.cpp, and assertion 5 below checks that it does rather than trusting the comment.
@@ -231,6 +251,114 @@ def promoted_entry_window_bytes(path=None):
     return int(m.group(1))
 
 
+# ---- DLL patch extents and the full-extent overlap test -------------------------------------------------
+
+
+def dll_patch_extents(path=DLL_PATCH_MANIFEST):
+    """-> ([(patch_id, addr, len)], [dynamic patch ids]).
+
+    REFUSES a row that has `addrs` and no (or a mis-sized) `lens`: a length that is not stated would
+    be read by the overlap test as zero, i.e. as 'cannot overlap'."""
+    out, dynamic = [], []
+    for p in json.load(open(path, encoding="utf-8"))["patches"]:
+        addrs = p.get("addrs") or []
+        if not addrs:
+            if p.get("dynamic"):
+                dynamic.append(p["id"])
+            continue
+        lens = p.get("lens")
+        if (
+            not isinstance(lens, list)
+            or len(lens) != len(addrs)
+            or not all(isinstance(n, int) and n > 0 for n in lens)
+        ):
+            raise Refusal(
+                "dll_patch_manifest.json row %r has %d addr(s) but lens=%r -- every address needs its write "
+                "length (tools/check_inmem_composition.py docstring, FULL EXTENTS)."
+                % (p["id"], len(addrs), lens)
+            )
+        for a, n in zip(addrs, lens):
+            out.append((p["id"], int(a, 16), n))
+    return out, dynamic
+
+
+def classify_overlap(d_lo, d_hi, s_lo, s_hi):
+    """How a DLL patch [d_lo,d_hi) meets a manifest site [s_lo,s_hi); None when they are disjoint."""
+    if d_hi <= s_lo or s_hi <= d_lo:
+        return None
+    if d_lo == s_lo:
+        return "start"
+    if s_lo < d_lo and d_hi <= s_hi:
+        return "inside_site"
+    if d_lo < s_lo and s_hi <= d_hi:
+        return "interior"  # the site lies wholly inside the DLL patch (the grand/hook shape)
+    return "straddle"
+
+
+def full_extent_overlaps(dll_extents, rows):
+    """Interval intersection of every DLL patch against every site (manifest, va, len). rows with
+    len 0 (the one `asm` patch) have no extent and cannot overlap."""
+    ext = sorted((va, va + ln, manifest) for manifest, va, ln in rows if ln)
+    starts = [e[0] for e in ext]
+    maxhi, m = [], 0
+    for e in ext:
+        m = max(m, e[1])
+        maxhi.append(m)
+    out = []
+    for pid, addr, ln in dll_extents:
+        lo, hi = addr, addr + ln
+        i = bisect.bisect_left(starts, hi) - 1
+        while i >= 0 and maxhi[i] > lo:
+            s_lo, s_hi, mname = ext[i]
+            rel = classify_overlap(lo, hi, s_lo, s_hi)
+            if rel:
+                out.append(
+                    {
+                        "patch": pid,
+                        "addr": "0x%08x" % addr,
+                        "len": ln,
+                        "manifest": mname,
+                        "site": "0x%08x" % s_lo,
+                        "site_len": s_hi - s_lo,
+                        "relation": rel,
+                    }
+                )
+            i -= 1
+    return sorted(out, key=lambda r: (r["patch"], r["addr"], r["manifest"], r["site"]))
+
+
+def excluded_embeds(data=os.path.join(REPO, "tools", "data")):
+    """-> [(generator cache, va)] for every relocated-array dword a cap manifest generator EXCLUDED on purpose (its census class
+    `excluded`): a dword that a DLL patch carries inside its own bytes and rebuilds from the live base (PT-CAP9-U5: the O1c local-decode
+    carrier embeds the pending base). Such a dword is in NO manifest, so the site-extent intersection above can never see a patch that
+    EMBEDS it -- this is the arm that does."""
+    out = []
+    for path in sorted(glob.glob(os.path.join(data, "cap_*_sites.json"))):
+        doc = json.load(open(path, encoding="utf-8"))
+        for r in doc.get("census", []):
+            if r.get("cls") == "excluded":
+                out.append((os.path.basename(path), int(r["va"])))
+    return out
+
+
+def embedded_overlaps(dll_extents, embeds):
+    """Every excluded dword [va, va+4) that lies inside a registered DLL patch extent -> rows {patch, addr, len, cache, va}."""
+    out = []
+    for pid, addr, ln in dll_extents:
+        for cache, va in embeds:
+            if addr <= va and va + 4 <= addr + ln:
+                out.append(
+                    {
+                        "patch": pid,
+                        "addr": "0x%08x" % addr,
+                        "len": ln,
+                        "cache": cache,
+                        "va": "0x%08x" % va,
+                    }
+                )
+    return sorted(out, key=lambda r: (r["patch"], r["addr"], r["va"]))
+
+
 # ---- the census ----------------------------------------------------------------------------------
 
 
@@ -277,18 +405,14 @@ def census():
                     {"manifest": manifest, "va": "0x%08x" % va, "len": ln, "fn": fname}
                 )
 
-    # The byte-exact arm the runtime registry cannot answer (see the module docstring).
-    extent_list = sorted((va, va + ln, manifest) for manifest, va, ln in rows if ln)
-    starts = [e[0] for e in extent_list]
-    collisions = []
-    for p in json.load(open(DLL_PATCH_MANIFEST, encoding="utf-8"))["patches"]:
-        for a in p.get("addrs") or []:
-            addr = int(a, 16)
-            i = bisect.bisect_right(starts, addr) - 1
-            if i >= 0 and addr < extent_list[i][1]:
-                collisions.append(
-                    {"patch": p["id"], "addr": "0x%08x" % addr, "manifest": extent_list[i][2]}
-                )
+    # The byte-exact arm the runtime registry cannot answer: FULL-extent intersection (see the docstring).
+    dll_ext, dynamic = dll_patch_extents()
+    overlaps = full_extent_overlaps(dll_ext, rows)
+    cap_overlaps = [
+        r
+        for r in overlaps
+        if r["manifest"] in CAP_MANIFESTS or r["manifest"].startswith(CAP_PREFIX)
+    ]
 
     return {
         "_generated_by": "tools/check_inmem_composition.py",
@@ -316,7 +440,11 @@ def census():
             for k, v in sorted(by_fn.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
         ],
         "entry_window_collisions": sorted(window_rows, key=lambda r: (r["manifest"], r["va"])),
-        "registered_patch_collisions": sorted(collisions, key=lambda r: (r["patch"], r["addr"])),
+        "dll_patch_extents": len(dll_ext),
+        "dll_patches_dynamic_unchecked": dynamic,
+        "registered_patch_overlaps": overlaps,
+        "cap_set_overlaps": cap_overlaps,
+        "embedded_reloc_overlaps": embedded_overlaps(dll_ext, excluded_embeds()),
         "detour_target_bodies_named": D,
     }
 
@@ -332,7 +460,22 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--check", action="store_true", help="re-derive and require byte-identity")
     ap.add_argument("--selftest", action="store_true", help="the derivation's own negatives")
+    ap.add_argument(
+        "--verify-lens",
+        action="store_true",
+        help="lens end on instruction boundaries (needs the exe)",
+    )
+    ap.add_argument("--exe", help="clean EN mh.exe for --verify-lens")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="also require every cap overlap to be allowed and to compose via patch_bytes_guarded_caps "
+        "(red until PT-CAP8 S1 Slice C lands the hooks)",
+    )
     args = ap.parse_args(argv)
+
+    if args.verify_lens:
+        return verify_lens(args.exe)
 
     if args.selftest:
         return selftest()
@@ -358,12 +501,22 @@ def main(argv=None):
         )
     )
     print(
-        "%d site(s) lie in no function body at all; %d registered DLL patch(es) overlap a manifest "
-        "site byte-for-byte." % (doc["orphan_sites"], len(doc["registered_patch_collisions"]))
+        "%d site(s) lie in no function body at all; %d registered DLL patch extent(s) overlap a manifest "
+        "site (%d against the v0.2.2 cap manifests)."
+        % (doc["orphan_sites"], len(doc["registered_patch_overlaps"]), len(doc["cap_set_overlaps"]))
     )
 
+    if args.strict:
+        bad = strict_failures(doc)
+        for b in bad:
+            print("  STRICT FAIL: %s" % b)
+        print("check_inmem_composition --strict: %s" % ("FAIL (%d)" % len(bad) if bad else "ok"))
+        if bad:
+            return 1
+
     if not args.check:
-        open(EXTRACT, "w", encoding="utf-8").write(text)
+        with open(EXTRACT, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
         print("wrote %s" % rel(EXTRACT))
         return 0
 
@@ -381,6 +534,107 @@ def main(argv=None):
         return 1
     print("ok: %s" % rel(EXTRACT))
     return 0
+
+
+def verify_lens(exe=None):
+    """Local-only: every registered code extent must END on an instruction boundary of the clean EN
+    exe (the DLL guard's `expect` bytes are the vanilla instructions, so a wrong length shows up as a
+    cut instruction). Data rows (kind: data) are skipped."""
+    sys.path.insert(0, HERE)
+    import scan_cap_reloc_sites as scan
+    from capstone import CS_ARCH_X86, CS_MODE_32, Cs
+
+    exe = exe or scan.default_exe()
+    if not exe:
+        print("check_inmem_composition --verify-lens: no clean EN exe; pass --exe")
+        return 1
+    img = scan.Image(open(exe, "rb").read())
+    md = Cs(CS_ARCH_X86, CS_MODE_32)
+    data_ids = {
+        p["id"]
+        for p in json.load(open(DLL_PATCH_MANIFEST, encoding="utf-8"))["patches"]
+        if p.get("kind") != "code"
+    }
+    bad = 0
+    ext, _dyn = dll_patch_extents()
+    for pid, addr, ln in ext:
+        if pid in data_ids:
+            continue
+        off = 0
+        ok = False
+        for ins in md.disasm(img.read(addr, ln + 16), addr):
+            off += ins.size
+            if off == ln:
+                ok = True
+                break
+            if off > ln:
+                break
+        if not ok:
+            bad += 1
+            print(
+                "  BAD LEN %s @0x%08x len %d does not end on an instruction boundary"
+                % (pid, addr, ln)
+            )
+    print(
+        "check_inmem_composition --verify-lens: %s (%d code extents)"
+        % ("FAIL" if bad else "ok", len(ext))
+    )
+    return 1 if bad else 0
+
+
+# ---- --strict: every cap overlap is allowed AND composes through the helper ----------------------------
+
+
+def strict_failures(doc, check_source=True):
+    """Each `cap_set_overlaps` row must be listed in cap_compose_allow.json (patch + site) and -- under
+    `check_source` -- the patch's installing source must go through `patch_bytes_guarded_caps`, the
+    guard that compares against the bytes ACTUALLY present (the applied manifest's relocated bytes)."""
+    fails = []
+    if not os.path.isfile(ALLOW):
+        return ["%s is missing" % rel(ALLOW)]
+    allow = json.load(open(ALLOW, encoding="utf-8"))["allowed"]
+    ok = {(a["patch"], a["site"]) for a in allow}
+    for r in doc["cap_set_overlaps"]:
+        if (r["patch"], r["site"]) not in ok:
+            fails.append(
+                "overlap %s @%s x site %s is not in cap_compose_allow.json"
+                % (r["patch"], r["addr"], r["site"])
+            )
+    emb_ok = {
+        (a["patch"], a["va"]) for a in json.load(open(ALLOW, encoding="utf-8")).get("embedded", [])
+    }
+    for r in doc["embedded_reloc_overlaps"]:
+        if (r["patch"], r["va"]) not in emb_ok:
+            fails.append(
+                "DLL patch %s @%s EMBEDS a relocated address at %s (excluded from %s) and is not in cap_compose_allow.json 'embedded'"
+                % (r["patch"], r["addr"], r["va"], r["cache"])
+            )
+    have_emb = {(r["patch"], r["va"]) for r in doc["embedded_reloc_overlaps"]}
+    for patch, va in sorted(emb_ok - have_emb):
+        fails.append(
+            "cap_compose_allow.json 'embedded' lists %s x %s, which no longer overlaps"
+            % (patch, va)
+        )
+    have = {(r["patch"], r["site"]) for r in doc["cap_set_overlaps"]}
+    for a in allow:
+        if (a["patch"], a["site"]) not in have:
+            fails.append(
+                "cap_compose_allow.json lists %s x %s, which no longer overlaps"
+                % (a["patch"], a["site"])
+            )
+        if check_source:
+            src = os.path.join(REPO, a["source"])
+            text = (
+                open(src, encoding="utf-8", errors="replace").read() if os.path.isfile(src) else ""
+            )
+            if not re.search(
+                r"%s\s*\(\s*%s\b" % (GUARD_HELPER, re.escape(a["install_token"])), text
+            ):
+                fails.append(
+                    "%s does not install %s through %s(...)"
+                    % (a["source"], a["patch"], GUARD_HELPER)
+                )
+    return fails
 
 
 # ---- --selftest ------------------------------------------------------------------------------------
@@ -473,6 +727,51 @@ def selftest():
             detour_targets(os.path.join(tmp, "empty"), consts)[0] == {},
         )
 
+    # 4b. FULL-EXTENT overlap. The shapes the start-address test could not see.
+    site = [("m", 0x1000, 4)]  # a 4-byte operand [0x1000,0x1004)
+    expect(
+        "a DLL patch that STARTS BEFORE a site and runs over it is an overlap (the grand/hook shape)",
+        [r["relation"] for r in full_extent_overlaps([("p", 0x0FFD, 7)], site)] == ["interior"],
+        full_extent_overlaps([("p", 0x0FFD, 7)], site),
+    )
+    expect(
+        "...a patch that ends exactly where the site starts does NOT overlap",
+        full_extent_overlaps([("p", 0x0FFC, 4)], site) == [],
+    )
+    expect(
+        "...a patch that starts exactly where the site ends does NOT overlap",
+        full_extent_overlaps([("p", 0x1004, 4)], site) == [],
+    )
+    expect(
+        "...a patch that overlaps only the first byte of the site is a straddle",
+        [r["relation"] for r in full_extent_overlaps([("p", 0x0FFC, 5)], site)] == ["straddle"],
+    )
+    expect(
+        "...a patch at the site start is 'start'; one wholly inside a longer splice is 'inside_site'",
+        [r["relation"] for r in full_extent_overlaps([("p", 0x1000, 2)], [("m", 0x1000, 8)])]
+        == ["start"]
+        and [r["relation"] for r in full_extent_overlaps([("p", 0x1002, 2)], [("m", 0x1000, 8)])]
+        == ["inside_site"],
+    )
+    expect(
+        "...a long early splice is still found behind a short later site",
+        len(full_extent_overlaps([("p", 0x1040, 4)], [("m", 0x1000, 0x80), ("n", 0x1010, 4)])) == 1,
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        bad = os.path.join(tmp, "dll_patch_manifest.json")
+        json.dump({"patches": [{"id": "x", "addrs": ["0x00401000"]}]}, open(bad, "w"))
+        try:
+            dll_patch_extents(bad)
+            expect("a row with addrs and no lens is REFUSED", False)
+        except Refusal:
+            expect("a row with addrs and no lens is REFUSED", True)
+        json.dump({"patches": [{"id": "x", "addrs": ["0x00401000"], "lens": [0]}]}, open(bad, "w"))
+        try:
+            dll_patch_extents(bad)
+            expect("a zero length is REFUSED", False)
+        except Refusal:
+            expect("a zero length is REFUSED", True)
+
     # 5. THE REAL DERIVATION, on the real tree: every class must be non-empty and the applier's
     # window constant must be the one this file states.
     try:
@@ -501,6 +800,59 @@ def selftest():
         "the applier's ENTRY_WINDOW is the %d this census assumes" % ENTRY_WINDOW,
         doc["entry_window_bytes"] == ENTRY_WINDOW,
         doc["entry_window_bytes"],
+    )
+    known6 = {"0x00462ab9", "0x0047c6c8", "0x00491eac", "0x00482b5b", "0x0047ebe1", "0x00466bfe"}
+    got6 = {
+        r["addr"]
+        for r in doc["registered_patch_overlaps"]
+        if r["manifest"] == "grand_all_caphike_storagecap_EN"
+    }
+    expect(
+        "the six overlaps PT-CAP8 found against the July grand raise are all still reported (full extents)",
+        known6 <= got6,
+        sorted(known6 - got6),
+    )
+    expect(
+        "...and the start-address-only test would have reported none of them",
+        not any(
+            r["relation"] == "start"
+            and r["addr"] in known6
+            and r["manifest"] == "grand_all_caphike_storagecap_EN"
+            for r in doc["registered_patch_overlaps"]
+        ),
+    )
+    known6 = {
+        "0x00462ab9",
+        "0x0047c6c8",
+        "0x00491eac",  # v0.2.2: buildings/turrets hooks
+        "0x00482b5b",
+        "0x0047ebe1",
+        "0x00466bfe",  # v0.2.3 (PT-CAP9-U1): the three units hooks
+    }
+    cap_addrs = {r["addr"] for r in doc["cap_set_overlaps"]}
+    expect(
+        "against the cap manifests exactly the three buildings/turrets hooks and the three units "
+        "hooks overlap (the units one with two sites in move_near_enough)",
+        cap_addrs == known6 and len(doc["cap_set_overlaps"]) == 7,
+        sorted(cap_addrs),
+    )
+    expect(
+        "every cap_set_overlaps row is in tools/data/cap_compose_allow.json",
+        not strict_failures(doc, check_source=False),
+        strict_failures(doc, check_source=False),
+    )
+    emb = embedded_overlaps(
+        [("p", 0x1000, 27)], [("c.json", 0x1003), ("c.json", 0x1000 + 25), ("c.json", 0x2000)]
+    )
+    expect(
+        "a DLL patch that EMBEDS an excluded relocated dword is found (inside), one that only touches its edge or sits elsewhere is not",
+        [r["va"] for r in emb] == ["0x00001003"],
+        emb,
+    )
+    expect(
+        "the committed census sees the O1c local-decode carrier embedding the two excluded pending dwords",
+        {(r["patch"], r["va"]) for r in doc["embedded_reloc_overlaps"]}
+        >= {("order_wide_decode_local", "0x0046643d"), ("order_wide_decode_local", "0x00466451")},
     )
     expect(
         "every entry-window collision names a manifest, a VA and a function",

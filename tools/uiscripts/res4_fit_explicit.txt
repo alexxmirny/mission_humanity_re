@@ -1,0 +1,36 @@
+# res4_fit_explicit -- mods:RES17: an explicit 1280x960 frame at ui_scale=175 on a 2560x1440 screen (ini/res4_fit_explicit.ini; the screen is the dev
+# key ui_screen, because the rig's window cannot be 2560 px wide -- the pointer half of RES17 is the row res4_fit_click on a real window).
+#  a  the strategic view: the presented image is the quad composition with the map enlarged by k = 1.49 (tools/check_res4_fit.py re-derives it);
+#  b  ESC: the menu is a dialog quad over the enlarged map, covering its (enlarged) copy.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res4_fit frame_ready
+cursorhold 600 400 6
+capture res4_fe_frame
+pcapture res4_fe_view
+
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+screensettled
+capture res4_fe_esc_frame
+pcapture res4_fe_esc
+log res4_fit esc_open
+key 0x01
+gamemode 2
+log res4_fit COMPLETE -- 1280x960 fitted to 2560x1440 at 175%
+end

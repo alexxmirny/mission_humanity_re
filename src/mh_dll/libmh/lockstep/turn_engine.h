@@ -629,6 +629,12 @@ struct reimpl_fixes {
     // sim_step_ms, not negotiated. The initialiser is the faithful-stock value; the ini default is 1.
     bool diplo_order_dedup_fix = false;
 
+    // [net] order_wide_index -- O1c: the scheduled order lane carries unit_index in 12 bits instead of
+    // the vanilla 8 (orders/order_index_codec.h), so building 256..499 is addressable. A strict superset
+    // of the vanilla encoding for every index < 256, hence DEFAULT TRUE (unlike the other members): the
+    // wire and every hash are unchanged until an index reaches 256. false = the vanilla 8-bit lane.
+    bool order_wide_index = true;
+
     // [net] undock_reentry_fix -- MP U49: the queue dispatcher drops an undock order (code 0x20) whose
     // unit is not PARKED at apply time. A second 0x20 applied a pass after the first (the lockstep
     // scheduling delay makes a double-click do this) re-enters exit_storage_begin on a unit already
@@ -759,6 +765,15 @@ struct reimpl_fixes {
     bool move_enter_queue               = false; // mods:M1BE: ORDER 0x24 units wait behind an entering friend and ignore the block-wait / sidestep / cooldown keys
     bool storage_door_hold              = false; // mods:M1BE: an open storage door stays open while an entering friend is within 2 tiles
     int  move_formation_click           = 0;     // mods:M1G 4b: 0 off, 1..2 = the old keep rule (N - 1 rings of slack), 3 = the formation moves as one
+    bool move_stream_heat               = false; // mods:M1WL v2: a lone unit of a stream (>= 8 groupmates walking) prices the tiles of its mates' next 120 path steps (sim/move/stream_heat.h)
+    int  move_stream_heat_cost          = 2;     // mods:M1WL v3: the cost per priced tile, a legal value (0, 2, 32, 34 .. 226; sim/move/stream_heat.h sh_legal_cost)
+    int  move_stream_heat_window        = 120;   // mods:M1WL v3: path steps of each walking mate that are priced (1 .. 255)
+    int  move_stream_heat_min_mates     = 8;     // mods:M1WL v3: groupmates needed before the rule fires (1 .. 255)
+    int  move_stream_heat_scale         = 1;     // mods:M1WL v3: 1 = the cost x min(mates on the tile, scale_cap) (on by default since v5)
+    int  move_stream_heat_retrace       = 0;     // mods:M1WL v4: 1 = a heated plan's route is re-traced charging the tile stepped onto (sim/move/stream_heat.h sh_retrace)
+    int  move_stream_heat_turn          = 0;     // mods:M1WL v4: the re-trace's penalty for a turn of more than 45 degrees (0 .. 64)
+    int  move_stream_heat_scale_cap     = 16;    // mods:M1WL v5: the mate count at which the scaled cost stops growing (1 .. 255)
+    int  move_stream_heat_margin        = 0;     // mods:M1WL v5: percent; a heated route longer than (100 + margin)% of the unheated one is replaced by it (0 = off)
     bool move_reverse_now               = false; // mods:M1G 4c: slide back at once when a new goal lies behind
     int  move_turn_rate                 = 0;     // mods:M1G 4c: walker turn speed x 2^k (0 retail, 0..2)
 

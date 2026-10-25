@@ -355,10 +355,10 @@ extern "C" {
 /* LIFT-TACT slice B -- the two tactical frame-boundary scopes.
  *
  * BLAST_TRANSITION IS A COLLAPSED LOOP, and that is the cut R1 asks for rather than a shortcut.
- * The original runs a FIXED sixteen iterations of (scroll_fade_step, blink_overlay_clear,
+ * The original runs a FIXED sixteen iterations of (blast_wipe_brighten_step, blink_overlay_clear,
  * frame_cursor_and_reset) when a mine blast ends the mission, and nothing of libmh's happens
  * between iterations -- so what a host needs to know is "play the exit wipe", not forty-eight fine
- * steps. It also absorbs llm_tact_scroll_fade_step entirely, that loop being the entry's only site.
+ * steps. It also absorbs llm_tact_blast_wipe_brighten_step entirely, that loop being the entry's only site.
  * Not a spin, unlike SCR_FADE_TRANSITION_RUN: the bound is a compile-time 16, so no host answer can
  * hang it -- but the frame loop is the host's for the same reason, and mh.dll's sink runs the
  * original sixteen-iteration loop verbatim. */

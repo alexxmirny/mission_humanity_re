@@ -25,6 +25,7 @@ refuse.newer_than_host = protokół nowszy niż u hosta
 refuse.not_our_lobby = to nie nasze lobby
 refuse.cp_mismatch = różne strony kodowe wejścia
 refuse.unknown = nieznane
+refuse.caps = nie można podnieść limitów
 refuse.build = Host ma %s, ty masz %s: zaktualizuj
 refuse.gameplay = Różne ustawienia rozgrywki (%s/%s): zaktualizuj
 relay.outdated = Przekaźnik przestarzały (protokół %u < %u)
@@ -39,6 +40,8 @@ map.mismatch = Mapa wysłana przez hosta nie zgadza się z ogłoszeniem.
 # in-match messages
 desync.alert = DESYNCHRONIZACJA (krok %lu) - gra graczy rozeszła się
 cheat.single_player = kody działają tylko w grze jednoosobowej
+orders.quota = Zbyt wiele rozkazów naraz - reszta nie została wydana
+orders.refused = Kolejka rozkazów pełna - reszta nie została wydana
 hub.migrated = %s wyszedł; hostem jest teraz %s
 hub.lost = utracono połączenie z %s; hostem jest teraz %s
 spectate.defeated = Pokonany - tryb obserwatora
@@ -55,6 +58,10 @@ netind.waiting = CZEKAM NA %s
 # main menu (the no-art fallback button; drawn upper-cased)
 menu.network_game = Gra sieciowa
 
+# in-game Options screen: the Interface size row (mods:RES4)
+options.interface_size = Rozmiar interfejsu:
+options.interface_auto = Auto
+
 # lobby TEAM spinner + MODE selector (mp:U51)
 lobby.team_none = -
 lobby.team_1 = D1
@@ -63,3 +70,6 @@ lobby.team_3 = D3
 lobby.team_4 = D4
 lobby.mode_ffa = Tryb: każdy na każdego
 lobby.mode_team = Tryb: drużyny
+
+# raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
+caps.load_refused = Ten zapis używa podniesionych limitów. Włącz "Raised limits" w launcherze, aby go wczytać.

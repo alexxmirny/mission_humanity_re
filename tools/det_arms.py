@@ -3381,6 +3381,101 @@ def run_det_config1(args, cfg, local=False, gate=False):
     return results
 
 
+# patching:PT-CAP8 hardening -- the cap-fill shape. Both peers WITHOUT libmh.dll (the relocation manifest applies), the HOST's ini carries
+# `[caps] raise=1` (host-synced: the client adopts it at START), and the host's player fills its roster past every vanilla cap through the
+# harness cap-fill fixture while the lockstep hash compare runs. Overflow records (past the vanilla window) are NOT in the hashed regions
+# yet (PT-CAP8 S2): the verdict proves the vanilla window and the lockstep, not the overflow slots. LOCAL lanes only (two lanes of this box).
+CAPS_HOST_INI = os.path.join(REPO, "tools", "uiscripts", "ini", "caps_raise.ini")
+CAPS_FILL_EXTRA = "synth_move=0;capu_at=300;capu_player=0;capu_units=300;capu_soldiers=200;capu_hold=100000;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=%d;cap_storage=%d;cap_turret=%d;cap_mine=%d;cap_lab=%d;cap_prod=%d"
+
+
+# patching:PT-CAP11: the same shape with an AI opponent seated at slot index 2 (--ai). The HUMAN host fills its roster (the owner peer issues, the one
+# case the order lane replicates: an AI has no owner peer, and a host-issued order for the AI's roster desyncs at once), the AI plays on the AI scratch
+# layer (ON on both peers with the raise), and after the fill's verdict BOTH peers feed the host's 330 buildings to the game's own engage / scan-target
+# adders for the AI (cap_ai_hammer=4: the AI is player 2), passing the vanilla engage scratch of 256. The hashes must stay identical.
+CAPS_AI_EXTRA = (
+    "synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_ai_hammer=4;"
+    "cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12"
+)
+
+
+# patching:PT-CAP9-U5 (--orders): the order-layer shape. The host's player fills 490 units, then issues 500 ctrl-group status-bit orders (each with its 0xfb echo:
+# 1000 records) in ONE sim step, and `[caps] orders_release_cap=300` (BOTH peers: tools/uiscripts/ini/caps_orders_relcap.ini) lowers the release_due queue bound so
+# 1000 records are DUE but the queue takes 300 per step -- the carry-over (probe d) must pick the same records on every peer: ALL PAIRS IDENTICAL.
+CAPS_ORDERS_EXTRA = (
+    "synth_move=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;"
+    "capo_at=300;capo_player=0;capo_n=500;capo_wait=60"
+)
+CAPS_ORDERS_INI = os.path.join(REPO, "tools", "uiscripts", "ini", "caps_orders_relcap.ini")
+
+
+def run_det_caps(args, cfg):
+    """-> [(label, ok, lines)]: the clean arm, raise=1 on the host, cap-fill on both peers (only the owner issues)."""
+    ai = bool(getattr(args, "ai", False))
+    orders = bool(getattr(args, "orders", False))
+    det_dir = rig_phases.det_dir_path()
+    det_test = {
+        "name": "determinism",
+        "kind": "multi",
+        "host": "mp_host_cap_orders.txt"
+        if orders
+        else "mp_host_cap_ai.txt"
+        if ai
+        else "mp_host_cap_fill.txt",
+        "clients": ["mp_client_idle.txt"],
+        "omit_satellite": ["libmh.dll"],
+    }
+    plan = provision_lanes(
+        [det_test],
+        headless=False,
+        port_base=DET_LOCAL_PORT,
+        lane_base=DET_LOCAL_LANE_BASE,
+        stock_exe=cfg.stock_exe,
+        backend=cfg.backend,
+        input_backend=cfg.input_backend,
+    )
+    label = "CAP %s (raise=1 on the host, both peers libmh-less%s)" % (
+        "ORDERS, release cap 300" if orders else "FILL",
+        ", AI opponent + AI scratch layer" if ai else "",
+    )
+    if not plan:
+        return [(label, False, ["      FAIL: lane provisioning failed"])]
+    port, _, names = plan["determinism"]
+    fill = (
+        CAPS_ORDERS_EXTRA
+        if orders
+        else CAPS_AI_EXTRA
+        if ai
+        else CAPS_FILL_EXTRA % (130, 30, 40, 40, 30, 12)
+    )
+    argv = build_scenario_argv(
+        cfg=cfg,
+        determinism=True,
+        steps=args.steps,
+        timeout=max(args.timeout, 120 + args.steps),
+        extra_ini=(CAPS_ORDERS_INI,) if orders else (),
+        extra_ini_host=CAPS_HOST_INI,
+        harness_extra=with_det_hash_kind(
+            (args.harness_extra + ";" if args.harness_extra else "") + fill
+        ),
+        record=1,
+        host="lane=%s:%s" % (names[0], det_test["host"]),
+        clients=["lane=%s:mp_client_idle.txt" % names[1]],
+        connect_ip="127.0.0.1",
+        port=port,
+    )
+    det_clear(det_dir)
+    rc = run_ui_test(argv, max(args.per_test_timeout, 180 + args.steps))[0]
+    ok, lines = det_run_report(
+        det_dir, {"host": False, "client1": False}, configs={"host": "1", "client1": "1"}
+    )
+    keep = os.path.join(REPO, "tmp", "ui_test", "det_caps")
+    shutil.rmtree(keep, ignore_errors=True)
+    shutil.copytree(det_dir, keep)
+    lines.append("      artifacts: %s" % keep)
+    return [(label, ok and rc == 0, lines)]
+
+
 def run_det_standard(args, cfg):
     """C7: run the standard determinism shapes and report them separately.
 
@@ -3600,6 +3695,19 @@ def add_args(ap):
         help="--determinism: run_gate's det_c1 unit -- ONLY the SYMMETRIC CONFIGURATION (1) clean "
         "arm (both peers without libmh.dll, ALL PAIRS IDENTICAL). The MIXED shape and the go-red "
         "arms stay in --det-config1 / --det-standard.",
+    )
+    ap.add_argument(
+        "--det-caps",
+        action="store_true",
+        help="--determinism --det-local: patching:PT-CAP8 hardening -- both peers without libmh.dll, `[caps] raise=1` on the host "
+        "(the client adopts it), the host's player fills its roster past every vanilla cap (harness cap-fill fixture) under the "
+        "lockstep hash compare. Overflow slots are not hashed yet (PT-CAP8 S2).",
+    )
+    ap.add_argument(
+        "--orders",
+        action="store_true",
+        help="--determinism --det-caps: patching:PT-CAP9-U5 -- the ORDER-LAYER shape: 500 replicated orders (1000 records) in one sim step with "
+        "`[caps] orders_release_cap=300` on both peers, so the release_due carry-over (probe d) must be identical on both: ALL PAIRS IDENTICAL.",
     )
     ap.add_argument(
         "--det-config1",
@@ -3921,6 +4029,14 @@ def add_args(ap):
         "ALL PAIRS IDENTICAL because zoom, crop origin and camera are view state.",
     )
     ap.add_argument(
+        "--det-mixed-scale",
+        metavar="HOST:CLIENT",
+        help="--determinism: mods:RES4 stage 7 -- the two peers run DIFFERENT `[video] ui_scale` (e.g. 100:200 = host 100%%, client 200%%; "
+        "tools/uiscripts/ini/res4_s<pct>.ini, a pinned desktop each, resolution=auto) through the stock UI-path start walk; the "
+        "presenter quads, the render size and the scaled input map are view state, so the lockstep hash must stay ALL PAIRS "
+        "IDENTICAL. Usually with --det-local (the VM installs carry no pinned-desktop rig).",
+    )
+    ap.add_argument(
         "--det-bigmap",
         action="store_true",
         help="--determinism: mods:MM4 -- the HOST peer alone holds the big-map key (mp_host_start_bigmap.txt: Tab held through "
@@ -4135,6 +4251,7 @@ def main(argv=None, lenient=False):
         or args.p16_relay3
         or args.det_config1
         or args.det_config1_gate
+        or args.det_caps
     ):
         print(
             "[det] --det-standard / --det-3peer / --u19b-quit3 are --determinism shapes: pass "
@@ -4166,6 +4283,13 @@ def _run_determinism(args, cfg):
     # C7: promotion is TWO runs, not one. --det-standard runs both shapes and reports them apart.
     if args.det_standard:
         return run_det_standard(args, cfg)
+    if args.det_caps:
+        res = run_det_caps(args, cfg)
+        for label, ok, lines in res:
+            print("  %-44s %s" % (label, "PASS" if ok else "FAIL"))
+            for ln in lines:
+                print(ln)
+        return 0 if all(ok for _, ok, _ in res) else 1
     if args.det_config1 or args.det_config1_gate:
         res = run_det_config1(args, cfg, local=args.det_local, gate=args.det_config1_gate)
         if res is None:
@@ -4343,6 +4467,13 @@ def _run_determinism(args, cfg):
         # lockstep match runs; the client is the stock walk. The hash must still agree: zoom is view state.
         host_script = "mp_host_start_wheel.txt"
         chat_ini = dict(extra_ini_host="tools/uiscripts/ini/map_zoom_det_host.ini")
+    if args.det_mixed_scale:
+        # mods:RES4 stage 7: the peers differ in ui_scale (and so in render size, quads, input map); none of it is sim state.
+        hp, _, cp = args.det_mixed_scale.partition(":")
+        chat_ini = dict(
+            extra_ini_host="tools/uiscripts/ini/res4_s%d.ini" % int(hp),
+            extra_ini_client="tools/uiscripts/ini/res4_s%d.ini" % int(cp),
+        )
     if args.det_bigmap:
         # mods:MM4: the HOST alone holds the big-map key during the match. mods:MM4C: it also selects its Pioneer and right-clicks
         # the overlay twice (the side minimap's order); the client is the stock walk plus a read of that unit's goal in its own sim.
@@ -4444,7 +4575,7 @@ def _run_determinism(args, cfg):
         ship_pacing=args.ship_pacing,
         # mp:MP-LANG: the chat scripts' Russian/English walks are written against the 1024x768 layout
         extra_ini=list(args.extra_ini or [])
-        + (["tools/uiscripts/ini/video_1024.ini"] if chat_ini else []),
+        + (["tools/uiscripts/ini/video_1024.ini"] if chat_ini and not args.det_mixed_scale else []),
         extra_ini_host=chat_ini.get("extra_ini_host") or args.extra_ini_host,
         extra_ini_client=chat_ini.get("extra_ini_client"),
         harness_extra_host=args.harness_extra_host,

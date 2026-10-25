@@ -1,0 +1,101 @@
+# res4_s150 -- mods:RES4 stages 3-4 at ui_scale=150 (ini/res4_s150.ini: resolution=auto on a pinned 1280x800 desktop, owned DirectInput).
+# Stage 3: the session frame is the ideal 1216x800 (log: `the session frame is 1216x800`), the six panel row-count sites follow Hp
+# = ceil(800/1.5) = 534 (log: `side-panel list rows follow the visible panel: Hp 534`). Stage 4: pointer input is mapped back through
+# the quad list. The window is resized to 1280x800 so the presenter's screen is a real client area (everything below is in CLIENT
+# pixels = screen pixels): map 0..1039 x 0..751 (1:1), strip y 752..799 (1.5x), panel x 1040..1279 (1.5x, frame columns 1056..1215).
+#  a  cursor: an absolute packet at a client point puts the game cursor on the frame pixel under it (scurpos) on the map, the panel and the strip;
+#  b  the HUD Menu button, clicked ON the scaled panel (client 1202,225 = frame 1164,150), opens the ESC menu;
+#  c  the minimap, clicked on the panel (client 1160,120 = frame 1136,80), moves the camera to exactly where the same click in
+#     FRAME coordinates does (the two cameras are compared by tools/check_res4_input.py);
+#  d  edge scroll: the pointer on the screen's last column / row (a panel / strip pixel) scrolls the map, as the frame's edge does at 100%.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+log res4 frame_ready 1280x800 @150
+pcapture res4_150
+capture res4_frame
+
+# a. cursor mapping, three quads
+rawmouse sabs 700 400
+scurpos 700 400
+rawmouse sabs 1202 225
+scurpos 1202 225
+rawmouse sabs 300 780
+scurpos 300 780
+rawmouse sabs 1279 799
+scurpos 1279 799
+log res4 cursor_mapped
+
+# b. the Menu button on the scaled panel
+rawmouse sabs 1202 225
+scurpos 1202 225
+rawmouse down l
+rawmouse up l
+retry 1500 3 3 settled value:113
+log res4 menu_opened
+clickv 103
+gamemode 2
+gameclock +100
+
+# c. the minimap: screen click vs the same click in frame coordinates
+camto 24 38
+gameclock +100
+logsel mm_start
+rawmouse sabs 1160 120
+rawmouse down l
+rawmouse up l
+gameclock +100
+rawmouse down l
+rawmouse up l
+gameclock +100
+logsel mm_screen
+camto 24 38
+gameclock +100
+simclick 1136 80
+gameclock +100
+simclick 1136 80
+gameclock +100
+logsel mm_frame
+
+# d. edge scroll
+camto 24 38
+gameclock +100
+rawmouse sabs 640 400
+gameclock +50
+logsel e_start
+rawmouse sabs 1279 400
+gameclock +600
+logsel e_right
+rawmouse sabs 640 400
+camto 24 38
+gameclock +100
+rawmouse sabs 640 799
+gameclock +600
+logsel e_bottom
+rawmouse sabs 640 400
+camto 24 38
+gameclock +100
+rawmouse sabs 640 0
+gameclock +600
+logsel e_top
+rawmouse sabs 640 400
+camto 24 38
+gameclock +100
+rawmouse sabs 0 400
+gameclock +600
+logsel e_left
+rawmouse sabs 640 400
+gameclock +100
+log res4 COMPLETE -- ui_scale=150: frame, row counts, cursor mapping, HUD click, minimap, edge scroll
+end

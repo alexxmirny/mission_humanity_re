@@ -55,6 +55,14 @@ Usage:
     python tools/check_inmem_patch_parity.py --run               # the shipped set, on the rig
     python tools/check_inmem_patch_parity.py --run --manifest projectile_pool_relocate_EN
     python tools/check_inmem_patch_parity.py --dump <file> --manifest <name>
+    python tools/check_inmem_patch_parity.py --run --caps         # PT-CAP8: both cap manifests, raise=0 and raise=1 lanes
+
+THE CAP MANIFESTS' LIVE ARM (PT-CAP8 slice C). They are applied by mh/patch/caps_install.cpp at boot, not by
+`[patch] inmem`, so the lane is `[caps] raise=<0|1>` + `[patch] dump=<path> dump_exit=1`: the caps path writes the
+reloc manifest's dump to <path> and the limit manifest's to <path>.limits, right AFTER the gameplay settings apply
+(so a raise=1 lane dumps the ON image). Two lanes: raise=0 (reloc sites == mhpatch reference; limit sites == the
+VANILLA bytes, i.e. the reloc-only exe) and raise=1 (everything == the mhpatch reference chain). The boot also
+logs `; [caps] relocation APPLIED (...) in N ms; limits OFF` -- the tool reads N back and holds it to a budget.
 """
 
 import argparse
@@ -118,6 +126,16 @@ def shipped():
     return [s.replace(".mh.patch.json", "") for s, _c in gim.shipped_manifests()]
 
 
+def caps_names():
+    """PT-CAP8 S1: the v0.2.2 cap manifests in APPLY order (reloc, then limits). Not in the shipped
+    compile list (they are not selectable by `[patch] manifest=`), but gated here all the same."""
+    return [s.replace(".mh.patch.json", "") for s, _c, _k in gim.caps_manifests()]
+
+
+def is_toggle(name):
+    return gim.classes().get(name) in ("caps_limits", "caps_units_limits", "caps_ai", "caps_orders")
+
+
 def manifest_path(name_or_path):
     if os.path.sep in name_or_path or name_or_path.endswith(".json"):
         return name_or_path
@@ -125,6 +143,50 @@ def manifest_path(name_or_path):
 
 
 # ---- the reference build -------------------------------------------------------------------------
+
+
+def build_reference_chain(clean, name, out):
+    """-> (base_exe, report, warns). The cap manifests layer on each other (a section's VA is only the next-free VA
+    once the earlier manifests' sections exist), so the reference of the k-th one in apply order (reloc22, limits22, ai,
+    reloc23, limits23) is mhpatch over the k-1 before it, and the completeness pass must diff against that
+    prerequisite-applied file, not the clean one. mhpatch's sha256 guard is lifted for every step after the first (its
+    input is no longer the clean exe by construction). A non-cap manifest (and the first cap one) builds from clean."""
+    path = manifest_path(name)
+    order = caps_names()
+    if name not in order or order.index(name) == 0:
+        report, warns = build_reference(clean, path, out)
+        return clean, report, warns
+    base = clean
+    for i, pre in enumerate(order[: order.index(name)]):
+        nxt = scratch("base_%s.exe" % pre)
+        src = manifest_path(pre)
+        if i:
+            doc = json.load(open(src, encoding="utf-8"))
+            doc.pop("sha256", None)
+            src = scratch("nosha_%s.json" % pre)
+            with open(src, "w", encoding="utf-8") as fh:
+                json.dump(doc, fh)
+        build_reference(base, src, nxt)
+        base = nxt
+    doc = json.load(open(path, encoding="utf-8"))
+    doc.pop("sha256", None)
+    tmp_manifest = scratch("nosha_%s.json" % name)
+    with open(tmp_manifest, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    report, warns = build_reference(base, tmp_manifest, out)
+    return base, report, warns
+
+
+def dump_for(dump, name):
+    """The live dump a cap manifest is compared against (caps_install.cpp MH_Caps_DumpIfAsked names them)."""
+    return {
+        "cap_v022_reloc_EN": dump,
+        "cap_v022_limits_EN": dump + ".limits",
+        "cap_v023_units_reloc_EN": dump + ".units",
+        "cap_v023_units_limits_EN": dump + ".units.limits",
+        "cap_v022_aiscratch_EN": dump + ".ai",
+        "cap_v023_orders_EN": dump + ".orders",
+    }.get(name, dump)
 
 
 def build_reference(clean, manifest, out):
@@ -360,12 +422,34 @@ def _diff_runs(a, b):
     return runs
 
 
-def compare(dump_path, manifest_path_, clean, ref_exe, say=print):
+def live_is_synthetic(dump_path):
+    """True for a dump synth_dump() wrote (the offline arm): no DLL ran, so no hook rewrote anything."""
+    try:
+        return "SYNTHETIC" in open(dump_path, encoding="ascii", errors="replace").readline()
+    except OSError:
+        return False
+
+
+def compare(dump_path, manifest_path_, clean, ref_exe, say=print, sites_vs=None, skip_ranges=()):
+    """-> (fail, notes, extents, bytes). `sites_vs` (PT-CAP8): an exe whose bytes at the patch sites are what the
+    live image must hold INSTEAD of the reference's -- the OFF state of a toggle (limit-layer) manifest, whose sites
+    are the vanilla bytes (no refs to resolve) until the toggle writes them. `skip_ranges` (PT-CAP9-U4): (lo, hi) VA ranges
+    that a LATER toggle manifest's sites rewrite when ON; a site of this manifest inside one is not comparable against the
+    live image (the toggle's bytes sit over it) and is covered by that manifest's own ON-state compare."""
     m, secs, refs = derive_refs(manifest_path_)
     d = parse_dump(dump_path)
     pe = lief.PE.parse(ref_exe)
     va_to_off = _VaMap(pe)
     ref = bytearray(open(ref_exe, "rb").read())
+    clean_bytes = open(clean, "rb").read()
+    live_compose = (
+        compose_sites()
+        if os.path.basename(manifest_path_).startswith(("cap_v022_", "cap_v023_"))
+        and not live_is_synthetic(dump_path)
+        else {}
+    )
+    vs = bytearray(open(sites_vs, "rb").read()) if sites_vs else None
+    vs_map = _VaMap(lief.PE.parse(sites_vs)) if sites_vs else None
     fail, notes = [], []
 
     say("live dump: %s" % dump_path)
@@ -435,7 +519,15 @@ def compare(dump_path, manifest_path_, clean, ref_exe, say=print):
                 % (i, live["name"], sva, len(blob))
             )
         if not d["tail"].get(i, False):
-            fail.append("section %d: the virtual tail past the data is not zero" % i)
+            if "aiscratch" in os.path.basename(str(manifest_path_)) or "orders" in os.path.basename(
+                str(manifest_path_)
+            ):
+                notes.append(
+                    "section %d: the tail holds the 0xA5 guard bytes the layer adopt writes (by design; layout is covered by caps_selftest)"
+                    % i
+                )
+            else:
+                fail.append("section %d: the virtual tail past the data is not zero" % i)
 
     # ---- (2) the patch sites ---------------------------------------------------------------------
     site_fail_before = len(fail)
@@ -450,12 +542,71 @@ def compare(dump_path, manifest_path_, clean, ref_exe, say=print):
         file_bytes = bytes(ref[off : off + len(want)]) if off is not None else b""
         n_extents += 1
         n_bytes += len(want)
+        if live_compose and va in live_compose and live["bytes"] != want:
+            # A composing DLL hook (cap_compose_allow.json) rewrote the bytes around this operand AFTER the
+            # manifest: it keeps its site and replicates the displaced instruction against mh_caps_base[].
+            # What must hold is that the bytes are NOT the vanilla ones (the hook is really installed).
+            vanilla = bytes(clean_bytes[off : off + len(want)]) if off is not None else b""
+            if live["bytes"] == vanilla:
+                fail.append(
+                    "site %d (%08x): the composing hook %s is NOT installed (the live bytes are still vanilla)"
+                    % (j, va, live_compose[va])
+                )
+            else:
+                notes.append(
+                    "site %d (%08x) is rewritten by the composing DLL hook %s (cap_compose_allow.json) -- "
+                    "not compared against the manifest's bytes" % (j, va, live_compose[va])
+                )
+            continue
+        if vs is None and any(lo < va + len(want) and va < hi for lo, hi in skip_ranges):
+            notes.append(
+                "site %d (%08x) lies under a later toggle manifest's site -- compared by that manifest's ON-state check"
+                % (j, va)
+            )
+            continue
+        if vs is not None:
+            # OFF state of a toggle manifest: the live bytes must be the VANILLA ones, exactly (no refs) -- except the dwords the
+            # manifest's `expect` wildcards (`xx`): those are fields an always-on layer re-bases at run time (an address into a
+            # relocated section), so the live value is the baked one shifted by that section's (64 KiB aligned) move.
+            voff = vs_map(va)
+            vanilla = bytes(vs[voff : voff + len(want)]) if voff is not None else b""
+            toks = str(p.get("expect", "")).split()
+            if live["bytes"] != vanilla and len(toks) == len(vanilla) == len(live["bytes"]):
+                lv, vv = bytearray(live["bytes"]), bytearray(vanilla)
+                for k0 in range(0, len(toks) - 3):
+                    if all(t.lower() in ("xx", "??") for t in toks[k0 : k0 + 4]):
+                        dl = int.from_bytes(lv[k0 : k0 + 4], "little")
+                        dv = int.from_bytes(vv[k0 : k0 + 4], "little")
+                        if (dl - dv) % 0x10000 == 0:
+                            lv[k0 : k0 + 4] = vv[k0 : k0 + 4]
+                if bytes(lv) == bytes(vv):
+                    continue
+            if live["bytes"] != vanilla:
+                fail.append(
+                    "site %d (%08x): OFF state holds %s, the vanilla bytes are %s"
+                    % (j, va, live["bytes"].hex(), vanilla.hex())
+                )
+            continue
         # A site never moves, so BOTH sides sit at the same VA; only the sections it points INTO
         # differ between them.
+        live_b = live["bytes"]
+        if (
+            live_b != file_bytes
+            and not _refs_for(refs, 0, j)
+            and len(live_b) == len(file_bytes) >= 5
+            and live_b[0] == file_bytes[0] == 0xE9
+            and live_b[5:] == file_bytes[5:]
+        ):
+            # PT-CAP9-U4: a toggle site's JMP rel32 into ANOTHER manifest's section (the reloc layer's .mhcapq): mh.dll re-aims it by that
+            # section's move (caps_install), so the live rel32 is the baked one shifted by a 64 KiB aligned amount.
+            if (
+                int.from_bytes(live_b[1:5], "little") - int.from_bytes(file_bytes[1:5], "little")
+            ) % 0x10000 == 0:
+                live_b = bytes(file_bytes[:5]) + bytes(live_b[5:])
         n_refs += _cmp_blob(
             "site %d (%08x)" % (j, va),
             _refs_for(refs, 0, j),
-            live["bytes"],
+            live_b,
             va,
             live_bases,
             file_bytes,
@@ -465,10 +616,13 @@ def compare(dump_path, manifest_path_, clean, ref_exe, say=print):
         )
     n_sites = len(m.get("patches", []))
     if len(fail) == site_fail_before:
-        say(
-            "  [ok] %d site(s): bytes identical to the reference exe outside the declared "
-            "placement-sensitive dwords, which track the live cave" % n_sites
-        )
+        if vs is not None:
+            say("  [ok] %d site(s): all hold the VANILLA bytes (limits OFF)" % n_sites)
+        else:
+            say(
+                "  [ok] %d site(s): bytes identical to the reference exe outside the declared "
+                "placement-sensitive dwords, which track the live cave" % n_sites
+            )
 
     # ---- (4) completeness: nothing mhpatch changed is outside the dump ----------------------------
     clean_b = open(clean, "rb").read()
@@ -609,10 +763,10 @@ def offline_one(name, clean, say=print, mutate=None, relocate_by=0x00200000):
     t0 = time.time()
     path = manifest_path(name)
     ref = scratch("ref_%s.exe" % name)
-    build_reference(clean, path, ref)
+    base, _rep, _w = build_reference_chain(clean, name, ref)
     dump = scratch("synth_%s.dump" % name)
     synth_dump(path, ref, dump, relocate_by=relocate_by, mutate=mutate)
-    fail, notes, n_ext, n_b = compare(dump, path, clean, ref, say=say)
+    fail, notes, n_ext, n_b = compare(dump, path, base, ref, say=say)
     return fail, notes, n_ext, n_b, time.time() - t0
 
 
@@ -652,7 +806,7 @@ def selftest(clean):
     # would be green for ever and mean nothing.
     expect("the gate manifest is in the shipped set", GATE_MANIFEST in names, names)
 
-    for name in names:
+    for name in names + caps_names():
         fail, _n, n_ext, _b, secs = offline_one(name, clean, say=quiet)
         expect(
             "%s: offline parity is clean (%d extents, %.1fs)" % (name, n_ext, secs),
@@ -689,7 +843,7 @@ def selftest(clean):
 
     # A plain byte, covered by no ref: comparisons (1)/(2) alone must catch it.
     plain = None
-    for name in names:
+    for name in names + caps_names():
         _mm, _ss, rr = derive_refs(manifest_path(name))
         for j, p in enumerate(_mm.get("patches", [])):
             n = len(bytes.fromhex(re.sub(r"\s", "", p["bytes"])))
@@ -724,7 +878,7 @@ def selftest(clean):
     # verdict F1E rests on is precisely about that cave, so the arm runs on whichever shipped
     # manifest has one rather than being skipped.
     caved = None
-    for name in names:
+    for name in names + caps_names():
         _mm, ss, _rr = derive_refs(manifest_path(name))
         if any(s[2] for s in ss):
             caved = name
@@ -753,7 +907,7 @@ def selftest(clean):
     expect("at the BAKED placement the comparison is byte-exact", not fail, fail[:3])
 
     # A dump for the wrong manifest must be refused rather than compared.
-    other = [n for n in names if n != sub][0]
+    other = [n for n in names + caps_names() if n != sub][0]
     ref = scratch("ref_%s.exe" % sub)
     d = synth_dump(manifest_path(sub), ref, scratch("mixed.dump"))
     fail, _n, _e, _b = compare(d, manifest_path(other), clean, ref, say=quiet)
@@ -828,12 +982,16 @@ def run_lane(name, dump_out):
     #  * `[patch] manifest=` names which of the compiled-in alternatives to apply. Absent, the DLL
     #    refuses and lists them; it does not pick one.
     #
+    #  * `[caps] relocate=0` since PT-CAP8: the v0.2.2 relocation layer is applied at EVERY boot now (it is not a
+    #    setting), and it rewrites the very sites these older manifests guard -- their expected-bytes guard would
+    #    (correctly) refuse. The older manifests are parity subjects on the unrelocated layout.
+    #
     # G181: this writes the whole file rather than appending a section, so there is no
     # first-match-wins hazard -- and it is read back below anyway, because a lane that was meant to
     # be configured a certain way and is not has not been configured, whatever the writer intended.
     ini = os.path.join(LANE, "mh_net.ini")
     text = (
-        "[dev]\nunlock=1\n\n[config]\nmode=original\n\n[net]\nenable=0\n\n[patch]\ninmem=1\nmanifest=%s\ndump=%s\ndump_exit=1\n"
+        "[dev]\nunlock=1\n\n[config]\nmode=original\n\n[net]\nenable=0\n\n[caps]\nrelocate=0\n\n[patch]\ninmem=1\nmanifest=%s\ndump=%s\ndump_exit=1\n"
         % (
             name,
             dump_out.replace("/", "\\"),
@@ -860,6 +1018,143 @@ def run_lane(name, dump_out):
     return secs
 
 
+def compose_sites():
+    """{site VA -> patch id}: the cap-manifest sites a shipped DLL byte patch deliberately rewrites AFTER the
+    manifest (tools/data/cap_compose_allow.json). In a LIVE dump their bytes are the hook's, not the manifest's;
+    the offline arm (no DLL) never sees them differ."""
+    p = os.path.join(HERE, "data", "cap_compose_allow.json")
+    if not os.path.isfile(p):
+        return {}
+    return {int(a["site"], 16): a["patch"] for a in json.load(open(p, encoding="utf-8"))["allowed"]}
+
+
+CAPS_APPLIED_RE = re.compile(
+    r"\[caps\] relocation APPLIED \((\d+) sites, (\d+) sections, base \.mhcapd=(?:0x)?([0-9A-Fa-f]+)\) in ([0-9.]+) ms"
+)
+CAPS_MS_WARN = 30.0  # the spec's budget (reloc + limits, dev box)
+CAPS_MS_FAIL = 100.0  # a timing gate must not flake under rig load: fail only when 3x over
+
+
+def run_lane_caps(dump_out, raise_):
+    """One launch with `[caps] raise=<raise_>`. The caps path writes <dump_out> (reloc) and <dump_out>.limits.
+    -> (seconds, the 'relocation APPLIED' log line or None)."""
+    import make_lane  # noqa: F401  -- imported for its boot lock
+
+    for p in (
+        dump_out,
+        dump_out + ".limits",
+        dump_out + ".units",
+        dump_out + ".units.limits",
+        dump_out + ".ai",
+    ):
+        if os.path.exists(p):
+            os.remove(p)
+    ini = os.path.join(LANE, "mh_net.ini")
+    # [config] mode=original: nothing promoted, so the reloc manifest's C1 interlock has nothing to refuse
+    # (brokered+libmh refuses it by design). No [patch] inmem: the caps path owns the dump keys.
+    text = (
+        "[dev]\nunlock=1\n\n[config]\nmode=original\n\n[net]\nenable=0\n\n[caps]\nraise=%d\n\n"
+        "[patch]\ndump=%s\ndump_exit=1\n" % (raise_, dump_out.replace("/", "\\"))
+    )
+    with open(ini, "w", encoding="ascii") as f:
+        f.write(text)
+    if open(ini, encoding="ascii").read() != text:
+        raise SystemExit("the lane ini did not read back as written (%s)" % ini)
+    stale = os.path.join(LANE, "mh_harness.ini")
+    if os.path.exists(stale):
+        os.remove(stale)
+    exe = os.path.join(LANE, "mh.focus.exe")
+    t0 = time.time()
+    with make_lane.boot_lock("parity run caps raise=%d" % raise_):
+        subprocess.run([exe], cwd=LANE, timeout=120)
+    secs = time.time() - t0
+    if not all(
+        os.path.exists(dump_out + x) for x in ("", ".limits", ".units", ".units.limits", ".ai")
+    ):
+        raise SystemExit(
+            "the lane ran but wrote no caps dump -- did mh.dll load and reach MH_Caps_DumpIfAsked? see %s\\logs"
+            % LANE
+        )
+    line = None
+    logs = sorted(
+        glob.glob(os.path.join(LANE, "logs", "**", "mh_net.log"), recursive=True),
+        key=os.path.getmtime,
+    )
+    if logs:
+        for ln in open(logs[-1], encoding="utf-8", errors="replace"):
+            if "[caps] relocation APPLIED" in ln:
+                line = ln.strip()
+    return secs, line
+
+
+def caps_live(clean, run, say=print, dump_arg=None):
+    """PT-CAP8: both cap manifests against live dumps, raise=0 then raise=1. -> rc."""
+    rc = 0
+    for raise_ in (0, 1):
+        say("")
+        say("##### caps lane: [caps] raise=%d #####" % raise_)
+        dump = dump_arg or scratch("caps_raise%d.dump" % raise_)
+        lane_secs = 0.0
+        if run:
+            lane_secs, line = run_lane_caps(dump, raise_)
+            m = CAPS_APPLIED_RE.search(line or "")
+            if not m:
+                say(
+                    "  FAIL: the boot log has no '[caps] relocation APPLIED (...) in N ms' line: %r"
+                    % line
+                )
+                rc = 1
+            else:
+                ms = float(m.group(4))
+                say(
+                    "  [caps] APPLIED: %s sites, %s sections, .mhcapd=%s, %.2f ms (budget %.0f)"
+                    % (m.group(1), m.group(2), m.group(3), ms, CAPS_MS_WARN)
+                )
+                if ms > CAPS_MS_FAIL:
+                    say(
+                        "  FAIL: apply took %.2f ms, over the %.0f ms hard limit"
+                        % (ms, CAPS_MS_FAIL)
+                    )
+                    rc = 1
+                elif ms > CAPS_MS_WARN:
+                    say("  WARN: apply took %.2f ms, over the %.0f ms budget" % (ms, CAPS_MS_WARN))
+        for name in caps_names():
+            say("")
+            say("=== %s (live, raise=%d) ===" % (name, raise_))
+            path = manifest_path(name)
+            ref = scratch("ref_%s.exe" % name)
+            base, report, warns = build_reference_chain(clean, name, ref)
+            dpath = dump_for(dump, name)
+            sites_vs = base if (is_toggle(name) and raise_ == 0) else None
+            skip = []
+            if raise_ == 1 and not is_toggle(name):
+                for later in caps_names():
+                    if is_toggle(later) and later.replace("limits", "reloc") == name:
+                        for q in json.load(open(manifest_path(later), encoding="utf-8")).get(
+                            "patches", []
+                        ):
+                            qa = int(str(q["va"]), 16)
+                            skip.append(
+                                (qa, qa + len(bytes.fromhex(re.sub(r"\s", "", q["bytes"]))))
+                            )
+            fail, notes, n_ext, n_b = compare(
+                dpath, path, base, ref, say=say, sites_vs=sites_vs, skip_ranges=skip
+            )
+            for nte in notes:
+                say("  [note] %s" % nte)
+            say("compared %d extent(s), %d byte(s)  [lane %.1fs]" % (n_ext, n_b, lane_secs))
+            for f in fail[:10]:
+                say("  MISMATCH: %s" % f)
+            say(
+                "PARITY OK -- raise=%d: the in-memory result is the mhpatch result%s"
+                % (raise_, " (limit sites vanilla)" if sites_vs else "")
+                if not fail
+                else "PARITY FAILED (raise=%d)" % raise_
+            )
+            rc = rc or (1 if fail else 0)
+    return rc
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="in-memory vs on-disk static-patch parity (F1E/F4C-GATE)"
@@ -880,6 +1175,11 @@ def main():
     ap.add_argument(
         "--gate", action="store_true", help="just the gate manifest (%s)" % GATE_MANIFEST
     )
+    ap.add_argument(
+        "--caps",
+        action="store_true",
+        help="PT-CAP8: the two cap manifests (with --run: boot the raise=0 and raise=1 lanes)",
+    )
     ap.add_argument("--clean", default=CLEAN)
     args = ap.parse_args()
 
@@ -888,7 +1188,11 @@ def main():
     if args.selftest:
         return selftest(args.clean)
 
-    names = args.manifest or ([GATE_MANIFEST] if args.gate else shipped())
+    names = args.manifest or (
+        [GATE_MANIFEST]
+        if args.gate
+        else (caps_names() if args.caps else shipped() + (caps_names() if args.offline else []))
+    )
     names = [os.path.basename(n).replace(".mh.patch.json", "") for n in names]
     unknown = [n for n in names if not os.path.exists(manifest_path(n))]
     if unknown:
@@ -896,6 +1200,17 @@ def main():
 
     if args.offline:
         return offline(names, args.clean)
+
+    if any(n in caps_names() for n in names):
+        if not all(n in caps_names() for n in names) or sorted(names) != sorted(caps_names()):
+            sys.exit("the cap manifests are checked together (reloc then limits): use --caps")
+        if args.run:
+            provision()
+        elif not args.dump:
+            sys.exit(
+                "a live cap check needs --run (or --dump <reloc dump>, with <dump>.limits beside it)"
+            )
+        return caps_live(args.clean, args.run, dump_arg=args.dump)
 
     if args.dump and len(names) > 1:
         sys.exit("--dump compares ONE manifest; name it with --manifest")

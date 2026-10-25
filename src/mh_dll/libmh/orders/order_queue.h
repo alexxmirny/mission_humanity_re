@@ -337,6 +337,12 @@ bool suppress_enqueue();
 void set_admin_dedup_exempt(bool on);
 bool admin_dedup_exempt();
 
+// O1c -- widen the scheduled lane's unit_index to 12 bits (order_index_codec.h). Default true; false =
+// the vanilla 8-bit byte-duplication (the reproduction arm). Set from reimpl_fixes::order_wide_index
+// by lockstep::set_fixes, so the ini key [net] order_wide_index is the only control.
+void set_order_wide_index(bool on);
+bool order_wide_index();
+
 int install_promotion(int default_on);
 
 // True once install_promotion() has installed anything -- install_shadow() consults this and refuses.

@@ -361,6 +361,18 @@ def sp_newest_session_run(lane_dir):
     return session[-1] if session else sp_newest_run(lane_dir)
 
 
+def sp_first_session_run(lane_dir):
+    """PT-CAP9-U8b: the FIRST session directory of a lane (by creation time), for a row whose lane plays a SECOND game in the same process
+    (`post_check_session_first: true`, with `post_check_session: true`): sp_newest_session_run would hand the second game's dir to a checker whose evidence is the first match's
+    (the game over, the order burst). Falls back to sp_newest_run's resolution when the lane has no session dir."""
+    runs = sorted(
+        [_d for _d in glob.glob(os.path.join(lane_dir, "logs", "*")) if os.path.isdir(_d)],
+        key=os.path.getctime,
+    )
+    session = [d for d in runs if "_menu_" not in os.path.basename(d)]
+    return session[0] if session else sp_newest_run(lane_dir)
+
+
 # ---- TACT-PREP: the TACTICAL determinism oracle -------------------------------------------------
 # Two sequential runs of one local lane through the SAME --tactical entry, compared on the per-frame
 # `T`/`TR` lines the llm_tact_frame cadence emits.

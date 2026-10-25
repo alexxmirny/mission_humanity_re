@@ -69,7 +69,7 @@
 //  7. @0x00429d60-0x00429dfd: the scroll/mine-blast gate. `scroll_cmd() < 1` OR (post-increment)
 //     `scroll_cmd() < 9` runs the MAIN BODY below (step 8+); otherwise this is a 16-frame scroll-fade
 //     TRANSITION: play the mine-blast sound, reset scroll_cmd/mine_blast_time_end, loop 16x
-//     {scroll_fade_step(); blink_overlay_clear(); frame_cursor_and_reset();} (all three frontier),
+//     {blast_wipe_brighten_step(); blink_overlay_clear(); frame_cursor_and_reset();} (all three frontier),
 //     then blink_overlay_clear()+vis_map_fill_default(), reset exit_confirm_open, and run the SAME
 //     four "return to strategic" siblings as step 5's early exit.
 //
@@ -230,7 +230,7 @@ struct frame_calls {
     // LIFT-TACT slice B: the sixteen-iteration mine-blast wipe collapsed to ONE scope,
     // LIBMH_EVK_SCR_TACT_BLAST_TRANSITION -- nothing of libmh's happens between its iterations, so
     // what a host needs is "play the exit wipe", not forty-eight fine steps. The three members it
-    // replaced (scroll_fade_step, blink_overlay_clear, frame_cursor_and_reset) are gone from this
+    // replaced (blast_wipe_brighten_step, blink_overlay_clear, frame_cursor_and_reset) are gone from this
     // struct in their looped role; the last two keep members for their OTHER, standalone sites.
     void (*blast_transition)();
     void (*blink_overlay_clear)();  // LIBMH_EVK_INV_TACT_DRAWN_MAP_CLEAR
@@ -254,6 +254,11 @@ void frame(const tact_view &v, tact_store &own, const frame_calls &c);
 } // namespace detail
 
 void frame();
+
+// TSCR1: the camera-scroll pace in pixels per second of game clock. 0 (default) = retail, one tile per rendered
+// frame; > 0 = steady pacing (tact_scroll_pace.h). Setting it forgets the held-direction state.
+void set_scroll_px_s(int px_s);
+int  scroll_px_s();
 
 // Declared here per the module convention; DEFINED in tact_frame.cpp, CALLED from install_shadow()
 // by the conductor (not this TU).

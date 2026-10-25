@@ -14,7 +14,7 @@
 //
 // THE FIX. In a lockstep match (_G_LLM_GAME_SESSION_MODE == 3) the call site 0x00418967 is spliced
 // to a thunk that byte-snapshots everything the probe can write for the calling player --
-// buildings[p][0..99] (0x6aa4 bytes, incl. the [0].energy offline counter) and
+// buildings[p][0..limit-1] (mh::caps geometry: 100 x 0x111 = 0x6aa4 bytes today, incl. the [0].energy offline counter) and
 // _G_LLM_STRAT_PLAYERS[p] (0x740 bytes; mother_reelect_primary's primary_mother_unit/bldg) --
 // calls the original probe, and restores both. The HUD gets its verdict, the sim sees zero change.
 // Outside a lockstep match the thunk calls the probe untouched (single player stays retail).

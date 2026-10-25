@@ -1,0 +1,31 @@
+# mods:M1WL v3 -- the ImGui "Stream heat" section and its heat map on the u022_stream fixture (5-kofu-c barracks, 45 soldiers streaming out to open ground).
+# The ini (ini/imgui_heat_plan.ini / imgui_heat_traffic.ini) arms the d3d11 presenter with imgui=1, imgui_open_at_start=1 and imgui_heat_map=1 (last plan) or 2
+# (traffic). Three thousand sim steps after the load the stream is under way (the first soldier leaves at step 1500, one every 120 steps): >= 8 are walking, so
+# the heat rule has priced plans, the section shows its read-outs and the map is tinted. bcapture = what the PRESENTER put on screen (the back buffer after the
+# overlay pass), the image the user reviews. Display only: the sim state is untouched (u022_stream's numbers are the proof, the other rows).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+# the live setter, end to end: a real click (the DI mouse filter path, like imgui_hover) on the section's "scale by mates" checkbox, drawn at about
+# client (113,178) of the 1280x960 frame. One click = one change: `; [heat] live set cost=2 window=120 mates=3 scale=0 ... cap=16 margin=50` (tools/check_imgui_heat.py; the click switches the v5 default OFF).
+rawfocus 1
+rawmouse abs 113 178
+dimouse 113 178
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+gameclock +38000
+keyhold 0x4b 70
+gameclock +1000
+cursorhold 1200 900 6
+bcapture heat_traffic
+log imgui_heat traffic: captured
+end

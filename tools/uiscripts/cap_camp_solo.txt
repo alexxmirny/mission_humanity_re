@@ -1,0 +1,16 @@
+# patching:PT-CAP8 acceptance item 2 -- a CAMPAIGN mission with the raise ON. The lane's only save is 2-almost.sav (a campaign save written by a stock
+# build). Load it from the main menu, then the harness cap-fill fixture (cap_*) fills player 0 past every vanilla cap on that campaign map, stamps
+# projectile records past slot 1500, and saves + loads `capcamp` in one step (cap_save_at); tools/check_cap_save.py --step save judges it.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +3000
+log cap: campaign save loaded, handing the run to the harness fixture
+gameclock +90000
+log cap: fixture ran, saved and loaded the raised campaign world (see mh_harness.log `; CAP SAVE` / `; CAP LOAD`)
+capture cap_camp_end
+end

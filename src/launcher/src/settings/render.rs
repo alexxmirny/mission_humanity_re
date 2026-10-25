@@ -344,8 +344,9 @@ pub fn show_rows(
                 let label_rect = label_cell(ui, model, row, label_w);
                 let ctrl = ui.vertical(|ui| {
                     ui.set_max_width(ctrl_w);
+                    let disabled = model.is_disabled(row);
                     ui.horizontal_wrapped(|ui| {
-                        control(ui, model, state, row);
+                        ui.add_enabled_ui(!disabled, |ui| control(ui, model, state, row));
                         if model.differs_from_default(&row.id) {
                             ui.add_space(2.0);
                             let b = Button::new(RichText::new("↺").color(theme::TEXT_DIM)).small();
@@ -362,6 +363,9 @@ pub fn show_rows(
                     });
                     if row.control == Control::Relay {
                         relay_address(ui, model, row);
+                    }
+                    if disabled {
+                        widgets::hint(ui, tr(&format!("setting.{}.disabled", row.label)));
                     }
                     if let Some(p) = problem_for_row(model, row) {
                         ui.label(

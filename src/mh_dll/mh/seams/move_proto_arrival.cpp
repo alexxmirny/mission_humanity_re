@@ -64,6 +64,8 @@
 #include <cstring>
 
 #include "seams/net_internal.h"     // seam_log + the setter declarations
+#include "caps/caps.h"              // PT-CAP8: mh::caps::rec / g / row_bytes + mh_caps_base for mv_arr_retry_stub
+#include "caps/path_pool.h"         // PT-CAP9-U4: the relocated path pool
 #include "seams/move_carrier.h"     // mods:M1H: site states, requested values, stub hit counters
 #include "hook/patch.h"             // patch_bytes_guarded
 #include "hook/promoted.h"          // promoted_owner_of
@@ -84,9 +86,8 @@ extern "C" int g_fc_handled;          // the formation handled this commit: the 
 namespace {
 
 // ---- EN /eng/mh.exe addresses (cross-checked against the EN disassembly and mh_addrs.gen.h) ------------------------
-constexpr uintptr_t A_UNITS        = 0x00dd8c48; // map::g::units[8][100], 0xe9 bytes
+// map::g::units[8][100], 0xe9 bytes: base + player stride come from mh::caps (stock 0x00dd8c48 / 0x5b04 today; PT-CAP8)
 constexpr uint32_t  UNIT_SIZE      = 0xe9;
-constexpr uint32_t  PLAYER_STRIDE  = 0x5b04;
 constexpr uintptr_t A_PASSABLE     = 0x00b64bb0; // byte[(x<<8)|y]
 constexpr uintptr_t A_FOG_DISC     = 0x00814fa0; // fog_of_war.discovered[(x<<8)|y], bit = player
 constexpr uintptr_t A_REGION_GRID  = 0x00688ac4; // {llm_map_region *region; uint32 terrain_flags}[(x<<8)|y]
@@ -110,14 +111,14 @@ static_assert(A_PATHFIND == 0x0041ca37u, "call_pathfind's inline asm spells this
 // unit record fields
 constexpr uint32_t U_ORDER = 0x04, U_STATE = 0x06, U_X = 0x84, U_Y = 0x85, U_GOAL_X = 0x86, U_GOAL_Y = 0x87,
                    U_PATH_SLOT = 0xaa, U_RETRY = 0xab, U_GROUP = 0xc6;
-constexpr uintptr_t A_PATHBUF = 0x00aee8c0; // _G_LLM_STRAT_PATH_BUFFERS: player * 0xea60 + slot * 0x258 + entry * 2, {byte heading; byte run_length}
+// The path buffers (_G_LLM_STRAT_PATH_BUFFERS) are RELOCATED (patching:PT-CAP9-U4): mh::caps::path::waypoint(player, slot, entry) -> {byte heading; byte run_length}.
 
 template <class T>
 T rd(uintptr_t a) { return *reinterpret_cast<const volatile T *>(a); }
 template <class T>
 void wr(uintptr_t a, T v) { *reinterpret_cast<volatile T *>(a) = v; }
 
-uintptr_t unit_at(uint32_t p, uint32_t i) { return A_UNITS + p * PLAYER_STRIDE + i * UNIT_SIZE; }
+uintptr_t unit_at(uint32_t p, uint32_t i) { return reinterpret_cast<uintptr_t>(mh::caps::rec<uint8_t>(mh::caps::UNITS, p, i)); }
 uint32_t  tidx(uint32_t x, uint32_t y) { return ((x & 0xffu) << 8) | (y & 0xffu); }
 uint32_t  region_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8); }
 uint32_t  field_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8 + 4) >> 8; }
@@ -138,7 +139,7 @@ struct arrival_live_world {
     uint32_t path_mask() { return rd<uint32_t>(A_WRAP_MASK); }
     uint32_t owner() { return rd<uint32_t>(A_GRP_OWNER); }
     int32_t  member_count() { return rd<int32_t>(A_GRP_COUNT); }
-    int32_t  unit_limit() { return 100; } // the splice's unit_at() strides are the stock 100-slot rows
+    int32_t  unit_limit() { return (int32_t)mh::caps::g(mh::caps::UNITS).limit; } // unit_at() strides the live unit rows
     uint32_t goal_x() { return rd<uint32_t>(A_GOAL_X); }
     uint32_t goal_y() { return rd<uint32_t>(A_GOAL_Y); }
     void     set_goal(int32_t x, int32_t y) {
@@ -167,7 +168,7 @@ struct arrival_live_world {
         out->group        = rd<int32_t>(u + U_GROUP);
         out->x            = rd<uint8_t>(u + U_X);
         out->y            = rd<uint8_t>(u + U_Y);
-        out->path_slot    = rd<uint8_t>(u + U_PATH_SLOT);
+        out->path_slot    = mh::caps::path::unit_slot_u8(reinterpret_cast<const uint8_t *>(u)); // the byte, or 0xff when a raised id does not fit it
         return true;
     }
     void set_unit_goal(uint32_t owner_, uint32_t i, uint8_t x, uint8_t y) {
@@ -224,8 +225,8 @@ struct formation_live_world : arrival_live_world {
         wr<uint32_t>(A_GRP_CENT_X + 4, y);
     }
     void     run_pathfind(uint32_t mode, uint32_t target) { call_pathfind(mode, target); } // the bracket is already open
-    uint32_t path_first_run(uint32_t owner_, uint32_t slot) { return rd<uint8_t>(A_PATHBUF + owner_ * 0xea60u + slot * 0x258u + 1u); }
-    void     path_terminate(uint32_t owner_, uint32_t slot) { wr<uint16_t>(A_PATHBUF + owner_ * 0xea60u + slot * 0x258u, 0); }
+    uint32_t path_first_run(uint32_t owner_, uint32_t slot) { return mh::caps::path::waypoint(owner_, slot, 0)[1]; }
+    void     path_terminate(uint32_t owner_, uint32_t slot) { wr<uint16_t>(reinterpret_cast<uintptr_t>(mh::caps::path::waypoint(owner_, slot, 0)), 0); }
     void     log_assign(uint32_t owner_, uint32_t ui, uint32_t from, uint32_t to, int how) {
         static int lines;
         if (lines++ >= 400) return;
@@ -257,7 +258,7 @@ void __cdecl arrival_after_pathfind(int32_t group_id, uint32_t mode, uint32_t ta
 }
 
 // The decision is sim/move/near_enough.h (shared with the libmh twin, sim_unit_state_group_marshal.cpp); this is its live-memory World.
-// Raw stock 100-slot rows (unit_at / A_TILE_OBJECTS), exactly what the splice always read: the retail marshal's EAX is a stock offset.
+// The live unit rows (unit_at / A_TILE_OBJECTS), exactly what the splice always read: the retail marshal's EAX is a byte offset into the unit array.
 struct ne_live_world {
     const mh::game::mh_map_object_unit *unit(uint32_t p, int32_t i) {
         if (p >= 8 || i < 0 || i >= mh::sim::mvc::NE_ROSTER) return nullptr;
@@ -269,11 +270,11 @@ struct ne_live_world {
     int32_t                                  map_h() { return rd<int32_t>(A_MAP_H); }
 };
 
-// Runs at marshal 0x00482b5b after the retry INC. `unit_off` = player*0x5b04 + index*0xe9 (the marshal's EAX).
+// Runs at marshal 0x00482b5b after the retry INC. `unit_off` = player*row_bytes(UNITS) (0x5b04) + index*0xe9 (the marshal's EAX).
 void __cdecl arrival_retry_check(uint32_t unit_off) {
     const uint32_t  p   = rd<uint16_t>(A_CUR_PLAYER) & 7u;
-    const uintptr_t u   = A_UNITS + unit_off;
-    const uint32_t  idx = (unit_off - p * PLAYER_STRIDE) / UNIT_SIZE;
+    const uintptr_t u   = mh::caps::g(mh::caps::UNITS).base + unit_off;
+    const uint32_t  idx = (unit_off - p * mh::caps::row_bytes(mh::caps::UNITS)) / UNIT_SIZE;
     ne_live_world   w;
     const auto      st = mh::sim::mvc::near_enough_check(w, p, static_cast<int32_t>(idx), g_arr_near_r);
     if (st == mh::sim::mvc::ne_stop::no) return;
@@ -295,7 +296,7 @@ int __cdecl merge_goal_pick(uint32_t gx, uint32_t gy, uint32_t *ox, uint32_t *oy
     const int32_t  n     = rd<int32_t>(A_GRP_COUNT);
     if (n < 1 || n > 256) return 0;
     const uint32_t ui = rd<uint32_t>(A_GRP_MEMBERS);
-    if (ui >= 100 || rd<uint16_t>(unit_at(owner, ui) + U_ORDER) != mh::sim::MERGE_GOAL_ORDER) return 0;
+    if (ui >= mh::caps::g(mh::caps::UNITS).limit || rd<uint16_t>(unit_at(owner, ui) + U_ORDER) != mh::sim::MERGE_GOAL_ORDER) return 0;
     const uint32_t w = rd<uint32_t>(A_MAP_W), h = rd<uint32_t>(A_MAP_H), bit = 1u << owner;
     uint32_t       tx = 0, ty = 0;
     const bool     ok = mh::sim::merge_goal_search(
@@ -369,7 +370,10 @@ __declspec(naked) void mv_merge_goal_stub() {
 
 __declspec(naked) void mv_arr_retry_stub() {
     __asm {
-        inc   byte ptr [eax + 0xdd8cf3]          // path_blocked_retry_count++ (replaced)
+        push  edx
+        mov   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_UNITS]
+        inc   byte ptr [eax + edx + 0xab]        // path_blocked_retry_count++ (replaced; 0x00dd8cf3 = base + 0xab)
+        pop   edx
         cmp   g_arr_distinct_rt, 0
         jne   ar_check
         cmp   g_fc_on, 0                         // mods:M1G 4b: kept members have an empty path and must stop here, not retry
@@ -384,7 +388,10 @@ __declspec(naked) void mv_arr_retry_stub() {
         add   esp, 4
         popad
     ar_done:
-        cmp   byte ptr [eax + 0xdd8cf3], 4       // replaced; its flags feed the JNC
+        push  edx
+        mov   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_UNITS]
+        cmp   byte ptr [eax + edx + 0xab], 4     // replaced; its flags feed the JNC (the pop leaves them alone)
+        pop   edx
         ret
     }
 }
@@ -413,7 +420,7 @@ int arr_patch(uintptr_t addr, const uint8_t *expect, int len, void (*stub)()) {
     // one literal expression per site: lint_dll_patches keys the manifest on (file, expr)
     switch (addr) {
         case ADDR_ARR_COMMIT: ok = mh::hook::patch_bytes_guarded(ADDR_ARR_COMMIT, expect, repl, len); break;
-        case ADDR_ARR_RETRY: ok = mh::hook::patch_bytes_guarded(ADDR_ARR_RETRY, expect, repl, len); break;
+        case ADDR_ARR_RETRY: ok = mh::hook::patch_bytes_guarded_caps(ADDR_ARR_RETRY, expect, repl, len); break;
         case ADDR_MV_MERGE_GOAL: ok = mh::hook::patch_bytes_guarded(ADDR_MV_MERGE_GOAL, expect, repl, len); break;
     }
     return ok ? 1 : -1;

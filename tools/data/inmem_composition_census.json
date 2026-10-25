@@ -2,98 +2,98 @@
   "_generated_by": "tools/check_inmem_composition.py",
   "_what": "The fork F4C-COMP composition census: how much of the src/patcher static-patch surface lands inside a function some other mh.dll mechanism claims. Re-derived from committed inputs only; `--check` requires byte-identity. Containment is STRICT (entry <= va <= end), the predicate mh::hook::promoted_owner_of evaluates at runtime.",
   "entry_window_bytes": 8,
-  "sites_total": 46292,
-  "orphan_sites": 468,
+  "sites_total": 54961,
+  "orphan_sites": 483,
   "promotable_bodies": 403,
   "verified_bodies": 953,
-  "detour_target_addrs": 85,
-  "detour_target_bodies": 85,
+  "detour_target_addrs": 92,
+  "detour_target_bodies": 92,
   "unresolved_install_sites": 16,
-  "sites_in_promotable_body": 10127,
-  "sites_in_detour_target": 4491,
-  "sites_in_either": 11087,
-  "sites_in_verified_not_promotable": 26412,
+  "sites_in_promotable_body": 12100,
+  "sites_in_detour_target": 5582,
+  "sites_in_either": 13212,
+  "sites_in_verified_not_promotable": 31397,
   "sites_in_entry_window_of_claimed_body": 93,
   "top_claimed_bodies": [
     {
       "fn": "llm_strat_order_queue_dispatch",
-      "sites": 3281
+      "sites": 3939
     },
     {
       "fn": "llm_bldg_finish_current_order",
-      "sites": 418
+      "sites": 480
     },
     {
       "fn": "llm_strat_ui_storage_bldg_panel",
-      "sites": 381
+      "sites": 441
     },
     {
       "fn": "llm_strat_input_update",
-      "sites": 362
+      "sites": 420
     },
     {
       "fn": "llm_strat_sim_step",
-      "sites": 250
+      "sites": 290
     },
     {
       "fn": "map_FillDefaults",
-      "sites": 245
+      "sites": 289
     },
     {
       "fn": "llm_strat_order_queue_apply_and_dequeue",
+      "sites": 273
+    },
+    {
+      "fn": "llm_strat_ai_group_classify_target_object",
+      "sites": 230
+    },
+    {
+      "fn": "llm_strat_ai_mine_portfolio_rebalance",
+      "sites": 210
+    },
+    {
+      "fn": "llm_strat_ai_rebalance_building_workers",
       "sites": 210
     },
     {
       "fn": "llm_strat_ai_scan_construction_sites",
-      "sites": 189
-    },
-    {
-      "fn": "llm_strat_ai_group_classify_target_object",
-      "sites": 184
-    },
-    {
-      "fn": "llm_strat_ai_rebalance_building_workers",
-      "sites": 181
-    },
-    {
-      "fn": "llm_strat_ai_mine_portfolio_rebalance",
-      "sites": 173
+      "sites": 208
     },
     {
       "fn": "llm_strat_bldg_gather_nearby_squad_status",
-      "sites": 171
+      "sites": 201
     },
     {
       "fn": "llm_strat_bldg_instant_construct_find_slot",
-      "sites": 128
+      "sites": 146
     },
     {
       "fn": "llm_strat_unit_get_coords",
-      "sites": 120
+      "sites": 144
     },
     {
       "fn": "llm_strat_unit_order_exit_storage",
-      "sites": 118
+      "sites": 138
+    },
+    {
+      "fn": "llm_strat_ai_group_reposition_members",
+      "sites": 124
+    },
+    {
+      "fn": "llm_strat_ai_group_task_attack_nearest_defended",
+      "sites": 120
+    },
+    {
+      "fn": "llm_strat_unit_order_attack_target",
+      "sites": 120
+    },
+    {
+      "fn": "llm_strat_unit_order_attack_target_alt",
+      "sites": 120
     },
     {
       "fn": "map_LoadPlanetFromDisk",
       "sites": 117
-    },
-    {
-      "fn": "map_SavePlanetToDisk",
-      "sites": 117
-    },
-    {
-      "fn": "llm_strat_ai_group_task_attack_nearest_defended",
-      "sites": 113
-    },
-    {
-      "fn": "llm_strat_ai_group_reposition_members",
-      "sites": 106
-    },
-    {
-      "fn": "llm_strat_bldg_shuttle_slot_is_free",
-      "sites": 102
     }
   ],
   "entry_window_collisions": [
@@ -656,21 +656,455 @@
       "fn": "llm_rand"
     }
   ],
-  "registered_patch_collisions": [
+  "dll_patch_extents": 160,
+  "dll_patches_dynamic_unchecked": [
+    "interlock_selftest_fake_entry",
+    "hostapi_selftest_unbound_hook_table",
+    "video_view_array_reloc",
+    "video_mode2_immediates",
+    "view_wrap_render_sites",
+    "view_wrap_drag_box_corners",
+    "view_wrap_drag_dir",
+    "view_wrap_fx_view_gate",
+    "video_panel_list_rows",
+    "ui_panel_list_rows",
+    "detour_save_promote",
+    "detour_net_trace",
+    "detour_video_reentrancy",
+    "detour_shadow_sites"
+  ],
+  "registered_patch_overlaps": [
+    {
+      "patch": "mother_free_link",
+      "addr": "0x00492422",
+      "len": 7,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x00492426",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "mother_free_link",
+      "addr": "0x00492422",
+      "len": 7,
+      "manifest": "buildings_caphike",
+      "site": "0x00492426",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "mother_free_link",
+      "addr": "0x00492422",
+      "len": 7,
+      "manifest": "grand_all_caphike",
+      "site": "0x00492426",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "mother_free_link",
+      "addr": "0x00492422",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00492426",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "mother_free_seed",
+      "addr": "0x00491eac",
+      "len": 8,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x00491eaf",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "mother_free_seed",
+      "addr": "0x00491eac",
+      "len": 8,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00491eaf",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00482b5d",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00482b63",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00482b5d",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00482b63",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "grand_all_caphike",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "units_caphike",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
     {
       "patch": "move_squad_merge_fix",
       "addr": "0x0047ebe1",
-      "manifest": "soldiers_relocate"
+      "len": 8,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x0047ebe4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "grand_all_caphike",
+      "site": "0x0047ebe1",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x0047ebe1",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x0047ebe4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "grand_all_relocate",
+      "site": "0x0047ebe1",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "soldiers_caphike",
+      "site": "0x0047ebe1",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "soldiers_relocate",
+      "site": "0x0047ebe1",
+      "site_len": 4,
+      "relation": "start"
     },
     {
       "patch": "resync_wait_fix",
       "addr": "0x0049c044",
-      "manifest": "net_resync_wait_fix_EN"
+      "len": 3,
+      "manifest": "net_resync_wait_fix_EN",
+      "site": "0x0049c044",
+      "site_len": 3,
+      "relation": "start"
     },
     {
       "patch": "run_without_focus",
       "addr": "0x004a04ce",
-      "manifest": "run_without_focus_EN"
+      "len": 7,
+      "manifest": "run_without_focus_EN",
+      "site": "0x004a04ce",
+      "site_len": 7,
+      "relation": "start"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "allpools_roster_relocate",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "grand_all_caphike",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "grand_all_relocate",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "subpools_4cap_caphike",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "subpools_4cap_relocate",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "subpools_allcaps_caphike",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "subpools_allcaps_relocate",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "turrets_caphike",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "turrets_relocate",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_refill",
+      "addr": "0x0047c6c8",
+      "len": 9,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x0047c6ca",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_refill",
+      "addr": "0x0047c6c8",
+      "len": 9,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x0047c6ca",
+      "site_len": 4,
+      "relation": "interior"
+    }
+  ],
+  "cap_set_overlaps": [
+    {
+      "patch": "mother_free_seed",
+      "addr": "0x00491eac",
+      "len": 8,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x00491eaf",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00482b5d",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_near_enough",
+      "addr": "0x00482b5b",
+      "len": 13,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00482b63",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_reverse_now",
+      "addr": "0x00466bfe",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466c01",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "move_squad_merge_fix",
+      "addr": "0x0047ebe1",
+      "len": 8,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x0047ebe4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_fix",
+      "addr": "0x00462ab9",
+      "len": 7,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x00462abb",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "turret_clip_refill",
+      "addr": "0x0047c6c8",
+      "len": 9,
+      "manifest": "cap_v022_reloc_EN",
+      "site": "0x0047c6ca",
+      "site_len": 4,
+      "relation": "interior"
+    }
+  ],
+  "embedded_reloc_overlaps": [
+    {
+      "patch": "order_wide_decode_local",
+      "addr": "0x0046643a",
+      "len": 27,
+      "cache": "cap_orders_sites.json",
+      "va": "0x0046643d"
+    },
+    {
+      "patch": "order_wide_decode_local",
+      "addr": "0x0046643a",
+      "len": 27,
+      "cache": "cap_orders_sites.json",
+      "va": "0x00466451"
     }
   ],
   "detour_target_bodies_named": [
@@ -681,6 +1115,7 @@
     "llm_game_return_to_main_menu_cb",
     "llm_gfx_ddraw_dll_acquire",
     "llm_gfx_ddraw_dll_release",
+    "llm_gfx_draw_cursor_menu",
     "llm_gfx_font_layout_text",
     "llm_gfx_font_measure_text_width",
     "llm_gfx_present_flip",
@@ -719,6 +1154,7 @@
     "llm_rand",
     "llm_snd_play",
     "llm_str_ansi_to_wide",
+    "llm_strat_draw_floating_messages",
     "llm_strat_group_move_order_pathfind",
     "llm_strat_group_order_ack_voice",
     "llm_strat_input_update",
@@ -749,13 +1185,18 @@
     "llm_ui_menu_screen_slide_transition",
     "llm_ui_menu_state_tick",
     "llm_ui_modal_key_pump",
+    "llm_ui_options_menu_ok_action_cb",
+    "llm_ui_options_menu_open",
     "llm_ui_outcome_dialog",
     "llm_ui_scroll_icon_list_draw",
     "llm_ui_text_wrap_find_break_ansi",
     "llm_ui_widget_input_tick",
+    "llm_ui_widget_list_draw",
     "llm_view_set_size_mode",
     "llm_wnd_on_destroy",
     "llm_wnd_on_devicechange",
+    "map_LoadPlanetFromDisk",
+    "map_SavePlanetToDisk",
     "time_GetCurrentTime",
     "utils_WideStringToAscii",
     "utils_abort"

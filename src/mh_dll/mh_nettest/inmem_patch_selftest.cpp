@@ -35,6 +35,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 using namespace mh::patch;
@@ -135,6 +136,125 @@ void capture_log(const char *s) { strncpy_s(g_last_log, sizeof(g_last_log), s, _
 bool logged(const char *needle) { return strstr(g_last_log, needle) != nullptr; }
 
 } // namespace
+
+
+// ---- PT-CAP8: a WIDE fake host ------------------------------------------------------------------
+//
+// The arms below drive the BATCHED applier, the toggle layer and the overlay over the REAL v0.2.2 cap
+// manifests (3,941 + 51 sites between 0x41129b and 0x4ee14b). The image is a heap window over
+// 0x00400000..0x004F0000 (the sites' span, filled with a pattern that is neither a vanilla byte nor a
+// raised one, then seeded with each site's `expect`), sections are calloc'd, and every protect call is
+// recorded so the batching is a measurement, not a claim.
+namespace wide {
+
+constexpr uint32_t LO   = 0x00400000u;
+constexpr uint32_t SIZE = 0x000F0000u;
+
+uint8_t *img = nullptr;
+
+struct pcall {
+    uint32_t off, size, prot;
+};
+pcall    g_calls[8192];
+int      g_ncalls      = 0;  // image-range protect calls only
+int      g_sec_protect = 0;  // protects of section memory (the caves / arrays)
+int      g_fail_at     = -1; // fail the Nth image-range protect call (0-based); -1 = never
+int      g_alloc_fail  = -1;
+void    *g_sections[8];
+uint32_t g_sec_size[8];
+int      g_nsec     = 0;
+uint32_t g_split_va = 0; // query(): the region containing LO.. ends here with prot 0x20; the rest is 0x04
+
+void *res_at(uint32_t, uint32_t size) {
+    if (g_nsec >= 8) return nullptr;
+    void *p              = calloc(size, 1);
+    g_sections[g_nsec]   = p;
+    g_sec_size[g_nsec++] = size;
+    return p;
+}
+void *res_any(uint32_t size) { return res_at(0, size); }
+void  rel(void *p, uint32_t) {
+    for (int i = 0; i < g_nsec; ++i)
+        if (g_sections[i] == p) {
+            free(p);
+            g_sections[i] = nullptr;
+        }
+}
+bool in_img(const void *p) { return p >= img && p < img + SIZE; }
+bool prot(void *p, uint32_t size, uint32_t want, uint32_t *old_out) {
+    if (!in_img(p)) {
+        ++g_sec_protect;
+        if (old_out) *old_out = 0x04;
+        return true;
+    }
+    const uint32_t off = (uint32_t)((uint8_t *)p - img);
+    if (g_fail_at == g_ncalls) {
+        ++g_ncalls;
+        return false;
+    }
+    if (g_ncalls < 8192) g_calls[g_ncalls] = {off, size, want};
+    ++g_ncalls;
+    if (old_out) *old_out = (g_split_va && LO + off >= g_split_va) ? 0x04u : 0x20u;
+    return true;
+}
+uint8_t *at(uint32_t va) { return img + (va - LO); }
+bool     query(const void *p, uint32_t *end, uint32_t *pr) {
+    const uint32_t va = LO + (uint32_t)((const uint8_t *)p - img);
+    if (!g_split_va) {
+        *end = LO + SIZE;
+        *pr  = 0x20;
+        return true;
+    }
+    if (va < g_split_va) {
+        *end = g_split_va;
+        *pr  = 0x20;
+    } else {
+        *end = LO + SIZE;
+        *pr  = 0x04;
+    }
+    return true;
+}
+const patch_host HOST = {&res_at, &res_any, &rel, &prot, &at, &query};
+
+void reset() {
+    g_ncalls = g_sec_protect = g_nsec = 0;
+    g_fail_at = g_alloc_fail = -1;
+    g_split_va               = 0;
+    memset(g_sections, 0, sizeof(g_sections));
+}
+void free_sections() {
+    for (int i = 0; i < g_nsec; ++i) free(g_sections[i]), g_sections[i] = nullptr;
+    g_nsec = 0;
+}
+// Fill the window with a pattern and seed every site of `m` with its vanilla bytes.
+void seed(const inmem_manifest &m) {
+    memset(img, 0xCC, SIZE);
+    for (int i = 0; i < m.site_count; ++i) memcpy(at(m.sites[i].va), m.sites[i].expect, m.sites[i].len);
+}
+bool image_equals(const uint8_t *snap) { return memcmp(img, snap, SIZE) == 0; }
+
+} // namespace wide
+
+// The synthetic 400-site manifest the batching arm uses: four groups of 100 4-byte sites, each group
+// inside ONE page, groups 0x20000 apart (so exactly four runs).
+namespace synth {
+constexpr int  N = 400;
+uint8_t        expect_b[N][4], mask_b[N][4], repl_b[N][4];
+inmem_site     sites[N];
+inmem_manifest man;
+void           build() {
+    for (int i = 0; i < N; ++i) {
+        const uint32_t grp = (uint32_t)(i / 100), idx = (uint32_t)(i % 100);
+        for (int k = 0; k < 4; ++k) {
+            expect_b[i][k] = (uint8_t)(0x11 + k);
+            mask_b[i][k]   = 0xff;
+            repl_b[i][k]   = (uint8_t)(0xA0 + (i & 0xf));
+        }
+        sites[i] = {0x00410000u + grp * 0x20000u + idx * 0x20u, expect_b[i], mask_b[i], repl_b[i], 4u};
+    }
+    man = {"synthetic_400", "0", nullptr, 0, sites, N, nullptr, 0, nullptr, 0, true, false};
+}
+} // namespace synth
 
 int run_patchtest() {
     printf("== in-memory static-patch selftest (F1E: the applier + its refusals) ==\n");
@@ -600,6 +720,331 @@ int run_patchtest() {
                "field's whole point, at the 7,769 the caphike family actually reaches");
         }
     }
+
+
+    // ====================================================================================================
+    // ---- (10) PT-CAP8 SLICE C: the BATCHED applier, the TOGGLE layer and the OVERLAY ------------------
+    // ====================================================================================================
+    //
+    // Over a wide fake host (see namespace `wide`): a heap window over the cap manifests' whole span.
+    wide::img     = static_cast<uint8_t *>(malloc(wide::SIZE));
+    uint8_t *snap = static_cast<uint8_t *>(malloc(wide::SIZE));
+    set_host(&wide::HOST);
+    reset_applied_for_test();
+    mh::hook::registry_reset_for_test();
+
+    // ---- (10a) BATCHING IS A MEASUREMENT: 400 sites in four pages -> four runs -> 2 x runs protects ----
+    {
+        synth::build();
+        wide::reset();
+        wide::seed(synth::man);
+        const apply_result r = apply(synth::man);
+        ck(r.applied && r.refusal == nullptr, "(10a) a 400-site manifest over four pages applies");
+        ck(r.protect_runs == 4, "...as exactly FOUR page runs, not 400 sites");
+        ck(wide::g_ncalls <= 2 * r.protect_runs && wide::g_ncalls == 8,
+           "...with 2 protect calls per run (open RWX + restore) -- 8 in all, where the per-site applier spent 1,600");
+        bool all = true;
+        for (int i = 0; i < synth::N; ++i)
+            all = all && memcmp(wide::at(synth::sites[i].va), synth::repl_b[i], 4) == 0;
+        ck(all, "...and every one of the 400 sites holds its replacement");
+        bool restored = true;
+        for (int i = 4; i < 8; ++i) restored = restored && wide::g_calls[i].prot == 0x20u; // the restores put back what query()/protect() reported
+        ck(restored, "...and the runs were restored to the protection they had");
+        ck(r.micros < 5u * 1000u * 1000u, "...and apply() reports its own wall time (micros) -- a sanity bound, not a budget");
+        reset_applied_for_test();
+    }
+
+    // ---- (10b) ALL-OR-NOTHING ACROSS RUNS: the third run cannot be opened ------------------------------
+    {
+        wide::reset();
+        wide::seed(synth::man);
+        memcpy(snap, wide::img, wide::SIZE);
+        wide::g_fail_at      = 2; // the third image-range protect call = opening run 3
+        const apply_result r = apply(synth::man);
+        ck(!r.applied && r.refusal != nullptr && strstr(r.refusal, "protect") != nullptr,
+           "(10b) a run that cannot be made writable refuses the whole manifest");
+        ck(r.refused_site >= 200 && r.refused_site < 300, "...naming a site that lives in the failing (third) run");
+        ck(wide::image_equals(snap), "...and NOT ONE byte was written, including the two runs that opened fine");
+        ck(wide::g_ncalls == 5 && wide::g_calls[3].prot == 0x20u && wide::g_calls[4].prot == 0x20u,
+           "...and the two runs it had opened were put back (two restore calls follow the failed one)");
+        ck(logged("cannot be made writable"), "...with the refusal line saying why");
+        reset_applied_for_test();
+    }
+
+    // ---- (10c) PAGE RUNS SPLIT WHERE THE PROTECTION CHANGES --------------------------------------------
+    {
+        // Two adjacent pages, one site each, a protection boundary between them: 2 runs (not 1), each
+        // restored to ITS OWN protection (0x20 below the boundary, 0x04 above).
+        static const uint8_t    E[] = {1, 2, 3, 4};
+        static const uint8_t    M[] = {255, 255, 255, 255};
+        static const uint8_t    R[] = {9, 9, 9, 9};
+        static const inmem_site S[] = {{0x00480ffcu, E, M, R, 4u}, {0x00481004u, E, M, R, 4u}};
+        inmem_manifest          m   = {"two_pages", "0", nullptr, 0, S, 2, nullptr, 0, nullptr, 0, true, false};
+        wide::reset();
+        wide::seed(m);
+        wide::g_split_va     = 0x00481000u;
+        const apply_result r = apply(m);
+        ck(r.applied && r.protect_runs == 2, "(10c) two adjacent pages with a protection boundary between them are TWO runs");
+        ck(wide::g_ncalls == 4 && wide::g_calls[2].prot == 0x20u && wide::g_calls[3].prot == 0x04u,
+           "...and each is restored to the protection ITS pages had (R-X below the boundary, RW above) -- one value would have broken one of them");
+        reset_applied_for_test();
+    }
+
+    // ---- (10d) THE REAL RELOCATION MANIFEST, AT SCALE ---------------------------------------------------
+    {
+        const inmem_manifest &m = *CAPS_RELOC;
+        wide::reset();
+        wide::seed(m);
+        const apply_result r = apply(m, nullptr, APPLY_QUIET_OK);
+        ck(r.applied && r.refusal == nullptr, "(10d) the real cap_v022_reloc_EN manifest applies over the fake image");
+        ck(r.relocated && r.actual_base[0] != 0 && r.actual_base[1] != 0 && wide::g_nsec == 2,
+           "...placing both of its sections (the fake host cannot hand back 0x010f0000, so it is a relocated run)");
+        ck(r.protect_runs > 0 && r.protect_runs <= 100 && wide::g_ncalls == 2 * r.protect_runs,
+           "...in at most 99 page runs with 2 protects each -- where the old per-site path made ~20,000 syscalls");
+        bool bytes_ok = true;
+        for (int i = 0; i < m.site_count; ++i) {
+            uint8_t want[MAX_SITE_LEN];
+            relocate_site(m, i, r.actual_base, want);
+            if (memcmp(wide::at(m.sites[i].va), want, m.sites[i].len) != 0) {
+                bytes_ok = false;
+                break;
+            }
+        }
+        ck(bytes_ok, "...and every one of its 3,941 sites holds exactly relocate_site()'s bytes at the placement it got");
+        ck(m.sites[0].va == 0x0041129bu && m.sites[m.site_count - 1].va == 0x004ee14bu && wide::LO <= 0x0041129bu,
+           "...over the 0x41129b..0x4ee14b span the planted window covers");
+
+        // ---- (10e) THE OVERLAY returns what the applier WROTE ----
+        {
+            const int         k = 1000; // some site in the middle
+            const inmem_site &s = m.sites[k];
+            uint8_t           buf[MAX_SITE_LEN + 8];
+            memset(buf, 0xAA, sizeof(buf));
+            overlay_applied(s.va - 2, s.len + 4, buf);
+            uint8_t want[MAX_SITE_LEN];
+            relocate_site(m, k, r.actual_base, want);
+            bool site_part = memcmp(buf + 2, want, s.len) == 0;
+            ck(site_part, "(10e) overlay_applied copies the bytes the applier wrote over the site");
+            // bytes outside every site stay as the caller had them
+            uint32_t va0 = 0;
+            for (int i = 0; i + 1 < m.site_count; ++i)
+                if (m.sites[i + 1].va > m.sites[i].va + m.sites[i].len + 8u) {
+                    va0 = m.sites[i].va + m.sites[i].len + 2u;
+                    break;
+                }
+            uint8_t gap[4] = {0xAA, 0xAA, 0xAA, 0xAA};
+            overlay_applied(va0, 4, gap);
+            ck(gap[0] == 0xAA && gap[1] == 0xAA && gap[2] == 0xAA && gap[3] == 0xAA,
+               "...and a span between sites is left exactly as the caller had it");
+            // a partial overlap: the last byte of one site and the bytes after it
+            const inmem_site &s2 = m.sites[500];
+            uint8_t           part[4];
+            memset(part, 0x55, sizeof(part));
+            overlay_applied(s2.va + s2.len - 1, 4, part);
+            uint8_t w2[MAX_SITE_LEN];
+            relocate_site(m, 500, r.actual_base, w2);
+            ck(part[0] == w2[s2.len - 1], "...a partial overlap copies exactly the overlapping byte(s)");
+        }
+        wide::free_sections();
+        reset_applied_for_test();
+    }
+
+    // ---- (10f) THE TOGGLE LAYER over the REAL limit manifest ---------------------------------------------
+    {
+        const inmem_manifest &m = *CAPS_LIMITS;
+        wide::reset();
+        wide::seed(m);
+        memcpy(snap, wide::img, wide::SIZE);
+        static toggle_state ts;
+        memset(&ts, 0, sizeof(ts));
+        ck(m.toggle, "(10f) the limit manifest is a toggle manifest");
+        {
+            const apply_result nots = apply(m);
+            ck(!nots.applied && nots.refusal != nullptr && strstr(nots.refusal, "toggle_state") != nullptr,
+               "...and a toggle manifest REFUSES to apply without a toggle_state");
+        }
+        const apply_result r = apply(m, &ts, APPLY_QUIET_OK);
+        ck(r.applied && ts.staged && !ts.on, "...applies: placed, verified, staged, OFF");
+        ck(wide::image_equals(snap), "...and wrote NO site -- the image is byte-for-byte the vanilla one");
+        ck(toggle_current(ts) == 0, "...toggle_current() reads every site as vanilla");
+
+        ck(toggle(ts, true), "(10g) toggle ON succeeds");
+        ck(ts.on && toggle_current(ts) == 1, "...every site is now its raised image");
+        bool on_ok = true;
+        for (int i = 0; i < m.site_count; ++i) on_ok = on_ok && memcmp(wide::at(m.sites[i].va), ts.on_bytes[i], m.sites[i].len) == 0;
+        ck(on_ok, "...byte-for-byte the relocated `repl` the manifest carries");
+        ck(*wide::at(0x004562e3u) == 0x7f, "...a loop-bound imm8 (map_FillDefaults 0x4562e3) is 0x7f");
+        ck(*wide::at(0x00412441u) == 0xE9, "...a widened bound (0x412441) is a JMP into the cave");
+        {
+            int32_t rel32;
+            memcpy(&rel32, wide::at(0x00412442u), 4);
+            ck(0x00412441u + 5u + (uint32_t)rel32 == r.actual_base[0], "...whose target is the limit section's first cave, at the placement it got");
+        }
+        ck(toggle(ts, true), "toggling ON when ON is a successful no-op");
+
+        ck(toggle(ts, false), "toggle OFF succeeds");
+        ck(!ts.on && toggle_current(ts) == 0, "...every site is vanilla again");
+        ck(wide::image_equals(snap), "...and the image is BYTE-IDENTICAL to the vanilla one it started as (OFF -> ON -> OFF restores exact `expect`)");
+
+        // ---- (10h) a FOREIGN byte refuses, writing nothing ----
+        ck(toggle(ts, true), "(10h) back ON for the foreign-byte arm");
+        uint8_t *foreign = wide::at(m.sites[5].va);
+        foreign[0] ^= 0xFF; // neither the vanilla nor the raised image
+        memcpy(snap, wide::img, wide::SIZE);
+        int         bad = -1;
+        const char *why = nullptr;
+        ck(!toggle(ts, false, &bad, &why), "a site holding neither image REFUSES the toggle");
+        ck(bad == 5 && why != nullptr && strstr(why, "foreign") != nullptr, "...naming the site and the cause");
+        ck(wide::image_equals(snap), "...and wrote nothing (the other 50 sites stay raised)");
+        ck(logged("site 5") && logged(m.name), "...and the log line names the site and the manifest");
+        foreign[0] ^= 0xFF;
+        ck(toggle(ts, false), "...and once the foreign writer is gone the toggle works");
+        wide::free_sections();
+    }
+
+    // ---- (10f2) PT-CAP9-U5: the ORDER layer is a toggle over the real manifest too ----------------------------
+    {
+        const inmem_manifest &m = *CAPS_ORDERS;
+        wide::reset();
+        wide::seed(m);
+        memcpy(snap, wide::img, wide::SIZE);
+        static toggle_state ts;
+        memset(&ts, 0, sizeof(ts));
+        ck(m.toggle && m.site_count <= MAX_TOGGLE_SITES && m.section_count == 2, "(10f2) the order manifest is a toggle with two sections that fits toggle_state");
+        const apply_result r = apply(m, &ts, APPLY_QUIET_OK);
+        ck(r.applied && ts.staged && !ts.on && wide::image_equals(snap), "...applies and stages WITHOUT writing a single site");
+        ck(toggle(ts, true) && toggle_current(ts) == 1, "...toggle ON: every site is its raised image");
+        // the wipe at 0x00466153 is now `inc dword [ovf_queue]` (ff 05 <abs32 into .mhcapo>), 4 nops after it
+        const uint8_t *wp = wide::at(0x00466153u);
+        uint32_t       cell;
+        memcpy(&cell, wp + 2, 4);
+        ck(wp[0] == 0xff && wp[1] == 0x05 && cell == r.actual_base[0] + 4u && wp[6] == 0x90 && wp[9] == 0x90, "...the enqueue WIPE became `inc dword [.mhcapo+4]` + nops (at the section's actual placement)");
+        // the quota site: call into .mhcapr, then test eax,eax
+        const uint8_t *qp = wide::at(0x00466232u);
+        int32_t        rel;
+        memcpy(&rel, qp + 1, 4);
+        ck(qp[0] == 0xe8 && 0x00466232u + 5u + (uint32_t)rel == r.actual_base[1] && qp[5] == 0x85 && qp[6] == 0xc0, "...the sender bound became `call .mhcapq; test eax,eax`");
+        // the thunk is `jmp dword ptr [.mhcapo+0]`
+        uint32_t       tcell;
+        const uint8_t *th = static_cast<const uint8_t *>(wide::g_sections[1]);
+        memcpy(&tcell, th + 2, 4);
+        ck(th[0] == 0xff && th[1] == 0x25 && tcell == r.actual_base[0], "...and the thunk jumps through the section's first dword");
+        uint32_t lim;
+        memcpy(&lim, wide::at(0x004660bbu), 4);
+        ck(lim == 4096u, "...the queue bound is 4096");
+        ck(toggle(ts, false) && toggle_current(ts) == 0 && wide::image_equals(snap), "...OFF restores the image BYTE-IDENTICALLY");
+        wide::free_sections();
+    }
+
+    // ---- (10f3) PT-CAP9-U8b: WILDCARD bytes round-trip EXACTLY, for every toggle manifest -------------------
+    // The units-limit manifest has sites whose mask is 0 on a byte the ON image rewrites (a rel32 displacement
+    // inside a masked instruction). OFF used to write back only the mask-0xff bytes, so those bytes kept the ON
+    // image and toggle_current() still read the site as OFF. The seed gives every wildcard byte a value that is
+    // NOT the manifest's `expect` byte, as a real image does.
+    {
+        const inmem_manifest *const TM[] = {CAPS_LIMITS, CAPS_AI, CAPS_UNITS_LIMITS, CAPS_ORDERS};
+        for (const inmem_manifest *tm : TM) {
+            const inmem_manifest &m = *tm;
+            wide::reset();
+            wide::seed(m);
+            int wild_sites = 0;
+            for (int i = 0; i < m.site_count; ++i) {
+                bool w = false;
+                for (uint32_t b = 0; b < m.sites[i].len; ++b)
+                    if (!m.sites[i].mask[b]) {
+                        wide::at(m.sites[i].va)[b] = (uint8_t)((0x5A ^ (i * 7 + (int)b)) | 0x01); // arbitrary live byte
+                        w                          = true;
+                    }
+                wild_sites += w ? 1 : 0;
+            }
+            memcpy(snap, wide::img, wide::SIZE);
+            static toggle_state ts;
+            memset(&ts, 0, sizeof(ts));
+            const apply_result r = apply(m, &ts, APPLY_QUIET_OK);
+            printf("   (10f3) %s: %d sites, %d with wildcard bytes\n", m.name, m.site_count, wild_sites);
+            ck(r.applied && ts.staged && wide::image_equals(snap) && toggle_current(ts) == 0, "(10f3) a toggle manifest with live wildcard bytes applies, wrote nothing, reads OFF");
+            ck(toggle(ts, true) && toggle_current(ts) == 1, "...ON");
+            ck(toggle(ts, false) && toggle_current(ts) == 0 && wide::image_equals(snap), "...OFF restores the image BYTE-IDENTICALLY, wildcard bytes included");
+            ck(toggle(ts, true) && toggle_current(ts) == 1 && toggle(ts, false) && wide::image_equals(snap), "...ON -> OFF -> ON -> OFF is stable");
+            // a planted corrupt wildcard byte: toggle_current must not call the site OFF
+            int      pw = -1;
+            uint32_t wb = 0;
+            for (int i = 0; i < m.site_count && pw < 0; ++i)
+                for (uint32_t b = 0; b < m.sites[i].len; ++b)
+                    if (!m.sites[i].mask[b]) {
+                        pw = i;
+                        wb = b;
+                        break;
+                    }
+            if (pw >= 0) {
+                wide::at(m.sites[pw].va)[wb] ^= 0x40;
+                ck(toggle_current(ts) == -1, "...a corrupt WILDCARD byte is detected: toggle_current() is not OFF");
+                ck(toggle(ts, false) && wide::image_equals(snap) && toggle_current(ts) == 0, "...and OFF restores the original byte");
+            }
+            wide::free_sections();
+        }
+    }
+
+    // ---- (10i) the compile-list caps, for the two cap manifests --------------------------------------------
+    {
+        const inmem_manifest *const CM[] = {CAPS_RELOC, CAPS_LIMITS, CAPS_AI, CAPS_ORDERS};
+        for (const inmem_manifest *cm : CM) {
+            ck(cm->refs_complete, "(10i) a cap manifest carries complete relocation metadata");
+            ck(cm->section_count <= MAX_SECTIONS && cm->body_count <= mh::hook::MAX_PATCHED_BODIES, "...fits the applier's sections and the C1 registry");
+            bool len_ok = true, sorted = true, owner_ok = true;
+            for (int s = 0; s < cm->site_count; ++s) {
+                if (cm->sites[s].len > (uint32_t)MAX_SITE_LEN) len_ok = false;
+                if (s && cm->sites[s].va <= cm->sites[s - 1].va + cm->sites[s - 1].len - 1u) sorted = false;
+            }
+            for (int r = 0; r < cm->ref_count; ++r) {
+                const inmem_ref &rr = cm->refs[r];
+                const int        n  = rr.in_section ? cm->section_count : cm->site_count;
+                if (rr.owner >= n) owner_ok = false;
+                if (rr.kind != ref_kind::rel32_to_image && rr.target_section >= cm->section_count) owner_ok = false;
+            }
+            ck(len_ok && sorted && owner_ok, "...sites <= 64 bytes, strictly ascending and non-overlapping (the overlay binary-searches them), every ref names a blob that exists");
+        }
+        ck(CAPS_LIMITS->site_count <= MAX_TOGGLE_SITES, "...the limit manifest fits toggle_state's site table");
+        bool tlen = true;
+        for (int s = 0; s < CAPS_LIMITS->site_count; ++s) tlen = tlen && CAPS_LIMITS->sites[s].len <= (uint32_t)MAX_TOGGLE_LEN;
+        ck(tlen, "...and its longest site fits toggle_state's per-site staging");
+        ck(!CAPS_RELOC->toggle && CAPS_LIMITS->toggle, "...the reloc layer is written at boot, the limit layer only on a toggle");
+        ck(CAPS_AI->toggle && CAPS_AI->site_count <= MAX_TOGGLE_SITES, "...the AI scratch layer is a toggle that fits toggle_state's site table (PT-CAP11)");
+        bool ai_len = true;
+        for (int s = 0; s < CAPS_AI->site_count; ++s) ai_len = ai_len && CAPS_AI->sites[s].len <= (uint32_t)MAX_TOGGLE_LEN;
+        ck(ai_len, "...and its sites fit the per-site staging");
+    }
+
+    // ---- (10j) the overlay on a SMALL manifest: relocated bytes, binary search, the unsorted fallback -----
+    {
+        static const uint8_t       E[]   = {0x11, 0xdc, 0xe1, 0x00};
+        static const uint8_t       M[]   = {0xff, 0xff, 0xff, 0xff};
+        static const uint8_t       R[]   = {0x79, 0x00, 0x0f, 0x01};
+        static const inmem_site    S[]   = {{0x00450010u, E, M, R, 4u}, {0x00450030u, E, M, R, 4u}};
+        static const inmem_ref     F[]   = {{0, 0, 0u, ref_kind::abs32_to_section, 0, 0x79u}, {0, 1, 0u, ref_kind::abs32_to_section, 0, 0x7au}};
+        static const inmem_section SEC[] = {{".t", 0x01100000u, 0x1000u, nullptr, 0u, 0xC0000040u}};
+        inmem_manifest             m     = {"overlay_small", "0", SEC, 1, S, 2, F, 2, nullptr, 0, true, false};
+        wide::reset();
+        wide::seed(m);
+        reset_applied_for_test();
+        const apply_result r = apply(m, nullptr, APPLY_QUIET_OK);
+        ck(r.applied, "(10j) a two-site manifest with a section applies");
+        uint8_t buf[8];
+        memset(buf, 0xAA, sizeof(buf));
+        overlay_applied(0x00450032u, 6, buf); // overlaps the SECOND site's last two bytes
+        uint32_t base_plus = r.actual_base[0] + 0x7au;
+        uint8_t  wantb[4];
+        memcpy(wantb, &base_plus, 4);
+        ck(buf[0] == wantb[2] && buf[1] == wantb[3] && buf[2] == 0xAA, "...the overlay returns the RELOCATED bytes (base + target), not the manifest's baked ones");
+        wide::free_sections();
+        reset_applied_for_test();
+    }
+
+    free(wide::img);
+    free(snap);
+    wide::img = nullptr;
+    set_host(&FAKE);
+    mh::hook::registry_reset_for_test();
 
     set_host(nullptr);
     set_logger(nullptr);

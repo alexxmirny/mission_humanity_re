@@ -24,10 +24,10 @@ Measured with VALUES rather than hashes (an rdump of the `order_queue_count` sli
 step of a record run whose recording is byte-identical to the committed one): the top-of-step
 count and the dispatch-entry count disagree at
 
-    [75, 675, 1275, 1875, 2475, 3075, 3675, 4275, 4875]
+    [63, 563, 1063, 1563, 2063, 2563, 3063, 3563, 4063, 4563]
 
--- spaced 600 steps, i.e. every 60 s of game time. Steps going `0 -> n`, which the replay's
-count gate could never open: **0**.
+-- spacing [500] step(s). Steps going `0 -> n`, which the replay's count gate could never
+open: **0**.
 
 ## The residue, enumerated
 
@@ -37,14 +37,16 @@ count gate could never open: **0**.
 | | | steps: onset 1, then every step to 5000 |
 | `frame_ring` | 5000 | excluded: state_excluded() wall-clock/pacing, outside the state verdict |
 | | | steps: onset 1, then every step to 5000 |
-| `fps_estimate` | 40 | excluded: state_excluded() wall-clock/pacing, outside the state verdict |
-| | | steps: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1441, 1442, 1443, 1444, 1445, 1446, 1447, 1448, 1449, 1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460 |
+| `fps_estimate` | 280 | excluded: state_excluded() wall-clock/pacing, outside the state verdict |
+| | | steps: onset 1, then every step to 1460 |
 | `last_game_time` | 5000 | excluded: state_excluded() wall-clock/pacing, outside the state verdict |
 | | | steps: onset 1, then every step to 5000 |
-| `order_queue` | 9 | instrument: the queue itself at the instants (max +0 steps before it re-converges) |
-| | | steps: 75, 675, 1275, 1875, 2475, 3075, 3675, 4275, 4875 |
-| `order_queue_count` | 9 | instrument: the queue itself at the instants (max +0 steps before it re-converges) |
-| | | steps: 75, 675, 1275, 1875, 2475, 3075, 3675, 4275, 4875 |
+| `total_game_time` | 5000 | excluded: state_excluded() wall-clock/pacing, outside the state verdict |
+| | | steps: onset 1, then every step to 5000 |
+| `order_queue` | 10 | instrument: the queue itself at the instants (max +0 steps before it re-converges) |
+| | | steps: 63, 563, 1063, 1563, 2063, 2563, 3063, 3563, 4063, 4563 |
+| `order_queue_count` | 10 | instrument: the queue itself at the instants (max +0 steps before it re-converges) |
+| | | steps: 63, 563, 1063, 1563, 2063, 2563, 3063, 3563, 4063, 4563 |
 
 ## The marks, localized
 

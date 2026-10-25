@@ -1,0 +1,73 @@
+# res_crop_720 -- mods:RES18: resolution=1280x720 in a real 1280x720 window (ini/res_crop_720.ini). The game renders 1280x736; the presenter shows 1280x720.
+#  a  the presented image is the quad composition with no bars (tools/check_res_crop.py);
+#  b  the pointer across the cut: client y 687 (the last visible map row) is frame row 687, client y 688 the strip's first row = frame 704 (the 16 cropped
+#     map rows 688..703 are skipped), the last client row 719 is frame 735; the last column is frame 1279;
+#  c  a right click on the last visible map row (client y 687) is delivered at frame row 687 (the strip's first row, client 688, is frame 704);
+#  d  edge scroll on the last row / last column scrolls the map.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 720
+winclient 1280 720
+screensettled
+gameclock +100
+log res_crop frame_ready
+cursorhold 600 300 6
+capture res_crop_720_frame
+pcapture res_crop_720_view
+
+# b. the pointer across the cut
+rawmouse sabs 600 687
+curpos 600 687 0
+rawmouse sabs 600 688
+curpos 600 704 0
+rawmouse sabs 600 300
+curpos 600 300 0
+rawmouse sabs 1279 300
+scurpos 1279 300 0
+rawmouse sabs 600 719
+scurpos 600 719 0
+log res_crop pointer_mapped
+
+# c. a right click on the last visible map row: the game cursor is at frame (400,687) when the button goes down (curpos is exact), i.e. the click is
+#    delivered to the map row under the pointer, not to a cropped row (688..703) or the strip (704..735)
+camto 41 52
+gameclock +200
+rawmouse sabs 400 687
+curpos 400 687 0
+rawmouse down r
+curpos 400 687 0
+rawmouse up r
+gameclock +100
+rawmouse sabs 400 688
+curpos 400 704 0
+gameclock +100
+
+# d. edge scroll
+camto 24 38
+gameclock +100
+rawmouse sabs 640 300
+gameclock +50
+logsel e_start
+rawmouse sabs 640 719
+gameclock +600
+logsel e_bottom
+rawmouse sabs 640 300
+camto 24 38
+gameclock +100
+rawmouse sabs 1279 300
+gameclock +600
+logsel e_right
+rawmouse sabs 640 300
+gameclock +100
+
+capture res_crop_720_done
+log res_crop COMPLETE -- 1280x720 cropped from 1280x736: composition, pointer across the cut, a click on the last map row, edge scroll
+end

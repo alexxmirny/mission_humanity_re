@@ -98,12 +98,14 @@ void maybe_exit(const char *ini_path) {
 }
 } // namespace
 
+extern "C" void MH_InMemPatch_BindLog(void) { mh::patch::set_logger(&seam_log); }
+
 extern "C" const char *MH_InMemPatch_Refusal(void) { return g_refusal; }
 
 extern "C" int MH_InMemPatch_Install(const char *ini_path) {
     if (!ini_path || !mh_ini_get_int("patch", "inmem", 0, ini_path)) return 0;
 
-    mh::patch::set_logger(&seam_log);
+    MH_InMemPatch_BindLog();
     const mh::patch::inmem_manifest *sel = select(ini_path);
     if (!sel) {
         mh::hook::report_patched_bodies();

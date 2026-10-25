@@ -123,9 +123,13 @@ const site_desc k_site[SITE_COUNT] = {
     // mods:M1BE: the three storage door state handlers (building anim states, not unit states: not table-rooted, the entry claim decides).
     // Rooted at the retail handler in the building TICK2 table (_G_LLM_STRAT_BLDG_TICK2_FUNCS): libmh's register_bldg_type_callbacks fills it with
     // its own thunks, which makes the retail body (and the splice in it) dead code.
+    /* SITE_SH */ {"stream_heat", 0x0041c9ce, H_MARSHAL, {R_COMMIT}, 1, MVH_SH},
     /* SITE_DOOR_SOLDIERS */ {"door_soldiers", 0x00477075, 0x00476e9d, {}, 0, MVH_DH, true, 0, true},
     /* SITE_DOOR_VEHICLES */ {"door_vehicles", 0x00476b81, 0x004769a9, {}, 0, MVH_DH, true, 0, true},
     /* SITE_DOOR_BARRACKS */ {"door_barracks", 0x004767ed, 0x00476627, {}, 0, MVH_DH, true, 0, true},
+    /* SITE_DOOR_SHUTTLE_A */ {"door_shuttle_a", 0x00477f92, 0x00477d9e, {}, 0, MVH_DH, true, 0, true},
+    /* SITE_DOOR_SHUTTLE_H */ {"door_shuttle_h", 0x00478353, 0x0047815f, {}, 0, MVH_DH, true, 0, true},
+    /* SITE_DOOR_AIRFIELD */ {"door_airfield", 0x00477a4e, 0x00477881, {}, 0, MVH_DH, true, 0, true},
 };
 
 const char *const k_hit_name[MVH_COUNT] = {
@@ -165,6 +169,7 @@ const char *const k_hit_name[MVH_COUNT] = {
     "formation",
     "enter_queue",
     "door_hold",
+    "stream_heat",
 };
 
 // ---- per-key description ---------------------------------------------------------------------------------------------------
@@ -214,7 +219,8 @@ const key_desc k_key[KEY_COUNT] = {
     /* KEY_ROUTE_THROUGH_MOVING_COST */ {"move_route_through_moving_cost", "sim_group_move_order_commit.cpp:group_move_order_commit (rt_unmask_moving)", {SITE_RTM}, 1},
     /* KEY_FORMATION_CLICK */ {"move_formation_click", "sim_group_move_order_commit.cpp:group_move_order_commit (formation_after_pathfind; the marshal's on-goal stop is the retry site)", {SITE_FC, SITE_ARR_RETRY}, 2},
     /* KEY_ENTER_QUEUE */ {"move_enter_queue", "sim_unit_state_move_walker.cpp:unit_state_move_walker (the nudge site + the blocked block; sim/move/enter_queue.h)", {SITE_ND, SITE_BLOCKED}, 2},
-    /* KEY_STORAGE_DOOR_HOLD */ {"storage_door_hold", "sim_bldg_anim_state_online.cpp:bldg_anim_state_soldiers_h / vehicles_h / barracks_garage_a (door_may_close)", {SITE_DOOR_SOLDIERS, SITE_DOOR_VEHICLES, SITE_DOOR_BARRACKS}, 3},
+    /* KEY_STORAGE_DOOR_HOLD */ {"storage_door_hold", "sim_bldg_anim_state_online.cpp:bldg_anim_state_soldiers_h / vehicles_h / barracks_garage_a / shuttle_a / shuttle_h / airfield_a (door_may_close)", {SITE_DOOR_SOLDIERS, SITE_DOOR_VEHICLES, SITE_DOOR_BARRACKS, SITE_DOOR_SHUTTLE_A, SITE_DOOR_SHUTTLE_H, SITE_DOOR_AIRFIELD}, 6},
+    /* KEY_STREAM_HEAT */ {"move_stream_heat", "sim_group_move_order_commit.cpp:group_move_order_commit (commit_rt_open: sh_open; sim/move/stream_heat.h)", {SITE_SH}, 1},
 };
 
 // ---- live state ------------------------------------------------------------------------------------------------------------

@@ -21,6 +21,9 @@ struct unit_ctrlgroup_member_calls {
 
 const unit_ctrlgroup_member_calls &live_unit_ctrlgroup_member_calls();
 
+// patching:PT-CAP9-U6: ids a control group (and the selection, group 0) can hold -- the record is count + uint16 unit_ids[200].
+inline constexpr int32_t ctrlgroup_member_cap = 200;
+
 namespace detail {
 
 // llm_strat_unit_ctrlgroup_add_member @0x00449401. See the header derivation above.

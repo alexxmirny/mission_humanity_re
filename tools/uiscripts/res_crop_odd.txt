@@ -1,0 +1,25 @@
+# res_crop_odd -- mods:RES18: resolution=1366x768 (neither side a multiple of 32): the game renders 1376x768 (width rounded up, height already a tile multiple); the presenter shows 1366x768, the panel at the screen's last 160 columns (frame cols 1216..1375), the bottom strip on the last 32 rows. tools/check_res_crop.py odd re-derives it.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res_crop frame_ready
+cursorhold 600 400 6
+capture res_crop_odd_frame
+pcapture res_crop_odd_view
+
+rawmouse sabs 600 500
+curpos 600 500 0
+rawmouse sabs 1205 500
+curpos 1205 500 0
+rawmouse sabs 1206 500
+curpos 1216 500 0
+log res_crop COMPLETE -- 1366x768 cropped from 1376x768: composition and the pointer across the cut
+end

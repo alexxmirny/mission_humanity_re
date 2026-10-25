@@ -4,15 +4,15 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "cc88345c3bda0611a13e484f3a3c7a0d44982770",
-  "recorded": "2026-09-30",
+  "commit": "0e68df39981424033315936edac220309aa9e067",
+  "recorded": "2026-10-24",
   "scenario_script": "sp_soak.txt",
   "synth_seed": 20260912,
-  "host": "local lane ui_libref_pg (headless, isolated desktop mh_rig; scratch lane 97, port 6697), single peer",
+  "host": "local lane ui_libref_rec (headless, isolated desktop mh_rig; scratch lane 96, port 6696), single peer",
   "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
-  "run_dir": "workdir/mh_lanes/ui_libref_pg/logs/2026-09-30T14-47-11Z_menu_solo",
-  "build": "0.0.0-dev+cc88345c",
-  "stream_from_run": "workdir/mh_lanes/ui_libref_pg/logs/2026-09-30T14-48-40Z_menu_solo"
+  "run_dir": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-49-55Z_menu_solo",
+  "build": "0.0.0-dev+0e68df39",
+  "stream_from_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-50-33Z_menu_solo"
  },
  "replay_contract": {
   "flags": {
@@ -122,8 +122,8 @@
   ]
  },
  "step0": {
-  "world_content_hash": "855887854BDE5DAF",
-  "world_schema_fp": "30CADE6A",
+  "world_content_hash": "4BB7F4F0E748D745",
+  "world_schema_fp": "AEFE4E28",
   "lockstep_combined": "739944E1CA9AB46E",
   "lockstep_state": "9374267CD33534B7",
   "game_clock": "3F947AE147AE147B",
@@ -144,9 +144,9 @@
   },
   "world": {
    "file": "world.bin.zz",
-   "raw_bytes": 8371232,
-   "zlib_bytes": 528839,
-   "sha256_raw": "29ef66e91c1306c27227a6fd21b0cf66cd00195bb8c77783b80fc20b03161b33"
+   "raw_bytes": 8310680,
+   "zlib_bytes": 520833,
+   "sha256_raw": "742995193959d201b267247e70092715a631a2acd06c16e99d596b3154e5ab4d"
   },
   "orders": {
    "file": "orders.bin.zz",
@@ -168,9 +168,10 @@
   }
  },
  "fidelity": {
+  "re_record": "THE FIRST -v2 RECORDING (2026-09-30, at cc88345c), made for the standalone engine, which replays at a whole-millisecond fixed step. The v1 set ran fixed_step=0 with the pinned wall clock, so its clock track was the pin's ~16.667 ms cadence in two segments. This set runs the loop the engine runs: [harness] fixed_step=1 plus [net] sim_step_ms=20 and rig_fixed_step_loop=1 (sim_tick's mode-3 loop in single-player, one step per frame, delta = SIM_STEP_INTERVAL exactly). Every other flag is the v1 set's own (record_flags / live_contract, plus the soak knobs the v1 runs carried). MEASURED: the clock track is track[0] = 0.02 (0x3F947AE147AE147B) and track[i] = track[i-1] + 0.02 for all 4999 i. The [net] keys are in the contract's `net` and `fixture_replay replay` passes them back. verify PASSES fail-closed with no marks: 61 of 63 regions identical; the residue is the queue at 80 instants (spacing 62/63 steps), all 0 -> n and admitted by the evidence-gated exception (count SET at 80 of 80 arrivals, 0 append-without-set). The guard run's orders and clock are byte-identical to the committed pair. Same world as libref-live-aisoak-v2: both blobs carry lockstep_state 9374267CD33534B7. worldtest: the same pre-existing slice-41 failure as v1.",
   "counts_guard": {
    "checked": true,
-   "source_run": "workdir/mh_lanes/ui_libref_pg/logs/2026-09-30T14-47-48Z_menu_solo",
+   "source_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-51-11Z_menu_solo",
    "source_orders_sha256": "9c230e70e29c8b778399b60ddc09ecc85b8cb020421ce4a35a956dbbb85ba6e3",
    "steps_measured": 5000,
    "midstep_arrival_steps": [
@@ -338,7 +339,6 @@
     4938
    ],
    "why": "A step whose top-of-step queue count is 0 but whose dispatch-entry count is not would never open the replay's count gate (dispatch is count-gated and the suppressed enqueue cannot raise it), so its orders would silently never execute. Measured, not assumed."
-  },
-  "re_record": "THE FIRST -v2 RECORDING (2026-09-30, at cc88345c), made for the standalone engine, which replays at a whole-millisecond fixed step. The v1 set ran fixed_step=0 with the pinned wall clock, so its clock track was the pin's ~16.667 ms cadence in two segments. This set runs the loop the engine runs: [harness] fixed_step=1 plus [net] sim_step_ms=20 and rig_fixed_step_loop=1 (sim_tick's mode-3 loop in single-player, one step per frame, delta = SIM_STEP_INTERVAL exactly). Every other flag is the v1 set's own (record_flags / live_contract, plus the soak knobs the v1 runs carried). MEASURED: the clock track is track[0] = 0.02 (0x3F947AE147AE147B) and track[i] = track[i-1] + 0.02 for all 4999 i. The [net] keys are in the contract's `net` and `fixture_replay replay` passes them back. verify PASSES fail-closed with no marks: 61 of 63 regions identical; the residue is the queue at 80 instants (spacing 62/63 steps), all 0 -> n and admitted by the evidence-gated exception (count SET at 80 of 80 arrivals, 0 append-without-set). The guard run's orders and clock are byte-identical to the committed pair. Same world as libref-live-aisoak-v2: both blobs carry lockstep_state 9374267CD33534B7. worldtest: the same pre-existing slice-41 failure as v1."
+  }
  }
 }

@@ -7,7 +7,7 @@
 
 namespace mh::sim {
 
-// mods:A2 -- `[net] project_gate_fix`: drop the PROJECT gate in progress_propagate_unlocks (retail withholds a
+// mods:A2 + mods:UNL1 -- `[net] project_gate_fix` (launcher "Tech tree fixes"; one switch drives BOTH fixes, the recheck below included): drop the PROJECT gate in progress_propagate_unlocks (retail withholds a
 // research PROJECT whose depend[] are all acquired once the CURRENT planet's own invention is acquired by
 // PlayerSide, i.e. on every conquered planet: the offer waits for an unconquered one). Default off = retail.
 // Set from reimpl_fixes by lockstep::set_fixes. Campaign only: a multiplayer/skirmish session sits on the
@@ -16,6 +16,17 @@ void set_project_gate_fix(bool on);
 bool project_gate_fix();
 
 namespace detail {
+
+// mods:UNL1 -- the recheck itself. A no-op (returns -1) unless `on` and the session is single-player
+// (session_mode == SESSION_SP); `arrival` additionally requires G_PLANET_STATUS[G_PLANET_INDEX] != UNKNOWN (a planet the
+// player has been on: a first arrival is the retail session-begin / landing path). Runs `propagate(player)` for the LOCAL
+// player (PlayerSide) first, then for every OTHER player whose profile has status_flags bit0 (slot enabled) set, in
+// ascending index -- the same filter and order game_UpdateProgress's PLANET/SYSTEM arms use for "the other players". Returns
+// the number of players propagated. `propagate` is the live progress_propagate_unlocks in production, a recorder in the
+// selftest. Every message / event the pass can raise is gated on player == PlayerSide inside HandleProgress's callees
+// (add_to_available_buildings_with_check, notify_unit_available, add_planet_to_available, notify_system_available,
+// handle_upgrade), so a computer player's pass is silent: it only fills that player's own offer lists.
+int progress_recheck_unlocks(const sim_view &v, bool on, bool arrival, void (*propagate)(uint16_t player));
 
 // llm_progress_propagate_unlocks @0x00440cb5. The tech-tree unlock fixpoint. Reads `v.progress` /
 // `v.cfg_inventions` / `v.player_side` / `v.planet_index`; writes nothing itself -- every effect goes
@@ -59,6 +70,11 @@ void progress_propagate_unlocks(uint16_t player);
 void progress_recheck_projects(uint32_t player);
 void progress_recheck_buildings(uint32_t player);
 void progress_collect_available_projects(uint32_t player);
+
+// mods:UNL1 live wrappers (state() + the switch). Called after a load (llm_game_load's apply tail) and at the tail of a
+// planet transition; each is a no-op with the switch off or outside single-player.
+void progress_recheck_after_load();
+void progress_recheck_after_arrival();
 
 namespace detail {
 } // namespace detail

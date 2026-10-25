@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "about": "TL-MOVE-BENCH baselines for tools/check_move_bench.py. One entry per registry row; `kind` picks the extractor + tolerance SPEC in the checker; `tol` (optional) overrides a metric's tolerance. Rewrite only with `python tools/check_move_bench.py --arm <arm> --update <run-dir>` after reading the diff it prints.",
+  "arms": {
+    "ship": {
+      "row": "move_bench",
+      "config": "20-order replay (5-kofu-c, tools/uiscripts/m1_moves.csv), SHIPPED configuration: libmh.dll absent, improved_movement=group_movement=improved_combat=1, every other key at its shipped default, pin_wallclock",
+      "kind": "replay20",
+      "metrics": {
+        "units": 80,
+        "orders": 20,
+        "completed": 34,
+        "arrived": 13,
+        "near": 21,
+        "stopped_short": 0,
+        "gave_up": 0,
+        "interrupted": 45,
+        "dead": 1,
+        "median_ratio": 1.0,
+        "max_ratio": 1.319,
+        "excess_tiles": 9.8,
+        "stall_episodes": 0,
+        "settle_steps": 9177,
+        "last_arrival": 24116
+      }
+    },
+    "retail": {
+      "row": "move_bench_retail",
+      "config": "the same replay with the three masters 0 (retail movement), libmh.dll absent: the reference arm (tier release)",
+      "kind": "replay20",
+      "metrics": {
+        "units": 80,
+        "orders": 20,
+        "completed": 33,
+        "arrived": 15,
+        "near": 18,
+        "stopped_short": 0,
+        "gave_up": 10,
+        "interrupted": 37,
+        "dead": 0,
+        "median_ratio": 1.275,
+        "max_ratio": 2.511,
+        "excess_tiles": 246.4,
+        "stall_episodes": 17,
+        "settle_steps": 14496,
+        "last_arrival": 24670
+      }
+    },
+    "lib": {
+      "row": "move_bench_lib",
+      "config": "the same replay with libmh.dll BOUND (mv_waves=0): the twins; the metrics equal the shipped arm's (tier release)",
+      "kind": "replay20",
+      "metrics": {
+        "units": 80,
+        "orders": 20,
+        "completed": 34,
+        "arrived": 13,
+        "near": 21,
+        "stopped_short": 0,
+        "gave_up": 0,
+        "interrupted": 45,
+        "dead": 1,
+        "median_ratio": 1.0,
+        "max_ratio": 1.319,
+        "excess_tiles": 9.8,
+        "stall_episodes": 0,
+        "settle_steps": 9177,
+        "last_arrival": 24116
+      }
+    },
+    "narrow16": {
+      "row": "move_bench_narrow",
+      "config": "the user's rc10 narrow-path orders (tools/uiscripts/saves/nortus-3.sav, tools/uiscripts/narrow16_moves.csv): 16 soldiers, six orders through the Nortus passage, SHIPPED configuration (movement presets on, every stream-heat key at its default: cost 2 below 16 mates / 32 from 16, window 120, margin 50), libmh.dll absent, pin_wallclock. Measured at M1WL v5; with cost 32 / margin 0 (the rc10 regression) the same replay shows 4 detours (order 2: 1, order 5: 3)",
+      "kind": "narrow16",
+      "metrics": {
+        "orders": 6,
+        "units": 96,
+        "walked_o1": 266,
+        "excess_o1": 12,
+        "detours_o1": 0,
+        "walked_o2": 242,
+        "excess_o2": 7,
+        "detours_o2": 0,
+        "walked_o3": 0,
+        "excess_o3": 0,
+        "detours_o3": 0,
+        "walked_o4": 19,
+        "excess_o4": 1,
+        "detours_o4": 0,
+        "walked_o5": 246,
+        "excess_o5": 9,
+        "detours_o5": 0,
+        "walked_o6": 232,
+        "excess_o6": 12,
+        "detours_o6": 0,
+        "walked": 1005,
+        "excess": 41,
+        "detours": 0,
+        "completed": 87,
+        "heated_plans": 64,
+        "margin_kept": 32,
+        "last_arrival": 7085
+      }
+    },
+    "fc_hopwall": {
+      "row": "m1h_ship step f17_hop_wall",
+      "config": "the m1h F17 hop-wall case (a 17-tile wall with a one-tile gap, 16 units re-ordered while they hop through it), shipped splice, v5 defaults: 92 tiles for the group, 13 for the worst unit (heat off: 88 / 12; cost 32 / margin 0: 117 / 22). tools/check_m1h.py F17 is red above 100 / 16, which is baseline + the allowance",
+      "kind": "fc_hopwall",
+      "metrics": {
+        "units": 16,
+        "tiles": 92,
+        "worst_unit": 13,
+        "dup": 0,
+        "moving": 0
+      }
+    },
+    "stream_ship": {
+      "row": "u022_stream step s_key1",
+      "config": "the u022_stream key-1 step (45 soldiers out of one barracks to open ground ~30 tiles away), shipped splice, v5 defaults. Heat off (key 0): max/tile 42, 2 lanes",
+      "kind": "stream",
+      "metrics": {
+        "n": 45,
+        "exited": 45,
+        "stuck": 0,
+        "maxtile": 15,
+        "lanes": 16,
+        "exit_per1000": 8,
+        "med_arrive": 3943,
+        "last_arrive": 6675,
+        "rev_x100": 4,
+        "rev_max": 1
+      }
+    },
+    "stream_lib": {
+      "row": "u022_stream step l_key1",
+      "config": "the u022_stream key-1 step with libmh BOUND (the twin); equals stream_ship",
+      "kind": "stream",
+      "metrics": {
+        "n": 45,
+        "exited": 45,
+        "stuck": 0,
+        "maxtile": 15,
+        "lanes": 16,
+        "exit_per1000": 8,
+        "med_arrive": 3943,
+        "last_arrive": 6675,
+        "rev_x100": 4,
+        "rev_max": 1
+      }
+    },
+    "field200": {
+      "row": "move_bench_field200",
+      "config": "the 200-unit field (tools/uiscripts/saves/u022field.sav, tools/uiscripts/u022_field200.txt, ids tools/data/u022_field200_ids.txt), the user's [net] keys + the v5 defaults, libmh.dll absent, state record read by tools/move_tracks.py. CHAOTIC: thresholds (abs / rel in SPEC_FIELD200), not equality. Measured at M1WL v5: heat off 1.79 exits per 100 steps, max/tile 200, 35 tiles of 100+, width 2; v4 defaults (cost 2, window 48, flat, no margin) max/tile 113, median arrival 8530; cost 32 / window 120 / flat / margin 0: max/tile 104, median/worst arrival 9175 / 12160, 143 refusals",
+      "kind": "field200",
+      "metrics": {
+        "units": 200,
+        "exits": 164,
+        "exits_per100": 6.01,
+        "last_exit": 2825,
+        "max_tile": 55,
+        "tiles100": 0,
+        "width_median": 7,
+        "width_max": 9,
+        "arr_median": 6315,
+        "arr_worst": 9980,
+        "rev_mean": 0.78,
+        "rev_ge5": 9,
+        "refusals": 14
+      }
+    },
+    "today6": {
+      "kind": "today6",
+      "metrics": {
+        "orders": 6,
+        "units": 96,
+        "walked_o1": 255,
+        "excess_o1": 6,
+        "detours_o1": 0,
+        "walked_o2": 165,
+        "excess_o2": 0,
+        "detours_o2": 0,
+        "walked_o3": 203,
+        "excess_o3": 9,
+        "detours_o3": 0,
+        "walked_o4": 110,
+        "excess_o4": 0,
+        "detours_o4": 0,
+        "walked_o5": 243,
+        "excess_o5": 22,
+        "detours_o5": 0,
+        "walked_o6": 369,
+        "excess_o6": 20,
+        "detours_o6": 0,
+        "walked": 1345,
+        "excess": 57,
+        "detours": 0,
+        "completed": 58,
+        "heated_plans": 57,
+        "margin_kept": 21,
+        "last_arrival": 8064
+      }
+    }
+  }
+}

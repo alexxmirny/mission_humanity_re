@@ -150,6 +150,7 @@
 #include <dxgi1_5.h> // IDXGIFactory5::CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING)
 
 #include "present_backend.h"
+#include "ui_layout.h"              // RES4: the quad list
 #include "overlay_imgui.h"          // PT-GFX4: on_frame / on_device_release
 #include "include/mh_run_context.h" // MH_ProcessDir -- shared mh_video.log location (video.cpp)
 #include "include/mh_log_sink.h"    // LOG1: async log sink
@@ -610,13 +611,17 @@ public:
     bool attach(HWND hwnd, const backend_config &cfg) override;
     void on_mode(int width, int height, pixel_format format) override;
     bool present(const frame_view &frame) override;
+    bool target_size(int &w, int &h) override;
     void on_window_changed() override;
     void set_config(const backend_config &cfg) override { // all three are read per present()
         cfg_.filter        = cfg.filter;
         cfg_.vsync         = cfg.vsync;
         cfg_.integer_scale = cfg.integer_scale;
+        cfg_.ui_scale_pct  = cfg.ui_scale_pct; // RES4
     }
     void detach() override;
+    void arm_output_capture() override; // RES23-S0 bcapture
+    bool take_output_capture(std::vector<uint32_t> &bgra, int &w, int &h) override;
 
     // PT-GFX4 hook accessors -- see the file header comment. Valid only between a successful
     // attach() and detach(); null otherwise (device_lost_ included -- an overlay reading these
@@ -633,7 +638,14 @@ private:
     bool        ensure_source_texture(const frame_view &frame);
     void        upload_frame(const frame_view &frame);
     void        update_viewport_and_cbuffer(const frame_view &frame);
+    bool        ensure_quad_texture(int i, int w, int h);
+    void        draw_quads(const uilayout::layout &lay, bool banded);
+    void        release_quad_textures();
+    void        draw_cursor(const uilayout::cursor_overlay &c, ID3D11SamplerState *sampler, int slot = 0);
+    void        release_cursor();
     void        service_readback();
+    int         copy_back_buffer(uint32_t *buf, int w, int h);
+    void        service_output_capture();
     bool        handle_client_resize();
     void        release_device_resources();
     static void log(const char *fmt, ...);
@@ -641,6 +653,10 @@ private:
     HWND           hwnd_ = nullptr;
     backend_config cfg_{};
     bool           device_lost_ = false;
+
+    bool                  out_armed_ = false, out_ok_ = false; // RES23-S0: output capture armed / the last one succeeded
+    int                   out_w_ = 0, out_h_ = 0;
+    std::vector<uint32_t> out_px_;
 
     HMODULE           d3d11_dll_      = nullptr;
     bool              using_warp_     = false;
@@ -670,6 +686,23 @@ private:
     pixel_format              src_fmt_              = pixel_format::rgb565;
     DXGI_FORMAT               src_dxgi_fmt_         = DXGI_FORMAT_UNKNOWN;
     bool                      src_needs_conversion_ = false; // false = direct 16bpp upload path
+
+    // RES4: one DEFAULT texture per quad, filled each frame by CopySubresourceRegion from src_tex_ (so the existing
+    // shaders sample a quad as a whole texture: uv 0..1 over the quad's viewport, no shader change).
+    ID3D11Texture2D          *quad_tex_[uilayout::MAX_QUADS] = {};
+    ID3D11ShaderResourceView *quad_srv_[uilayout::MAX_QUADS] = {};
+    int                       quad_w_[uilayout::MAX_QUADS]   = {};
+    int                       quad_h_[uilayout::MAX_QUADS]   = {};
+    DXGI_FORMAT               quad_fmt_                      = DXGI_FORMAT_UNKNOWN;
+
+    // RES4 stage 5: the owned cursor -- a premultiplied B8G8R8A8 texture of the on-screen part, drawn 1:1 over the quads
+    // with (ONE, INV_SRC_ALPHA) blending and the plain sampling shader.
+    // RES23-S5: one slot per overlay kind (overlay_slot: the notice, the dialog layers, the cursor), one texture each, one blend state.
+    static constexpr int      OV_SLOTS           = overlay_slot::count;
+    ID3D11Texture2D          *cur_tex_[OV_SLOTS] = {};
+    ID3D11ShaderResourceView *cur_srv_[OV_SLOTS] = {};
+    ID3D11BlendState         *cur_blend_         = nullptr;
+    int                       cur_w_[OV_SLOTS] = {}, cur_h_[OV_SLOTS] = {};
 };
 
 // =====================================================================================================
@@ -1088,6 +1121,185 @@ void d3d11_backend::update_viewport_and_cbuffer(const frame_view &frame) {
     }
 }
 
+// ---- RES4: the quad list ---------------------------------------------------------------------------------
+// A quad is a sub-rectangle of the uploaded frame drawn into a destination rectangle of the back buffer. The
+// shaders are the existing precompiled ones, which sample a whole texture over the whole viewport, so each quad
+// gets a texture of exactly its source size (CopySubresourceRegion from the dynamic frame texture, GPU side) and
+// a viewport of exactly its destination. The sharp / area cbuffer is rewritten per quad (src size, scale).
+
+bool d3d11_backend::ensure_quad_texture(int i, int w, int h) {
+    if (quad_tex_[i] && quad_w_[i] == w && quad_h_[i] == h && quad_fmt_ == src_dxgi_fmt_) return true;
+    if (quad_srv_[i]) {
+        quad_srv_[i]->Release();
+        quad_srv_[i] = nullptr;
+    }
+    if (quad_tex_[i]) {
+        quad_tex_[i]->Release();
+        quad_tex_[i] = nullptr;
+    }
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width                = (UINT)w;
+    td.Height               = (UINT)h;
+    td.MipLevels            = 1;
+    td.ArraySize            = 1;
+    td.Format               = src_dxgi_fmt_;
+    td.SampleDesc.Count     = 1;
+    td.Usage                = D3D11_USAGE_DEFAULT;
+    td.BindFlags            = D3D11_BIND_SHADER_RESOURCE;
+    HRESULT hr              = device_->CreateTexture2D(&td, nullptr, &quad_tex_[i]);
+    if (FAILED(hr) || FAILED(device_->CreateShaderResourceView(quad_tex_[i], nullptr, &quad_srv_[i]))) {
+        log("ensure_quad_texture: quad %d %dx%d failed (hr=0x%08lx)", i, w, h, (unsigned long)hr);
+        if (quad_tex_[i]) {
+            quad_tex_[i]->Release();
+            quad_tex_[i] = nullptr;
+        }
+        return false;
+    }
+    quad_w_[i] = w;
+    quad_h_[i] = h;
+    quad_fmt_  = src_dxgi_fmt_;
+    return true;
+}
+
+void d3d11_backend::release_quad_textures() {
+    for (int i = 0; i < uilayout::MAX_QUADS; ++i) {
+        if (quad_srv_[i]) {
+            quad_srv_[i]->Release();
+            quad_srv_[i] = nullptr;
+        }
+        if (quad_tex_[i]) {
+            quad_tex_[i]->Release();
+            quad_tex_[i] = nullptr;
+        }
+        quad_w_[i] = quad_h_[i] = 0;
+    }
+}
+
+void d3d11_backend::draw_quads(const uilayout::layout &lay, bool banded) {
+    for (int i = 0; i < lay.nquads; ++i) {
+        const uilayout::quad &q = lay.q[i];
+        if (lay.quad_is_layered(i)) continue; // RES4 stage 6b: a translucent layer overlay, drawn after the quads
+        const int sw = q.src.w(), sh = q.src.h(), dw = q.dst.w(), dh = q.dst.h();
+        if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 || !ensure_quad_texture(i, sw, sh)) continue;
+        D3D11_BOX box = {(UINT)q.src.x0, (UINT)q.src.y0, 0, (UINT)q.src.x1, (UINT)q.src.y1, 1};
+        context_->CopySubresourceRegion(quad_tex_[i], 0, 0, 0, 0, src_tex_, 0, &box);
+
+        D3D11_VIEWPORT vp = {};
+        vp.TopLeftX       = (float)q.dst.x0;
+        vp.TopLeftY       = (float)q.dst.y0;
+        vp.Width          = (float)dw;
+        vp.Height         = (float)dh;
+        vp.MinDepth       = 0.0f;
+        vp.MaxDepth       = 1.0f;
+        context_->RSSetViewports(1, &vp);
+        if (banded) {
+            float sx = (float)dw / (float)sw, sy = (float)dh / (float)sh;
+            if (cfg_.filter == scale_filter::sharp) {
+                sx = (float)(int)sx;
+                sy = (float)(int)sy;
+            }
+            if (sx < 1.0f) sx = 1.0f;
+            if (sy < 1.0f) sy = 1.0f;
+            D3D11_MAPPED_SUBRESOURCE mapped = {};
+            if (SUCCEEDED(context_->Map(cbuffer_scale_, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+                scale_params_cb *p = static_cast<scale_params_cb *>(mapped.pData);
+                p->src_w           = (float)sw;
+                p->src_h           = (float)sh;
+                p->texel_scale_x   = sx;
+                p->texel_scale_y   = sy;
+                context_->Unmap(cbuffer_scale_, 0);
+            }
+        }
+        context_->PSSetShaderResources(0, 1, &quad_srv_[i]);
+        context_->Draw(3, 0);
+    }
+}
+
+void d3d11_backend::release_cursor() {
+    for (int i = 0; i < OV_SLOTS; ++i) {
+        if (cur_srv_[i]) {
+            cur_srv_[i]->Release();
+            cur_srv_[i] = nullptr;
+        }
+        if (cur_tex_[i]) {
+            cur_tex_[i]->Release();
+            cur_tex_[i] = nullptr;
+        }
+        cur_w_[i] = cur_h_[i] = 0;
+    }
+    if (cur_blend_) {
+        cur_blend_->Release();
+        cur_blend_ = nullptr;
+    }
+}
+
+// RES4 stage 5: the owned cursor, drawn last over the quads (stage 6b: also the translucent dialog layers, slots 0..1, before it). The
+// overlay is already scaled and clipped to the screen, so it is a 1:1 draw into a viewport of exactly its rectangle (any sampler gives
+// the same texels).
+void d3d11_backend::draw_cursor(const uilayout::cursor_overlay &c, ID3D11SamplerState *sampler, int slot) {
+    if (!c.px || c.w <= 0 || c.h <= 0 || slot < 0 || slot >= OV_SLOTS) return;
+    if (!cur_blend_) {
+        D3D11_BLEND_DESC bd                      = {};
+        bd.RenderTarget[0].BlendEnable           = TRUE;
+        bd.RenderTarget[0].SrcBlend              = D3D11_BLEND_ONE;
+        bd.RenderTarget[0].DestBlend             = D3D11_BLEND_INV_SRC_ALPHA;
+        bd.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+        bd.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_INV_SRC_ALPHA;
+        bd.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        if (FAILED(device_->CreateBlendState(&bd, &cur_blend_))) {
+            log("draw_cursor: CreateBlendState failed");
+            return;
+        }
+    }
+    if (!cur_tex_[slot] || cur_w_[slot] != c.w || cur_h_[slot] != c.h) {
+        if (cur_srv_[slot]) {
+            cur_srv_[slot]->Release();
+            cur_srv_[slot] = nullptr;
+        }
+        if (cur_tex_[slot]) {
+            cur_tex_[slot]->Release();
+            cur_tex_[slot] = nullptr;
+        }
+        D3D11_TEXTURE2D_DESC td = {};
+        td.Width                = (UINT)c.w;
+        td.Height               = (UINT)c.h;
+        td.MipLevels            = 1;
+        td.ArraySize            = 1;
+        td.Format               = DXGI_FORMAT_B8G8R8A8_UNORM;
+        td.SampleDesc.Count     = 1;
+        td.Usage                = D3D11_USAGE_DEFAULT;
+        td.BindFlags            = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(device_->CreateTexture2D(&td, nullptr, &cur_tex_[slot])) ||
+            FAILED(device_->CreateShaderResourceView(cur_tex_[slot], nullptr, &cur_srv_[slot]))) {
+            log("draw_cursor: texture %dx%d failed", c.w, c.h);
+            if (cur_tex_[slot]) {
+                cur_tex_[slot]->Release();
+                cur_tex_[slot] = nullptr;
+            }
+            return;
+        }
+        cur_w_[slot] = c.w;
+        cur_h_[slot] = c.h;
+    }
+    context_->UpdateSubresource(cur_tex_[slot], 0, nullptr, c.px, (UINT)c.w * 4, 0);
+    D3D11_VIEWPORT vp = {};
+    vp.TopLeftX       = (float)c.x;
+    vp.TopLeftY       = (float)c.y;
+    vp.Width          = (float)c.w;
+    vp.Height         = (float)c.h;
+    vp.MaxDepth       = 1.0f;
+    context_->RSSetViewports(1, &vp);
+    context_->PSSetShader(ps_sample_, nullptr, 0);
+    context_->PSSetSamplers(0, 1, &sampler);
+    context_->PSSetShaderResources(0, 1, &cur_srv_[slot]);
+    const float bf[4] = {0, 0, 0, 0};
+    context_->OMSetBlendState(cur_blend_, bf, 0xffffffffu);
+    context_->Draw(3, 0);
+    context_->OMSetBlendState(nullptr, bf, 0xffffffffu);
+}
+
 // ---- output readback (net_selftest.exe scalefiltertest, and its --dump mode) ---------------------------
 // One pending request: the next present() copies the back buffer, right after the game-frame draw and
 // BEFORE the ImGui overlay, into `buf` (w*h BGRA8, top row first). A request for a size other than the
@@ -1108,20 +1320,14 @@ void d3d11_request_readback(uint32_t *buf, int w, int h) {
 
 int d3d11_readback_state() { return g_rb_done; }
 
-void d3d11_backend::service_readback() {
-    uint32_t *buf = g_rb_buf;
-    if (!buf) return;
-    g_rb_buf = nullptr;
-    if (g_rb_w != back_buffer_w_ || g_rb_h != back_buffer_h_) {
-        log("readback: asked %dx%d, back buffer is %dx%d -- refused", g_rb_w, g_rb_h, back_buffer_w_, back_buffer_h_);
-        g_rb_done = -1;
-        return;
+// Copy the current back buffer (w x h, which must be its size) into `buf` (BGRA8, top row first). 1 = ok, -1 = failed.
+int d3d11_backend::copy_back_buffer(uint32_t *buf, int w, int h) {
+    if (w != back_buffer_w_ || h != back_buffer_h_) {
+        log("readback: asked %dx%d, back buffer is %dx%d -- refused", w, h, back_buffer_w_, back_buffer_h_);
+        return -1;
     }
     ID3D11Texture2D *bb = nullptr;
-    if (FAILED(swap_chain_->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&bb)))) {
-        g_rb_done = -1;
-        return;
-    }
+    if (FAILED(swap_chain_->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&bb)))) return -1;
     D3D11_TEXTURE2D_DESC td = {};
     bb->GetDesc(&td);
     td.Usage            = D3D11_USAGE_STAGING;
@@ -1134,16 +1340,49 @@ void d3d11_backend::service_readback() {
         context_->CopyResource(st, bb);
         D3D11_MAPPED_SUBRESOURCE m = {};
         if (SUCCEEDED(context_->Map(st, 0, D3D11_MAP_READ, 0, &m))) {
-            for (int y = 0; y < g_rb_h; ++y)
-                memcpy(buf + (size_t)y * g_rb_w, static_cast<const uint8_t *>(m.pData) + (size_t)y * m.RowPitch,
-                       (size_t)g_rb_w * 4);
+            for (int y = 0; y < h; ++y)
+                memcpy(buf + (size_t)y * w, static_cast<const uint8_t *>(m.pData) + (size_t)y * m.RowPitch, (size_t)w * 4);
             context_->Unmap(st, 0);
             ok = 1;
         }
         st->Release();
     }
     bb->Release();
-    g_rb_done = ok;
+    return ok;
+}
+
+void d3d11_backend::service_readback() {
+    uint32_t *buf = g_rb_buf;
+    if (!buf) return;
+    g_rb_buf  = nullptr;
+    g_rb_done = copy_back_buffer(buf, g_rb_w, g_rb_h);
+}
+
+// RES23-S0: the same read, but AFTER the overlay pass and right before Present -- the image the player is about to see.
+void d3d11_backend::service_output_capture() {
+    if (!out_armed_) return;
+    out_armed_ = false;
+    out_ok_    = false;
+    out_px_.assign((size_t)back_buffer_w_ * back_buffer_h_, 0u);
+    if (copy_back_buffer(out_px_.data(), back_buffer_w_, back_buffer_h_) != 1) return;
+    for (uint32_t &p : out_px_) p |= 0xff000000u;
+    out_w_  = back_buffer_w_;
+    out_h_  = back_buffer_h_;
+    out_ok_ = true;
+}
+
+void d3d11_backend::arm_output_capture() {
+    out_armed_ = true;
+    out_ok_    = false;
+}
+
+bool d3d11_backend::take_output_capture(std::vector<uint32_t> &bgra, int &w, int &h) {
+    if (!out_ok_) return false;
+    out_ok_ = false;
+    bgra.swap(out_px_);
+    w = out_w_;
+    h = out_h_;
+    return true;
 }
 
 bool d3d11_backend::handle_client_resize() {
@@ -1175,6 +1414,13 @@ bool d3d11_backend::handle_client_resize() {
     return true;
 }
 
+bool d3d11_backend::target_size(int &w, int &h) {
+    if (device_lost_ || !handle_client_resize()) return false; // resizes the swap chain to the client rect first
+    w = back_buffer_w_;
+    h = back_buffer_h_;
+    return true;
+}
+
 bool d3d11_backend::present(const frame_view &frame) {
     if (device_lost_) {
         // Lazy recovery: rebuild everything from scratch. attach() detaches first, so it is safe to
@@ -1186,7 +1432,12 @@ bool d3d11_backend::present(const frame_view &frame) {
     if (!ensure_source_texture(frame)) return false;
 
     upload_frame(frame);
-    update_viewport_and_cbuffer(frame);
+    // RES4: ui_scale above 100 = the quad list; otherwise (the default) the single fitted rect below, untouched.
+    // (RES23-S1: the layout is the present's view, built once in present_surface after target_size(); RES18: a crop is a several-quad layout at 100 too)
+    static const uilayout::layout s_no_quads;
+    const bool                    multi = frame.view && frame.view->valid && frame.view->multi;
+    const uilayout::layout       &quads = multi ? frame.view->layout : s_no_quads;
+    if (!multi) update_viewport_and_cbuffer(frame);
 
     const float clear[4] = {0.0f, 0.0f, 0.0f, 1.0f}; // letterbox bars
     context_->OMSetRenderTargets(1, &rtv_, nullptr);
@@ -1201,11 +1452,15 @@ bool d3d11_backend::present(const frame_view &frame) {
     ID3D11SamplerState *sampler = (cfg_.filter == scale_filter::point) ? sampler_point_ : sampler_linear_;
     ID3D11PixelShader  *ps      = banded ? ps_sharp_bilinear_ : ps_sample_;
     context_->PSSetShader(ps, nullptr, 0);
-    context_->PSSetShaderResources(0, 1, &src_srv_);
     context_->PSSetSamplers(0, 1, &sampler);
     if (banded) context_->PSSetConstantBuffers(0, 1, &cbuffer_scale_);
-
-    context_->Draw(3, 0);
+    if (multi) {
+        draw_quads(quads, banded);
+        for (int i = 0; i < frame.overlays.n; ++i) draw_cursor(frame.overlays.item[i].ov, sampler_point_, frame.overlays.item[i].slot); // RES23-S5: the overlay list
+    } else {
+        context_->PSSetShaderResources(0, 1, &src_srv_);
+        context_->Draw(3, 0);
+    }
     service_readback(); // the filter's output alone, before the overlay (a no-op unless requested)
 
     // -------------------------------------------------------------------------------------------
@@ -1215,6 +1470,7 @@ bool d3d11_backend::present(const frame_view &frame) {
     // unless [video] imgui=1 armed it.
     // -------------------------------------------------------------------------------------------
     imgui_overlay::on_frame(device_, context_, hwnd_);
+    service_output_capture(); // RES23-S0 bcapture: after the overlay pass, before Present (a no-op unless armed)
 
     const HRESULT hr = cfg_.vsync ? swap_chain_->Present(1, 0)
                                   : swap_chain_->Present(0, tearing_ ? DXGI_PRESENT_ALLOW_TEARING : 0);
@@ -1293,6 +1549,8 @@ void d3d11_backend::on_window_changed() {
 void d3d11_backend::release_device_resources() {
     imgui_overlay::on_device_release(); // first: ImGui holds references on device_/context_
     release_backbuffer_views();
+    release_quad_textures();
+    release_cursor();
     if (src_srv_) {
         src_srv_->Release();
         src_srv_ = nullptr;

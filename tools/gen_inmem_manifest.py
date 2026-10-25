@@ -129,7 +129,7 @@ CAVE_GRANULARITY = 0x10000
 # ---- the key allow-lists ------------------------------------------------------------------------
 # A key is CONSUMED or it is DOCUMENTATION (`_`-prefixed). There is no third category, because the
 # third category is how `fixups` got dropped on the floor.
-MANIFEST_KEYS = {"target", "sha256", "sections", "patches", "class"}
+MANIFEST_KEYS = {"target", "sha256", "sections", "patches", "class", "toggle"}
 
 # WHICH MANIFESTS ARE COMPILED IN -- a MANIFEST FIELD, not a list here (fork ruling Q7, built at
 # F4C-GATE). F1E hardcoded one entry and F4C left widening it to this item; a hand-kept list would
@@ -153,8 +153,34 @@ MANIFEST_CLASSES = {
     # kept in the tree, never compiled in: the RU siblings of the EN family, and the
     # archaeological/sample manifests.
     "reference",
+    # PT-CAP8 S1: the v0.2.2 cap raise. `caps` is the RELOCATION layer (applied at boot, always) and
+    # `caps_limits` the LIMIT layer (`toggle: true`: the applier verifies and stages it and writes only
+    # on a toggle). Both are compiled in as data (CAPS_RELOC / CAPS_LIMITS in manifests.gen.h) but are
+    # NOT in COMPILED[]: `[patch] manifest=` never selects them.
+    "caps",
+    "caps_limits",
+    # PT-CAP11: the AI SCRATCH layer of the same raise -- a toggle manifest like `caps_limits`, flipped with it
+    # (mh::caps::set_limits), compiled in as CAPS_AI. Its own class so a dev key can leave it OFF (the negative arm).
+    # APPLY ORDER: reloc22, limits22, ai, units, units limits (the static section chain lays each at the next free VA).
+    "caps_ai",
+    # PT-CAP9-U1 (v0.2.3): the units + soldiers pair, same two roles (relocation always, limits toggled),
+    # applied by mh/caps right after the v0.2.2 pair (CAPS_UNITS_RELOC / CAPS_UNITS_LIMITS).
+    "caps_units",
+    "caps_units_limits",
+    # PT-CAP9-U5 (v0.2.3): the ORDER layer (queue / staging / pending arrays, bounds, counted refusals, the sender quota thunk) -- a
+    # toggle manifest like `caps_limits`, flipped with it, compiled in as CAPS_ORDERS; applied last (the section chain's tail).
+    "caps_orders",
 }
 SHIPPED = "shipped"
+CAPS_CLASSES = {
+    "caps": "CAPS_RELOC",
+    "caps_limits": "CAPS_LIMITS",
+    "caps_units": "CAPS_UNITS_RELOC",
+    "caps_units_limits": "CAPS_UNITS_LIMITS",
+    "caps_ai": "CAPS_AI",
+    "caps_orders": "CAPS_ORDERS",
+}
+TOGGLE_CLASSES = ("caps_limits", "caps_units_limits", "caps_ai", "caps_orders")
 PATCH_KEYS = {"va", "expect", "bytes"}
 SECTION_KEYS = {"name", "vaddr", "vsize", "data", "chars"}
 
@@ -221,6 +247,18 @@ def shipped_manifests(patcher=PATCHER):
         for n, c in sorted(classes(patcher).items())
         if c == SHIPPED
     ]
+
+
+def caps_manifests(patcher=PATCHER):
+    """The v0.2.2 cap manifests, DERIVED from the `class` field. -> [(filename, cname, CONSTANT)]
+    sorted reloc-first (the apply order), then limits."""
+    cl = classes(patcher)
+    out = []
+    for cls in ("caps", "caps_limits", "caps_ai", "caps_units", "caps_units_limits", "caps_orders"):
+        for n, c in sorted(cl.items()):
+            if c == cls:
+                out.append(("%s.mh.patch.json" % n, cname_of(n), CAPS_CLASSES[cls]))
+    return out
 
 
 class Refused(Exception):
@@ -680,6 +718,13 @@ def _classify(manifest_path, _suppress_ref=None):
             % (name, cls, ", ".join(sorted(MANIFEST_CLASSES)))
         )
 
+    if "toggle" in m and cls not in TOGGLE_CLASSES:
+        raise Refused(
+            "%s: `toggle` is only meaningful on classes %s (got %s)"
+            % (name, "/".join(TOGGLE_CLASSES), cls)
+        )
+    if cls in TOGGLE_CLASSES and m.get("toggle") is not True:
+        raise Refused("%s: class %s must declare `\"toggle\": true`" % (name, cls))
     secs = m.get("sections") or []
     unread = _unread_keys(m, MANIFEST_KEYS, "manifest")
     for j, p in enumerate(m.get("patches", [])):
@@ -909,6 +954,7 @@ def _emit(manifest_path, cname, fixture=False):
     a("    %s, %d," % ("REFS" if refs else "nullptr", len(refs)))
     a("    %s, %d," % ("BODIES" if bodies else "nullptr", len(bodies)))
     a("    /*refs_complete=*/%s," % ("true" if complete else "false"))
+    a("    /*toggle=*/%s," % ("true" if m.get("toggle") else "false"))
     a("};")
     a("")
     # THE REGISTRY BOUND, AS A COMPILE ERROR (F4C-GATE). mh::hook::note_patched_body drops a body
@@ -1162,13 +1208,8 @@ def selftest():
         derived,
     )
     expect(
-        "...and it is the EN caphike/relocate family, which is what Q7 ruled in",
-        derived
-        == [
-            "grand_all_caphike_storagecap_EN",
-            "projectile_pool_caphike_EN",
-            "projectile_pool_relocate_EN",
-        ],
+        "...and it is the one dev-path subject left (PT-CAP8 S1 moved grand + pool-caphike to `reference`)",
+        derived == ["projectile_pool_relocate_EN"],
         derived,
     )
     # Q7's DROP, pinned as a negative: these carry a DLL twin, so a manifest re-entering the compile
@@ -1179,6 +1220,42 @@ def selftest():
             by_name.get(n, {}).get("class") == "reimplemented",
             by_name.get(n, {}).get("class"),
         )
+    # PT-CAP8 S1: the two cap classes and the `toggle` key's one legal home.
+    P1 = [{"va": "0x00401000", "expect": "90", "bytes": "90"}]
+    v = _verdict(_synth(tmp, "capsok", doc(P1, **{"class": "caps"})))
+    expect("class `caps` is accepted", v[0] == "complete", v[1])
+    v = _verdict(_synth(tmp, "limok", doc(P1, **{"class": "caps_limits", "toggle": True})))
+    expect("class `caps_limits` with toggle:true is accepted", v[0] == "complete", v[1])
+    v = _verdict(_synth(tmp, "limnot", doc(P1, **{"class": "caps_limits"})))
+    expect(
+        "class `caps_limits` WITHOUT toggle:true -> REFUSED",
+        v[0] == "refused" and "toggle" in v[1],
+        v[1],
+    )
+    v = _verdict(_synth(tmp, "togbad", doc(P1, **{"class": "caps", "toggle": True})))
+    expect("`toggle` on any other class -> REFUSED", v[0] == "refused" and "toggle" in v[1], v[1])
+    # PT-CAP11: the AI scratch layer is the second toggle class.
+    v = _verdict(_synth(tmp, "aiok", doc(P1, **{"class": "caps_ai", "toggle": True})))
+    expect("class `caps_ai` with toggle:true is accepted", v[0] == "complete", v[1])
+    v = _verdict(_synth(tmp, "ainot", doc(P1, **{"class": "caps_ai"})))
+    expect(
+        "class `caps_ai` WITHOUT toggle:true -> REFUSED",
+        v[0] == "refused" and "toggle" in v[1],
+        v[1],
+    )
+    expect(
+        "the cap manifests are derived from `class`, reloc first, then the toggle layers",
+        [c for _s, _n, c in caps_manifests()]
+        == [
+            "CAPS_RELOC",
+            "CAPS_LIMITS",
+            "CAPS_AI",
+            "CAPS_UNITS_RELOC",
+            "CAPS_UNITS_LIMITS",
+            "CAPS_ORDERS",
+        ],
+        caps_manifests(),
+    )
     # A class value nobody defined must refuse, or the field is decoration.
     v = _verdict(
         _synth(
@@ -1611,7 +1688,7 @@ def selftest():
 # ---- main ---------------------------------------------------------------------------------------
 
 
-def _emit_index(entries):
+def _emit_index(entries, caps=()):
     """The COMPILE LIST as data: every shipped manifest, addressable by name.
 
     F1E's applier reached one `MANIFEST` symbol by hand. With the list derived from a manifest field
@@ -1632,6 +1709,8 @@ def _emit_index(entries):
     a('#include "patch/inmem_patch.h"')
     for _src, cname in entries:
         a('#include "patch/manifest_%s.gen.h"' % cname)
+    for _src, cname, _k in caps:
+        a('#include "patch/manifest_%s.gen.h"' % cname)
     a("")
     a("namespace mh::patch {")
     a("")
@@ -1640,6 +1719,19 @@ def _emit_index(entries):
         a("    {\"%s\", &manifest_%s::MANIFEST}," % (src.replace(".mh.patch.json", ""), cname))
     a("};")
     a("inline constexpr int COMPILED_COUNT = %d;" % len(entries))
+    if caps:
+        a("")
+        a(
+            "// PT-CAP8 S1: the v0.2.2 cap manifests (classes caps / caps_limits). Compiled in as data, NOT in"
+        )
+        a(
+            "// COMPILED[]: `[patch] manifest=` never selects them; mh/caps applies CAPS_RELOC, CAPS_LIMITS, then (v0.2.3) CAPS_UNITS_RELOC, CAPS_UNITS_LIMITS."
+        )
+        for _src, cname, const in caps:
+            a(
+                "inline constexpr const inmem_manifest *%s = &manifest_%s::MANIFEST;"
+                % (const, cname)
+            )
     a("")
     a("} // namespace mh::patch")
     a("")
@@ -1688,7 +1780,23 @@ def _headers(check):
             )
             return 1
         _write(os.path.join(OUTDIR, "manifest_%s.gen.h" % cname), _emit(path, cname), check, rc)
-    _write(os.path.join(OUTDIR, INDEX_HEADER), _emit_index(entries), check, rc)
+    caps_list = caps_manifests()
+    for src, cname, _k in caps_list:
+        path = os.path.join(PATCHER, src)
+        try:
+            c = _classify(path)
+        except Refused as e:
+            print("REFUSED: %s -- %s" % (src, e))
+            return 1
+        need = _prereqs(c["refs"], caps)
+        if need or not c["complete"]:
+            print(
+                "REFUSED: %s: refs_complete=%s, applier prerequisites: %s"
+                % (src, c["complete"], "; ".join(need))
+            )
+            return 1
+        _write(os.path.join(OUTDIR, "manifest_%s.gen.h" % cname), _emit(path, cname), check, rc)
+    _write(os.path.join(OUTDIR, INDEX_HEADER), _emit_index(entries, caps_list), check, rc)
 
     # The offline selftest's fixture (see FIXTURES): emitted from the same classifier, so the arms
     # in mh_nettest/inmem_patch_selftest.cpp still assert real generated bytes rather than a
@@ -1712,6 +1820,7 @@ def _headers(check):
     # --check would never notice. Reclassifying no_cd_EN out of the compile list (Q7) is exactly
     # that case, and it is why this is here rather than a tidy-up.
     want = {"manifest_%s.gen.h" % c for _s, c in entries} | {INDEX_HEADER}
+    want |= {"manifest_%s.gen.h" % c for _s, c, _k in caps_list}
     for path in sorted(glob.glob(os.path.join(OUTDIR, "manifest_*.gen.h"))):
         if os.path.basename(path) in want:
             continue

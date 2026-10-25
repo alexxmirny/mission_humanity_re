@@ -571,7 +571,7 @@
    "confidence": "high",
    "reason": "LIFT-TACT slice B (2026-09-09): converted to LIBMH_EVK_SCREENSHOT_SAVE. A player pressed the screenshot key; whether that writes a PCX beside the exe, opens a share sheet or does nothing is the host's to decide, which is exactly why it is notify rather than a required io service."
   },
-  "llm_tact_scroll_fade_step": {
+  "llm_tact_blast_wipe_brighten_step": {
    "class": "event-channel:screen",
    "confidence": "high",
    "reason": "LIFT-TACT slice B (2026-09-09): ABSORBED into LIBMH_EVK_SCR_TACT_BLAST_TRANSITION. Its only libmh site was llm_tact_frame's fixed sixteen-iteration mine-blast wipe, and nothing of libmh's happens between iterations -- so the loop collapsed to one scope and this entry left with it rather than needing a kind of its own. That also disposes of what would otherwise have been a BLIND scope: the readback tool cannot see its pointer-mediated framebuffer writes, but the scope that replaced it resolves the whole loop's subtree."

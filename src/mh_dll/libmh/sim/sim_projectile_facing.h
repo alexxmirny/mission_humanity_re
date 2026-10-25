@@ -8,13 +8,17 @@
 // projectile midway" (2-almost repro, harness `MV PRJT`: W2 from 59,5 at 59,8, loop 2049 -> 2072 and back, frame 2074..2077).
 // The direction of a near-axis shot flips across the boundary repeatedly as it flies (truncated interpolation), and the
 // geometry is fixed per attacker/target pair, so every shot of that attacker shows it until the order or target changes.
+// (The raw jump is only wrong for types 5/6; for per-facing weapons it is the right frame step. See the rule below.)
 //
 // Rule with the key on:
 //   * weapon types 5 and 6: delta = 0. Their start frame is chosen from llm_strat_dir_sector_to (a fine sector index, one
 //     frame per sector -- W2: 128 frames 1924..2051), not from the 24-way facing, so a 24-way delta is the wrong unit:
 //     even +-1 steps a frame that sits at a block edge out of the block. Every type 5/6 weapon in the shipped cfg is
 //     non-homing (homing 2), so its direction never changes in flight and the spawn frame is already the right one.
-//   * every other type: delta wrapped into -12..11 (the shorter way round the 24-way compass).
+//   * every other type: the UNWRAPPED retail delta. These weapons are per-facing (24 frames, frame = base + stride*(facing-1)),
+//     so the +-23 jump across the 24/1 boundary lands exactly on the right frame; wrapping it (an earlier revision of this
+//     fix, rc3) left the frame one stride outside the weapon's block (weapon 20, mods:PRJ1: 1->24 gave frame base-1, an
+//     explosion sprite; 24->1 gave base+24, the next weapon's bullet).
 // The facing field itself is still stored as retail does. Integer only, no state.
 //
 // Header-only: the retail splice (mh/seams/combat_proto.cpp at 0x00441424) and the libmh twin (sim_projectile_tick.cpp,
@@ -38,6 +42,13 @@ inline bool projectile_facing_fix() { return projectile_facing_detail::flag(); }
 
 // The facing difference the tick multiplies by the stride, under the fix.
 inline int32_t projectile_facing_delta(int32_t delta, uint8_t weapon_type) {
+    if (weapon_type == 5 || weapon_type == 6) return 0;
+    return delta; // per-facing weapons: the unwrapped retail delta keeps frame = base + stride*(facing-1) exact
+}
+
+// TEST ONLY: the rc3 rule ([net] projectile_facing_fix=2 on the retail splice) -- the delta wrapped into -12..11 for every type but
+// 5/6. It is WRONG for per-facing weapons (see above) and exists so the prj_facing_rl4 row has an expected-red arm.
+inline int32_t projectile_facing_delta_rc3(int32_t delta, uint8_t weapon_type) {
     if (weapon_type == 5 || weapon_type == 6) return 0;
     while (delta > 11) delta -= 24;
     while (delta < -12) delta += 24;

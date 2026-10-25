@@ -247,7 +247,7 @@ inline constexpr uint32_t STOCK_BASE[845] = {
     0x0055870bu, //  219 TACT_MOVE_FLOOD_RESULT_ROW
     0x00558710u, //  220 TACT_MOVE_PATH_SLOT_ID
     0x00558714u, //  221 TACT_MOVE_PATH_TRACE_COST_SUM
-    0x00558ba0u, //  222 TACT_SCROLL_CMD
+    0x00558ba0u, //  222 TACT_MINE_BLAST_SHAKE_STEP
     0x00558ba4u, //  223 TACT_FX_SPLASH_SPARE_NONZERO_OWNER
     0x00558ba8u, //  224 TACT_MINE_BLAST_TIME_END
     0x00558bb8u, //  225 TACT_WHO_XOR_KEY
@@ -884,7 +884,7 @@ struct rdata_constant {
 inline constexpr rdata_constant RDATA_CONSTANTS[] = {
     {0x0050108fu,
      L"",
-     "G_TEXT_PTRS' shared EMPTY-STRING default -- 86 of the 806 entries hold this address instead of an offset into G_TEXT_BLOCK. NOT llm_strat_empty_name_str, which is a different constant at 0x0050109D (char[1] \"\"); this one is the WIDE empty string the text pool leaves in unassigned slots."},
+     "G_TEXT_PTRS' shared EMPTY-STRING default -- 85 of the 806 entries hold this address instead of an offset into G_TEXT_BLOCK. NOT llm_strat_empty_name_str, which is a different constant at 0x0050109D (char[1] \"\"); this one is the WIDE empty string the text pool leaves in unassigned slots."},
     // raw bytes at 0050108F, incl. terminator: 0000   (an EMPTY wide string)
 };
 inline constexpr int RDATA_CONSTANT_COUNT =

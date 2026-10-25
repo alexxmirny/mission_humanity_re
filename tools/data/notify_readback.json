@@ -2444,9 +2444,9 @@
    "kind": "LIBMH_EVK_SCR_TACT_BLAST_TRANSITION",
    "kind_no": 18,
    "dispatch": [
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_blink_overlay_clear",
-    "llm_tact_frame_cursor_and_reset",
-    "llm_tact_scroll_fade_step"
+    "llm_tact_frame_cursor_and_reset"
    ],
    "targets_absent_from_graph": [],
    "reachable_fns": 23,

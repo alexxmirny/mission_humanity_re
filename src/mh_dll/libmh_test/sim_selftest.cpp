@@ -316,6 +316,7 @@ void run_try_start_project_tests();
 void run_apply_project_resources_tests();
 void run_update_progress_tests();
 void run_project_gate_tests();
+void run_progress_recheck_tests();
 void run_invasion_chance_roll_tests();
 void run_handle_invasion_tests();
 void run_invasion_alert_arm_tests();
@@ -2050,6 +2051,7 @@ int run_simtest() {
     mh::sim::test::run_apply_project_resources_tests();
     mh::sim::test::run_update_progress_tests();
     mh::sim::test::run_project_gate_tests();
+    mh::sim::test::run_progress_recheck_tests(); // mods:UNL1
     mh::sim::test::run_invasion_chance_roll_tests();
     mh::sim::test::run_handle_invasion_tests();
     mh::sim::test::run_invasion_alert_arm_tests();

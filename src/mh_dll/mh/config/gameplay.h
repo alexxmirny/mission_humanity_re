@@ -31,6 +31,12 @@ using hook_row = mh_gameplay::hook_row<mh::lockstep::reimpl_fixes>;
 // The hook table (mh/seams/gameplay_hooks.cpp). Empty until a row is flagged F_HOSTSYNC.
 const hook_row *hooks(int *count);
 
+// PT-CAP8 S5: true when the last apply() asked for [caps] raise=1 and the limit layer refused (relocation refused, not staged,
+// a world stepping). The client adopt point reads it right after apply(ADOPTED) and leaves the lobby.
+bool raise_refused();
+// The one `; [caps] host uses raised limits ... -- leaving` line in mh_net.log (the client's refusal, PT-CAP8 S5).
+void log_raise_refused();
+
 // This process's own values, read through the ini gate and clamped, as a wire set.
 mh_net_proto::GameplaySet local_set();
 

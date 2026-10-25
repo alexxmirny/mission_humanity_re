@@ -183,6 +183,10 @@ BULK_RES = [
     re.compile(r"^;\s*DEV UNLOCKED\b"),
     re.compile(r"^;\s*\[log\]\s+level="),
     re.compile(r"^;\s*(IGNORED dev key|FIXED)\s+\["),
+    # patching:PT-CAP8: `; [caps] relocation REFUSED detail: <the applier's one-line reason>` -- it names the site and the PROMOTED
+    # function that holds it, which is a property of the promoted set (it moves whenever a body is promoted), not of the arm order.
+    # Folded out; the headline `; [caps] relocation REFUSED: <category> -- ...` stays gated and is name-free.
+    re.compile(r"^;\s*\[caps\]\s+relocation REFUSED detail:"),
 ]
 
 

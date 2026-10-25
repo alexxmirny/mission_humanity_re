@@ -1,0 +1,108 @@
+# patching:PT-CAP9-U5 (UI row) -- 490 units ordered by three CONTROL-GROUP clicks in the real UI. Same walk as cap_sel_solo.txt (1 human + 1 AI skirmish, mother landed with
+# a shift+right-click); the harness unit-fill fixture (capu_*) creates 490 units on a ring lattice round the mother, then THIS script does what a player does:
+#   1. three box selects, each over a third of the army (at most 200 ids fit the selection record, U6), each followed by the CTRL+DIGIT chord that makes the selection
+#      control group 1 / 2 / 3 (llm_unit_ctrl_group_recall under Ctrl -> the selection is copied into the group and every member gets a status-bit order, 0x34, that
+#      the lockstep lane replicates -- ~160 orders + their 0xfb echoes in ONE keystroke: the "control-group click" that overflowed the vanilla queue [300]);
+#   2. for each group: its digit recalls it (the group becomes the selection again, another burst of status-bit orders) and ONE right-click on the ground gives the
+#      selection a move order (a move order per unit + echo).
+# The harness watch (capg_*) is passive: tools/check_cap_orders_ui.py judges its `; CAPG` census (group counts, status bits applied, goals changed) and the order layer's
+# own census. Run with libmh.dll absent and `[caps] raise=1` (ini/caps_raise.ini), on the 1856x1088 view (ini/cap_sel_view.ini).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log capgrp: mother landing ordered, handing the run to the harness fixture
+gameclock 12000
+# ---- the camera: one scroll-up hold puts the whole army (tiles x 131..161, y 11..40) inside the 1856x1088 view (cam 4160,320: tile 130,10 at the top-left)
+cursor 928 544
+keyhold 0x48 30
+gameclock +100
+logsel army_view
+# ---- slow the game to its minimum speed (the '-' key, 0x0c, SP only): the idle soldiers wander (llm_strat_unit_state_idle_scatter), and the slower the sim runs per present the less they move between the three boxes
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+key 0x0c
+mark capgrp_boxes
+# ---- the three boxes + Ctrl+digit chords, back to back (no waits: every present the soldiers wander on). The two outer boxes are open-ended (x from the view's left edge,
+# x to the army's right edge) so nothing escapes at the ends; only the two inner boundaries (tile columns 140 and 148 -> px 320 and 576) can lose a unit.
+cursorhold 2 24 4
+presshold 2 24
+cursorhold 2 24 3
+cursorhold 384 1050 6
+release 384 1050
+key 0x02 ctrl
+logsel grp1
+cursorhold 352 24 4
+presshold 352 24
+cursorhold 352 24 3
+cursorhold 608 1050 6
+release 608 1050
+key 0x03 ctrl
+logsel grp2
+cursorhold 576 24 4
+presshold 576 24
+cursorhold 576 24 3
+cursorhold 1300 1050 6
+release 1300 1050
+key 0x04 ctrl
+gameclock +300
+logsel grp3
+capture capgrp_grouped
+mark capgrp_moves
+# ---- one control-group click per group: its digit recalls it, one right-click on the ground gives it a move order
+key 0x02
+gameclock +100
+logsel recall1
+cursorhold 1150 300 10
+simrclick 1150 300
+gameclock +300
+loggoal move1
+key 0x03
+gameclock +100
+logsel recall2
+cursorhold 1200 500 10
+simrclick 1200 500
+gameclock +300
+loggoal move2
+key 0x04
+gameclock +100
+logsel recall3
+cursorhold 1150 700 10
+simrclick 1150 700
+gameclock +300
+loggoal move3
+gameclock +2000
+log capgrp: soak done
+capture capgrp_end
+end

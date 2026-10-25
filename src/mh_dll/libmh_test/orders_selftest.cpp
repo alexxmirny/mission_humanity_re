@@ -22,6 +22,7 @@
 
 #include "lockstep/tx_emit_order.h" // ST5: the WIRE half of the one-codec claim
 #include "orders/order_codec.h"
+#include "orders/order_index_codec.h" // O1c
 
 #include <cstdio>
 #include <cstring>
@@ -364,7 +365,7 @@ int run_orderstest() {
         fixture f;
         order   in{};
         in.exec_time      = 1234.5;
-        in.unit_index     = 0x1234;
+        in.unit_index     = mh::orders::encode_index(0x0234); // O1c: the wire form of a 12-bit index
         in.owner_and_kind = 0x5678;
         in.param0         = 0x0ABC;
         in.order_code     = 0x0DEF;
@@ -373,11 +374,11 @@ int run_orderstest() {
         const int32_t r = od::pending_enqueue(f.st, &in);
         check("pending_enqueue returns 1 on success", r == 1);
         check("pending_enqueue advances the count", f.pending_count == 1);
-        check("pending_enqueue masks unit_index to its low byte", f.pending[0].unit_index == 0x34);
+        check("pending_enqueue DECODES unit_index (O1c, 12 bits)", f.pending[0].unit_index == 0x234);
         check("pending_enqueue masks owner_and_kind", f.pending[0].owner_and_kind == 0x78);
         check("pending_enqueue masks param0", f.pending[0].param0 == 0xBC);
         check("pending_enqueue masks order_code", f.pending[0].order_code == 0xEF);
-        check("pending_enqueue MUTATES THE CALLER'S RECORD in place", in.unit_index == 0x34);
+        check("pending_enqueue MUTATES THE CALLER'S RECORD in place", in.unit_index == 0x234);
         check("pending_enqueue copies exec_time through", f.pending[0].exec_time == 1234.5);
         bool args = true;
         for (int i = 0; i < mh::orders::ARG_SLOTS; ++i) args &= (f.pending[0].args[i] == 7000 + i);
@@ -405,12 +406,13 @@ int run_orderstest() {
         for (int i = 0; i < mh::orders::ARG_SLOTS; ++i) od::scratch_set_field(f.st, i, 500 + i);
 
         char          tag[] = "tag";
-        const int32_t r     = od::stage_scheduled(f.st, recording_calls(), tag, 0x1234, 0x5678, 0x0ABC,
+        const int32_t r     = od::stage_scheduled(f.st, recording_calls(), tag, 0x0234, 0x5678, 0x0ABC,
                                                   0x0DEF, 4242.5);
 
         check("stage_scheduled returns the NEW count", r == 1);
         check("stage_scheduled advances the count", f.staging_count == 1);
-        check("stage_scheduled DUPLICATES the low byte of unit_index", f.staging[0].unit_index == 0x3434);
+        check("stage_scheduled ENCODES unit_index (O1c: low byte, high byte ^ the 4 extra bits)",
+              f.staging[0].unit_index == 0x3634);
         check("stage_scheduled DUPLICATES the low byte of owner_and_kind",
               f.staging[0].owner_and_kind == 0x7878);
         check("stage_scheduled DUPLICATES the low byte of param0",
@@ -1240,30 +1242,30 @@ int run_orderstest() {
                           (size_t)mh::orders::QUEUE_CAP * sizeof(mh::orders::order)) == 0);
     }
 
-    // ---- O1b: THE REPLICATED LANE IS 8-BIT, AND THE FIELD CARRIES A *BUILDING* INDEX --------------
+    // ---- O1c: THE REPLICATED LANE CARRIES A 12-BIT INDEX -------------------------------------------
     //
-    // This is O1b's failing observation, and it is a PRESERVED DEFECT, not a bug in this container:
-    // every assertion below pins what the ORIGINAL does, so the suite stays green while the defect
-    // stands. When the encoding is widened (tracker item O1c) these are the checks that must be
-    // rewritten -- deliberately, not silently.
-    //
-    // THE CHAIN, each link measured rather than assumed:
-    //   1. the building order wrappers call dispatch(unit_id = BUILDING roster index,
-    //      player | KIND_BLDG(0x40), ...) -- libmh/orders/issue/issue_bldg_orders.cpp;
-    //   2. in MP, for a net-controlled player, dispatch routes to stage_scheduled, which DUPLICATES
-    //      each field's low byte (0x012c -> 0x2c2c);
-    //   3. schedule() puts that duplicated record ON THE WIRE and the masked copy into local
-    //      PENDING; the receiving peer's pending_enqueue masks the same way;
-    //   4. llm_strat_order_queue_dispatch's kind-0x40 arm then indexes
-    //      buildings[owner][record.unit_index] (@0x00466892, read 2026-08-30).
-    // So a building order for roster index 300 is applied to building 44 -- on BOTH peers, which is
-    // why it is not a desync and why no oracle in this project would have caught it.
-    //
-    // WHY IT IS REACHABLE TODAY, AND WHY THE ITEM'S OWN PREMISE WAS WRONG. O1b called this the
-    // "500-unit build" risk. The UNIT roster was never raised -- it is 8 x 100 (state region `units`,
-    // 186,400 B = 8 x 100 x 233) -- so a unit index cannot approach 255. The BUILDINGS roster IS the
-    // array this project raised, 100 -> 500 (the hardcoded-limits survey), and 256..499 are exactly the
-    // indices that truncate. Right defect, wrong array.
+    // History: O1b measured that the scheduled lane duplicated each field's LOW byte, so a building
+    // order for roster index 300 (0x012c -> 0x2c2c) was applied to building 44 on BOTH peers -- a silent
+    // mis-target no determinism oracle can see. O1c widens ONLY unit_index to 12 bits with an encoding
+    // that is a strict superset of the vanilla one (orders/order_index_codec.h). The knob-off arm below
+    // keeps the O1b assertions as the reproduction arm.
+    {
+        // Codec: vanilla identity for v < 256, a lossless round trip for the whole 12-bit domain.
+        bool vanilla_same = true, round_trip = true, check_ok = true;
+        for (uint32_t v = 0; v < 256; ++v)
+            vanilla_same &= (mh::orders::encode_index((uint16_t)v) == mh::orders::dup_low_byte((uint16_t)v));
+        for (uint32_t v = 0; v < 4096; ++v) {
+            const uint16_t w = mh::orders::encode_index((uint16_t)v);
+            round_trip &= (mh::orders::decode_index(w) == v);
+            check_ok &= mh::orders::index_check_ok(w);
+        }
+        check("O1c: encode_index(v) == the vanilla duplicated byte for every v < 256", vanilla_same);
+        check("O1c: decode(encode(v)) == v for all 4096 values", round_trip);
+        check("O1c: index_check_ok accepts every encoded value", check_ok);
+        check("O1c: 4096 wraps to 0 (the documented 12-bit domain)",
+              mh::orders::decode_index(mh::orders::encode_index(4096)) == 0);
+        check("O1c: a corrupt high nibble (0x3c2c) fails the check", !mh::orders::index_check_ok(0x3c2c));
+    }
     {
         fixture f;
         f.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
@@ -1274,58 +1276,103 @@ int run_orderstest() {
         char tag[]   = "t";
         od::scratch_reset(f.st);
 
-        // Player 0, kind 0x40 (KIND_BLDG), building roster index 300 -- legal in the cap-raised
-        // build, impossible in retail.
-        const uint16_t BLDG_IDX  = 300; // 0x012c
-        const uint16_t TRUNCATED = 44;  // 0x2c -- the building that actually gets the order
+        // Player 0, kind 0x40 (KIND_BLDG), building roster index 300 -- legal in the cap-raised build.
+        const uint16_t BLDG_IDX = 300; // 0x012c
         od::dispatch(f.st, recording_calls(), tag, BLDG_IDX, 0x40, 0x6d, 0x6d);
 
-        check("O1b: a building order for a net player takes the SCHEDULED lane",
+        check("O1c: a building order for a net player takes the SCHEDULED lane",
               f.staging_count == 1 && f.queue_count == 0);
-        check("O1b: stage_scheduled duplicates the LOW byte, discarding the high one (300 -> 0x2c2c)",
-              f.staging[0].unit_index == 0x2c2c);
-        check("O1b: the kind nibble survives -- this really is a BUILDING order",
+        check("O1c: stage_scheduled encodes 300 as 0x2d2c (lo 0x2c, hi = lo ^ 1)",
+              f.staging[0].unit_index == 0x2d2c);
+        check("O1c: the kind nibble survives -- this really is a BUILDING order",
               (f.staging[0].owner_and_kind & 0xf0) == 0x40);
+        check("O1c: stage_scheduled's own integrity check did not tear the session down",
+              g_log.returns == 0);
 
         od::schedule(f.st, recording_calls());
 
-        check("O1b: the LOCAL peer decodes building 300 as building 44",
-              f.pending_count == 1 && f.pending[0].unit_index == TRUNCATED);
-        check("O1b: the wire carries the duplicated form, so the peer's integrity check passes on a "
-              "record that has ALREADY lost the high byte",
-              g_log.sent.size() == 1 && g_log.sent[0].unit_index == 0x2c2c);
+        check("O1c: the LOCAL peer decodes building 300 as building 300",
+              f.pending_count == 1 && f.pending[0].unit_index == BLDG_IDX);
+        check("O1c: the wire carries the encoded form",
+              g_log.sent.size() == 1 && g_log.sent[0].unit_index == 0x2d2c);
 
-        // The receiving peer, driven through the very body the net path calls. NOTE THE ORDER:
-        // the wire record is copied out BEFORE the second fixture exists, because fixture's
-        // constructor resets g_log -- reading g_log.sent[0] afterwards is a read past the end of an
-        // emptied vector, which is exactly how this block first crashed.
+        // NOTE THE ORDER: the wire record is copied out BEFORE the second fixture exists, because
+        // fixture's constructor resets g_log.
         order   wire = g_log.sent[0];
         fixture r;
         od::pending_enqueue(r.st, &wire);
-        check("O1b: the REMOTE peer decodes the same record to the same wrong building",
-              r.pending_count == 1 && r.pending[0].unit_index == TRUNCATED);
-        check("O1b: both peers agree on the WRONG target -- a silent mis-target, not a desync, which "
-              "is why the determinism oracle cannot see it",
-              r.pending[0].unit_index == f.pending[0].unit_index && f.pending[0].unit_index != BLDG_IDX);
+        check("O1c: the REMOTE peer decodes the same record to building 300",
+              r.pending_count == 1 && r.pending[0].unit_index == BLDG_IDX);
 
-        // The boundary, pinned so a future fix has the exact edge: 255 survives, 256 does not.
-        fixture e255;
-        e255.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
-        e255.set_net_controlled(0, true);
-        od::scratch_reset(e255.st);
-        od::dispatch(e255.st, recording_calls(), tag, 255, 0x40, 0x6d, 0x6d);
-        od::schedule(e255.st, recording_calls());
-        check("O1b: 255 is the largest building index the replicated lane carries intact",
-              e255.pending[0].unit_index == 255);
+        // Boundaries: 255 / 256 / 499 / 4095 intact, 4096 -> 0.
+        const uint16_t vals[5]   = {255, 256, 499, 4095, 4096};
+        const uint16_t expect[5] = {255, 256, 499, 4095, 0};
+        for (int i = 0; i < 5; ++i) {
+            fixture e;
+            e.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
+            e.set_net_controlled(0, true);
+            od::scratch_reset(e.st);
+            od::dispatch(e.st, recording_calls(), tag, vals[i], 0x40, 0x6d, 0x6d);
+            od::schedule(e.st, recording_calls());
+            order   w2 = g_log.sent[0];
+            fixture r2;
+            od::pending_enqueue(r2.st, &w2);
+            check("O1c: boundary index survives encode -> schedule -> wire -> pending_enqueue",
+                  e.pending[0].unit_index == expect[i] && r2.pending[0].unit_index == expect[i]);
+        }
+    }
+    {
+        // Integrity: field 0 keeps 4 check bits; the other three keep hi == lo.
+        fixture f;
+        f.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
+        order wide{};
+        wide.unit_index     = 0x2d2c; // 300, valid
+        wide.owner_and_kind = 0x4040;
+        wide.param0         = 0x6d6d;
+        wide.order_code     = 0x6d6d;
+        od::integrity_check(f.st, recording_calls(), &wide);
+        check("O1c: integrity_check passes a valid wide index", g_log.returns == 0);
 
-        fixture e256;
-        e256.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
-        e256.set_net_controlled(0, true);
-        od::scratch_reset(e256.st);
-        od::dispatch(e256.st, recording_calls(), tag, 256, 0x40, 0x6d, 0x6d);
-        od::schedule(e256.st, recording_calls());
-        check("O1b: 256 collapses to 0 -- the first building the cap raise made unaddressable",
-              e256.pending[0].unit_index == 0);
+        order bad      = wide;
+        bad.unit_index = 0x3c2c; // hi ^ lo = 0x10: a check bit is set
+        od::integrity_check(f.st, recording_calls(), &bad);
+        check("O1c: integrity_check tears down on a corrupt wide index in MP", g_log.returns == 1);
+
+        fixture g;
+        g.session_mode = 0;
+        od::integrity_check(g.st, recording_calls(), &bad);
+        check("O1c: the same corrupt record outside MP does nothing", g_log.returns == 0);
+
+        fixture h;
+        h.session_mode      = mh::orders::SESSION_MP_LOCKSTEP;
+        order bad2          = wide;
+        bad2.owner_and_kind = 0x0040;
+        bad2.param0         = 0x006d;
+        bad2.order_code     = 0x006d;
+        od::integrity_check(h.st, recording_calls(), &bad2);
+        check("O1c: owner/param0/code with hi != lo still fire", g_log.returns == 3);
+    }
+    {
+        // Knob OFF: the O1b reproduction arm -- 300 collapses to 44.
+        mh::orders::set_order_wide_index(false);
+        fixture f;
+        f.session_mode = mh::orders::SESSION_MP_LOCKSTEP;
+        f.set_net_controlled(0, true);
+        f.horizon  = 0.0;
+        char tag[] = "t";
+        od::scratch_reset(f.st);
+        od::dispatch(f.st, recording_calls(), tag, 300, 0x40, 0x6d, 0x6d);
+        check("O1b arm: knob off, stage_scheduled duplicates the low byte (300 -> 0x2c2c)",
+              f.staging[0].unit_index == 0x2c2c);
+        od::schedule(f.st, recording_calls());
+        check("O1b arm: knob off, the local peer decodes building 300 as building 44",
+              f.pending[0].unit_index == 44);
+        order   wire = g_log.sent[0];
+        fixture r;
+        od::pending_enqueue(r.st, &wire);
+        check("O1b arm: knob off, the remote peer agrees on the wrong building",
+              r.pending[0].unit_index == 44);
+        mh::orders::set_order_wide_index(true);
     }
 
 
@@ -1338,7 +1385,7 @@ int run_orderstest() {
         {
             adm::reset();
             fixture f;
-            order   r = make_order(5.0, 0x1207, 0x1203, 0x0155, 0x0166); // high bytes must be masked away
+            order   r = make_order(5.0, mh::orders::encode_index(7), 0x1203, 0x0155, 0x0166); // high bytes must be masked away
             check("adm: pending_enqueue admits", od::pending_enqueue(f.st, &r) == 1);
             const adm::status &s = adm::current();
             check("adm: one record logged, source 3 (owner nibble of the STORED form)",
@@ -1384,7 +1431,7 @@ int run_orderstest() {
             fixture        f;
             const uint16_t owners[] = {1, 2, 1, 0xf0, 2, 1, 2}; // ordinals: s1:1,2,3  s2:1,2,3  s8:1
             for (int i = 0; i < 7; ++i) {
-                order r = make_order(1.0 + i, static_cast<uint16_t>(10 + i), owners[i], 0, static_cast<uint16_t>(i));
+                order r = make_order(1.0 + i, mh::orders::encode_index(static_cast<uint16_t>(10 + i)), owners[i], 0, static_cast<uint16_t>(i));
                 od::pending_enqueue(f.st, &r);
             }
             uint32_t ns[SOURCES] = {};
@@ -1468,7 +1515,7 @@ int run_orderstest() {
             fixture        f;
             const uint16_t owners[] = {1, 2, 1, 0xf0, 2, 1, 2};
             for (int i = 0; i < 7; ++i) {
-                order r = make_order(1.0 + i, static_cast<uint16_t>(10 + i), owners[i], 0, static_cast<uint16_t>(i));
+                order r = make_order(1.0 + i, mh::orders::encode_index(static_cast<uint16_t>(10 + i)), owners[i], 0, static_cast<uint16_t>(i));
                 od::pending_enqueue(f.st, &r);
             }
             uint32_t ns[SOURCES] = {};

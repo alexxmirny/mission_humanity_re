@@ -1,0 +1,36 @@
+# patching:PT-CAP9-U5 -- the ONE-FRAME ORDER BURST of the order layers. Same walk as cap_units_solo.txt (1 human + 1 AI skirmish, mother landed with a
+# shift+right-click); the harness unit-fill fixture (capu_* keys) fills the human with 490 units, then the order-burst fixture (capo_* keys) issues
+# capo_n move orders in ONE sim step and counts the units whose goal fields (+0x86/+0x87) hold the target of their LAST order. The verdict is
+# tools/check_cap_orders.py over mh_net.log / mh_harness.log, not a frame. Run with libmh.dll absent and `[caps] raise=1` (ini/caps_raise.ini);
+# the negative twin adds ini/caps_orders_off.ini (`[caps] orders_layer=0`: the raised roster on the vanilla order arrays).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log capo: mother landing ordered, handing the run to the harness fixtures
+gameclock 150000
+capture capo_end
+log capo: burst done
+end

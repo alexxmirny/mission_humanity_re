@@ -8,6 +8,7 @@
 #include "hook/patch.h"
 
 #include "hook/promoted.h"
+#include "patch/inmem_patch.h"
 
 namespace mh::hook {
 
@@ -33,6 +34,14 @@ bool patch_bytes_guarded(uintptr_t target, const uint8_t *expect, const uint8_t 
     VirtualProtect(t, len, old, &old);
     FlushInstructionCache(GetCurrentProcess(), t, len);
     return true;
+}
+
+bool patch_bytes_guarded_caps(uintptr_t target, const uint8_t *expect, const uint8_t *repl, int len) {
+    uint8_t want[64];
+    if (len <= 0 || len > static_cast<int>(sizeof(want))) return false;
+    memcpy(want, expect, static_cast<size_t>(len));
+    mh::patch::overlay_applied(static_cast<uint32_t>(target), static_cast<uint32_t>(len), want);
+    return patch_bytes_guarded(target, want, repl, len);
 }
 
 } // namespace mh::hook

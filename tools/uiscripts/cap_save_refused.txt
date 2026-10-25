@@ -1,0 +1,17 @@
+# patching:PT-CAP8 S3 (slice G) -- step 2 of cap_save_seq: a RAISED save with the raise OFF is refused, with a message
+# (tools/check_cap_save.py --step refuse). The lane's only save is capovf.sav (tools/uiscripts/saves/capovf.sav: a raised-caps save, its
+# container version header carries the "MHC1" stamp). Load game from the main menu: the stamped header fails the game's own version compare
+# before any block is read, and the load-failure message box shows the player-strings row caps.load_refused instead of the generic line.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+present Ok
+settled Ok
+screensettled
+capture refused
+log cap: raised save refused, message box up
+clickl Ok
+log cap: message dismissed, still in the menu
+end

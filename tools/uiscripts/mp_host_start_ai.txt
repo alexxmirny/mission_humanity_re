@@ -37,6 +37,9 @@ clickl Ok
 present Network players
 peers 1
 occ 2
+# block until the client is really in ITS lobby: a Start sent earlier is dropped by the client's U29 lobby-entry clear
+# (launch.cpp) and it leaves with 'Start REFUSED' (tooling:TL-DET-AI-START; same fix as mp_host_start.txt, 435988868).
+awaitsignal lobby
 
 # row 2 OPEN -> AI, then confirm the roster really grew rather than just the spinner redrawing
 click 70 149

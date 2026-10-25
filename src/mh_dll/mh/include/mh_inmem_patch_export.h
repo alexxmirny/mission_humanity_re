@@ -26,6 +26,9 @@ extern "C" {
 #define MH_INMEM_DUMPED  4 // the parity dump was written
 int MH_InMemPatch_Install(const char *ini_path);
 
+// Bind the [patch] applier's log sink (the one wiring site; also used by the caps boot arm).
+void MH_InMemPatch_BindLog(void);
+
 // Why nothing was applied, or nullptr. Exposed so a caller can report it without re-deriving it.
 const char *MH_InMemPatch_Refusal(void);
 

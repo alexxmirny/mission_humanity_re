@@ -105,6 +105,8 @@ pub struct Row {
     pub companion: Option<String>,
     /// Shown only while row `.0` has value `.1`.
     pub visible_if: Option<(String, String)>,
+    /// Greyed out (not hidden, value kept) while row `.0` has value `.1`; `setting.<label>.disabled` says why.
+    pub disabled_if: Option<(String, String)>,
     /// After an Apply that changed this row, also write the value to this launcher field
     /// (the Language row mirrors the chosen pack into `ui_lang`).
     pub mirror: Option<String>,
@@ -160,6 +162,8 @@ struct Extras {
     hidden: Option<bool>,
     companion: Option<String>,
     visible_if: Option<VisibleIf>,
+    /// Shown but greyed (value kept) while row `.row` has value `.equals`: `video.ui_scale` under Classic sizes only.
+    disabled_if: Option<VisibleIf>,
     mirror: Option<String>,
     /// Insert this row before the row with this id (ignored when that row does not exist).
     before: Option<String>,
@@ -330,6 +334,7 @@ impl Schema {
                 }
             };
             let vis = ov.visible_if.or(ex.visible_if);
+            let dis = ov.disabled_if.or(ex.disabled_if);
             if let Some(b) = pick_s(ov.before, ex.before) {
                 befores.push((id.clone(), b));
             }
@@ -367,6 +372,7 @@ impl Schema {
                 hidden: ov.hidden.or(ex.hidden).unwrap_or(false),
                 companion: pick_s(ov.companion, ex.companion),
                 visible_if: vis.map(|v| (v.row, v.equals)),
+                disabled_if: dis.map(|v| (v.row, v.equals)),
                 mirror: pick_s(ov.mirror, ex.mirror),
                 host: ov.host.or(ex.host).unwrap_or(false),
             });
@@ -610,12 +616,16 @@ mod tests {
                 "net.improved_movement",
                 "net.group_movement",
                 "net.improved_combat",
+                "caps.raise",
                 "net.project_gate_fix",
                 "net.sp_sim_step_ms"
             ]
         );
-        // Every gameplay row needs a restart; all but the F_LOCAL rows (mods:A2's campaign-only project_gate_fix, sp_sim_step_ms) are host-dictated.
-        assert!(b.rows_in_subtab("gameplay").all(|r| r.restart));
+        // Every gameplay row needs a restart (except patching:PT-CAP8's caps.raise: the limits switch at match Start); all but the F_LOCAL rows
+        // (mods:A2's campaign-only project_gate_fix, sp_sim_step_ms) are host-dictated.
+        assert!(b
+            .rows_in_subtab("gameplay")
+            .all(|r| r.restart != (r.id == "caps.raise")));
         assert!(b
             .rows_in_subtab("gameplay")
             .all(|r| r.host
@@ -734,6 +744,7 @@ mod tests {
                 g(
                     "interface",
                     &[
+                        "video.ui_scale",
                         "ui.shift_rearm_build",
                         "ui.minimap_plus",
                         "ui.bigmap",
@@ -770,6 +781,7 @@ mod tests {
                         "net.improved_combat"
                     ]
                 ),
+                g("limits", &["caps.raise"]),
                 g("campaign", &["net.project_gate_fix", "net.sp_sim_step_ms"]),
             ]
         );
@@ -843,7 +855,9 @@ mod tests {
             .filter(|r| r.host)
             .map(|r| r.id.as_str())
             .collect();
-        assert_eq!(host.len(), 9, "{host:?}");
-        assert!(host.iter().all(|id| id.starts_with("net.")));
+        assert_eq!(host.len(), 10, "{host:?}");
+        assert!(host
+            .iter()
+            .all(|id| id.starts_with("net.") || *id == "caps.raise"));
     }
 }

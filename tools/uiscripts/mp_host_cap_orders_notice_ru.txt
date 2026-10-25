@@ -1,0 +1,36 @@
+# patching:PT-CAP9-U5 -- mp_host_cap_orders_notice.txt on the RU LANGUAGE PACK (`[lang] pack=ru`): the same walk with the pack's own dialog labels (see mp_host_chat_glyphs_ru.txt for the
+# K_MENU_* texts), its own script so the two baselines do not share a directory.
+# patching:PT-CAP9-U5 -- the HOST walk of the quota-probe rows (cap_orders_quota / _ru): the same walk as mp_host_cap_orders.txt, plus ONE capture of the PLAYER NOTICE:
+# the burst fires at about step 851 (game clock ~14.2 s) and the red floating message "Too many orders in flight ..." is on screen for a few seconds after it.
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+settled Создать
+clickl Создать
+present Имя игры
+settled Ok
+clickl Ok
+present Доступные карты
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Игроки в сети
+peers 1
+awaitsignal lobby
+enabled Начать
+settled Начать
+clickl Начать
+
+# in the match: land the mothership (shift+right-click), then run. The fixture acts once the mother has landed
+absent Игроки в сети
+gameclock 3000
+simrclick 480 330 shift
+gameclock 14600
+capture orders_notice_ru
+gameclock 150000
+log capo mp done
+end

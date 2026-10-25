@@ -1,0 +1,36 @@
+# res4_bst_100 -- mods:RES4 stage 7: the reference arm of res4_bst_150 at ui_scale=100 (frame 1280x800 = the screen, nothing scaled, no dialog hook):
+# the building status dialog opens from the same HUD button, is drawn 1x, and Ok at the dialog's centre + (-1,+37) closes it.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+log res4 frame_ready 1280x800 @100
+simclick 720 620
+gameclock +300
+simclick 1138 271
+retry 1500 3 3 gamemode 3
+present Ok
+settled Ok
+screensettled
+capture res4_df_bst
+pcapture res4_dp_bst
+log res4 status_dialog_open
+rawmouse sabs 639 437
+settled Ok
+rawmouse down l
+rawmouse up l
+gamemode 2
+absent Ok
+gameclock +100
+log res4 COMPLETE -- ui_scale=100: the building status dialog, Ok clicked
+end

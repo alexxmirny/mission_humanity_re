@@ -5,17 +5,17 @@
  "_candidate_set": "Every region in tools/data/state_regions.json, against every function in the binary that is not in _reimpl's `done` set. Edges from tmp/state_matrix.json (instruction scan, folds fn-ptr edges), NOT from the direct-call graph.",
  "_provenance": {
   "program": "mh.exe",
-  "matrix_cells": 10992,
+  "matrix_cells": 10997,
   "matrix_regions": 2723,
   "matrix_regions_unhosted": 1893,
   "reimpl_done": 1000,
-  "reimpl_dead": 107,
+  "reimpl_dead": 108,
   "registry_regions": 845,
   "measured": 783,
   "unmeasured": 62,
   "inputs": {
-   "en_functions": "cb59c693cf581977",
-   "state_regions": "c7f566ee69127362",
+   "en_functions": "8561727dc7ecc4d7",
+   "state_regions": "b9c5a960908ea9c0",
    "reimpl_done": "f1486606577a0dd4"
   },
   "inputs_dirty_at_refresh": []
@@ -3604,11 +3604,11 @@
     "llm_strat_input_update",
     "llm_strat_minimap_cam_goto",
     "llm_strat_render_view_metrics_refresh",
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_gfx_init_view_surfaces",
     "llm_tact_gfx_init_view_tile_ptrs",
     "llm_tact_gfx_view_tile_rows_init",
     "llm_tact_render_view",
-    "llm_tact_scroll_fade_step",
     "llm_tact_view_metrics_init",
     "llm_tact_vis_map_clear_right_margin",
     "llm_ui_map_drag_select_rect_draw",
@@ -3674,10 +3674,10 @@
     "llm_gfx_view_metrics_init",
     "llm_strat_input_update",
     "llm_strat_ui_unit_panel_tick",
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_drag_box_clamp",
     "llm_tact_fx_build_tile_draw_lists",
     "llm_tact_gfx_init_view_surfaces",
-    "llm_tact_scroll_fade_step",
     "llm_ui_floating_tip_tick",
     "llm_ui_group_tab_on_click",
     "llm_ui_hud_panel_column_fill_draw",
@@ -4259,8 +4259,8 @@
    "external_bytes": 0,
    "subsystems": {}
   },
-  "TACT_SCROLL_CMD": {
-   "name": "_G_LLM_TACT_SCROLL_CMD",
+  "TACT_MINE_BLAST_SHAKE_STEP": {
+   "name": "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
    "base": 5606304,
    "size": 4,
    "measured": true,
@@ -7321,11 +7321,11 @@
     "llm_gfx_terrain_screen_blend_convert",
     "llm_map_minimap_render",
     "llm_map_zoom_apply",
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_gfx_init_view_surfaces",
     "llm_tact_gfx_init_view_tile_ptrs",
     "llm_tact_gfx_view_tile_rows_init",
     "llm_tact_save_screenshot",
-    "llm_tact_scroll_fade_step",
     "llm_tact_view_metrics_init",
     "llm_ui_render_planet_selector_tooltip",
     "llm_ui_text_draw_wrapped_shadowed",
@@ -14966,6 +14966,7 @@
     "llm_gfx_hittest_add_candidate",
     "llm_strat_ai_build_target_list",
     "llm_strat_ai_count_nearby_turrets",
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_engage_rank_candidates_by_range",
     "llm_strat_ai_expand_adjacent_mine_relay",
     "llm_strat_ai_group_scan_building_targets",
@@ -15030,10 +15031,10 @@
     "llm_strat_ui_shipment_contents_dialog",
     "llm_strat_ui_shipment_list_item_draw"
    ],
-   "external_bytes": 48646,
+   "external_bytes": 48863,
    "subsystems": {
     "Strategic sim/economy": 43,
-    "Strategic AI": 10,
+    "Strategic AI": 11,
     "UI/menus": 10,
     "Graphics/FX": 1,
     "Sound": 1
@@ -15519,6 +15520,7 @@
     "llm_map_tile_find_own_of_type",
     "llm_map_tile_has_enemy",
     "llm_map_tile_has_own",
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_expand_adjacent_mine_relay",
     "llm_strat_ai_group_scan_building_targets",
     "llm_strat_bldg_footprint_destroy_occupants",
@@ -15558,12 +15560,12 @@
     "llm_strat_ai_scan_area_for_engage_candidates",
     "llm_strat_ai_scan_enemy_turrets_in_weapon_range"
    ],
-   "external_bytes": 46370,
+   "external_bytes": 46587,
    "subsystems": {
     "Strategic sim/economy": 24,
     "Map/geometry": 8,
     "Tactical mode": 7,
-    "Strategic AI": 2
+    "Strategic AI": 3
    }
   },
   "BUILDING": {
@@ -16194,6 +16196,7 @@
     "llm_map_tile_has_enemy",
     "llm_map_tile_has_own",
     "llm_strat_ai_build_target_list",
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_engage_rank_candidates_by_range",
     "llm_strat_ai_group_is_gathered",
     "llm_strat_ai_group_is_within_radius",
@@ -16268,10 +16271,10 @@
     "llm_ui_unit_ctrlgroup_panel_draw_row",
     "llm_ui_unit_panel_populate_selected"
    ],
-   "external_bytes": 56662,
+   "external_bytes": 56879,
    "subsystems": {
     "Strategic sim/economy": 52,
-    "Strategic AI": 19,
+    "Strategic AI": 20,
     "Map/geometry": 5,
     "UI/menus": 5,
     "Game/boot/misc": 1,
@@ -20622,18 +20625,20 @@
    ],
    "ours_readers": [],
    "external_writers": [
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_engage_rank_candidates_by_range"
    ],
    "external_writers_dead": [
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_engage_rank_candidates_by_range"
    ],
    "external_readers": [
     "llm_strat_ai_unit_select_attack_target"
    ],
    "external_addr_takers": [],
-   "external_bytes": 1048,
+   "external_bytes": 1265,
    "subsystems": {
-    "Strategic AI": 2
+    "Strategic AI": 3
    }
   },
   "STRAT_AI_SITE_CANDIDATES": {
@@ -20857,10 +20862,12 @@
     "llm_strat_ai_engage_sort_candidates_by_dist"
    ],
    "external_writers": [
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_group_dispatch_action_flags",
     "llm_strat_ai_unit_select_attack_target"
    ],
    "external_writers_dead": [
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_group_dispatch_action_flags",
     "llm_strat_ai_unit_select_attack_target"
    ],
@@ -20868,9 +20875,9 @@
     "llm_strat_ai_engage_rank_candidates_by_range"
    ],
    "external_addr_takers": [],
-   "external_bytes": 1623,
+   "external_bytes": 1840,
    "subsystems": {
-    "Strategic AI": 3
+    "Strategic AI": 4
    }
   },
   "STRAT_AI_SITE_CANDIDATE_COUNT": {

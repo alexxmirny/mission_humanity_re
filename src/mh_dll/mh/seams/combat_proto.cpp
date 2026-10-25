@@ -49,17 +49,18 @@
 #include "addr/mh_calls.gen.h"   // mh::call::llm_strat_target_release_ref / llm_map_wrap_delta_x/_y / llm_strat_bldg_get_coords
 #include "addr/mh_regions.gen.h" // mh::state::live(), RID_*
 #include "addr/mh_structs.gen.h"
-#include "hook/patch.h"    // patch_bytes_guarded
-#include "hook/promoted.h" // promoted_owner_of
-#include "state/roster_caps.h"
+#include "hook/patch.h"                     // patch_bytes_guarded
+#include "hook/promoted.h"                  // promoted_owner_of
+#include "caps/caps.h"                      // mh::caps::rec / g: the unit + building arrays the game addresses (PT-CAP8)
 #include "sim/sim_attack_range_footprint.h" // the shared aim-tile rule (header-only)
 #include "sim/sim_projectile_facing.h"      // mods:M1C projectile_facing_fix (header-only)
 #include "net_internal.h"                   // seam_log
 #include "seams/move_carrier.h"             // mods:M1H: site states, requested values, stub hit counters
 
-int g_sqm_rt = 0; // [net] move_squad_merge_fix in force
-int g_arf_rt = 0; // [net] attack_range_footprint in force
-int g_pff_rt = 0; // [net] projectile_facing_fix in force
+int g_sqm_rt  = 0; // [net] move_squad_merge_fix in force
+int g_arf_rt  = 0; // [net] attack_range_footprint in force
+int g_pff_rt  = 0; // [net] projectile_facing_fix in force
+int g_pff_rc3 = 0; // TEST ONLY: projectile_facing_fix=2 -> the rc3 wrapped delta (expected-red arm of prj_facing_rl4)
 
 namespace {
 
@@ -76,14 +77,14 @@ constexpr uintptr_t FN_BLDG_GET_COORDS = 0x00449b8a, FN_RANDOM_POINT = 0x00449d4
 uintptr_t g_fn_bgc = FN_BLDG_GET_COORDS, g_fn_rp = FN_RANDOM_POINT, g_fn_ro = FN_RANDOM_OFFSET; // read by the stubs
 
 mh_map_object_unit *unit_rec(uint32_t player, int32_t idx) {
-    const auto caps = mh::state::live_roster_caps();
-    if (player >= 8 || idx < 0 || idx >= caps.units) return nullptr;
-    return reinterpret_cast<mh_map_object_unit *>(mh::state::live().base[mh::state::RID_UNITS]) + player * caps.units + idx;
+    const auto &u = mh::caps::g(mh::caps::UNITS);
+    if (player >= u.players || idx < 0 || (uint32_t)idx >= u.limit) return nullptr;
+    return mh::caps::rec<mh_map_object_unit>(mh::caps::UNITS, player, (uint32_t)idx);
 }
 const mh_map_object_building *bldg_rec(uint32_t player, int32_t idx) {
-    const auto caps = mh::state::live_roster_caps();
-    if (player >= 8 || idx < 0 || idx >= caps.buildings) return nullptr;
-    const auto *b = reinterpret_cast<const mh_map_object_building *>(mh::state::live().base[mh::state::RID_BUILDINGS]) + player * caps.buildings + idx;
+    const auto &bg = mh::caps::g(mh::caps::BUILDINGS);
+    if (player >= bg.players || idx < 0 || (uint32_t)idx >= bg.limit) return nullptr;
+    const auto *b = mh::caps::rec<const mh_map_object_building>(mh::caps::BUILDINGS, player, (uint32_t)idx);
     return b->building_id < 100 ? b : nullptr;
 }
 
@@ -425,7 +426,7 @@ int arf_site(uintptr_t site, uintptr_t callee, void (*stub)(), const char *owner
 // ---- [net] projectile_facing_fix (mods:M1C; the rule: libmh/sim/sim_projectile_facing.h) ---------------------------------
 // llm_strat_projectile_tick 0x00441424: `SUB EDX,[EAX+0x59]` (EDX = new facing - facing) `MOV EAX,[0x00e1538c]`
 // (_G_LLM_STRAT_CUR_PROJECTILE) -- 8 bytes -> CALL pff_stub + 3 NOP. The stub redoes both instructions; with the key on it
-// replaces EDX by the rule's delta (wrapped -12..11; 0 for weapon types 5/6) before the IMUL by the stride at 0x0044143e.
+// replaces EDX by the rule's delta (0 for weapon types 5/6, otherwise unchanged) before the IMUL by the stride at 0x0044143e.
 namespace {
 constexpr uintptr_t ADDR_PFF_DELTA      = 0x00441424;
 const uint8_t       PFF_DELTA_EXPECT[8] = {0x2B, 0x50, 0x59, 0xA1, 0x8C, 0x53, 0xE1, 0x00};
@@ -436,7 +437,7 @@ int __cdecl pff_delta(int32_t delta, const uint8_t *proj) {
     const int32_t wid = *reinterpret_cast<const int32_t *>(proj + 4);
     if (wid < 0 || wid >= 32) return delta;
     const uint8_t type = *reinterpret_cast<const uint8_t *>(PFF_WEAPON_TABLE + static_cast<uintptr_t>(wid) * 0x16c);
-    return mh::sim::projectile_facing_delta(delta, type);
+    return g_pff_rc3 ? mh::sim::projectile_facing_delta_rc3(delta, type) : mh::sim::projectile_facing_delta(delta, type);
 }
 
 // clang-format off
@@ -519,7 +520,7 @@ void install_combat_proto() {
         memcpy(&g_sqm_disp, p + 3, 4);
         rel_call(repl, ADDR_SQM_STATE_CMP, reinterpret_cast<uintptr_t>(sqm_stub));
         repl[5] = repl[6] = repl[7] = 0x90;
-        g_sqm_state                 = mh::hook::patch_bytes_guarded(ADDR_SQM_STATE_CMP, expect, repl, 8) ? 1 : -1;
+        g_sqm_state                 = mh::hook::patch_bytes_guarded_caps(ADDR_SQM_STATE_CMP, expect, repl, 8) ? 1 : -1;
     } else {
         g_sqm_state = -1;
     }
@@ -553,8 +554,9 @@ int mh_set_move_squad_merge_fix(int on) {
 }
 
 int mh_set_projectile_facing_fix(int on) {
-    on       = on != 0;
-    g_pff_rt = (on && g_pff_state == 1) ? 1 : 0;
+    g_pff_rc3 = on == 2; // test-only value, see pff_delta
+    on        = on != 0;
+    g_pff_rt  = (on && g_pff_state == 1) ? 1 : 0;
     mh::seams::mv::request(mh::seams::mv::KEY_PROJECTILE_FACING, on, 0);
     return (on == 0 || g_pff_rt || g_pff_state == 2) ? 1 : 0;
 }

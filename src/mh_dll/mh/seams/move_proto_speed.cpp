@@ -38,7 +38,8 @@
 #include "addr/mh_structs.gen.h"  // mh_map_object_unit / mh_cfg_final_struct_Unit / mh_llm_strat_group_scratch_member
 #include "hook/patch.h"           // patch_bytes_guarded
 #include "hook/promoted.h"        // promoted_owner_of
-#include "state/roster_caps.h"    // live_roster_caps()
+#include "caps/caps.h"            // mh::caps::rec / g: the unit array the game addresses (PT-CAP8)
+#include "caps/orders.h"          // mh::caps::orders::base / cap: the order queue the game addresses (PT-CAP9-U5)
 #include "net_internal.h"         // seam_log
 #include "seams/move_carrier.h"   // mods:M1H: site states, requested values, stub hit counters
 #include "sim/move/group_speed.h" // mods:M1H lane C: the rule, shared with the libmh twins (sim_unit_state_group_marshal.cpp / _move_walker.cpp)
@@ -67,13 +68,13 @@ struct speed_world {
     const mh::game::mh_cfg_final_struct_Unit          *cfg_;
     const mh::game::mh_llm_strat_group_scratch_member *scratch_;
     const mh::game::mh_llm_strat_order                *queue_;
-    int32_t                                            cap_, qn_;
+    int32_t                                            cap_, qn_, qcap_;
     uint32_t                                           player_;
     int32_t                                            units() { return cap_; }
     mh::game::mh_map_object_unit                      &unit(int32_t i) { return units_[i]; }
     const mh::game::mh_cfg_final_struct_Unit          &cfg(uint32_t proto) { return cfg_[proto]; }
     int32_t                                            scratch_unit(int32_t w) { return scratch_[w].unit_idx; }
-    int32_t                                            queue_count() { return queue_ ? qn_ : 0; }
+    int32_t                                            queue_count() { return queue_ ? (qn_ < qcap_ ? qn_ : qcap_) : 0; } // bounded by the array the game addresses
     const mh::game::mh_llm_strat_order                &queue(int32_t k) { return queue_[k]; }
     void                                               log_wave(int32_t legs, int32_t ground, double fastest, double slowest) {
         if (g_wave_logs >= MAX_WAVE_LOGS) return;
@@ -92,15 +93,17 @@ void __cdecl group_speed_apply(const uint8_t *frame) {
     const int32_t  legs    = *reinterpret_cast<const int32_t *>(frame - 0x28);
     const int32_t  is_move = *reinterpret_cast<const int32_t *>(frame - 0x1c);
     const uint32_t player  = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u); // _G_LLM_STRAT_CUR_PLAYER
-    const auto     caps    = mh::state::live_roster_caps();
+    const auto    &gu      = mh::caps::g(mh::caps::UNITS);
     if (legs < 1 || legs > 100 || player >= 8) return;
     const auto &lv = mh::state::live();
     speed_world w;
-    w.cap_              = caps.units;
-    w.units_            = reinterpret_cast<mh::game::mh_map_object_unit *>(lv.base[mh::state::RID_UNITS]) + player * caps.units;
-    w.cfg_              = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(lv.base[mh::state::RID_UNIT]);
-    w.scratch_          = reinterpret_cast<const mh::game::mh_llm_strat_group_scratch_member *>(lv.base[mh::state::RID_STRAT_GROUP_MOVE_SCRATCH]);
-    w.queue_            = reinterpret_cast<const mh::game::mh_llm_strat_order *>(lv.base[mh::state::RID_STRAT_ORDER_QUEUE]);
+    w.cap_     = (int32_t)gu.limit;
+    w.units_   = mh::caps::rec<mh::game::mh_map_object_unit>(mh::caps::UNITS, player, 0);
+    w.cfg_     = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(lv.base[mh::state::RID_UNIT]);
+    w.scratch_ = reinterpret_cast<const mh::game::mh_llm_strat_group_scratch_member *>(lv.base[mh::state::RID_STRAT_GROUP_MOVE_SCRATCH]);
+    // PT-CAP9-U5: the queue the GAME is using (the wide array with the order layer ON), not the registry's stock mirror.
+    w.queue_            = reinterpret_cast<const mh::game::mh_llm_strat_order *>(mh::caps::orders::base(mh::caps::orders::QUEUE));
+    w.qcap_             = (int32_t)mh::caps::orders::cap(mh::caps::orders::QUEUE);
     w.qn_               = *reinterpret_cast<const int32_t *>(lv.base[mh::state::RID_STRAT_ORDER_QUEUE_COUNT]);
     w.player_           = player;
     const uint32_t mgid = *reinterpret_cast<const uint32_t *>(frame - 0x30);

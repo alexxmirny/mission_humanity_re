@@ -158,6 +158,7 @@
     <ClCompile Include="res_list_selftest.cpp" />
     <ClCompile Include="map_zoom_selftest.cpp" />
     <ClCompile Include="wheel_list_selftest.cpp" />
+    <ClCompile Include="ui_layout_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
@@ -221,6 +222,7 @@
     <ClCompile Include="..\mh\desync\replay_record.cpp" />
     <ClCompile Include="..\mh\seams\door_watch.cpp" />
     <ClCompile Include="..\mh\seams\bldg_pip_guard.cpp" />
+    <ClCompile Include="..\mh\seams\order_wide_index.cpp" />
     <ClCompile Include="..\mh\desync\seed_sanity.cpp" />
     <ClCompile Include="..\mh\seams\replay_boundary.cpp" />
     <ClCompile Include="..\mh\desync\state_miniz.c" />
@@ -243,9 +245,17 @@
     <ClCompile Include="..\mh\hook\promoted.cpp" />
     <ClCompile Include="..\mh\hook\tombstone.cpp" />
     <ClCompile Include="interlock_selftest.cpp" />
+    <ClCompile Include="..\mh\caps\caps.cpp" />
+    <ClCompile Include="..\mh\caps\orders.cpp" />
+    <ClCompile Include="..\mh\caps\ovf.cpp" />
+    <ClCompile Include="..\mh\caps\ovf_save.cpp" />
+    <ClCompile Include="..\mh\caps\path_pool.cpp" />
     <ClCompile Include="..\mh\patch\inmem_patch.cpp" />
     <ClCompile Include="..\mh\patch\inmem_install.cpp" />
+    <ClCompile Include="..\mh\patch\caps_install.cpp" />
     <ClCompile Include="inmem_patch_selftest.cpp" />
+    <ClCompile Include="caps_selftest.cpp" />
+    <ClCompile Include="ovf_selftest.cpp" />
     <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
@@ -2499,6 +2509,7 @@
     <ClCompile Include="..\mh\config\gameplay.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
     <ClCompile Include="..\mh\seams\lang_pack.cpp" />
+    <ClCompile Include="..\mh\seams\ui_options_scale.cpp" />
     <ClCompile Include="..\mh\seams\gfx_capture.cpp" />
     <ClCompile Include="module_bind_compiled_in.cpp" />
     <ClCompile Include="..\mh\seams\gfx_overlay.cpp" />
@@ -2513,6 +2524,7 @@
     <ClCompile Include="..\mh\seams\ui_minimap_plus.cpp" />
     <ClCompile Include="..\mh\seams\ui_bigmap.cpp" />
     <ClCompile Include="..\mh\seams\ui_crew_reminder.cpp" />
+    <ClCompile Include="..\mh\seams\tact_scroll.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp" />
     <ClCompile Include="..\mh\seams\ui_bldg_rearm.cpp" />
     <ClCompile Include="..\mh\seams\sim_pioneer_refill.cpp" />
@@ -2551,6 +2563,7 @@
     <ClCompile Include="..\mh\gfx\zoom_scale.cpp" />
     <ClCompile Include="..\mh\gfx\map_zoom.cpp" />
     <ClCompile Include="..\mh\gfx\wheel_list.cpp" />
+    <ClCompile Include="..\mh\gfx\ui_layout.cpp" />
     <ClCompile Include="..\mh\gfx\ddraw_own.cpp" />
     <ClCompile Include="..\mh\input\dinput_own.cpp" />
     <ClCompile Include="..\mh\input\dinput_convert.cpp" />

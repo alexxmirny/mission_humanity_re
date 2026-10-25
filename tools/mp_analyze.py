@@ -2362,6 +2362,14 @@ def load_peer(path):
         peer["lockstep_rows"] = parse_lockstep(logs["lockstep"])
     if "net" in logs:
         peer["net"] = parse_events(logs["net"])
+    # PROBE (movemp_dig): a PROCESS dir's mh_net.log is frozen at the lobby; the match end lives in the
+    # paired session dir's own mh_net.log (the one match_session_log pairs the hashes with).
+    if os.path.isdir(path) and not os.path.isfile(os.path.join(path, "mh_match_harness.log")):
+        mh = match_session_log(path)
+        if mh:
+            fp = os.path.join(os.path.dirname(mh), LOG_NAMES["net"])
+            if os.path.isfile(fp):
+                peer["net_match"] = parse_events(fp)
     if "launch" in logs:
         peer["launch"] = parse_events(logs["launch"])
     if "frametime" in logs:
@@ -2428,6 +2436,9 @@ def _fx_peer(
     gameover_step=None,
     deliberate=False,
     real_gameover_step=None,
+    session_gameover_step=None,
+    crash_marker=False,
+    silence_from=None,
 ):
     """One synthetic peer. `end_at` makes the clock LEAVE the fixed quantum from that step, which is
     what a real match end does (turn_engine.cpp:379-386 takes one variable step to TOTAL_GAME_TIME).
@@ -2441,7 +2452,12 @@ def _fx_peer(
     -- net_lockstep.cpp ~286) -- the shape `expected_match_end`'s real-game-over branch is FOR. Kept
     as a separate knob from `gameover_step` rather than a flag on it, because the two must be able to
     combine (a fixture that wants "an unplanned drop AND a coincidentally-clean gameover line on the
-    OTHER peer" needs both bits addressable independently)."""
+    OTHER peer" needs both bits addressable independently).
+
+    `session_gameover_step` (PT-CAP9-U8b) puts the real game-over in the PAIRED SESSION dir's mh_net.log
+    instead (a sibling folder whose session.json names this dir as its `process_dir`): the shape the suite
+    hands over, where the PROCESS dir's own mh_net.log is frozen at the lobby. `crash_marker` drops an
+    `mh_crash_<pid>.marker` next to this process dir, as the game's crash handler does."""
     os.makedirs(d, exist_ok=True)
     banner = (
         "; ==== mh replay harness armed: seed_step=0 seed_mode=2 stop_step=%d fixed_step=0 "
@@ -2477,7 +2493,14 @@ def _fx_peer(
             ms = int(round(s * interval * 1000))
             f.write(
                 "%d %d %d 30 10000 10000 10000 30 0 2 %d %d %d\n"
-                % (wall, ms, ms, s * 3, s * 3, silence_ms if (silence_ms and s >= mark) else 40)
+                % (
+                    wall,
+                    ms,
+                    ms,
+                    s * 3,
+                    s * 3,
+                    silence_ms if (silence_ms and s >= (silence_from or mark)) else 40,
+                )
             )
     with open(os.path.join(d, "mh_net.log"), "w") as f:
         f.write(
@@ -2514,6 +2537,26 @@ def _fx_peer(
                 "[00:00:02.001] ; on_gameover ENTER sess=2 outcome=4 gclk=%d (downgrade=0)\n"
                 % int(round(real_gameover_step * interval * 1000))
             )
+    if session_gameover_step is not None:
+        sd = d.rstrip("/\\") + "_session"
+        os.makedirs(sd, exist_ok=True)
+        with open(os.path.join(sd, "session.json"), "w") as f:
+            json.dump(
+                {
+                    "process_dir": os.path.basename(d.rstrip("/\\")),
+                    "mode": "host" if role == "host" else "client",
+                },
+                f,
+            )
+        open(os.path.join(sd, "mh_match_harness.log"), "w").close()
+        with open(os.path.join(sd, "mh_net.log"), "w") as f:
+            f.write(
+                "[00:00:02.001] ; on_gameover ENTER sess=2 outcome=4 gclk=%d (downgrade=0)\n"
+                % int(round(session_gameover_step * interval * 1000))
+            )
+    if crash_marker:
+        with open(os.path.join(os.path.dirname(d.rstrip("/\\")), "mh_crash_4242.marker"), "w") as f:
+            f.write("AV\n")
 
 
 # ---- mp:X3c: --selftest arms for --resync-verify -----------------------------------------
@@ -2884,6 +2927,43 @@ def selftest():
             False,
             {"host": dict(real_gameover_step=60)},
         ),
+        # PT-CAP9-U8b. The suite hands mp_analyze PROCESS folders, whose mh_net.log is frozen at the
+        # lobby; the match's game over is in the paired SESSION folder's own mh_net.log. Arm 11: both
+        # peers' game over is there only -> the D26 cut must still apply -> IDENTICAL.
+        (
+            "11 PROCESS folders, game over only in the paired SESSION log -- mp:D26 -> IDENTICAL",
+            dict(mismatch_at=60, session_gameover_step=60, **base),
+            "ALL PAIRS IDENTICAL",
+            True,
+            {},
+        ),
+        # ...and the same fixture with a crash marker in the lane logs dir: a peer that faulted at the
+        # game over is not a clean end, the cut is refused, the post-game-over divergence reads DESYNC.
+        (
+            "12 PROCESS folders, game over + a crash marker -- cut refused -> DESYNC",
+            dict(mismatch_at=60, session_gameover_step=60, **base),
+            "DESYNC in >=1 pair",
+            False,
+            {"client1": dict(crash_marker=True)},
+        ),
+        # ...and the live shape of arm 11: the peer that was ELIMINATED plays on (a second game) while the other
+        # stops hearing from it, so its lockstep log reports a long silence that opens AFTER the end. That is
+        # what leaving the match looks like, not a link that died inside it: still IDENTICAL.
+        (
+            "13 PROCESS folders, game over, then the leaver's silence after it -- IDENTICAL",
+            dict(mismatch_at=60, session_gameover_step=60, **base),
+            "ALL PAIRS IDENTICAL",
+            True,
+            {"host": dict(silence_ms=12000)},
+        ),
+        # ...but a silence that opens BEFORE the end is a dead link, and an expected end does not excuse it.
+        (
+            "14 game over, but the silence opened BEFORE it -- stays ENVIRONMENTAL",
+            dict(session_gameover_step=150, **base),
+            "FAIL: ENVIRONMENTAL",
+            False,
+            {"host": dict(silence_ms=12000, silence_from=100)},
+        ),
     ]
     bad = 0
     try:
@@ -2941,7 +3021,9 @@ def selftest():
             # must NOT -- proving the guard doesn't fire on evidence it shouldn't accept.
             if tag in ("6", "9") and "D26: EXPECTED match end" not in printed:
                 ok, name = False, name + " (+mp:D26: no truncation line printed)"
-            if tag == "10" and "D26: EXPECTED match end" in printed:
+            if tag in ("11", "13") and "D26: EXPECTED match end" not in printed:
+                ok, name = False, name + " (+mp:D26: no truncation line printed)"
+            if tag in ("10", "12") and "D26: EXPECTED match end" in printed:
                 ok, name = False, name + " (+mp:D26: truncated an end that was NOT expected)"
             print("   %-64s %s" % (name, "ok" if ok else "FAIL -- got %r clean=%s" % (got, clean)))
             bad += 0 if ok else 1
@@ -3479,7 +3561,7 @@ def grid_departure(seg, probe=20, tol=1e-4):
     return None
 
 
-def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s):
+def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s, d26_step=None):
     """Did an UNPLANNED match end happen, and does it account for this run's result?
 
     Returns (kind, reasons):
@@ -3488,8 +3570,19 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s):
                           if every compared step agreed (the vacuous-pass killer).
       "ended_explains" -- as above AND all four conditions place the end at or before the first
                           mismatch, so the DESYNC is relabelled FAIL: ENVIRONMENTAL.
+
+    `d26_step` (PT-CAP9-U8b): the EXPECTED end's boundary step (expected_match_end). Silence that opens at or
+    after that step's game clock is what a peer that LEFT the match looks like (its lockstep log keeps rows
+    while the other peer is no longer sending), not a link that died inside it, so it is not counted.
     """
     reasons = []
+    end_clock_ms = None
+    if d26_step is not None:
+        for p in peers:
+            c = step_clock_seconds(p.get("harness") or {}, d26_step)
+            if c is not None:
+                end_clock_ms = c * 1000.0
+                break
     for p in peers:
         arming = (p.get("harness") or {}).get("arming") or ""
         if re.search(r"gameover_step=([1-9]\d*)", arming):
@@ -3498,17 +3591,21 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s):
                 "not apply to runs that were told to end"
             ]
 
-    ends = [parse_match_end(p.get("net")) for p in peers]
+    ends = [parse_match_end((p.get("net") or []) + (p.get("net_match") or [])) for p in peers]
     rx_timeout = next((e["rx_timeout_ms"] for e in ends if e["rx_timeout_ms"]), 10000)
 
     def _ls(p, key):
         return (p.get("lockstep_analysis") or {}).get(key, 0)
 
-    silent = [
-        (p["role"], _ls(p, "max_since_rx_ms"))
-        for p in peers
-        if _ls(p, "max_since_rx_ms") >= rx_timeout
-    ]
+    def _maxsil(p):
+        if end_clock_ms is None:
+            return _ls(p, "max_since_rx_ms")
+        pre = [
+            r["since_rx_ms"] for r in (p.get("lockstep_rows") or []) if r["clock_ms"] < end_clock_ms
+        ]
+        return max(pre) if pre else 0
+
+    silent = [(p["role"], _maxsil(p)) for p in peers if _maxsil(p) >= rx_timeout]
     gos = [e["gameover_gclk_ms"] for e in ends if e["gameover_gclk_ms"] is not None]
     drops = [m for e in ends for m in e["drop_markers"]]
     # CONDITION (3), WIDENED 2026-09-11 (user's ruling) -- and made stricter in the same move.
@@ -3540,7 +3637,7 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s):
 
     explained, unexplained = [], []
     for p in peers:
-        if _ls(p, "max_since_rx_ms") < rx_timeout:
+        if _maxsil(p) < rx_timeout:
             continue
         win = _silence_window(p.get("lockstep_rows") or [])
         cover = None
@@ -3652,7 +3749,7 @@ def expected_match_end(peers):
             step = int(m.group(1))
             return step, "deliberate gameover_step=%d harness arm" % step
 
-    ends = [(p, parse_match_end(p.get("net"))) for p in peers]
+    ends = [(p, parse_match_end((p.get("net") or []) + (p.get("net_match") or []))) for p in peers]
     gos = [(p, e["gameover_gclk_ms"]) for p, e in ends if e["gameover_gclk_ms"] is not None]
     if not peers or len(gos) < len(peers):
         return None, (
@@ -3669,6 +3766,12 @@ def expected_match_end(peers):
         return None, (
             "every peer logged a real on_gameover, but an unplanned transport-drop marker is also "
             "present -- this is DET-FLAKE's environmental class, not a clean elimination"
+        )
+    crashed = [(p.get("role"), m) for p in peers for m in _crash_markers(p)]
+    if crashed:
+        return None, (
+            "every peer logged a real on_gameover, but %s wrote a crash marker during the run -- a peer "
+            "that faulted is not a clean end" % ", ".join("%s (%s)" % c for c in crashed)
         )
     steps = []
     for p, gclk in gos:
@@ -4524,7 +4627,9 @@ def analyse(args):
             if fm_step is not None
             else None
         )
-        env_kind, env_reasons = environmental_verdict(harness_peers, fm_step, fm_clock)
+        env_kind, env_reasons = environmental_verdict(
+            harness_peers, fm_step, fm_clock, d26_step=d26_step
+        )
         for r in env_reasons:
             print("   LINK/MATCH: %s" % r)
         out["environmental"] = env_kind in ("ended", "ended_explains")

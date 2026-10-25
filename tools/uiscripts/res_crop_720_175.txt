@@ -1,0 +1,40 @@
+# res_crop_720_175 / res_crop_720_175_gdi -- mods:RES18/RES23 (R720 fix): the user's rc4 setup. resolution=1280x720 (rendered 1280x736, cropped) in a borderless 2560x1440
+# window at Interface size 175 -- a percentage the layout cannot use (the panel at 175% is 280 px, the fit zoom 2 already makes it 320): the presenter falls back to the 100
+# base layout and the hooks must agree: the game's own cursor and the ESC menu stay IN the frame. Before the fix the cursor and the ESC menu were captured out of the frame and
+# placed nowhere. The two rows run this script on the d3d11 and the gdi presenter (ini/res_crop_720_175[_gdi].ini); tools/check_res_fallback.py reads the captures.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winclient 2560 1440
+screensettled
+gameclock +100
+log res_crop_720_175 frame_ready
+# a  the game cursor parked on a visible map pixel (frame (500,350)): the frame, the presenter's CPU twin and what the presenter put on screen
+cursorhold 500 350 6
+capture res_crop_720_175_a_frame
+pcapture res_crop_720_175_a
+bcapture res_crop_720_175_a
+# b  the cursor moved to (900,500): the frame and the presented image again (tools/check_res_fallback.py diffs a / b to find the one cursor source)
+cursorhold 900 500 6
+capture res_crop_720_175_b_frame
+bcapture res_crop_720_175_b
+# c  the cursor back on a, then the ESC menu over the map: the frame, the CPU twin and the presented image
+cursorhold 500 350 6
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+screensettled
+cursorhold 500 350 6
+capture res_crop_720_175_esc_frame
+pcapture res_crop_720_175_esc
+bcapture res_crop_720_175_esc
+log res_crop_720_175 COMPLETE
+end

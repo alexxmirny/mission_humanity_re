@@ -54,6 +54,9 @@
     <Filter Include="mh\addr">
       <UniqueIdentifier>{D5C39D10-F30C-58BD-92F3-CBBB917A04A5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mh\caps">
+      <UniqueIdentifier>{A5CF7344-B206-5A23-9339-405B4B41565A}</UniqueIdentifier>
+    </Filter>
     <Filter Include="mh\config">
       <UniqueIdentifier>{95D9B283-2B8D-5750-906B-7D82980CAABF}</UniqueIdentifier>
     </Filter>
@@ -124,6 +127,7 @@
     <ClCompile Include="res_list_selftest.cpp" />
     <ClCompile Include="map_zoom_selftest.cpp" />
     <ClCompile Include="wheel_list_selftest.cpp" />
+    <ClCompile Include="ui_layout_selftest.cpp" />
     <ClCompile Include="dinput_convert_selftest.cpp" />
     <ClCompile Include="run_context_selftest.cpp" />
     <ClCompile Include="udp_wire_selftest.cpp" />
@@ -287,6 +291,9 @@
     <ClCompile Include="..\mh\seams\bldg_pip_guard.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\order_wide_index.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\desync\seed_sanity.cpp">
       <Filter>mh\desync</Filter>
     </ClCompile>
@@ -351,13 +358,33 @@
       <Filter>mh\hook</Filter>
     </ClCompile>
     <ClCompile Include="interlock_selftest.cpp" />
+    <ClCompile Include="..\mh\caps\caps.cpp">
+      <Filter>mh\caps</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\caps\orders.cpp">
+      <Filter>mh\caps</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\caps\ovf.cpp">
+      <Filter>mh\caps</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\caps\ovf_save.cpp">
+      <Filter>mh\caps</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\caps\path_pool.cpp">
+      <Filter>mh\caps</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\patch\inmem_patch.cpp">
       <Filter>mh\patch</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\patch\inmem_install.cpp">
       <Filter>mh\patch</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\patch\caps_install.cpp">
+      <Filter>mh\patch</Filter>
+    </ClCompile>
     <ClCompile Include="inmem_patch_selftest.cpp" />
+    <ClCompile Include="caps_selftest.cpp" />
+    <ClCompile Include="ovf_selftest.cpp" />
     <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
@@ -2229,6 +2256,9 @@
     <ClCompile Include="..\mh\seams\lang_pack.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_options_scale.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\seams\gfx_capture.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
@@ -2267,6 +2297,9 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_crew_reminder.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\tact_scroll.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_bldg_build_probe.cpp">
@@ -2366,6 +2399,9 @@
       <Filter>mh\gfx</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\gfx\wheel_list.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\ui_layout.cpp">
       <Filter>mh\gfx</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\gfx\ddraw_own.cpp">

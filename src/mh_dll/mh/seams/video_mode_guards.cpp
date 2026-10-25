@@ -44,7 +44,9 @@
 #include "en_guard.h"               // EN-only build gate
 #include "hook/patch.h"             // patch_bytes_guarded
 #include "gfx/cpu_scale.h"          // the four filter kernels (shared with scalefiltertest)
-#include "gfx/ddraw_own.h"          // owned_ddraw_active / owned_filter
+#include "gfx/ddraw_own.h"          // owned_ddraw_active / owned_filter / owned_ui_panel_rows
+#include "addr/mh_calls.gen.h"      // game_SetEvent (the panel redraw on a visible-rows change)
+#include "seams/strat_pre_input.h"  // the strategic pump
 
 #pragma comment(lib, "user32.lib") // wvsprintfA
 
@@ -79,10 +81,25 @@ int galaxy_bg_mode(int m) { return m > 2 ? 2 : m; }
 
 int panel_rows_height(int h) { return h > PANEL_ROWS_MAX_H ? PANEL_ROWS_MAX_H : h; }
 
-int panel_fill_y(int h, int top, int rowh, int y_capped) {
-    if (h <= PANEL_ROWS_MAX_H || rowh <= 0 || h <= top) return y_capped;
-    const int y = top + ((h - top) / rowh) * rowh;
-    return y > y_capped ? y : y_capped;
+// RES23-S3 / RES26: THE panel fill rule. A list sizes itself to the rows the screen shows (Hp) and the game's own filler paints the panel base (pink) from the end of its
+// rows (y_stock) down. Every slot of the frame that fits WHOLE -- rows of row_h from `top` down to the last whole slot of the frame (win_h) -- gets the teal empty-slot
+// icon, EXCEPT the slot the screen's visible edge (vis_h) cuts: that is the leftover under the last whole visible row and stays pink (user, 2026-10-23: "teal only where
+// a whole row fits; the leftover under the last whole visible row is pink"). `skip` = the top of that slot, or -1 (vis_h at or past the frame, or on a slot boundary).
+// Nothing to add (false) at stock heights, where y_stock already is the last whole slot.
+bool panel_fill_plan(int win_h, int vis_h, int top, int row_h, int y_stock, int &icons_from, int &icons_to, int &skip) {
+    icons_from = icons_to = y_stock;
+    skip                  = -1;
+    if (row_h <= 0 || win_h <= top || y_stock >= win_h) return false;
+    if (vis_h < win_h && vis_h > top) {
+        const int y_cut = top + ((vis_h - top) / row_h) * row_h;
+        if (y_cut < vis_h) skip = y_cut;
+    }
+    const int y_full = top + ((win_h - top) / row_h) * row_h; // the last whole slot of the frame
+    const int from   = y_stock;
+    if (from >= y_full) return false;
+    icons_from = from;
+    icons_to   = y_full;
+    return true;
 }
 
 void bg_cache_release(bg_cache &c) {
@@ -299,78 +316,93 @@ __declspec(naked) void bg_restore_thunk() {
 // and the scroll list's clip bottom (0x00415db3) keep the real height, so the area under a capped list is
 // filled with the panel background.
 // RES7: the three sites that size a scrollable LIST (the body and arrow handlers and the list draw) take their cap
-// from g_list_cap instead: 768 until seams/ui_panel_rows.cpp has grown the tables, then the height they were grown
+// from the committed geometry (hud_geometry.list_cap) instead: 768 until seams/ui_panel_rows.cpp has grown the tables, then the height they were grown
 // for. They also notice a WindowHeight change (g_seen_h) and hand it to the grown tables' resize hook first, so the
 // scroll bodies and the stale-row cleanup follow every size change whichever route made it. The other three
 // (llm_ui_group_tab_on_click, llm_strat_ui_unit_panel_tick, llm_ui_selection_panel_refresh: the selected-unit
 // view, which hides a fixed group by the control-group-0 row count) keep the 768 cap.
-int g_list_cap                  = 768;
 int g_seen_h                    = 0;
 void(__cdecl *g_on_height)(int) = nullptr;
 
-void __cdecl list_height_seen() {
-    const int h = *(const int *)mh::addr::WindowHeight;
-    g_seen_h    = h;
-    if (g_on_height) g_on_height(h);
+// RES4 stage 3 / RES23-S3: the height the panel lists size themselves to = min(WindowHeight, Hp), Hp being the frame rows of the side panel the screen shows when
+// [video] ui_scale is in force (else unlimited). Hp and the list cap come from the COMMITTED geometry (before the first commit: the live value / 768); min'ed with
+// WindowHeight BEFORE the caps, so no list computes a row nobody sees.
+static int hp_limit() {
+    const int hp = mh::gfx::owned_ui_panel_rows();
+    return hp > 0 ? hp : 0x7fffffff;
+}
+static int list_cap() { return mh::gfx::owned_hud_list_cap(); }
+
+// The scrollable lists' row-count height for `wh`: min(wh, Hp), reported to the RES7 resize hook when it changed, then the list cap.
+int __cdecl panel_list_rows_for(int wh) {
+    const int hp = hp_limit();
+    int       h  = wh < hp ? wh : hp;
+    if (h != g_seen_h) {
+        g_seen_h = h;
+        if (g_on_height) g_on_height(h);
+    }
+    const int cap = list_cap();
+    return h < cap ? h : cap;
+}
+// The selected-unit view (it hides a fixed group by the control-group-0 row count) keeps the stock 768 cap.
+int __cdecl panel_unit_rows_for(int wh) {
+    const int hp = hp_limit();
+    const int h  = wh < hp ? wh : hp;
+    return h < PANEL_ROWS_MAX_H ? h : PANEL_ROWS_MAX_H;
 }
 
 // clang-format off
+// Each thunk replaces `mov REG, [WindowHeight]` and returns the row-count height in that register (every other register preserved). After pushad the saved
+// EBX sits at [esp+0x10] and EDX at [esp+0x14] (and one dword of argument pushed on top until `add esp, 4`).
 __declspec(naked) void panel_list_h_edx() {
     __asm {
         mov edx, ds:[0x005202cc]
-        cmp edx, g_seen_h
-        je  seen
         pushad
-        call list_height_seen
+        push edx
+        call panel_list_rows_for
+        add  esp, 4
+        mov  [esp + 0x14], eax
         popad
-        mov edx, ds:[0x005202cc]
-    seen:
-        cmp edx, g_list_cap
-        jle ok
-        mov edx, g_list_cap
-    ok:
         ret
     }
 }
 __declspec(naked) void panel_list_h_ebx() {
     __asm {
         mov ebx, ds:[0x005202cc]
-        cmp ebx, g_seen_h
-        je  seen
         pushad
-        call list_height_seen
+        push ebx
+        call panel_list_rows_for
+        add  esp, 4
+        mov  [esp + 0x10], eax
         popad
-        mov ebx, ds:[0x005202cc]
-    seen:
-        cmp ebx, g_list_cap
-        jle ok
-        mov ebx, g_list_cap
-    ok:
         ret
     }
 }
 __declspec(naked) void panel_rows_h_edx() {
     __asm {
         mov edx, ds:[0x005202cc]
-        cmp edx, 768
-        jle ok
-        mov edx, 768
-    ok:
+        pushad
+        push edx
+        call panel_unit_rows_for
+        add  esp, 4
+        mov  [esp + 0x14], eax
+        popad
         ret
     }
 }
 __declspec(naked) void panel_rows_h_ebx() {
     __asm {
         mov ebx, ds:[0x005202cc]
-        cmp ebx, 768
-        jle ok
-        mov ebx, 768
-    ok:
+        pushad
+        push ebx
+        call panel_unit_rows_for
+        add  esp, 4
+        mov  [esp + 0x10], eax
+        popad
         ret
     }
 }
 // clang-format on
-static_assert(mh::video::PANEL_ROWS_MAX_H == 768, "the thunks hardcode the cap");
 
 // The four calls of llm_ui_panel_background_tile_draw (0x0041bd25, __watcall EAX = y_start) that follow a list's rows: the
 // scroll-list draw (0x00415f2d; its descriptor is the frame's [ebp-0x2c]) and the three unit-panel ones (0x004193c0,
@@ -398,15 +430,36 @@ __declspec(naked) void draw_icon_vclipped(int x, int y, const void *icon) {
     }
 }
 // clang-format on
-int __cdecl panel_fill_y_impl(int y, const uint8_t *desc) {
-    const int rowh = *(const int *)desc, top = *(const int *)(desc + 0x21);
-    const int y_eff = mh::video::panel_fill_y(*(const int *)mh::addr::WindowHeight, top, rowh, y);
-    if (y_eff > y && rowh > 0) {
-        const int   x    = *(const int *)(desc + 0x1d);
-        const void *icon = *(const void *const *)(0x0050e2b3u + (uintptr_t)*(const int *)(desc + 0x11) * 4u);
-        for (int yy = y; yy < y_eff; yy += rowh) draw_icon_vclipped(x, yy, icon);
+// RES23-S3: THE panel fill, one pass. The thunk (1) asks the one rule (panel_fill_plan, fed by the committed geometry only) which slots get teal icons, (2) lets the game's
+// filler paint the panel base from the stock start -- the single fill call, as in retail -- and (3) draws the teal empty-slot icons over it. Order matters: the base is
+// pink all the way down, the icons are laid on top; only the partial gap stays pink.
+void *const fill_tile_draw = (void *)0x0041bd25u; // llm_ui_panel_background_tile_draw (__watcall EAX = y_start): the panel base from y_start to the window bottom
+struct fill_job {
+    int         from = 0, to = 0, rowh = 0, x = 0, skip = -1;
+    const void *icon = nullptr;
+} g_fill;
+int __cdecl panel_fill_prepare(int y, const uint8_t *desc) {
+    const int                    rowh = *(const int *)desc, top = *(const int *)(desc + 0x21);
+    const mh::gfx::hud_geometry &g     = mh::gfx::owned_hud_geometry();
+    const int                    win_h = g.epoch && g.frame_h > 0 ? g.frame_h : *(const int *)mh::addr::WindowHeight;
+    const int                    vis_h = g.epoch ? g.vis_h : (win_h < hp_limit() ? win_h : hp_limit());
+    g_fill.rowh                        = 0;
+    int from = 0, to = 0, skip = -1;
+    if (mh::video::panel_fill_plan(win_h, vis_h, top, rowh, y, from, to, skip)) {
+        g_fill.skip = skip;
+        g_fill.from = from;
+        g_fill.to   = to;
+        g_fill.rowh = rowh;
+        g_fill.x    = *(const int *)(desc + 0x1d);
+        g_fill.icon = *(const void *const *)(0x0050e2b3u + (uintptr_t)*(const int *)(desc + 0x11) * 4u);
     }
-    return y_eff;
+    return y; // the filler starts where the game's rows end
+}
+void __cdecl panel_fill_icons() {
+    if (g_fill.rowh <= 0) return;
+    for (int yy = g_fill.from; yy < g_fill.to; yy += g_fill.rowh)
+        if (yy != g_fill.skip) draw_icon_vclipped(g_fill.x, yy, g_fill.icon);
+    g_fill.rowh = 0;
 }
 // clang-format off
 __declspec(naked) void panel_fill_thunk_global() {
@@ -415,12 +468,15 @@ __declspec(naked) void panel_fill_thunk_global() {
         push edx
         push 0x00510082
         push eax
-        call panel_fill_y_impl
+        call panel_fill_prepare
         add  esp, 8
         pop  edx
         pop  ecx
-        mov  ecx, 0x0041bd25
-        jmp  ecx
+        call dword ptr [fill_tile_draw]
+        pushad
+        call panel_fill_icons
+        popad
+        ret
     }
 }
 __declspec(naked) void panel_fill_thunk_frame() {
@@ -429,12 +485,15 @@ __declspec(naked) void panel_fill_thunk_frame() {
         push edx
         push dword ptr [ebp - 0x2c]
         push eax
-        call panel_fill_y_impl
+        call panel_fill_prepare
         add  esp, 8
         pop  edx
         pop  ecx
-        mov  ecx, 0x0041bd25
-        jmp  ecx
+        call dword ptr [fill_tile_draw]
+        pushad
+        call panel_fill_icons
+        popad
+        ret
     }
 }
 // clang-format on
@@ -456,6 +515,8 @@ bool arm_call(uintptr_t site, const uint8_t *expect, int len, void *thunk, const
 }
 
 } // namespace
+
+static void hud_commit_pump(); // below
 
 bool install_mode_change_guards(const char *ini) {
     if (!mh::en_build_ok()) return false; // EN-only
@@ -494,7 +555,7 @@ bool install_mode_change_guards(const char *ini) {
         struct site {
             uintptr_t addr;
             bool      ebx;
-            bool      list; // RES7: a scrollable list's row count (g_list_cap), not the selected-unit view's
+            bool      list; // RES7: a scrollable list's row count (hud_geometry.list_cap), not the selected-unit view's
         };
         // each `mov reg, [0x005202cc]` (8B 15 / 8B 1D + disp32) in a row-count computation
         static const site SITES[] = {{0x00412163u, false, true}, {0x0041301cu, false, true}, {0x00415c86u, true, true}, {0x0041927cu, false, false}, {0x004195aeu, false, false}, {0x0041981fu, false, false}};
@@ -528,6 +589,7 @@ bool install_mode_change_guards(const char *ini) {
         }
         if (patched == (int)(sizeof(SITES) / sizeof(SITES[0]) + sizeof(FILL_SITES) / sizeof(FILL_SITES[0]))) {
             g_p6_armed = true;
+            mh::seams::strat_pre_input_add(hud_commit_pump, "the RES4 panel-rows redraw");
             mg_log("; [video] side-panel list rows capped at the 768 mode (%d sites): taller modes keep the stock panels", patched);
         } else
             ok = false;
@@ -537,10 +599,52 @@ bool install_mode_change_guards(const char *ini) {
 
 bool panel_rows_p6_armed() { return g_p6_armed; }
 
+// RES23-S2: THE commit point of the HUD geometry. Runs first thing in every strategic frame (modes 2 and 5), before anything of the frame is drawn:
+// it takes the pending Interface size and recomputes the whole panel rows (mh::gfx::owned_hud_commit), so the six row-count thunks, the filler and the
+// RES7 resize of this frame all read ONE geometry, and the presenter stamps the frame with its epoch.
+//
+// RES4/RES19: the panels are drawn only when dirty (the tab dispatchers draw behind a refresh flag), and the bottom-strip extension only on the game's
+// view-resize-pending flag. A commit that changed the percentage or the rows the screen shows therefore owes EVERY panel mode (selected unit, ship,
+// building lists, ...) and the strip -- extension and corner -- a redraw in the same frame: game_SetEvent(HUD_REDRAW_ALL = 0x0a) sets the panel-switch and
+// view-resize flags the stock code redraws all of that from (the tutorial start and every picker apply use it). The panel height the lists size
+// themselves to is part of the same debt: a window or mode change that moved min(WindowHeight, Hp) is paid the same way. Owed in mode 5 (paused), paid at
+// the next mode 2 frame.
+static bool g_redraw_owed = false;
+static void hud_commit_pump() {
+    const int m = *(const uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+    if (m != 2 && m != 5) return;
+    if (mh::gfx::owned_hud_commit(true)) g_redraw_owed = true; // the commit also owes it when the rows the lists size to (min(frame, Hp)) moved (RES23-S3: was a second tracker here)
+    if (g_redraw_owed && m == 2) {
+        g_redraw_owed = false;
+        mh::call::game_SetEvent(0x0a);
+    }
+}
+
+// The picker applied a mode (seams/video.cpp on_view_set_mode_post): recompute the frame-dependent part of the geometry for the new frame at the
+// percentage already committed. Any redraw it owes is paid by the next strategic frame's pump.
+void panel_geometry_recommit(bool applied_from_options) {
+    if (applied_from_options ? mh::gfx::owned_hud_commit_applied() : mh::gfx::owned_hud_commit(false)) {
+        g_redraw_owed = true;
+        // RES26: in a dialog mode (3, 4) the strategic pump does not run, so the debt would wait for the resume: ask for the panel redraw now, the game repaints
+        // the (hidden) frame behind the menu from the flags like it does after a picker apply.
+        const int m = *(const uint8_t *)mh::addr::_G_LLM_GAME_MODE;
+        if (applied_from_options && (m == 3 || m == 4)) {
+            g_redraw_owed = false;
+            mh::call::game_SetEvent(0x0a);
+        }
+    }
+}
+
+int panel_effective_height() {
+    const int wh = *(const int *)mh::addr::WindowHeight;
+    const int hp = hp_limit();
+    return wh < hp ? wh : hp;
+}
+
 void set_panel_list_cap(int h, void(__cdecl *on_height)(int)) {
     g_on_height = on_height;
-    g_seen_h    = 0; // the next list row count reports the current height
-    g_list_cap  = h > PANEL_ROWS_MAX_H ? h : PANEL_ROWS_MAX_H;
+    g_seen_h    = 0;                 // the next list row count reports the current height
+    mh::gfx::owned_hud_set_built(h); // the list cap lives in the committed geometry (max(768, h))
 }
 
 } // namespace mh::video

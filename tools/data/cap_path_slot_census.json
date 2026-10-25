@@ -1,0 +1,1084 @@
+{
+ "_generated_by": "tools/scan_cap_path_slots.py --gen",
+ "_what": "scan_cap_path_slots.py -- PT-CAP9-U4a: the path-slot site census, every site classified.\n\nWHY. U4 raises the per-player path pool 100 -> 500 slots (design: tmp/capraise/u4/REPORT.md, user decisions\n2026-10-21). The pool is three arrays plus a byte in the unit record, and every access to them is an\ninstruction the patcher must either MOVE, SWITCH on the raise, or consciously leave alone:\n\n  path_slot_id   unit record +0xaa (a byte; 0xff = no path), read by 54 MOVZX, checked by 17 CMP ,0xff, written by 4\n  buffer         0xaee8c0  byte {heading,run}[8 players][100 slots][300 waypoints]; player stride 0xea60, slot 0x258\n  flags          0xb74bb0  byte[8][100], player stride IMUL 0x64\n  free count     0xb63bc0  int[8]\n  data pointers  0x5d0ac0 -> flags, 0x5d0ac4 -> buffer (tactical row 0)\n  hole           unit record +0xda..+0xdb, the 16-bit id's new home: NO instruction may touch it\n\nEach site gets one POLICY (a column, derived from the class by `policy_of`, so a hand-edited verdict goes red):\n\n  always_on        relocation: base / stride / size / data-pointer value. Applied whether or not the raise is ON.\n  raise_switched   only behind the raise: the 6 scanner bounds, the free-count start value, the id reads (MOVZX\n                   byte -> word at the new +0xda) and the id writes. Raise OFF never writes the hole.\n  unchanged        stays as shipped: map_SavePlanetToDisk / map_LoadPlanetFromDisk keep the STOCK addresses as the\n                   canonical mirror (the PT-CAP8 pattern), the CMP byte,0xff checks (the byte stays 0xff = no\n                   path), the free-count INC/DEC/save/load, the two row-0 tactical loops, the pointer reads.\n\nThis tool applies NOTHING. U4b reads the table. The scanner takes an IMAGE PATH, so the same code answers\n\"does any stock pool site survive in this (patched) image\": `--residual --exe PATCHED` (the U4b gate; the\nclean exe lists every always_on site, a correctly patched image lists none).\n\nDATA. tools/data/cap_path_slot_census.json. `--check` validates every invariant hermetically, re-derives the\nwhole table from the clean EN exe (md5 b3b389e8...) when it is on this machine (otherwise says so), and runs the\nhook-overlap check (no mh.dll hook may overlap a U4 site). `--selftest` plants mutations that must go red.\n\nusage:\n  python tools/scan_cap_path_slots.py --check [--exe PATH]\n  python tools/scan_cap_path_slots.py --selftest\n  python tools/scan_cap_path_slots.py --gen [--exe PATH]\n  python tools/scan_cap_path_slots.py --residual --exe IMAGE\n  python tools/scan_cap_path_slots.py --report\n",
+ "exe_md5": "b3b389e8eb228638de8dbbc5c228118b",
+ "design_floors": {
+  "id_instructions": 75,
+  "id_read": 54,
+  "id_check": 17,
+  "id_write": 4,
+  "buf_base": 132,
+  "buf_stride": 140,
+  "flags_base": 19,
+  "flags_stride": 16,
+  "count_base": 5
+ },
+ "counts": {
+  "buf_base": 158,
+  "buf_base_instructions": 158,
+  "buf_size": 3,
+  "buf_stride": 140,
+  "by_policy": {
+   "always_on": 333,
+   "raise_switched": 65,
+   "unchanged": 34
+  },
+  "count_base": 5,
+  "count_init": 1,
+  "data_ptr": 2,
+  "data_ptr_read": 2,
+  "flag_clear_bound": 1,
+  "flags_base": 19,
+  "flags_size": 2,
+  "flags_stride": 16,
+  "id_check": 17,
+  "id_functions": 26,
+  "id_instructions": 75,
+  "id_read": 54,
+  "id_write": 4,
+  "scanner_bound": 6,
+  "tact_bound": 2
+ },
+ "columns": [
+  "va",
+  "len",
+  "foff",
+  "w",
+  "fn",
+  "cls",
+  "role",
+  "policy",
+  "ins",
+  "hex"
+ ],
+ "windows": {
+  "0x42b32e": {
+   "hex": "6b55e864031510875500",
+   "rows": [
+    4371246
+   ],
+   "ins": [
+    "imul edx, dword ptr [ebp - 0x18], 0x64",
+    "add edx, dword ptr [0x558710]"
+   ]
+  },
+  "0x42e735": {
+   "hex": "6b45dc64c680b04bb70001",
+   "rows": [
+    4384565,
+    4384569
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x24], 0x64",
+    "mov byte ptr [eax + 0xb74bb0], 1"
+   ]
+  },
+  "0x42e757": {
+   "hex": "6b45dc640345e0",
+   "rows": [
+    4384599
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x24], 0x64",
+    "add eax, dword ptr [ebp - 0x20]"
+   ]
+  },
+  "0x42fefb": {
+   "hex": "6b45e864030510875500",
+   "rows": [
+    4390651
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x18], 0x64",
+    "add eax, dword ptr [0x558710]"
+   ]
+  },
+  "0x430038": {
+   "hex": "6b45e864030510875500",
+   "rows": [
+    4390968
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x18], 0x64",
+    "add eax, dword ptr [0x558710]"
+   ]
+  },
+  "0x430141": {
+   "hex": "6b55e86401d0",
+   "rows": [
+    4391233
+   ],
+   "ins": [
+    "imul edx, dword ptr [ebp - 0x18], 0x64",
+    "add eax, edx"
+   ]
+  },
+  "0x43128a": {
+   "hex": "6b45ec6401d0",
+   "rows": [
+    4395658
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x14], 0x64",
+    "add eax, edx"
+   ]
+  },
+  "0x45623c": {
+   "hex": "837de4647c07",
+   "rows": [
+    4547132
+   ],
+   "ins": [
+    "cmp dword ptr [ebp - 0x1c], 0x64",
+    "jl 0x456249"
+   ]
+  },
+  "0x456249": {
+   "hex": "6b45e8640345e4",
+   "rows": [
+    4547145
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x18], 0x64",
+    "add eax, dword ptr [ebp - 0x1c]"
+   ]
+  },
+  "0x461af7": {
+   "hex": "c680f28cdd00ff",
+   "rows": [
+    4594423
+   ],
+   "ins": [
+    "mov byte ptr [eax + 0xdd8cf2], 0xff"
+   ]
+  },
+  "0x4620c0": {
+   "hex": "c680f28cdd00ff",
+   "rows": [
+    4595904
+   ],
+   "ins": [
+    "mov byte ptr [eax + 0xdd8cf2], 0xff"
+   ]
+  },
+  "0x485d62": {
+   "hex": "837ddc647c0d",
+   "rows": [
+    4742498
+   ],
+   "ins": [
+    "cmp dword ptr [ebp - 0x24], 0x64",
+    "jl 0x485d75"
+   ]
+  },
+  "0x485d7c": {
+   "hex": "6bc0640345dc",
+   "rows": [
+    4742524
+   ],
+   "ins": [
+    "imul eax, eax, 0x64",
+    "add eax, dword ptr [ebp - 0x24]"
+   ]
+  },
+  "0x4950ef": {
+   "hex": "837dd4647c0d",
+   "rows": [
+    4804847
+   ],
+   "ins": [
+    "cmp dword ptr [ebp - 0x2c], 0x64",
+    "jl 0x495102"
+   ]
+  },
+  "0x495106": {
+   "hex": "6bc0640345d4",
+   "rows": [
+    4804870
+   ],
+   "ins": [
+    "imul eax, eax, 0x64",
+    "add eax, dword ptr [ebp - 0x2c]"
+   ]
+  },
+  "0x49573c": {
+   "hex": "837dd8647c0d",
+   "rows": [
+    4806460
+   ],
+   "ins": [
+    "cmp dword ptr [ebp - 0x28], 0x64",
+    "jl 0x49574f"
+   ]
+  },
+  "0x495753": {
+   "hex": "6bc0640345d8",
+   "rows": [
+    4806483
+   ],
+   "ins": [
+    "imul eax, eax, 0x64",
+    "add eax, dword ptr [ebp - 0x28]"
+   ]
+  },
+  "0x495f44": {
+   "hex": "66837de864",
+   "rows": [
+    4808516
+   ],
+   "ins": [
+    "cmp word ptr [ebp - 0x18], 0x64"
+   ]
+  },
+  "0x495f55": {
+   "hex": "6b55e0640fb745e8",
+   "rows": [
+    4808533
+   ],
+   "ins": [
+    "imul edx, dword ptr [ebp - 0x20], 0x64",
+    "movzx eax, word ptr [ebp - 0x18]"
+   ]
+  },
+  "0x495fbe": {
+   "hex": "66837de464",
+   "rows": [
+    4808638
+   ],
+   "ins": [
+    "cmp word ptr [ebp - 0x1c], 0x64"
+   ]
+  },
+  "0x495fd6": {
+   "hex": "6bc0640fb755e4",
+   "rows": [
+    4808662
+   ],
+   "ins": [
+    "imul eax, eax, 0x64",
+    "movzx edx, word ptr [ebp - 0x1c]"
+   ]
+  },
+  "0x496a3f": {
+   "hex": "6bd26401d0",
+   "rows": [
+    4811327
+   ],
+   "ins": [
+    "imul edx, edx, 0x64",
+    "add eax, edx"
+   ]
+  },
+  "0x496a5e": {
+   "hex": "c680f28cdd00ff",
+   "rows": [
+    4811358
+   ],
+   "ins": [
+    "mov byte ptr [eax + 0xdd8cf2], 0xff"
+   ]
+  },
+  "0x496a9a": {
+   "hex": "6b45e8640345f0",
+   "rows": [
+    4811418
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x18], 0x64",
+    "add eax, dword ptr [ebp - 0x10]"
+   ]
+  },
+  "0x496ab8": {
+   "hex": "8a45f08882f28cdd00",
+   "rows": [
+    4811451
+   ],
+   "ins": [
+    "mov al, byte ptr [ebp - 0x10]",
+    "mov byte ptr [edx + 0xdd8cf2], al"
+   ]
+  },
+  "0x49a1f2": {
+   "hex": "837de8647c0a",
+   "rows": [
+    4825586
+   ],
+   "ins": [
+    "cmp dword ptr [ebp - 0x18], 0x64",
+    "jl 0x49a202"
+   ]
+  },
+  "0x49a202": {
+   "hex": "6b45e0640345e8",
+   "rows": [
+    4825602
+   ],
+   "ins": [
+    "imul eax, dword ptr [ebp - 0x20], 0x64",
+    "add eax, dword ptr [ebp - 0x18]"
+   ]
+  }
+ },
+ "hole": {
+  "bytes": [
+   218,
+   219
+  ],
+  "free_bytes_design": [
+   131,
+   202,
+   203,
+   204,
+   205,
+   206,
+   207,
+   218,
+   219,
+   224,
+   225
+  ],
+  "candidates": [],
+  "verdict": "no instruction touches +0xda..+0xdb",
+  "probe_other_structs": [
+   {
+    "va": "0x4f19da",
+    "fn": "__InitThreadData",
+    "off": 218,
+    "size": 4,
+    "ins": "mov dword ptr [ebx + 0xda], eax"
+   },
+   {
+    "va": "0x4f1a51",
+    "fn": "__NTAddThread",
+    "off": 218,
+    "size": 4,
+    "ins": "mov eax, dword ptr [eax + 0xda]"
+   },
+   {
+    "va": "0x4f1aa0",
+    "fn": "__NTRemoveThread",
+    "off": 218,
+    "size": 4,
+    "ins": "mov eax, dword ptr [eax + 0xda]"
+   },
+   {
+    "va": "0x4f1bdb",
+    "fn": "__InitMultipleThread",
+    "off": 218,
+    "size": 4,
+    "ins": "mov eax, dword ptr [edx + 0xda]"
+   }
+  ],
+  "probe_note": "unrestricted probe: every non-stack [reg+d] covering +0xda/+0xdb in ANY function. These are in functions that never address the units array or the id byte (other structs); the contract check above is restricted to unit-touching functions plus the direct form [units+0xda]."
+ },
+ "id_overlap_candidates": [],
+ "data_not_pointers": {
+  "0x5074d4": "inside a table of 16-bit pairs (0x14e0130 0x16d 0x3c001f 0x79005b [0xb60098] 0xf400d5 ...) between the strtok/strtod ctype tables; no instruction addresses it",
+  "0x5110a4": "id-byte record table (0xb103 [0xb20400] 0xb3040000 0x4000000 0xb4 0xb504 ...): 0xb2 0xb3 0xb4 are the incrementing id of unaligned records, the same table as the units census' 0x511180; no references",
+  "0x5110b8": "same incrementing-id record table as 0x5110a4 ([0xb60400] 0xb7040000 0x4000000 0xb8 0xb904); no references",
+  "0x66bdec": "x86 code bytes embedded in DGROUP (8b 1d fc .. 47 37 83 ... a copy of a code fragment, with 0xb64bb0 beside it); an UNALIGNED 0x00b3820f, not a pointer; no instruction addresses it"
+ },
+ "no_stride_pair": [
+  "0x494bbd"
+ ],
+ "unpaired_imul64": [],
+ "args_verdict": {
+  "0x48b0f3": {
+   "caller": "llm_strat_storage_exit_air",
+   "callee": "llm_strat_storage_setup_exit_path (0x495cd3, __watcall + 2 stack dwords, RET 8)",
+   "verdict": "int (32-bit dword end to end)",
+   "evidence": [
+    "slot = exit_air's 4th register param (ECX), spilled `MOV [EBP-0x20],ECX` (dword, 0x48b03b) and pushed `PUSH dword [EBP-0x20]` (0x48b0e0/0x48b0e3); the callee reads it as the dword [EBP+8]",
+    "callee uses it as IMUL [EBP+8],0x258 (slot offset in the buffer, 0x495ea1/0x495ecf) and `MOV EBX,[EBP+8]` for attach_slot (0x495ee6, a dword in EBX)",
+    "the value originates in exit_storage_begin: `CALL find_free_slot; MOV [EBP-0x1c],EAX; CMP [EBP-0x1c],-1` (0x47f04b..0x47f053), a signed dword"
+   ],
+   "u4_impact": "none: no byte/word truncation anywhere on the path; a slot > 255 flows through unchanged. The callee's own buffer writes (0x495eb7, 0x495edf) and attach call are already census rows."
+  },
+  "0x48ba48": {
+   "caller": "llm_strat_storage_accept_landing",
+   "callee": "llm_strat_storage_setup_approach_path (0x495b6f, __watcall, 4 register params)",
+   "verdict": "int (32-bit dword end to end)",
+   "evidence": [
+    "slot = accept_landing's 4th register param (ECX), spilled `MOV [EBP-0x10],ECX` (dword, 0x48ba38), passed in EBX (`MOV EBX,[EBP-0x10]`, 0x48ba3e) and stored `MOV [EBP-0x20],EBX` in the callee (0x495b8a)",
+    "callee hands it on as `MOV EBX,[EBP-0x20]; CALL attach_slot` (0x495ca0/0x495caa) and indexes the buffer with the stack walk, never with the slot value",
+    "the value originates in landing_request: `CALL find_free_slot; MOV [EBP-0x18],EAX; CMP [EBP-0x18],-1` (0x4801a2..0x4801aa), a signed dword"
+   ],
+   "u4_impact": "none, as above."
+  }
+ },
+ "hook_ok": {
+  "0x41ec1d": "SITE_ATK_HEADING: MOV AL,[EBP-0x20] (3 bytes 0x41ec1d-0x41ec1f) ends where the buf_base site 0x41ec20 begins; the hook flips ONE operand byte at 0x41ec1f, no detour",
+  "0x41ec1f": "the operand byte of that same MOV AL,[EBP-0x20] (E0 -> E4); one byte, inside the MOV"
+ },
+ "hooked_function_entries": [
+  [
+   "llm_strat_bldg_anim_state_helipad",
+   "0x4773f4"
+  ],
+  [
+   "llm_strat_group_move_order_pathfind",
+   "0x41ca37"
+  ],
+  [
+   "llm_strat_group_path_step_append",
+   "0x41fdda"
+  ],
+  [
+   "llm_strat_group_path_step_record",
+   "0x41f7ef"
+  ],
+  [
+   "llm_strat_group_plan_formation_positions",
+   "0x41dbfe"
+  ],
+  [
+   "llm_strat_path_alloc_slot",
+   "0x49a1ce"
+  ],
+  [
+   "llm_strat_path_attach_slot",
+   "0x496a7b"
+  ],
+  [
+   "llm_strat_path_find_free_slot",
+   "0x495f1b"
+  ],
+  [
+   "llm_strat_path_free_slot",
+   "0x4969e8"
+  ],
+  [
+   "llm_strat_path_make_single_step",
+   "0x49561f"
+  ],
+  [
+   "llm_strat_path_step_check_and_request_detour",
+   "0x49a23d"
+  ],
+  [
+   "llm_strat_path_write_from_solver",
+   "0x49581d"
+  ],
+  [
+   "llm_strat_pathfind_build_steps",
+   "0x41e836"
+  ],
+  [
+   "llm_strat_storage_setup_approach_path",
+   "0x495b6f"
+  ],
+  [
+   "llm_strat_storage_setup_exit_path",
+   "0x495cd3"
+  ],
+  [
+   "llm_strat_unit_assign_path_from_job_result",
+   "0x49508a"
+  ],
+  [
+   "llm_strat_unit_assign_shared_path",
+   "0x495f87"
+  ],
+  [
+   "llm_strat_unit_format_debug_status",
+   "0x49f146"
+  ],
+  [
+   "llm_strat_unit_group_step_ground",
+   "0x483011"
+  ],
+  [
+   "llm_strat_unit_group_step_plane",
+   "0x484b4a"
+  ],
+  [
+   "llm_strat_unit_init_record",
+   "0x4619b0"
+  ],
+  [
+   "llm_strat_unit_path_detour",
+   "0x4209b2"
+  ],
+  [
+   "llm_strat_unit_path_encode_directions",
+   "0x44955f"
+  ],
+  [
+   "llm_strat_unit_path_queue_count",
+   "0x41fea7"
+  ],
+  [
+   "llm_strat_unit_path_queue_splice",
+   "0x421758"
+  ],
+  [
+   "llm_strat_unit_path_step_blocked",
+   "0x495406"
+  ],
+  [
+   "llm_strat_unit_path_store_result",
+   "0x495aa0"
+  ],
+  [
+   "llm_strat_unit_release_path_and_targets",
+   "0x4888f4"
+  ],
+  [
+   "llm_strat_unit_state_die_explode",
+   "0x4854f3"
+  ],
+  [
+   "llm_strat_unit_state_dock_taxi_in",
+   "0x47f981"
+  ],
+  [
+   "llm_strat_unit_state_enter_walk_in",
+   "0x4803bf"
+  ],
+  [
+   "llm_strat_unit_state_group_marshal",
+   "0x482451"
+  ],
+  [
+   "llm_strat_unit_state_move_path",
+   "0x480b53"
+  ],
+  [
+   "llm_strat_unit_state_move_walker",
+   "0x47c903"
+  ],
+  [
+   "llm_strat_unit_state_plot_turn_path",
+   "0x485d43"
+  ],
+  [
+   "llm_strat_unit_state_remove_silent",
+   "0x48592d"
+  ],
+  [
+   "llm_strat_unit_state_stop_to_default",
+   "0x47e1e1"
+  ],
+  [
+   "llm_strat_unit_state_takeoff_taxi",
+   "0x47f69f"
+  ],
+  [
+   "llm_strat_unit_teardown_mapped",
+   "0x48753e"
+  ],
+  [
+   "llm_tact_group_issue_order",
+   "0x42b09f"
+  ],
+  [
+   "llm_tact_map_reset",
+   "0x42e713"
+  ],
+  [
+   "llm_tact_move_path_build",
+   "0x41c2ac"
+  ],
+  [
+   "llm_tact_move_path_preview_walk",
+   "0x42eaf9"
+  ],
+  [
+   "llm_tact_move_step_attempt",
+   "0x494b29"
+  ],
+  [
+   "llm_tact_unit_cmd_advance",
+   "0x431229"
+  ],
+  [
+   "llm_tact_unit_move_advance",
+   "0x430f5a"
+  ],
+  [
+   "llm_tact_unit_move_tick",
+   "0x42fb9b"
+  ],
+  [
+   "map_FillDefaults",
+   "0x45603e"
+  ],
+  [
+   "map_LoadPlanetFromDisk",
+   "0x448107"
+  ],
+  [
+   "map_SavePlanetToDisk",
+   "0x447bb3"
+  ],
+  [
+   "map_unit_Add",
+   "0x461e9e"
+  ]
+ ],
+ "pool_functions_without_id": [
+  "llm_strat_group_move_order_pathfind",
+  "llm_strat_group_path_step_append",
+  "llm_strat_group_path_step_record",
+  "llm_strat_path_alloc_slot",
+  "llm_strat_path_find_free_slot",
+  "llm_strat_path_write_from_solver",
+  "llm_strat_pathfind_build_steps",
+  "llm_strat_storage_setup_approach_path",
+  "llm_strat_storage_setup_exit_path",
+  "llm_strat_unit_assign_shared_path",
+  "llm_strat_unit_path_queue_count",
+  "llm_strat_unit_path_queue_splice",
+  "llm_strat_unit_path_store_result",
+  "llm_strat_unit_state_plot_turn_path",
+  "llm_tact_group_issue_order",
+  "llm_tact_map_reset",
+  "llm_tact_move_path_preview_walk",
+  "llm_tact_move_step_attempt",
+  "llm_tact_unit_cmd_advance",
+  "llm_tact_unit_move_advance",
+  "llm_tact_unit_move_tick",
+  "map_FillDefaults",
+  "map_LoadPlanetFromDisk",
+  "map_SavePlanetToDisk"
+ ],
+ "notes": [
+  "design floors vs measured: see counts; ids are counted per instruction (an instruction has one id operand).",
+  "tact_bound rows: llm_tact_move_step_attempt (the tactical scanner, slots 1..99) and llm_tact_map_reset (its reset) walk row 0 only; they are not in the design's list of six scanners. Policy unchanged (tactical never exceeds 100 slots); U4c decides whether a strategic->tactical->strategic round trip needs them to clear slots 100..500.",
+  "flag_clear_bound (map_FillDefaults 0x45623c) is always_on: with the flags stride 501 the clear must cover the whole row; clearing flags that raise OFF never sets is a no-op."
+ ],
+ "sites": [
+  [4310189,6,2,4,"llm_tact_move_path_build","data_ptr_read","0x5d0ac0","unchanged","mov edi, dword ptr [0x5d0ac0]","8b3dc00a5d00"],
+  [4310230,6,2,4,"llm_tact_move_path_build","data_ptr_read","0x5d0ac4","unchanged","mov ebp, dword ptr [0x5d0ac4]","8b2dc40a5d00"],
+  [4314424,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4314459,6,2,4,"llm_strat_group_move_order_pathfind","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], dl","8890c1e8ae00"],
+  [4314473,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul ebx, dword ptr [0x680ab0], 0xea60","691db00a680060ea0000"],
+  [4314508,6,2,4,"llm_strat_group_move_order_pathfind","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4314531,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4314560,7,2,4,"llm_strat_group_move_order_pathfind","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4314567,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4314596,7,2,4,"llm_strat_group_move_order_pathfind","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4315942,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4315971,7,2,4,"llm_strat_group_move_order_pathfind","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4315978,10,6,4,"llm_strat_group_move_order_pathfind","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4316007,7,2,4,"llm_strat_group_move_order_pathfind","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4316625,7,3,4,"llm_strat_group_plan_formation_positions","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4318822,7,3,4,"llm_strat_group_plan_formation_positions","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4318839,6,2,4,"llm_strat_group_plan_formation_positions","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4318861,7,2,4,"llm_strat_group_plan_formation_positions","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4318911,6,2,4,"llm_strat_group_plan_formation_positions","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4318939,6,2,4,"llm_strat_group_plan_formation_positions","buf_base","run","always_on","mov byte ptr [edx + 0xaee8c1], al","8882c1e8ae00"],
+  [4318957,6,2,4,"llm_strat_group_plan_formation_positions","buf_stride","player","always_on","imul ebx, edx, 0xea60","69da60ea0000"],
+  [4318985,6,2,4,"llm_strat_group_plan_formation_positions","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4319012,6,2,4,"llm_strat_group_plan_formation_positions","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4319034,7,2,4,"llm_strat_group_plan_formation_positions","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4319048,6,2,4,"llm_strat_group_plan_formation_positions","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4319070,7,2,4,"llm_strat_group_plan_formation_positions","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4319349,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4319371,7,2,4,"llm_strat_pathfind_build_steps","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4320091,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320113,7,2,4,"llm_strat_pathfind_build_steps","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4320127,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320149,7,2,4,"llm_strat_pathfind_build_steps","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4320227,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4320249,7,2,4,"llm_strat_pathfind_build_steps","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4320263,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4320288,6,2,4,"llm_strat_pathfind_build_steps","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4320387,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320409,7,2,4,"llm_strat_pathfind_build_steps","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4320423,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320445,7,2,4,"llm_strat_pathfind_build_steps","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4320482,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320504,7,2,4,"llm_strat_pathfind_build_steps","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4320518,6,2,4,"llm_strat_pathfind_build_steps","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4320540,7,2,4,"llm_strat_pathfind_build_steps","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4323344,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323372,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323415,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323444,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx edx, byte ptr [edx + 0xaee8be]","0fb692bee8ae00"],
+  [4323468,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323496,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323511,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323539,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323562,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323590,6,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","dec byte ptr [eax + 0xaee8bf]","fe88bfe8ae00"],
+  [4323596,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323624,7,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","cmp byte ptr [eax + 0xaee8bf], 0","80b8bfe8ae0000"],
+  [4323664,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323693,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx edx, byte ptr [edx + 0xaee8be]","0fb692bee8ae00"],
+  [4323717,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323745,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323760,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323788,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323811,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323839,6,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","dec byte ptr [eax + 0xaee8bf]","fe88bfe8ae00"],
+  [4323845,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4323873,7,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","cmp byte ptr [eax + 0xaee8bf], 0","80b8bfe8ae0000"],
+  [4323897,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323925,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4323942,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4323970,7,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","cmp byte ptr [eax + 0xaee8bf], 0xff","80b8bfe8ae00ff"],
+  [4323979,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324007,6,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","inc byte ptr [eax + 0xaee8bf]","fe80bfe8ae00"],
+  [4324015,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324044,7,2,4,"llm_strat_group_path_step_record","buf_base","run","always_on","mov byte ptr [edx + 0xaee8c1], 1","c682c1e8ae0001"],
+  [4324051,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324083,6,2,4,"llm_strat_group_path_step_record","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4324131,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324159,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324173,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324201,6,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","dec byte ptr [eax + 0xaee8bf]","fe88bfe8ae00"],
+  [4324207,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324235,7,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","cmp byte ptr [eax + 0xaee8bf], 0","80b8bfe8ae0000"],
+  [4324255,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324283,7,2,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","cmp byte ptr [eax + 0xaee8be], 0xd","80b8bee8ae000d"],
+  [4324292,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324320,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324332,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324360,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324408,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324436,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324470,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324498,7,3,4,"llm_strat_group_path_step_record","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324618,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324646,6,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","dec byte ptr [eax + 0xaee8bf]","fe88bfe8ae00"],
+  [4324652,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324680,7,2,4,"llm_strat_group_path_step_record","buf_base","off-1","always_on","cmp byte ptr [eax + 0xaee8bf], 0","80b8bfe8ae0000"],
+  [4324739,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324768,7,2,4,"llm_strat_group_path_step_record","buf_base","run","always_on","mov byte ptr [edx + 0xaee8c1], 1","c682c1e8ae0001"],
+  [4324775,10,6,4,"llm_strat_group_path_step_record","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4324807,6,2,4,"llm_strat_group_path_step_record","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4324864,10,6,4,"llm_strat_group_path_step_append","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324892,7,3,4,"llm_strat_group_path_step_append","buf_base","off-2","always_on","movzx eax, byte ptr [eax + 0xaee8be]","0fb680bee8ae00"],
+  [4324906,10,6,4,"llm_strat_group_path_step_append","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324934,6,2,4,"llm_strat_group_path_step_append","buf_base","off-1","always_on","inc byte ptr [eax + 0xaee8bf]","fe80bfe8ae00"],
+  [4324942,10,6,4,"llm_strat_group_path_step_append","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4324971,7,2,4,"llm_strat_group_path_step_append","buf_base","run","always_on","mov byte ptr [edx + 0xaee8c1], 1","c682c1e8ae0001"],
+  [4324978,10,6,4,"llm_strat_group_path_step_append","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4325010,6,2,4,"llm_strat_group_path_step_append","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4325099,10,6,4,"llm_strat_unit_path_queue_count","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4325125,7,2,4,"llm_strat_unit_path_queue_count","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4325138,10,6,4,"llm_strat_unit_path_queue_count","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4325164,7,3,4,"llm_strat_unit_path_queue_count","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4325197,10,6,4,"llm_strat_unit_path_queue_count","buf_stride","player","always_on","imul eax, dword ptr [0x680ab0], 0xea60","6905b00a680060ea0000"],
+  [4325223,7,3,4,"llm_strat_unit_path_queue_count","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4325233,10,6,4,"llm_strat_unit_path_queue_count","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4325259,7,3,4,"llm_strat_unit_path_queue_count","buf_base","run","always_on","movzx edx, byte ptr [eax + 0xaee8c1]","0fb690c1e8ae00"],
+  [4325284,10,6,4,"llm_strat_unit_path_queue_count","buf_stride","player","always_on","imul edx, dword ptr [0x680ab0], 0xea60","6915b00a680060ea0000"],
+  [4325310,7,3,4,"llm_strat_unit_path_queue_count","buf_base","run","always_on","movzx edx, byte ptr [eax + 0xaee8c1]","0fb690c1e8ae00"],
+  [4327968,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4327981,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4328017,7,3,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4328237,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4328292,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328305,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4328343,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4328365,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328378,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4328414,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4328456,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328469,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4328509,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4328531,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328544,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4328579,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4328779,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4328834,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328847,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4328885,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4328907,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4328920,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4328956,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4328998,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329011,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4329051,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4329073,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329086,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4329121,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4329321,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4329376,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329389,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4329427,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4329449,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329462,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4329498,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4329540,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329553,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4329593,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4329615,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329628,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4329663,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4329863,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4329918,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4329931,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4329969,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4329991,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330004,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4330040,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4330082,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330095,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4330135,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4330157,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330170,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4330205,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4330410,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4330465,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330478,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4330516,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4330538,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330551,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4330587,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4330629,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330642,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4330682,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4330704,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4330717,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4330752,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4330952,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx edx, byte ptr [edx + 0xdd8cf2]","0fb692f28cdd00"],
+  [4331007,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4331020,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4331058,6,2,4,"llm_strat_unit_path_detour","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4331080,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4331093,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x34], 0xea60","6945cc60ea0000"],
+  [4331129,7,2,4,"llm_strat_unit_path_detour","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4331171,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4331184,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x34], 0xea60","6955cc60ea0000"],
+  [4331224,6,2,4,"llm_strat_unit_path_detour","buf_base","off+0x2","always_on","mov byte ptr [edx + 0xaee8c2], al","8882c2e8ae00"],
+  [4331246,7,3,4,"llm_strat_unit_path_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4331259,7,3,4,"llm_strat_unit_path_detour","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x34], 0xea60","695dcc60ea0000"],
+  [4331294,7,2,4,"llm_strat_unit_path_detour","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 1","c680c3e8ae0001"],
+  [4331393,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4331416,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","mov dl, byte ptr [eax + 0xaee8c1]","8a90c1e8ae00"],
+  [4331422,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","dec byte ptr [eax + 0xaee8c1]","fe88c1e8ae00"],
+  [4331461,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4331484,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","mov dl, byte ptr [eax + 0xaee8c1]","8a90c1e8ae00"],
+  [4331490,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","dec byte ptr [eax + 0xaee8c1]","fe88c1e8ae00"],
+  [4331538,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4331564,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x20], 0xea60","695de060ea0000"],
+  [4331587,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","mov dl, byte ptr [edx + 0xaee8c1]","8a92c1e8ae00"],
+  [4331593,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], dl","8890c1e8ae00"],
+  [4331599,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4331625,7,3,4,"llm_strat_unit_path_queue_splice","buf_stride","player","always_on","imul ebx, dword ptr [ebp - 0x20], 0xea60","695de060ea0000"],
+  [4331648,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","heading","always_on","mov dl, byte ptr [edx + 0xaee8c0]","8a92c0e8ae00"],
+  [4331654,6,2,4,"llm_strat_unit_path_queue_splice","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], dl","8890c0e8ae00"],
+  [4371246,4,3,1,"llm_tact_group_issue_order","flags_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0x64","6b55e864"],
+  [4371256,7,2,4,"llm_tact_group_issue_order","flags_base","mem","always_on","mov byte ptr [edx + 0xb74bb0], 0","c682b04bb70000"],
+  [4384565,4,3,1,"llm_tact_map_reset","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x24], 0x64","6b45dc64"],
+  [4384569,7,2,4,"llm_tact_map_reset","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 1","c680b04bb70001"],
+  [4384583,4,3,1,"llm_tact_map_reset","tact_bound","slots 1..99, row 0","unchanged","cmp dword ptr [ebp - 0x20], 0x64","837de064"],
+  [4384599,4,3,1,"llm_tact_map_reset","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x24], 0x64","6b45dc64"],
+  [4384606,7,2,4,"llm_tact_map_reset","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 0","c680b04bb70000"],
+  [4385609,7,3,4,"llm_tact_move_path_preview_walk","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x20], 0xea60","6945e060ea0000"],
+  [4385632,7,2,4,"llm_tact_move_path_preview_walk","buf_base","heading","always_on","cmp byte ptr [eax + 0xaee8c0], 0","80b8c0e8ae0000"],
+  [4385645,7,3,4,"llm_tact_move_path_preview_walk","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4385668,7,3,4,"llm_tact_move_path_preview_walk","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4385678,7,3,4,"llm_tact_move_path_preview_walk","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0xea60","6955e060ea0000"],
+  [4385701,7,3,4,"llm_tact_move_path_preview_walk","buf_base","run","always_on","movzx eax, byte ptr [eax + 0xaee8c1]","0fb680c1e8ae00"],
+  [4390188,7,3,4,"llm_tact_unit_move_tick","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4390215,7,3,4,"llm_tact_unit_move_tick","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4390651,4,3,1,"llm_tact_unit_move_tick","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0x64","6b45e864"],
+  [4390661,7,2,4,"llm_tact_unit_move_tick","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 1","c680b04bb70001"],
+  [4390968,4,3,1,"llm_tact_unit_move_tick","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0x64","6b45e864"],
+  [4390978,7,2,4,"llm_tact_unit_move_tick","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 1","c680b04bb70001"],
+  [4391077,7,3,4,"llm_tact_unit_move_tick","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0xea60","6945e860ea0000"],
+  [4391104,7,2,4,"llm_tact_unit_move_tick","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4391233,4,3,1,"llm_tact_unit_move_tick","flags_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0x64","6b55e864"],
+  [4391239,7,2,4,"llm_tact_unit_move_tick","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 0","c680b04bb70000"],
+  [4391307,7,3,4,"llm_tact_unit_move_tick","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4391334,7,3,4,"llm_tact_unit_move_tick","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4391668,7,3,4,"llm_tact_unit_move_tick","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4391695,7,3,4,"llm_tact_unit_move_tick","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4395084,7,3,4,"llm_tact_unit_move_advance","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x10], 0xea60","6955f060ea0000"],
+  [4395111,6,2,4,"llm_tact_unit_move_advance","buf_base","run","always_on","dec byte ptr [eax + 0xaee8c1]","fe88c1e8ae00"],
+  [4395137,7,3,4,"llm_tact_unit_move_advance","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x10], 0xea60","6955f060ea0000"],
+  [4395164,7,2,4,"llm_tact_unit_move_advance","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4395658,4,3,1,"llm_tact_unit_cmd_advance","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x14], 0x64","6b45ec64"],
+  [4395664,7,2,4,"llm_tact_unit_cmd_advance","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 0","c680b04bb70000"],
+  [4489206,5,1,4,"map_SavePlanetToDisk","buf_size","bytes","unchanged","mov edx, 0x75300","ba00530700"],
+  [4489211,5,1,4,"map_SavePlanetToDisk","buf_base","imm","unchanged","mov eax, 0xaee8c0","b8c0e8ae00"],
+  [4489227,5,1,4,"map_SavePlanetToDisk","flags_size","bytes","unchanged","mov edx, 0x320","ba20030000"],
+  [4489232,5,1,4,"map_SavePlanetToDisk","flags_base","imm","unchanged","mov eax, 0xb74bb0","b8b04bb700"],
+  [4489253,5,1,4,"map_SavePlanetToDisk","count_base","imm","unchanged","mov eax, 0xb63bc0","b8c03bb600"],
+  [4490466,5,1,4,"map_LoadPlanetFromDisk","buf_size","bytes","unchanged","mov edx, 0x75300","ba00530700"],
+  [4490471,5,1,4,"map_LoadPlanetFromDisk","buf_base","imm","unchanged","mov eax, 0xaee8c0","b8c0e8ae00"],
+  [4490487,5,1,4,"map_LoadPlanetFromDisk","flags_size","bytes","unchanged","mov edx, 0x320","ba20030000"],
+  [4490492,5,1,4,"map_LoadPlanetFromDisk","flags_base","imm","unchanged","mov eax, 0xb74bb0","b8b04bb700"],
+  [4490513,5,1,4,"map_LoadPlanetFromDisk","count_base","imm","unchanged","mov eax, 0xb63bc0","b8c03bb600"],
+  [4494735,7,3,4,"llm_strat_unit_path_encode_directions","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4494756,6,2,4,"llm_strat_unit_path_encode_directions","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4494778,7,2,4,"llm_strat_unit_path_encode_directions","buf_base","heading","always_on","cmp byte ptr [eax + 0xaee8c0], 0","80b8c0e8ae0000"],
+  [4494801,6,2,4,"llm_strat_unit_path_encode_directions","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4494823,7,2,4,"llm_strat_unit_path_encode_directions","buf_base","run","always_on","shl byte ptr [eax + 0xaee8c1], 5","c0a0c1e8ae0005"],
+  [4547042,5,1,4,"map_FillDefaults","buf_size","bytes","always_on","mov ebx, 0x75300","bb00530700"],
+  [4547049,5,1,4,"map_FillDefaults","buf_base","imm","always_on","mov eax, 0xaee8c0","b8c0e8ae00"],
+  [4547115,10,2,4,"map_FillDefaults","count_base","mem","unchanged","mov dword ptr [eax + 0xb63bc0], 0x64","c780c03bb60064000000"],
+  [4547115,10,6,4,"map_FillDefaults","count_init","start=100","raise_switched","mov dword ptr [eax + 0xb63bc0], 0x64","c780c03bb60064000000"],
+  [4547132,4,3,1,"map_FillDefaults","flag_clear_bound","slots<100","always_on","cmp dword ptr [ebp - 0x1c], 0x64","837de464"],
+  [4547145,4,3,1,"map_FillDefaults","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0x64","6b45e864"],
+  [4547152,7,2,4,"map_FillDefaults","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 0","c680b04bb70000"],
+  [4594423,7,2,4,"llm_strat_unit_init_record","id_write","direct","raise_switched","mov byte ptr [eax + 0xdd8cf2], 0xff","c680f28cdd00ff"],
+  [4595904,7,2,4,"map_unit_Add","id_write","direct","raise_switched","mov byte ptr [eax + 0xdd8cf2], 0xff","c680f28cdd00ff"],
+  [4683734,7,2,4,"llm_strat_bldg_anim_state_helipad","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4705108,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4705128,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4705151,7,2,4,"llm_strat_unit_state_move_walker","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4705964,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4705984,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4706007,7,2,4,"llm_strat_unit_state_move_walker","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4706032,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4706052,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4706075,7,2,4,"llm_strat_unit_state_move_walker","buf_base","heading","always_on","cmp byte ptr [eax + 0xaee8c0], 0","80b8c0e8ae0000"],
+  [4706731,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx eax, byte ptr [eax + 0xaa]","0fb680aa000000"],
+  [4706751,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4706774,7,3,4,"llm_strat_unit_state_move_walker","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4706825,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx eax, byte ptr [eax + 0xaa]","0fb680aa000000"],
+  [4706845,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4706874,6,2,4,"llm_strat_unit_state_move_walker","buf_base","heading","always_on","mov al, byte ptr [eax + 0xaee8c0]","8a80c0e8ae00"],
+  [4707123,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx eax, byte ptr [eax + 0xaa]","0fb680aa000000"],
+  [4707143,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4707166,6,2,4,"llm_strat_unit_state_move_walker","buf_base","run","always_on","dec byte ptr [eax + 0xaee8c1]","fe88c1e8ae00"],
+  [4707849,7,3,4,"llm_strat_unit_state_move_walker","id_read","ptr","raise_switched","movzx eax, byte ptr [eax + 0xaa]","0fb680aa000000"],
+  [4707869,6,2,4,"llm_strat_unit_state_move_walker","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4707892,7,3,4,"llm_strat_unit_state_move_walker","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4710910,7,2,4,"llm_strat_unit_state_stop_to_default","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4716567,7,3,4,"llm_strat_unit_state_takeoff_taxi","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4716587,6,2,4,"llm_strat_unit_state_takeoff_taxi","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4716610,7,3,4,"llm_strat_unit_state_takeoff_taxi","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4717358,7,3,4,"llm_strat_unit_state_dock_taxi_in","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4717378,6,2,4,"llm_strat_unit_state_dock_taxi_in","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4717401,7,3,4,"llm_strat_unit_state_dock_taxi_in","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4717784,7,2,4,"llm_strat_unit_state_dock_taxi_in","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4720563,7,2,4,"llm_strat_unit_state_enter_walk_in","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4721910,7,3,4,"llm_strat_unit_state_move_path","id_read","ptr","raise_switched","movzx edx, byte ptr [eax + 0xaa]","0fb690aa000000"],
+  [4721930,6,2,4,"llm_strat_unit_state_move_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4721953,7,3,4,"llm_strat_unit_state_move_path","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4721978,7,2,4,"llm_strat_unit_state_move_path","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4729163,7,2,4,"llm_strat_unit_state_group_marshal","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4729239,7,3,4,"llm_strat_unit_state_group_marshal","id_read","direct","raise_switched","movzx edx, byte ptr [eax + 0xdd8cf2]","0fb690f28cdd00"],
+  [4729259,6,2,4,"llm_strat_unit_state_group_marshal","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4729267,7,2,4,"llm_strat_unit_state_group_marshal","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4733208,7,2,4,"llm_strat_unit_group_step_ground","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4734954,7,2,4,"llm_strat_unit_group_step_ground","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4736732,7,2,4,"llm_strat_unit_group_step_ground","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4737945,7,2,4,"llm_strat_unit_group_step_plane","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4741157,7,2,4,"llm_strat_unit_state_die_explode","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4741825,7,2,4,"llm_strat_unit_state_remove_silent","id_check","ptr","unchanged","cmp byte ptr [eax + 0xaa], 0xff","80b8aa000000ff"],
+  [4742498,4,3,1,"llm_strat_unit_state_plot_turn_path","scanner_bound","slots<100","raise_switched","cmp dword ptr [ebp - 0x24], 0x64","837ddc64"],
+  [4742524,3,2,1,"llm_strat_unit_state_plot_turn_path","flags_stride","player","always_on","imul eax, eax, 0x64","6bc064"],
+  [4742530,7,2,4,"llm_strat_unit_state_plot_turn_path","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 0","80b8b04bb70000"],
+  [4742606,6,2,4,"llm_strat_unit_state_plot_turn_path","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4742631,6,2,4,"llm_strat_unit_state_plot_turn_path","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4742723,6,2,4,"llm_strat_unit_state_plot_turn_path","buf_stride","player","always_on","imul ebx, eax, 0xea60","69d860ea0000"],
+  [4742744,6,2,4,"llm_strat_unit_state_plot_turn_path","buf_base","off+0x8","always_on","mov byte ptr [eax + 0xaee8c8], dl","8890c8e8ae00"],
+  [4742757,6,2,4,"llm_strat_unit_state_plot_turn_path","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4742772,7,2,4,"llm_strat_unit_state_plot_turn_path","buf_base","off+0xa","always_on","mov byte ptr [eax + 0xaee8ca], 0xff","c680cae8ae00ff"],
+  [4748654,7,2,4,"llm_strat_unit_teardown_mapped","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4753702,7,2,4,"llm_strat_unit_release_path_and_targets","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4803498,4,3,1,"llm_tact_move_step_attempt","tact_bound","slots 1..99, row 0","unchanged","cmp dword ptr [ebp - 0x18], 0x64","837de864"],
+  [4803517,7,2,4,"llm_tact_move_step_attempt","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 0","80b8b04bb70000"],
+  [4803569,7,2,4,"llm_tact_move_step_attempt","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4803602,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0x16","c680c0e8ae0016"],
+  [4803635,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0x10","c680c0e8ae0010"],
+  [4803660,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0x13","c680c0e8ae0013"],
+  [4803704,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 4","c680c0e8ae0004"],
+  [4803737,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xa","c680c0e8ae000a"],
+  [4803762,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 7","c680c0e8ae0007"],
+  [4803798,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 1","c680c0e8ae0001"],
+  [4803831,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xd","c680c0e8ae000d"],
+  [4803872,7,2,4,"llm_tact_move_step_attempt","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4803889,7,2,4,"llm_tact_move_step_attempt","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 0","c680c1e8ae0000"],
+  [4804012,7,2,4,"llm_tact_move_step_attempt","buf_base","off+0x2","always_on","mov byte ptr [eax + 0xaee8c2], 0","c680c2e8ae0000"],
+  [4804029,7,2,4,"llm_tact_move_step_attempt","buf_base","off+0x3","always_on","mov byte ptr [eax + 0xaee8c3], 0","c680c3e8ae0000"],
+  [4804819,7,2,4,"llm_strat_unit_assign_path_from_job_result","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4804847,4,3,1,"llm_strat_unit_assign_path_from_job_result","scanner_bound","slots<100","raise_switched","cmp dword ptr [ebp - 0x2c], 0x64","837dd464"],
+  [4804870,3,2,1,"llm_strat_unit_assign_path_from_job_result","flags_stride","player","always_on","imul eax, eax, 0x64","6bc064"],
+  [4804876,7,2,4,"llm_strat_unit_assign_path_from_job_result","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 1","80b8b04bb70001"],
+  [4804941,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4804963,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], dl","8890c0e8ae00"],
+  [4804982,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_stride","player","always_on","imul ebx, edx, 0xea60","69da60ea0000"],
+  [4805007,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_base","run","always_on","mov byte ptr [edx + 0xaee8c1], al","8882c1e8ae00"],
+  [4805017,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4805039,7,3,4,"llm_strat_unit_assign_path_from_job_result","buf_base","run","always_on","movzx eax, byte ptr [eax + 0xaee8c1]","0fb680c1e8ae00"],
+  [4805064,6,2,4,"llm_strat_unit_assign_path_from_job_result","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4805086,7,2,4,"llm_strat_unit_assign_path_from_job_result","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0","c680c0e8ae0000"],
+  [4805686,7,3,4,"llm_strat_unit_path_step_blocked","id_read","direct","raise_switched","movzx edx, byte ptr [eax + 0xdd8cf2]","0fb690f28cdd00"],
+  [4805703,6,2,4,"llm_strat_unit_path_step_blocked","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4805711,7,3,4,"llm_strat_unit_path_step_blocked","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4806223,7,2,4,"llm_strat_path_make_single_step","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4806460,4,3,1,"llm_strat_path_make_single_step","scanner_bound","slots<100","raise_switched","cmp dword ptr [ebp - 0x28], 0x64","837dd864"],
+  [4806483,3,2,1,"llm_strat_path_make_single_step","flags_stride","player","always_on","imul eax, eax, 0x64","6bc064"],
+  [4806489,7,2,4,"llm_strat_path_make_single_step","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 1","80b8b04bb70001"],
+  [4806506,6,2,4,"llm_strat_path_make_single_step","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4806524,6,2,4,"llm_strat_path_make_single_step","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4806534,6,2,4,"llm_strat_path_make_single_step","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4806549,7,2,4,"llm_strat_path_make_single_step","buf_base","run","always_on","mov byte ptr [eax + 0xaee8c1], 1","c680c1e8ae0001"],
+  [4806560,6,2,4,"llm_strat_path_make_single_step","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4806575,7,2,4,"llm_strat_path_make_single_step","buf_base","off+0x2","always_on","mov byte ptr [eax + 0xaee8c2], 0","c680c2e8ae0000"],
+  [4806979,6,2,4,"llm_strat_path_write_from_solver","buf_stride","player","always_on","imul ebx, ebx, 0xea60","69db60ea0000"],
+  [4807008,6,2,4,"llm_strat_path_write_from_solver","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4807029,6,2,4,"llm_strat_path_write_from_solver","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4807057,6,2,4,"llm_strat_path_write_from_solver","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4807166,6,2,4,"llm_strat_path_write_from_solver","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4807189,7,2,4,"llm_strat_path_write_from_solver","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4807245,6,2,4,"llm_strat_path_write_from_solver","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4807268,7,2,4,"llm_strat_path_write_from_solver","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4807386,6,2,4,"llm_strat_unit_path_store_result","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4807414,6,2,4,"llm_strat_unit_path_store_result","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4807452,6,2,4,"llm_strat_unit_path_store_result","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4807475,7,2,4,"llm_strat_unit_path_store_result","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4807739,6,2,4,"llm_strat_storage_setup_approach_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4807767,6,2,4,"llm_strat_storage_setup_approach_path","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], dl","8890c0e8ae00"],
+  [4807811,6,2,4,"llm_strat_storage_setup_approach_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4807833,7,2,4,"llm_strat_storage_setup_approach_path","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4808347,6,2,4,"llm_strat_storage_setup_exit_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4808375,6,2,4,"llm_strat_storage_setup_exit_path","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], dl","8890c0e8ae00"],
+  [4808393,6,2,4,"llm_strat_storage_setup_exit_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4808415,7,2,4,"llm_strat_storage_setup_exit_path","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4808516,5,4,1,"llm_strat_path_find_free_slot","scanner_bound","slots<100","raise_switched","cmp word ptr [ebp - 0x18], 0x64","66837de864"],
+  [4808533,4,3,1,"llm_strat_path_find_free_slot","flags_stride","player","always_on","imul edx, dword ptr [ebp - 0x20], 0x64","6b55e064"],
+  [4808543,7,2,4,"llm_strat_path_find_free_slot","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 0","80b8b04bb70000"],
+  [4808638,5,4,1,"llm_strat_unit_assign_shared_path","scanner_bound","slots<100","raise_switched","cmp word ptr [ebp - 0x1c], 0x64","66837de464"],
+  [4808662,3,2,1,"llm_strat_unit_assign_shared_path","flags_stride","player","always_on","imul eax, eax, 0x64","6bc064"],
+  [4808671,7,2,4,"llm_strat_unit_assign_shared_path","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 0","80b8b04bb70000"],
+  [4808694,6,2,4,"llm_strat_unit_assign_shared_path","buf_stride","player","always_on","imul eax, eax, 0xea60","69c060ea0000"],
+  [4808725,6,2,4,"llm_strat_unit_assign_shared_path","buf_base","heading","always_on","mov byte ptr [edx + 0xaee8c0], al","8882c0e8ae00"],
+  [4808837,6,2,4,"llm_strat_unit_assign_shared_path","buf_stride","player","always_on","imul edx, eax, 0xea60","69d060ea0000"],
+  [4808863,7,2,4,"llm_strat_unit_assign_shared_path","buf_base","heading","always_on","mov byte ptr [eax + 0xaee8c0], 0xff","c680c0e8ae00ff"],
+  [4808874,6,2,4,"llm_strat_unit_assign_shared_path","buf_stride","player","always_on","imul edx, edx, 0xea60","69d260ea0000"],
+  [4808892,7,2,4,"llm_strat_unit_assign_shared_path","buf_base","off+0x258","always_on","mov byte ptr [eax + 0xaeeb18], 0xff","c68018ebae00ff"],
+  [4811288,7,2,4,"llm_strat_path_free_slot","id_check","direct","unchanged","cmp byte ptr [eax + 0xdd8cf2], 0xff","80b8f28cdd00ff"],
+  [4811316,7,3,4,"llm_strat_path_free_slot","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4811327,3,2,1,"llm_strat_path_free_slot","flags_stride","player","always_on","imul edx, edx, 0x64","6bd264"],
+  [4811332,7,2,4,"llm_strat_path_free_slot","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 0","c680b04bb70000"],
+  [4811358,7,2,4,"llm_strat_path_free_slot","id_write","direct","raise_switched","mov byte ptr [eax + 0xdd8cf2], 0xff","c680f28cdd00ff"],
+  [4811372,6,2,4,"llm_strat_path_free_slot","count_base","mem","unchanged","inc dword ptr [eax + 0xb63bc0]","ff80c03bb600"],
+  [4811418,4,3,1,"llm_strat_path_attach_slot","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0x64","6b45e864"],
+  [4811425,7,2,4,"llm_strat_path_attach_slot","flags_base","mem","always_on","mov byte ptr [eax + 0xb74bb0], 1","c680b04bb70001"],
+  [4811451,6,2,4,"llm_strat_path_attach_slot","id_write","direct","raise_switched","mov byte ptr [edx + 0xdd8cf2], al","8882f28cdd00"],
+  [4811463,6,2,4,"llm_strat_path_attach_slot","count_base","mem","unchanged","dec dword ptr [eax + 0xb63bc0]","ff88c03bb600"],
+  [4825586,4,3,1,"llm_strat_path_alloc_slot","scanner_bound","slots<100","raise_switched","cmp dword ptr [ebp - 0x18], 0x64","837de864"],
+  [4825602,4,3,1,"llm_strat_path_alloc_slot","flags_stride","player","always_on","imul eax, dword ptr [ebp - 0x20], 0x64","6b45e064"],
+  [4825609,7,2,4,"llm_strat_path_alloc_slot","flags_base","mem","always_on","cmp byte ptr [eax + 0xb74bb0], 1","80b8b04bb70001"],
+  [4826083,7,3,4,"llm_strat_path_step_check_and_request_detour","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4826096,7,3,4,"llm_strat_path_step_check_and_request_detour","buf_stride","player","always_on","imul ecx, dword ptr [ebp - 0x24], 0xea60","694ddc60ea0000"],
+  [4826131,7,3,4,"llm_strat_path_step_check_and_request_detour","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4846283,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846296,7,3,4,"llm_strat_unit_format_debug_status","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4846332,7,2,4,"llm_strat_unit_format_debug_status","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4846372,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846385,7,3,4,"llm_strat_unit_format_debug_status","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4846420,7,3,4,"llm_strat_unit_format_debug_status","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [4846539,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846596,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846609,7,3,4,"llm_strat_unit_format_debug_status","buf_stride","player","always_on","imul eax, dword ptr [ebp - 0x18], 0xea60","6945e860ea0000"],
+  [4846625,7,2,4,"llm_strat_unit_format_debug_status","buf_base","run","always_on","cmp byte ptr [eax + 0xaee8c1], 0","80b8c1e8ae0000"],
+  [4846664,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846677,7,3,4,"llm_strat_unit_format_debug_status","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4846693,7,3,4,"llm_strat_unit_format_debug_status","buf_base","run","always_on","movzx eax, byte ptr [eax + 0xaee8c1]","0fb680c1e8ae00"],
+  [4846717,7,3,4,"llm_strat_unit_format_debug_status","id_read","direct","raise_switched","movzx eax, byte ptr [eax + 0xdd8cf2]","0fb680f28cdd00"],
+  [4846730,7,3,4,"llm_strat_unit_format_debug_status","buf_stride","player","always_on","imul edx, dword ptr [ebp - 0x18], 0xea60","6955e860ea0000"],
+  [4846746,7,3,4,"llm_strat_unit_format_debug_status","buf_base","heading","always_on","movzx eax, byte ptr [eax + 0xaee8c0]","0fb680c0e8ae00"],
+  [6097600,4,0,4,null,"data_ptr","-> 0xb74bb0","always_on","dword in DGROUP","b04bb700"],
+  [6097604,4,0,4,null,"data_ptr","-> 0xaee8c0","always_on","dword in DGROUP","c0e8ae00"]
+ ]
+}

@@ -642,7 +642,17 @@ fn the_badges_sit_on_the_row_of_their_setting() {
     h.run();
     // The synthetic row is experimental and restart-flagged; its Off/On control and the pill must be
     // on the same line (their vertical centres within a few pixels).
-    let pill = h.get_by_label("EXPERIMENTAL").rect();
+    // (video.ui_scale is the one shipped experimental Display row, so pick the pill on the synthetic row.)
+    let zoom_y = h.get_by_label("Zoom snap").rect().center().y;
+    let pill = h
+        .query_all_by_label("EXPERIMENTAL")
+        .map(|n| n.rect())
+        .min_by(|a, b| {
+            (a.center().y - zoom_y)
+                .abs()
+                .total_cmp(&(b.center().y - zoom_y).abs())
+        })
+        .unwrap();
     // No per-row restart pill any more (user 2026-10-14): the page says it once, above the rows.
     assert!(h.query_by_label("next game start").is_none());
     assert_eq!(

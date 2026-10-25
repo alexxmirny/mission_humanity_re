@@ -1,0 +1,31 @@
+# TL-MOVE-BENCH field200 (mods:M1WL v5): the user's 200-unit move on units-tests.sav (tools/uiscripts/saves/u022field.sav): select control group 3 (200 soldiers:
+# ~half docked in the barracks at (98,248)/(101,252), the rest in the field near (113,7)), right-click open ground at tile (153,45). The row records the state
+# ([desync] state_record=1) and tools/check_move_bench.py (kind field200) reads every unit's tile out of it (tools/move_tracks.py). Chaotic by nature: thresholds.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 124 218
+gameclock +100
+presshold 4 24
+cursorhold 300 250 4
+cursorhold 470 448 6
+release 470 448
+gameclock +100
+simclick 530 232
+gameclock +100
+logsel u022_g200
+log u022 ORDER click 153,45
+camto 149 43
+gameclock +100
+simrclick 144 80
+gameclock +200
+loggoal u022_goal
+capture u022_field200
+gameclock +640000
+log field200: run finished
+end

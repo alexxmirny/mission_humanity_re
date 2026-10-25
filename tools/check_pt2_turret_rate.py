@@ -305,6 +305,47 @@ def refused_fails(host_dir, client_dir):
     return fails, "refused=%s steps=%d" % (ref[-1]["why"] if ref else None, steps)
 
 
+CAPS_REFUSED_LINE = "; [caps] host uses raised limits but this game cannot raise them (relocation refused) -- leaving"
+
+
+def caps_refused_fails(host_dir, client_dir):
+    """PT-CAP8 S5 (`caps_client_refused`): the host uses the raised limits, the client cannot raise them.
+
+    C1 the host raised (`; [caps] limits ON`); C2 the client logged the refusal line, the
+    `Start REFUSED (cannot raise limits)` verdict and the bounce; C3 it never took the host's limits
+    (no `limits ON`) and never hashed a sim step; C4 the host stayed healthy (no DESYNC line, it
+    hashed sim steps)."""
+    fails = []
+    host_net = check_cancel_task.net_log_lines(host_dir)
+    client_net = check_cancel_task.net_log_lines(client_dir)
+    if not any("; [caps] limits ON" in ln for ln in host_net):
+        fails.append("C1: the host did not log `; [caps] limits ON`")
+    if not any(CAPS_REFUSED_LINE in ln for ln in client_net):
+        fails.append("C2: the client's net log has no `%s` line" % CAPS_REFUSED_LINE)
+    ref = [m for m in map(REFUSED_RE.search, client_net) if m]
+    if not any(m["why"] == "cannot raise limits" for m in ref):
+        fails.append("C2: no `; gameplay: Start REFUSED (cannot raise limits)` on the client")
+    if not any(BOUNCE in ln for ln in client_net):
+        fails.append("C2: no `%s` line (no bounce to the browser)" % BOUNCE)
+    if any("; [caps] limits ON" in ln for ln in client_net):
+        fails.append("C3: the client turned the raised limits ON despite the refusal")
+    csteps = sum(1 for ln in check_storage_purge.harness_log_lines(client_dir) if STEP_RE.match(ln))
+    if csteps:
+        fails.append("C3: the client hashed %d sim step(s) -- a match started" % csteps)
+    if any("DESYNC" in ln for ln in host_net):
+        fails.append("C4: the host logged a DESYNC")
+    hstart = any("; [caps] overflow hash ARMED" in ln for ln in host_net)
+    if not hstart:
+        fails.append(
+            "C4: the host never armed the raised-limits match hash (it did not start the match raised)"
+        )
+    return fails, "refused=%s client_steps=%d host_raised_match=%s" % (
+        ref[-1]["why"] if ref else None,
+        csteps,
+        hstart,
+    )
+
+
 # ---- selftest ------------------------------------------------------------------------------------
 
 
@@ -542,10 +583,23 @@ def main(argv=None):
         action="store_true",
         help="GH1: the host's START carried no gameplay settings; the client must refuse it (R1-R4)",
     )
+    ap.add_argument(
+        "--expect-caps-refused",
+        action="store_true",
+        help="PT-CAP8 S5: the host raised the limits; the client cannot and must refuse the Start (C1-C4)",
+    )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
         return selftest()
+    if a.expect_caps_refused:
+        if len(a.dirs) != 2:
+            ap.error("--expect-caps-refused takes the host and client run dirs")
+        fails, summary = caps_refused_fails(a.dirs[0], a.dirs[1])
+        print("check_pt2_turret_rate (caps refused): %s" % summary)
+        for f in fails:
+            print("  FAIL: " + f)
+        return 1 if fails else 0
     if a.expect_start_refused:
         if len(a.dirs) != 2:
             ap.error("--expect-start-refused takes the host and client run dirs")

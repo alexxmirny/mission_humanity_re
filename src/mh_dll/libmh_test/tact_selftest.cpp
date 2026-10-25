@@ -1227,6 +1227,7 @@ void run_door_tests();
 void run_ambient_sound_tests();
 void run_cam_follow_selection_tick_tests();
 void run_scroll_target_proximity_tick_tests();
+void run_scroll_pace_tests(); // TSCR1
 void run_view_shift_tests();
 void run_select_next_unit_tests();
 void run_sidebar_dispatch_tests();
@@ -1337,6 +1338,7 @@ int run_tacttest() {
     mh::tact::test::run_ambient_sound_tests();
     mh::tact::test::run_cam_follow_selection_tick_tests();
     mh::tact::test::run_scroll_target_proximity_tick_tests();
+    mh::tact::test::run_scroll_pace_tests();
     mh::tact::test::run_view_shift_tests();
     mh::tact::test::run_select_next_unit_tests();
     mh::tact::test::run_sidebar_dispatch_tests();

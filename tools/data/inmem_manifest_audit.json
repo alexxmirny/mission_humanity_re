@@ -1,31 +1,35 @@
 {
   "_generated_by": "tools/gen_inmem_manifest.py --audit",
   "_what": "Every src/patcher manifest classified for IN-MEMORY application. `verdict` is a MANIFEST property: complete = its relocation metadata is total, so the cave may be placed anywhere; incomplete = appliable only at the baked VA, with `reason`; refused = structurally unrepresentable, no header is emitted. `prereqs` is the SEPARATE axis -- what mh/patch/inmem_patch.h must gain before that manifest can be compiled in. `class` is a THIRD axis and the manifest's own declaration (fork ruling Q7): what the file is FOR. The compile list is every class `shipped` manifest and nothing else, so this extract is where a change to what mh.dll carries becomes visible.",
-  "manifest_count": 38,
-  "site_count": 46292,
+  "manifest_count": 44,
+  "site_count": 54961,
   "by_verdict": {
-    "complete": 30,
+    "complete": 36,
     "incomplete": 0,
     "refused": 8
   },
   "sites_by_verdict": {
-    "complete": 46280,
+    "complete": 54949,
     "incomplete": 0,
     "refused": 12
   },
   "by_class": {
+    "caps": 1,
+    "caps_ai": 1,
+    "caps_limits": 1,
+    "caps_orders": 1,
+    "caps_units": 1,
+    "caps_units_limits": 1,
     "layered": 1,
-    "reference": 25,
+    "reference": 27,
     "reimplemented": 5,
     "retired-addimport": 4,
-    "shipped": 3
+    "shipped": 1
   },
   "shipped": [
-    "grand_all_caphike_storagecap_EN",
-    "projectile_pool_caphike_EN",
     "projectile_pool_relocate_EN"
   ],
-  "cave_space_hi": "0x013d0000",
+  "cave_space_hi": "0x019e0000",
   "manifests": [
     {
       "name": "allpools_roster_caphike",
@@ -84,6 +88,91 @@
       "prereqs": []
     },
     {
+      "name": "cap_v022_aiscratch_EN",
+      "class": "caps_ai",
+      "sites": 204,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 202,
+      "ref_kinds": {
+        "abs32_to_section": 202
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cap_v022_limits_EN",
+      "class": "caps_limits",
+      "sites": 51,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 63,
+      "ref_kinds": {
+        "rel32_to_image": 43,
+        "rel32_to_section": 20
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cap_v022_reloc_EN",
+      "class": "caps",
+      "sites": 3945,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 2,
+      "refs": 2143,
+      "ref_kinds": {
+        "abs32_to_section": 2119,
+        "rel32_to_image": 15,
+        "rel32_to_section": 9
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cap_v023_orders_EN",
+      "class": "caps_orders",
+      "sites": 219,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 2,
+      "refs": 215,
+      "ref_kinds": {
+        "abs32_to_section": 214,
+        "rel32_to_section": 1
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cap_v023_units_limits_EN",
+      "class": "caps_units_limits",
+      "sites": 92,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 1,
+      "refs": 74,
+      "ref_kinds": {
+        "rel32_to_image": 49,
+        "rel32_to_section": 25
+      },
+      "prereqs": []
+    },
+    {
+      "name": "cap_v023_units_reloc_EN",
+      "class": "caps_units",
+      "sites": 4158,
+      "verdict": "complete",
+      "reason": "",
+      "sections": 3,
+      "refs": 2363,
+      "ref_kinds": {
+        "abs32_to_section": 2270,
+        "rel32_to_image": 76,
+        "rel32_to_section": 17
+      },
+      "prereqs": []
+    },
+    {
       "name": "example",
       "class": "reference",
       "sites": 0,
@@ -126,7 +215,7 @@
     },
     {
       "name": "grand_all_caphike_storagecap_EN",
-      "class": "shipped",
+      "class": "reference",
       "sites": 7770,
       "verdict": "complete",
       "reason": "",
@@ -258,7 +347,7 @@
     },
     {
       "name": "projectile_pool_caphike_EN",
-      "class": "shipped",
+      "class": "reference",
       "sites": 77,
       "verdict": "complete",
       "reason": "",

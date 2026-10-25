@@ -5,17 +5,28 @@
 // list is derived from the corpus and cannot drift from it).
 #pragma once
 #include "patch/inmem_patch.h"
-#include "patch/manifest_grand_all_caphike_storagecap_en.gen.h"
-#include "patch/manifest_projectile_pool_caphike_en.gen.h"
 #include "patch/manifest_projectile_pool_relocate_en.gen.h"
+#include "patch/manifest_cap_v022_reloc_en.gen.h"
+#include "patch/manifest_cap_v022_limits_en.gen.h"
+#include "patch/manifest_cap_v022_aiscratch_en.gen.h"
+#include "patch/manifest_cap_v023_units_reloc_en.gen.h"
+#include "patch/manifest_cap_v023_units_limits_en.gen.h"
+#include "patch/manifest_cap_v023_orders_en.gen.h"
 
 namespace mh::patch {
 
 inline constexpr compiled_manifest COMPILED[] = {
-    {"grand_all_caphike_storagecap_EN", &manifest_grand_all_caphike_storagecap_en::MANIFEST},
-    {"projectile_pool_caphike_EN", &manifest_projectile_pool_caphike_en::MANIFEST},
     {"projectile_pool_relocate_EN", &manifest_projectile_pool_relocate_en::MANIFEST},
 };
-inline constexpr int COMPILED_COUNT = 3;
+inline constexpr int COMPILED_COUNT = 1;
+
+// PT-CAP8 S1: the v0.2.2 cap manifests (classes caps / caps_limits). Compiled in as data, NOT in
+// COMPILED[]: `[patch] manifest=` never selects them; mh/caps applies CAPS_RELOC, CAPS_LIMITS, then (v0.2.3) CAPS_UNITS_RELOC, CAPS_UNITS_LIMITS.
+inline constexpr const inmem_manifest *CAPS_RELOC = &manifest_cap_v022_reloc_en::MANIFEST;
+inline constexpr const inmem_manifest *CAPS_LIMITS = &manifest_cap_v022_limits_en::MANIFEST;
+inline constexpr const inmem_manifest *CAPS_AI = &manifest_cap_v022_aiscratch_en::MANIFEST;
+inline constexpr const inmem_manifest *CAPS_UNITS_RELOC = &manifest_cap_v023_units_reloc_en::MANIFEST;
+inline constexpr const inmem_manifest *CAPS_UNITS_LIMITS = &manifest_cap_v023_units_limits_en::MANIFEST;
+inline constexpr const inmem_manifest *CAPS_ORDERS = &manifest_cap_v023_orders_en::MANIFEST;
 
 } // namespace mh::patch

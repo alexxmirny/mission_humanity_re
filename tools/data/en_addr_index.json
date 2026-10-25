@@ -17299,7 +17299,7 @@
 "LAB_0043c313"
 ],
 "0043c323": [
-"llm_tact_scroll_fade_step"
+"llm_tact_blast_wipe_brighten_step"
 ],
 "0043c339": [
 "LAB_0043c339"
@@ -81298,7 +81298,7 @@
 "_G_LLM_BOOT_STAGE"
 ],
 "00558ba0": [
-"_G_LLM_TACT_SCROLL_CMD"
+"_G_LLM_TACT_MINE_BLAST_SHAKE_STEP"
 ],
 "00558ba4": [
 "_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER"
@@ -99182,7 +99182,7 @@
 [
 "0043c323",
 "0043c398",
-"llm_tact_scroll_fade_step"
+"llm_tact_blast_wipe_brighten_step"
 ],
 [
 "0043c39c",
@@ -112998,7 +112998,7 @@
 "00429d50": "llm_tact_selection_panel_refresh",
 "00429d5b": "llm_tact_save_screenshot",
 "00429d85": "llm_tact_zone_sound_play",
-"00429dbf": "llm_tact_scroll_fade_step",
+"00429dbf": "llm_tact_blast_wipe_brighten_step",
 "00429dc4": "llm_tact_blink_overlay_clear",
 "00429dc9": "llm_tact_frame_cursor_and_reset",
 "00429dd0": "llm_tact_blink_overlay_clear",

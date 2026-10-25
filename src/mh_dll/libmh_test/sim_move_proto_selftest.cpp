@@ -26,14 +26,18 @@
 //   T7  flood queue guard  the guard only changes a flood whose front laps the ring.
 //   T8  pathfind centroid  sim_group_move_order_pathfind.cpp: `d - w` vs `0x80 - d` on both axes.
 //   T9  detour guard       sim_unit_path_detour.cpp: occupant slot 0xff is not recursed into with the key on.
+//   T12 stream heat        mods:M1WL v2 sim/move/stream_heat.h over a fake world: the gate (>= 8 groupmates walking / replanning / stored), the per-tile count and
+//                          its ring bits, the 48-step window, a spent first leg, a cost byte of 0, the map seam, what is not a mate, the exact restore, determinism.
 //
 #include "sim/move/arrival.h"
 #include "sim/move/corridor.h"
+#include "sim/move/flood.h"
 #include "sim/move/formation.h"
 #include "sim/move/guards.h"
 #include "sim/move/planner_hits.h"
 #include "sim/move/route_cost.h"
 #include "sim/move/route_through.h"
+#include "sim/move/stream_heat.h"
 #include "sim/move/wrap.h"
 #include "sim/sim_group_move_order_pathfind.h"
 #include "sim/sim_map_region_routing.h"
@@ -1692,6 +1696,536 @@ void t4d_path_ranking() {
     }
 }
 
+// ---- T12 -- stream heat (mods:M1WL v2) ---------------------------------------------------------------------------------------------------------------
+struct sh_world {
+    std::vector<mv::sh_unit> units; // index 0 unused
+    std::vector<uint8_t>     wp[8]; // {heading, run} pairs per path slot (slot = index into this array)
+    std::vector<uint32_t>    cells; // terrain_flags per flat tile
+    int32_t                  members = 1;
+    uint32_t                 handle  = 99;
+    sh_world() : units(100), cells(65536, 0x01u) {
+        for (auto &w : wp) w.assign(600, 0);
+    }
+    int32_t unit_count() { return (int32_t)units.size(); }
+    bool    unit(uint32_t, int32_t i, mv::sh_unit *out) {
+        *out = units[(size_t)i];
+        return true;
+    }
+    void wp_get(uint32_t, uint32_t slot, uint32_t e, uint8_t *h, uint8_t *r) {
+        *h = wp[slot][e * 2];
+        *r = wp[slot][e * 2 + 1];
+    }
+    void dir_delta(int h, int *dx, int *dy) {
+        static const int D[25][2] = {{0, 0}, {0, 1}, {0, 0}, {0, 0}, {-1, 1}, {0, 0}, {0, 0}, {-1, 0}, {0, 0}, {0, 0}, {-1, -1}, {0, 0}, {0, 0}, {0, -1}, {0, 0}, {0, 0}, {1, -1}, {0, 0}, {0, 0}, {1, 0}, {0, 0}, {0, 0}, {1, 1}, {0, 0}, {0, 0}};
+        *dx                       = D[h][0];
+        *dy                       = D[h][1];
+    }
+    uint32_t &cell_flags(uint32_t flat) { return cells[flat]; }
+    int32_t   member_count() { return members; }
+    uint32_t  member_handle(int32_t) { return handle; }
+
+    // Unit i walks `steps` tiles east (heading 19) from (x0, y0) on path slot (i & 7).
+    void walker(int i, int x0, int y0, int steps, int group = 7) {
+        mv::sh_unit &u = units[(size_t)i];
+        u.order        = 0x0f;
+        u.state        = 0x0f;
+        u.group        = group;
+        u.alive        = true;
+        u.x            = (uint8_t)x0;
+        u.y            = (uint8_t)y0;
+        u.path_slot    = (uint8_t)(i & 7);
+        u.path_cursor  = 0;
+        wp[i & 7].assign(600, 0);
+        wp[i & 7][0] = 19;
+        wp[i & 7][1] = (uint8_t)steps;
+    }
+    void planner(int group = 7) {
+        mv::sh_unit &u = units[99];
+        u.order        = 0x0f;
+        u.state        = 0x0a;
+        u.group        = group;
+        u.alive        = true;
+        u.x            = 5;
+        u.y            = 5;
+        u.path_slot    = 0xff;
+    }
+};
+
+mv::sh_state &sh_scratch() {
+    static mv::sh_state s;
+    return s;
+}
+mv::sh_state &sh_scratch2() {
+    static mv::sh_state s;
+    return s;
+}
+uint32_t sh_t(int x, int y) { return ((uint32_t)x << 8) | (uint32_t)y; }
+
+void t12_stream_heat() {
+    // 10 walkers on y = 32, mate k starts at x = 10 + 3k and walks 30 steps east: tile (x, 32) is covered by every mate whose start lies
+    // within 48 tiles behind it and whose path (30 steps) reaches it.
+    auto build = [](sh_world &w, int mates, int steps) {
+        w.planner();
+        for (int k = 0; k < mates; ++k) w.walker(1 + k, 10 + 3 * k, 32, steps);
+    };
+    {
+        sh_world w;
+        build(w, 10, 30);
+        const auto    orig = w.cells;
+        mv::sh_state &s    = sh_scratch();
+        const int     n    = mv::sh_open(w, s, 0, 7, 1, 63, 63);
+        ck(n > 0 && s.mates == 10, "T12: 10 walking groupmates fire the rule");
+        // independent model of the count per tile
+        std::vector<int> cnt(65536, 0);
+        for (int k = 0; k < 10; ++k)
+            for (int st = 1; st <= 30; ++st) ++cnt[sh_t((10 + 3 * k + st) & 63, 32)];
+        bool bits_ok = true, outside_ok = true;
+        int  tiles = 0;
+        for (uint32_t t = 0; t < 65536; ++t) {
+            const uint32_t want = cnt[t] == 0 ? 0x01u : 0x03u;
+            if (cnt[t]) ++tiles;
+            if (w.cells[t] != want) (cnt[t] ? bits_ok : outside_ok) = false;
+        }
+        ck(bits_ok, "T12: every tile a mate is about to walk gets the raw bit 0x02 (+2), whatever its count");
+        ck(outside_ok, "T12: tiles no mate walks onto are untouched");
+        ck(n == tiles && s.tiles == tiles, "T12: the number of priced tiles is the number of distinct tiles");
+        bool seen_clear = true;
+        for (int i = 0; i < 65536; ++i) seen_clear &= s.seen[i] == 0;
+        ck(seen_clear, "T12: the per-tile marks are cleared by sh_open");
+        mv::sh_close(w, s);
+        ck(w.cells == orig, "T12: sh_close puts every cost byte back exactly");
+        ck(s.n == 0, "T12: ... and empties the undo list");
+    }
+    { // the gate: 7 mates do not fire, 8 do; stored and replanning mates count toward the gate but price no tile
+        sh_world w;
+        build(w, 7, 30);
+        const auto    orig = w.cells;
+        mv::sh_state &s    = sh_scratch();
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) == 0 && w.cells == orig && s.mates == 7, "T12: 7 groupmates do not fire the rule and nothing is touched");
+        build(w, 8, 30);
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) > 0, "T12: 8 groupmates fire it");
+        mv::sh_close(w, s);
+        sh_world x;
+        build(x, 5, 30);
+        x.units[20]           = x.units[1];
+        x.units[20].state     = 0x0a;
+        x.units[20].path_slot = 0xff;
+        x.units[21]           = x.units[1];
+        x.units[21].state     = 0x0c;
+        x.units[21].path_slot = 0xff;
+        x.units[22]           = x.units[1];
+        x.units[22].state     = 0x2b;
+        x.units[22].path_slot = 0xff;
+        const int nn          = mv::sh_open(x, s, 0, 7, 1, 63, 63);
+        ck(nn > 0 && s.mates == 8, "T12: 5 walkers + one replanning, one hopping, one stored = 8: fires, and prices only the walkers' tiles");
+        std::set<uint32_t> walk;
+        for (int k = 0; k < 5; ++k)
+            for (int st = 1; st <= 30; ++st) walk.insert(sh_t((10 + 3 * k + st) & 63, 32));
+        ck((int)walk.size() == nn, "T12: ... exactly the walking mates' tiles");
+        mv::sh_close(x, s);
+        sh_world y;
+        build(y, 5, 30);
+        y.units[20]           = y.units[1];
+        y.units[20].state     = 0x23;
+        y.units[20].path_slot = 0xff; // EXIT_CANCEL is not in transit
+        y.units[21]           = y.units[1];
+        y.units[21].state     = 0x01;
+        y.units[21].path_slot = 0xff; // idle
+        y.units[22]           = y.units[1];
+        y.units[22].alive     = false; // dead
+        y.units[23]           = y.units[1];
+        y.units[23].group     = 9; // another group
+        y.units[24]           = y.units[1];
+        y.units[24].order     = 0x24; // walking with an enter-storage order
+        ck(mv::sh_open(y, s, 0, 7, 1, 63, 63) == 0 && s.mates == 5, "T12: 0x23, idle, dead, other-group and non-move-order units are no mates");
+    }
+    { // the planning unit is never a mate; the rule's own gates
+        sh_world w;
+        build(w, 9, 30);
+        w.units[99]       = w.units[1]; // the planner also walks (it is replanning): excluded by its index
+        w.handle          = 99;
+        w.units[99].order = 0x0f;
+        mv::sh_state &s   = sh_scratch();
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) > 0 && s.mates == 9, "T12: the planning unit is excluded from the mates");
+        mv::sh_close(w, s);
+        ck(mv::sh_open(w, s, 0, 0, 1, 63, 63) == 0, "T12: move_group_id 0 does nothing");
+        ck(mv::sh_open(w, s, 0, 7, 0, 63, 63) == 0, "T12: an attack / merge plan (plain flag 0) does nothing");
+        w.members = 2;
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) == 0, "T12: a wave of two does nothing");
+        w.members         = 1;
+        w.units[99].order = 0x24;
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) == 0, "T12: an enter-storage order does nothing");
+        w.units[99].order = 0x01;
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) > 0, "T12: a STOP_TO_DEFAULT (0x01) replan is a plain move");
+        mv::sh_close(w, s);
+        ck(mv::sh_open(w, s, 9, 7, 1, 63, 63) == 0, "T12: an owner above 7 does nothing");
+    }
+    { // the window is 48 steps; a spent first leg is skipped once; a cost byte of 0 is left alone; counts saturate
+        sh_world w;
+        w.planner();
+        for (int k = 0; k < 8; ++k) w.walker(1 + k, 2, 10 + k, 100);
+        w.cells[sh_t(3, 10)]    = 0;
+        mv::sh_state       &s   = sh_scratch();
+        const mv::sh_params p48 = mv::sh_params_clamped(2, 48, 8, 0);
+        const int           n   = mv::sh_open(w, s, 0, 7, 1, 63, 63, p48);
+        ck(n == 8 * 48, "T12: window 48: each mate prices its next 48 steps and no more");
+        ck(w.cells[sh_t(3, 10)] == 0 && w.cells[sh_t(2 + 48, 10)] == 0x03u && w.cells[sh_t(2 + 49, 10)] == 0x01u, "T12: a cost byte of 0 stays 0; step 48 is priced, step 49 is not");
+        mv::sh_close(w, s);
+        ck(w.cells[sh_t(3, 10)] == 0, "T12: ... and is restored as 0");
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) == 8 * 64, "T12: the default window (120, mods:M1WL v5) prices the whole 100-step path of each mate (a full 64-tile row of the wrapping test map)");
+        mv::sh_close(w, s);
+        sh_world v;
+        v.planner();
+        for (int k = 0; k < 8; ++k) {
+            v.walker(1 + k, 2, 10 + k, 5);
+            v.wp[(1 + k) & 7][0] = 19;
+            v.wp[(1 + k) & 7][1] = 0; // entry 0 spent
+            v.wp[(1 + k) & 7][2] = 19;
+            v.wp[(1 + k) & 7][3] = 4; // entry 1: 4 steps
+        }
+        ck(mv::sh_open(v, s, 0, 7, 1, 63, 63) == 8 * 4, "T12: a spent first leg is skipped; the next one is priced");
+        mv::sh_close(v, s);
+        sh_world u;
+        u.planner();
+        for (int k = 0; k < 8; ++k) u.walker(1 + k, 2, 10, 30);
+        ck(mv::sh_open(u, s, 0, 7, 1, 63, 63) == 30, "T12: eight mates on one path price its 30 tiles once");
+        ck(u.cells[sh_t(3, 10)] == 0x03u, "T12: a tile of eight mates carries the same single +2");
+        mv::sh_close(u, s);
+    }
+    { // wrap: a path across the map seam
+        sh_world w;
+        w.planner();
+        for (int k = 0; k < 8; ++k) w.walker(1 + k, 60, 10 + k, 10);
+        mv::sh_state &s = sh_scratch();
+        mv::sh_open(w, s, 0, 7, 1, 63, 63);
+        ck(w.cells[sh_t(0, 10)] != 0x01u && w.cells[sh_t(5, 10)] != 0x01u && w.cells[sh_t(7, 10)] == 0x01u, "T12: tile coordinates wrap at the map edge");
+        mv::sh_close(w, s);
+    }
+    { // mods:M1WL v3: the tuning keys -- legal costs, the clamps, and each key's effect; the defaults are the shipped rule
+        ck(mv::sh_legal_cost(0) == 0 && mv::sh_legal_cost(1) == 0 && mv::sh_legal_cost(2) == 2 && mv::sh_legal_cost(3) == 2 && mv::sh_legal_cost(31) == 2, "T12: legal cost: below 2 is 0, 2..31 rounds down to 2");
+        ck(mv::sh_legal_cost(32) == 32 && mv::sh_legal_cost(33) == 32 && mv::sh_legal_cost(34) == 34 && mv::sh_legal_cost(100) == 98 && mv::sh_legal_cost(226) == 226 && mv::sh_legal_cost(1000) == 226 &&
+               mv::sh_legal_cost(-5) == 0,
+           "T12: legal cost: 32 / 34 / 98 are legal, 33 -> 32, 100 -> 98, above 226 -> 226, negative -> 0");
+        bool legal_ok = true;
+        for (int c = -3; c < 400; ++c) {
+            const int l = mv::sh_legal_cost(c);
+            if ((l & ~0xE2) != 0 || l > (c < 0 ? 0 : c) || mv::sh_legal_cost(l) != l) legal_ok = false; // only raw bits 0x02 / 0x20 / 0x40 / 0x80, never above the request, idempotent
+        }
+        ck(legal_ok, "T12: every legal cost uses only the raw bits 0x02 / 0x20 / 0x40 / 0x80 (never a passable or ring bit) and rounds down");
+        const mv::sh_params d;
+        ck(d.cost == 2 && d.window == 120 && d.min_mates == 8 && d.scale == 1 && d.scale_cap == 16, "T12: the default parameters are the shipped rule (cost 2, window 120, 8 mates, scaled up to 16)");
+        const mv::sh_params cl = mv::sh_params_clamped(1000, 0, 9999, 7);
+        ck(cl.cost == 226 && cl.window == 1 && cl.min_mates == 255 && cl.scale == 1, "T12: the clamps: cost 226, window >= 1, mates <= 255, scale 0/1");
+        ck(mv::sh_tile_cost(mv::sh_params_clamped(32, 48, 8, 1, 0, 0, 4), 3) == 96 && mv::sh_tile_cost(mv::sh_params_clamped(32, 48, 8, 1, 0, 0, 4), 9) == 128 && mv::sh_tile_cost(mv::sh_params_clamped(2, 48, 8, 1, 0, 0, 4), 4) == 2,
+           "T12: scale: cost x min(count, cap 4), rounded down to a legal value (cost 2 stays 2)");
+
+        sh_world w;
+        w.planner();
+        for (int k = 0; k < 8; ++k) w.walker(1 + k, 2, 10, 30); // eight mates on ONE path: every tile has count 8 (cap 4)
+        mv::sh_state &s = sh_scratch();
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(32, 48, 8, 0)) == 30 && w.cells[sh_t(3, 10)] == (0x01u | 32u), "T12: cost 32: the tile carries raw bit 0x20 on top of its own cost");
+        mv::sh_close(w, s);
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(32, 48, 8, 1, 0, 0, 4)) == 30 && w.cells[sh_t(3, 10)] == (0x01u | 128u), "T12: cost 32 + scale, cap 4: eight mates (capped at 4) cost 128");
+        ck(s.cnt[0] == 8, "T12: the per-tile mate count is kept for the display");
+        mv::sh_close(w, s);
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(0, 48, 8, 0)) == 0, "T12: cost 0 prices nothing and the rule does not fire");
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(2, 10, 8, 0)) == 10, "T12: window 10 prices 10 steps per mate");
+        mv::sh_close(w, s);
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(2, 48, 9, 0)) == 0, "T12: 9 mates needed: 8 walkers do not fire it");
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63, mv::sh_params_clamped(2, 48, 1, 0)) == 30, "T12: 1 mate needed: fires");
+        mv::sh_close(w, s);
+        sh_world a, b;
+        a.planner();
+        b.planner();
+        for (int k = 0; k < 8; ++k) {
+            a.walker(1 + k, 2, 10 + k, 30);
+            b.walker(1 + k, 2, 10 + k, 30);
+        }
+        mv::sh_state &sa = sh_scratch(), &sb = sh_scratch2();
+        mv::sh_open(a, sa, 0, 7, 1, 63, 63);
+        mv::sh_open(b, sb, 0, 7, 1, 63, 63, mv::sh_params_clamped(2, 48, 8, 0));
+        ck(a.cells == b.cells, "T12: the default parameters price byte-identically to the explicit 2 / 48 / 8 / 0");
+        mv::sh_close(a, sa);
+        mv::sh_close(b, sb);
+    }
+    { // determinism + a second plan after a first one leaves nothing behind
+        sh_world a, b;
+        build(a, 10, 30);
+        build(b, 10, 30);
+        mv::sh_state &sa = sh_scratch(), &sb = sh_scratch2();
+        mv::sh_open(a, sa, 0, 7, 1, 63, 63);
+        mv::sh_open(b, sb, 0, 7, 1, 63, 63);
+        ck(a.cells == b.cells, "T12: two identical worlds price identically");
+        mv::sh_close(a, sa);
+        mv::sh_open(a, sa, 0, 7, 1, 63, 63);
+        ck(a.cells == b.cells, "T12: a plan after a closed plan prices the same (no residue)");
+        mv::sh_close(a, sa);
+        mv::sh_close(b, sb);
+        ck(a.cells == b.cells, "T12: both close to the original");
+    }
+}
+
+// ---- mods:M1WL v4: the re-trace (stream_heat.h sh_retrace) -------------------------------------------------------------------------------
+// A 40 x 40 open area on the 64 x 64 test map; the field is the exact flood from the goal (flood.h), the cost the raw byte.
+struct rt_world : sh_world {
+    void route_step(int i, int *dx, int *dy, int *code) {
+        static const int T[8][3] = {{0, 1, 1}, {-1, 1, 4}, {-1, 0, 7}, {-1, -1, 10}, {0, -1, 13}, {1, -1, 16}, {1, 0, 19}, {1, 1, 22}}; // {dx, dy, code}, route_search's order
+        *dx                      = T[i][0];
+        *dy                      = T[i][1];
+        *code                    = T[i][2];
+    }
+    uint32_t cell_cost(uint32_t low) { return low; }
+    uint32_t flood_wrap_mask() { return 0x3f3fu; }
+    void     wp_put(uint32_t, uint32_t slot, uint32_t e, uint8_t h, uint8_t r) {
+        wp[slot][e * 2]     = h;
+        wp[slot][e * 2 + 1] = r;
+    }
+    struct cells_acc {
+        std::vector<uint32_t> &c;
+        uint32_t              &flags(uint32_t f) { return c[f]; }
+    };
+    static uint32_t flat(int x, int y) { return (uint32_t)((x << 8) | y); }
+    // eligible = 0xffffff00 | low inside the area, low only outside; then the flood from `goal`
+    void field(int gx, int gy) {
+        for (int x = 0; x < 64; ++x)
+            for (int y = 0; y < 64; ++y) {
+                uint32_t &c = cells[flat(x, y)];
+                c           = (x < 40 && y < 40 ? 0xffffff00u : 0u) | (c & 0xffu);
+            }
+        uint32_t cost[mv::FLOOD_COST_ENTRIES];
+        for (uint32_t i = 0; i < mv::FLOOD_COST_ENTRIES; ++i) cost[i] = i;
+        cells_acc a{cells};
+        mv::flood_exact(a, flat(gx, gy), 0x3f3fu, cost);
+    }
+    // the planner's route = route_search itself (the plain trace), written to slot 0 of the planning unit
+    bool plan(int sx, int sy, int gx, int gy) {
+        mv::detail::rt_run r;
+        units[99].x         = (uint8_t)sx;
+        units[99].y         = (uint8_t)sy;
+        units[99].path_slot = 0;
+        wp[0].assign(600, 0);
+        if (!mv::detail::rt_trace(*this, (uint32_t)sx, (uint32_t)sy, (uint32_t)gx, (uint32_t)gy, 63, 63, false, 0, &r)) return false;
+        for (int k = 0; k < r.n; ++k) wp_put(0, 0, (uint32_t)k, r.head[k], r.run[k]);
+        return true;
+    }
+    // the tiles of the slot-0 route from (sx, sy)
+    std::vector<uint32_t> route(int sx, int sy) {
+        std::vector<uint32_t> out;
+        int                   x = sx, y = sy;
+        for (int e = 0; e < 299 && wp[0][e * 2] != 0; ++e) {
+            int dx, dy;
+            dir_delta(wp[0][e * 2], &dx, &dy);
+            for (int k = 0; k < wp[0][e * 2 + 1]; ++k) {
+                x = (x + dx) & 63;
+                y = (y + dy) & 63;
+                out.push_back(flat(x, y));
+            }
+        }
+        return out;
+    }
+};
+
+int rt_turns(const std::vector<uint32_t> &t, int sx, int sy) {      // steps that turn by more than 45 degrees
+    static const int ID[3][3] = {{3, 2, 1}, {4, -1, 0}, {5, 6, 7}}; // [dx + 1][dy + 1] -> route_search's direction index
+    int              n = 0, px = sx, py = sy, pd = -1;
+    for (uint32_t f : t) {
+        const int x = (int)(f >> 8), y = (int)(f & 0xff);
+        int       dx = x - px, dy = y - py;
+        dx          = dx > 32 ? dx - 64 : (dx < -32 ? dx + 64 : dx); // map-wrapped signed deltas
+        dy          = dy > 32 ? dy - 64 : (dy < -32 ? dy + 64 : dy);
+        const int d = ID[dx + 1][dy + 1];
+        if (pd >= 0) {
+            int t2 = (d - pd) & 7;
+            if (t2 > 4) t2 = 8 - t2;
+            if (t2 >= 2) ++n;
+        }
+        pd = d;
+        px = x;
+        py = y;
+    }
+    return n;
+}
+
+void t13_stream_retrace() {
+    mv::sh_state s;
+    s.n                    = 1; // "the heat fired"
+    const mv::sh_params on = mv::sh_params_clamped(2, 48, 8, 0, 1, 0);
+
+    { // a priced diagonal staircase beside free ground: the plain trace walks ON it (every tile), the re-trace leaves it
+        rt_world w;
+        w.planner();
+        for (int t = 0; t < 40; ++t) w.cells[rt_world::flat(t, t)] = 0x01u | 32u; // cost 33; the staircase of the old shortest line
+        w.field(30, 30);
+        ck(w.plan(2, 2, 30, 30), "T13: the planner's plain trace reaches the goal");
+        const std::vector<uint32_t> before        = w.route(2, 2);
+        int                         priced_before = 0;
+        for (uint32_t f : before) priced_before += (w.cells[f] & 0xffu) > 1;
+        ck(priced_before >= 26, "T13: premise: the plain trace follows the priced staircase (the heat attracts the descent)");
+        const int r = mv::sh_retrace(w, s, 0, 63, 63, on);
+        ck(r == mv::SHR_CHANGED, "T13: the route is replaced");
+        const std::vector<uint32_t> after        = w.route(2, 2);
+        int                         priced_after = 0;
+        for (uint32_t f : after) priced_after += (w.cells[f] & 0xffu) > 1;
+        ck(priced_after <= 2, "T13: the re-trace leaves the priced staircase (the free lane is taken)");
+        ck(!after.empty() && after.back() == rt_world::flat(30, 30), "T13: ... and still ends on the goal");
+        std::set<uint32_t> seen(after.begin(), after.end());
+        ck(seen.size() == after.size(), "T13: no tile is visited twice (a reversal is impossible: d falls on every step)");
+        ck(after.size() <= before.size() + 3, "T13: ... at the price of a few extra tiles only");
+    }
+    { // gates: key off, heat not fired, free ground, a mismatching route
+        rt_world w;
+        w.planner();
+        w.field(30, 30);
+        ck(w.plan(2, 2, 30, 30), "T13: plan on free ground");
+        const std::vector<uint8_t> save = w.wp[0];
+        ck(mv::sh_retrace(w, s, 0, 63, 63, mv::sh_params_clamped(2, 48, 8, 0, 0, 0)) == mv::SHR_NONE, "T13: the key off does nothing");
+        mv::sh_state cold;
+        ck(mv::sh_retrace(w, cold, 0, 63, 63, on) == mv::SHR_NONE, "T13: a plan the heat did not fire for is not re-traced");
+        ck(mv::sh_retrace(w, s, 0, 63, 63, on) == mv::SHR_SAME && w.wp[0] == save, "T13: free ground: the re-trace is the planner's own route, nothing is written");
+        w.wp[0][0]                     = (w.wp[0][0] == 19) ? 22 : 19; // a route route_search would not have produced
+        const std::vector<uint8_t> bad = w.wp[0];
+        ck(mv::sh_retrace(w, s, 0, 63, 63, on) == mv::SHR_BASE && w.wp[0] == bad, "T13: a route the plain trace does not reproduce is refused and left alone");
+        w.members = 2;
+        ck(mv::sh_retrace(w, s, 0, 63, 63, on) == mv::SHR_NONE, "T13: a wave of two is not re-traced");
+    }
+    { // the turn penalty: on scattered cost-6 tiles the free re-trace zigzags, a penalty of 8 walks straight
+        bool any = false;
+        for (uint32_t seed = 2; seed <= 3; ++seed) {
+            rt_world w;
+            w.planner();
+            uint64_t st = seed;
+            for (int x = 0; x < 40; ++x)
+                for (int y = 0; y < 40; ++y) {
+                    st                            = (st * 1103515245ull + 12345ull) & 0x7fffffffull;
+                    w.cells[rt_world::flat(x, y)] = ((st >> 8) % 100 < 50) ? 6u : 1u;
+                }
+            w.cells[rt_world::flat(2, 2)]   = 1;
+            w.cells[rt_world::flat(30, 28)] = 1;
+            w.field(30, 28);
+            ck(w.plan(2, 2, 30, 28), "T13: noisy ground: the plain trace reaches the goal");
+            const std::vector<uint8_t> planned = w.wp[0];
+            mv::sh_retrace(w, s, 0, 63, 63, mv::sh_params_clamped(2, 48, 8, 0, 1, 0));
+            const int t0 = rt_turns(w.route(2, 2), 2, 2);
+            w.wp[0]      = planned;
+            mv::sh_retrace(w, s, 0, 63, 63, mv::sh_params_clamped(2, 48, 8, 0, 1, 8));
+            const int t8 = rt_turns(w.route(2, 2), 2, 2);
+            ck(t8 <= t0 && t8 == 0, "T13: turn penalty 8 walks without a turn of more than 45 degrees");
+            any = any || t0 > 0;
+        }
+        ck(any, "T13: premise: without the penalty the re-trace does turn (so the penalty is what removes it)");
+    }
+    { // the clamps of the new keys
+        const mv::sh_params p = mv::sh_params_clamped(2, 48, 8, 0, 7, 1000);
+        const mv::sh_params q = mv::sh_params_clamped(2, 48, 8, 0, -3, -5);
+        ck(p.retrace == 1 && p.turn == mv::SH_TURN_MAX && q.retrace == 1 && q.turn == 0, "T13: retrace is 0/1, the turn penalty clamps to 0 .. 64");
+        const mv::sh_params d;
+        ck(d.retrace == 0 && d.turn == 0, "T13: the default parameters leave the re-trace off");
+    }
+}
+
+// ---- mods:M1WL v5: the cap of the scaled cost and the margin rule (stream_heat.h sh_tile_cost / sh_margin) ------------------------------------------
+void t14_stream_cap_margin() {
+    { // the graded heat: cost 2 x min(count, cap) rounded down to a legal cost: 2 below 16 mates, 32 from 16
+        const mv::sh_params d;
+        ck(d.scale == 1 && d.scale_cap == 16 && d.window == 120 && d.cost == 2 && d.margin == 0, "T14: the parameter defaults: scale on, cap 16, window 120, cost 2 (the margin is the key's, set by the hook)");
+        bool ok = true;
+        for (int c = 1; c <= 15; ++c) ok = ok && mv::sh_tile_cost(d, c) == 2u;
+        ck(ok, "T14: 1 .. 15 mates on a tile: +2");
+        ck(mv::sh_tile_cost(d, 16) == 32u && mv::sh_tile_cost(d, 17) == 32u && mv::sh_tile_cost(d, 200) == 32u, "T14: 16 mates and more: +32 (the cap)");
+        const mv::sh_params p8 = mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 8);
+        ck(p8.scale_cap == 8 && mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 0).scale_cap == 1 && mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 9999).scale_cap == mv::SH_SCALE_CAP_MAX, "T14: the cap clamps to 1 .. 255");
+        const mv::sh_params c32 = mv::sh_params_clamped(32, 120, 8, 1, 0, 0, 4);
+        ck(mv::sh_tile_cost(c32, 1) == 32u && mv::sh_tile_cost(c32, 2) == 64u && mv::sh_tile_cost(c32, 4) == 128u && mv::sh_tile_cost(c32, 9) == 128u, "T14: cost 32 cap 4 is the old scale (32 / 64 / 96 / 128)");
+        const mv::sh_params flat = mv::sh_params_clamped(2, 120, 8, 0, 0, 0, 16);
+        ck(mv::sh_tile_cost(flat, 40) == 2u, "T14: scale 0 stays flat");
+        ck(mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, -4).margin == 0 && mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, 99999).margin == mv::SH_MARGIN_MAX && mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, 50).margin == 50,
+           "T14: the margin clamps to 0 .. 1000");
+    }
+    for (int mates = 15; mates <= 16; ++mates) { // the graded cost reaches the cells: 16 walkers over one tile price it +32, 15 price it +2
+        sh_world w;
+        w.planner();
+        for (int k = 0; k < mates; ++k) {
+            w.walker(1 + k, 20, 10, 0);
+            w.wp[(1 + k) & 7][0] = 1; // heading 1 = dy + 1
+            w.wp[(1 + k) & 7][1] = 20;
+        }
+        mv::sh_state &s = sh_scratch();
+        ck(mv::sh_open(w, s, 0, 7, 1, 63, 63) > 0, "T14: premise: the rule fires");
+        int top = 0;
+        for (int k = 0; k < s.n; ++k) top = s.cnt[k] > top ? s.cnt[k] : top;
+        ck(top == mates, "T14: premise: every tile is walked by all the mates");
+        bool all = s.n == 20;
+        for (int k = 0; k < s.n; ++k) all = all && (w.cells[s.flat[k]] & 0xffu) == (mates >= 16 ? (0x01u | 0x20u) : (0x01u | 0x02u));
+        ck(all, mates >= 16 ? "T14: 16 mates on each tile: the raw bit 0x20 (+32)" : "T14: 15 mates on each tile: the raw bit 0x02 (+2)");
+        mv::sh_close(w, s);
+    }
+    // the margin rule
+    auto build = [](rt_world &w, mv::sh_state &s, int gap_y) { // a priced wall x = 15 from y = 0 to 38 (the 40 x 40 area ends at y = 39), a gap at gap_y (-1: none)
+        w.planner();
+        s.n = 0;
+        for (int y = 0; y < 39; ++y) {
+            if (y == gap_y) continue;
+            w.cells[rt_world::flat(15, y)] = 0x01u | 0xE2u; // cost 227
+            s.flat[s.n]                    = rt_world::flat(15, y);
+            s.low[s.n]                     = 0x01u;
+            s.cnt[s.n]                     = 16;
+            ++s.n;
+        }
+        w.field(30, 2);
+        if (!w.plan(2, 2, 30, 2)) return false;
+        mv::sh_retrace(w, s, 0, 63, 63, mv::sh_params_clamped(2, 120, 8, 1, 1, 0, 16)); // the route the unit holds after the heat + the re-trace (the plain trace walks ON the priced wall)
+        return true;
+    };
+    const mv::sh_params on = mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, 50);
+    { // a closed wall: the heated route loops round the end (> 1.5x the straight one): the unheated route is written
+        rt_world      w;
+        mv::sh_state &s = sh_scratch2();
+        ck(build(w, s, -1), "T14: the heated plan reaches the goal");
+        const size_t heated = w.route(2, 2).size();
+        ck(heated > 42, "T14: premise: the heated route is more than 1.5 x the 28-tile straight one");
+        const std::vector<uint32_t> before = w.cells;
+        mv::sh_margin_info          inf;
+        const int                   r = mv::sh_margin(w, s, 0, 63, 63, on, &inf);
+        ck(r == mv::SHM_KEPT, "T14: margin 50: a route more than 1.5 x the unheated one is replaced");
+        const std::vector<uint32_t> after = w.route(2, 2);
+        ck(after.size() == 28 && after.back() == rt_world::flat(30, 2), "T14: the unheated route (28 tiles) is what the unit holds now");
+        ck(inf.len_heated == (int)heated && inf.len_plain == 28, "T14: the info carries both lengths");
+        ck(w.cells == before, "T14: every cell word is back exactly as it was (the heated field included)");
+        mv::sh_close(w, s);
+        bool low_ok = true;
+        for (int y = 0; y < 39; ++y) low_ok = low_ok && (w.cells[rt_world::flat(15, y)] & 0xffu) == 0x01u;
+        ck(low_ok, "T14: ... so sh_close() still puts the cost bytes back");
+    }
+    { // a gap beside the start: the heated route is about as long as the straight one: left alone
+        rt_world      w;
+        mv::sh_state &s = sh_scratch2();
+        ck(build(w, s, 4), "T14: the heated plan through the gap reaches the goal");
+        const std::vector<uint8_t>  route_before = w.wp[0];
+        const std::vector<uint32_t> before       = w.cells;
+        mv::sh_margin_info          inf;
+        const int                   r = mv::sh_margin(w, s, 0, 63, 63, on, &inf);
+        ck(r == mv::SHM_WITHIN && w.wp[0] == route_before && w.cells == before, "T14: a route within the margin is left alone");
+        ck(inf.len_plain == 28 && inf.len_heated <= 42, "T14: ... lengths 28 plain, heated within 1.5 x");
+        const int r2 = mv::sh_margin(w, s, 0, 63, 63, mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, 0));
+        ck(r2 == mv::SHM_NONE, "T14: margin 0 is off");
+        const int r3 = mv::sh_margin(w, s, 0, 63, 63, mv::sh_params_clamped(2, 120, 8, 1, 0, 0, 16, 1));
+        ck(r3 == mv::SHM_KEPT || r3 == mv::SHM_WITHIN, "T14: margin 1 decides");
+    }
+    { // gates: the heat did not fire, a wave of two, the goal is not the seed
+        rt_world      w;
+        mv::sh_state &s = sh_scratch2();
+        ck(build(w, s, -1), "T14: the heated plan");
+        mv::sh_state cold;
+        ck(mv::sh_margin(w, cold, 0, 63, 63, on) == mv::SHM_NONE, "T14: a plan the heat did not fire for is not compared");
+        w.members = 2;
+        ck(mv::sh_margin(w, s, 0, 63, 63, on) == mv::SHM_NONE, "T14: a wave of two is not compared");
+        w.members                               = 1;
+        w.cells[rt_world::flat(30, 2)]          = 0xffffff00u | (w.cells[rt_world::flat(30, 2)] & 0xffu); // the goal no longer carries the seed distance
+        const std::vector<uint8_t> route_before = w.wp[0];
+        ck(mv::sh_margin(w, s, 0, 63, 63, on) == mv::SHM_SKIP && w.wp[0] == route_before, "T14: a goal that is not the flood's seed is undecidable: left alone");
+    }
+}
+
 void run_move_proto_planner_tests() {
     t1_route_cost();
     t2_corridor();
@@ -1707,6 +2241,9 @@ void run_move_proto_planner_tests() {
     t7_flood_guard();
     t8_pathfind_centroid();
     t9_detour_guard();
+    t12_stream_heat();
+    t13_stream_retrace();
+    t14_stream_cap_margin();
 }
 
 } // namespace mh::sim::test

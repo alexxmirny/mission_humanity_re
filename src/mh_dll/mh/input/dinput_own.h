@@ -31,6 +31,8 @@ void on_present();
 // forward chain the real pointer uses is the one under test. All return false when backend != own or
 // the device does not exist yet.
 bool harness_mouse_abs_game(int gx, int gy);
+// RES4: an absolute packet at a CLIENT pixel of the game window (the path a tablet / VM pointer takes: abs_to_game maps it).
+bool harness_mouse_abs_client(int cx, int cy);
 bool harness_mouse_rel(int dx, int dy);
 bool harness_mouse_button(int button, bool down); // 0 left, 1 right, 2 middle
 bool harness_mouse_wheel(int delta);              // WHEEL_DELTA (120) per notch, positive = forward

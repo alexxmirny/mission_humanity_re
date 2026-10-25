@@ -1,0 +1,151 @@
+# res_apply_menu_200_d3d11 -- mods:RES26: the HUD at the requested size RIGHT AFTER Options Apply, while the menu is still up (the gdi row runs this same script under another name so the baselines do not collide).
+# The user's rc5 report (1920x1080 @ Interface size 200 on a 2560x1440 screen): after an in-game size change + Apply the presented HUD was 100% (one quad, Hp 0, no panel filler) until the game resumed.
+# Dig cause: in game mode 3 the percentage came from the stamp of the last strategic present, which still had the OLD frame size. Fixed: the Options apply moves the stamp to the new frame (ddraw_own.cpp owned_hud_commit_applied).
+#  a  Screen size 1920x1080 -> 1920x1440 (13 clicks), Ok: the menu (mode 3) shows the 200% HUD at once (r26_a_menu, bcapture + frame); resume (r26_a_resume);
+#  b  Interface size 200 -> 150 only (4 clicks: Auto, 100, 125, 150), Ok: the menu shows the 150% HUD at once (r26_b_menu); resume (r26_b_resume);
+#  c  Screen size on to a 1024x768 frame (11 clicks, Ok): the menu is consistent with the request (r26_c_menu).
+# tools/check_res26_apply.py reads mh_video.log (the view-epoch lines in game mode 3 after the first strategic frame: the percentage in force is the asked one) and the captures.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winclient 2560 1440
+screensettled
+gameclock +100
+cursorhold 1000 700 6
+bcapture r26_a_200
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+click 938 541
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture r26_a_menu
+bcapture r26_a_menu
+capture r26_a_menu_frame
+log res26 applied_a_in_menu
+
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 700 6
+screensettled
+gameclock +100
+pcapture r26_a_resume
+bcapture r26_a_resume
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 747
+settled Ok
+click 938 747
+settled Ok
+click 938 747
+settled Ok
+click 938 747
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture r26_b_menu
+bcapture r26_b_menu
+capture r26_b_menu_frame
+log res26 applied_b_in_menu
+
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 700 6
+screensettled
+gameclock +100
+pcapture r26_b_resume
+bcapture r26_b_resume
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+click 938 717
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture r26_c_menu
+bcapture r26_c_menu
+log res26 applied_c_in_menu
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 700 6
+screensettled
+gameclock +100
+log res26 COMPLETE
+end

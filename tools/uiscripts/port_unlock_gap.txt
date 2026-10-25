@@ -1,0 +1,52 @@
+# mods:UNL1 -- the retail unlock gap, MANUFACTURED on a vanilla campaign save (2-almost.sav, planet Aman) so it runs in BOTH configurations (the user's own
+# save is a raised-limits one and loads only without libmh.dll). `unlockdrop` makes the first offered BUILDING unlock whose depend[] are all acquired
+# un-offered (row available=0, the building removed from the offer list) -- exactly the state retail leaves after a load when the last prerequisite was met
+# elsewhere -- then the walk saves, quits to the menu and loads it back through the main menu:
+#   `dropped`    the gap is open (drop_avail=0 drop_in_list=0)
+#   `reloaded`   after the Load: [net] project_gate_fix=1 closes it (llm_game_load apply tail: call-splice 0x00447b78 / the libmh twin), OFF leaves it
+# then the TRANSITION half, on the visited planet 1: SwitchToPlanet(1) (`travel`), a gap opened on THAT planet, and the arrival tail
+# (`arrive` = llm_strat_planet_transition_finalize: call-splice 0x0044d229 / the libmh twin) closes it (ON) or leaves it (OFF). The same gap is
+# opened for the COMPUTER player 1 (`watch 1` / `unlockdrop`), because the recheck covers the computer players too:
+#   `gap_traveled` the gaps are open on planet 1 before the tail ran      `gap_arrived` after the tail
+# tools/check_port_unlock.py reads the `; [port]` lines.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +3000
+logport start
+unlockdrop
+logport dropped
+savegame pgap
+gameclock +200
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+logport reloaded
+capture port_gap_reloaded
+travel 1
+unlockdrop
+watch 1
+unlockdrop
+watch local
+logport gap_traveled
+arrive
+logport gap_arrived
+delsave pgap
+log port: gap manufactured, saved, reloaded
+end

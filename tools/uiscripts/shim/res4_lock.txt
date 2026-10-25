@@ -1,0 +1,3 @@
+# mods:RES4 stage 7 -- the host's stall is forced by the row's shim_triggers (`blackhole c2s` on the host's `res4_lock: stall start` log line, off on
+# `... end`). This line is only the fallback that lifts a blackhole whose release trigger never fired.
+600000  blackhole off

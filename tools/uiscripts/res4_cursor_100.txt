@@ -1,0 +1,50 @@
+# res4_cursor_100 -- mods:RES4 stage 5, the reference arm: the same pointer walk as res4_cursor_150 at ui_scale=100 (ini/res4_s100.ini: the
+# 1280x800 frame, ONE fitted quad). Nothing is hooked at 100: the game draws its own cursor into the frame, so the presented image is
+# the frame and the baselines pin that the owned cursor changed nothing here (map / panel stops, the Menu button at frame 1228,150).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+log res4 frame_ready 1280x800 @100
+
+rawmouse sabs 300 300
+scurpos 300 300
+gameclock +40
+capture res4_cf_map
+pcapture res4_cp_map
+
+rawmouse sabs 1228 150
+scurpos 1228 150
+gameclock +40
+capture res4_cf_panel
+pcapture res4_cp_panel
+
+rawmouse sabs 300 780
+scurpos 300 780
+gameclock +40
+capture res4_cf_strip
+pcapture res4_cp_strip
+
+# click-through: the scaled cursor sits on the Menu button; the click opens the ESC menu
+rawmouse sabs 1228 150
+scurpos 1228 150
+gameclock +40
+rawmouse down l
+rawmouse up l
+retry 1500 3 3 settled value:113
+log res4 menu_opened_by_scaled_cursor_click
+clickv 103
+gamemode 2
+gameclock +100
+log res4 COMPLETE -- ui_scale=100: owned cursor on map, panel and strip, hotspot click-through
+end

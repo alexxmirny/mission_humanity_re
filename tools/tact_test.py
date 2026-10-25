@@ -267,6 +267,10 @@ def tact_write_config(
         "commando=0",
         "target_owner=%d" % target_owner,
         "target_building=0",
+        # TSCR1: the recorded journals and the determinism arms scroll one tile per rendered frame, as
+        # retail does; the shipped default (480 px/s of game clock) would change the camera, and the
+        # camera feeds the sim (facing commands to selected idle units in the camera window).
+        "scroll_px_s=0",
         # WHICH MISSION. 0 = the save's own CurrentSystem (the shipping default, changes nothing).
         # >0 overrides it, which is the only way to reach all six shipped POZ files from one save --
         # a save pins exactly one system, and the O/L half comes from target_owner's race. The

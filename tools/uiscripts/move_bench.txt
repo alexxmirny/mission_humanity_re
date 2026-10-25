@@ -1,0 +1,18 @@
+# TL-MOVE-BENCH -- the 20-order movement benchmark: load 5-kofu-c ('Unit movement test') and let the harness probe (the row's harness_extra:
+# mv_replay=m1_moves.csv, the user's 20 recorded move orders) replay them through the player's deferred right-click path. The verdict is NOT a frame:
+# tools/check_move_bench.py reads the probe's `; MV ...` lines and compares them with tools/data/move_bench_baseline.json.
+# One capture right after the load (identical in every arm, so one baseline serves every move_bench* row); the wait afterwards only has to outlast the probe
+# (the harness ends the process at stop_step). The older hand-run form of this script is m1_mv_replay.txt (mods:M1R).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+capture move_bench
+gameclock +640000
+log move_bench: probe finished
+end

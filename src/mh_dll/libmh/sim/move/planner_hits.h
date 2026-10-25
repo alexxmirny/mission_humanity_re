@@ -38,6 +38,7 @@ enum planner_hit_id : int {
     PH_RTR,
     PH_FLOOD_EXACT,
     PH_FC,
+    PH_SH,
     PH_COUNT
 };
 
@@ -57,6 +58,7 @@ inline const char *planner_hit_name(int id) {
         case PH_RTR: return "route_replanning";
         case PH_FLOOD_EXACT: return "flood_exact";
         case PH_FC: return "formation";
+        case PH_SH: return "stream_heat";
         default: return "?";
     }
 }

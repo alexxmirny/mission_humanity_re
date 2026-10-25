@@ -1,0 +1,34 @@
+# res_overlay_200 -- mods:RES21: resolution=2048x1152 at Interface size 200 on a pinned 2560x1440 screen (ini/res_overlay_200.ini). The WHOLE frame is shown as at 100 (same map zoom at every percentage, no bars), the panel and strip are overlays at 200% (tools/check_res_overlay.py 2048_200). The pointer map: a cursor at frame pixel F is asserted (scurpos) to be the pixel under the client point through the overlay (panel/strip) or the map under it.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res_overlay frame_ready
+cursorhold 600 400 6
+capture res_overlay_200_frame
+pcapture res_overlay_200_view
+
+# top-left corner, the map: screen (2,2) -> frame (2,2)
+cursorhold 2 2 6
+scurpos 2 2 2
+# the last map column beside the panel: screen (2239,700) -> frame (1791,560)
+cursorhold 1791 560 6
+scurpos 2239 700 2
+# the panel's first column: screen (2240,700) -> frame (1888,350)
+cursorhold 1888 350 6
+scurpos 2240 700 2
+# the screen's last column (edge rule: frame W-1): screen (2559,700) -> frame (2047,350)
+cursorhold 2047 350 6
+scurpos 2559 700 2
+# inside the map: screen (1000,1000) -> frame (800,800)
+cursorhold 800 800 6
+scurpos 1000 1000 2
+log res_overlay COMPLETE -- res_overlay_200
+end

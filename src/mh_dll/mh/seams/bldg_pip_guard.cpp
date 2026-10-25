@@ -45,7 +45,7 @@
 #include "addr/mh_regions.gen.h"  // mh::state::live(), RID_BUILDINGS
 #include "addr/mh_structs.gen.h"  // mh_map_object_building
 #include "state/region_runtime.h" // mh::state::ptr<> -- CUR_BUILDING / CUR_INDEX are RELOCATABLE regions
-#include "state/roster_caps.h"    // live_roster_caps(): the per-player building cap the host bound
+#include "caps/caps.h"            // mh::caps::rec / g: the building array the game addresses (PT-CAP8)
 #include "desync/replay_record.h" // replay_rec::current_step() -- the match-step axis the door watch uses
 #include "hook/patch.h"           // patch_bytes_guarded
 #include "hook/promoted.h"        // promoted_owner_of
@@ -114,10 +114,9 @@ uintptr_t __cdecl guard_tick() {
 // Site (B): retail addresses buildings[(uint16)player][index] -- the same row the region binds, at the host's cap.
 void __cdecl guard_charge(uint32_t player, uint32_t index) {
     player &= 0xffffu; // retail: MOVZX word [EBP-0x14]
-    const auto caps = mh::state::live_roster_caps();
-    auto      *bl   = reinterpret_cast<building *>(mh::state::live().base[mh::state::RID_BUILDINGS]);
-    if (!bl || player >= 8 || caps.buildings <= 0 || index >= (uint32_t)caps.buildings) return;
-    sanitize(bl[player * (uint32_t)caps.buildings + index], player, index, "update_charge_pips");
+    const auto &bg = mh::caps::g(mh::caps::BUILDINGS);
+    if (player >= bg.players || index >= bg.limit) return;
+    sanitize(*mh::caps::rec<building>(mh::caps::BUILDINGS, player, index), player, index, "update_charge_pips");
 }
 
 // clang-format off

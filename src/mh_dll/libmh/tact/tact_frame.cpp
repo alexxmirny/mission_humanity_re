@@ -17,6 +17,7 @@
 #include "tact/tact_group_issue_order.h"
 #include "tact/tact_mission_end_return_to_strategic.h"
 #include "tact/tact_pilot.h"
+#include "tact/tact_scroll_pace.h"
 #include "tact/tact_scroll_target_proximity_tick.h"
 #include "tact/tact_select_next_unit.h"
 #include "tact/tact_selection_clear_unless_ctrl.h"
@@ -34,6 +35,19 @@
 #include "crt/crt_select.h" // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
 
 namespace mh::tact {
+
+// TSCR1: [tactical] scroll_px_s. 0 = retail per-frame stepping (the default here, so the offline oracle and every
+// replay stay the original's behaviour); a host sets it through set_scroll_px_s.
+namespace {
+int          g_scroll_px_s = 0;
+scroll_pacer g_scroll_pacer;
+} // namespace
+
+void set_scroll_px_s(int px_s) {
+    g_scroll_px_s = px_s < 0 ? 0 : px_s;
+    g_scroll_pacer.reset();
+}
+int scroll_px_s() { return g_scroll_px_s; }
 
 const frame_calls &live_frame_calls() {
     static const frame_calls c = {
@@ -239,8 +253,23 @@ void frame(const tact_view &v, tact_store &own, const frame_calls &c) {
     c.gfx_load_sprite(own.hovered_unit_id() == 0 ? 2 : 1);
 
     // ---- step 14: camera panning --------------------------------------------------------------------
+    // TSCR1: retail steps one tile per direction per rendered frame (n = 0 or 1 below). With g_scroll_px_s > 0 the
+    // step count comes from the game-clock pacer (tact_scroll_pace.h) instead -- 0..2 whole tiles per direction per
+    // frame -- and each step runs the original clamp + view-shift pair unchanged. `now` is step 8's clock read.
     if (own.mouse_buttons_cur() == 0 && own.scroll_cmd() == 0) {
-        if (*v.cursor_x == 0 || own.cam_scroll_left_held() == 1) {
+        const bool act_left  = *v.cursor_x == 0 || own.cam_scroll_left_held() == 1;
+        const bool act_up    = *v.cursor_y == 0 || own.cam_scroll_up_held() == 1;
+        const bool act_right = own.window_width() - 1 == *v.cursor_x || own.cam_scroll_right_held() == 1;
+        const bool act_down  = own.window_height() - 1 == *v.cursor_y || own.cam_scroll_down_held() == 1;
+        int        n_left = act_left ? 1 : 0, n_up = act_up ? 1 : 0, n_right = act_right ? 1 : 0, n_down = act_down ? 1 : 0;
+        if (g_scroll_px_s > 0) {
+            g_scroll_pacer.begin_frame(now);
+            n_left  = g_scroll_pacer.steps(SCROLL_LEFT, act_left, now, g_scroll_px_s);
+            n_up    = g_scroll_pacer.steps(SCROLL_UP, act_up, now, g_scroll_px_s);
+            n_right = g_scroll_pacer.steps(SCROLL_RIGHT, act_right, now, g_scroll_px_s);
+            n_down  = g_scroll_pacer.steps(SCROLL_DOWN, act_down, now, g_scroll_px_s);
+        }
+        for (int k = 0; k < n_left; ++k) {
             own.map_cam_col() -= 1;
             if (own.map_cam_col() < 0) {
                 own.map_cam_col() = 0;
@@ -248,7 +277,7 @@ void frame(const tact_view &v, tact_store &own, const frame_calls &c) {
                 mh::tact::view_shift_col_dec();
             }
         }
-        if (*v.cursor_y == 0 || own.cam_scroll_up_held() == 1) {
+        for (int k = 0; k < n_up; ++k) {
             own.map_cam_row() -= 1;
             if (own.map_cam_row() < 0) {
                 own.map_cam_row() = 0;
@@ -256,7 +285,7 @@ void frame(const tact_view &v, tact_store &own, const frame_calls &c) {
                 mh::tact::view_shift_row_dec();
             }
         }
-        if (own.window_width() - 1 == *v.cursor_x || own.cam_scroll_right_held() == 1) {
+        for (int k = 0; k < n_right; ++k) {
             own.map_cam_col() += 1;
             const int32_t col_bound = *v.map_width - (*v.win_w / 32); // shift-divide, exact for C++ /
             if (col_bound < own.map_cam_col()) {
@@ -265,7 +294,7 @@ void frame(const tact_view &v, tact_store &own, const frame_calls &c) {
                 mh::tact::view_shift_col_inc();
             }
         }
-        if (own.window_height() - 1 == *v.cursor_y || own.cam_scroll_down_held() == 1) {
+        for (int k = 0; k < n_down; ++k) {
             own.map_cam_row() += 1;
             const int32_t row_bound = *v.map_height - own.window_height() / 24; // real IDIV
             if (row_bound < own.map_cam_row()) {

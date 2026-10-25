@@ -1,0 +1,39 @@
+# O1c -- the cap-fill HOST walk of mp_host_cap_fill.txt plus ONE closing frame capture (a registry multi row needs a baselined capture on
+# every host; the assertion is NOT the frame but the `; CAPORD VERDICT` line, tools/check_cap_fill.py --order). Pair with mp_client_idle.txt.
+# Original header: the cap-fill HOST walk for the 2-peer determinism shape (tools/det_arms.py --det-caps). Pair with
+# mp_client_idle.txt. Both peers run libmh-less with the host's `[caps] raise=1` adopted by the client; this walk lands the host's
+# mother and lets the match run, and the harness cap-fill fixture (cap_*: capf_tick in mh_harness/harness.cpp) places the buildings
+# through the game's own construction order, issued by the owner peer. The assertion is the lockstep hash compare (+ the `; CAP` lines),
+# not a frame.
+
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture acts once the mother has landed
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+gameclock 40000
+log cap done
+capture cap_order_done
+end

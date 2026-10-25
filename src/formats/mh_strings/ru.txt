@@ -24,6 +24,7 @@ refuse.newer_than_host = протокол новее, чем у хоста
 refuse.not_our_lobby = чужое лобби
 refuse.cp_mismatch = разные кодировки
 refuse.unknown = неизвестно
+refuse.caps = нельзя расширить лимиты
 refuse.build = У хоста %s, у вас %s: обновитесь
 refuse.gameplay = Настройки геймплея различаются (%s/%s): обновитесь
 relay.outdated = Ретранслятор устарел (протокол %u < %u)
@@ -38,6 +39,8 @@ map.mismatch = Карта от хоста не совпадает с объяв�
 # in-match messages
 desync.alert = РАССИНХРОНИЗАЦИЯ (шаг %lu) - игра идет по-разному у игроков
 cheat.single_player = читы только в одиночной игре
+orders.quota = Слишком много приказов сразу - остальные не отданы
+orders.refused = Очередь приказов переполнена - остальные не отданы
 hub.migrated = %s вышел; хостом теперь %s
 hub.lost = связь с %s потеряна; хостом теперь %s
 spectate.defeated = Побеждён -- наблюдение
@@ -54,6 +57,10 @@ netind.waiting = ЖДЕМ: %s
 # main menu (the no-art fallback button; drawn upper-cased)
 menu.network_game = Сетевая игра
 
+# in-game Options screen: the Interface size row (mods:RES4)
+options.interface_size = Размер интерфейса:
+options.interface_auto = Авто
+
 # lobby TEAM spinner + MODE selector (mp:U51)
 lobby.team_none = -
 lobby.team_1 = К1
@@ -62,3 +69,6 @@ lobby.team_3 = К3
 lobby.team_4 = К4
 lobby.mode_ffa = Режим: FFA
 lobby.mode_team = Режим: команды
+
+# raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
+caps.load_refused = Это сохранение использует расширенные лимиты. Включите "Расширенные лимиты" в лаунчере, чтобы загрузить его.

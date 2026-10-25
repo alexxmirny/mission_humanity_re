@@ -4,6 +4,10 @@
 //
 #include "desync/scene_dump.h"
 
+#include "caps/caps.h"   // PT-CAP8: canon_scatter after an import
+#include "caps/orders.h" // PT-CAP9-U7c: finish_scatter after the MHOV apply
+#include "caps/ovf.h"    // PT-CAP8 S2: the MHOV trailer after the fixup trailer
+
 #include <windows.h>
 
 #include <cstring>
@@ -59,8 +63,9 @@ namespace mh::desync::scene {
 void set_nav_views(const nav_views &v) { g_views = v; }
 
 uint8_t *capture(double game_clock, uint32_t step, size_t *len, int *rc) {
-    namespace w       = mh::state::world;
-    const size_t need = w::capture_capacity();
+    namespace w = mh::state::world;
+    // PT-CAP8 S2: with the raise ON the overflow records ride behind the fixup trailer (OFF: not a byte more).
+    const size_t need = w::capture_capacity() + (mh::caps::raised() ? mh::caps::ovf::max_bytes_world() : 0);
     uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
     *len              = 0;
     *rc               = -1;
@@ -71,6 +76,8 @@ uint8_t *capture(double game_clock, uint32_t step, size_t *len, int *rc) {
     w::lockstep_hash(p.mask_flags, &p.lockstep_combined, &p.lockstep_state);
     size_t got = 0;
     *rc        = w::capture(blob, need, &got, p);
+    if (*rc == w::WORLD_OK && !mh::caps::ovf::append_to_world_blob(blob, &got, need))
+        *rc = mh::caps::ovf::world_rc_refused(mh::caps::ovf::OVF_ERR_TOO_SMALL);
     if (*rc != w::WORLD_OK) {
         HeapFree(GetProcessHeap(), 0, blob);
         return nullptr;
@@ -175,6 +182,27 @@ int import_world(const void *blob, size_t n, const import_ops &ops) {
         if (ops.log) ops.log("; [scene_in] %s (%d, %d)\n", what, a, b);
     };
 
+    // (0) PT-CAP8 S2: an overflow trailer (behind the fixup trailer) is validated BEFORE anything is written: a blob
+    // that carries overflow cannot be imported with the raise OFF (the wide arrays' tails would not be addressed), and
+    // a damaged trailer refuses with the world untouched.
+    const uint8_t *ovf_tr  = nullptr;
+    size_t         ovf_len = 0;
+    if (n >= sizeof(w::blob_header)) {
+        const auto *bh = static_cast<const w::blob_header *>(blob);
+        ovf_tr         = mh::caps::ovf::world_trailer(blob, n, bh->nav_offset, bh->nav_len, bh->fixup_len, &ovf_len);
+    }
+    if (ovf_tr) {
+        if (!mh::caps::raised()) {
+            if (ops.log) ops.log("; [scene_in] overflow trailer REFUSED: raise OFF (%u bytes)\n", (unsigned)ovf_len);
+            return mh::caps::ovf::WORLD_ERR_CAPS_OVF;
+        }
+        const int orc = mh::caps::ovf::check(ovf_tr, ovf_len);
+        if (orc != mh::caps::ovf::OVF_OK) {
+            if (ops.log) ops.log("; [scene_in] overflow trailer REFUSED rc=%d\n", orc);
+            return mh::caps::ovf::world_rc_refused(orc);
+        }
+    }
+
     // (0a) validate the fixup trailer completely and stash the receiver's own dwords; an OURS module of a
     // different build refuses here (-23) with the world untouched.
     static w::fixup_plan plan; // ~330 KB: static, never a stack frame
@@ -251,6 +279,17 @@ int import_world(const void *blob, size_t n, const import_ops &ops) {
     ops.route_step_deltas();
     const int nrc = w::import_nav(blob, n);
     if (nrc != w::WORLD_OK) say("nav import refused rc", nrc, 0);
+    // PT-CAP8 (D1): the byte engine wrote the STOCK extents of the seven raised arrays -- the canonical mirror. Publish it to the
+    // wide arrays the game addresses (and zero their tails). A no-op unless the cap relocation is applied.
+    mh::caps::canon_scatter();
+    if (ovf_tr) { // PT-CAP8 S2: the tails were zeroed by the scatter; the carried overflow records go in on top
+        const int orc = mh::caps::ovf::apply(ovf_tr, ovf_len);
+        say("overflow records applied rc", orc, mh::caps::ovf::record_count(ovf_tr, ovf_len));
+        mh::caps::orders::finish_scatter(); // PT-CAP9-U7c: the order counts the stock import carried come back with their tail records, or stay clamped (logged)
+        if (orc != mh::caps::ovf::OVF_OK) return mh::caps::ovf::world_rc_refused(orc);
+    } else {
+        mh::caps::orders::finish_scatter();
+    }
     return nrc;
 }
 

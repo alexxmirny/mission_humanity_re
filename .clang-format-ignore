@@ -35,6 +35,8 @@ src/mh_dll/mh/fp/st0_call.h
 # same generator's output and is listed for the same reason.
 src/mh_dll/mh/patch/manifest_*.gen.h
 src/mh_dll/mh/patch/manifests.gen.h
+# PT-CAP9-U4: tools/gen_cap_units_manifests.py emits the path-pool layout (aligned constants) -- same reason
+src/mh_dll/mh/caps/path_pool_layout.gen.h
 src/mh_dll/mh_nettest/manifest_*.fixture.gen.h
 # F4D's generated mh.dll <-> libmh.dll bind table and its ~93 naked forwarding thunks: same reason
 # as the address header above -- clang-format would reflow the `__asm` blocks and the string table,

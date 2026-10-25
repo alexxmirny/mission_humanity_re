@@ -1,0 +1,19 @@
+# res_crop_150 -- mods:RES18: resolution=1920x1080 (rendered 1920x1088) at Interface size 150% on a pinned 2560x1440 screen: the whole cropped frame is fitted like 100 and the panel and strip are overlays at 150% (tools/check_res_overlay.py crop_150).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res_crop frame_ready
+cursorhold 600 400 6
+capture res_crop_150_frame
+pcapture res_crop_150_view
+
+log res_crop COMPLETE -- 1920x1080 cropped from 1920x1088: the cropped frame at 150%
+end

@@ -6,7 +6,7 @@
  "carried_bytes": 7711960,
  "excluded": 16,
  "unaccounted": 0,
- "hash_backed_regions": 52,
+ "hash_backed_regions": 53,
  "overlapping_blocks": [
   {
    "a": "MESSAGE_TIME",
@@ -1334,8 +1334,8 @@
   },
   {
    "rid": 222,
-   "id": "TACT_SCROLL_CMD",
-   "name": "_G_LLM_TACT_SCROLL_CMD",
+   "id": "TACT_MINE_BLAST_SHAKE_STEP",
+   "name": "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
    "len": 4
   },
   {

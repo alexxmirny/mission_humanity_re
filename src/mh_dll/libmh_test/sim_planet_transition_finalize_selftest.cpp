@@ -146,6 +146,20 @@ const planet_transition_finalize_calls g_calls = {
     &rec_cam_mark_viewport_dirty,
 };
 
+void rec_recheck_unlocks() { g_log.order.push_back("recheck_unlocks"); }
+
+// mods:UNL1: the same table with the unlock-recheck hook bound
+const planet_transition_finalize_calls g_calls_unl1 = {
+    &rec_time_resync_and_tick,
+    &rec_invasion_due_check,
+    &rec_invasion_alert_clear,
+    &rec_prod_deliver_arrivals,
+    &rec_deploy_starting_squad,
+    &rec_player_presence_lost,
+    &rec_cam_mark_viewport_dirty,
+    &rec_recheck_unlocks,
+};
+
 void reset_observations() {
     g_log.reset();
     g_mutate_at = mutate_at::none;
@@ -526,6 +540,44 @@ void run_planet_transition_finalize_tests() {
               "not a value cached at function entry");
         ck_eq(g_log.last_player_presence_lost_player, 999u,
               "T15: player arg == local_player_slot (999), unaffected by the index mutation");
+    }
+
+    // =================================================================================================
+    // T16 -- mods:UNL1: the recheck hook runs exactly once, AFTER the presence-lost block and immediately BEFORE the
+    // cam_mark_viewport_dirty tail (the retail call-splice at 0x0044d229); an unbound hook (the table every test above uses) is skipped.
+    // planet_index=4, status UNKNOWN -> no deploy / presence-lost, the clean 5-entry order of T2 plus the hook.
+    // =================================================================================================
+    {
+        fx.reset();
+        reset_observations();
+        fx.planet_index = 4;
+        g_fx            = &fx;
+        {
+            sim_view  v   = fx.view();
+            sim_store own = fx.store();
+            detail::planet_transition_finalize(v, own, g_calls_unl1);
+        }
+        ck(order_is({"time_resync_and_tick", "invasion_due_check", "invasion_alert_clear", "prod_deliver_arrivals",
+                     "recheck_unlocks", "cam_mark_viewport_dirty"}),
+           "T16: recheck_unlocks fires once, between the last frontier call and the cam_mark_viewport_dirty tail");
+
+        // with presence_lost in play the hook still comes after it (a lost planet is rechecked in its final state)
+        fx.reset();
+        reset_observations();
+        fx.planet_index                                   = 2;
+        fx.cfg_planets[2].invention_index                 = 50;
+        fx.player_side                                    = 4;
+        fx.progress[4 * PROGRESS_ROW_COUNT + 50].acquired = 0;
+        fx.planet_status[2]                               = 3;
+        g_fx                                              = &fx;
+        {
+            sim_view  v   = fx.view();
+            sim_store own = fx.store();
+            detail::planet_transition_finalize(v, own, g_calls_unl1);
+        }
+        ck(order_is({"time_resync_and_tick", "invasion_due_check", "invasion_alert_clear", "prod_deliver_arrivals",
+                     "player_presence_lost", "recheck_unlocks", "cam_mark_viewport_dirty"}),
+           "T16: recheck_unlocks comes AFTER player_presence_lost and before the tail");
     }
 }
 

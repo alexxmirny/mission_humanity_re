@@ -22,7 +22,7 @@ The fixtures (the m1h_*.txt scripts; the harness probe that drives each is in th
   f6 speed       ayy30-tests  + m1h_f6.csv   group speed (commit + walk): faster members carry the slowest member's scale
   f7 attack      2-almost     + m1h_f7.csv   attack_range_footprint (unit 5 fires from 62,3); d7 = improved_combat=0: attack-heading fix (59,5)
   f8 merge       nortus-1     + m1h_f8.csv   squad merge into an attacker, merge goal, projectile facing (f8x on lib: arf off, completeness only)
-  f9 guards      5-kofu-c, nd_case=6, mv_oob_fill=1   the slot-0xff splice: with the guard the walker never writes player 2 slot 55; retail does
+  f9 guards      5-kofu-c, nd_case=6, mv_oob_fill=1   the slot-0xff splice: with the guard the walker never writes the landing slot (own slot 255 on the relocated pool, else player+2 slot 55); retail does
   f10 big map    the lobby's 256x256 skirmish, pf probe, route_corridor_mode=2   exact flood (route_flood_exact) + corridor hits on a front that can lap the ring
   f12 wall       5-kofu-c, nd_case=8, nd_len=1  move_route_through_replanning (M1DT fix 2): W is ordered through the gap of a 17-tile wall that holds a friend waiting in the
                                        marshal state 0x0a; the planner opens its tile and W follows it through (6 tiles; retail walks round the wall: 18)
@@ -70,6 +70,7 @@ CARRIER = re.compile(r"; move carrier \[net\] (\w+)=(-?\d+): (.*)$")
 MVC = re.compile(
     r"^; MV C step=(\d+) rel=(\d+) u=(\d+) xy=(\d+),(\d+) .*? st=0x([0-9a-f]+) .*? scale=(\d+)/(\d+)"
 )
+OOBFILL = re.compile(r"; MV OOBFILL player (\d+) slot (\d+) ")
 OOBW = re.compile(r"; MV OOBW step=(\d+) player=(\d+) slot=(\d+)")
 ND_V = re.compile(
     r"; ND VERDICT case=(\d+) k=(\d+) unit=(\d+) xy=(\d+),(\d+) goal=(-?\d+),(-?\d+) arrived_el=(-?\d+) tiles=(\d+) replans=(\d+) wait_steps=(\d+) max_retry=(\d+) state=0x([0-9a-f]+)"
@@ -111,6 +112,7 @@ HIT_KEY = {
     "route_replanning": "move_route_through_replanning",
     "replan_cap": "move_replan_detour_cap",
     "formation": "move_formation_click",
+    "stream_heat": "move_stream_heat",
     "enter_queue": "move_enter_queue",
     "door_hold": "storage_door_hold",
     "speed_commit": "move_group_speed",
@@ -233,6 +235,10 @@ def facts(run_dir):
                 )
             )
     f["oobfill"] = any("MV OOBFILL" in ln for ln in h)
+    # U4g: the slot the fill was written to = where the retail slot-0xff index lands (own slot 255 on the relocated pool, else player+2 slot 55)
+    f["oobsite"] = next(
+        ((int(m.group(1)), int(m.group(2))) for m in (OOBFILL.search(ln) for ln in h) if m), None
+    )
     return f
 
 
@@ -995,6 +1001,48 @@ def out_f21n(f):
     return fails
 
 
+# f21s shuttle door (mods:M1SH, nd_door=3): the SAME fixture on the race's shuttle (storage_door_hold covers every storage door). Key on: every
+# unit docks before the door closes (closes == 0), nobody gives up, last dock inside F21S_STEPS_MAX. f21sn (key 0) is the red-proof: the shuttle
+# door closes between entrants (closes > 0), so f21s' closes == 0 is the key's doing.
+F21S_STEPS_MAX = 1400  # measured 2026-10-24: key on 1186 steps / 0 closes, key 0 (f21sn) 1690 / 5 closes (16 slowest accepted infantry, the save's alien shuttle)
+
+
+def out_f21s(f):
+    fails, t = dr_common(f)
+    if t:
+        if t["docked"] != t["n"]:
+            fails.append("DR: %d of %d units docked: %s" % (t["docked"], t["n"], dr_dump(t)))
+        if t["giveups"]:
+            fails.append(
+                "DR: %d unit(s) gave the order up outside: %s" % (t["giveups"], dr_dump(t))
+            )
+        if t["closes"]:
+            fails.append(
+                "DR: the shuttle door closed %d time(s) before the last dock: %s"
+                % (t["closes"], dr_dump(t))
+            )
+        if F21S_STEPS_MAX and t["lastdock"] > F21S_STEPS_MAX:
+            fails.append(
+                "DR: the last unit docked %d steps after the order (want <= %d): %s"
+                % (t["lastdock"], F21S_STEPS_MAX, dr_dump(t))
+            )
+        print("  F21s " + dr_dump(t))
+    return fails
+
+
+def out_f21sn(f):
+    """key 0 on the shuttle: the retail rule closes the door between entrants (the red-proof of f21s)"""
+    fails, t = dr_common(f)
+    if t:
+        if t["closes"] <= 0:
+            fails.append(
+                "DR: key 0 but the shuttle door never closed (the fixture proves nothing): %s"
+                % dr_dump(t)
+            )
+        print("  F21sn (key 0) " + dr_dump(t))
+    return fails
+
+
 def out_f6(f):
     fails = []
     for n in (0, 1):
@@ -1090,11 +1138,14 @@ def out_f9(f):
         )
     if not f["oobfill"]:
         fails.append("no `; MV OOBFILL` line: the forced precondition was never set")
-    bad = [w for w in f["oobw"] if (w[1], w[2]) == (2, 55)]
+    site = f["oobsite"]
+    if f["oobfill"] and not site:
+        fails.append("`; MV OOBFILL` line does not name the landing player/slot")
+    bad = [w for w in f["oobw"] if site and (w[1], w[2]) == site]
     if bad:
         fails.append(
-            "%d `; MV OOBW` write(s) into player 2 slot 55: the slot-0xff splice wrote out of bounds"
-            % len(bad)
+            "%d `; MV OOBW` write(s) into the landing slot (player %d slot %d): the slot-0xff splice wrote out of bounds"
+            % (len(bad), site[0], site[1])
         )
     return fails
 
@@ -1105,9 +1156,13 @@ def off_f9(f):
         fails.append("no `; ND TOTAL case=6`")
     if not f["oobfill"]:
         fails.append("no `; MV OOBFILL` line")
-    if not [w for w in f["oobw"] if (w[1], w[2]) == (2, 55)]:
+    site = f["oobsite"]
+    if f["oobfill"] and not site:
+        fails.append("`; MV OOBFILL` line does not name the landing player/slot")
+    elif site and not [w for w in f["oobw"] if (w[1], w[2]) == site]:
         fails.append(
-            "no `; MV OOBW` into player 2 slot 55 with the guard off: the fixture no longer provokes the slot-0xff write, so the guard's green proves nothing"
+            "no `; MV OOBW` into the landing slot (player %d slot %d) with the guard off: the fixture no longer provokes the slot-0xff write, so the guard's green proves nothing"
+            % site
         )
     return fails
 
@@ -1208,6 +1263,8 @@ CASES = {
     "f20": dict(hits=["formation"], out=out_f20, off=off_f20),
     "f21": dict(hits=["enter_queue", "door_hold"], out=out_f21, off=off_f21),
     "f21n": dict(hits=[], out=out_f21n, off=None),
+    "f21s": dict(hits=["door_hold"], out=out_f21s, off=off_f21),
+    "f21sn": dict(hits=[], out=out_f21sn, off=None),
     "f7": dict(hits=["arf_issue", "arf_fire"], out=out_f7, off=off_f7),
     "d7": dict(hits=[], out=out_d7, off=None),
     "f8": dict(hits=["squad_merge", "merge_goal", "proj_facing"], out=out_f8, off=off_f8),
@@ -1468,7 +1525,7 @@ def selftest():
         # f9 (the slot-0xff fixture), f4 (the centroid group move), f8x, the M1N seam lines at retail, the 2-peer comparison
         nd6 = [
             "; ND TOTAL case=6 steps=287 tiles=9 replans=0 wait_steps=0",
-            "; MV OOBFILL player 2 slot 55 filled",
+            "; MV OOBFILL player 0 slot 255 filled with 12/1 legs (x) layout=reloc rows=501 pstride=300600",
         ]
         f9_n = [carrier % ("move_detour_slot_guard", "retail splice"), "; move hits detour=1"]
         expect("f9 ship ok", not r("q", nd6, f9_n, case="f9"))
@@ -1479,7 +1536,7 @@ def selftest():
                     "s",
                     nd6
                     + [
-                        "; MV OOBW step=3449 player=2 slot=55 UNOWNED changed_bytes=3 first_off=0 new=0101"
+                        "; MV OOBW step=3449 player=0 slot=255 UNOWNED changed_bytes=3 first_off=0 new=0101"
                     ],
                     f9_n,
                     case="f9",
@@ -1494,7 +1551,7 @@ def selftest():
                 "v",
                 nd6
                 + [
-                    "; MV OOBW step=3449 player=2 slot=55 UNOWNED changed_bytes=3 first_off=0 new=0101"
+                    "; MV OOBW step=3449 player=0 slot=255 UNOWNED changed_bytes=3 first_off=0 new=0101"
                 ],
                 [],
                 case="f9",

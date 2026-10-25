@@ -836,6 +836,14 @@ bool wd_is_ret(DWORD v) {
     if (!VirtualQuery((LPCVOID)(uintptr_t)v, &mbi, sizeof(mbi))) return false;
     if (mbi.Type != MEM_IMAGE || mbi.State != MEM_COMMIT) return false;
     if (!(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return false;
+    // p[-6] may sit on the page before v. The __try below catches that fault, but crash_marker's vectored handler sees it first
+    // and writes a crash marker for a run that never crashed (and then reports no later real crash), so never touch an
+    // unmapped byte: the 6 bytes before v must lie in the same committed region.
+    if (v - 6 < (DWORD)(uintptr_t)mbi.BaseAddress) {
+        MEMORY_BASIC_INFORMATION pre;
+        if (!VirtualQuery((LPCVOID)(uintptr_t)(v - 6), &pre, sizeof(pre))) return false;
+        if (pre.State != MEM_COMMIT || (pre.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return false;
+    }
     __try {
         const BYTE *p = (const BYTE *)(uintptr_t)v;
         return p[-5] == 0xE8 || p[-2] == 0xFF || p[-3] == 0xFF || p[-6] == 0xFF;

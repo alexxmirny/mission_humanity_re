@@ -1,0 +1,40 @@
+# res4_bst_200 -- mods:RES4 stage 7: the building dialog at ui_scale=200 on a pinned 1280x960 screen (frame 1120x928). Twin of res4_bst_150 (see its
+# header) with two differences: the click on the map at (720,620) selects the REACTOR here (the 1120x928 frame shows another part of the map than the
+# 1216x800 one shows the mother at), so the HUD's red icon (frame panel x 960 + 18, y 271) opens the sell confirmation ("Are you sure you want to
+# disassemble building ? / Sell it / No") instead of the mother's "can't sell" notice; and No (screen 631,522) is the click through the quad. NO
+# is clicked, never Sell it.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4 frame_ready 1280x960 @200
+simclick 720 620
+gameclock +300
+simclick 978 271
+retry 1500 3 3 gamemode 3
+present &No
+settled &No
+screensettled
+capture res4_df_bst
+pcapture res4_dp_bst
+log res4 sell_dialog_open
+rawmouse sabs 631 522
+scurpos 631 522
+settled &No
+rawmouse down l
+rawmouse up l
+gamemode 2
+absent &No
+gameclock +100
+log res4 COMPLETE -- ui_scale=200: the building sell confirmation is a scaled layer quad, No clicked through it
+end

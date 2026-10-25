@@ -7,13 +7,19 @@
 //
 #include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h"
 
-#include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "ai/ai_state.h"         // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "sim/sim_event_codes.h" // SESSION_SP (mods:UNL1)
 
 namespace mh::sim {
 
 namespace {
 
 bool g_project_gate_fix = false; // mods:A2, see set_project_gate_fix
+
+// llm_strat_player_profile::status_flags bit 0 (slot enabled) and E_PLANET_STATUS UNKNOWN, file-local like the siblings' copies
+// (sim_game_update_progress.cpp keeps its own for the same reason: no shared header owns them).
+constexpr uint32_t RECHECK_SLOT_ENABLED   = 0x1u;
+constexpr int32_t  RECHECK_STATUS_UNKNOWN = 0;
 
 // ---- cfg_enum_E_INVETION_TYPE (translator-brief rule 17a; Ghidra's own field-comment spelling) ----
 // No committed Ghidra ENUM TYPE exists for this domain (only the type-comment string) -- per the
@@ -42,6 +48,25 @@ void set_project_gate_fix(bool on) { g_project_gate_fix = on; }
 bool project_gate_fix() { return g_project_gate_fix; }
 
 namespace detail {
+
+// ---- mods:UNL1 ---------------------------------------------------------------------------------------
+int progress_recheck_unlocks(const sim_view &v, bool on, bool arrival, void (*propagate)(uint16_t player)) {
+    if (!on || *v.session_mode != SESSION_SP)
+        return -1;
+    if (arrival && v.planet_status[*v.planet_index] == RECHECK_STATUS_UNKNOWN)
+        return -1;
+    // MOVZX like every PlayerSide read in this unit: zero-extend the 16-bit side.
+    const uint16_t side = static_cast<uint16_t>(*v.player_side);
+    propagate(side);
+    int n = 1;
+    for (int32_t i = 0; i < MAX_PLAYERS; ++i) {
+        if (static_cast<uint16_t>(i) == side || (v.profiles[i].status_flags & RECHECK_SLOT_ENABLED) == 0)
+            continue;
+        propagate(static_cast<uint16_t>(i));
+        ++n;
+    }
+    return n;
+}
 
 // ---- llm_progress_propagate_unlocks @0x00440cb5 ----------------------------------------------------
 void progress_propagate_unlocks(const sim_view &v, sim_store &own, uint16_t player,
@@ -196,6 +221,20 @@ void progress_recheck_buildings(uint32_t player) {
 void progress_collect_available_projects(uint32_t player) {
     sim_state st = state();
     detail::progress_collect_available_projects(st.read, st.own, player);
+}
+
+void progress_recheck_after_load() {
+    if (!g_project_gate_fix)
+        return;
+    sim_state st = state();
+    detail::progress_recheck_unlocks(st.read, true, false, &progress_propagate_unlocks);
+}
+
+void progress_recheck_after_arrival() {
+    if (!g_project_gate_fix)
+        return;
+    sim_state st = state();
+    detail::progress_recheck_unlocks(st.read, true, true, &progress_propagate_unlocks);
 }
 
 

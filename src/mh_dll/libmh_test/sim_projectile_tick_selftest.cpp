@@ -56,6 +56,7 @@
 //       itself cannot fail, so a green case here is evidence against those bugs, not proof the identity
 //       "held this time".
 //
+#include "sim/sim_projectile_facing.h"
 #include "sim/sim_projectile_tick.h"
 
 #include <cstdint>
@@ -802,6 +803,46 @@ void run_projectile_tick_tests() {
         ck_eq((uint32_t)p.facing, 15u, "T13: p.facing = new_facing = 15");
         ck_eq((uint32_t)p.anim_loop_frame, 80u, "T13: p.anim_loop_frame = 50 + (15-5)*3 = 80");
         ck_eq((uint32_t)p.anim_frame, 40u, "T13: p.anim_frame = 10 + (15-5)*3 = 40");
+    }
+
+    // =================================================================================================
+    // T13b -- [net] projectile_facing_fix (mods:PRJ1): per-facing weapon (type 2, 24 facings, base frame B, stride 1) crossing the
+    // 24/1 boundary keeps frame = B + stride*(facing-1): the delta is NOT wrapped. Type 5/6: delta 0, frame unchanged.
+    // =================================================================================================
+    {
+        struct Cross {
+            int32_t from, to;
+            uint8_t type;
+            int32_t want_delta;
+        };
+        const Cross cases[] = {{1, 24, 2, 23}, {24, 1, 2, -23}, {5, 15, 2, 10}, {1, 24, 5, 0}, {24, 1, 6, 0}};
+        set_projectile_facing_fix(true);
+        for (const Cross &c : cases) {
+            const int32_t B = 1523;
+            Seed          s;
+            s.sqrt_ret        = 100.0;
+            s.w_speed         = 1.0;
+            s.w_length        = 1;
+            s.game_clock      = 1.0;
+            s.mwd_dx_ret      = 0.0;
+            s.mwd_dy_ret      = 0.0;
+            s.w_type          = c.type;
+            s.facing          = c.from;
+            s.dir_ret         = c.to;
+            s.stride_ret      = 1;
+            s.anim_loop_frame = B + (c.from - 1);
+            s.anim_frame      = B + (c.from - 1);
+            seed_and_run(fx, s);
+            const projectile &p    = fx.projectile_pool[s.cur_slot];
+            const bool        per5 = (c.type == 5 || c.type == 6);
+            ck_eq((uint32_t)p.facing, (uint32_t)c.to, "T13b: facing stored as retail");
+            ck_eq((uint32_t)p.anim_loop_frame, (uint32_t)(B + (c.from - 1) + c.want_delta),
+                  per5 ? "T13b: type 5/6 -> frame unchanged (delta 0)" : "T13b: per-facing weapon -> unwrapped delta");
+            if (!per5)
+                ck_eq((uint32_t)p.anim_loop_frame, (uint32_t)(B + (c.to - 1)),
+                      "T13b: frame = base + stride*(facing-1) after the crossing");
+        }
+        set_projectile_facing_fix(false);
     }
 
     // =================================================================================================

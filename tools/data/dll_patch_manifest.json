@@ -16,6 +16,9 @@
   "            the tree and fails on one that is not registered here -- that is what makes a NEW",
   "            unregistered patch a build failure rather than a surprise.",
   "  addrs     the target address(es), or [] with dynamic:true",
+  "  lens      byte length of the write at each `addrs` entry (parallel list). tools/check_inmem_composition.py tests the FULL",
+  "            extent [addr, addr+len) against every in-memory manifest site, so a patch that STARTS before a site and runs into it",
+  "            is seen; `--verify-lens` proves each extent ends on an instruction boundary of the clean EN exe.",
   "  dynamic   true when the addresses are DISCOVERED AT RUNTIME (a .text scan) and so cannot be",
   "            listed. Exempt from the address checks BY DECLARATION; `rationale` must say why, and",
   "            the runtime half (hook/promoted.h) is what covers it instead.",
@@ -46,6 +49,9 @@
    "addrs": [
     "0x0049c044"
    ],
+   "lens": [
+    3
+   ],
    "kind": "code",
    "owner": [
     "llm_net_lockstep_sync_delay_stub"
@@ -64,6 +70,9 @@
    ],
    "addrs": [
     "0x0043f0fc"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -89,6 +98,10 @@
     "0x004c85e8",
     "0x004c85ed"
    ],
+   "lens": [
+    5,
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_net_lockstep_extend_ui_enter"
@@ -108,6 +121,9 @@
    "addrs": [
     "0x00503068"
    ],
+   "lens": [
+    24
+   ],
    "kind": "data",
    "owner": [],
    "knob": null,
@@ -124,6 +140,9 @@
    ],
    "addrs": [
     "0x0064508f"
+   ],
+   "lens": [
+    4
    ],
    "kind": "data",
    "owner": [],
@@ -146,6 +165,10 @@
    "addrs": [
     "0x006450c3",
     "0x006450c7"
+   ],
+   "lens": [
+    4,
+    4
    ],
    "kind": "data",
    "owner": [],
@@ -221,6 +244,11 @@
     "0x004b7322",
     "0x004c5e88"
    ],
+   "lens": [
+    5,
+    5,
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_gfx_set_window_resolution",
@@ -243,6 +271,11 @@
     "0x004cb445",
     "0x004b81fa",
     "0x004b826d"
+   ],
+   "lens": [
+    5,
+    5,
+    5
    ],
    "kind": "code",
    "owner": [
@@ -341,6 +374,9 @@
    "addrs": [
     "0x004276a2"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_gfx_dashed_rect_outline_set_and_draw"
@@ -415,6 +451,9 @@
    ],
    "addrs": [
     "0x004a04ce"
+   ],
+   "lens": [
+    7
    ],
    "kind": "code",
    "owner": [
@@ -674,6 +713,9 @@
    "addrs": [
     "0x004dc25f"
    ],
+   "lens": [
+    8
+   ],
    "kind": "detour",
    "owner": [
     "llm_strat_bldg_recompute_cell_grid"
@@ -709,6 +751,9 @@
    "addrs": [
     "0x004c8070"
    ],
+   "lens": [
+    22
+   ],
    "kind": "code",
    "owner": [
     "llm_ui_diplomacy_apply_and_resume"
@@ -728,6 +773,9 @@
    "addrs": [
     "0x004c802e"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_ui_diplomacy_apply_and_resume"
@@ -746,6 +794,9 @@
    ],
    "addrs": [
     "0x004c7060"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -767,6 +818,11 @@
     "0x004cb1ed",
     "0x004cb1fa",
     "0x004cb229"
+   ],
+   "lens": [
+    5,
+    5,
+    5
    ],
    "kind": "code",
    "owner": [
@@ -792,6 +848,10 @@
     "0x00448c56",
     "0x00448c90"
    ],
+   "lens": [
+    5,
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_try_begin_placement"
@@ -810,6 +870,9 @@
    ],
    "addrs": [
     "0x00418967"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -830,6 +893,9 @@
    "addrs": [
     "0x0041748a"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_ui_storage_bldg_panel"
@@ -848,6 +914,9 @@
    ],
    "addrs": [
     "0x00417902"
+   ],
+   "lens": [
+    7
    ],
    "kind": "code",
    "owner": [
@@ -868,6 +937,9 @@
    "addrs": [
     "0x004798f1"
    ],
+   "lens": [
+    13
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_completion_dispatch"
@@ -886,6 +958,9 @@
    ],
    "addrs": [
     "0x0049c508"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
@@ -906,6 +981,9 @@
    "addrs": [
     "0x0049d8cb"
    ],
+   "lens": [
+    6
+   ],
    "kind": "code",
    "owner": [
     "llm_net_send_lockstep_keepalive"
@@ -924,6 +1002,9 @@
    ],
    "addrs": [
     "0x004a0423"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -944,6 +1025,9 @@
    "addrs": [
     "0x0049c330"
    ],
+   "lens": [
+    8
+   ],
    "kind": "code",
    "owner": [
     "llm_net_lockstep_dispatch"
@@ -962,6 +1046,9 @@
    ],
    "addrs": [
     "0x00466cb6"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
@@ -982,6 +1069,9 @@
    "addrs": [
     "0x0046fe5d"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_building_tick"
@@ -1000,6 +1090,9 @@
    ],
    "addrs": [
     "0x0046fe67"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1020,6 +1113,9 @@
    "addrs": [
     "0x00478ecb"
    ],
+   "lens": [
+    6
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_update_charge_pips"
@@ -1027,6 +1123,92 @@
    "knob": "bldg_pip_guard",
    "carrier": "migrated:bldg_pip_guard",
    "note": "hotfix rc9.4 (2026-10-15; field crashes 0x0047908b / 0x004793e1, tmp/report_triage_2026-10-15/crash_7908b.md): call-splice the 6 bytes `MOV [EBP-0x14],EAX / MOV [EBP-0x1c],EDX` (89 45 EC 89 55 E4) right after update_charge_pips' prologue (EAX = player, EDX = building index) into a stub + NOP that applies the same check/zeroing to buildings[(uint16)player][index] (region base + the host's building cap) and redoes both stores. Covers the two callers that reach update_charge_pips for a building not yet ticked this step: llm_unit_bldg_energy_refill_full (order dispatch, before every tick) and llm_strat_unit_state_deploy_to_building (unit ticks precede the player's building ticks). The promoted update_charge_pips carries the same rule (sim_bldg_update_charge_pips.cpp)."
+  },
+  {
+   "id": "order_wide_encode",
+   "sources": [
+    {
+     "file": "mh/seams/order_wide_index.cpp",
+     "expr": "SITE_ENCODE"
+    }
+   ],
+   "addrs": [
+    "0x00466242"
+   ],
+   "lens": [
+    13
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_stage_scheduled"
+   ],
+   "knob": "order_wide_index",
+   "note": "O1c (2026-10-20): encode the scheduled-lane unit_index as 12 bits. `mov edx,[ebp-0x18]; xor dh,dh; mov eax,[ebp-0x18]; shl eax,8; or edx,eax` -> `mov edx,[ebp-0x18]; and dh,0x0f; xor dh,dl; 5xNOP` (hi = lo ^ ((v>>8)&0xf); a strict superset of the vanilla duplicated byte for v < 256). Only dx is stored (0x00466256); EAX was dead."
+  },
+  {
+   "id": "order_wide_check",
+   "sources": [
+    {
+     "file": "mh/seams/order_wide_index.cpp",
+     "expr": "SITE_CHECK"
+    }
+   ],
+   "addrs": [
+    "0x004661a0"
+   ],
+   "lens": [
+    34
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_integrity_check"
+   ],
+   "knob": "order_wide_index",
+   "note": "O1c: field-selector rewrite so field 0 (unit_index) checks only the high nibble pair ((hi^lo)&0xf0 == 0) while fields 1..3 keep hi == lo; falls through to field 1 at 0x004661c2; the common compare at 0x004661d8 is untouched. The only external entry is 0x004661a0. Not promotable (its callers keep calling the original through MH_LIBMH_BIND)."
+  },
+  {
+   "id": "order_wide_decode_local",
+   "sources": [
+    {
+     "file": "mh/seams/order_wide_index.cpp",
+     "expr": "SITE_LOCAL"
+    }
+   ],
+   "addrs": [
+    "0x0046643a"
+   ],
+   "lens": [
+    27
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_schedule"
+   ],
+   "knob": "order_wide_index",
+   "carrier": "migrated:order_wide_index",
+   "note": "O1c: the local PENDING decode of unit_index (`& 0xff` -> 12-bit decode `lo | (((hi^lo)&0xf)<<8)`); owner/param0/code keep `& 0xff`. ESI already holds PENDING_COUNT*0x44 from the imul at 0x00466433; EDI was a dead temp."
+  },
+  {
+   "id": "order_wide_decode_remote",
+   "sources": [
+    {
+     "file": "mh/seams/order_wide_index.cpp",
+     "expr": "SITE_REMOTE"
+    }
+   ],
+   "addrs": [
+    "0x004667b4"
+   ],
+   "lens": [
+    24
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_pending_enqueue"
+   ],
+   "knob": "order_wide_index",
+   "carrier": "migrated:order_wide_index",
+   "note": "O1c: the remote decode: unit_index becomes the 12-bit decode, the other three fields keep the 8-bit mask (`mov byte [x+1],0` == `and word [x],0xff`). EAX is dead here; the next imul rewrites flags."
   },
   {
    "id": "turret_reload_realtime_fix",
@@ -1038,6 +1220,9 @@
    ],
    "addrs": [
     "0x0046fe5d"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1058,6 +1243,9 @@
    "addrs": [
     "0x00462ab9"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "map_CreateBuilding"
@@ -1076,6 +1264,9 @@
    ],
    "addrs": [
     "0x0047c6c8"
+   ],
+   "lens": [
+    9
    ],
    "kind": "code",
    "owner": [
@@ -1096,6 +1287,9 @@
    "addrs": [
     "0x004721d0"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_state_turret_attack"
@@ -1114,6 +1308,9 @@
    ],
    "addrs": [
     "0x00480b86"
+   ],
+   "lens": [
+    25
    ],
    "kind": "code",
    "owner": [
@@ -1134,6 +1331,9 @@
    "addrs": [
     "0x00440dd0"
    ],
+   "lens": [
+    9
+   ],
    "kind": "code",
    "owner": [
     "llm_progress_propagate_unlocks"
@@ -1152,6 +1352,9 @@
    ],
    "addrs": [
     "0x0043f403"
+   ],
+   "lens": [
+    9
    ],
    "kind": "code",
    "owner": [
@@ -1172,6 +1375,9 @@
    "addrs": [
     "0x0043f45b"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_sim_tick"
@@ -1190,6 +1396,9 @@
    ],
    "addrs": [
     "0x0043f48f"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1240,6 +1449,15 @@
     "0x00448c3d",
     "0x00467441"
    ],
+   "lens": [
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7
+   ],
    "kind": "code",
    "owner": [
     "game_SetEvent",
@@ -1262,6 +1480,9 @@
    "addrs": [
     "0x00492422"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_link_to_network_if_adjacent"
@@ -1281,6 +1502,9 @@
    "addrs": [
     "0x00491eac"
    ],
+   "lens": [
+    8
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_bldg_power_network_recompute"
@@ -1288,6 +1512,35 @@
    "knob": "mother_free_build",
    "carrier": "migrated:mother_free_build",
    "note": "mods:A1 (2026-10-13): the `CMP word [EAX+0xc3d2b7],0` (guard 66 83 B8 B7 D2 C3 00 00) = online_state of a plant, tested at the seeding pass of llm_strat_bldg_power_network_recompute (JNE 0x00491eb8 floods from it), becomes CALL mother_free_seed_stub + 3 NOP. With g_mother_free_rt on the stub answers 'online' for a plant whose owner ([EBP-0x14]) has no primary mother on the planet, so a recompute (run on any building removal) re-seeds a root plant that is still under construction instead of leaving it disconnected. SIM-AFFECTING, DEFAULT OFF; the promoted body carries the same rule (sim_bldg_power_network_recompute.cpp)."
+  },
+  {
+   "id": "progress_recheck_unlocks",
+   "sources": [
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PR_LOAD"
+    },
+    {
+     "file": "mh/seams/net_lockstep.cpp",
+     "expr": "ADDR_PR_ARRIVE"
+    }
+   ],
+   "addrs": [
+    "0x00447b78",
+    "0x0044d229"
+   ],
+   "lens": [
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_game_load",
+    "llm_strat_planet_transition_finalize"
+   ],
+   "knob": "project_gate_fix",
+   "carrier": "migrated:project_gate_fix",
+   "note": "mods:UNL1 (2026-10-21): two CALL splices (5 bytes each, guard E8 rel32) that run the single-player unlock recheck progress_recheck_run -> llm_progress_propagate_unlocks for the local player and every enabled player: 0x00447b78 is llm_game_load's apply-tail `CALL llm_cam_jump_queue_clear` (0x0044dd11, guard E8 94 61 00 00); 0x0044d229 is llm_strat_planet_transition_finalize's tail `CALL llm_map_cam_mark_viewport_dirty` (0x004a5a6b, guard E8 3D 88 05 00), the join point of both JE skips. Each is retargeted to a stub (switch on) that saves flags+registers, runs the pass, restores and tail-jumps to the original callee; off it is a bare PUSH target / RET, i.e. the original CALL. The pass is a no-op outside session_mode == 1 (single-player); the arrival site also needs G_PLANET_STATUS[planet] != 0 (visited). Always installed, gated by the runtime global set from [net] project_gate_fix (default 0; the launcher's one 'Tech tree fixes' switch, F_LOCAL, campaign only). Carried under promotion by mh::sim::progress_recheck_after_load / _after_arrival (save_live.cpp run_ours_load_container, sim_planet_transition_finalize.cpp)."
   },
   {
    "id": "move_centroid_wrap_fix",
@@ -1315,6 +1568,12 @@
     "0x004cbdb0",
     "0x004cbdc3"
    ],
+   "lens": [
+    8,
+    8,
+    19,
+    19
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_group_move_order_pathfind",
@@ -1335,6 +1594,9 @@
    "addrs": [
     "0x0042172e"
    ],
+   "lens": [
+    6
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_path_detour"
@@ -1353,6 +1615,9 @@
    ],
    "addrs": [
     "0x00424f62"
+   ],
+   "lens": [
+    8
    ],
    "kind": "code",
    "owner": [
@@ -1373,6 +1638,9 @@
    "addrs": [
     "0x00424f7f"
    ],
+   "lens": [
+    9
+   ],
    "kind": "code",
    "owner": [
     "llm_map_region_flood_reachable"
@@ -1391,6 +1659,9 @@
    ],
    "addrs": [
     "0x0041d06c"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1411,6 +1682,9 @@
    "addrs": [
     "0x00424f3a"
    ],
+   "lens": [
+    10
+   ],
    "kind": "code",
    "owner": [
     "llm_map_region_flood_reachable"
@@ -1429,6 +1703,9 @@
    ],
    "addrs": [
     "0x00424ee8"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
@@ -1449,6 +1726,9 @@
    "addrs": [
     "0x00425072"
    ],
+   "lens": [
+    8
+   ],
    "kind": "code",
    "owner": [
     "llm_map_region_flood_reachable"
@@ -1468,6 +1748,9 @@
    "addrs": [
     "0x0047d50d"
    ],
+   "lens": [
+    38
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_state_move_walker"
@@ -1486,6 +1769,9 @@
    ],
    "addrs": [
     "0x0047d508"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1511,6 +1797,10 @@
     "0x00482954",
     "0x004829e2"
    ],
+   "lens": [
+    7,
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_state_group_marshal"
@@ -1529,6 +1819,9 @@
    ],
    "addrs": [
     "0x00482cee"
+   ],
+   "lens": [
+    7
    ],
    "kind": "code",
    "owner": [
@@ -1552,14 +1845,32 @@
     {
      "file": "mh/seams/door_hold.cpp",
      "expr": "ADDR_DH_BARRACKS"
+    },
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_SHUTTLE_A"
+    },
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_SHUTTLE_H"
+    },
+    {
+     "file": "mh/seams/door_hold.cpp",
+     "expr": "ADDR_DH_AIRFIELD"
     }
    ],
    "addrs": [
     "0x00477075",
     "0x00476b81",
-    "0x004767ed"
+    "0x004767ed",
+    "0x00477f92",
+    "0x00478353",
+    "0x00477a4e"
    ],
    "lens": [
+    5,
+    5,
+    5,
     5,
     5,
     5
@@ -1568,11 +1879,14 @@
    "owner": [
     "llm_strat_bldg_anim_state_soldiers_h",
     "llm_strat_bldg_anim_state_vehicles_h",
-    "llm_strat_bldg_anim_state_barracks_garage_a"
+    "llm_strat_bldg_anim_state_barracks_garage_a",
+    "llm_strat_bldg_anim_state_shuttle_a",
+    "llm_strat_bldg_anim_state_shuttle_h",
+    "llm_strat_bldg_anim_state_airfield_a"
    ],
    "knob": "storage_door_hold",
    "carrier": "migrated:storage_door_hold",
-   "note": "mods:M1BE (2026-10-20), dev key, default -1 = follow improved_movement (on: 1), host-set. User playtest 0.2.1-rc22: a group ordered into a barracks enters one unit per ~4.7 s because the door closes in the ~1 s gap before the next soldier stands on the door tile (tmp/m1be/REPORT.md). The three storage-door building animation handlers (soldiers_h 0x00476e9d, vehicles_h 0x004769a9, barracks_garage_a 0x00476627) test `door_mutex_unit == 0 && door_waiter_count == 0` in the OPEN door state (online_state 2, caseD_2) to decide whether to close. The case opens with `MOV EAX,[CUR_BUILDING]` (guard A1 DC 62 E1 00, 5 bytes) which becomes `JMP stub`; the stub (pushad) asks dh_decide(): 1 = an own unit with ORDER 0x24 and home_storage_slot = this storage stands on the map within 2 tiles (Chebyshev, wrapped) of the storage's door tile (exit_tile_x/y), so jump to the handler's own open-hold branch (0x00477100 / 0x00476c0c / 0x00476878) and the door stays open; 0 = run the displaced MOV and continue at +5. Only a door that is otherwise idle is scanned. Units are scanned in index order, integer reads only, nothing written. The rule is sim/move/enter_queue.h dh_entering_near, shared with the libmh twin (sim_bldg_anim_state_online.cpp door_may_close). With libmh binding the building tick2 table these retail bodies are dead and the carrier line says libmh twin."
+   "note": "mods:M1BE (2026-10-20), dev key, default -1 = follow improved_movement (on: 1), host-set. User playtest 0.2.1-rc22: a group ordered into a barracks enters one unit per ~4.7 s because the door closes in the ~1 s gap before the next soldier stands on the door tile (tmp/m1be/REPORT.md). The three storage-door building animation handlers (soldiers_h 0x00476e9d, vehicles_h 0x004769a9, barracks_garage_a 0x00476627) test `door_mutex_unit == 0 && door_waiter_count == 0` in the OPEN door state (online_state 2, caseD_2) to decide whether to close. The case opens with `MOV EAX,[CUR_BUILDING]` (guard A1 DC 62 E1 00, 5 bytes) which becomes `JMP stub`; the stub (pushad) asks dh_decide(): 1 = an own unit with ORDER 0x24 and home_storage_slot = this storage stands on the map within 2 tiles (Chebyshev, wrapped) of the storage's door tile (exit_tile_x/y), so jump to the handler's own open-hold branch (0x00477100 / 0x00476c0c / 0x00476878) and the door stays open; 0 = run the displaced MOV and continue at +5. Only a door that is otherwise idle is scanned. Units are scanned in index order, integer reads only, nothing written. The rule is sim/move/enter_queue.h dh_entering_near, shared with the libmh twin (sim_bldg_anim_state_online.cpp door_may_close). With libmh binding the building tick2 table these retail bodies are dead and the carrier line says libmh twin. mods:M1SH (2026-10-24, user: \"cover every door\"): three more sites of the SAME shape and guard in the OPEN door state: shuttle_a 0x00477d9e (type 0x0d; site 0x00477f92, continue 0x00477f97, open-hold 0x0047801d), shuttle_h 0x0047815f (type 0x21; 0x00478353 / 0x00478358 / 0x004783de), airfield_a 0x00477881 (type 9, case 2; 0x00477a4e / 0x00477a53 / 0x00477ad2). Same dh_decide, same key."
   },
   {
    "id": "move_route_through_idle",
@@ -1585,13 +1899,16 @@
    "addrs": [
     "0x0041c9ce"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_group_move_order_commit"
    ],
    "knob": "move_route_through_idle",
-   "carrier": "migrated:move_route_through_idle,move_route_through_moving,move_route_through_replanning,move_formation_click",
-   "note": "mods:M1G 4b (2026-10-19): the SAME stub also serves move_formation_click (sim/move/formation.h): when the key is on it calls fc_after_pathfind() between the retail planner CALL and rt_restore(), i.e. INSIDE the open bracket, after the unchanged retail plan; the formation keeps members that already stand on the click's target set, assigns the rest by the Hungarian algorithm and plans each alone; handled = the 2a stub at 0x0041c9d3 skips that commit. mods:M1DT fix A' (2026-10-19): 2a's single-member re-run of the planner is bracketed by the same rt_unmask/rt_restore (mv_rt_open/mv_rt_close). mods:M1DT fix 2 (2026-10-19): the SAME stub also serves move_route_through_replanning: rt_unmask_replanning() opens the tile of every own ground unit in state 0x0a (group_marshal, waiting its batch), priced by move_route_through_moving_cost (default now 0). mods:M1DT cause C (2026-10-19, folded into the same key): rt_unmask_replanning() also opens the tile of every own ground unit in the one-tick hop state 0x0c (earlier waves of the same marshal call; it holds one tile, has not stepped yet). mods:M1N 3e-6 (2026-10-18, user request): the SAME stub also serves move_route_through_moving (+ move_route_through_moving_cost): rt_unmask_moving() opens the tile of every WALKING (state 0x0f) same-player ground unit (passable 0 settled / 5 sliding -> origin_tile_was_passable) and ORs the cost level's bits into the cell cost byte; restored exactly. No dependency on the nudge key. [Original 3e-5 note follows.] mods:M1N follow-up 2 (2026-10-17, user playtest rc11 'more like a corner': an idle friend in a one-tile corridor was a wall for the route planner, so the goal was cut short to a dead-end pocket and the order given up). The 5-byte `CALL llm_strat_group_move_order_pathfind` (guard E8 64 00 00 00; its only caller) in llm_strat_group_move_order_commit is retargeted at a stub that (1) rt_unmask(): for every IDLE same-player ground unit of the order's owner (state 1, default op 1, no order queued, settled, alive, its tile claimed by it, passable byte 0; NOT the goal tile) writes the tile's own value (origin_tile_was_passable) into passable[]; for each such tile it also ORs the three proximity-ring bits (0x1d) into the region cell's cached cost byte (terrain_flags low byte, so the flood prices it like a tile pressed against a cliff and goes round a short crowd when it can; key value 2 skips this, measurement only); (2) calls the retail planner with the registers it was given (EAX mode, EDX target mask); (3) rt_restore(): puts the 0 and the old cost byte back. Every reader of passable[] inside the planner (flood eligibility, trace_route flank test, find_nearest_valid_tile, walk_to_valid_tile, the per-member walks) sees the same open tile for the one call. The walker then reaches the friend and move_nudge_idle (3e-1 / 3e-4) makes room. Key move_route_through_idle (-1 follows improved_movement) and needs move_nudge_idle=1 at plan time; every key at 0 = the stub only calls the retail function. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
+   "carrier": "migrated:move_route_through_idle,move_route_through_moving,move_route_through_replanning,move_formation_click,move_stream_heat",
+   "note": "mods:M1WL v2 (2026-10-24): the SAME stub also serves move_stream_heat (sim/move/stream_heat.h): rt_stub copies commit's move_group_id / is_plain_move_flag ([ebp+8] / [ebp+0xc]) into globals, rt_unmask() then (after the route-through unmasks) prices the next 48 path tiles of the lone unit's walking groupmates (the raw cost bit 0x02, +2, OR-ed into the cell cost byte the flood reads at 0x00424f7f; the ring bits would be scaled to nothing for a lone unit by route_gap_wave_full) for a wave of ONE member on a plain move when >= 8 groupmates are walking / replanning / stored; rt_restore() closes the heat first. No new splice bytes. libmh twin: commit_rt_open / commit_rt_restore in sim_group_move_order_commit.cpp. [Earlier notes follow.] mods:M1G 4b (2026-10-19): the SAME stub also serves move_formation_click (sim/move/formation.h): when the key is on it calls fc_after_pathfind() between the retail planner CALL and rt_restore(), i.e. INSIDE the open bracket, after the unchanged retail plan; the formation keeps members that already stand on the click's target set, assigns the rest by the Hungarian algorithm and plans each alone; handled = the 2a stub at 0x0041c9d3 skips that commit. mods:M1DT fix A' (2026-10-19): 2a's single-member re-run of the planner is bracketed by the same rt_unmask/rt_restore (mv_rt_open/mv_rt_close). mods:M1DT fix 2 (2026-10-19): the SAME stub also serves move_route_through_replanning: rt_unmask_replanning() opens the tile of every own ground unit in state 0x0a (group_marshal, waiting its batch), priced by move_route_through_moving_cost (default now 0). mods:M1DT cause C (2026-10-19, folded into the same key): rt_unmask_replanning() also opens the tile of every own ground unit in the one-tick hop state 0x0c (earlier waves of the same marshal call; it holds one tile, has not stepped yet). mods:M1N 3e-6 (2026-10-18, user request): the SAME stub also serves move_route_through_moving (+ move_route_through_moving_cost): rt_unmask_moving() opens the tile of every WALKING (state 0x0f) same-player ground unit (passable 0 settled / 5 sliding -> origin_tile_was_passable) and ORs the cost level's bits into the cell cost byte; restored exactly. No dependency on the nudge key. [Original 3e-5 note follows.] mods:M1N follow-up 2 (2026-10-17, user playtest rc11 'more like a corner': an idle friend in a one-tile corridor was a wall for the route planner, so the goal was cut short to a dead-end pocket and the order given up). The 5-byte `CALL llm_strat_group_move_order_pathfind` (guard E8 64 00 00 00; its only caller) in llm_strat_group_move_order_commit is retargeted at a stub that (1) rt_unmask(): for every IDLE same-player ground unit of the order's owner (state 1, default op 1, no order queued, settled, alive, its tile claimed by it, passable byte 0; NOT the goal tile) writes the tile's own value (origin_tile_was_passable) into passable[]; for each such tile it also ORs the three proximity-ring bits (0x1d) into the region cell's cached cost byte (terrain_flags low byte, so the flood prices it like a tile pressed against a cliff and goes round a short crowd when it can; key value 2 skips this, measurement only); (2) calls the retail planner with the registers it was given (EAX mode, EDX target mask); (3) rt_restore(): puts the 0 and the old cost byte back. Every reader of passable[] inside the planner (flood eligibility, trace_route flank test, find_nearest_valid_tile, walk_to_valid_tile, the per-member walks) sees the same open tile for the one call. The walker then reaches the friend and move_nudge_idle (3e-1 / 3e-4) makes room. Key move_route_through_idle (-1 follows improved_movement) and needs move_nudge_idle=1 at plan time; every key at 0 = the stub only calls the retail function. Carrier pending the libmh twin: with libmh BOUND the site is carried and the key logs active but the original body never runs (libmh's commit twin does), so the fix is inert there (measured 2026-10-17); the ship config has no libmh."
   },
   {
    "id": "diplo_order_dedup_fix",
@@ -1603,6 +1920,9 @@
    ],
    "addrs": [
     "0x0046667b"
+   ],
+   "lens": [
+    7
    ],
    "kind": "code",
    "owner": [
@@ -1663,6 +1983,17 @@
     "0x0043f18d",
     "0x004b82a8"
    ],
+   "lens": [
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_time_tick",
@@ -1686,6 +2017,9 @@
    "addrs": [
     "0x00454504"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_session_begin_multi"
@@ -1704,6 +2038,9 @@
    ],
    "addrs": [
     "0x004698d2"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1724,6 +2061,9 @@
    "addrs": [
     "0x00469909"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_order_queue_dispatch"
@@ -1742,6 +2082,9 @@
    ],
    "addrs": [
     "0x004698ff"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1762,6 +2105,9 @@
    "addrs": [
     "0x004db45c"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_ai_bldg_register_visible_building"
@@ -1780,6 +2126,9 @@
    ],
    "addrs": [
     "0x00498176"
+   ],
+   "lens": [
+    7
    ],
    "kind": "code",
    "owner": [
@@ -1800,6 +2149,9 @@
    "addrs": [
     "0x0049c60c"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_net_lockstep_dispatch"
@@ -1818,6 +2170,9 @@
    ],
    "addrs": [
     "0x0049c683"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1838,6 +2193,9 @@
    "addrs": [
     "0x0049814b"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_player_presence_lost"
@@ -1856,6 +2214,9 @@
    ],
    "addrs": [
     "0x00498197"
+   ],
+   "lens": [
+    10
    ],
    "kind": "code",
    "owner": [
@@ -1876,6 +2237,9 @@
    "addrs": [
     "0x004982a8"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_player_presence_lost"
@@ -1894,6 +2258,9 @@
    ],
    "addrs": [
     "0x00466068"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1914,6 +2281,9 @@
    "addrs": [
     "0x00498319"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_player_presence_lost"
@@ -1932,6 +2302,9 @@
    ],
    "addrs": [
     "0x0049878d"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -1952,6 +2325,9 @@
    "addrs": [
     "0x004c3dba"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_boot_progress_draw"
@@ -1971,6 +2347,9 @@
    "addrs": [
     "0x004cb6bc"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "ReadMsgsDat"
@@ -1978,6 +2357,26 @@
    "knob": "lang.pack",
    "carrier": null,
    "note": "mods:LANG1 (2026-09-29): repoint ReadMsgsDat's `mov eax, s_Msgs_dat_005034cf` operand to `lang\\<id>\\Msgs.dat` when the armed pack carries one. Guarded on the exact 5 original bytes. Runs at the top of WinMain, after DllMain armed it."
+  },
+  {
+   "id": "options_interface_size_row",
+   "sources": [
+    {
+     "file": "mh/seams/ui_options_scale.cpp",
+     "expr": "ADDR_LIST_CHILDREN"
+    }
+   ],
+   "addrs": [
+    "0x00654153"
+   ],
+   "lens": [
+    4
+   ],
+   "kind": "data",
+   "owner": [],
+   "knob": "video.ui_scale_row",
+   "carrier": null,
+   "note": "mods:RES4 (2026-10-20): llm_ui_widget_list.children of the in-game Options screen -> a DLL-owned NULL-terminated widget array that carries one more child (the Interface size row, a copy of the Screen size spinner). Guarded on the stock array pointer 0x006534c3; the two detours (llm_ui_options_menu_open, the Ok action) only run once it is in. Data patch, no code is displaced."
   },
   {
    "id": "worker_click_amount_prime",
@@ -1990,6 +2389,10 @@
    "addrs": [
     "0x0050bde7",
     "0x0050bdfb"
+   ],
+   "lens": [
+    4,
+    4
    ],
    "kind": "data",
    "owner": [],
@@ -2007,6 +2410,9 @@
    ],
    "addrs": [
     "0x0041341b"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -2028,6 +2434,10 @@
     "0x00413509",
     "0x00413520"
    ],
+   "lens": [
+    5,
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_ui_bldg_worker_adjust_apply"
@@ -2047,6 +2457,9 @@
    "addrs": [
     "0x0047f2d7"
    ],
+   "lens": [
+    10
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_state_exit_wait"
@@ -2054,6 +2467,28 @@
    "knob": "ui.crew_shortage_reminder_s",
    "carrier": "migrated:crew_shortage_reminder_s",
    "note": "hotfix rc9.4 (garage report 01a13bb6): jump-splice the 10-byte `MOV dword ptr [_G_LLM_STRAT_TICK_BUDGET],0` that opens exit_wait's 'still can't exit' arm to a stub that (pushad) re-shows retail's crew-shortage advisor text -- llm_strat_race_alert_text_emit, text 0x7f human / 0xb0 alien, retail shows it once at exit_storage_begin -- when the CURRENT unit is the local side's (PlayerSide), carries no soldiers and idle population + shuttle-reserved passengers < Unit[proto].human, once [ui] crew_shortage_reminder_s (default 30) game-clock seconds have passed since the text was last shown -- by us or by retail (the emitter stamp 0x005202b4 moving forward restarts the period) -- and never inside the emitter cooldown 0x005001ae (a due reminder waits for a later tick; mh_crew_reminder.h throttle, reset when the clock goes backwards); then repeats the MOV and returns to 0x0047f2e1. DISPLAY-ONLY: the emitter's plain statics + the print queue, no hashed write, no RNG. Configuration (2) carrier: sim_unit_state_exit.cpp's exit_wait twin (reimpl_fixes::crew_shortage_reminder_s); displaced by promotion. 0 = retail."
+  },
+  {
+   "id": "tactical_scroll_pace",
+   "sources": [
+    {
+     "file": "mh/seams/tact_scroll.cpp",
+     "expr": "SITE"
+    }
+   ],
+   "addrs": [
+    "0x0042a121"
+   ],
+   "lens": [
+    7
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_tact_frame"
+   ],
+   "knob": "tactical.scroll_px_s",
+   "carrier": "none:tactical mode is never promoted (fork F2E); libmh's frame twin (tact_frame.cpp step 14, mh::tact::set_scroll_px_s) runs the same pacer",
+   "note": "TSCR1: jump-splice the 7-byte `CMP dword ptr [_G_LLM_CURSOR_X],0` that opens llm_tact_frame's four camera-scroll arms (0x0042a121..0x0042a27f: arrow latch or screen edge -> ONE tile per rendered frame, so the speed was fps x tile) to a stub that (pushad/pushfd) asks the pacer (libmh/tact/tact_scroll_pace.h) how many whole tiles each direction owes on the GAME clock (time_GetCurrentTime) -- a direction becoming active steps at once, then every tile_px / scroll_px_s seconds (32 px columns, 24 px rows), at most 2 steps per direction per frame, re-based when late -- runs the original clamp + llm_tact_view_shift_* that many times, then jumps to 0x0042a280 (the camera-follow check). The block's four stores to [EBP-0x3c] are dead (the hover loop assigns it before 0x0042a3f6 reads it). The camera feeds the sim (facing commands to selected idle units in the camera window), hence the game clock; tactical journal rows pin 0. [tactical] scroll_px_s default 480 (15 cols/s, 20 rows/s); 0 = retail, splice not installed."
   },
   {
    "id": "minimap_box_clip",
@@ -2065,6 +2500,9 @@
    ],
    "addrs": [
     "0x004a2344"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
@@ -2088,6 +2526,12 @@
     "0x004a1ce6",
     "0x004a20ca"
    ],
+   "lens": [
+    2,
+    2,
+    2,
+    2
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_minimap_render"
@@ -2106,6 +2550,9 @@
    ],
    "addrs": [
     "0x004a22f0"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
@@ -2126,6 +2573,9 @@
    "addrs": [
     "0x004a1aad"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_minimap_render"
@@ -2145,6 +2595,9 @@
    "addrs": [
     "0x00443ae9"
    ],
+   "lens": [
+    10
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_input_update"
@@ -2163,6 +2616,9 @@
    ],
    "addrs": [
     "0x004263ba"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -2198,6 +2654,9 @@
    "addrs": [
     "0x0041c9d3"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_group_move_order_commit"
@@ -2216,6 +2675,9 @@
    ],
    "addrs": [
     "0x00482b5b"
+   ],
+   "lens": [
+    13
    ],
    "kind": "code",
    "owner": [
@@ -2241,6 +2703,10 @@
     "0x00482897",
     "0x0047d3d1"
    ],
+   "lens": [
+    7,
+    38
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_state_group_marshal",
@@ -2261,6 +2727,9 @@
    "addrs": [
     "0x0041ec1d"
    ],
+   "lens": [
+    3
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_pathfind_build_steps"
@@ -2280,6 +2749,9 @@
    "addrs": [
     "0x0047ebe1"
    ],
+   "lens": [
+    8
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_state_squad_merge"
@@ -2298,6 +2770,9 @@
    ],
    "addrs": [
     "0x0041cc69"
+   ],
+   "lens": [
+    5
    ],
    "kind": "code",
    "owner": [
@@ -2378,6 +2853,21 @@
     "0x00484fc6",
     "0x004831c0"
    ],
+   "lens": [
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_unit_order_attack_building_reposition",
@@ -2409,13 +2899,16 @@
    "addrs": [
     "0x00441424"
    ],
+   "lens": [
+    8
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_projectile_tick"
    ],
    "knob": "projectile_facing_fix",
    "carrier": "migrated:projectile_facing_fix",
-   "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_combat (on: 1), host-set. llm_strat_projectile_tick re-aims a flying shot's sprite each tick by (new facing - facing) * stride on anim_frame and anim_loop_frame, the difference NOT wrapped: crossing the 24/1 facing boundary (due south) adds +-23 strides and the frame runs in another animation (2-almost repro: W2 loop 2049 -> 2072, frames 2074..2077). `SUB EDX,[EAX+0x59]; MOV EAX,[0x00e1538c]` (guard 2B 50 59 A1 8C 53 E1 00) becomes CALL pff_stub + 3 NOP; the stub redoes both and, with the key on, sets EDX to the difference wrapped into -12..11, or 0 for weapon types 5/6 (sector-based start frame; every shipped type 5/6 weapon is non-homing). Carrier: the libmh twin in sim/sim_projectile_tick.cpp, gated by reimpl_fixes::projectile_facing_fix (sim/sim_projectile_facing.h; tmp/m1/merge_path_and_fx.md)."
+   "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_combat (on: 1), host-set. llm_strat_projectile_tick re-aims a flying shot's sprite each tick by (new facing - facing) * stride on anim_frame and anim_loop_frame, the difference NOT wrapped: crossing the 24/1 facing boundary (due south) adds +-23 strides and the frame runs in another animation (2-almost repro: W2 loop 2049 -> 2072, frames 2074..2077). `SUB EDX,[EAX+0x59]; MOV EAX,[0x00e1538c]` (guard 2B 50 59 A1 8C 53 E1 00) becomes CALL pff_stub + 3 NOP; the stub redoes both and, with the key on, sets EDX to 0 for weapon types 5/6 (sector-based start frame; every shipped type 5/6 weapon is non-homing) and leaves the retail UNWRAPPED difference for every other type (those are per-facing, frame = base + stride*(facing-1), so the +-23 jump is the exact step; the rc3 rule wrapped it into -12..11 and put the frame one stride outside the weapon's block, mods:PRJ1; value 2 = that superseded rule, test only). Carrier: the libmh twin in sim/sim_projectile_tick.cpp, gated by reimpl_fixes::projectile_facing_fix (sim/sim_projectile_facing.h; tmp/m1/merge_path_and_fx.md)."
   },
   {
    "id": "replay_boundary_notes",
@@ -2431,6 +2924,13 @@
     "0x0044d418",
     "0x004b8528",
     "0x004c64ed"
+   ],
+   "lens": [
+    5,
+    5,
+    5,
+    5,
+    5
    ],
    "kind": "code",
    "owner": [
@@ -2455,6 +2955,9 @@
    "addrs": [
     "0x00466bfe"
    ],
+   "lens": [
+    7
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_order_queue_dispatch"
@@ -2473,6 +2976,9 @@
    ],
    "addrs": [
     "0x0047d5b4"
+   ],
+   "lens": [
+    9
    ],
    "kind": "code",
    "owner": [
@@ -2493,6 +2999,9 @@
    "addrs": [
     "0x0045f067"
    ],
+   "lens": [
+    5
+   ],
    "kind": "code",
    "owner": [
     "llm_strat_mode_init"
@@ -2501,6 +3010,132 @@
    "carrier": null,
    "note": "Render only (2026-10-18 dig): the CALL llm_strat_walker_frame_blend_table_init inside llm_strat_mode_init (E8 B7 19 00 00, boot stage 4) -> CALL a thunk that runs the retail init and then fills the 16 facings the retail loop (f = 1, 4, .. 22) leaves 0, so a walker turning in place draws its own rest image instead of the north one on 2 of every 3 notches. The table (_G_LLM_STRAT_WALKER_FRAME_TABLE 0x00ae1df8) is read only by the two renderers and is in no hashed or synced region.",
    "rationale": "llm_strat_mode_init is a boot-stage init that is not promotable (no MH_EXPORT_REPLACE; libmh calls its own copies of the five bodies it owns, not this table init), so no carrier is needed; the installer also checks promoted_owner_of before the write. Guarded on the exact 5 original bytes."
+  },
+  {
+   "id": "detour_caps_save_gather",
+   "kind": "detour",
+   "knob": null,
+   "carrier": "none:the mirror hooks exist only for the relocated cap layout; a promoted save walker would have to carry the gather itself (see rationale)",
+   "owner": [
+    "map_SavePlanetToDisk"
+   ],
+   "note": "D1 of the PT-CAP8 spec: the stock .bss arrays are the CANONICAL MIRROR of the relocated wide arrays and the save block sites keep their original bases and sizes, so the planet save must read a freshly gathered mirror. A run-before trampoline on the entry; the displaced prologue runs afterwards.",
+   "rationale": "PT-CAP8 (v0.2.2 cap raise). Installed ONLY when the cap relocation manifest was applied -- which the applier refuses whenever a promoted body holds one of its sites, so in the shipped configurations (libmh absent, or [config] mode=original) nothing is promoted and this entry is ours. The four save-block walkers (SavePlanetToDisk, LoadPlanetFromDisk, game_SaveGame, llm_game_load) are NOT promoted at all today (mh::config::kSaveClosureOwned = false), so the collision this lint guards against cannot occur; if that constant ever flips, the install is refused BY NAME (entry_claim::exclusive against a promoted body, logged as an [interlock] refusal plus the '[caps] WARNING: a mirror hook is missing' line), and the translated walker would then have to gather/scatter the canonical mirror itself (docs/inmem-patching.md, 'The canonical mirror').",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_SAVE_PLANET"
+    }
+   ]
+  },
+  {
+   "id": "detour_caps_load_scatter",
+   "kind": "detour",
+   "knob": null,
+   "carrier": "none:the mirror hooks exist only for the relocated cap layout; a promoted load walker would have to carry the scatter itself (see rationale)",
+   "owner": [
+    "map_LoadPlanetFromDisk"
+   ],
+   "note": "D1 of the PT-CAP8 spec: map_LoadPlanetFromDisk writes the STOCK extents (the mirror); a mid-body trampoline at 0x0044851b (ADD [EBP-0x20],EAX after the path free-count block, the last block of the wide set; PT-CAP9-U7b moved it here from 0x00448488 behind the labs block, which scattered the stock mirror BEFORE the path buffers, busy flags and free count were read, so every planet load lost the path pool) scatters the mirror into the wide arrays, applies the MHOV trailer and re-derives the path ids before llm_strat_planet_map_session_init and the fog recompute read them. Six stolen bytes, checked by hand (no entry prologue).",
+   "rationale": "PT-CAP8 (v0.2.2 cap raise). Installed ONLY when the cap relocation manifest was applied -- which the applier refuses whenever a promoted body holds one of its sites, so in the shipped configurations (libmh absent, or [config] mode=original) nothing is promoted and this entry is ours. The four save-block walkers (SavePlanetToDisk, LoadPlanetFromDisk, game_SaveGame, llm_game_load) are NOT promoted at all today (mh::config::kSaveClosureOwned = false), so the collision this lint guards against cannot occur; if that constant ever flips, the install is refused BY NAME (entry_claim::exclusive against a promoted body, logged as an [interlock] refusal plus the '[caps] WARNING: a mirror hook is missing' line), and the translated walker would then have to gather/scatter the canonical mirror itself (docs/inmem-patching.md, 'The canonical mirror').",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_LOAD_ARRAYS_END"
+    }
+   ]
+  },
+  {
+   "id": "caps_save_trailer",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_SAVE_CLOSE"
+    }
+   ],
+   "addrs": [
+    "0x004480e0"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "map_SavePlanetToDisk"
+   ],
+   "knob": null,
+   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
+   "note": "S3: the 5-byte `CALL utils_close_file` (E8 EC 76 08 00) that ends map_SavePlanetToDisk (EAX = the FILE) becomes CALL save_close_stub; the stub (pushad/pushfd) appends the MHOV overflow blob + 8-byte {len, 'MHOF'} footer while raised() and some record is non-zero past the vanilla window, then JMPs to utils_close_file.",
+   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+  },
+  {
+   "id": "caps_save_stamp",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_HDR_WRITE"
+    }
+   ],
+   "addrs": [
+    "0x0044725c"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "game_SaveGame"
+   ],
+   "knob": null,
+   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
+   "note": "S3: the 5-byte `CALL utils_write_to_file` (E8 F6 8C 08 00) of game_SaveGame's 40-byte container version header (EAX = the table slot 0x5d08f4 + idx*0x28) becomes CALL header_write_stub; when raised() and an included member planet file ends in a footer the stub swaps EAX for a copy of the slot with bytes 29..32 = 'MHC1' (a sixth version no build's table holds), then JMPs to utils_write_to_file.",
+   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+  },
+  {
+   "id": "caps_load_version",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_HDR_READ"
+    }
+   ],
+   "addrs": [
+    "0x004476b4"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_game_load"
+   ],
+   "knob": null,
+   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
+   "note": "S3: the 5-byte `CALL utils_read_from_file` (E8 9F 86 08 00) of llm_game_load's 40-byte version header into G_LZW_TEMP_DATA becomes CALL header_read_stub; the stub performs the read, then, if the 40 bytes are the raised stamp: raised() rewrites them to the table slot (the vanilla compare accepts them), OFF leaves them (the vanilla compare fails -> the load is refused before any block is read) and arms the refusal-message flag. Any other header is untouched.",
+   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+  },
+  {
+   "id": "caps_load_refusal_msg",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_LOADFAIL_MSG"
+    }
+   ],
+   "addrs": [
+    "0x004bb76d"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_menu_loadgame_confirm"
+   ],
+   "knob": null,
+   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
+   "note": "S3: the 5-byte `CALL llm_ui_dlg_msgbox_ok` (E8 38 0F 00 00) of the menu's load-failure box (EAX = G_TEXT_PTRS[0x2b5]) becomes CALL loadfail_msg_stub; when the refusal flag is armed the stub swaps EAX for the player-strings row caps.load_refused (EN: 'This save uses raised building limits. Turn on Raised limits in the launcher to load it.'), then JMPs to the box. Otherwise EAX is untouched.",
+   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
   }
  ]
 }

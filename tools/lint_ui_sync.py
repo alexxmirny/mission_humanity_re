@@ -90,6 +90,7 @@ KNOWN_WAIT_OPS = frozenset(
         "keystate",
         "zoom",
         "curpos",
+        "scurpos",
         "gzdone",
         "mapsize",
         "mring",
@@ -132,7 +133,10 @@ KNOWN_ACTION_OPS = frozenset(
         "layout",
         "keyjournal",
         "capture",
+        "pcapture",  # mods:RES4: the presented image
+        "bcapture",  # mods:RES23-S0: what the presenter put on screen
         "log",
+        "notice",
         "pokerace",
         "injectstart",
         "dump",
@@ -148,6 +152,10 @@ KNOWN_ACTION_OPS = frozenset(
         "reveal",
         "savegame",
         "delsave",
+        "logport",  # mods:UNL1 fixture ops
+        "unlockdrop",
+        "travel",
+        "arrive",
         "end",
     }
 )

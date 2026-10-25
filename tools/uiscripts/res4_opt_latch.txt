@@ -1,0 +1,60 @@
+# res4_opt_latch -- mods:RES19: the Interface size chosen in Options shows only once the game resumes. ini/res4_s200_dlg.ini-like (ui_scale=200 on a pinned 1280x960
+# desktop, a WINDOWED, presenting lane: the dialog modes are scaled only where the presenter runs -- res4_opt's headless lane never scales a menu).
+#  a  strategic view at 200%: `pcapture res4_lt_200` is the reference panel;
+#  b  ESC > Options: Interface size 200 -> Auto -> 100 -> 125 (three clicks) and Ok: back in the ESC menu (game mode 3), where the frame still holds the
+#     200% panel -- `pcapture res4_lt_before` must show the 200% HUD (no blank rows), not the 125% one;
+#  c  Return to game: the panel is now the 125% one (`pcapture res4_lt_after`).
+# tools/check_res4_latch.py reads the log order and compares the panels.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4_latch frame_ready
+cursorhold 600 400 6
+pcapture res4_lt_200
+bcapture res4_lt_200
+capture res4_lt_frame200
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 538 491
+settled Ok
+click 538 491
+settled Ok
+click 538 491
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture res4_lt_before
+bcapture res4_lt_before
+capture res4_lt_before_frame
+log res4_latch applied_in_menu_not_yet_shown
+
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +100
+pcapture res4_lt_after
+bcapture res4_lt_after
+capture res4_lt_after_frame
+log res4_latch COMPLETE -- 200 -> 125 applied after the game resumed
+end

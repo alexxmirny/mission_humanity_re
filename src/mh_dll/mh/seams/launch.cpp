@@ -37,6 +37,7 @@
 #include <stdarg.h>
 
 #include "include/mh_launch_export.h"
+#include "include/mh_module_bind.h"  // MH_LibmhModule_IsBound (--tactical: original mission_start when libmh is absent)
 #include "include/mh_net_export.h"   // MH_Net_PeerCount / MH_Net_IsStarted (F-gate peer wait)
 #include "include/mh_seam_export.h"  // MH_Seam_StartTransport (bring the transport up at the menu)
 #include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
@@ -1238,6 +1239,12 @@ bool mp_client_adopt_start() {
         lg("; U28: adopted the host's authoritative lobby slots at Start (occ=%d, PlayerSide=%d)", occ, array_idx);
     }
     mh::gameplay::apply(gs, mh::gameplay::Source::ADOPTED);
+    if (mh::gameplay::raise_refused()) {
+        // PT-CAP8 S5: the host plays with the raised limits and this game cannot raise them (relocation refused: libmh + brokered
+        // boot, `[caps] relocate=0`, a foreign byte). Playing on would desync, so leave the way a refused Start does.
+        mh::gameplay::log_raise_refused(); // mh_net.log: the rig checker reads this one
+        return mp_client_refuse_start("cannot raise limits");
+    }
     mh::gameplay::log_applied_hash();
     g_start_adopt = StartAdopt::ADOPTED;
     return true;
@@ -1503,8 +1510,13 @@ void enter_tactical() {
     // verb, i.e. the harness that exists to TEST the tactical code calling the code it is not
     // testing. Every tactical scenario enters through here, so leaving it raw would have made the
     // whole tact domain's rig coverage a measurement of the original.
+    //
+    // WITHOUT libmh.dll (configuration (1), the shipped one) the contract row is an unbound thunk that
+    // returns at once -- the verb entered nothing and the mission "ended" on its first frame. There the
+    // original body is the only one, so call it (TSCR1: the shipped-configuration tactical rows).
     *(uint8_t *)ADDR_GAME_MODE = (uint8_t)GAME_MODE_TACT;
-    mh::tact::mission_start();
+    if (MH_LibmhModule_IsBound()) mh::tact::mission_start();
+    else mh::call::llm_tact_mission_start();
 
     int mode = *(const uint8_t *)ADDR_GAME_MODE;
     // THE MISSION IDENTITY, derived the same way llm_tact_mission_start derives it. Read AFTER the

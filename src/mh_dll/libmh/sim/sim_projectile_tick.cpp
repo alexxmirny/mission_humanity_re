@@ -231,8 +231,8 @@ void projectile_tick(const sim_view &v, sim_store &own, const projectile_tick_ca
     if (recompute_facing) {
         const int32_t new_facing = c.dir_from_to(p.x, p.y, static_cast<int32_t>(imp_x),
                                                  static_cast<int32_t>(imp_y_vis));
-        // [net] projectile_facing_fix (mods:M1C; retail carrier: combat_proto.cpp at 0x00441424): the difference wrapped
-        // into -12..11, 0 for weapon types 5/6 (sim/sim_projectile_facing.h). Off = the original's raw difference.
+        // [net] projectile_facing_fix (mods:M1C; retail carrier: combat_proto.cpp at 0x00441424): the difference
+        // unwrapped, 0 for weapon types 5/6 (sim/sim_projectile_facing.h). Off = the original's raw difference.
         if (projectile_facing_fix()) mh::sim::mvc::twin_hit(mh::sim::mvc::TS_PFF);
         const int32_t delta_facing = projectile_facing_fix() ? projectile_facing_delta(new_facing - p.facing, w.type)
                                                              : new_facing - p.facing;

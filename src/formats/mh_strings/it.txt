@@ -24,6 +24,7 @@ refuse.newer_than_host = protocollo più recente dell'host
 refuse.not_our_lobby = non è la nostra lobby
 refuse.cp_mismatch = codepage di input diversa
 refuse.unknown = sconosciuto
+refuse.caps = impossibile aumentare i limiti
 refuse.build = l'host ha %s, tu hai %s: aggiorna
 refuse.gameplay = Impostazioni di gioco diverse (%s/%s): aggiorna
 relay.outdated = Relay obsoleto (protocollo %u < %u)
@@ -38,6 +39,8 @@ map.mismatch = La mappa inviata dall'host non corrisponde all'annuncio.
 # in-match messages
 desync.alert = DESINCRONIZZAZIONE (passo %lu) - la partita non è più sincronizzata
 cheat.single_player = i trucchi sono solo per il giocatore singolo
+orders.quota = Troppi ordini insieme - gli altri non sono stati dati
+orders.refused = Coda degli ordini piena - gli altri non sono stati dati
 hub.migrated = %s è uscito; ora %s è l'host
 hub.lost = connessione con %s persa; ora %s è l'host
 spectate.defeated = Sconfitto - modalità spettatore
@@ -54,6 +57,10 @@ netind.waiting = ATTESA DI %s
 # main menu (the no-art fallback button; drawn upper-cased)
 menu.network_game = Gioco in rete
 
+# in-game Options screen: the Interface size row (mods:RES4)
+options.interface_size = Dimensione interfaccia:
+options.interface_auto = Auto
+
 # lobby TEAM spinner + MODE selector (mp:U51)
 lobby.team_none = -
 lobby.team_1 = S1
@@ -62,3 +69,6 @@ lobby.team_3 = S3
 lobby.team_4 = S4
 lobby.mode_ffa = Modalità: tutti contro tutti
 lobby.mode_team = Modalità: squadre
+
+# raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
+caps.load_refused = Questo salvataggio usa limiti aumentati. Attiva "Raised limits" nel launcher per caricarlo.

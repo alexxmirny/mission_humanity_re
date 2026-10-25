@@ -30,16 +30,22 @@ int galaxy_bg_mode(int view_size_mode);
 // group's end marker. The row count is taken from min(WindowHeight, 768).
 constexpr int PANEL_ROWS_MAX_H = 768;
 int           panel_rows_height(int window_height);
-// Where the panel's bottom filler starts: the row count capped, the filler (llm_ui_panel_background_tile_draw)
-// must still start where the uncapped list would have ended, top + ((H - top) / row_height) * row_height, or it
-// paints over the panel base from the capped end down to the window bottom. Returns y_capped unchanged for H <= 768.
-int panel_fill_y(int window_height, int top, int row_height, int y_capped);
+// RES23-S3 / RES26: THE panel fill rule (pure). `y_stock` is where the game's rows end (its filler starts there and paints the panel base pink down to the window bottom);
+// every slot of the frame (rows of `row_h` from `top`) that fits whole down to the last whole slot of the `win_h`-tall frame gets a teal icon, from `y_stock` to
+// `icons_to`, except the slot the visible edge `vis_h` cuts (`skip` = its top, else -1): that one and the partial slot under the last whole one stay pink.
+// False = nothing to draw (stock heights, a zero row height, no whole slot left).
+bool panel_fill_plan(int win_h, int vis_h, int top, int row_h, int y_stock, int &icons_from, int &icons_to, int &skip);
 // RES7 (seams/ui_panel_rows.cpp): true once all ten P6 sites are armed.
 bool panel_rows_p6_armed();
 // RES7: the three scrollable-list sites (body / arrow handler, list draw) cap at `h` instead of 768 -- the height
 // the grown tables hold rows for -- and call `on_height(WindowHeight)` once whenever the height they read has
 // changed since the last call (null: no hook). The selected-unit view's three sites keep 768.
 void set_panel_list_cap(int h, void(__cdecl *on_height)(int));
+// RES4 stage 3: min(WindowHeight, Hp), the height the panel lists size themselves to (Hp = rows the scaled panel shows).
+int panel_effective_height();
+// RES23-S2: a mode was applied -- recompute the committed HUD geometry for the new frame (same percentage); see hud_commit_pump.
+// RES26: applied_from_options = the Options Ok (not the galaxy switch): a HUD stamp of a dialog mode moves to the new frame at once (no wait for the resume).
+void panel_geometry_recommit(bool applied_from_options);
 
 // ---- P3 ------------------------------------------------------------------------------------------
 enum class bg_result : int {

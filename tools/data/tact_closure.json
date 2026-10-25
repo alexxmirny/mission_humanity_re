@@ -859,7 +859,7 @@
     },
     {
       "addr": "0x0043c323",
-      "name": "llm_tact_scroll_fade_step",
+      "name": "llm_tact_blast_wipe_brighten_step",
       "size": 118,
       "prefixed": true,
       "proto_status": "ok",

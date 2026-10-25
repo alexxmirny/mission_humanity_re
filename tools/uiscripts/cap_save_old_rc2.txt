@@ -1,0 +1,15 @@
+# patching:PT-CAP9-U7f -- cap_save_old (step rc2_on): the shipped v0.2.2-rc2 save 8-ayatus-rl-2.sav (MHOV v1, 8 records) loaded from the main menu on the CURRENT build with the raise ON
+# (tools/check_cap_save.py --step old --records 0: the current planet 8's member has no trailer; the 8 records are in planet 4's). The lane's only save is the deployed one; Load game loads it, the game steps ~1000 sim steps,
+# and the checker judges the logs (accepted, every MHOV record applied, it played, no cap guard hit). The capture is the loaded world at that point
+# (one script and baseline per save: the frames differ).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +10000
+log cap: an old raised save loaded with the raise ON
+capture old_loaded
+end

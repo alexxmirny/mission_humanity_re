@@ -389,11 +389,11 @@ void draw_sidebar_row_hover(int32_t side, int32_t unit_id, int32_t row) {
 // llm_tact_frame's mine-blast exit wipe, @0x004333c1-0x004333e6 (LIFT-TACT slice B). The loop
 // bound is the original's own compile-time 0x10 and the three calls are in the original's order --
 // the whole thing is host-side because the frame loop is, not because sixteen records would have
-// been wrong. Collapsing it is also what absorbs llm_tact_scroll_fade_step: this loop was its only
+// been wrong. Collapsing it is also what absorbs llm_tact_blast_wipe_brighten_step: this loop was its only
 // libmh site, so the fine entry leaves with the scope rather than needing one of its own.
 void run_blast_transition() {
     for (int32_t i = 0; i < 0x10; ++i) {
-        mh::call::llm_tact_scroll_fade_step();
+        mh::call::llm_tact_blast_wipe_brighten_step();
         mh::call::llm_tact_blink_overlay_clear();
         mh::call::llm_tact_frame_cursor_and_reset();
     }

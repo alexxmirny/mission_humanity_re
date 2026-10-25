@@ -1,0 +1,30 @@
+# res_crop_1080 -- mods:RES18: resolution=1920x1080 (ini/res_crop_1080.ini). The game renders 1920x1088 (ceil32); the presenter shows 1920x1080 of it.
+#  a  the strategic view: the presented image is the quad composition (map frame rows 0..1047, strip frame rows 1056..1087 on the screen's last 32
+#     rows, panel columns 1760..1919) with no bars (tools/check_res_crop.py re-derives it from the logged numbers);
+#  b  the pointer across the cut: client y 1047 (the last visible map row) is frame row 1047, client y 1048 the strip's first row = frame 1056 -- the 8
+#     cropped map rows are skipped (curpos is exact). (The rig's window is shorter than 1080, so the screen's very last rows are not reachable
+#     here; res_crop_720 drives them in a real window of exactly the session size.)
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res_crop frame_ready
+cursorhold 600 400 6
+capture res_crop_frame
+pcapture res_crop_view
+
+rawmouse sabs 600 1047
+curpos 600 1047 0
+rawmouse sabs 600 1048
+curpos 600 1056 0
+rawmouse sabs 600 500
+curpos 600 500 0
+log res_crop COMPLETE -- 1920x1080 cropped from 1920x1088: composition and the pointer across the cut
+end

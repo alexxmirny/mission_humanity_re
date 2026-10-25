@@ -317,14 +317,34 @@ and REGISTERS for everything else. Whichever mechanism arrives second is the one
 
 `patch_bytes_guarded` writes at arbitrary addresses rather than at entries, so a byte-exact overlap
 between a registered DLL patch and a manifest site is not answerable from a body-granular registry.
-It does not have to be: it is decidable offline, exactly, and the census does it. Both collisions
-the corpus contains are the same benign shape — a manifest and its DLL twin carrying one fix:
+It does not have to be: it is decidable offline, exactly, and the census does it.
 
-- `resync_wait_fix` @ `0x0049c044` ↔ `net_resync_wait_fix_EN`
-- `run_without_focus` @ `0x004a04ce` ↔ `run_without_focus_EN`
+**FULL EXTENTS since PT-CAP8 S0 (2026-10-19).** The first version of this arm compared a DLL patch's
+START address with a site's extent. A manifest site is a bare 4-byte operand carved out of an
+instruction, and the DLL patch that replaces that instruction starts earlier and runs over it, so the
+start test reported 3 overlaps (two benign twins below, plus `move_squad_merge_fix`/`soldiers_relocate`)
+and missed six the shipped hooks depend on. Every registered DLL patch now carries its write length
+(`lens` in `tools/data/dll_patch_manifest.json`, parallel to `addrs`; a row without it is REFUSED) and
+the test is interval intersection, classified `start` / `interior` / `inside_site` / `straddle`.
+`check_inmem_composition.py --verify-lens --exe <clean EN exe>` proves each extent ends on an
+instruction boundary (local only). The census extract carries `registered_patch_overlaps` (32 extents
+over 18 manifests) and `cap_set_overlaps`, the subset against the v0.2.2 cap manifests:
 
-Which is Q7's "the reimplemented pair should not compile in at all", arrived at from the other
-direction and by measurement. An unexplained third row is the thing to look at.
+| DLL patch | extent | manifest site inside it |
+| --- | --- | --- |
+| `turret_clip_fix` | `0x00462ab9`+7 | `0x00462abb` (turrets base) |
+| `turret_clip_refill` | `0x0047c6c8`+9 | `0x0047c6ca` (turrets base) |
+| `mother_free_seed` | `0x00491eac`+8 | `0x00491eaf` (buildings base) |
+| `move_near_enough` | `0x00482b5b`+13 | `0x00482b5d`, `0x00482b63` (units base) |
+| `move_squad_merge_fix` | `0x0047ebe1`+8 | `0x0047ebe4` (units base) |
+| `move_reverse_now` | `0x00466bfe`+7 | `0x00466c01` (units row stride) |
+
+Applied in memory, the cap manifest arms first, so each DLL guard then sees the relocated bytes and
+`patch_bytes_guarded` reports MISMATCHED: the fix is silently absent. The rows are not benign twins;
+PT-CAP8 S1 retargets them. The two benign twins stay: `resync_wait_fix` @ `0x0049c044` ↔
+`net_resync_wait_fix_EN`, `run_without_focus` @ `0x004a04ce` ↔ `run_without_focus_EN`. Blind spots that
+remain, listed in the extract: 14 `dynamic: true` rows (`dll_patches_dynamic_unchecked`) whose addresses
+are found by a runtime `.text` scan, and seam-local asm stubs that embed vanilla array addresses.
 
 ### The number, and why it is 11,034 rather than 11,104
 
@@ -472,3 +492,107 @@ pointers. Compile cost is negligible (0.8 s for the 2.4 MB generated header). A 
 one byte array per manifest with `{va, offset, len}` rows instead of three pointers — would remove
 most of the relocations and roughly halve it; that is an optimisation nobody has needed yet, and it
 is recorded here so the next person does not have to re-measure to decide.
+
+## The v0.2.2 cap-raise census and split plan — PT-CAP8 S0 (2026-10-19)
+
+Three committed artefacts, all re-derivable and all gated by `lint_repo.py` (hermetic `--check` plus a
+`--selftest` that plants mutations):
+
+- **`tools/scan_cap_reloc_sites.py`** → `tools/data/cap_reloc_scan.json` + `cap_reloc_hits.json`. A
+  whole-`.text` census of every 4-byte field that addresses one of the cap arrays (displacement,
+  immediate address, row stride, folded multiple, block size) read by capstone — recursive descent
+  first, then a linear sweep for what it did not reach — plus a symbolic pass for strength-reduced
+  strides (a shift/add chain is spelled with no stride immediate at all). Each field is tested against
+  the cap manifests' BYTE extents; uncovered ones carry a liveness verdict from the call graph. Result
+  on the EN exe: 7,962 fields; ten uncovered LIVE gaps in v0.2.2 arrays — the 8 fields of
+  `llm_strat_bldg_link_to_network_if_adjacent` (an EN-only code block in that function: the grand
+  port relocated RU's list by delta map and re-scanned only the 6 functions it knew differed), one
+  shift chain in `llm_strat_ai_queue_bldg_repair` (a register layout the July splice finder did not
+  match), and the projectile pool's `map_FillDefaults` clear size (`0x2c4fc`, no site in the projectile
+  manifest). Five more shift-chain uses in three dead functions and the dead-function units fields are
+  listed but not baselined. `--rescan --exe` regenerates; `--check --strict` is the S1 gate.
+- **`tools/check_inmem_composition.py`** full-extent overlap (above).
+- **`tools/gen_cap_split_plan.py`** → `tools/data/cap_v022_split_plan.json`: every patch of
+  `grand_all_caphike_storagecap_EN` + `projectile_pool_caphike_EN` assigned to one class (relocation /
+  limit / storage-cap caves / save block stays vanilla / units+soldiers excluded / unclassified) by a
+  stated rule, per-array counts, the one unattributable bound, and the DLL-patch overlaps.
+
+
+## The v0.2.2 cap manifests — PT-CAP8 S1 Slice A (2026-10-19)
+
+The July grand + pool-caphike manifests mixed relocation and limit edits and raised units/soldiers too. Slice A
+replaces them, as GENERATED data, with two manifests (`tools/gen_cap_v022_manifests.py`; the spec is
+`tmp/capraise/s1/spec_s1.md`, decisions D1-D3 in the PT-CAP8 tracker item):
+
+| manifest | class | sites | what it is |
+| --- | --- | ---: | --- |
+| `cap_v022_reloc_EN` | `caps` | 3,941 | RELOCATION, always applied. Sections `.mhcapd` @0x010f0000 (0x240000, zero-init array host), `.mhcapc` @0x01330000 (the 9 storage-cap caves). Base/stride/shift-splice/clear-size rows re-baked from the July manifests, the 10 scan gaps, the 9 storage-cap redirects. |
+| `cap_v022_limits_EN` | `caps_limits`, `toggle: true` | 51 | LIMITS. `expect` = vanilla bytes (OFF), `bytes` = raised (ON); the applier verifies and stages, writes only on a toggle. Section `.mhcapl` @0x01340000 (17 widen + 3 walk-backstop caves). |
+
+Arrays: buildings [8][500], unit_storage/turrets/mines/labs/productions [8][127], projectiles 4000. Units and soldiers are
+not touched (PT-CAP9). The 14 save/load block-base operands and the 12 block sizes stay vanilla (the stock `.bss` is the
+canonical mirror, D1); the scan baseline lists them `by_design`.
+
+**Section VAs.** `.mhcapl` is at `0x01340000`, not the spec's `0x01331000`: mhpatch's `next_free_va` is 64 KB-aligned, so
+the section after `.mhcapc` (0x01330000, vsize 0x1000) is 0x01340000. In memory the VAs are only preferred anyway.
+
+**Compiled, not selectable.** `gen_inmem_manifest.py` accepts classes `caps` / `caps_limits` (`toggle` only on the latter),
+emits `CAPS_RELOC` / `CAPS_LIMITS` in `manifests.gen.h`, and keeps them out of `COMPILED[]`. `inmem_manifest` gained
+`bool toggle`. The two July manifests are class `reference` (the generator's input and the scan's history), so `mh.dll`
+no longer carries them.
+
+**Proofs** (each a refusal, each with a `--selftest` mutation): P1 `expect` == the clean exe; P2 no overlapping sites and
+none over a units/soldiers byte; P3 flags/register liveness at every cave exit and at the `0x4e28ae` splice (all 44
+questions answer dead, so no `pushfd` was needed); P4 in-place limit imm8 <= 127; P5 no limit site in a claimed body's
+8-byte entry window; P6 sorted; array extents; the July cross-check (the same re-baking rule under the July layout must
+reproduce July's bytes, and every widen/walk/storage cave must decode identically to July's); every open scan gap
+covered; both manifests `refs_complete`. The exe-dependent proofs (P1, P3) are cached in each output's `_proofs.exe`;
+`--check` is hermetic and verifies the cache is complete and current.
+
+**Storage caves.** The `populate` cave caches the cap into `unit_storage+0xec` only when the building's
+`unit_housing_capacity` is not the stock 50 (`cmp ecx,0x32 / jne / xor ecx,ecx`), so a stock INIT.CFG writes 0 into a
+field that is already 0 and the record stays vanilla-identical.
+
+**Tooling.** `scan_cap_reloc_sites.py` closes over `cap_v022_*` (baseline: the 10 gaps `closed`, 28 save-layer entries
+`by_design`; `--check --strict` = 0 open). `check_inmem_composition.py` computes `cap_set_overlaps` against the new
+manifests (3 rows: turret_clip_fix, turret_clip_refill, mother_free_seed) and gained `--strict` plus
+`tools/data/cap_compose_allow.json` (red until Slice C converts the three installs to `patch_bytes_guarded_caps`).
+`check_inmem_patch_parity.py --offline/--selftest` gate both: the limits reference is `mhpatch(reloc)` then
+`mhpatch(limits)` and its completeness pass diffs against the reloc-applied file. The live `--run` lane is Slice C.
+
+## The v0.2.2 cap raise at runtime — PT-CAP8 S1 Slice C (2026-10-20)
+
+**Boot** (`patch/caps_install.cpp`, `MH_Caps_Install`, before `MH_InMemPatch_Install`; independent of `[patch] inmem`):
+applies `cap_v022_reloc_EN` (all-or-nothing, always), then stages `cap_v022_limits_EN` (`toggle`), fills the `mh::caps`
+geometry table (`adopt_relocation`), and arms two mirror hooks. One log line: `; [caps] relocation APPLIED (N sites, 2
+sections, base .mhcapd=0x...) in X ms; limits OFF`, or `... REFUSED: <why> -- vanilla layout, raise unavailable`
+(+ a folded `REFUSED detail:` line). Measured APPLIED: 8-11 ms (batched page-run protection: 8 protect calls for
+3,941 sites, was one per site). Keys: `[caps] relocate` (default 1), `[caps] raise` (F_HOSTSYNC, default 0, applied
+through `gameplay_hooks.cpp` -> `mh::caps::set_limits`), `[caps] mirror_check` (diagnostic).
+
+**Where it runs.** Relocation needs the manifest to apply, which the C1 promoted-body interlock refuses in brokered +
+libmh runs (a reloc site inside a promoted body). By design: those runs keep the vanilla layout and raise is
+unavailable. Relocated configurations are libmh absent (the shipped release) and `[config] mode=original`.
+
+**Canonical mirror (D1).** The stock `.bss` extents stay a vanilla-shaped mirror of the wide arrays, so the hash,
+recorder, ring, scene dump and the save/load block sites are untouched. `canon_gather` (wide -> mirror) runs in the
+sim-step feeders (`on_desync_sim_step`, harness `on_sim_step`) and at `map_SavePlanetToDisk` entry; `canon_scatter`
+(mirror -> wide) after the planet-load array blocks, scene import, resync import and harness imports. Records past the
+vanilla window are counted (`overflow_records`) and logged on save; a raised world does not round-trip through a stock
+save yet. If the save walkers are ever promoted (`kSaveClosureOwned`), the two hooks are refused and the translated
+walker needs its own gather/scatter.
+
+**Limits (D2).** Two-state code bytes, flipped only at a quiescent point: `set_limits(true)` refuses while a world is
+live (a sim step within 1.5 s), when not relocated, when not staged, and on a foreign byte at any site (all-or-nothing,
+OFF restores the exact `expect` bytes). MP: with `raise=1` a warning is logged; the MP building index past 255 is a
+separate item.
+
+**Applier.** `apply()` gained batched page-run protection, an applied-bytes overlay (`overlay_applied`, so the guarded
+compose hooks `patch_bytes_guarded_caps` see the relocated bytes), `apply_result.micros/protect_runs/detail`, and
+`APPLY_QUIET_OK`.
+
+**Gates.** `check_inmem_patch_parity.py --run --caps` is the live lane (raise=0: limit sites hold vanilla bytes;
+raise=1: every byte equals the mhpatch reference; compose sites exempt via `cap_compose_allow.json`). `run_gate.py`
+change-aware rule: a change under `src/mh_dll/mh/patch/`, `src/mh_dll/mh/caps/`, `src/patcher/cap_v022_*` or
+`tools/gen_cap_v022_manifests.py` sets the `abc3` token, which puts `abc_tutorial` / `abc_spcamp` back on arms A,B,C in
+the light gate (B vs C is what proves the relocated layout behaviour-neutral; the ship-only A,C default cannot).

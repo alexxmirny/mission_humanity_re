@@ -2259,6 +2259,7 @@
     <ClCompile Include="tact_mission_start_selftest.cpp" />
     <ClCompile Include="tact_move_path_preview_walk_selftest.cpp" />
     <ClCompile Include="tact_owner_enqueue_fix_selftest.cpp" />
+    <ClCompile Include="tact_scroll_pace_selftest.cpp" />
     <ClCompile Include="tact_scroll_target_proximity_tick_selftest.cpp" />
     <ClCompile Include="tact_select_next_unit_selftest.cpp" />
     <ClCompile Include="tact_selection_clear_unless_ctrl_selftest.cpp" />

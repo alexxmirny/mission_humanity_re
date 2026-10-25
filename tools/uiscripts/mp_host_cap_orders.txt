@@ -1,0 +1,32 @@
+# patching:PT-CAP9-U5 -- the HOST walk of the order-layer MP rows: reach the lobby, Start, land the mother, then the harness fixtures (capu_* roster, capo_* order burst) run.
+# reach the host lobby (create the pre-pinned game on the pre-selected map)
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+# host lobby: block until the client is really in ITS lobby, then Start.
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+# in the match: land the mothership (shift+right-click), then run. The fixture acts once the mother has landed
+absent Network players
+gameclock 3000
+simrclick 480 330 shift
+gameclock 150000
+log capo mp done
+capture cap_orders_mp_done
+end

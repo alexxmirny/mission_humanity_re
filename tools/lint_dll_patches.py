@@ -71,7 +71,8 @@ DLL = os.path.join(REPO, "src", "mh_dll")
 MANIFEST = os.path.join(REPO, "tools", "data", "dll_patch_manifest.json")
 FUNCS = os.path.join(REPO, "tools", "data", "en_functions.json")
 
-CALL_RE = re.compile(r"patch_bytes_guarded\s*\(")
+# patch_bytes_guarded_caps (PT-CAP8) is the composing variant: same site, same manifest keying.
+CALL_RE = re.compile(r"patch_bytes_guarded(?:_caps)?\s*\(")
 REPLACE_RE = re.compile(r"^\s*MH_EXPORT_REPLACE\(\s*([A-Za-z_]\w*)\s*,", re.M)
 
 # ---- C9: the other patching primitive --------------------------------------------------------

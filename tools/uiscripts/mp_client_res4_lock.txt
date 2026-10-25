@@ -1,0 +1,27 @@
+# mods:RES4 stage 7 CLIENT -- plays along while the host's lockstep modal probe runs. Pair with mp_host_res4_lock.txt (a copy of
+# mp_client_dialog_stall.txt under its own name: its own baseline label).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+gameclock 6000
+capture c1_ingame
+awaitsignal hostdone
+log CLIENT stayed in the match until the host's lockstep modal probe finished
+end

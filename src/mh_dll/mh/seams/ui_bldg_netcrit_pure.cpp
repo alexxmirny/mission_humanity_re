@@ -12,6 +12,7 @@
 #include "addr/mh_addrs.gen.h"   // mh::addr::netcrit_ui_call_site / _G_LLM_GAME_SESSION_MODE
 #include "addr/mh_calls.gen.h"   // mh::call::llm_strat_bldg_is_network_critical
 #include "addr/mh_regions.gen.h" // mh::state::live(), RID_BUILDINGS / RID_STRAT_PLAYERS
+#include "caps/caps.h"           // mh::caps::rec / g: the building row the game addresses (PT-CAP8)
 #include "config/config.h"       // mh::config::mode() -- mode=original keeps retail
 #include "hook/patch.h"          // patch_bytes_guarded
 #include "hook/promoted.h"       // promoted_owner_of
@@ -22,9 +23,9 @@ namespace {
 
 constexpr int      CALL_LEN            = 5;
 constexpr uint32_t PLAYERS             = 8;
-constexpr uint32_t BLDG_ROW_BYTES      = 0x6aa4; // buildings[8][100], 0x111 per record
-constexpr uint32_t STRAT_PLAYER_BYTES  = 0x740;  // llm_strat_player_profile[8]
-constexpr uint8_t  SESSION_MP_LOCKSTEP = 3;      // _G_LLM_GAME_SESSION_MODE is a byte
+constexpr uint32_t BLDG_ROW_MAX_BYTES  = 500 * 273; // g_row capacity: the raised row (500 x 0x111); the stock row is 0x6aa4 (PT-CAP8)
+constexpr uint32_t STRAT_PLAYER_BYTES  = 0x740;     // llm_strat_player_profile[8]
+constexpr uint8_t  SESSION_MP_LOCKSTEP = 3;         // _G_LLM_GAME_SESSION_MODE is a byte
 
 // EN v406: CALL llm_strat_bldg_is_network_critical (0x00497405) from 0x0041896c; EAX = PlayerSide
 // (movzx word), EDX = _G_LLM_STRAT_UI_SELECTED_BLDG_INDEX (movzx word); result in EAX.
@@ -34,26 +35,28 @@ constexpr int MAX_LOGS = 8;
 
 bool    g_armed = false;
 int     g_logs  = 0;
-uint8_t g_row[BLDG_ROW_BYTES];
+uint8_t g_row[BLDG_ROW_MAX_BYTES];
 uint8_t g_prof[STRAT_PLAYER_BYTES];
 
 bool in_lockstep_match() { return *(const volatile uint8_t *)mh::addr::_G_LLM_GAME_SESSION_MODE == SESSION_MP_LOCKSTEP; }
 
 int32_t probe(uint32_t player, uint32_t bldg) {
-    const uint32_t p = player & 0xffffu;
-    if (!in_lockstep_match() || p >= PLAYERS)
+    const uint32_t p         = player & 0xffffu;
+    const auto    &gb        = mh::caps::g(mh::caps::BUILDINGS);
+    const uint32_t row_bytes = gb.limit * gb.elem;                              // the live records of the player's row (stock: 0x6aa4)
+    if (!in_lockstep_match() || p >= PLAYERS || row_bytes > BLDG_ROW_MAX_BYTES) // (the last: g_row cannot hold it -> retail)
         return mh::call::llm_strat_bldg_is_network_critical((int32_t)player, (int32_t)bldg);
     const auto &lv   = mh::state::live();
-    uint8_t    *row  = reinterpret_cast<uint8_t *>(lv.base[mh::state::RID_BUILDINGS] + p * BLDG_ROW_BYTES);
+    uint8_t    *row  = mh::caps::rec<uint8_t>(mh::caps::BUILDINGS, p, 0);
     uint8_t    *prof = reinterpret_cast<uint8_t *>(lv.base[mh::state::RID_STRAT_PLAYERS] + p * STRAT_PLAYER_BYTES);
-    std::memcpy(g_row, row, BLDG_ROW_BYTES);
+    std::memcpy(g_row, row, row_bytes);
     std::memcpy(g_prof, prof, STRAT_PLAYER_BYTES);
     const int32_t verdict = mh::call::llm_strat_bldg_is_network_critical((int32_t)player, (int32_t)bldg);
     // Evidence, bounded: the first probe, then (up to MAX_LOGS) every probe that actually moved bytes.
     uint32_t moved = 0;
-    for (uint32_t i = 0; i < BLDG_ROW_BYTES; ++i) moved += row[i] != g_row[i];
+    for (uint32_t i = 0; i < row_bytes; ++i) moved += row[i] != g_row[i];
     for (uint32_t i = 0; i < STRAT_PLAYER_BYTES; ++i) moved += prof[i] != g_prof[i];
-    std::memcpy(row, g_row, BLDG_ROW_BYTES);
+    std::memcpy(row, g_row, row_bytes);
     std::memcpy(prof, g_prof, STRAT_PLAYER_BYTES);
     if (g_logs < MAX_LOGS && (g_logs == 0 || moved != 0)) {
         ++g_logs;

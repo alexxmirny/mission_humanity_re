@@ -1,0 +1,36 @@
+# patching:PT-CAP8 S3 (slice G) -- the raised-caps SAVE round trip, step 1 of cap_save_seq (tools/check_cap_save.py --step save).
+# The cap-fill_solo walk (menu -> 1 human + 1 AI skirmish -> mother landed), then the harness takes over: the cap-fill fixture
+# fills player 0's roster past every vanilla cap, `cap_prj_synth` stamps 600 projectile records into the pool slots 1500..2099,
+# and at `cap_save_at` the harness saves `capovf` through game_SaveGame and loads it back through llm_game_load in the SAME step
+# (`; CAP SAVE` / `; CAP LOAD` lines carry the overflow digest: equal = the round trip is exact). Libmh absent, `[caps] raise=1`.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log cap: mother landing ordered, handing the run to the harness fixture
+gameclock 90000
+log cap: fixture ran, saved and loaded the raised save in one step (see mh_harness.log `; CAP SAVE` / `; CAP LOAD`)
+capture cap_save_end
+end

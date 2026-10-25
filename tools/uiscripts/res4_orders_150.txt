@@ -1,0 +1,50 @@
+# res4_orders_150 -- mods:RES4 stage 4: select a group and give it a move order THROUGH THE POINTER, then read the unit's goal tile.
+# The same script (this file and its twin res4_orders_100.txt differ only in this line) runs in two rows on a pinned 1280x800 screen with the camera pinned (camto 41 52): res4_orders_100 (ui_scale=100,
+# frame 1280x800) and res4_orders_150 (ui_scale=150, frame 1216x800, the map quad 1:1 at the screen's top left). Everything below is in
+# CLIENT pixels, delivered as owned-DirectInput absolute packets plus buttons (rawmouse sabs / down / up): a left drag round the five
+# insects idle beside the base (screen ~850,460 .. 895,505) selects them, a right click on open ground at (400,300) orders them there.
+# tools/check_res4_orders.py reads `; [sel]` / `; [goal]` and demands the SAME committed goal tile (tools/data/res4_orders_goal.json) in both
+# rows, so the order at 150% lands on the tile the order at 100% does.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+camto 41 52
+gameclock +200
+rawmouse sabs 600 400
+screensettled
+logsel start
+loggoal start
+# select: a held left drag
+rawmouse sabs 850 460
+gameclock +50
+rawmouse down l
+gameclock +50
+rawmouse sabs 870 480
+gameclock +50
+rawmouse sabs 895 505
+gameclock +50
+rawmouse up l
+gameclock +100
+logsel selected
+loggoal selected
+# order: a right click on open ground
+rawmouse sabs 400 300
+gameclock +50
+rawmouse down r
+gameclock +50
+rawmouse up r
+gameclock +4000
+logsel ordered
+loggoal ordered
+capture res4_orders_done
+log res4 COMPLETE -- select + move order through the pointer
+end

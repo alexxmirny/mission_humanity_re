@@ -8,8 +8,8 @@ A UI capture is the composed game frame, so it cannot say what the PRESENTER was
 requires, in the process run directory's mh_video.log:
   * `resolution=<spec>: desktop DxD, display scale N% -> WxH (entry i of n)`  the generated list armed and
     chose the expected size;
-  * `[gfx] SetDisplayMode WxH`  the owned display was asked for the RENDERED size (not the desktop height:
-    1920x1080 renders 1056 rows, and asking for 1080 leaves 24 black rows at the bottom);
+  * `[gfx] SetDisplayMode WxH`  the owned display was asked for the RENDERED size, the session size rounded UP to the 32 px tile
+    (RES18: 1920x1080 renders 1920x1088 and the presenter crops it; 1280x720 renders 1280x736);
   * `presentation: WxH on a DxD desktop -> <integer|fit> scaling`  the scaling rule the size got;
   * the `list [i] WxH (...)` lines in the generated ORDER: the classic three (640x480, 800x576, 1024x768), then every
     4:3 size, then every 16:9 size, then the rest, each group ascending by area (the rule of gfx/res_list.cpp
@@ -33,8 +33,18 @@ from walk_segments import pop_segment, segment_text, slice_or_problem  # noqa: E
 CLASSIC = [(640, 480), (800, 576), (1024, 768)]
 
 
+def ceil32(v):
+    return (v + 31) & ~31
+
+
+def rendered(size):
+    """'1920x1080' -> '1920x1088': the frame the game renders for a session size (RES18)."""
+    w, h = (int(v) for v in size.split("x"))
+    return "%dx%d" % (ceil32(w), ceil32(h))
+
+
 def group(w, h):
-    """The tail's grouping: 0 = 4:3, 1 = 16:9, 2 = the rest (the 32-px snap allowed for)."""
+    """The tail's grouping: 0 = 4:3, 1 = 16:9, 2 = the rest (the old 32-px snap still allowed for)."""
     if -96 <= 3 * w - 4 * h <= 96:
         return 0
     if -288 <= 9 * w - 16 * h <= 496:
@@ -76,9 +86,10 @@ def problems(text, size, scaling):
         )
     elif m.group(1) != size:
         out.append("the list chose %s, expected %s" % (m.group(1), size))
-    if not re.search(r"SetDisplayMode %s\b" % re.escape(size), text):
+    if not re.search(r"SetDisplayMode %s\b" % re.escape(rendered(size)), text):
         out.append(
-            "no `SetDisplayMode %s`: the display was never asked for the rendered size" % size
+            "no `SetDisplayMode %s`: the display was never asked for the rendered size (%s rounded up to the tile)"
+            % (rendered(size), size)
         )
     pm = re.findall(r"presentation: (\d+x\d+) on a \d+x\d+ desktop -> (\w+) scaling", text)
     if not [1 for s, k in pm if s == size and k == scaling]:
@@ -92,9 +103,10 @@ def ingame_problems(segment, size, scaling):
     """res_walk_auto's res_frac segment: the size was reached IN GAME (Options > Screen size), so the segment itself
     holds the display request for the RENDERED size and the presentation line with the scaling rule it got."""
     out = []
-    if not re.search(r"SetDisplayMode %s\b" % re.escape(size), segment):
+    if not re.search(r"SetDisplayMode %s\b" % re.escape(rendered(size)), segment):
         out.append(
-            "segment has no `SetDisplayMode %s`: the display was never asked for that size" % size
+            "segment has no `SetDisplayMode %s`: the display was never asked for that size (rounded up to the tile)"
+            % rendered(size)
         )
     pm = re.findall(r"presentation: (\d+x\d+) on a \d+x\d+ desktop -> (\w+) scaling", segment)
     if not [1 for sz, k in pm if sz == size and k == scaling]:
@@ -115,74 +127,74 @@ def load(path):
 
 def selftest():
     good = (
-        "; [video] resolution=auto: desktop 1920x1080, display scale 100% -> 1920x1056 (entry 10 of 11)\n"
+        "; [video] resolution=auto: desktop 1920x1080, display scale 100% -> 1920x1080 (entry 10 of 11)\n"
         "; [video]   list [0] 640x480 (classic)\n"
         "; [video]   list [1] 800x576 (classic)\n"
         "; [video]   list [2] 1024x768 (classic)\n"
-        "; [video]   list [3] 672x512 (4:3, 2.11x)\n"
-        "; [video]   list [4] 1408x1056 (4:3, 1:1)\n"
-        "; [video]   list [5] 960x512 (2x)\n"
-        "; [video]   list [6] 1920x1056 (1:1, sharpest)\n"
-        "; [gfx] SetDisplayMode 1920x1056 (no real mode switch)\n"
-        "; [video] presentation: 1920x1056 on a 1920x1080 desktop -> integer scaling\n"
+        "; [video]   list [3] 720x540 (4:3, 2.67x)\n"
+        "; [video]   list [4] 1440x1080 (4:3, 1:1)\n"
+        "; [video]   list [5] 960x540 (2x)\n"
+        "; [video]   list [6] 1920x1080 (1:1, sharpest)\n"
+        "; [gfx] SetDisplayMode 1920x1088 (no real mode switch)\n"
+        "; [video] presentation: 1920x1080 on a 1920x1080 desktop -> integer scaling\n"
     )
     cases = [
-        ("good", good, "1920x1056", "integer", False),
-        ("wrong size chosen", good, "1280x704", "fit", True),
-        ("wrong scaling", good, "1920x1056", "fit", True),
+        ("good", good, "1920x1080", "integer", False),
+        ("wrong size chosen", good, "1280x720", "fit", True),
+        ("wrong scaling", good, "1920x1080", "fit", True),
         (
-            "desktop height requested",
-            good.replace("SetDisplayMode 1920x1056", "SetDisplayMode 1920x1080"),
-            "1920x1056",
+            "the session size requested instead of the rendered one",
+            good.replace("SetDisplayMode 1920x1088", "SetDisplayMode 1920x1080"),
+            "1920x1080",
             "integer",
             True,
         ),
-        ("no resolution line", good.replace("resolution=auto", "x"), "1920x1056", "integer", True),
-        ("no list lines", good.replace("list [", "lst ["), "1920x1056", "integer", True),
+        ("no resolution line", good.replace("resolution=auto", "x"), "1920x1080", "integer", True),
+        ("no list lines", good.replace("list [", "lst ["), "1920x1080", "integer", True),
         (
             "a 16:9 size before a 4:3 one",
-            good.replace("list [3] 672x512", "list [3] 960x512").replace(
-                "list [5] 960x512", "list [5] 672x512"
+            good.replace("list [3] 720x540", "list [3] 960x540").replace(
+                "list [5] 960x540", "list [5] 720x540"
             ),
-            "1920x1056",
+            "1920x1080",
             "integer",
             True,
         ),
         (
             "a tail ordered by area only",
-            good.replace("list [4] 1408x1056", "list [4] 1280x704"),
-            "1920x1056",
+            good.replace("list [4] 1440x1080", "list [4] 1280x720"),
+            "1920x1080",
             "integer",
             True,
         ),
         (
             "a classic size missing from the head",
             good.replace("list [1] 800x576", "list [1] 800x600"),
-            "1920x1056",
+            "1920x1080",
             "integer",
             True,
         ),
-        ("empty", "", "1920x1056", "integer", True),
+        ("empty", "", "1920x1080", "integer", True),
     ]
     fails = [n for n, t, s, k, red in cases if bool(problems(t, s, k)) != red]
     nl = chr(10)
     seg = (
-        "; [gfx] SetDisplayMode 1280x704 (no real mode switch)"
+        "; [gfx] SetDisplayMode 1280x736 (no real mode switch)"
         + nl
-        + "; [video] presentation: 1280x704 on a 1920x1080 desktop -> fit scaling"
+        + "; [video] presentation: 1280x720 on a 1920x1080 desktop -> fit scaling"
         + nl
     )
     whole = good + "; [mark] a" + nl + "; [mark] res_frac" + nl + seg
-    if ingame_problems(segment_text(whole, "res_frac"), "1280x704", "fit"):
+    if ingame_problems(segment_text(whole, "res_frac"), "1280x720", "fit"):
         fails.append("ingame good")
-    if not ingame_problems(segment_text(whole, "a"), "1280x704", "fit"):
+    if not ingame_problems(segment_text(whole, "a"), "1280x720", "fit"):
         fails.append("ingame: another segment's lines must not count")
-    if not ingame_problems(seg, "1280x704", "integer"):
+    if not ingame_problems(seg, "1280x720", "integer"):
         fails.append("ingame wrong scaling")
     if not ingame_problems(
-        seg.replace("SetDisplayMode 1280x704", "SetDisplayMode 1280x720"), "1280x704", "fit"
+        seg.replace("SetDisplayMode 1280x736", "SetDisplayMode 1280x720"), "1280x720", "fit"
     ):
-        fails.append("ingame wrong display size")
+        fails.append("ingame wrong display size (the session size instead of the rendered one)")
     with tempfile.TemporaryDirectory() as td:
         t, err = load(td)
         if not err:

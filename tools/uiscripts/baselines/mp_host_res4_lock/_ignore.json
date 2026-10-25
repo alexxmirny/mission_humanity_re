@@ -1,0 +1,7 @@
+{
+  "_why": "RES23-S5 (res4_lock_150 jitter): the capture is the game's own frame (nothing of the HUD / presenter path draws into it at 150%: the modal, the cursor and the notices are presenter overlays), and under it the sim keeps running until the forced blackhole starves the lockstep. The tick it stops on varies with timing, so the world behind the modal differs from run to run: logsel cam=4480,800 before and after the stall in EVERY run (the camera does not drift), the mother ship (landing animation) sits 1-2 px apart in isolated runs and the whole fog-of-war / terrain shading and the strip's hover text (`your unit - Pioneer`) differed in one gate run (4.2% of the frame) -- and the stalled overlay's `PING D n ms` digit flips 0/1. Masked: the map + strip and the minimap (frame 1216x800: [0,0,1056,800], [1056,0,160,145]; presented 1280x800 at 150%: [0,0,1040,800], [1040,0,240,217]); the side panel below the minimap stays strict. The modal itself is judged by tools/check_res4_dialog.py (stage `lock`: ONE scaled translucent layer quad centred on the visible map, the pointer through its inverse map, `hovered Reset counter`).",
+  "capture_res4_df_lock.png": [[0, 0, 1056, 800], [1056, 0, 160, 145]],
+  "capture_res4_df_lock2.png": [[0, 0, 1056, 800], [1056, 0, 160, 145]],
+  "capture_res4_dp_lock.png": [[0, 0, 1040, 800], [1040, 0, 240, 217]],
+  "capture_res4_dp_lock2.png": [[0, 0, 1040, 800], [1040, 0, 240, 217]]
+}

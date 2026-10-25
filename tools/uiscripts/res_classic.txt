@@ -1,0 +1,42 @@
+# res_classic -- mods:RES25: resolution=stock (Classic sizes only) with ui_scale=175 in the ini on a pinned 2560x1440 screen. Interface size scaling is off: the PRESENTED image is the frame scaled (no quads, HUD at 100%), the Options screen has no Interface size row, and its Screen size control cycles the game's own three entries (tools/check_res_classic.py).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+screensettled
+gameclock +100
+log res_classic frame_ready
+cursorhold 20 20 6
+capture res_classic_frame
+pcapture res_classic_view
+
+# Options: no Interface size row.
+key 0x01
+present Return
+clickv 111
+present Screen size
+absent Interface size
+settled Ok
+capture res_classic_opt_a
+click 298 238
+settled Ok
+capture res_classic_opt_b
+click 298 238
+settled Ok
+capture res_classic_opt_c
+click 298 238
+settled Ok
+cursorhold 20 20 6
+capture res_classic_opt_d
+clickl Cancel
+absent Screen size
+present Return
+clickv 103
+gamemode 2
+log res_classic COMPLETE
+end

@@ -1,0 +1,73 @@
+# patching:PT-CAP9-U8b -- the CLIENT of cap_orders_move_mp: join, play until the host's 490 movers kill this peer's only unit (an unlanded mothership), dismiss the
+# game-over dialog, then start a SECOND game in the same process. This peer runs raise=0 locally and adopts the host's raise for the match, so:
+#   * the game over fires INSIDE the sim step (on_gameover from the unit tick): the caps revert must not run there (it used to flip the limit sites mid-step -> AV);
+#   * the revert runs at the first main-menu present, and every toggle-layer site must be the clean exe's bytes afterwards (check_caps_off_clean.py);
+#   * the second game runs on those sites (a wildcard byte left at the ON image crashed the next game).
+# mp_client_idle.txt's join walk, then the extra legs.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+settled Cancel
+absent Network players
+gamemode 2
+gameclock 3000
+log CLIENT entered the match (raise adopted from the host)
+
+# the game over: the outcome dialog's button
+present You lost
+settled Ok
+log CLIENT sees the game-over dialog (Game over / You lost !)
+clickl Ok
+# ...then the statistics page (its own Ok)
+present buildings
+settled Ok
+# a mouse click on this page's Ok did not take (measured: the page stayed up for minutes), and a key within its first ~second is swallowed by the
+# page's input lock: dwell ~2 s (presents, not wall time), then Enter dismisses it
+cursorhold 320 346 150
+key 0x1c
+absent buildings
+settled value:110
+log CLIENT is back at the main menu (the deferred caps revert has run)
+# the menu's input lock swallows a click in its first second after the match (measured): dwell on NETWORK GAME first
+cursorhold 112 192 120
+
+# the SECOND game in this process: a network game with one computer slot, mother landed, a few seconds of sim
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 12000
+capture u8b_second_game
+log CLIENT second game ran to 12 s of sim
+end

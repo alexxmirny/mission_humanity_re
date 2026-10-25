@@ -4,15 +4,15 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "cc88345c3bda0611a13e484f3a3c7a0d44982770",
-  "recorded": "2026-09-30",
+  "commit": "0e68df39981424033315936edac220309aa9e067",
+  "recorded": "2026-10-24",
   "scenario_script": "sp_soak.txt",
   "synth_seed": 20260912,
-  "host": "local lane ui_libref_pg (headless, isolated desktop mh_rig; scratch lane 97, port 6697), single peer",
+  "host": "local lane ui_libref_rec (headless, isolated desktop mh_rig; scratch lane 96, port 6696), single peer",
   "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
-  "run_dir": "workdir/mh_lanes/ui_libref_pg/logs/2026-09-30T14-50-18Z_menu_solo",
-  "build": "0.0.0-dev+cc88345c",
-  "stream_from_run": "workdir/mh_lanes/ui_libref_pg/logs/2026-09-30T14-50-18Z_menu_solo"
+  "run_dir": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-52-26Z_menu_solo",
+  "build": "0.0.0-dev+0e68df39",
+  "stream_from_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-52-26Z_menu_solo"
  },
  "compare": {
   "channel": "state",
@@ -84,8 +84,8 @@
   ]
  },
  "step0": {
-  "world_content_hash": "FF30C54E4E9E7642",
-  "world_schema_fp": "30CADE6A",
+  "world_content_hash": "D6EFDE555C563803",
+  "world_schema_fp": "AEFE4E28",
   "lockstep_combined": "739944E1CA9AB46E",
   "lockstep_state": "9374267CD33534B7",
   "game_clock": "3F947AE147AE147B",
@@ -106,9 +106,9 @@
   },
   "world": {
    "file": "world.bin.zz",
-   "raw_bytes": 8384144,
-   "zlib_bytes": 530285,
-   "sha256_raw": "e9568f0f24933eaba43eec9b6e35543bd5b7fb4ecb3c18b1cf5b36448d1321ec"
+   "raw_bytes": 8314552,
+   "zlib_bytes": 521333,
+   "sha256_raw": "a03d08011ec30f04d7106a2368bb5ec89632c1f3c98b98f54e589345a3fbc53b"
   },
   "hash_steps": {
    "file": "hash_steps.txt.zz",

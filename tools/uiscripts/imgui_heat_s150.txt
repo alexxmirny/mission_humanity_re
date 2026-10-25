@@ -1,0 +1,56 @@
+# mods:M1WL v6 -- the F11 panel and the heat map at ui_scale=150 on a 2560x1440 client (ini/imgui_heat_s150.ini), the user's layout: the frame is smaller than the
+# client, so the image sits off-centre between letterbox bars, the map quad is 1:1 and the HUD panel / bottom strip are enlarged.
+#  a  the window: the first position is inside the image (rc11 put it at client 16,16 = the left bar) -- `; [imgui] window .. image ..` -- and a drag past the
+#     image's far edge stops at that edge;
+#  b  the cursor: ImGui's pointer is the DRAWN cursor on the map, the panel and the strip -- `; [imgui] cursor game G = client C` against the layout;
+#  c  the heat map is presented (bcapture) over the whole visible map, including tiles 32 or more from the camera.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+log imgui_heat_s150 frame_ready
+rawfocus 1
+gameclock +38000
+keyhold 0x4b 70
+gameclock +1000
+bcapture heat_s150
+# the window dragged by its title bar far past the image's right / bottom edge: it stops at the edge (the clamp), it does not leave the image
+log imgui_heat_s150 drag_begin
+rawmouse sabs 236 26
+gameclock +30
+rawmouse down l
+gameclock +10
+rawmouse sabs 700 300
+gameclock +20
+rawmouse sabs 1100 780
+gameclock +20
+rawmouse up l
+gameclock +60
+log imgui_heat_s150 drag_end
+bcapture heat_s150_dragged
+log imgui_heat_s150 cursor_probe_begin
+rawmouse sabs 500 400
+gameclock +30
+rawmouse sabs 1000 300
+gameclock +30
+rawmouse sabs 1000 600
+gameclock +30
+rawmouse sabs 500 780
+gameclock +30
+rawmouse sabs 1120 700
+gameclock +30
+rawmouse sabs 400 200
+gameclock +30
+log imgui_heat_s150 cursor_probe_end
+log imgui_heat_s150: captured
+end

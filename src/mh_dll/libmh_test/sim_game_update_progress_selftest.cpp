@@ -12,6 +12,7 @@
 // sim_game_set_event_selftest.cpp's local `EV_*` enum already established for this codebase.
 //
 #include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h"
+#include "sim/sim_event_codes.h" // SESSION_SP (mods:UNL1)
 #include "sim/sim_game_update_progress.h"
 
 #include "sim_test_support.h"
@@ -353,6 +354,72 @@ void run_project_gate_tests() {
         detail::progress_propagate_unlocks(fx.view(), own, 0, g_gate_calls);
     }
     ck_eq((uint32_t)g_gate_project_adds, 1u, "gate: MP pseudo planet 0x1f (invention 0), fix off: the PROJECT is offered, so the fix is a no-op there");
+}
+
+// ---- mods:UNL1: detail::progress_recheck_unlocks -- the switch / session / visited-planet gates and the player roster ----------
+namespace {
+std::vector<uint16_t> g_rc_players;
+void                  rc_record(uint16_t p) { g_rc_players.push_back(p); }
+
+// side 2, slots 0 / 1 / 2 / 4 enabled (bit0), slot 3 carries other bits but NOT bit0, planet 5 visited (status 2), planet 6 not (0)
+void rc_setup(sim_fixture &fx, int32_t session_mode, int32_t planet) {
+    fx.reset();
+    g_rc_players.clear();
+    fx.session_mode             = session_mode;
+    fx.player_side              = 2;
+    fx.planet_index             = planet;
+    fx.planet_status[5]         = 2;
+    fx.planet_status[6]         = 0;
+    fx.profiles[0].status_flags = 0x1u;
+    fx.profiles[1].status_flags = 0x5u;
+    fx.profiles[2].status_flags = 0x1u; // the local side: enabled, but must run exactly once and first
+    fx.profiles[3].status_flags = 0x6u; // alive + human bits without slot-enabled: skipped
+    fx.profiles[4].status_flags = 0x9u;
+}
+} // namespace
+
+void run_progress_recheck_tests() {
+    sim_fixture fx;
+    // load pass (arrival=false), single-player, switch on: local side first, then every enabled slot ascending, once each
+    rc_setup(fx, SESSION_SP, 6);
+    int n = detail::progress_recheck_unlocks(fx.view(), true, false, rc_record);
+    ck_eq((uint32_t)n, 4u, "recheck/load: 4 players (local + slots 0, 1, 4)");
+    ck_eq((uint32_t)g_rc_players.size(), 4u, "recheck/load: 4 propagate calls");
+    if (g_rc_players.size() == 4) {
+        ck_eq((uint32_t)g_rc_players[0], 2u, "recheck/load: the LOCAL side (2) goes first");
+        ck_eq((uint32_t)g_rc_players[1], 0u, "recheck/load: then slot 0");
+        ck_eq((uint32_t)g_rc_players[2], 1u, "recheck/load: then slot 1");
+        ck_eq((uint32_t)g_rc_players[3], 4u, "recheck/load: then slot 4 (slot 3 has no slot-enabled bit, the local side is not repeated)");
+    }
+    // switch off: nothing, whatever else holds
+    rc_setup(fx, SESSION_SP, 5);
+    n = detail::progress_recheck_unlocks(fx.view(), false, false, rc_record);
+    ck_eq((uint32_t)(n + 1), 0u, "recheck: switch off -> -1 (no pass)");
+    n = detail::progress_recheck_unlocks(fx.view(), false, true, rc_record);
+    ck_eq((uint32_t)g_rc_players.size(), 0u, "recheck: switch off -> no propagate call (load + arrival)");
+    // every non-SP session mode: byte-identical to retail (no call). 2 = local after game-over, 3 = MP lockstep, 0 = none
+    for (int32_t mode : {0, 2, 3, 5}) {
+        rc_setup(fx, mode, 5);
+        n = detail::progress_recheck_unlocks(fx.view(), true, false, rc_record);
+        ck_eq((uint32_t)(n + 1), 0u, "recheck: a non-SP session mode -> -1 (load)");
+        n = detail::progress_recheck_unlocks(fx.view(), true, true, rc_record);
+        ck_eq((uint32_t)g_rc_players.size(), 0u, "recheck: a non-SP session mode -> no propagate call (load + arrival)");
+    }
+    // arrival: only on a visited planet
+    rc_setup(fx, SESSION_SP, 5);
+    n = detail::progress_recheck_unlocks(fx.view(), true, true, rc_record);
+    ck_eq((uint32_t)n, 4u, "recheck/arrival: a VISITED planet (status 2) runs the pass");
+    ck_eq((uint32_t)g_rc_players.size(), 4u, "recheck/arrival: 4 propagate calls");
+    rc_setup(fx, SESSION_SP, 6);
+    n = detail::progress_recheck_unlocks(fx.view(), true, true, rc_record);
+    ck_eq((uint32_t)(n + 1), 0u, "recheck/arrival: a planet with status UNKNOWN -> -1");
+    ck_eq((uint32_t)g_rc_players.size(), 0u, "recheck/arrival: UNKNOWN planet -> no propagate call");
+    // a load does not look at the planet's status
+    rc_setup(fx, SESSION_SP, 6);
+    n = detail::progress_recheck_unlocks(fx.view(), true, false, rc_record);
+    ck_eq((uint32_t)n, 4u, "recheck/load: an UNVISITED current planet does not matter to a load");
+    // the library switch is project_gate_fix (one "Tech tree fixes" switch); the live wrappers are no-ops while it is off
+    ck_eq((uint32_t)project_gate_fix(), 0u, "recheck: the shared switch is OFF until set_fixes sets it (faithful stock)");
 }
 
 } // namespace mh::sim::test

@@ -1,6 +1,6 @@
 {
- "class": "shipped",
- "_class_why": "The single-pool EN cap raise (77 sites, 8 bodies) -- the smallest live subject that actually changes a capacity.",
+ "class": "reference",
+ "_class_why": "Superseded for shipping by cap_v022_reloc_EN + cap_v022_limits_EN (PT-CAP8 S1): kept on disk as the July byte cross-check; no longer compiled in.",
  "target": "mh.exe (retail)",
  "sha256": "1cd5810c5c0b845f0b7c8359a494243d9bec51397c8becfe149841be09c2562d",
  "sections": [

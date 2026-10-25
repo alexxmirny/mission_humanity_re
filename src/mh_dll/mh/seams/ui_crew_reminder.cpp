@@ -14,6 +14,7 @@
 #include "mh_crew_reminder.h"
 #include "addr/mh_addrs.gen.h"    // mh::addr::PlayerSide, _G_LLM_STRAT_* globals
 #include "addr/mh_calls.gen.h"    // mh::call::llm_strat_race_alert_text_emit
+#include "caps/caps.h"            // mh::caps::rec: the storage + building arrays the game addresses (PT-CAP8)
 #include "config/config.h"        // mh::config::ours_run()
 #include "lockstep/turn_engine.h" // reimpl_fixes::crew_shortage_reminder_s (libmh's twin)
 #include "hook/patch.h"           // patch_bytes_guarded
@@ -29,17 +30,14 @@ constexpr int       SITE_LEN              = 10;
 const uint8_t       SITE_EXPECT[SITE_LEN] = {0xC7, 0x05, 0x38, 0x37, 0xAE, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 // Record layouts, EN v406 (the offsets llm_strat_unit_state_exit_storage_begin 0x0047f0b7-0x0047f23b reads).
-constexpr uintptr_t UNIT_PROTO_OFF                 = 0x02;   // map_object_unit.unit_proto_id (ushort)
-constexpr uintptr_t UNIT_STORAGE_SLOT_OFF          = 0x30;   // map_object_unit.home_storage_slot (byte)
-constexpr uintptr_t CFG_UNIT_STRIDE                = 0x23f;  // Unit[100]
-constexpr uintptr_t CFG_UNIT_HUMAN_OFF             = 0x223;  // Unit[].human (int), 0x00e4a2bb
-constexpr uintptr_t CFG_UNIT_SOLDIER_OFF           = 0x227;  // Unit[].soldier_count (int), 0x00e4a2bf
-constexpr uintptr_t POP_STRIDE                     = 0x34;   // _G_LLM_STRAT_POP_STATS[8]
-constexpr uintptr_t POP_HUMAN_OFF                  = 0x0c;   // .human (idle people), 0x00c3a37c
-constexpr uintptr_t STORAGE_PSTRIDE                = 0x17d4; // unit_storage[8][25]
-constexpr uintptr_t STORAGE_STRIDE                 = 0xf4;   // .b_index (int) at +0
-constexpr uintptr_t BLDG_PSTRIDE                   = 0x6aa4; // buildings[8][100]
-constexpr uintptr_t BLDG_STRIDE                    = 0x111;
+constexpr uintptr_t UNIT_PROTO_OFF        = 0x02;  // map_object_unit.unit_proto_id (ushort)
+constexpr uintptr_t UNIT_STORAGE_SLOT_OFF = 0x30;  // map_object_unit.home_storage_slot (byte)
+constexpr uintptr_t CFG_UNIT_STRIDE       = 0x23f; // Unit[100]
+constexpr uintptr_t CFG_UNIT_HUMAN_OFF    = 0x223; // Unit[].human (int), 0x00e4a2bb
+constexpr uintptr_t CFG_UNIT_SOLDIER_OFF  = 0x227; // Unit[].soldier_count (int), 0x00e4a2bf
+constexpr uintptr_t POP_STRIDE            = 0x34;  // _G_LLM_STRAT_POP_STATS[8]
+constexpr uintptr_t POP_HUMAN_OFF         = 0x0c;  // .human (idle people), 0x00c3a37c
+// unit_storage / buildings: base, row width and record size come from mh::caps (PT-CAP8); .b_index is the int at +0.
 constexpr uintptr_t BLDG_ID_OFF                    = 0x02;        // .building_id (ushort)
 constexpr uintptr_t BLDG_SHUTTLE_SLOT_OFF          = 0xc5;        // .shuttle_slot (byte), 0x00c3d365
 constexpr uintptr_t CFG_BLDG_TYPE                  = 0x00d9ec88u; // Building[id].type (byte), stride 0x842
@@ -73,8 +71,8 @@ void __cdecl crew_wait_reminder() {
     const int32_t   soldiers = rd<int32_t>(cfg + CFG_UNIT_SOLDIER_OFF);
     if (soldiers >= 1) return;
     const int32_t   idle     = rd<int32_t>(mh::addr::_G_LLM_STRAT_POP_STATS + player * POP_STRIDE + POP_HUMAN_OFF);
-    const int32_t   b_index  = rd<int32_t>(mh::addr::unit_storage + player * STORAGE_PSTRIDE + slot * STORAGE_STRIDE);
-    const uintptr_t bldg     = mh::addr::buildings + player * BLDG_PSTRIDE + (uintptr_t)b_index * BLDG_STRIDE;
+    const int32_t   b_index  = rd<int32_t>(reinterpret_cast<uintptr_t>(mh::caps::rec<uint8_t>(mh::caps::UNIT_STORAGE, player, slot)));
+    const uintptr_t bldg     = reinterpret_cast<uintptr_t>(mh::caps::rec<uint8_t>(mh::caps::BUILDINGS, player, (uint32_t)b_index));
     const uint32_t  bid      = rd<uint16_t>(bldg + BLDG_ID_OFF);
     const uint8_t   btype    = rd<uint8_t>(CFG_BLDG_TYPE + bid * CFG_BLDG_STRIDE);
     int32_t         reserved = 0;

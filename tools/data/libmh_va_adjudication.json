@@ -4,17 +4,6 @@
   "entries": [
     {
       "va": "0x00498dc0",
-      "object": "libmh/Release/order_queue.obj",
-      "signature": "88 33 c0 8d 49 00 8b 4f",
-      "names": [
-        "llm_strat_game_check_players_mothership_alive"
-      ],
-      "why": "BYTE COINCIDENCE, not a dependency. The window's last three bytes are 8d 49 00 -- MSVC's 3-byte alignment nop `lea ecx,[ecx+0]` -- and the first is the tail of the instruction before it (33 c0 `xor eax,eax`, or the disp8 of 89 7d c0). No source construct in any of these five objects names llm_strat_game_check_players_mothership_alive: its only in-tree use is MH_LIBMH_BIND in sim_bldg_state_destroyed.cpp, which is a different object and carries no VA standalone. Verified by disassembling each occurrence, 2026-09-11. One of order_queue.obj's TWO occurrences (signature `0e 33 c0 8d 49 00 8b 4a`) disappeared on 2026-09-11 when the order-queue COUNT LEDGER instrument shifted that object's alignment padding, and its licence was dropped with it -- which is what a padding coincidence does under an unrelated edit and what a real dependency does not, so the removal is further evidence for this class, not a change of judgement.",
-      "class": "alignment-nop-coincidence",
-      "adjudicated": "2026-09-11"
-    },
-    {
-      "va": "0x00498dc0",
       "object": "libmh/Release/sim_bldg_pay_costs.obj",
       "signature": "ff 33 c0 8d 49 00 83 f8",
       "names": [

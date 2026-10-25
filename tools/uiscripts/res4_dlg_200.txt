@@ -1,0 +1,64 @@
+# res4_dlg_200 -- mods:RES4 stage 6: the gameplay-size dialogs at ui_scale=200 on a pinned 1280x960 screen (ini/res4_s200.ini, frame 1120x928).
+# ESC opens the in-game menu (game mode 3) over the strategic view; at 200% the dialog is its own presenter quad, 2x, above the scaled HUD.
+# `capture` is the game's own frame, `pcapture` the PRESENTED image. The pointer is parked (owned DirectInput, `rawmouse sabs` = CLIENT
+# pixels) on the ESC menu's Options button and CLICKED there: the Options screen opens only if the click reached the button through the dialog
+# quad's inverse map; then Cancel on that screen is clicked the same way (back to the ESC menu), then Return to game (back to the strategic view).
+# tools/check_res4_dialog.py checks the quad geometry and the presented pixels of the esc and opt stages.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4 frame_ready 1280x960 @200
+
+rawmouse sabs 300 300
+gameclock +40
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+rawmouse sabs 458 310
+scurpos 458 310
+settled &Options
+capture res4_df_esc
+pcapture res4_dp_esc
+log res4 esc_menu_open
+
+# click Options through the scaled dialog
+rawmouse down l
+rawmouse up l
+present Screen size
+settled Screen size
+gamemode 3
+rawmouse sabs 578 582
+scurpos 578 582
+settled Screen size
+capture res4_df_opt
+pcapture res4_dp_opt
+log res4 options_opened_by_scaled_click
+
+# click Cancel through the scaled dialog: back to the ESC menu
+rawmouse down l
+rawmouse up l
+present &Options
+settled &Options
+log res4 cancel_returned_to_esc_menu
+
+# click Return to game: the sim resumes
+rawmouse sabs 458 590
+settled &Options
+rawmouse down l
+rawmouse up l
+gamemode 2
+gameclock +100
+log res4 COMPLETE -- ui_scale=200: ESC menu + Options through the dialog quad, clicks landed
+end

@@ -14,6 +14,9 @@
 //      cpu_scale::scale_image (point exactly; the mean error is under a level), independent of whatever lies
 //      outside the crop, in place, on crops that do not start at the origin; then a timing of the two frame
 //      sizes the player runs.
+//   8. (M1WL v6) the heat map's tile -> screen geometry (gfx/heat_xf.h) on the user's ui_scale 150 layout: every tile of the view is drawn at every camera
+//      position (the rc11 fold into [-mw/2, mw/2) dropped the tiles 32 or more right / below the camera), the scale survives the strip hiding the viewport's
+//      last rows, and a view wider than the map repeats it.
 //
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -27,6 +30,7 @@
 #include <vector>
 
 #include "gfx/cpu_scale.h"
+#include "gfx/heat_xf.h"
 #include "gfx/map_zoom.h"
 #include "gfx/zoom_scale.h"
 
@@ -313,6 +317,116 @@ void time_case(int w, int h, double z, int filter) {
            (double)(b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart / N);
 }
 
+// ---- 8. the heat map geometry (M1WL v6) ---------------------------------------------------------------------------------------------------------------------
+struct fpt {
+    float x = 0, y = 0;
+    fpt() {}
+    fpt(float a, float b) : x(a), y(b) {}
+};
+
+// The user's layout (2026-10-25): 2560x1440 client, 1920x1440 frame at ui_scale 147%: the map quad is 1:1 at client x = 282, 1760 wide and 1393 high (the
+// strip takes the other 47 rows), so the viewport (1760 x 1408) has its last 15 rows under the strip. The presenter's game -> client answer is x + 282 and y
+// clamped to the last visible row.
+void layout_points(int vw, int vh, int map_rows, int *p0x, int *p0y, int *p1x, int *p1y, int *pcx, int *pcy) {
+    auto cy = [&](int y) { return y < map_rows ? y : map_rows - 1; };
+    *p0x    = 282;
+    *p0y    = cy(0);
+    *p1x    = 282 + vw / 2;
+    *p1y    = cy(vh / 2);
+    *pcx    = 282 + vw - 1;
+    *pcy    = cy(vh - 1);
+}
+
+void test_heat_geometry() {
+    namespace hx = mh::gfx::heat;
+    const int vw = 1760, vh = 1408;
+    int       a[6];
+    layout_points(vw, vh, 1393, &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]);
+    hx::heat_xf x;
+    x.mw = x.mh = 64;
+    x.vw = x.zcw = vw;
+    x.vh = x.zch = vh;
+    check("H1: the scale is 1:1 from points inside the map", x.set_map_points(a[0], a[1], a[2], a[3], a[4], a[5]) && x.sx == 1.0f && x.sy == 1.0f);
+    check("H2: origin at the map quad (client x 282 - the centre half pixel)", x.ox == 281.5f && x.oy == -0.5f);
+    check("H3: the clip ends at the last visible row (the 1393rd, edge 1392.5 in the centre convention), not at the hidden viewport rows", x.cy1 == 1392.5f && x.cx1 == 281.5f + (float)vw);
+    {
+        // the rc11 slope, from the (vw - 1, vh - 1) corner, drifts: 1392 rows over 1407 pixels
+        const float old_sy = (float)(a[5] - a[1]) / (float)(vh - 1);
+        check("H4: the old corner slope was off (regression anchor)", old_sy < 0.995f && (float)vh * (1.0f - old_sy) > 5.0f);
+    }
+
+    const int want_cols = (vw + 31) / 32, want_rows = (vh + 31) / 32; // 55 x 44 tiles touch the viewport
+    int       bad_new = 0, bad_old = 0, far_ok = 1;
+    for (int cc = 0; cc < 64; ++cc)
+        for (int cr = 0; cr < 64; cr += 3) { // every column, every third row: the fold depends on each axis alone
+            x.camc    = cc;
+            x.camr    = cr;
+            int n_new = 0, n_old = 0;
+            for (int c = 0; c < 64; ++c)
+                for (int r = 0; r < 64; ++r) {
+                    x.each_copy(c, r, [&](int di, int dj) {
+                        fpt p, q;
+                        if (x.tile_rect(di, dj, &p, &q)) ++n_new;
+                    });
+                    int di, dj;
+                    fpt p, q;
+                    x.offsets(c, r, &di, &dj);
+                    if (x.tile_rect(di, dj, &p, &q)) ++n_old;
+                }
+            bad_new += n_new != want_cols * want_rows;
+            bad_old += n_old != want_cols * want_rows;
+            // a tile 40 columns right and 35 rows below the camera is where the old fold lost it
+            int hit = 0;
+            x.each_copy((cc + 40) & 63, (cr + 35) & 63, [&](int di, int dj) {
+                fpt p, q;
+                if (x.tile_rect(di, dj, &p, &q) && di == 40 && dj == 35 && p.x == 281.5f + 40.0f * 32.0f && p.y == -0.5f + 35.0f * 32.0f) ++hit;
+            });
+            far_ok &= hit == 1;
+        }
+    check("H5: all 55 x 44 tiles of the view are drawn at every camera position", bad_new == 0);
+    check("H6: (regression anchor) the old centred fold missed tiles at most camera positions", bad_old > 1000);
+    check("H7: a tile 40 columns / 35 rows from the camera is drawn exactly once, on its pixels", far_ok == 1);
+
+    // a zoomed crop (zoom 2: the crop is half the viewport, starting inside the world pixel row / column)
+    x.camc  = 7;
+    x.camr  = 60;
+    x.zl    = 300;
+    x.zt    = 130;
+    x.zcw   = 880;
+    x.zch   = 704;
+    int bad = 0;
+    for (int c = 0; c < 64; ++c)
+        for (int r = 0; r < 64; ++r) {
+            int n = 0;
+            x.each_copy(c, r, [&](int di, int dj) {
+                fpt p, q;
+                if (x.tile_rect(di, dj, &p, &q)) ++n;
+            });
+            // brute force: the tile's world pixel box against the crop (torus of 64 * 32 px)
+            const int ox = (((c - x.camc) & 63) * 32 - x.zl), oy = (((r - x.camr) & 63) * 32 - x.zt);
+            auto      hit = [&](int o, int crop) { // does a 32-px tile at o (or o - 2048) touch [0, crop)?
+                return (o < crop && o + 32 > 0) || (o - 2048 < crop && o - 2048 + 32 > 0);
+            };
+            bad += n != ((hit(ox, x.zcw) && hit(oy, x.zch)) ? 1 : 0);
+        }
+    check("H8: a zoomed crop draws exactly the tiles that touch it", bad == 0);
+
+    // a view WIDER than the map: a 16 x 16 map under the same 1760 x 1408 viewport repeats (55 x 44 tile slots over 256 tiles)
+    x.mw = x.mh = 16;
+    x.zl = x.zt = 0;
+    x.zcw       = vw;
+    x.zch       = vh;
+    x.camc = x.camr = 3;
+    int total       = 0;
+    for (int c = 0; c < 16; ++c)
+        for (int r = 0; r < 16; ++r)
+            x.each_copy(c, r, [&](int di, int dj) {
+                fpt p, q;
+                if (x.tile_rect(di, dj, &p, &q)) ++total;
+            });
+    check("H9: a view wider than the map draws every slot (the wrapped copies too)", total == want_cols * want_rows);
+}
+
 } // namespace
 
 int run_mapzoomtest() {
@@ -324,6 +438,7 @@ int run_mapzoomtest() {
     test_translate();
     test_wheel();
     test_resampler();
+    test_heat_geometry();
     printf("  [timing, informational]\n");
     time_case(1760, 1024, 2.0, 3);
     time_case(1760, 1024, 2.0, 0);

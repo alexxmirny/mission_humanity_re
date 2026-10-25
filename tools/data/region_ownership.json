@@ -4956,7 +4956,7 @@
    "owned_by_dll": true,
    "why": "TACT-READY R8 registration 2026-08-24. Every measured writer is Tactical mode (llm_tact_mission_start x1); readers {'Graphics/FX': 2}. Sole-writer-subsystem, so the owner is not in question."
   },
-  "TACT_SCROLL_CMD": {
+  "TACT_MINE_BLAST_SHAKE_STEP": {
    "owner_subsystem": "Tactical mode",
    "owned_by_dll": true,
    "why": "TACT-READY R8 registration 2026-08-24. Every measured writer is Tactical mode (llm_tact_frame x4, llm_tact_mission_start x1); readers {'Tactical mode': 13}. Sole-writer-subsystem, so the owner is not in question."

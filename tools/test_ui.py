@@ -78,6 +78,7 @@ from ui_suite_common import (  # noqa: E402
     run_ui_test_watched,  # tooling:TL-HARN19 -- the progress-watchdog sibling of run_ui_test
     share_targets,
     sp_newest_run,
+    sp_first_session_run,
     sp_newest_session_run,
     vm_reachable,
 )
@@ -1051,6 +1052,7 @@ MODE_FLAGS = (
     ("--u19b-quit3", "det_arms"),
     ("--det-config1", "det_arms"),
     ("--det-config1-gate", "det_arms"),
+    ("--det-caps", "det_arms"),
     ("--determinism", "det_arms"),
 )
 
@@ -1556,6 +1558,9 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         # that rely on it (see sp_newest_session_run's own comment for why check_cancel_task.py's
         # `routed as order` line specifically cannot be found in the process dir).
         newest = sp_newest_session_run if test.get("post_check_session") else sp_newest_run
+        # PT-CAP9-U8b: a lane that plays a second game -- the evidence is the FIRST match's session
+        if test.get("post_check_session") and test.get("post_check_session_first"):
+            newest = sp_first_session_run
         target = newest(lane_dir) or lane_dir
         # mp:X1b. A CROSS-PEER post-check gets EVERY peer's run directory, not only the host's.
         # Every existing checker asks a question about one process (did this boot bind that module),
@@ -1947,6 +1952,13 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         # visible BEFORE it is a failure, which is exactly what nobody had on 2026-08-06.
         secs = time.time() - t0
         budget = t.get("timeout") or args.timeout
+        # A row of several processes (solo_steps / multi_steps) has no single kill bound: ui_test.py's --timeout bounds each STEP, so the
+        # row's wall is the sum of its steps and is bounded by budget_s (U4g: m1h_ship ran 223 s of 25 steps against the 200 s default
+        # and its red f9 step was read as a kill -> ASSERTION-NOT-RUN). Each step reports its own verdict/timeout text, which
+        # looks_like_timeout still reads; only its wall-clock-proximity backstop is dropped for these rows.
+        folded = bool(t.get("solo_steps") or t.get("multi_steps"))
+        if folded and t.get("budget_s"):
+            budget = max(budget, t["budget_s"])
         frac = secs / budget if budget else 0.0
         el = "  [%.0fs / %ds budget, %.0f%%]" % (secs, budget, frac * 100)
         if frac >= WARN_FRAC:
@@ -2004,7 +2016,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         # determinism red used to be the same word). timed_out is read off this run's own text/rc;
         # cap/harn/walk/pcs are read off every lane this test touched, OR'd across peers -- one peer
         # that never booted is enough to call the whole scenario NEVER-STARTED.
-        timed_out = looks_like_timeout(rc, text, secs=secs, kill_bound=budget)
+        timed_out = looks_like_timeout(rc, text, secs=secs, kill_bound=None if folded else budget)
         cap = harn = walk = pcs = False
         for _rd in test_run_dirs(t):
             c, h, w, p = run_artifacts(_rd)

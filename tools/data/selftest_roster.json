@@ -104,6 +104,18 @@
       "why": "ADDED 2026-09-12 (F1E). The in-memory static-patch applier and its REFUSALS -- a moved guarded byte, an image that already carries the patch, a site inside a promoted body, a cave VA that is taken. Same argument as interlocktest: each is about a write that must NOT happen, so a green rig run cannot stand in for it, and the applier's host table is injected so it touches no real image. Milliseconds."
     },
     {
+      "suite": "capstest",
+      "exe": "net_selftest",
+      "checks": 114,
+      "why": "ADDED 2026-10-19 (patching:PT-CAP8 slice B). The roster-geometry table mh::caps that every shipped hook and naked stub now reads instead of hard-coded vanilla strides/VAs. Slice B is only behaviour-neutral if the table's STOCK values equal what those hooks used to spell, so the arms pin all nine arrays against hand-computed VAs/strides, against the generated region registry (extent = players*row*elem), and against the naked-stub mirrors read through real inline asm; configure()'s fake apply and its refusals are driven too. A rig run cannot show a mis-computed stride that happens to be unused on the path it takes. Milliseconds."
+    },
+    {
+      "suite": "ovftest",
+      "exe": "net_selftest",
+      "checks": 85,
+      "why": "ADDED 2026-10-20 (patching:PT-CAP8 S2 slice E). The overflow extension mh::caps::ovf -- the records past the vanilla window that the lockstep hash, the scene dump and the world resync cannot see. The slice table against hand-computed lengths (1,851,652 bytes in 8 slices, each within the localiser's 512 KB), the segment -> stream mapping as a bijection, the incremental tracker against a from-scratch recompute under random pokes (273-byte records straddle 64-byte blocks, stream blocks straddle segments), the undo journal replayed k steps back, the folds, and the MHOV codec: an exact round trip over random sparse tails and EVERY refusal code reached by mutating a valid blob, with the wide arrays byte-identical afterwards. A rig run cannot show a refusal that did not write, or a straddling block that was rehashed once. Under a second."
+    },
+    {
       "suite": "gpfgtest",
       "exe": "net_selftest",
       "checks": 18,
@@ -342,6 +354,12 @@
       "exe": "net_selftest",
       "checks": 51,
       "why": "ADDED 2026-10-13 (mods:D15 mouse wheel on lists). The pure arithmetic behind the wheel scrolling of menu lists, the info screen and the strategic side-panel lists (gfx/wheel_list): the notch feed over the game's cumulative wheel total (120 per notch, fractions kept, a reversal drops the other direction's rest, the first call and a silence longer than GAP_MS drop what happened while the consumer was away and report how much, the ms clock wrapping is not a gap, a reseeded feed starts from a new baseline); rows per notch (3 in a menu list; 48 px worth in a side-panel list: 46/52 px rows one, 16 px rows three, never below one, a torn row height reads as one); scroll_top (forward = toward the top, clamped at both ends, a list that fits does not move, a stale or negative top comes back into range, no overflow on a huge notch count, the side-panel form with visible = 1 whose upper bound the game's own draw clamps); page_after (forward = previous page, clamped into [0, count - 1], an empty list leaves the index alone); in_rect (the half-open panel rectangle, the selection column x 0..0x50 and the control-group column x 0x50..0xa0 never overlap). Pure: no window, no game memory. The wiring is proven by the wheel_menu_lists / wheel_lobby_log / wheel_info_pages / wheel_hud_lists UI rows and their _off twins."
+    },
+    {
+      "suite": "uilayouttest",
+      "exe": "net_selftest",
+      "checks": 101,
+      "why": "ADDED 2026-10-19 (mods:RES4 stages 1-2, [video] ui_scale). The UI-scale layout (gfx/ui_layout) is pure arithmetic that the presenters, the mouse map (stage 4) and the render size (stage 3) all read, so it is pinned before anything consumes it. The suite checks: the scale limit min(Dv_h/480, Dv_w/640) and its clamp (reported), the panel / strip sizes round(160 s) / round(32 s); ideal_render for 1920x1080 at 100/125/150/200, 2560x1440 and 3840x2160 (the 2048 x 1600 caps cut the map and centre the composition), over 15 screens x 10 scales every size a multiple of 32, W <= 2048, H <= 1600, never below 640x480, never more than 31 px over the screen; the quad list for the ideal frame (map 1:1 at the origin, strip and panel scaled, exact source / destination rectangles) and for a stock 1024x768 frame (centred composition), tiling with no gap or overlap, every quad at least 1:1 and inside the frame; the inverse map over every visible frame pixel of five screen / scale pairs (frame -> screen -> frame is the identity, lands in its own quad, monotone, every source pixel reachable), the edge rule (the composition's last column / row is frame W-1 / H-1, a point in the bars clamps), hidden pixels; s=100 is the old presenter (one quad = fit_image_rect for fit and integer, and the legacy mouse map, over 15 screens x 5 frames x 2); the CPU compositor against the inverse map; and the two REAL presenters at 125% on 800x600 (the gdi backend into a shown window read back with BitBlt: the 1:1 map exact, the scaled quads within one source pixel; the d3d11 backend point-filtered into its back buffer: equal to the compositor everywhere except pixels whose centre sits exactly on a texel edge, which the rasteriser breaks either way) -- each arm a SKIP and a pass with no window / no device. The layout arms are pure (no window, no device, no game memory). The wiring is proven by the res4_quads UI row (presented image vs an independent Python composition) and the ui_scale=100 rows staying green."
     },
     {
       "suite": "dinputconvtest",

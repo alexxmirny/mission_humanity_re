@@ -1,0 +1,38 @@
+# res_notice_stale -- RES23-S5: the stamp window drops a stale notice. At ui_scale=175 (ini/res4_info_175.ini) a notice is printed in the strategic view and captured live
+# (pcapture + bcapture), then a unit's info screen is opened (game mode 4). The detour takes modes 2 and 3 only: in mode 4 the game's own 1x text goes into the frame and the
+# stored overlay entry is cleared (and it is stale anyway: stamped for the strategic frame's present). The overlay must be dropped: `pcapture notice none` and no warm text at the
+# overlay's rows in the CPU composition and the presenter's output. tools/check_res_notice.py --stale 175. Red-proof: with the stamp check AND the clear disabled the log lists the notice.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 145
+cursor 310 145
+press 310 145
+release 310 145
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4_info frame_ready
+cursorhold 600 400 6
+notice Order refused: not enough power for this
+gameclock +20
+cursorhold 600 400 6
+pcapture res_ns_live
+bcapture res_ns_live
+cursorhold 1144 274 10
+simrclick 1144 274
+retry 1500 1 3 gamemode 4
+screensettled
+infopage 0
+screensettled
+pcapture res_ns_info
+bcapture res_ns_info
+log res_notice COMPLETE -- stale notice under the info screen
+end

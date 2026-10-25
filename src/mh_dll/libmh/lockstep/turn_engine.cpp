@@ -706,6 +706,7 @@ const reimpl_fixes &fixes() { return g_fixes; }
 void                set_fixes(const reimpl_fixes &f) {
     g_fixes = f;
     mh::orders::set_admin_dedup_exempt(f.diplo_order_dedup_fix);                                // mp:U45
+    mh::orders::set_order_wide_index(f.order_wide_index);                                       // O1c
     mh::sim::set_undock_reentry_fix(f.undock_reentry_fix);                                      // mp:U49
     mh::sim::set_turret_reload_owner_fix(f.turret_reload_owner_fix);                            // PT-FIX1
     mh::sim::set_bldg_pip_guard(f.bldg_pip_guard);                                              // hotfix rc9.4
@@ -752,6 +753,15 @@ void                set_fixes(const reimpl_fixes &f) {
         mf.block_reset_moving        = f.move_block_reset_moving;
         mf.replan_detour_cap         = f.move_replan_detour_cap;
         mf.formation_click           = f.move_formation_click;
+        mf.stream_heat               = f.move_stream_heat;
+        mf.stream_heat_cost          = f.move_stream_heat_cost;
+        mf.stream_heat_window        = f.move_stream_heat_window;
+        mf.stream_heat_min_mates     = f.move_stream_heat_min_mates;
+        mf.stream_heat_scale         = f.move_stream_heat_scale;
+        mf.stream_heat_retrace       = f.move_stream_heat_retrace;
+        mf.stream_heat_turn          = f.move_stream_heat_turn;
+        mf.stream_heat_scale_cap     = f.move_stream_heat_scale_cap;
+        mf.stream_heat_margin        = f.move_stream_heat_margin;
         mf.enter_queue               = f.move_enter_queue;
         mf.storage_door_hold         = f.storage_door_hold;
         mh::sim::set_move_fixes(mf);

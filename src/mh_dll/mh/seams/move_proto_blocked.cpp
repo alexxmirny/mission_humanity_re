@@ -15,7 +15,7 @@
 // register it uses (EAX from CUR_UNIT, EBX/EDX set before the notify CALL). pushad/popad keep the rest.
 //
 // The keys (unit record offsets: +0x04 order, +0x08 activity_clock (double), +0x2c facing_target, +0xa6 path_cursor,
-// +0xaa path_slot_id, +0xab path_blocked_retry_count; path buffers 0x00aee8c0 + player*0xea60 + slot*0x258 + cursor*2 =
+// +0xaa path_slot_id, +0xab path_blocked_retry_count; path buffers (relocated, mh::caps::path::waypoint) player + slot*0x258 + cursor*2 =
 // {heading, run_length}; CUR_UNIT 0x00e162e0, CUR_PLAYER word 0x00e58144):
 //   move_block_wait_ms (3b)       the wait-for-a-walking-friend budget: the retry limit becomes clamp(ms / 50, 1, 201) instead of
 //                                 201 (each retry is +0.05 s on the activity clock), then the retail replan runs. 0 = retail.
@@ -52,6 +52,7 @@
 #include "seams/net_internal.h"
 #include "seams/move_carrier.h" // mods:M1H: site states, requested values, stub hit counters
 #include "en_guard.h"           // EN-only build gate
+#include "caps/path_pool.h"     // PT-CAP9-U4: the relocated path pool
 #include "sim/move/blocked.h"   // mods:M1H lane C: the decision, shared with the libmh twin (sim_unit_state_move_walker.cpp)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -115,7 +116,7 @@ static uintptr_t __cdecl bk_decide(int detour, uint32_t nx, uint32_t ny) {
     mh::game::mh_map_object_unit *u   = *reinterpret_cast<mh::game::mh_map_object_unit **>(0x00e162e0u);
     g_bk_cd_apply                     = (p.cd_on && !mh::sim::mvc::blocked_enter_exempt(p, *u)) ? 1 : 0; // mods:M1BE: an entering unit has no cooldown
     const uint32_t             player = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u);
-    uint8_t                   *pbase  = reinterpret_cast<uint8_t *>(0x00aee8c0u + player * 0xea60u); // this player's 100 path slots, 0x258 bytes each
+    uint8_t                   *pbase  = mh::caps::path::waypoint(player, 0, 0); // this player's path slots (the relocated pool), 0x258 bytes each
     mh::sim::mvc::blocker_info bi;
     if (p.reset_moving) mv_blocker_info(player, nx, ny, &bi);
     switch (mh::sim::mvc::blocked_decide(*u, detour != 0, p, [pbase](uint32_t slot, int entry) -> mh::game::mh_llm_strat_path_waypoint & { return *reinterpret_cast<mh::game::mh_llm_strat_path_waypoint *>(pbase + slot * 0x258u + static_cast<uint32_t>(entry) * 2u); }, bi)) {

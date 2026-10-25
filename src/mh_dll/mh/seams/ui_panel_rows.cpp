@@ -361,7 +361,7 @@ void __cdecl on_panel_init_tables() {
         mh::video::set_panel_list_cap(pr::STOCK_ROWS_H, on_height);
         return;
     }
-    apply_height(*(const int *)mh::addr::WindowHeight);
+    apply_height(mh::video::panel_effective_height());
     static bool said = false;
     if (!said) {
         said = true;
@@ -559,7 +559,7 @@ bool install_panel_rows(const char *ini, int h_max) {
 }
 
 void panel_rows_on_size_change() {
-    if (g_armed) apply_height(*(const int *)mh::addr::WindowHeight);
+    if (g_armed) apply_height(panel_effective_height());
 }
 
 } // namespace mh::video

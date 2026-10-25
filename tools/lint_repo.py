@@ -189,6 +189,14 @@ CI_SKIPS = {
         "merge()'s output, so this row cannot run on ANY clean clone either"
     ),
     # --- (c) a retail game copy, and the ledger's own subject --------------------------------
+    "cap-raise v0.2.2 manifests -- planted mutations still go red (gen_cap_v022_manifests --selftest)": (
+        "a retail game copy (machine.POLYGON_CLEAN/mh.exe) -- bring-your-own-game; the P1/P3 mutations "
+        "patch the exe image in memory"
+    ),
+    "cap-raise v0.2.3 units manifests -- planted mutations still go red (gen_cap_units_manifests --selftest)": (
+        "a retail game copy (machine.POLYGON_CLEAN/mh.exe) -- bring-your-own-game; the P1/P3 mutations "
+        "patch the exe image in memory"
+    ),
     "inmem parity oracle, off-rig (check_inmem_patch_parity --selftest)": (
         "a retail game copy (machine.POLYGON_CLEAN/mh.exe) -- bring-your-own-game"
     ),
@@ -516,6 +524,63 @@ def rust_row(mode, label):
     return run
 
 
+_LRC_COMMENTS = None
+
+
+def _strip_cxx_comments(text):
+    """Blank // and /* */ comments (string literals are not special-cased: the identifier below is
+    never legitimately inside one)."""
+    global _LRC_COMMENTS
+    if _LRC_COMMENTS is None:
+        import re  # noqa: PLC0415
+
+        _LRC_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+    return _LRC_COMMENTS.sub(lambda m: "\n" * m.group().count("\n"), text)
+
+
+def _live_roster_caps_hits(text):
+    """patching:PT-CAP8 slice B. 1-based line numbers where code (not a comment) names
+    `live_roster_caps`. Shipped mh/ code must read mh::caps (base, row, limit of the array the GAME
+    addresses); live_roster_caps derives from the registry's STOCK extents, which stop being the
+    live geometry once the v0.2.2 arrays are relocated. libmh still uses it (it only runs on the
+    unrelocated layout), so the rule is scoped to src/mh_dll/mh/."""
+    return [
+        i
+        for i, line in enumerate(_strip_cxx_comments(text).split("\n"), 1)
+        if "live_roster_caps" in line
+    ]
+
+
+def lint_no_live_roster_caps():
+    # The scanner's own negative arms first: a planted call must hit, a commented mention must not.
+    if _live_roster_caps_hits("int x = mh::state::live_roster_caps().units;") != [1]:
+        print("  FAIL: the scanner missed a planted live_roster_caps() call")
+        return 1
+    if _live_roster_caps_hits("// live_roster_caps()\n/* live_roster_caps\n*/\nint x;") != []:
+        print("  FAIL: the scanner flagged a comment")
+        return 1
+    bad = []
+    root = os.path.join(REPO, "src", "mh_dll", "mh")
+    for dp, dn, fn in os.walk(root):
+        dn[:] = [d for d in dn if d != "attic"]
+        for f in fn:
+            if not f.endswith((".cpp", ".h", ".c", ".hpp")):
+                continue
+            p = os.path.join(dp, f)
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                for ln in _live_roster_caps_hits(fh.read()):
+                    bad.append(f"{os.path.relpath(p, REPO)}:{ln}")
+    if bad:
+        print(
+            "  live_roster_caps named in shipped mh/ code (read mh::caps instead, see mh/caps/caps.h):"
+        )
+        for b in bad:
+            print("   ", b)
+        return 1
+    print("  no live_roster_caps in src/mh_dll/mh/")
+    return None
+
+
 def declare_checks(args):
     """Queue the whole roster. Declaration is separated from execution so --ci-selftest can inspect
     the roster (and the skip list against it) without running a single check."""
@@ -704,6 +769,155 @@ def declare_checks(args):
     check(
         "inmem composition census -- the negative cases still fire (--selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_inmem_composition.py"), "--selftest"],
+    )
+    # PT-CAP8 S0 (2026-10-19). The cap-raise relocation census. The July raise found its sites through
+    # Ghidra's ref list, ported them to EN by delta map, and never re-measured them with an independent
+    # reader: a live function (llm_strat_bldg_link_to_network_if_adjacent, 8 fields) and a shift-stride
+    # layout (llm_strat_ai_queue_bldg_repair, 1 chain) went unpatched. tools/scan_cap_reloc_sites.py
+    # reads the whole .text and tests every field against the manifests' BYTE EXTENTS. --check is
+    # hermetic (committed fields vs the CURRENT manifests): a manifest edit that drops a site, or a new
+    # uncovered live field, goes red; the known open gaps are tracked in its baseline until S1 closes them.
+    check(
+        "cap-raise relocation census vs the manifests (scan_cap_reloc_sites --check)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_reloc_sites.py"), "--check"],
+    )
+    check(
+        "cap-raise relocation census -- planted mutations still go red (--selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_reloc_sites.py"), "--selftest"],
+    )
+    # PT-CAP9-U0 (2026-10-21). The units/soldiers census: every site the PT-CAP8 scan lists for the two
+    # arrays classified move / exclude-with-reason (the next-global `end` hits, the two coincidence
+    # "pointers"), plus the 91/100/200/300 limit-constant list. --check is hermetic (committed hits + the
+    # July manifest extents); the selftest plants a dropped site, a misclassified next-global, a stale
+    # verdict and a dropped limit row, and (when the clean EN exe is present) re-derives the limit list.
+    check(
+        "units/soldiers cap census -- every site classified (scan_cap_units_census --check)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_units_census.py"), "--check"],
+    )
+    check(
+        "units/soldiers cap census -- planted mutations still go red (--selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_units_census.py"), "--selftest"],
+    )
+    # PT-CAP9-U4a (2026-10-21). The path-slot census: every path_slot_id (unit +0xaa) access, the buffer / flags /
+    # free-count / data-pointer sites and the 7 loop bounds, each classified always_on / raise_switched / unchanged;
+    # the unit-record hole +0xca..+0xcb untouched; no mh.dll hook overlaps a site. --check is hermetic and re-derives
+    # the table from the clean EN exe when it is on the machine; the selftest plants a dropped site, a
+    # misclassified site, a planted hole access and a planted hook literal, and drives the --residual image mode.
+    check(
+        "path-slot census -- every site classified, hole untouched, no hook overlap (scan_cap_path_slots --check)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_path_slots.py"), "--check"],
+    )
+    check(
+        "path-slot census -- planted mutations still go red (--selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "scan_cap_path_slots.py"), "--selftest"],
+    )
+    # ...and the v0.2.2 relocation/limit/storage-cap SPLIT PLAN: every patch of the two source manifests
+    # classified exactly once; a manifest edit that the plan has not seen goes red.
+    check(
+        "cap-raise v0.2.2 split plan covers the manifests (gen_cap_split_plan --check)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_split_plan.py"), "--check"],
+    )
+    check(
+        "cap-raise v0.2.2 split plan -- planted mutations still go red (--selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_split_plan.py"), "--selftest"],
+    )
+    # PT-CAP8 S1 Slice A (2026-10-19). The v0.2.2 cap-raise MANIFESTS themselves, generated from the July
+    # grand + pool manifests, the split plan and the scan baseline. --check re-derives both files from
+    # committed inputs and byte-compares them (hermetic: the exe-dependent proofs are cached in the
+    # outputs' `_proofs.exe` and verified complete). --selftest plants the ten mutations (expect != exe,
+    # out-of-extent target, units overlap, flags read at a cave exit, entry window, unsorted, July
+    # cross-check, missing scan gap, imm8 > 127, splice exit) and needs the clean EN exe.
+    check(
+        "cap-raise v0.2.2 manifests are current (gen_cap_v022_manifests --check)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_v022_manifests.py"), "--check"],
+    )
+    check(
+        "cap-raise v0.2.2 manifests -- planted mutations still go red (gen_cap_v022_manifests --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_v022_manifests.py"), "--selftest"],
+    )
+    # PT-CAP9-U1 (2026-10-21). The v0.2.3 units + soldiers manifests (cap_v023_units_reloc_EN / cap_v023_units_limits_EN),
+    # generated from the U0 census and its per-row limit verdicts. --check re-derives both files and byte-compares them;
+    # --selftest plants the mutations (expect != exe, overlap, flags live at a cave exit, unsorted, uncovered move site,
+    # a cross-layer overlap that expects vanilla bytes, ...) and needs the clean EN exe.
+    check(
+        "cap-raise v0.2.3 units manifests are current (gen_cap_units_manifests --check)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_units_manifests.py"), "--check"],
+    )
+    check(
+        "cap-raise v0.2.3 units manifests -- planted mutations still go red (gen_cap_units_manifests --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_units_manifests.py"), "--selftest"],
+    )
+    # PT-CAP9-U2: no hard-coded 100-unit player stride (and no read of the unit mirror) left in the harness or in mh.dll.
+    check(
+        "no hard-coded 100-unit stride in mh_harness / mh (lint_unit_stride)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_unit_stride.py")],
+    )
+    check(
+        "no hard-coded 100-unit stride -- planted offenders still go red (lint_unit_stride --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "lint_unit_stride.py"), "--selftest"],
+    )
+    # PT-CAP8 hardening: the cap_fill row's checker keeps its planted negatives red (hermetic: planted log lines).
+    check(
+        "cap-fill smoke checker -- planted negatives still go red (check_cap_fill --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_fill.py"), "--selftest"],
+    )
+    # PT-CAP9-U1: the cap_units row's checker (hermetic: planted log lines).
+    check(
+        "units/soldiers smoke checker -- planted negatives still go red (check_cap_units --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_units.py"), "--selftest"],
+    )
+    # PT-CAP9-U4: the u4_path500 rows' checker (hermetic: planted log lines).
+    check(
+        "path-slot smoke checker -- planted negatives still go red (check_cap_path --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_path.py"), "--selftest"],
+    )
+    # PT-CAP8 S3 (slice G): the cap_save_seq row's checker (planted negatives + the four splice sites against the clean exe when one is found).
+    check(
+        "raised-caps save checker -- planted negatives still go red (check_cap_save --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_save.py"), "--selftest"],
+    )
+    # PT-CAP10: the cap_turret_fire row's checker (planted negatives, hermetic).
+    check(
+        "powered-turret projectile checker -- planted negatives still go red (check_cap_turret --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_turret.py"), "--selftest"],
+    )
+    # PT-CAP11: the AI scratch manifest is current, and the cap_ai_scratch rows' checker keeps its planted negatives red.
+    check(
+        "AI scratch manifest is current (gen_cap_ai_manifest --check)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_ai_manifest.py"), "--check"],
+    )
+    check(
+        "AI scratch manifest generator -- planted mutations still go red (gen_cap_ai_manifest --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_ai_manifest.py"), "--selftest"],
+    )
+    check(
+        "AI scratch checker -- planted negatives still go red (check_cap_ai --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_ai.py"), "--selftest"],
+    )
+    check(
+        "unit-indexed AI scratch checker -- planted negatives still go red (check_cap_ai_units --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_ai_units.py"), "--selftest"],
+    )
+    check(
+        "selection-cap checker -- planted negatives still go red (check_cap_sel --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_sel.py"), "--selftest"],
+    )
+    # PT-CAP9-U5: the order-layer manifest is current, its generator keeps its planted mutations red, and the cap_orders rows' checker keeps its planted negatives red.
+    check(
+        "order-layer manifest is current (gen_cap_orders_manifest --check)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_orders_manifest.py"), "--check"],
+    )
+    check(
+        "order-layer manifest generator -- planted mutations still go red (gen_cap_orders_manifest --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "gen_cap_orders_manifest.py"), "--selftest"],
+    )
+    check(
+        "order-layer checker -- planted negatives still go red (check_cap_orders --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_orders.py"), "--selftest"],
+    )
+    check(
+        "order-layer UI-row checker -- planted negatives still go red (check_cap_orders_ui --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_cap_orders_ui.py"), "--selftest"],
     )
     # F4C-GATE (2026-09-13). THE PARITY ORACLE'S OFFLINE ARM, and it is here because its absence is
     # a filed trap: check_inmem_patch_parity's only arm needed the rig, so when F4C renamed a helper
@@ -1416,6 +1630,10 @@ def declare_checks(args):
         [sys.executable, os.path.join(REPO, "tools", "check_a2_progress.py"), "--selftest"],
     )
     check(
+        "mods:UNL1 campaign unlock recheck -- the negative cases still fire (check_port_unlock --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_port_unlock.py"), "--selftest"],
+    )
+    check(
         "mods:A1 build without a mothership -- the negative cases still fire (check_a1_mother_free --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_a1_mother_free.py"), "--selftest"],
     )
@@ -1467,6 +1685,39 @@ def declare_checks(args):
     check(
         "mods:M1H movement-preset post-check -- the negative cases still fire (check_m1h --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_m1h.py"), "--selftest"],
+    )
+    # mods:M1WL. The u022_stream post-check runs only with the rig; its verdict (the retail column with key 0, the spread with key 1) is gated
+    # here off planted ST TOTAL lines.
+    check(
+        "mods:M1WL stream-heat post-check -- the negative cases still fire (check_u022_stream --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u022_stream.py"), "--selftest"],
+    )
+    # mods:M1WL v3. The imgui_heat post-check (the live setter of the ImGui Stream heat section ran end to end) runs only with the rig; its clauses are gated here.
+    check(
+        "mods:M1WL v3 imgui-heat post-check -- the negative cases still fire (check_imgui_heat --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_imgui_heat.py"), "--selftest"],
+    )
+    # mods:M1WL v6. The imgui_heat_s150 post-check (window inside the image, the ImGui pointer on the drawn cursor at ui_scale 150) runs only with the rig; its clauses are gated here.
+    check(
+        "mods:M1WL v6 imgui-heat-s150 post-check -- the negative cases still fire (check_imgui_heat_s150 --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_imgui_heat_s150.py"), "--selftest"],
+    )
+    # TL-MOVE-BENCH. The move_bench* post-check runs only with the rig; its comparator (worse beyond tolerance = red, better = green + note, an unfinished
+    # run, a missing metric, an unknown arm) and the ORDERSUM/VERDICT parser are gated here off planted data.
+    check(
+        "TL-MOVE-BENCH movement-benchmark post-check -- the negative cases still fire (check_move_bench --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_move_bench.py"), "--selftest"],
+    )
+    # mods:M1WL v5. The field200 benchmark kind reads the state record through tools/move_tracks.py; its metrics (exits, reversals, refusals, arrival) are gated here off planted tracks.
+    check(
+        "mods:M1WL v5 field-benchmark metrics -- the negative cases still fire (move_tracks --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "move_tracks.py"), "--selftest"],
+    )
+    # mods:PRJ1. The prj_facing_rl4 post-check runs only with the rig; its pool scan (a shot already wrong in the save ignored, a
+    # shot that leaves its frame block counted) is gated here off a planted dump.
+    check(
+        "mods:PRJ1 projectile-frame post-check -- the negative cases still fire (check_prj_facing --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_prj_facing.py"), "--selftest"],
     )
     # mp:D47. The positive-control post-check (cfg_newgame_mp_poke) runs only with the rig; its clauses --
     # the poke's match step, its region, a late poke -- are gated here off planted logs.
@@ -1576,6 +1827,12 @@ def declare_checks(args):
         "mp:CH1 no-crash-marker post-check -- the negative cases still fire (check_no_crash_marker --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_no_crash_marker.py"), "--selftest"],
     )
+    # patching:PT-CAP9-U8b. The cap_orders_move_mp post_check: after a raised match every toggle-layer code site is back at its original bytes
+    # (a corrupt wildcard byte, a missing dump and a host that keeps its raise are gated here off planted lanes).
+    check(
+        "PT-CAP9-U8b caps-off-clean post-check -- the negative cases still fire (check_caps_off_clean --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_caps_off_clean.py"), "--selftest"],
+    )
     # mp:SES6. Reads ONE peer's mh_net.log for the "net: udp counters" line's per-peer segments
     # (data_rx_age climbing, data_tx_age flat, horizon_ms frozen -- the outbound-delivery proof the
     # gs2_data_timeout scenario's shape already produces) and runs only with the rig; its negatives --
@@ -1682,6 +1939,13 @@ def declare_checks(args):
     check(
         "cam-trace reader -- planted latch/cost/absence cases go RED (check_cam_trace --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cam_trace.py"), "--selftest"],
+    )
+    # mods:TSCR1. The tactical-scroll rate reader is the tact_scroll row's post-check (rig-only), so its
+    # negatives are gated here off planted logs: a paced log must pass the paced check and fail the retail
+    # one, a retail log the reverse, at both frame-rate stand-ins, and an empty log must refuse.
+    check(
+        "tact-scroll reader -- paced/retail planted logs go RED on the wrong check (check_tact_scroll --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_tact_scroll.py"), "--selftest"],
     )
     # mp:P17. The freeze-watchdog reader is the freeze_watchdog / alttab_d3d11 scenarios' post-check, so it
     # only runs when the rig does; its negatives (no capture, a stack that does not name the injected
@@ -2430,6 +2694,10 @@ def declare_checks(args):
         "machine-path scan -- the negative cases still fire",
         [sys.executable, os.path.join(REPO, "tools", "lint_machine_paths.py"), "--selftest"],
     )
+    # patching:PT-CAP8 slice B. Shipped mh/ code reads the roster geometry from mh::caps, never from
+    # live_roster_caps() (registry-extent-derived, wrong once the arrays are relocated). In-process;
+    # the scanner's planted positive/negative are checked inside the row.
+    check_fn("no live_roster_caps in src/mh_dll/mh (PT-CAP8)", lint_no_live_roster_caps)
     # dist DS1. THE RUST HALF OF THE TREE. src/launcher and src/relay are Rust; clang-format and
     # ruff cannot see them, so without these two rows the only two crates in the repo would be the
     # only source in it under no formatter and no linter at all. `-D warnings` is what makes the

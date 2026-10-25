@@ -54,7 +54,9 @@ void set_hooks(const hooks &h);
 
 // Read `[desync] resync_*` from the ini. `action` is `[desync] action` as desync_watch parsed it.
 // `fp2` is the v2 manifest fingerprint every control frame carries. Logs the ARM line for action=1.
-void              configure(const char *ini_path, int action, uint64_t fp2, void (*log)(const char *fmt, ...));
+void configure(const char *ini_path, int action, uint64_t fp2, void (*log)(const char *fmt, ...));
+// PT-CAP8 S2: the v2 fingerprint changed (the overflow extension armed / was torn down at a match boundary).
+void              set_fp2(uint64_t fp2);
 bool              enabled(); // action == 1
 const ws::config &cfg();
 

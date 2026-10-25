@@ -32,6 +32,7 @@ MH_STR(REFUSE_NEWER_THAN_HOST, "refuse.newer_than_host", L"newer protocol than t
 MH_STR(REFUSE_NOT_OUR_LOBBY, "refuse.not_our_lobby", L"not our lobby")
 MH_STR(REFUSE_CP_MISMATCH, "refuse.cp_mismatch", L"input codepage mismatch")
 MH_STR(REFUSE_UNKNOWN, "refuse.unknown", L"unknown")
+MH_STR(REFUSE_CAPS, "refuse.caps", L"cannot raise limits")
 // RL11: the host sends "build <host>/<yours>" (release versions); tr_refusal_reason parses it and fills this row.
 MH_STR(REFUSE_BUILD, "refuse.build", L"Host runs %s, you run %s: update")
 // PT-SET1: the host sends "gameplay keys <host>/<yours>" (hex digests of the synced-key sets); tr_refusal_reason parses it.
@@ -50,6 +51,9 @@ MH_STR(MAP_MISMATCH, "map.mismatch", L"The map the host sent did not match its a
 // ---- in-match floating messages ----------------------------------------------------------------
 MH_STR(DESYNC_ALERT, "desync.alert", L"DESYNC DETECTED (step %lu) - this match is out of sync")
 MH_STR(CHEAT_SINGLE_PLAYER, "cheat.single_player", L"cheats are single player")
+// patching:PT-CAP9-U5: a click's orders were refused by the order layer (mh/caps/orders.cpp quota stub, shown via caps_install.cpp). Floating red message.
+MH_STR(ORDERS_QUOTA, "orders.quota", L"Too many orders in flight - the rest were not given")
+MH_STR(ORDERS_REFUSED, "orders.refused", L"Order queue full - the rest were not given")
 // mp:U62: the host left a running match and the transport hub moved to a survivor (net_lockstep.cpp hub_notice_tick).
 MH_STR(HUB_MIGRATED, "hub.migrated", L"%s left; %s is now hosting")
 // mp:U63: the host's process was lost (a crash, not a quit) and a survivor took over (same call site).
@@ -74,6 +78,12 @@ MH_STR(NETIND_WAITING, "netind.waiting", L"WAITING FOR %s")
 // like the painted labels beside it.
 MH_STR(MENU_NETWORK_GAME, "menu.network_game", L"Network game")
 
+// ---- the in-game Options screen (seams/ui_options_scale.cpp, mods:RES4) -----------------------------
+// The "Interface size" row ([video] ui_scale): its label (with the colon, like "Screen size:") and the Auto choice.
+// The percentages are not text.
+MH_STR(OPT_INTERFACE_SIZE, "options.interface_size", L"Interface size:")
+MH_STR(OPT_INTERFACE_AUTO, "options.interface_auto", L"Auto")
+
 // ---- the lobby TEAM spinner and MODE selector (ui/lobby_widgets.cpp, mp:U51) -------------------
 MH_STR(LOBBY_TEAM_NONE, "lobby.team_none", L"-")
 MH_STR(LOBBY_TEAM_1, "lobby.team_1", L"T1")
@@ -82,3 +92,8 @@ MH_STR(LOBBY_TEAM_3, "lobby.team_3", L"T3")
 MH_STR(LOBBY_TEAM_4, "lobby.team_4", L"T4")
 MH_STR(LOBBY_MODE_FFA, "lobby.mode_ffa", L"Mode: FFA")
 MH_STR(LOBBY_MODE_TEAM, "lobby.mode_team", L"Mode: Team")
+
+// ---- the raised-caps save (patching:PT-CAP8 S3; patch/caps_install.cpp, the load-failure message hook) ----------
+// Shown in the game's own load-failure message box when a raised-caps save is loaded with [caps] raise OFF
+// (user-approved wording, 2026-10-20).
+MH_STR(CAPS_LOAD_REFUSED, "caps.load_refused", L"This save uses raised limits. Turn on Raised limits in the launcher to load it.")

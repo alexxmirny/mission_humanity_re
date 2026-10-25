@@ -8,7 +8,7 @@
 //   2. Auto for the same desktops at the display scales that matter (100/150/200%): exact sizes, never below
 //      1024x768, never above the desktop or the 2048x1600 cap (the view must fit the sprite window of the 64-tile
 //      smallest map), never wider than 16:9 (ultrawide desktops: 3440x1440, 5120x1440);
-//   3. the integer-scale rule (1920x1056 on 1080p: whole; 1280x704: fractional; 960x512: 2x; stock 640x480 on 1440p: 3x);
+//   3. the integer-scale rule (1920x1080 on 1080p: whole; 1280x720: fractional; 960x540: 2x; stock 640x480 on 1440p: 3x);
 //   4. aspect_group (the 4:3 / 16:9 / other split), parse_size, insert_sorted (a requested size lands in its group's area order, an existing one is not duplicated),
 //      and the label text the launcher shows;
 //   5. the biased sprite window (gfx/wrap_window): stock vs biased on both axes, negative d, the boundaries,
@@ -69,8 +69,8 @@ void expect_auto(const char *name, int dw, int dh, int pct, int w, int h) {
     char            msg[160];
     sprintf(msg, "auto %s @%d%%: %dx%d (want %dx%d)", name, pct, a.w, a.h, w, h);
     check(msg, a.w == w && a.h == h);
-    sprintf(msg, "auto %s @%d%%: tile-aligned, within the cap and the desktop", name, pct);
-    check(msg, (a.w % 32) == 0 && (a.h % 32) == 0 && a.w <= rl::CAP_W && a.h <= rl::CAP_H && a.w <= dw && a.h <= dh);
+    sprintf(msg, "auto %s @%d%%: a valid size (its ceil32 render within the cap), within the desktop", name, pct);
+    check(msg, rl::valid_size(a.w, a.h) && rl::ceil32(a.w) <= rl::CAP_W && rl::ceil32(a.h) <= rl::CAP_H && a.w <= dw && a.h <= dh);
 }
 
 // ---- the biased sprite window (gfx/wrap_window) --------------------------------------------------------------
@@ -347,71 +347,72 @@ int run_reslisttest() {
     printf("== reslisttest (the generated resolution list, the 16:9 cap, the biased sprite window) ==\n");
 
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {672, 512}, {928, 704}, {1152, 864}, {1408, 1056}, {960, 512}, {1280, 704}, {1536, 864}, {1920, 1056}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {720, 540}, {800, 600}, {960, 720}, {1152, 864}, {1280, 960}, {1400, 1050}, {1440, 1080}, {960, 540}, {1280, 720}, {1366, 768}, {1536, 864}, {1600, 900}, {1920, 1080}};
         expect_list("1920x1080", 1920, 1080, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {768, 576}, {928, 704}, {1280, 960}, {1536, 1152}, {1920, 1440}, {832, 480}, {1024, 576}, {1280, 704}, {1696, 960}, {2048, 1152}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {768, 576}, {800, 600}, {960, 720}, {1152, 864}, {1280, 960}, {1400, 1050}, {1536, 1152}, {1600, 1200}, {1920, 1440}, {853, 480}, {1024, 576}, {1280, 720}, {1366, 768}, {1600, 900}, {1706, 960}, {1920, 1080}, {2048, 1152}};
         expect_list("2560x1440", 2560, 1440, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {672, 512}, {928, 704}, {1152, 864}, {1408, 1056}, {1920, 1440}, {960, 512}, {1280, 704}, {1536, 864}, {1920, 1056}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {720, 540}, {800, 600}, {960, 720}, {1152, 864}, {1280, 960}, {1400, 1050}, {1440, 1080}, {1600, 1200}, {1920, 1440}, {2048, 1536}, {960, 540}, {1280, 720}, {1366, 768}, {1536, 864}, {1600, 900}, {1920, 1080}};
         expect_list("3840x2160", 3840, 2160, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {768, 576}, {1056, 800}, {1280, 960}, {1568, 1184}, {768, 480}, {960, 576}, {1280, 800}, {1536, 960}, {1920, 1184}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {800, 600}, {1067, 800}, {1152, 864}, {1280, 960}, {1400, 1050}, {1600, 1200}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {768, 480}, {960, 600}, {1280, 800}, {1536, 960}, {1920, 1200}};
         expect_list("1920x1200", 1920, 1200, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {672, 512}, {800, 608}, {896, 512}, {1088, 608}, {1344, 768}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {683, 512}, {800, 600}, {819, 614}, {910, 512}, {1092, 614}, {1280, 720}, {1366, 768}};
         expect_list("1366x768", 1366, 768, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     {
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {672, 512}, {896, 672}, {1056, 800}, {640, 512}, {832, 672}, {1024, 800}, {1280, 1024}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {683, 512}, {800, 600}, {909, 682}, {1092, 819}, {1152, 864}, {1280, 960}, {1280, 720}, {640, 512}, {853, 682}, {1024, 819}, {1280, 1024}};
         expect_list("1280x1024", 1280, 1024, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     { // 16:10 desktop: not wider than 16:9, so the cap alone limits it
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {672, 512}, {864, 640}, {1056, 800}, {1408, 1056}, {1696, 1280}, {832, 512}, {1024, 640}, {1280, 800}, {1696, 1056}, {2048, 1280}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {711, 533}, {800, 600}, {853, 640}, {1067, 800}, {1152, 864}, {1280, 960}, {1400, 1050}, {1421, 1066}, {1600, 1200}, {1707, 1280}, {1920, 1440}, {2048, 1536}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {853, 533}, {1024, 640}, {1280, 800}, {1706, 1066}, {2048, 1280}};
         expect_list("2560x1600", 2560, 1600, w, (int)(sizeof(w) / sizeof(w[0])));
     }
     { // ultrawide: 16:9 sizes of the desktop's own height (side bars), the same list as 2560x1440
-        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {768, 576}, {928, 704}, {1280, 960}, {1536, 1152}, {1920, 1440}, {832, 480}, {1024, 576}, {1280, 704}, {1696, 960}, {2048, 1152}};
+        const sz w[] = {{640, 480}, {800, 576}, {1024, 768}, {768, 576}, {800, 600}, {960, 720}, {1152, 864}, {1280, 960}, {1400, 1050}, {1536, 1152}, {1600, 1200}, {1920, 1440}, {853, 480}, {1024, 576}, {1280, 720}, {1366, 768}, {1600, 900}, {1706, 960}, {1920, 1080}, {2048, 1152}};
         expect_list("3440x1440", 3440, 1440, w, (int)(sizeof(w) / sizeof(w[0])));
         expect_list("5120x1440", 5120, 1440, w, (int)(sizeof(w) / sizeof(w[0])));
     }
 
-    // Auto: desktop / display scale, floored to 32, then clamped.
-    expect_auto("1920x1080", 1920, 1080, 100, 1920, 1056);
+    // Auto: desktop / display scale (exact since RES18), then clamped.
+    expect_auto("1920x1080", 1920, 1080, 100, 1920, 1080);
     expect_auto("1920x1080", 1920, 1080, 150, 1280, 768);  // 1280x704 would be below 1024x768 in height
     expect_auto("2560x1440", 2560, 1440, 100, 2048, 1152); // 2560 is over the cap: the largest generated entry
     expect_auto("2560x1440", 2560, 1440, 125, 2048, 1152); // 2560 / 1.25 = 2048: exactly the cap
     expect_auto("2560x1440", 2560, 1440, 200, 1280, 768);
-    expect_auto("2560x1440", 2560, 1440, 150, 1696, 960);
-    expect_auto("3840x2160", 3840, 2160, 100, 1920, 1056); // over the cap: the largest generated entry
-    expect_auto("3840x2160", 3840, 2160, 150, 1920, 1056);
+    expect_auto("2560x1440", 2560, 1440, 150, 1706, 960);
+    expect_auto("3840x2160", 3840, 2160, 100, 1920, 1080); // over the cap: the largest generated entry
+    expect_auto("3840x2160", 3840, 2160, 150, 1920, 1080);
     expect_auto("2560x1600", 2560, 1600, 100, 2048, 1280);
     expect_auto("3440x1440", 3440, 1440, 100, 2048, 1152); // ultrawide: 16:9 of its own height
     expect_auto("5120x1440", 5120, 1440, 100, 2048, 1152);
-    expect_auto("3840x2160", 3840, 2160, 200, 1920, 1056);
-    expect_auto("1920x1200", 1920, 1200, 100, 1920, 1184);
-    expect_auto("1366x768", 1366, 768, 100, 1344, 768);
+    expect_auto("3840x2160", 3840, 2160, 200, 1920, 1080);
+    expect_auto("1920x1200", 1920, 1200, 100, 1920, 1200);
+    expect_auto("1366x768", 1366, 768, 100, 1366, 768);
     expect_auto("1280x1024", 1280, 1024, 100, 1280, 1024);
-    expect_auto("1280x720", 1280, 720, 100, 1280, 704); // never above the desktop beats never below 1024x768
+    expect_auto("1280x720", 1280, 720, 100, 1280, 720); // never above the desktop beats never below 1024x768
     expect_auto("5120x2880", 5120, 2880, 100, 2048, 1152);
     {
         const rl::entry a = rl::auto_size(1920, 1080, 0); // a bad scale reads as 100%
-        check("auto: scale 0 reads as 100%", a.w == 1920 && a.h == 1056);
+        check("auto: scale 0 reads as 100%", a.w == 1920 && a.h == 1080);
     }
 
     // The presenter's integer-scale rule.
-    check("integer: 1920x1056 on 1920x1080 (1:1)", rl::integer_scale_ok(1920, 1080, 1920, 1056));
-    check("integer: 960x512 on 1920x1080 (2x)", rl::integer_scale_ok(1920, 1080, 960, 512));
-    check("integer: 1408x1056 on 1920x1080 (4:3 1:1, 2% slack)", rl::integer_scale_ok(1920, 1080, 1408, 1056));
+    check("integer: 1920x1080 on 1920x1080 (1:1)", rl::integer_scale_ok(1920, 1080, 1920, 1080));
+    check("integer: 960x540 on 1920x1080 (2x)", rl::integer_scale_ok(1920, 1080, 960, 540));
+    check("integer: 1440x1080 on 1920x1080 (4:3 1:1)", rl::integer_scale_ok(1920, 1080, 1440, 1080));
+    check("integer: 1920x1056 on 1920x1080 (a legacy 32-snapped size, 2% slack)", rl::integer_scale_ok(1920, 1080, 1920, 1056));
     check("integer: 640x480 on 2560x1440 (3x)", rl::integer_scale_ok(2560, 1440, 640, 480));
-    check("fit: 1280x704 on 1920x1080 (1.5x)", !rl::integer_scale_ok(1920, 1080, 1280, 704));
+    check("fit: 1280x720 on 1920x1080 (1.5x)", !rl::integer_scale_ok(1920, 1080, 1280, 720));
     check("fit: 1024x768 on 1920x1080 (1.4x)", !rl::integer_scale_ok(1920, 1080, 1024, 768));
     check("fit: 640x480 on 1920x1080 (2.25x)", !rl::integer_scale_ok(1920, 1080, 640, 480));
-    check("fit: a picture larger than the desktop", !rl::integer_scale_ok(1280, 720, 1920, 1056));
+    check("fit: a picture larger than the desktop", !rl::integer_scale_ok(1280, 720, 1920, 1080));
     check("fit: nonsense sizes", !rl::integer_scale_ok(0, 1080, 640, 480) && !rl::integer_scale_ok(1920, 1080, 0, 480));
 
     // parse_size / valid_size.
@@ -422,9 +423,12 @@ int run_reslisttest() {
           !rl::parse_size("auto", &w, &h) && !rl::parse_size("", &w, &h) && !rl::parse_size("1920x1056 ", &w, &h) &&
               !rl::parse_size("1920x", &w, &h) && !rl::parse_size("x1056", &w, &h) && !rl::parse_size(nullptr, &w, &h));
     check("valid: 640x480 and 2048x1600 are the extremes", rl::valid_size(640, 480) && rl::valid_size(2048, 1600));
-    check("invalid: 1920x1080 (height off the grid), 2144x1440, 2112x1184 and 2080x1152 (over the cap), 608x480 (narrow), 3840x2144",
-          !rl::valid_size(1920, 1080) && !rl::valid_size(2144, 1440) && !rl::valid_size(2112, 1184) && !rl::valid_size(2080, 1152) &&
-              !rl::valid_size(608, 480) && !rl::valid_size(3840, 2144));
+    check("RES18 valid: any size whose ceil32 render fits -- 1920x1080 (renders 1920x1088), 1366x768, 2041x1081 (renders 2048x1120)",
+          rl::valid_size(1920, 1080) && rl::valid_size(1366, 768) && rl::valid_size(2041, 1081) && rl::valid_size(641, 481));
+    check("invalid: 2144x1440, 2112x1184, 2080x1152 and 2049x1152 (the render is over the cap), 608x480 and 640x479 (small), 3840x2144",
+          !rl::valid_size(2144, 1440) && !rl::valid_size(2112, 1184) && !rl::valid_size(2080, 1152) && !rl::valid_size(2049, 1152) &&
+              !rl::valid_size(608, 480) && !rl::valid_size(640, 479) && !rl::valid_size(3840, 2144) && !rl::valid_size(2048, 1601));
+    check("ceil32: 1080 -> 1088, 1088 -> 1088, 1 -> 32, 2048 -> 2048", rl::ceil32(1080) == 1088 && rl::ceil32(1088) == 1088 && rl::ceil32(1) == 32 && rl::ceil32(2048) == 2048);
     // The cap: the viewport (W-160 x H-32) plus the sprite window's bias must fit the 64-tile map (2048 px), and
     // the older tile window (viewport plus two tiles under 64 tiles) is looser than that.
     check("cap: 2048 wide is the last width whose view fits the sprite window of a 64-tile map (K_X = 160)",
@@ -435,12 +439,12 @@ int run_reslisttest() {
     check("cap: the height cap (1600) is below both windows, which are 1984 (tiles) and 1824 (sprites)",
           rl::CAP_H == 1600 && rl::TILE_WIN_H == 1984 && rl::SPRITE_WIN_H == 1824 &&
               (rl::CAP_H - 32) + mh::gfx::wrapwin::K_Y <= rl::MIN_MAP_TILES * 32);
-    check("cap: 2560x1440 and 2112x1184 outgrow a 64-tile map; 1920x1056 and 1024x768 do not",
+    check("cap: 2560x1440 and 2112x1184 outgrow a 64-tile map; 1920x1080 (renders 1920x1088) and 1024x768 do not; 2049x1080 does (renders 2080)",
           rl::view_wraps_smallest_map(2560, 1440) && rl::view_wraps_smallest_map(2112, 1184) &&
-              !rl::view_wraps_smallest_map(1920, 1056) && !rl::view_wraps_smallest_map(1024, 768));
-    check("16:9: 1920x1056 (1080 floored), 2048x1152 and the 4:3 sizes pass; 1696x704 and 2560x1080 do not",
-          rl::within_16x9(1920, 1056) && rl::within_16x9(2048, 1152) && rl::within_16x9(1408, 1056) &&
-              !rl::within_16x9(1696, 704) && !rl::within_16x9(2560, 1080));
+              !rl::view_wraps_smallest_map(1920, 1080) && !rl::view_wraps_smallest_map(1024, 768) && rl::view_wraps_smallest_map(2049, 1080));
+    check("16:9: 1920x1080, 1366x768 (1365.3 rounds up), 2048x1152 and the 4:3 sizes pass; 1696x704 and 2560x1080 do not",
+          rl::within_16x9(1920, 1080) && rl::within_16x9(1366, 768) && rl::within_16x9(2048, 1152) && rl::within_16x9(1440, 1080) &&
+              !rl::within_16x9(1696, 704) && !rl::within_16x9(2560, 1080) && !rl::within_16x9(1920, 1056));
     {
         bool      all_ok  = true; // no generated entry for any plausible desktop may wrap the smallest map
         bool      wide_ok = true; // ... and none is wider than 16:9 (the stock three and the 4:3 family are narrower)
@@ -469,14 +473,14 @@ int run_reslisttest() {
         rl::entry list[rl::MAX_ENTRIES];
         int       n = rl::generate(1920, 1080, list, rl::MAX_ENTRIES), cnt = 0;
         const int ix = rl::insert_sorted(list, n, rl::MAX_ENTRIES, rl::entry{1600, 896, rl::k_requested}, &cnt);
-        check("insert 1600x896 (16:9) -> a new entry between 1536x864 and 1920x1056", cnt == n + 1 && ix >= 3 && list[ix].w == 1600 &&
-                                                                                          list[ix - 1].w == 1536 && list[ix + 1].w == 1920);
+        check("insert 1600x896 (16:9) -> a new entry between 1536x864 and 1600x900", cnt == n + 1 && ix >= 3 && list[ix].w == 1600 &&
+                                                                                         list[ix - 1].w == 1536 && list[ix + 1].w == 1600);
         {
             rl::entry l2[rl::MAX_ENTRIES];
             int       n2 = rl::generate(1920, 1080, l2, rl::MAX_ENTRIES), c2 = 0;
-            const int i43 = rl::insert_sorted(l2, n2, rl::MAX_ENTRIES, rl::entry{1280, 960, rl::k_requested}, &c2);
-            check("insert 1280x960 (4:3) -> between 1152x864 and 1408x1056, ahead of every 16:9 size",
-                  c2 == n2 + 1 && l2[i43 - 1].w == 1152 && l2[i43 + 1].w == 1408);
+            const int i43 = rl::insert_sorted(l2, n2, rl::MAX_ENTRIES, rl::entry{1200, 900, rl::k_requested}, &c2);
+            check("insert 1200x900 (4:3) -> between 1152x864 and 1280x960, ahead of every 16:9 size",
+                  c2 == n2 + 1 && l2[i43 - 1].w == 1152 && l2[i43 + 1].w == 1280);
             const int io = rl::insert_sorted(l2, c2, rl::MAX_ENTRIES, rl::entry{1280, 800, rl::k_requested}, &c2);
             check("insert 1280x800 (16:10) -> last, after every 16:9 size", io == c2 - 1);
         }
@@ -503,10 +507,12 @@ int run_reslisttest() {
     // The label text.
     {
         char lab[64];
+        rl::describe(rl::entry{1920, 1080, rl::k_native}, 1920, 1080, lab, sizeof(lab));
+        check("label 1920x1080", strcmp(lab, "1920x1080 (1:1, sharpest)") == 0);
         rl::describe(rl::entry{1920, 1056, rl::k_native}, 1920, 1080, lab, sizeof(lab));
-        check("label 1920x1056", strcmp(lab, "1920x1056 (1:1, sharpest)") == 0);
-        rl::describe(rl::entry{1280, 704, rl::k_native}, 1920, 1080, lab, sizeof(lab));
-        check("label 1280x704", strcmp(lab, "1280x704 (1.5x)") == 0);
+        check("label 1920x1056 (a legacy size)", strcmp(lab, "1920x1056 (1:1, sharpest)") == 0);
+        rl::describe(rl::entry{1280, 720, rl::k_native}, 1920, 1080, lab, sizeof(lab));
+        check("label 1280x720", strcmp(lab, "1280x720 (1.5x)") == 0);
         rl::describe(rl::entry{960, 512, rl::k_native}, 1920, 1080, lab, sizeof(lab));
         check("label 960x512", strcmp(lab, "960x512 (2x)") == 0);
         rl::describe(rl::entry{1536, 864, rl::k_native}, 3840, 2160, lab, sizeof(lab));
@@ -517,6 +523,10 @@ int run_reslisttest() {
         check("label 4:3 1408x1056", strcmp(lab, "1408x1056 (4:3, 1:1)") == 0);
         rl::describe(rl::entry{640, 480, rl::k_stock}, 1920, 1080, lab, sizeof(lab));
         check("label stock", strcmp(lab, "640x480 (classic)") == 0);
+        rl::describe(rl::entry{1600, 900, rl::k_common}, 2560, 1440, lab, sizeof(lab));
+        check("label common 16:9 1600x900", strcmp(lab, "1600x900 (16:9)") == 0);
+        rl::describe(rl::entry{1400, 1050, rl::k_common}, 2560, 1440, lab, sizeof(lab));
+        check("label common 4:3 1400x1050", strcmp(lab, "1400x1050 (4:3)") == 0);
         char tiny[8];
         rl::describe(rl::entry{1920, 1056, rl::k_native}, 1920, 1080, tiny, sizeof(tiny));
         check("label into a tiny buffer stays terminated", strlen(tiny) == 7);

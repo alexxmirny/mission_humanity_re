@@ -417,6 +417,7 @@ inline constexpr inmem_manifest MANIFEST = {
     REFS, 75,
     BODIES, 8,
     /*refs_complete=*/true,
+    /*toggle=*/false,
 };
 
 static_assert(8 <= mh::hook::MAX_PATCHED_BODIES,

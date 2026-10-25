@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "addr/mh_structs.gen.h" // the record layouts (no addresses)
+#include "caps/caps.h"           // PT-CAP9-U4: raised() -- the path slot id byte is min(id, 0xfe) then
 #include "mh_log_sink.h"
 
 namespace mh::desync::sanity {
@@ -122,7 +123,8 @@ void scan_units(ctx_t &c, const uint8_t *base, const extras &X) {
             const uint8_t ss = rd<uint8_t>(r + offsetof(U, shuttle_slot));
             if (ss >= 10 && ss != 0xff) FINDING("shuttle_slot", "units p%d i%d: shuttle_slot=%u, legal 0..9", p, i, ss);
             const uint8_t ps = rd<uint8_t>(r + offsetof(U, path_slot_id));
-            if (ps >= 100 && ps != 0xff)
+            // PT-CAP9-U4: with the raise ON a unit may hold a slot up to 499; the byte is then min(id, 0xfe), so 100..0xfe are legal too.
+            if (ps >= 100 && ps != 0xff && !mh::caps::raised())
                 FINDING("path_slot_id", "units p%d i%d: path_slot_id=%u, legal 0..99 or 0xff", p, i, ps);
             const uint8_t sw = rd<uint8_t>(r + offsetof(U, selected_weapon));
             if (sw > 4 && sw != 100) // 4 is seen in clean saves (2-almost: four player-0 units)

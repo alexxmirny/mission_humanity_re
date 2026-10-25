@@ -4112,7 +4112,7 @@
       "note": "TACT-READY R8, TACTICAL VIEW GEOMETRY. Set by llm_tact_mission_start when the tactical view replaces the strategic one. Ghidra type int. Writers (measured, tmp/state_matrix.json): llm_tact_mission_start(1); 2 read site(s)."
     },
     {
-      "name": "_G_LLM_TACT_SCROLL_CMD",
+      "name": "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
       "en": "0x00558ba0",
       "note": "TACT-READY R8, TACTICAL FRAME INPUT/CAMERA STATE. Per-frame camera + mouse-input state owned by llm_tact_frame's input phase. Ghidra type undefined4. Writers (measured, tmp/state_matrix.json): llm_tact_frame(4), llm_tact_mission_start(1); 11 read site(s)."
     },

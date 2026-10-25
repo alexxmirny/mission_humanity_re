@@ -400,6 +400,16 @@ impl Model {
         }
     }
 
+    /// Is this row greyed out right now (its `disabled_if` holds)? Its value is kept, only the control is inert.
+    pub fn is_disabled(&self, r: &Row) -> bool {
+        match &r.disabled_if {
+            Some((other, eq)) => self
+                .row(other)
+                .is_some_and(|o| canon(o, &self.value(other)) == *eq),
+            None => false,
+        }
+    }
+
     /// Is the shown value one the row does not list (an enum/int the player typed into the ini)?
     pub fn is_custom_choice(&self, r: &Row) -> bool {
         let v = self.value(&r.id);
@@ -935,6 +945,26 @@ mod tests {
         assert!(!m.is_visible(&extra));
         m.set("a.mode", "y");
         assert!(m.is_visible(&extra));
+    }
+
+    /// RES25: Interface size is greyed (not hidden, not reset) while Game resolution is Classic sizes only, and keeps its value.
+    #[test]
+    fn interface_size_is_disabled_under_classic_sizes_and_keeps_its_value() {
+        let (mut m, store) = model();
+        m.load(
+            Some(b"[video]\r\nresolution=stock\r\nui_scale=175\r\n"),
+            &store,
+        );
+        let row = m.schema().row("video.ui_scale").unwrap().clone();
+        assert!(m.is_visible(&row), "greyed, not hidden");
+        assert!(m.is_disabled(&row), "resolution=stock disables it");
+        assert_eq!(m.value("video.ui_scale"), "175", "the stored value is kept");
+        assert!(m.ini_edits().is_empty(), "disabling writes nothing");
+        m.set("video.resolution", "auto");
+        assert!(!m.is_disabled(&row), "switching back restores the row");
+        assert_eq!(m.value("video.ui_scale"), "175");
+        let resolution = m.schema().row("video.resolution").unwrap().clone();
+        assert!(!m.is_disabled(&resolution));
     }
 
     /// LA20: a row hidden by its parent's `visible_if` is not deleted -- its ini value survives an

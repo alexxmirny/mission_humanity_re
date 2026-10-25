@@ -77,13 +77,17 @@
 #include "addr/mh_calls.gen.h"   // mh::call::llm_strat_fow_remove_sight / map_fow_UpdateFoWPlus / llm_strat_unit_soldiers_set_heading
 #include "addr/mh_regions.gen.h" // mh::state::live(), RID_*
 #include "addr/mh_structs.gen.h"
-#include "hook/patch.h"    // patch_bytes_guarded
-#include "hook/promoted.h" // promoted_owner_of
-#include "state/roster_caps.h"
+#include "hook/patch.h"     // patch_bytes_guarded
+#include "hook/promoted.h"  // promoted_owner_of
+#include "caps/caps.h"      // mh::caps::rec / g: the unit + soldier arrays the game addresses (PT-CAP8)
+#include "caps/path_pool.h" // PT-CAP9-U4: the relocated path pool
 #include "seams/net_internal.h"
+#include "seams/heat_ui.h"          // mods:M1WL v3: the snapshot / traffic / route reads of the ImGui "Stream heat" section (display only)
+#include "desync/replay_record.h"   // replay_rec::current_step: the sim step of a plan, for the snapshot
 #include "seams/move_carrier.h"     // mods:M1H: site states, requested values, stub hit counters
 #include "sim/move/nudge.h"         // mods:M1H lane C: the decision (3e-1..3e-4), shared with the libmh twin
 #include "sim/move/route_through.h" // mods:M1H lane B: move_route_through_idle's rule (rt_unmask / rt_restore), shared with the libmh twin
+#include "sim/move/stream_heat.h"   // mods:M1WL v2: move_stream_heat's rule (sh_open / sh_close), shared with the libmh twin
 #include "sim/move/blocked.h"       // mods:M1DT: blocker_info for the walker block site (move_proto_blocked.cpp)
 #include "sim/move/replan_cap.h"    // mods:M1DT fix 4b: the marshal check (mv_cap_refuse below)
 
@@ -140,9 +144,9 @@ const char *nd_state_name(int s) {
 
 // ---- state access (live bases: the hosted exe or the standalone host's own allocation) ---------------------------------------
 mh_map_object_unit *unit_rec(uint32_t player, int32_t idx) {
-    const auto caps = mh::state::live_roster_caps();
-    if (player >= 8 || idx < 0 || idx >= caps.units) return nullptr;
-    return reinterpret_cast<mh_map_object_unit *>(mh::state::live().base[mh::state::RID_UNITS]) + player * caps.units + idx;
+    const auto &u = mh::caps::g(mh::caps::UNITS);
+    if (player >= u.players || idx < 0 || (uint32_t)idx >= u.limit) return nullptr;
+    return mh::caps::rec<mh_map_object_unit>(mh::caps::UNITS, player, (uint32_t)idx);
 }
 const mh_cfg_final_struct_Unit *cfg_of(const mh_map_object_unit &u) {
     const auto *c = reinterpret_cast<const mh_cfg_final_struct_Unit *>(mh::state::live().base[mh::state::RID_UNIT]);
@@ -154,10 +158,9 @@ mh_map_tile_object_data *tile_of(uint32_t x, uint32_t y) {
 uint8_t *pass_of(uint32_t x, uint32_t y) {
     return reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_PASSABLE]) + (((x & 0xffu) << 8) | (y & 0xffu));
 }
-// One slot's path entries: {heading, run_length} pairs, 300 per slot, 100 slots per player.
-uint8_t *path_of(uint32_t player, uint32_t slot) {
-    return reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_STRAT_PATH_BUFFERS]) + (player * 30000u + slot * 300u) * 2u;
-}
+// One slot's path entries: {heading, run_length} pairs, 300 per slot. The LIVE pool (relocated: the registry's base is only the
+// slots-0..99 mirror, and a write there is lost at the next gather).
+uint8_t *path_of(uint32_t player, uint32_t slot) { return mh::caps::path::waypoint(player, slot, 0); }
 
 uint64_t raw_bits(const double &d) {
     uint64_t v;
@@ -184,10 +187,8 @@ struct splice_world {
     uint32_t                   mask_y() { return reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->height_mask; }
     const void                *game_clock() { return reinterpret_cast<const void *>(ADDR_CLOCK); }
     mh_llm_strat_crew_soldier *soldier(uint32_t player, uint32_t si) {
-        const auto caps = mh::state::live_roster_caps();
-        auto      *sold = reinterpret_cast<mh_llm_strat_crew_soldier *>(mh::state::live().base[mh::state::RID_STRAT_SOLDIERS]);
-        if (!sold || si >= static_cast<uint32_t>(caps.soldiers)) return nullptr;
-        return &sold[player * caps.soldiers + si];
+        if (si >= mh::caps::g(mh::caps::SOLDIERS).limit) return nullptr;
+        return mh::caps::rec<mh_llm_strat_crew_soldier>(mh::caps::SOLDIERS, player, si);
     }
     uint16_t cur_index() { return *reinterpret_cast<const uint16_t *>(ADDR_CUR_INDEX); }
 
@@ -216,21 +217,28 @@ struct splice_world {
 
 // ---- the decision --------------------------------------------------------------------------------------------------------------
 extern "C" {
-int       g_nd_nudge   = 0;             // [net] move_nudge_idle in force
-int       g_nd_claim   = 0;             // [net] move_claim_leader in force
-int       g_nd_swap    = 0;             // [net] move_swap_headon in force
-int       g_eq_on      = 0;             // [net] move_enter_queue in force (mods:M1BE; also read by move_proto_blocked.cpp)
-uintptr_t g_nd_orig_fn = FN_STEP_CHECK; // the stub's tail-jump target
-uintptr_t g_mk_ret     = ADDR_MK_RET;   // mk_stub: continue the retail clock-bump branch
-uintptr_t g_mk_skip    = ADDR_MK_SKIP;  // mk_stub: handled, next member
-uintptr_t g_mk2_ret    = ADDR_MK2_RET;  // mk2_stub: continue the retry branch
-int       g_rt_on      = 0;             // [net] move_route_through_idle in force
-int       g_rtm_on     = 0;             // [net] move_route_through_moving in force (mods:M1N 3e-6)
-int       g_rtm_cost   = 0;             // [net] move_route_through_moving_cost: the cost level (sim/move/route_through.h rt_move_cost_bits)
-int       g_rtr_on     = 0;             // [net] move_route_through_replanning in force (mods:M1DT fix 2)
-uintptr_t g_rt_orig_fn = FN_PATHFIND;   // rt_stub: the wave planner it wraps
-int       g_fc_on      = 0;             // [net] move_formation_click in force (mods:M1G 4b): 0 off, 1..2 = old keep rule with N - 1 rings of slack, 3 = the formation moves as one
-int       g_fc_handled = 0;             // the formation planned the commit that just ran (read once by the 2a stub, move_proto_arrival.cpp)
+int                             g_nd_nudge   = 0;             // [net] move_nudge_idle in force
+int                             g_nd_claim   = 0;             // [net] move_claim_leader in force
+int                             g_nd_swap    = 0;             // [net] move_swap_headon in force
+int                             g_eq_on      = 0;             // [net] move_enter_queue in force (mods:M1BE; also read by move_proto_blocked.cpp)
+uintptr_t                       g_nd_orig_fn = FN_STEP_CHECK; // the stub's tail-jump target
+uintptr_t                       g_mk_ret     = ADDR_MK_RET;   // mk_stub: continue the retail clock-bump branch
+uintptr_t                       g_mk_skip    = ADDR_MK_SKIP;  // mk_stub: handled, next member
+uintptr_t                       g_mk2_ret    = ADDR_MK2_RET;  // mk2_stub: continue the retry branch
+int                             g_rt_on      = 0;             // [net] move_route_through_idle in force
+int                             g_rtm_on     = 0;             // [net] move_route_through_moving in force (mods:M1N 3e-6)
+int                             g_rtm_cost   = 0;             // [net] move_route_through_moving_cost: the cost level (sim/move/route_through.h rt_move_cost_bits)
+int                             g_rtr_on     = 0;             // [net] move_route_through_replanning in force (mods:M1DT fix 2)
+uintptr_t                       g_rt_orig_fn = FN_PATHFIND;   // rt_stub: the wave planner it wraps
+int                             g_fc_on      = 0;             // [net] move_formation_click in force (mods:M1G 4b): 0 off, 1..2 = old keep rule with N - 1 rings of slack, 3 = the formation moves as one
+int                             g_fc_handled = 0;             // the formation planned the commit that just ran (read once by the 2a stub, move_proto_arrival.cpp)
+int                             g_sh_on      = 0;             // [net] move_stream_heat in force (mods:M1WL v2)
+int                             g_sh_group   = 0;             // the commit that is planning: its move_group_id and is_plain_move_flag (set by rt_stub off commit's frame, read by rt_unmask; 2a's re-run reuses them)
+uint32_t                        g_sh_plain   = 0;
+mh::sim::move::sh_params        g_sh_p;    // mods:M1WL v3: the tuning keys in force (cost / window / min mates / scale), set by mh_set_move_stream_heat_params
+mh::sim::move::sh_retrace_stats g_sh_rt;   // mods:M1WL v4: what the re-trace did (display + the log line; not sim state)
+mh::sim::move::sh_margin_stats  g_sh_mg;   // mods:M1WL v5: what the margin rule did (display + the log line; not sim state)
+mh::heatui::snapshot            g_sh_snap; // mods:M1WL v3: the last priced plan, for the ImGui read-outs and the "last plan" heat map (display only, not sim state)
 }
 int mv_fc_run(int32_t group_id, uint32_t mode, uint32_t target, const void *undo); // move_proto_arrival.cpp: the formation over live memory
 
@@ -360,7 +368,7 @@ namespace {
 mh::sim::move::rt_undo g_rt_undo;
 
 struct rt_live_world {
-    int32_t unit_count() { return mh::state::live_roster_caps().units; }
+    int32_t unit_count() { return (int32_t)mh::caps::g(mh::caps::UNITS).limit; }
     bool    unit(uint32_t player, int32_t i, mh::sim::move::rt_unit *out) {
         mh_map_object_unit *u = unit_rec(player, i);
         if (!u) return false;
@@ -385,6 +393,62 @@ struct rt_live_world {
     }
 };
 
+// mods:M1WL v2 move_stream_heat: stream_heat.h's World over live memory.
+constexpr uintptr_t ADDR_GRP_COUNT         = 0x0051de38; // _G_LLM_STRAT_GROUP_MEMBER_COUNT
+constexpr uintptr_t ADDR_ROUTE_STEP_DELTAS = 0x00708af4; // _G_LLM_MAP_REGION_ROUTE_STEP_DELTAS byte[32]: {dy, dx, -, -} per route_search direction (mods:M1WL v4)
+constexpr uintptr_t ADDR_ROUTE_DIR_CODES   = 0x0051de88; // _G_LLM_MAP_REGION_ROUTE_DIR_CODES int[8]: 1, 4, 7 .. 22
+constexpr uintptr_t ADDR_GRP_MEMBERS       = 0x006804ac; // _G_LLM_STRAT_GROUP_MEMBERS {uint unit_handle; byte cur_col; byte cur_row}[256]
+
+mh::sim::move::sh_state g_sh_state;
+bool                    g_sh_logged = false;
+
+struct sh_live_world {
+    int32_t unit_count() { return (int32_t)mh::caps::g(mh::caps::UNITS).limit; }
+    bool    unit(uint32_t player, int32_t i, mh::sim::move::sh_unit *out) {
+        mh_map_object_unit *u = unit_rec(player, i);
+        if (!u) return false;
+        const uint8_t slot = mh::caps::path::unit_slot_u8(reinterpret_cast<const uint8_t *>(u));
+        out->order         = u->order;
+        out->state         = u->state;
+        out->group         = u->move_group_id;
+        out->alive         = unit_alive(*u);
+        out->x             = u->x;
+        out->y             = u->y;
+        out->path_slot     = slot < mh::caps::path::slot_limit() ? slot : 0xff;
+        out->path_cursor   = u->path_cursor;
+        return true;
+    }
+    void wp_get(uint32_t player, uint32_t slot, uint32_t entry, uint8_t *heading, uint8_t *run) {
+        const uint8_t *wp = mh::caps::path::waypoint(player, slot, entry);
+        *heading          = wp[0];
+        *run              = wp[1];
+    }
+    void dir_delta(int h, int *dx, int *dy) {
+        const int8_t *t = reinterpret_cast<const int8_t *>(ADDR_DIR_DELTA);
+        *dx             = t[h * 2];
+        *dy             = t[h * 2 + 1];
+    }
+    // mods:M1WL v4 (sh_retrace): the route_search tables (0x004236c2), read live: byte[32] {dy, dx, -, -} per direction and int[8] dir codes.
+    void route_step(int i, int *dx, int *dy, int *code) {
+        const int8_t *t = reinterpret_cast<const int8_t *>(ADDR_ROUTE_STEP_DELTAS);
+        *dy             = t[i * 4];
+        *dx             = t[i * 4 + 1];
+        *code           = reinterpret_cast<const int32_t *>(ADDR_ROUTE_DIR_CODES)[i];
+    }
+    uint32_t cell_cost(uint32_t low) { return mv_flood_cost(low); }                                  // what the flood adds for a cost byte (route_cost table when that key is on)
+    uint32_t flood_wrap_mask() { return *reinterpret_cast<const volatile uint32_t *>(0x00708b1cu); } // mods:M1WL v5 (sh_margin): the flood's wrap mask, as net_lockstep.cpp fe_run reads it
+    void     wp_put(uint32_t player, uint32_t slot, uint32_t entry, uint8_t heading, uint8_t run) {
+        uint8_t *wp = mh::caps::path::waypoint(player, slot, entry);
+        wp[0]       = heading;
+        wp[1]       = run;
+    }
+    uint32_t &cell_flags(uint32_t flat) {
+        return *reinterpret_cast<uint32_t *>(reinterpret_cast<uint8_t *>(mh::state::live().base[mh::state::RID_MAP_REGION_GRID]) + flat * 8u + 4u);
+    }
+    int32_t  member_count() { return *reinterpret_cast<const int32_t *>(ADDR_GRP_COUNT); }
+    uint32_t member_handle(int32_t m) { return *reinterpret_cast<const uint32_t *>(ADDR_GRP_MEMBERS + static_cast<uint32_t>(m) * 6u); }
+};
+
 } // namespace
 
 static void __cdecl rt_unmask() {
@@ -392,7 +456,8 @@ static void __cdecl rt_unmask() {
     const bool idle_on   = g_rt_on && g_nd_nudge; // the nudge / trade is what resolves the idle meeting: no key, no change
     const bool moving_on = g_rtm_on != 0;
     const bool replan_on = g_rtr_on != 0;
-    if (!idle_on && !moving_on && !replan_on) return;
+    const bool heat_on   = g_sh_on != 0;
+    if (!idle_on && !moving_on && !replan_on && !heat_on) return;
     if (idle_on) mv_hit(MVH_RT);
     if (moving_on) mv_hit(MVH_RTM);
     if (replan_on) mv_hit(MVH_RTR);
@@ -406,6 +471,42 @@ static void __cdecl rt_unmask() {
     const int     opened    = mh::sim::move::rt_unmask(w, g_rt_undo, idle_on ? g_rt_on : 0, true, player, goal_x, goal_y, geom->width_mask, geom->height_mask);
     const int     opened_mv = moving_on ? mh::sim::move::rt_unmask_moving(w, g_rt_undo, g_rtm_cost, player, goal_x, goal_y, geom->width_mask, geom->height_mask) : 0;
     const int     opened_rp = replan_on ? mh::sim::move::rt_unmask_replanning(w, g_rt_undo, g_rtm_cost, player, goal_x, goal_y, geom->width_mask, geom->height_mask) : 0;
+    if (heat_on) { // mods:M1WL v2: after the unmasks (closed first in rt_restore, LIFO)
+        sh_live_world hw;
+        if (mh::sim::move::sh_open(hw, g_sh_state, player, g_sh_group, g_sh_plain, geom->width_mask, geom->height_mask, g_sh_p) > 0) {
+            mv_hit(MVH_SH);
+            { // mods:M1WL v3: the snapshot the ImGui section reads (a copy of what this plan priced; the rule itself never reads it back)
+                mh::heatui::snapshot &sn = g_sh_snap;
+                sn.step                  = mh::desync::replay_rec::current_step();
+                sn.player                = player;
+                sn.unit                  = hw.member_handle(0);
+                sn.mates                 = g_sh_state.mates;
+                sn.tiles                 = g_sh_state.tiles;
+                sn.cost                  = g_sh_p.cost;
+                sn.scale                 = g_sh_p.scale;
+                sn.n                     = g_sh_state.n < mh::heatui::SNAP_TILES ? g_sh_state.n : mh::heatui::SNAP_TILES;
+                int priced               = 0;
+                for (int k = 0; k < sn.n; ++k) {
+                    sn.flat[k] = g_sh_state.flat[k];
+                    sn.cnt[k]  = g_sh_state.cnt[k];
+                    if (g_sh_state.cnt[k]) ++priced;
+                }
+                sn.priced = priced;
+                ++sn.seq;
+            }
+            char b[128];
+            if (!g_sh_logged) {
+                g_sh_logged = true;
+                wsprintfA(b, "; move prototype [net] move_stream_heat=%d active\n", g_sh_on);
+                seam_log(b);
+            }
+            static int n;
+            if (n++ < 60) {
+                wsprintfA(b, "; M1WL heat p%u u%u mates=%d tiles=%d\n", player, hw.member_handle(0), g_sh_state.mates, g_sh_state.tiles);
+                seam_log(b);
+            }
+        }
+    }
     if (opened_rp) {
         static int n;
         if (n++ < 200) {
@@ -436,6 +537,41 @@ static void __cdecl rt_unmask() {
 }
 
 static void __cdecl rt_restore() {
+    sh_live_world hw;
+    if (g_sh_state.n > 0 && g_sh_p.retrace) { // mods:M1WL v4: the heat fired and the planner has run: re-trace the route charging the tile stepped onto, while the heat is still priced
+        const auto    &live   = mh::state::live();
+        const uint32_t player = *reinterpret_cast<const uint32_t *>(live.base[mh::state::RID_STRAT_GROUP_ORDER_OWNER]);
+        const auto    *geom   = reinterpret_cast<const mh_llm_strat_map_geom *>(live.base[mh::state::RID_GENERAL]);
+        if (player < 8 && geom) {
+            mh::sim::move::sh_retrace_info inf;
+            const int                      r = mh::sim::move::sh_retrace(hw, g_sh_state, player, geom->width_mask, geom->height_mask, g_sh_p, &inf);
+            mh::sim::move::sh_retrace_count(g_sh_rt, r);
+            static int n;
+            if (r != mh::sim::move::SHR_NONE && n++ < 4000) {
+                char b[192];
+                wsprintfA(b, "; M1WL retrace p%u u%u result=%d turn=%d len=%d>%d heat=%d>%d runs=%d>%d turns=%d>%d\n", player, hw.member_handle(0), r, g_sh_p.turn, inf.len_before,
+                          inf.len_after, inf.heat_before, inf.heat_after, inf.runs_before, inf.runs_after, inf.turns_before, inf.turns_after);
+                seam_log(b);
+            }
+        }
+    }
+    if (g_sh_state.n > 0 && g_sh_p.margin > 0) { // mods:M1WL v5: the margin rule, still inside the heat (it re-floods the unheated field and puts every cell word back)
+        const auto    &live   = mh::state::live();
+        const uint32_t player = *reinterpret_cast<const uint32_t *>(live.base[mh::state::RID_STRAT_GROUP_ORDER_OWNER]);
+        const auto    *geom   = reinterpret_cast<const mh_llm_strat_map_geom *>(live.base[mh::state::RID_GENERAL]);
+        if (player < 8 && geom) {
+            mh::sim::move::sh_margin_info inf;
+            const int                     r = mh::sim::move::sh_margin(hw, g_sh_state, player, geom->width_mask, geom->height_mask, g_sh_p, &inf);
+            mh::sim::move::sh_margin_count(g_sh_mg, r);
+            static int n;
+            if (r != mh::sim::move::SHM_NONE && n++ < 4000) {
+                char b[160];
+                wsprintfA(b, "; M1WL margin p%u u%u result=%d margin=%d len=%d plain=%d\n", player, hw.member_handle(0), r, g_sh_p.margin, inf.len_heated, inf.len_plain);
+                seam_log(b);
+            }
+        }
+    }
+    mh::sim::move::sh_close(hw, g_sh_state); // the heat was priced last: closed first
     rt_live_world w;
     mh::sim::move::rt_restore(w, g_rt_undo);
 }
@@ -456,6 +592,10 @@ static void __cdecl fc_after_pathfind(int32_t group_id, uint32_t mode, uint32_t 
 __declspec(naked) static void rt_stub() {
     __asm {
         pushad
+        mov   eax, dword ptr [ebp + 0x08]       // mods:M1WL v2: commit's move_group_id and is_plain_move_flag, for the stream heat
+        mov   g_sh_group, eax
+        mov   eax, dword ptr [ebp + 0x0c]
+        mov   g_sh_plain, eax
         call  rt_unmask
         popad
         call  dword ptr [g_rt_orig_fn]          // EAX = mode, EDX = target mask, exactly as the commit loaded them
@@ -528,6 +668,7 @@ void install_move_proto_nudge() {
     mh::seams::mv::note_site(mh::seams::mv::SITE_RTM, g_rt_state);
     mh::seams::mv::note_site(mh::seams::mv::SITE_RTR, g_rt_state);
     mh::seams::mv::note_site(mh::seams::mv::SITE_FC, g_rt_state);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_SH, g_rt_state);
 }
 
 // The setters set the stubs' gates and tell the carrier report (move_carrier.cpp) the requested value; the report -- late, once the
@@ -603,6 +744,22 @@ int mh_set_move_route_through_replanning(int on) {
     return 1;
 }
 
+// mods:M1WL v2: a lone unit of a stream plans round the next 48 path tiles of its groupmates (sim/move/stream_heat.h). Same splice as the
+// route-through keys (the bracket at 0x0041c9ce); needs no other key. 0 off, 1 on.
+int mh_set_move_stream_heat(int on) {
+    g_sh_on     = 0;
+    g_sh_logged = false; // the "active" line is written by the first plan that fires (the setter runs before the match log opens)
+    mh::seams::mv::request(mh::seams::mv::KEY_STREAM_HEAT, on, 0);
+    if (on == 0 || g_rt_state != 1) return 0;
+    g_sh_on = 1;
+    return 1;
+}
+
+// mods:M1WL v3: the stream heat's tuning keys (raw numbers; sh_params_clamped is the one clamp, shared with the libmh twin). Takes effect from the next plan.
+void mh_set_move_stream_heat_params(int cost, int window, int min_mates, int scale, int retrace, int turn, int scale_cap, int margin) {
+    g_sh_p = mh::sim::move::sh_params_clamped(cost, window, min_mates, scale, retrace, turn, scale_cap, margin);
+}
+
 // mods:M1G 4b: 0 off (retail), 1..2 = old keep rule (N - 1 rings of slack), 3 = the formation moves as one (sim/move/formation.h). Same splice as move_route_through_idle.
 int mh_set_move_formation_click(int n) {
     g_fc_on      = 0;
@@ -649,3 +806,82 @@ uintptr_t mv_cap_refuse(uint32_t player, uint32_t idx, int cap_pct) {
     }
     return reinterpret_cast<uintptr_t>(u);
 }
+
+// ---- mods:M1WL v3: the reads behind the ImGui "Stream heat" section (seams/heat_ui.h). Display only: no write to game memory, no RNG. ----------
+namespace mh::heatui {
+
+const snapshot &last_plan() { return g_sh_snap; }
+uint32_t        hit_counter() { return g_mv_hit[MVH_SH]; }
+
+void get_live(live_values *out) {
+    out->on        = g_sh_on;
+    out->cost      = g_sh_p.cost;
+    out->window    = g_sh_p.window;
+    out->min_mates = g_sh_p.min_mates;
+    out->scale     = g_sh_p.scale;
+    out->retrace   = g_sh_p.retrace;
+    out->turn      = g_sh_p.turn;
+    out->scale_cap = g_sh_p.scale_cap;
+    out->margin    = g_sh_p.margin;
+}
+
+void retrace_counts(uint32_t *plans, uint32_t *changed, uint32_t *refused) {
+    *plans   = g_sh_rt.plans;
+    *changed = g_sh_rt.changed;
+    *refused = g_sh_rt.refused;
+}
+
+void margin_counts(uint32_t *checks, uint32_t *kept) {
+    *checks = g_sh_mg.checks;
+    *kept   = g_sh_mg.rewrote;
+}
+
+int traffic_sample(uint8_t *counts) {
+    memset(counts, 0, 65536);
+    const auto &g     = mh::caps::g(mh::caps::UNITS);
+    int         total = 0;
+    for (uint32_t p = 0; p < g.players && p < 8; ++p) {
+        for (uint32_t i = 1; i < g.limit; ++i) {
+            const mh_map_object_unit *u = unit_rec(p, static_cast<int32_t>(i));
+            if (!u || !unit_alive(*u)) continue;
+            const bool stored = u->state >= 0x20 && u->state <= 0x2b && u->state != 0x23; // docked in a building: no tile of its own
+            if (stored) continue;
+            uint8_t &c = counts[(static_cast<uint32_t>(u->x) << 8) | u->y];
+            if (c < 255) ++c;
+            ++total;
+        }
+    }
+    return total;
+}
+
+int unit_route(uint32_t player, uint32_t unit, uint32_t *flat, int max) {
+    const mh_map_object_unit *u    = unit_rec(player, static_cast<int32_t>(unit));
+    const auto               *geom = reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL]);
+    if (!u || !geom || !unit_alive(*u)) return 0;
+    const uint8_t slot = mh::caps::path::unit_slot_u8(reinterpret_cast<const uint8_t *>(u));
+    if (slot >= mh::caps::path::slot_limit()) return 0;
+    int      e = u->path_cursor, n = 0;
+    uint32_t x = u->x, y = u->y;
+    if (e < 0 || e >= mh::sim::move::SH_PATH_ENTRIES) return 0;
+    const uint8_t *wp = mh::caps::path::waypoint(player, slot, static_cast<uint32_t>(e));
+    if (wp[1] == 0) ++e; // a spent leg, skipped once like the walker does
+    for (; e < mh::sim::move::SH_PATH_ENTRIES && n < max; ++e) {
+        wp          = mh::caps::path::waypoint(player, slot, static_cast<uint32_t>(e));
+        const int h = wp[0], r = wp[1];
+        if (h == 0) break;
+        int dx = 0, dy = 0;
+        if (h <= 24) {
+            const int8_t *t = reinterpret_cast<const int8_t *>(ADDR_DIR_DELTA);
+            dx              = t[h * 2];
+            dy              = t[h * 2 + 1];
+        }
+        for (int k = 0; k < r && n < max; ++k) {
+            x         = (x + static_cast<uint32_t>(dx)) & geom->width_mask;
+            y         = (y + static_cast<uint32_t>(dy)) & geom->height_mask;
+            flat[n++] = ((x & 0xffu) << 8) | (y & 0xffu);
+        }
+    }
+    return n;
+}
+
+} // namespace mh::heatui

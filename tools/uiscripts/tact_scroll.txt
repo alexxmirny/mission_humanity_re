@@ -1,0 +1,30 @@
+# tact_scroll (TSCR1): the tactical camera scroll rate on the pinned game clock.
+#
+# WHAT IT PROVES. In a running tactical mission the right arrow, the down arrow and the cursor on the
+# left screen edge each move the camera at [tactical] scroll_px_s of GAME time (480 px/s: 15 columns/s,
+# 20 rows/s), whatever the frame rate. The two arms differ only in pin_clock_dt_us (16667 = a 60 fps
+# stand-in, 33333 = 30 fps), so a pace tied to the frame rate would show as a 2x difference. The
+# verdict is tools/check_tact_scroll.py over the [mtrace] cam= column (cam_trace.ini), not pixels.
+#
+# ENTRY. Not from a menu: the runner launches --tactical 11 (see tact_panel.txt). Left/right holds are 240
+# presents = 4 s of game time at 60 fps (pin_clock_dt_us=16667), the down hold 90 (1.5 s = 30 rows at 20 rows/s: the map leaves only
+# 35 rows of travel below the start); the camera starts at col 84 row 18 (the mission's own centring), so the order is left, right, down: each hold stays inside the map bounds and the clamp never ends one early.
+gamemode 6
+cursorhold 320 240 30
+# One frame of the running mission before any scroll: the runner needs a capture, and it pins the start view.
+capture tact_scroll_t0
+
+log tact_scroll: left start
+cursorhold 0 240 240
+log tact_scroll: left end
+cursorhold 320 240 30
+
+log tact_scroll: right start
+keyhold 0x4d 240
+log tact_scroll: right end
+cursorhold 320 240 30
+
+log tact_scroll: down start
+keyhold 0x50 90
+log tact_scroll: down end
+cursorhold 320 240 30

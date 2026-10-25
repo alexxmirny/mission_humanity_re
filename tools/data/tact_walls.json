@@ -137,7 +137,7 @@
     },
     "llm_tact_blink_overlay_clear": {
       "class": "presentation",
-      "why": "Body is a flat 20x20 fill of _G_LLM_TILE_DRAWN_MAP with 1. Plate/docs (game-modes.md L873-876) identify this as part of the exit-confirm dialog's blink animation, called inside the scroll-transition-catchup flush loop alongside llm_tact_scroll_fade_step and llm_tact_frame_cursor_and_reset -- i.e. it is a peer of the confirmed-wall frame-tail function, resetting the same screen-space draw-tracking array.",
+      "why": "Body is a flat 20x20 fill of _G_LLM_TILE_DRAWN_MAP with 1. Plate/docs (game-modes.md L873-876) identify this as part of the exit-confirm dialog's blink animation, called inside the scroll-transition-catchup flush loop alongside llm_tact_blast_wipe_brighten_step and llm_tact_frame_cursor_and_reset -- i.e. it is a peer of the confirmed-wall frame-tail function, resetting the same screen-space draw-tracking array.",
       "evidence": "body read (tmp/decomp_tact/llm_tact_blink_overlay_clear.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 9; writes: _G_LLM_TILE_DRAWN_MAP[row*0x14+col] = 1 for a 20x20 region (blink-overlay reset); return: void",
       "settled_by": "body-read"
     },
@@ -201,10 +201,10 @@
       "evidence": "write-set enumeration over tmp/state_matrix.json: {_G_LLM_TACT_SCREENSHOT_COUNTER}",
       "settled_by": "write-set enumeration (NOT a body read -- see the closure doc's caveat)"
     },
-    "llm_tact_scroll_fade_step": {
+    "llm_tact_blast_wipe_brighten_step": {
       "class": "presentation",
       "why": "Loops WindowWidth*WindowHeight times darkening each RGB565 pixel of _G_LLM_FRAMEBUFFER by a saturating per-channel step; called once per iteration of llm_tact_frame's scroll-transition-catchup loop to build a screen fade. Purely a framebuffer effect.",
-      "evidence": "body read (tmp/decomp_tact/llm_tact_scroll_fade_step.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: _G_LLM_FRAMEBUFFER (pixel data, in place, via computed pointer walk); return: unused (CONCAT44 of its own unused params, a Watcom fake-return artifact)",
+      "evidence": "body read (tmp/decomp_tact/llm_tact_blast_wipe_brighten_step.{c,asm}) by the TACT-DOMAIN wall fan-out, chunk 3; writes: _G_LLM_FRAMEBUFFER (pixel data, in place, via computed pointer walk); return: unused (CONCAT44 of its own unused params, a Watcom fake-return artifact)",
       "settled_by": "body-read"
     },
     "llm_tact_tile_clear_margin_patch": {

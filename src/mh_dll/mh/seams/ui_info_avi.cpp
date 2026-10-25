@@ -18,6 +18,7 @@
 #include "hook/promoted.h"     // promoted_owner_of
 #include "net_internal.h"      // seam_log; g_ini
 #include "en_guard.h"          // EN-only build gate
+#include "gfx/ddraw_own.h"     // RES16: owned_info_layer_pass / owned_info_clip_stash / owned_set_info_post
 #include "ui_info_avi.h"       // the pure tick arithmetic + the test-knob matcher
 
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -83,7 +84,17 @@ long g_no_video     = 0; // info screens opened without video
 
 // ---- 1. the guarded media tick -------------------------------------------------------------------
 
+// RES16: the cursor and the flip that end a tick. In a scaled layout the dialog layer passes (gfx/ddraw_own.cpp dialog_list_draw) run this widget
+// callback three times with the list's own drawing diverted into a scratch; the early two do nothing, the last decodes the clip and hands it to the
+// layer (owned_info_clip_stash) instead of BltFast'ing it into the frame, and this runs once the layer is stored (owned_set_info_post).
+void tick_end() {
+    mh::call::llm_gfx_draw_cursor_menu();
+    mh::call::llm_gfx_present_flip();
+}
+
 void media_tick() {
+    const int pass = mh::gfx::owned_info_layer_pass();
+    if (pass == 1) return;
     void         *surf = at<void *>(ADDR_SURFACE);
     const int32_t len  = at<int32_t>(ADDR_STREAM_LENGTH);
     const bool    vid  = mh::info_avi::video_on(surf != nullptr, len);
@@ -95,13 +106,17 @@ void media_tick() {
     } else {
         ++g_tick_skipped;
     }
-    mh::call::llm_gfx_surface_unlock(2);
-    if (vid) {
-        void *back = at<void *>(ADDR_BACK_SURFACE);
-        ((fn_bltfast)vtbl(back)[VT_BLTFAST])(back, at<uint32_t>(ADDR_BLT_X), at<uint32_t>(ADDR_BLT_Y), surf,
-                                             nullptr, 0x10 /* DDBLTFAST_WAIT */);
+    if (pass == 2) {
+        if (vid) mh::gfx::owned_info_clip_stash(surf, (int)at<uint32_t>(ADDR_BLT_X), (int)at<uint32_t>(ADDR_BLT_Y));
+    } else {
+        mh::call::llm_gfx_surface_unlock(2);
+        if (vid) {
+            void *back = at<void *>(ADDR_BACK_SURFACE);
+            ((fn_bltfast)vtbl(back)[VT_BLTFAST])(back, at<uint32_t>(ADDR_BLT_X), at<uint32_t>(ADDR_BLT_Y), surf,
+                                                 nullptr, 0x10 /* DDBLTFAST_WAIT */);
+        }
+        mh::call::llm_gfx_surface_lock(2);
     }
-    mh::call::llm_gfx_surface_lock(2);
     mh::call::llm_time_get_ticks_ms();
     const mh::info_avi::tick_step s = mh::info_avi::plan_tick(
         len, at<int32_t>(ADDR_PLAYBACK_POS), at<uint32_t>(ADDR_TICKS_MS), at<uint32_t>(ADDR_LAST_TICK));
@@ -109,8 +124,8 @@ void media_tick() {
     at<int32_t>(ADDR_FRAME_DELTA)  = s.delta; // the MP keepalive in llm_ui_paged_list_frame reads it
     at<uint32_t>(ADDR_LAST_TICK)   = at<uint32_t>(ADDR_TICKS_MS);
     if (s.wrapped) at<int32_t>(ADDR_STREAM_WRAPMARK) = -1;
-    mh::call::llm_gfx_draw_cursor_menu();
-    mh::call::llm_gfx_present_flip();
+    if (pass == 2) return; // the layer is not stored yet: tick_end runs from dialog_list_draw
+    tick_end();
 }
 
 // A widget draw callback (called, never jumped to). Watcom callers expect every register but EAX
@@ -270,6 +285,7 @@ extern "C" int MH_InfoAvi_Install(void) {
         //    retail's), so it is safe on every screen, not only the failed ones.
         g_tick_guarded = mh::hook::install_jmp(ADDR_MEDIA_TICK, (const void *)media_tick_thunk,
                                                mh::hook::entry_claim::exclusive, "the X2g info media tick guard");
+        if (g_tick_guarded) mh::gfx::owned_set_info_post(tick_end); // RES16: the scaled info screen is a dialog layer (the clip composited into it)
         // 2. The failure branch.
         g_fail_spliced = splice(ADDR_AVI_FAIL_BRANCH, FAIL_EXPECT, 0xE9, (const void *)open_failed_thunk,
                                 "failure branch");

@@ -10,9 +10,12 @@
 // `reimpl_fixes` field (the promoted body reads it). A setter that REFUSES (its splice is MISMATCHED, so the byte-patch
 // carrier is absent) keeps the fx field off too.
 //
+#include "caps/caps.h"
 #include "config/gameplay.h"
+#include "include/mh_net_export.h" // MH_Net_IsStarted (PT-CAP8: the MP warning)
 #include "lockstep/turn_engine.h"
 #include "seams/net_internal.h"
+#include "sim/move/stream_heat.h" // mods:M1WL v3: sh_legal_cost / sh_params_clamped, the clamps of the tuning keys
 
 namespace mh::gameplay {
 
@@ -23,6 +26,11 @@ namespace mh::gameplay {
 // host's values (including the -1s) travel as they are, so every peer resolves the same numbers.
 static bool g_move_master = false;
 static int  mv(const mh_gameplay::value &v, int preset, int retail) { return v.i >= 0 ? v.i : (g_move_master ? preset : retail); }
+// mods:M1WL v3..v5: the stream heat's tuning keys reach the retail splice together (sh_params_clamped is the one clamp, shared with the libmh twin).
+static void push_heat(const mh::lockstep::reimpl_fixes &fx) {
+    mh_set_move_stream_heat_params(fx.move_stream_heat_cost, fx.move_stream_heat_window, fx.move_stream_heat_min_mates, fx.move_stream_heat_scale, fx.move_stream_heat_retrace,
+                                   fx.move_stream_heat_turn, fx.move_stream_heat_scale_cap, fx.move_stream_heat_margin);
+}
 // mods:M1 [net] group_movement -- the SEPARATE launcher switch over group movement (today: move_group_speed). Same
 // -1 = follow-the-switch rule as mv(), with its own master; its row precedes move_group_speed in ini_keys.def.
 static bool g_group_master = false;
@@ -32,6 +40,8 @@ static int  gm(const mh_gameplay::value &v, int preset, int retail) { return v.i
 static int  g_cor_resolved  = 0; // the resolved route_corridor_mode (route_flood_exact's default follows it)
 static bool g_combat_master = false;
 static int  cb(const mh_gameplay::value &v, int preset, int retail) { return v.i >= 0 ? v.i : (g_combat_master ? preset : retail); }
+
+static bool g_raise_refused = false; // PT-CAP8 S5: the last [caps] raise apply asked for ON and set_limits(true) said no
 
 static const hook_row k_hooks[] = {
     {"net", "turret_reload_realtime_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) { fx.turret_reload_realtime_fix = mh_set_turret_reload_realtime(v.i) != 0 && v.i != 0; }},
@@ -188,6 +198,53 @@ static const hook_row k_hooks[] = {
          fx.move_formation_click = n <= 0 ? 0 : (n > 3 ? 3 : n);
          mh_set_move_formation_click(n);
      }},
+    // mods:M1WL v2: stream heat (sim/move/stream_heat.h). 0 retail; 1 = a lone unit of a stream prices the tiles its groupmates are about to walk.
+    {"net", "move_stream_heat", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on        = mv(v, 1, 0);
+         fx.move_stream_heat = on != 0;
+         mh_set_move_stream_heat(on);
+     }},
+    // mods:M1WL v3: the stream heat's tuning keys (the preset is the shipped rule: cost 2, window 120, 8 mates, scaled up to 16 mates, margin 50). One hook each; they all store
+    // the clamped value into fx and push the four numbers to the retail splice together (sh_params_clamped is the one clamp, shared with the twin).
+    {"net", "move_stream_heat_cost", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_cost = mh::sim::move::sh_legal_cost(mv(v, 2, 2));
+         push_heat(fx);
+     }},
+    {"net", "move_stream_heat_window", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_window = mv(v, mh::sim::move::SH_WINDOW, mh::sim::move::SH_WINDOW);
+         fx.move_stream_heat_window = mh::sim::move::sh_params_clamped(2, fx.move_stream_heat_window, 8, 0).window;
+         push_heat(fx);
+     }},
+    {"net", "move_stream_heat_min_mates", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_min_mates = mv(v, 8, 8);
+         fx.move_stream_heat_min_mates = mh::sim::move::sh_params_clamped(2, mh::sim::move::SH_WINDOW, fx.move_stream_heat_min_mates, 0).min_mates;
+         push_heat(fx);
+     }},
+    {"net", "move_stream_heat_scale", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_scale = mv(v, 1, 1) != 0 ? 1 : 0;
+         push_heat(fx);
+     }},
+    // mods:M1WL v4: re-trace a heated plan charging the tile stepped onto (sim/move/stream_heat.h sh_retrace). -1 = on when the heat is on, 0 = rc9 behaviour.
+    {"net", "move_stream_heat_retrace", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_retrace = v.i >= 0 ? (v.i != 0 ? 1 : 0) : (fx.move_stream_heat ? 1 : 0);
+         push_heat(fx);
+     }},
+    // mods:M1WL v4: the re-trace's penalty for a step that turns by more than 45 degrees (cost units). -1 = the shipped default.
+    {"net", "move_stream_heat_turn", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_turn = mh::sim::move::sh_params_clamped(2, mh::sim::move::SH_WINDOW, 8, 0, 1, v.i >= 0 ? v.i : mh::sim::move::SH_TURN_DEFAULT).turn;
+         push_heat(fx);
+     }},
+    // mods:M1WL v5: the mate count at which the scaled cost stops growing (-1 = 16: cost 2 below 16 mates on a tile, 32 from 16). 1 .. 255.
+    {"net", "move_stream_heat_scale_cap", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_scale_cap = mh::sim::move::sh_params_clamped(2, mh::sim::move::SH_WINDOW, 8, 1, 0, 0, v.i >= 0 ? v.i : mh::sim::move::SH_SCALE_CAP).scale_cap;
+         push_heat(fx);
+     }},
+    // mods:M1WL v5: the margin rule (sim/move/stream_heat.h sh_margin): percent; a heated route longer than (100 + margin)% of the unheated one is replaced
+    // by it. -1 = 50, 0 = off.
+    {"net", "move_stream_heat_margin", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         fx.move_stream_heat_margin = mh::sim::move::sh_params_clamped(2, mh::sim::move::SH_WINDOW, 8, 1, 0, 0, mh::sim::move::SH_SCALE_CAP, v.i >= 0 ? v.i : mh::sim::move::SH_MARGIN_DEFAULT).margin;
+         push_heat(fx);
+     }},
     {"net", "move_attack_heading_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
          const int on               = mv(v, 1, 0);
          fx.move_attack_heading_fix = on != 0;
@@ -236,8 +293,22 @@ static const hook_row k_hooks[] = {
          fx.projectile_facing_fix = on != 0;
          mh_set_projectile_facing_fix(on);
      }},
+    // patching:PT-CAP8 [caps] raise: the v0.2.2 roster limit layer (buildings 100 -> 500, storage/turrets/mines/labs 25|32 -> 127,
+    // productions 8 -> 127, projectiles 1500 -> 4000). The ARRAYS are relocated at boot whatever this says (mh::caps); this only flips
+    // the 51 limit sites, at the PT-SET1 apply points (boot LOCAL, host PUBLISHED at Start, client ADOPTED before begin_map_load) -- all
+    // outside a running sim. set_limits() refuses (logs, stays as it was) while a world is stepping or when the arrays are not relocated.
+    {"caps", "raise", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) {
+         // PT-CAP8 S5: remember whether a requested raise was refused (relocation refused / not staged / world live), so the
+         // client's adopt point (launch.cpp mp_client_adopt_start) can leave the lobby instead of playing unraised against a raised host.
+         g_raise_refused = v.i != 0 && !mh::caps::set_limits(true, "gameplay settings");
+         if (v.i == 0) mh::caps::set_limits(false, "gameplay settings");
+         // O1c: the replicated order lane carries a 12-bit building index (seams/order_wide_index.cpp), so
+         // raise=1 in multiplayer no longer mis-targets building orders past index 255.
+     }},
     {nullptr, nullptr, nullptr}, // sentinel: keeps the array non-empty if every synced row is ever removed
 };
+
+bool raise_refused() { return g_raise_refused; }
 
 const hook_row *hooks(int *count) {
     *count = (int)(sizeof(k_hooks) / sizeof(k_hooks[0])) - 1;

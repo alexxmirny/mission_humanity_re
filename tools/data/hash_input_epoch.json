@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "afc5c658b5c26ea00591a8478e50e61c158a5642f9e521ef7a580f33c6187e71"
+   "sha256": "6e95d0ad0c61d19bf9b4cd38e3602439d0c8a40fb667127eec1b477bcacbdef5"
   },
   {
    "id": "harness_hash_kind_step",
@@ -57,7 +57,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_order_replay_inject",
    "reason": "the replay injector writes QUEUE + COUNT into hashed regions before the hash",
-   "sha256": "c8974d38742ab6a86084d194dcab29d05039a2ff9bb2c2b5caa94d4c8ea06956"
+   "sha256": "d6ae3d677045b5f7f6569036c8943c6a1ce5b34c126296250237ae020bcfd0fb"
   },
   {
    "id": "libref_prehash_writes",
@@ -228,6 +228,33 @@
     "harness_on_sim_step_prehash"
    ],
    "reason": "field-report scene dump: harness world_in import + a clock-track funding clause at step 0, both replay-only (world_in=0 by default); the bytes fed to the hash for an unchanged world are unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-20",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "PT-CAP8 slice C: harness_on_sim_step_prehash gains a canon_gather call (relocated roster arrays mirrored into the stock extents before the hash); hash inputs unchanged"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-21",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "PT-CAP9-U1/U2: harness_on_sim_step_prehash gained the capu_tick unit-fill fixture call (off unless capu_at > 0) and the unit-roster reads moved to the geometry table; no bytes fed to the hash change for an unchanged world"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-10-21",
+   "changed": [
+    "harness_order_replay_inject"
+   ],
+   "reason": "PT-CAP9-U5: the replay injector's queue bound follows the live capacity (order_qcap(): 300 vanilla, 4096 with the order layer ON) instead of the literal 300; the bytes fed to the hash for an unchanged world are identical"
   }
  ]
 }

@@ -4511,7 +4511,7 @@
   "_G_LLM_TACT_SCREENSHOT_COUNTER": [
    "llm_tact_save_screenshot"
   ],
-  "_G_LLM_TACT_SCROLL_CMD": [
+  "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP": [
    "llm_tact_frame",
    "llm_tact_mission_start"
   ],

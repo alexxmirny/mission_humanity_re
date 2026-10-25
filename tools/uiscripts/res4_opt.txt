@@ -1,0 +1,80 @@
+# res4_opt -- mods:RES4: the "Interface size" row of the in-game Options screen (ESC > Options, below Screen size).
+# ini/res4_opt.ini: ui_scale=100 on a pinned 1920x1080 screen ([video] ui_screen), the game at the 1856x1088 frame RES4 asks for at
+# 150% on that screen (like res4_quads). The options dialog is centred on the rendered size, so the Screen size spinner sits at
+# (W/2-22, H/2-3) = (906,541) and the new row, one 30-px row below it, at (906,571); one click is the next choice, wrapping
+# Auto, 100, 125, 150, 175, 200.
+#  a  strategic view at 100: the single-quad presented image;
+#  b  Options: the row reads 100% (the real state); two clicks -> 150%; Ok applies it LIVE (log `Interface size -> 150`, ini saved);
+#  c  back in the game: `capture res4_frame` + `pcapture res4_150` -- the presented image is the quad composition at 150%
+#     (tools/check_ui_quads.py proves it pixel for pixel);
+#  d  Options again: the row reads 150% (it re-reads the real state at every open); four clicks wrap through 175, 200, Auto
+#     to 100%; Ok -> back to the single quad, ini saved as 100.
+# bcapture (RES23-S0) is taken once, at the very end: this lane is headless (the null presenter shows nothing) so it logs SKIPPED, and every
+# earlier op the script gains would shift the pinned game clock and move the animated notice in the later captures. The presenter-vs-pcapture
+# agreement is proven on res4_opt_latch (gdi) and res19_user_* (gdi + d3d11).
+# tools/check_res4_opt.py reads the log lines and the ini of the lane.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +100
+pcapture res4_opt_100a
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+capture res4_opt_menu_100
+click 906 571
+settled Ok
+click 906 571
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +100
+capture res4_frame
+pcapture res4_150
+log res4_opt scaled_150
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+capture res4_opt_menu_150b
+click 906 571
+settled Ok
+click 906 571
+settled Ok
+click 906 571
+settled Ok
+capture res4_opt_menu_auto
+click 906 571
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +100
+pcapture res4_opt_100b
+bcapture res4_opt_100b
+log res4_opt COMPLETE -- 100 -> 150 -> 100 through the in-game Options screen
+end

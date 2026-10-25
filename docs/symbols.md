@@ -396,7 +396,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0043c1dd` | `llm_tact_view_shift_row_inc` | `void llm_tact_view_shift_row_inc(void)` | conf:med |
 | `0x0043c266` | `llm_tact_view_shift_row_dec` | `void llm_tact_view_shift_row_dec(void)` | conf:high |
 | `0x0043c303` | `llm_tact_mark_view_tiles_dirty` | `void llm_tact_mark_view_tiles_dirty(void)` | conf:high |
-| `0x0043c323` | `llm_tact_scroll_fade_step` | `void llm_tact_scroll_fade_step(void)` | conf:high |
+| `0x0043c323` | `llm_tact_blast_wipe_brighten_step` | `void llm_tact_blast_wipe_brighten_step(void)` | conf:high |
 | `0x0043c39c` | `llm_tact_tile_clear_margin_patch` | `void llm_tact_tile_clear_margin_patch(void)` | conf:low |
 | `0x0043c3dc` | `llm_tact_tile_overlay_refresh` | `void llm_tact_tile_overlay_refresh(void)` |  |
 | `0x0043c4f2` | `llm_tact_ui_minimap_draw_viewport_outline` | `void llm_tact_ui_minimap_draw_viewport_outline(void)` | conf:high |
@@ -1885,6 +1885,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x004d4e6b` | `llm_strat_ai_group_split_half` | `void llm_strat_ai_group_split_half(game_t_Player player, int src_group_index)` | conf:med todo:dead |
 | `0x004d4f16` | `llm_strat_ai_group_remove` | `void llm_strat_ai_group_remove(int player, uint group_index)` | conf:high |
 | `0x004d50b3` | `llm_strat_ai_engage_candidate_add` | `void llm_strat_ai_engage_candidate_add(uint target_ref, int target_index)` |  |
+| `0x004d516c` | `llm_strat_ai_engage_prune_unseen_candidates` | `void llm_strat_ai_engage_prune_unseen_candidates(void)` | conf:med todo:dead |
 | `0x004d5245` | `llm_strat_ai_engage_rank_candidates_by_range` | `void llm_strat_ai_engage_rank_candidates_by_range(uint source_ref, int source_index)` | todo:dead |
 | `0x004d53ae` | `llm_strat_ai_engage_sort_candidates_by_dist` | `void llm_strat_ai_engage_sort_candidates_by_dist(uint source_ref, int source_index, int inherited_sorted_flag)` |  |
 | `0x004d552b` | `llm_strat_ai_engage_partition_turret_candidates` | `void llm_strat_ai_engage_partition_turret_candidates(void)` |  |
@@ -2952,7 +2953,7 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00558710` | `_G_LLM_TACT_MOVE_PATH_SLOT_ID` | `undefined4` |
 | `0x00558714` | `_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM` | `int` |
 | `0x0055871c` | `_G_LLM_BOOT_STAGE` | `undefined4` |
-| `0x00558ba0` | `_G_LLM_TACT_SCROLL_CMD` | `undefined4` |
+| `0x00558ba0` | `_G_LLM_TACT_MINE_BLAST_SHAKE_STEP` | `undefined4` |
 | `0x00558ba4` | `_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER` | `int` |
 | `0x00558ba8` | `_G_LLM_TACT_MINE_BLAST_TIME_END` | `double` |
 | `0x00558bb8` | `_G_LLM_TACT_WHO_XOR_KEY` | `int` |

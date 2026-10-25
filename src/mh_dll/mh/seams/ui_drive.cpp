@@ -45,6 +45,7 @@
 #include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "addr/mh_calls.gen.h"         // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
 #include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
+#include "caps/caps.h"                 // PT-CAP8: mh::caps::rec -- the roster arrays the game addresses
                                        // where it IS, not where the binary put it
 #include "addr/mh_structs.gen.h"       // generated game struct mirrors (mh::game::mh_llm_*)
 #include "hook/watcall.h"              // call_watcall2 (resolve_position is __watcall)
@@ -1329,6 +1330,13 @@ void               keystate_shift(bool held) {
     volatile uint8_t *ks = (volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
     ks[SC_LSHIFT]        = held ? (uint8_t)(ks[SC_LSHIFT] | 5u) : (uint8_t)(ks[SC_LSHIFT] & 0xfeu);
 }
+// PT-CAP9-U5: the same latch for Ctrl -- the strategic input reads it from _G_LLM_INPUT_KEYSTATE[0x1d] (_G_LLM_KEY_LCTRL_HELD, tested against masks 1 and 2),
+// NOT from the key ring, so `key <digit> ctrl` is how a script presses Ctrl+digit (llm_unit_ctrl_group_recall -> the selection becomes control group N).
+constexpr uint32_t SC_LCTRL = 0x1d;
+void               keystate_ctrl(bool held) {
+    volatile uint8_t *ks = (volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
+    ks[SC_LCTRL]         = held ? (uint8_t)(ks[SC_LCTRL] | 5u) : (uint8_t)(ks[SC_LCTRL] & 0xfau);
+}
 // One frame of the sequence; returns true when it is complete. `frame` is the caller's per-step wait
 // counter (0 on the first present the step runs).
 bool rclick_frame(int frame, int x, int y, bool shift) {
@@ -1669,7 +1677,12 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                so the assertion is CONTAINS rather than equals. `hex:` bytes are the UTF-16LE code
 //                units; plain text is widened as Latin-1, which covers ASCII needles.
 //   ACTIONS clickv <N>  clickl <label>  clicki <idx>  cursor <x> <y>  click <x> <y>
-//           press <x> <y>  release <x> <y>  capture <name>  log <text>  dump (widget list)  end
+//           press <x> <y>  release <x> <y>  capture <name>  pcapture <name>  bcapture <name>  log <text>  dump (widget list)  end
+//     pcapture (mods:RES4) = capture of the PRESENTED image: the game frame composed on the CPU into the presenter's
+//     quad list ([video] ui_scale), at the window's client size or the dev key [video] ui_screen=WxH.
+//     The only way a headless (null backend) lane can see where the scaled HUD lands. Written as capture_<name>.bmp.
+//     bcapture (mods:RES23-S0) = capture of what the PRESENTER really put on screen (gdi: the client area; d3d11: the back buffer after
+//     the overlay pass; null backend: logs SKIPPED). Written by the NEXT present as capture_<name>__b.bmp; pcapture is its CPU twin.
 //     press/release are the two halves of a click (DOWN-only / UP-only) -- use them to spread a click over
 //     FRAMES for a scrollable LIST row (cursor -> [render settles the hover] -> press -> release), which
 //     the game selects reliably; a same-frame `click` commits the list's stale (un-rendered) hover row.
@@ -1805,6 +1818,7 @@ enum {
     OP_W_WINSWITCHABLE, // PT-GFX8: `winswitchable` -- the game window passes the taskbar / Alt-Tab eligibility rule
     OP_W_WINACTIVE,     // PT-GFX8: `winactive` -- the game window is the foreground window
     OP_W_ZOOM,          // RES2: `zoom <pct>` / `zoom ge <pct>` -- the map zoom (x100, 100 = off) is that / at least that
+    OP_W_SCURPOS,       // RES4: `scurpos <cx> <cy> [tol]` -- the drawn cursor is at the game pixel under CLIENT point (cx,cy)
     OP_W_CURPOS,        // RES6: `curpos <x> <y> [tol]` -- drawn, menu and DI cursor all within tol (default 2) of x,y
     OP_W_GZDONE,        // mp:Q2/Q3: `gzdone <N>` -- N recordings compressed by this process and none in flight
     OP_W_MAPSIZE,       // `mapsize <N>` -- the loaded map is N x N tiles (the torus's wrap width, 64 / 128 / 256)
@@ -1842,7 +1856,10 @@ enum {
     OP_A_LAYOUT,
     OP_A_KEYJOURNAL,
     OP_A_CAPTURE,
+    OP_A_BCAPTURE, // `bcapture <name>` -- mods:RES23-S0: capture_<name>__b.bmp of what the PRESENTER really put on screen (written by the next present)
+    OP_A_PCAPTURE, // `pcapture <name>` -- mods:RES4: capture_<name>.bmp of the PRESENTED image (the ui_scale quad list composed on the CPU)
     OP_A_LOG,
+    OP_A_NOTICE, // `notice <text>` -- RES20: the game's own red floating notice (llm_ui_print_floating_msg_red), the text widened from ASCII
     OP_A_SIGNAL,
     OP_A_DUMP,
     OP_A_MARK,       // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
@@ -1857,12 +1874,17 @@ enum {
     OP_A_LIFTOFF,    // mods:A1: `liftoff` -- every live mother building of the watched player -> state TO_UNIT (0x7c)
     OP_A_LOGSEL,     // `logsel <label>` -- RES12: a `; [sel] <label> cam= gest= btn= n= bldg= ids=` line (control group 0, sorted) in mh_video.log
     OP_A_LOGGOAL,    // `loggoal <label> [@side:id]` -- mods:MM4C: a `; [goal] <label> n= goals=id:x:y,..` line: control group 0's units' goal_x:goal_y (sorted by id), or the one unit `@side:id`, in mh_video.log
+    OP_A_LOGPORT,    // mods:UNL1: `logport <label>` -- a `; [port] <label> side= planet= avail= list_has18= ...` line + one `;   [port] <label> p=` line per player (unlock rows, offer lists)
+    OP_A_UNLOCKDROP, // mods:UNL1: `unlockdrop` -- open the retail gap on purpose: the first BUILDING unlock of the watched (default local) player that sits in its offer list and whose prerequisites are all acquired is made un-offered (row available=0, building removed from the offer list)
+    OP_A_TRAVEL,     // mods:UNL1: `travel <planet>` -- SwitchToPlanet(planet), the call the star-map transition makes first (the world switches; finalize has NOT run)
+    OP_A_ARRIVE,     // mods:UNL1: `arrive` -- llm_strat_planet_transition_finalize(), the call the transition tick makes once the switch is shown
     OP_A_POKERACE,
     OP_A_INJECTSTART,
     OP_A_END,
 };
 
-int g_a1_player = -1; // mods:A1: `watch` -- the player the A1 dump / lift-off / removal ops act on (-1 = the local player)
+int g_unl_row[8] = {}, g_unl_bld[8] = {}; // mods:UNL1: per player, the unlock row / building `unlockdrop` made un-offered (logport reports them)
+int g_a1_player = -1;                     // mods:A1: `watch` -- the player the A1 dump / lift-off / removal ops act on (-1 = the local player)
 
 struct Target {
     bool by_value;
@@ -2296,7 +2318,9 @@ void parse_line(const char *line) {
         s->op       = OP_A_KEY;
         char *after = nullptr;
         s->a        = (int)strtol(arg, &after, 0);
-        s->c        = (strncmp(skip_ws(after), "shift", 5) == 0) ? 1 : 0;
+        // `ctrl` (PT-CAP9-U5) is the same with the Ctrl latch (_G_LLM_INPUT_KEYSTATE[0x1d]): Ctrl+digit assigns the selection to a control group.
+        s->c = (strncmp(skip_ws(after), "shift", 5) == 0) ? 1 : (strncmp(skip_ws(after), "ctrl", 4) == 0) ? 2
+                                                                                                          : 0;
     } else if (strcmp(op, "keyhold") == 0) {
         // `keyhold <scancode> <frames>` -- mp:SES3c. `key` always sends a DOWN and an UP, so a
         // held arrow key (the four CAM_SCROLL_*_HELD latches -- 0x4b/0x4d/0x48/0x50 LEFT/RIGHT/
@@ -2443,6 +2467,7 @@ void parse_line(const char *line) {
         s->c          = strncmp(q, "abs", 3) == 0 ? 0 : strncmp(q, "rel", 3) == 0 ? 1
                                                     : strncmp(q, "down", 4) == 0  ? 2
                                                     : strncmp(q, "wheel", 5) == 0 ? 4
+                                                    : strncmp(q, "sabs", 4) == 0  ? 5
                                                                                   : 3;
         while (*q && *q != ' ' && *q != '\t') ++q;
         q = skip_ws(q);
@@ -2452,7 +2477,7 @@ void parse_line(const char *line) {
         } else if (s->c == 4) { // `rawmouse wheel <delta>`: 120 per notch, positive = forward (zoom in)
             s->a = (int)strtol(q, nullptr, 0);
         } else {
-            char *end;
+            char *end; // abs: a GAME pixel; sabs (mods:RES4): a CLIENT pixel, through the real abs_to_game mapping; rel: counts
             s->a = (int)strtol(q, &end, 0);
             s->b = (int)strtol(end, nullptr, 0);
         }
@@ -2478,6 +2503,16 @@ void parse_line(const char *line) {
         // desync/state_compress.h). State, not time: it holds exactly when the files are final on disk.
         s->op = OP_W_GZDONE;
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
+    } else if (strcmp(op, "scurpos") == 0) {
+        // `scurpos <cx> <cy> [tol]` -- mods:RES4 stage 4. The drawn cursor (_G_LLM_CURSOR_X/Y) is within tol (default 2) game
+        // pixels of the frame pixel under CLIENT point (cx,cy), mapped through the presenter's quad list (owned_client_to_game):
+        // "the pointer on the scaled panel put the game cursor where the quad shows it". Logs the expected point on a timeout.
+        s->op = OP_W_SCURPOS;
+        char *end;
+        s->a = (int)strtol(arg, &end, 0);
+        s->b = (int)strtol(end, &end, 0);
+        while (*end == ' ' || *end == '\t') ++end;
+        s->c = *end ? (int)strtol(end, nullptr, 0) : 2;
     } else if (strcmp(op, "curpos") == 0) {
         // `curpos <x> <y> [tol]` -- RES6 cursor carry: every copy of the cursor the input pump reads is within
         // tol (default 2) game pixels of (x,y): the drawn cursor _G_LLM_CURSOR_X/Y, the menu cursor the pump resets
@@ -2524,8 +2559,17 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "capture") == 0) {
         s->op = OP_A_CAPTURE;
         copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "bcapture") == 0) {
+        s->op = OP_A_BCAPTURE;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "pcapture") == 0) {
+        s->op = OP_A_PCAPTURE;
+        copy_trim(s->text, sizeof(s->text), arg);
     } else if (strcmp(op, "log") == 0) {
         s->op = OP_A_LOG;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "notice") == 0) {
+        s->op = OP_A_NOTICE;
         copy_trim(s->text, sizeof(s->text), arg);
     } else if (strcmp(op, "pokerace") == 0) {
         // `pokerace <slot> <value>` -- TEST HOOK, two ints like the `race` predicate.
@@ -2595,6 +2639,16 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "logsel") == 0) {
         s->op = OP_A_LOGSEL;
         copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logport") == 0) {
+        s->op = OP_A_LOGPORT;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "unlockdrop") == 0) {
+        s->op = OP_A_UNLOCKDROP;
+    } else if (strcmp(op, "travel") == 0) {
+        s->op = OP_A_TRAVEL;
+        s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "arrive") == 0) {
+        s->op = OP_A_ARRIVE;
     } else if (strcmp(op, "mapsize") == 0) {
         s->op = OP_W_MAPSIZE;
         s->a  = (int)strtol(arg, nullptr, 0);
@@ -2975,6 +3029,18 @@ bool wait_satisfied(const Step *s) {
         }
         case OP_W_DIMOUSE:
             return *(volatile int *)MOUSE_LAST_X == s->a && *(volatile int *)MOUSE_LAST_Y == s->b;
+        case OP_W_SCURPOS: {
+            POINT p = {s->a, s->b};
+            if (!mh::gfx::owned_client_to_game(&p)) return false;
+            const int  x = *(volatile int *)CURSOR_XX, y = *(volatile int *)CURSOR_YY;
+            const bool ok       = x >= p.x - s->c && x <= p.x + s->c && y >= p.y - s->c && y <= p.y + s->c;
+            static int last_log = -1;
+            if (!ok && g_wait != last_log && (g_wait % 300) == 299) {
+                last_log = g_wait;
+                ui_log("; scurpos client %d,%d -> game %ld,%ld expected; the drawn cursor is %d,%d", s->a, s->b, p.x, p.y, x, y);
+            }
+            return ok;
+        }
         case OP_W_CURPOS: {
             const int xs[3] = {*(volatile int *)CURSOR_XX, *(volatile int *)CURSOR_MENU_X, *(volatile int *)MOUSE_LAST_X};
             const int ys[3] = {*(volatile int *)CURSOR_YY, *(volatile int *)CURSOR_MENU_Y, *(volatile int *)MOUSE_LAST_Y};
@@ -3207,6 +3273,7 @@ click_result do_action(const Step *s) {
             if (s->c == 0) ok = mh::input::harness_mouse_abs_game(s->a, s->b);
             else if (s->c == 1) ok = mh::input::harness_mouse_rel(s->a, s->b);
             else if (s->c == 4) ok = mh::input::harness_mouse_wheel(s->a);
+            else if (s->c == 5) ok = mh::input::harness_mouse_abs_client(s->a, s->b);
             else ok = mh::input::harness_mouse_button(s->a, s->c == 2);
             if (!ok) {
                 ui_log("; rawmouse -- no owned DirectInput mouse ([input] backend=own, device created?)");
@@ -3337,14 +3404,16 @@ click_result do_action(const Step *s) {
             // present 0; the latch is re-asserted on presents 0..2 (the consumer drains the ring on
             // the frame AFTER the present that queued it, and the DI poll re-latches the byte every
             // frame -- the D25 convention) and cleared on present 3 so a held Shift cannot stick.
-            keystate_shift(true);
+            if (s->c == 2) keystate_ctrl(true);
+            else keystate_shift(true);
             if (g_wait == 0) {
                 enqueue_key((uint32_t)s->a, true);
                 enqueue_key((uint32_t)s->a, false);
-                ui_log("; key scancode 0x%02x (down+up) under a held Shift latch", s->a);
+                ui_log("; key scancode 0x%02x (down+up) under a held %s latch", s->a, s->c == 2 ? "Ctrl" : "Shift");
             }
             if (g_wait < 3) return CLICK_RETRY;
-            keystate_shift(false);
+            if (s->c == 2) keystate_ctrl(false);
+            else keystate_shift(false);
             break;
         case OP_A_KEYHOLD:
             // DOWN once, on present 0; presents 1..c-1 are the hold itself and inject nothing
@@ -3493,6 +3562,12 @@ click_result do_action(const Step *s) {
         case OP_A_CAPTURE:
             MH_Capture_Shot(s->text);
             break;
+        case OP_A_PCAPTURE:
+            MH_Capture_ShotPresented(s->text);
+            break;
+        case OP_A_BCAPTURE:
+            MH_Capture_ShotBackbuffer(s->text);
+            break;
         case OP_A_POKERACE: {
             // U28 TEST HOOK: write a lobby slot's race field LOCALLY, without the spinner and so
             // WITHOUT the 0x0c push the spinner would send. That is the whole point -- it manufactures,
@@ -3522,6 +3597,15 @@ click_result do_action(const Step *s) {
         case OP_A_LOG:
             ui_log("; [script] LOG: %s", s->text);
             break;
+        case OP_A_NOTICE: {
+            static wchar_t wtext[240]; // (the message queue's slot is 0xf0 bytes; the game copies it)
+            int            i = 0;
+            for (; s->text[i] && i < 118; ++i) wtext[i] = (wchar_t)(unsigned char)s->text[i];
+            wtext[i] = 0;
+            ui_log("; [script] NOTICE: %s", s->text);
+            mh::call::llm_ui_print_floating_msg_red(wtext);
+            break;
+        }
         case OP_A_SIGNAL:
             // The runner ferries this to the other peers (see ui_test.py). We only announce it.
             ui_log("; [script] SIGNAL %s", s->text);
@@ -3538,9 +3622,9 @@ click_result do_action(const Step *s) {
             const int32_t  armed     = *(const volatile int32_t *)mh::addr::_G_LLM_BUILD_PLACEMENT_ID;
             if (armed > 0) last_type = armed;
             const uint32_t player = *(const volatile uint16_t *)mh::addr::PlayerSide;
-            const auto    *bl     = reinterpret_cast<const mh::game::mh_map_object_building *>(mh::addr::buildings) + (player & 7u) * 100;
+            const auto    *bl     = mh::caps::rec<const mh::game::mh_map_object_building>(mh::caps::BUILDINGS, player & 7u, 0);
             int            placed = 0;
-            for (int i = 0; i < 100; ++i)
+            for (int i = 0; i < (int)mh::caps::g(mh::caps::BUILDINGS).limit; ++i)
                 if ((int32_t)bl[i].building_id == last_type && last_type > 0 && (bl[i].x | bl[i].y) != 0) ++placed;
             const int      shift = (((*(const volatile uint8_t *)mh::addr::_G_LLM_KEY_LSHIFT_HELD) |
                                 (*(const volatile uint8_t *)mh::addr::_G_LLM_KEY_RSHIFT_HELD)) &
@@ -3573,9 +3657,9 @@ click_result do_action(const Step *s) {
             break;
         case OP_A_REMOVEBLDG: {
             const uint32_t player = g_a1_player >= 0 ? (uint32_t)g_a1_player & 7u : *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
-            auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::addr::buildings) + player * 100;
+            auto          *bl     = mh::caps::rec<mh::game::mh_map_object_building>(mh::caps::BUILDINGS, player, 0);
             int            slot   = 0;
-            for (int i = 1; i < 100 && !slot; ++i)
+            for (int i = 1; i < (int)mh::caps::g(mh::caps::BUILDINGS).limit && !slot; ++i)
                 if (bl[i].building_id != 0 && (int)bl[i].x == s->a && (int)bl[i].y == s->b) slot = i;
             if (slot) bl[slot].state = 3; // BLDG_STATE_DISMANTLE_FINISH
             ui_log("; [script] removebldg player %d tile %d,%d -> slot %d", (int)player, s->a, s->b, slot);
@@ -3599,7 +3683,7 @@ click_result do_action(const Step *s) {
         case OP_A_LIFTOFF: {
             // mods:A1. cfg Building[100] @0x00d9ec80 (stride 2114): +type, +energy (max), +electric_power.
             const uint32_t player = g_a1_player >= 0 ? (uint32_t)g_a1_player & 7u : *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
-            auto          *bl     = reinterpret_cast<mh::game::mh_map_object_building *>(mh::addr::buildings) + player * 100;
+            auto          *bl     = mh::caps::rec<mh::game::mh_map_object_building>(mh::caps::BUILDINGS, player, 0);
             const auto    *cfgb   = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(0x00d9ec80u);
             const int      planet = *(const volatile uint16_t *)mh::addr::G_PLANET_INDEX;
             const auto    *prof   = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(mh::addr::_G_LLM_STRAT_PLAYERS) + player;
@@ -3609,7 +3693,7 @@ click_result do_action(const Step *s) {
             char           line[400];
             mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
             if (s->op == OP_A_LIFTOFF) {
-                for (int i = 1; i < 100; ++i) {
+                for (int i = 1; i < (int)mh::caps::g(mh::caps::BUILDINGS).limit; ++i) {
                     auto &b = bl[i];
                     if (b.building_id == 0 || b.energy <= 0.0) continue;
                     const uint8_t t = cfgb[b.building_id].type;
@@ -3626,7 +3710,7 @@ click_result do_action(const Step *s) {
                                 (int)pw->prev_consumed, (int)(pw->ratio * 1000.0), (int)pop->pop_total, (int)pop->workers_employed, (int)res[0],
                                 (int)res[1], (int)res[2], (int)res[3], (int)res[4], (int)res[5], (int)res[6]);
             mh_logq_write(g_mark_vid, line, len);
-            for (int i = 1; i < 100; ++i) {
+            for (int i = 1; i < (int)mh::caps::g(mh::caps::BUILDINGS).limit; ++i) {
                 const auto &b = bl[i];
                 if (b.building_id == 0 && (b.x | b.y) == 0) continue;
                 if (s->rect[4] && ((int)b.x < s->rect[0] || (int)b.y < s->rect[1] || (int)b.x > s->rect[2] || (int)b.y > s->rect[3])) continue;
@@ -3636,6 +3720,113 @@ click_result do_action(const Step *s) {
                                            (int)(b.energy * 10.0), (int)(cb.energy * 10.0), (int)(b.cycle_progress * 100.0), (int)(b.efficiency * 1000.0),
                                            (int)b.current_workers, (int)cb.electric_power);
                 mh_logq_write(g_mark_vid, line, len);
+            }
+            break;
+        }
+        case OP_A_UNLOCKDROP: {
+            // mods:UNL1: manufacture the state retail leaves after a load / planet switch when an unlock's last prerequisite was met elsewhere: a BUILDING
+            // unlock row that is offered (available, not finalized), every depend[] acquired, and whose building sits in the offer list ->
+            // available=0 and the building removed from the list. The recheck must put exactly this back. cfg Progress[300] @0x00e162e4 stride 0x67:
+            // depend u16[16] at +0, type at +0x20 (1 = BUILDING), index u16 at +0x21 (the building id for a BUILDING).
+            // The player is the watched one (`watch <player>`; default the local side), so a COMPUTER player's gap can be manufactured too.
+            const unsigned side = g_a1_player >= 0 ? (unsigned)g_a1_player & 7u : *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
+            uint8_t       *prog = reinterpret_cast<uint8_t *>(0x00c38750u) + (size_t)side * 900u;
+            const int32_t *lst  = reinterpret_cast<const int32_t *>(mh::addr::AvailableBuildings) + (size_t)side * 50;
+            int            row = 0, bld = 0;
+            for (int i = 1; i < 300 && !row; ++i) {
+                const uint8_t *cfg = reinterpret_cast<const uint8_t *>(0x00e162e4u) + (size_t)i * 0x67u;
+                if (cfg[0x20] != 1 || !prog[i * 3] || prog[i * 3 + 2]) continue;
+                bool ok = true;
+                for (int d = 0; d < 16; ++d) {
+                    const unsigned dep = *reinterpret_cast<const uint16_t *>(cfg + d * 2);
+                    if (dep == 0) break;
+                    if (dep >= 300 || !prog[dep * 3 + 1]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) continue;
+                const int b = *reinterpret_cast<const uint16_t *>(cfg + 0x21);
+                for (int k = 0; k < 50; ++k)
+                    if (lst[k] == b && b != 0) {
+                        row = i;
+                        bld = b;
+                        break;
+                    }
+            }
+            if (row) {
+                prog[row * 3] = 0;
+                mh::call::game_RemoveFromAvailableBuildings(side, bld);
+                g_unl_row[side] = row;
+                g_unl_bld[side] = bld;
+            }
+            ui_log("; [script] unlockdrop side=%u -> row=%d building=%d", side, row, bld);
+            break;
+        }
+        case OP_A_TRAVEL: {
+            const int rc = mh::call::SwitchToPlanet(s->a);
+            ui_log("; [script] travel %d -> %d", s->a, rc);
+            break;
+        }
+        case OP_A_ARRIVE:
+            mh::call::llm_strat_planet_transition_finalize();
+            ui_log("; [script] arrive (llm_strat_planet_transition_finalize)");
+            break;
+        case OP_A_LOGPORT: {
+            // mods:UNL1: the tech-tree state the unlock recheck acts on. progress[p][i] = {available, acquired, f3} at 0x00c38750 + p*900 + i*3;
+            // AvailableBuildings[p][50] int32 (0 = empty slot) at 0x0050aa37; G_PLANET_STATUS int32[32]. `avail`/`list_has18` are the spaceport
+            // pair of the user's 8-ayatus-rl-2 save: invention 21 (V_alien_Port) available, building 18 (N_alien_Port) in the offer list.
+            const unsigned side   = *(const volatile uint16_t *)mh::addr::PlayerSide & 7u;
+            const unsigned planet = (unsigned)*(const volatile int32_t *)mh::addr::G_PLANET_INDEX & 31u;
+            const int32_t *pst    = reinterpret_cast<const int32_t *>(mh::addr::G_PLANET_STATUS);
+            char           line[900];
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            auto list_of = [](unsigned p) { return reinterpret_cast<const int32_t *>(mh::addr::AvailableBuildings) + (size_t)p * 50; };
+            int  has18 = 0, nlist = 0;
+            for (int k = 0; k < 50; ++k) {
+                const int32_t b = list_of(side)[k];
+                if (b != 0) ++nlist;
+                if (b == 18) has18 = 1;
+            }
+            const uint8_t *prog = reinterpret_cast<const uint8_t *>(0x00c38750u) + (size_t)side * 900u;
+            int            len  = wsprintfA(line, "; [port] %s side=%u planet=%u avail=%d acq=%d list_has18=%d nlist=%d sess=%d pst=", s->text, side, planet, (int)prog[21 * 3],
+                                            (int)prog[21 * 3 + 1], has18, nlist, (int)*(const volatile int32_t *)mh::addr::_G_LLM_GAME_SESSION_MODE);
+            for (int k = 0; k < 32; ++k) len += wsprintfA(line + len, "%s%d", k ? "," : "", (int)pst[k]);
+            if (g_unl_row[side]) { // the row `unlockdrop` opened the gap on: is it offered again?
+                int in_list = 0;
+                for (int k = 0; k < 50; ++k)
+                    if (list_of(side)[k] == g_unl_bld[side]) in_list = 1;
+                len += wsprintfA(line + len, " drop_row=%d drop_bld=%d drop_avail=%d drop_in_list=%d", g_unl_row[side], g_unl_bld[side], (int)prog[g_unl_row[side] * 3], in_list);
+            }
+            line[len++] = '\n';
+            line[len]   = 0;
+            mh_logq_write(g_mark_vid, line, len);
+            ui_log("; [script] %s", line);
+            for (unsigned p = 0; p < 8; ++p) {
+                const uint32_t flags = *(const volatile uint32_t *)(mh::addr::_G_LLM_STRAT_PLAYERS + (uintptr_t)p * 0x740u);
+                if (!(flags & 1u) && p != side) continue;
+                const uint8_t *pp  = reinterpret_cast<const uint8_t *>(0x00c38750u) + (size_t)p * 900u;
+                int            nav = 0, nacq = 0, nf3 = 0;
+                for (int i = 1; i < 300; ++i) {
+                    nav += pp[i * 3] ? 1 : 0;
+                    nacq += pp[i * 3 + 1] ? 1 : 0;
+                    nf3 += pp[i * 3 + 2] ? 1 : 0;
+                }
+                int l2 = wsprintfA(line, ";   [port] %s p=%u en=%u rows_avail=%d rows_acq=%d rows_f3=%d bld=", s->text, p, flags & 1u, nav, nacq, nf3);
+                for (int k = 0; k < 50 && l2 < (int)sizeof(line) - 16; ++k)
+                    if (list_of(p)[k] != 0) l2 += wsprintfA(line + l2, "%d,", (int)list_of(p)[k]);
+                l2 += wsprintfA(line + l2, " rowsav=");
+                for (int i = 1; i < 300 && l2 < (int)sizeof(line) - 12; ++i)
+                    if (pp[i * 3] && !pp[i * 3 + 1]) l2 += wsprintfA(line + l2, "%d,", i);
+                if (g_unl_row[p] && p != side) { // a computer player's manufactured gap (`watch <p>` + `unlockdrop`)
+                    int in_list = 0;
+                    for (int k = 0; k < 50; ++k)
+                        if (list_of(p)[k] == g_unl_bld[p]) in_list = 1;
+                    l2 += wsprintfA(line + l2, " drop_row=%d drop_bld=%d drop_avail=%d drop_in_list=%d", g_unl_row[p], g_unl_bld[p], (int)pp[g_unl_row[p] * 3], in_list);
+                }
+                line[l2++] = '\n';
+                line[l2]   = 0;
+                mh_logq_write(g_mark_vid, line, l2);
             }
             break;
         }
@@ -3658,11 +3849,11 @@ click_result do_action(const Step *s) {
                 n      = 1;
                 ids[0] = (uint16_t)s->b;
             }
-            const uint8_t *un = (const uint8_t *)mh::addr::units + (size_t)(side & 7) * 23300;
-            char           line[1500];
-            int            len = wsprintfA(line, "; [goal] %s n=%d goals=", s->text, n);
+            char line[3200];
+            int  len = wsprintfA(line, "; [goal] %s n=%d goals=", s->text, n);
             for (int i = 0; i < n && len < (int)sizeof(line) - 24; ++i) {
-                const uint8_t *u = un + (size_t)(ids[i] % 100) * 233;
+                // PT-CAP9-U6: the live units geometry (row 500 raised), not a hard-coded 100-record row (`ids[i] % 100` read the wrong record past 99).
+                const uint8_t *u = mh::caps::rec<const uint8_t>(mh::caps::UNITS, side & 7, ids[i]);
                 len += wsprintfA(line + len, "%s%u:%u:%u", i ? "," : "", (unsigned)ids[i], (unsigned)u[0x86], (unsigned)u[0x87]);
             }
             len += wsprintfA(line + len, " side=%u", side);
@@ -3670,7 +3861,7 @@ click_result do_action(const Step *s) {
             line[len]   = 0;
             mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
             mh_logq_write(g_mark_vid, line, len);
-            ui_log("; [script] %s", line);
+            ui_log("; [script] %.440s", line); // PT-CAP9-U6: ui_log formats into a 512-byte stack line with wvsprintfA (no bound): a 1500-byte goal line from a 100+ unit selection smashed it (0xC0000409). The full line is in mh_video.log above.
             break;
         }
         case OP_A_LOGSEL: {
@@ -3696,7 +3887,7 @@ click_result do_action(const Step *s) {
             line[len]   = 0;
             mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
             mh_logq_write(g_mark_vid, line, len);
-            ui_log("; [script] %s", line);
+            ui_log("; [script] %.440s", line); // same bound (a 200-id selection line)
             break;
         }
         case OP_A_MARK: {

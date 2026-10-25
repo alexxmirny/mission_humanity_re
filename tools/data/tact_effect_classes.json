@@ -21,7 +21,7 @@
   "",
   "The obvious rule -- 'effectful only if it reaches present_flip or a device/COM/file API' -- was",
   "proposed by the adversarial review and is WRONG on real bodies in this very set:",
-  "  * llm_tact_scroll_fade_step calls NOTHING. Its body is load [EDI], mask, ADD 0x2 / 0x80 /",
+  "  * llm_tact_blast_wipe_brighten_step calls NOTHING. Its body is load [EDI], mask, ADD 0x2 / 0x80 /",
   "    0x1000 with saturation, MOV word ptr [EDI],DX (@0x0043c38e) over every framebuffer pixel --",
   "    a read-modify-write BRIGHTEN. Twice = twice the fade, on a buffer nothing restores.",
   "  * llm_tact_drag_box_clamp's leaf stores constant dash pixels (idempotent) but ROLs the dash-",
@@ -197,7 +197,7 @@
   "evidence_addr": "0x00499f3a",
   "note": "llm_gfx_save_screenshot_rle's second param is unused (undefined4 unused_param2) per its own prototype comment -- a pre-existing observation, not something to act on here."
  },
- "llm_tact_scroll_fade_step": {
+ "llm_tact_blast_wipe_brighten_step": {
   "class": "effectful",
   "verified": true,
   "why": "EFFECTFUL, against the review, and this is the clearest case in the set. The function calls NOTHING -- it reaches no device API, no present, no COM, which is exactly why the review's rule cleared it. Its body is a READ-MODIFY-WRITE over every framebuffer pixel: load [EDI], mask each channel, `ADD EBX,0x2` @0x0043c342 / `ADD EBX,0x80` @0x0043c35c / `ADD EBX,0x1000` @0x0043c379 with saturation clamps, then `MOV word ptr [EDI],DX` @0x0043c38e. Running it twice brightens twice. The back-buffer is not a declared shadow region, so nothing restores it, and the frame is presented later regardless of who wrote it. A second execution is a visibly different frame.",

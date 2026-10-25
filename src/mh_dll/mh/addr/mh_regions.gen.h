@@ -307,7 +307,7 @@ enum region_id : uint16_t {
     RID_TACT_MOVE_FLOOD_RESULT_ROW = 219,
     RID_TACT_MOVE_PATH_SLOT_ID = 220,
     RID_TACT_MOVE_PATH_TRACE_COST_SUM = 221,
-    RID_TACT_SCROLL_CMD = 222,
+    RID_TACT_MINE_BLAST_SHAKE_STEP = 222,
     RID_TACT_FX_SPLASH_SPARE_NONZERO_OWNER = 223,
     RID_TACT_MINE_BLAST_TIME_END = 224,
     RID_TACT_WHO_XOR_KEY = 225,
@@ -1182,7 +1182,7 @@ inline constexpr region REGIONS[RID_COUNT] = {
     {"_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW", MH_STOCK_BASE(0x0055870bu), 1u, 1u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, false},
     {"_G_LLM_TACT_MOVE_PATH_SLOT_ID", MH_STOCK_BASE(0x00558710u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, false},
     {"_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM", MH_STOCK_BASE(0x00558714u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, true},
-    {"_G_LLM_TACT_SCROLL_CMD", MH_STOCK_BASE(0x00558ba0u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, false},
+    {"_G_LLM_TACT_MINE_BLAST_SHAKE_STEP", MH_STOCK_BASE(0x00558ba0u), 4u, 4u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, false},
     {"_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER", MH_STOCK_BASE(0x00558ba4u), 4u, 4u, OWN_READONLY, static_cast<uint8_t>(MF_VIEW), false, false, true},
     {"_G_LLM_TACT_MINE_BLAST_TIME_END", MH_STOCK_BASE(0x00558ba8u), 8u, 8u, OWN_ISLAND, static_cast<uint8_t>(MF_VIEW | MF_MEASURED), false, false, false},
     {"_G_LLM_TACT_WHO_XOR_KEY", MH_STOCK_BASE(0x00558bb8u), 4u, 4u, OWN_READONLY, static_cast<uint8_t>(MF_VIEW), false, false, true},
@@ -2232,7 +2232,7 @@ static_assert(REGIONS[RID_TACT_MOVE_FLOOD_RESULT_COL].base == mh::addr::_G_LLM_T
 static_assert(REGIONS[RID_TACT_MOVE_FLOOD_RESULT_ROW].base == mh::addr::_G_LLM_TACT_MOVE_FLOOD_RESULT_ROW);
 static_assert(REGIONS[RID_TACT_MOVE_PATH_SLOT_ID].base == mh::addr::_G_LLM_TACT_MOVE_PATH_SLOT_ID);
 static_assert(REGIONS[RID_TACT_MOVE_PATH_TRACE_COST_SUM].base == mh::addr::_G_LLM_TACT_MOVE_PATH_TRACE_COST_SUM);
-static_assert(REGIONS[RID_TACT_SCROLL_CMD].base == mh::addr::_G_LLM_TACT_SCROLL_CMD);
+static_assert(REGIONS[RID_TACT_MINE_BLAST_SHAKE_STEP].base == mh::addr::_G_LLM_TACT_MINE_BLAST_SHAKE_STEP);
 static_assert(REGIONS[RID_TACT_FX_SPLASH_SPARE_NONZERO_OWNER].base == mh::addr::_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER);
 static_assert(REGIONS[RID_TACT_MINE_BLAST_TIME_END].base == mh::addr::_G_LLM_TACT_MINE_BLAST_TIME_END);
 static_assert(REGIONS[RID_TACT_WHO_XOR_KEY].base == mh::addr::_G_LLM_TACT_WHO_XOR_KEY);

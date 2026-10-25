@@ -68,16 +68,24 @@
 #include <tlhelp32.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <vector>
 
 #include "gfx/ddraw_own.h"
 #include "gfx/present_backend.h"
-#include "gfx/overlay_imgui.h"      // PT-GFX4: arm the ImGui overlay with backend=d3d11
-#include "addr/mh_export.gen.h"     // mh::exp::entry_llm_gfx_ddraw_dll_{acquire,release} -- the arm guards
-#include "include/mh_run_context.h" // mh_proc_path
-#include "include/mh_log_sink.h"    // LOG1: async log sink
-#include "config/ini_read.h"        // read_ini_string -- strips a trailing `;comment`
-#include "hook/detour.h"            // install_jmp
-#include "en_guard.h"               // EN-only build gate
+#include "gfx/ui_layout.h"
+#include "gfx/classic_sizes.h"         // RES25: classic_sizes() -- Interface size scaling off
+#include "gfx/overlay_list.h"          // RES23-S5: the overlay list, its stamps, the scratch-render helper
+#include "gfx/overlay_imgui.h"         // PT-GFX4: arm the ImGui overlay with backend=d3d11
+#include "addr/mh_addrs.gen.h"         // _G_LLM_GAME_MODE (RES4: which modes get the scaled HUD)
+#include "addr/mh_export.gen.h"        // mh::exp::entry_llm_gfx_ddraw_dll_{acquire,release} -- the arm guards
+#include "include/mh_run_context.h"    // mh_proc_path
+#include "include/mh_log_sink.h"       // LOG1: async log sink
+#include "include/mh_capture_export.h" // RES23-S0: MH_Capture_WriteBgra32 (bcapture)
+#include "config/ini_read.h"           // read_ini_string -- strips a trailing `;comment`
+#include "hook/detour.h"               // install_jmp
+#include "en_guard.h"                  // EN-only build gate
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -100,6 +108,30 @@ constexpr uintptr_t ADDR_GAME_RUNNING   = 0x005d5fe8u; // _G_LLM_GAME_RUNNING (W
 
 template <class T>
 T &at(uintptr_t a) { return *reinterpret_cast<T *>(a); }
+
+// RES4: [video] ui_scale as asked. g_cfg.ui_scale_pct is what the presenter holds NOW: the asked value while the
+// game is in a strategic-HUD mode (2 = strategic, 5 = paused), 100 everywhere else -- menus, lobby, the galaxy
+// screen and tactical are never scaled (user, 2026-10-19). Refreshed on every present and by owned_present_layout.
+int g_ui_scale_req = 100;
+// RES23-S2: the COMMITTED HUD geometry (hud_geometry, ddraw_own.h) -- computed at ONE point, the strategic pre-input of a mode 2 / 5 frame (and recomputed
+// for a new frame size when the picker applies a mode); epoch 0 = nothing committed yet (the asked value is then read live). A new Interface size is a
+// PENDING value (g_ui_scale_req) that the next commit takes; nothing in game draw code builds a layout.
+hud_geometry g_hud;
+int          g_built_h = 0; // RES23-S3: the RES7 table height (owned_hud_set_built); the commit copies it into g_hud
+// The frame the last strategic present showed, stamped with the epoch it was drawn under (w == 0: no strategic frame behind the dialogs). The
+// dialog modes (3, 4) present THAT frame, so they use its percentage and size -- the RES19 latch, as a property of the frame instead of a side
+// effect of a getter.
+struct frame_stamp {
+    unsigned epoch = 0;
+    int      pct = 100, w = 0, h = 0;
+} g_stamp;
+present_view g_view;                  // RES23-S1: the view of the LAST present (present_surface builds it once); everything else reads it, see view_layout_now
+bool         g_ui_scale_auto = false; // the ini said `auto`: the in-game options menu shows "Auto", not the resolved percentage
+
+// RES18 / RES23-S4: a session size that is not a multiple of the 32 px tile is RENDERED rounded up and PRESENTED cropped to the size itself; that
+// composition is part of the committed geometry (g_hud.comp_*, set by the picker through owned_set_crop). It applies to the strategic frame (and the dialogs
+// over it) of exactly that frame size -- the 640x480 menus and the 1024x768 galaxy screen never match it.
+bool g_comp_moved = false; // the composition changed since the last commit: the next commit counts it as a change (epoch + log)
 
 // ---- log: mh_video.log, NOT mh_net.log (its arm-log sequence is baseline-diffed) ----------------
 
@@ -143,8 +175,10 @@ enum class backend_kind : uint8_t { gdi,
 bool           g_active = false;
 backend_kind   g_kind   = backend_kind::gdi;
 backend_config g_cfg;
-int            g_fps_limit = 0;     // [video] fps_limit; 0 = unlimited (the default)
-bool           g_no_window = false; // [video] no_window: the headless keeper owns the window, hands off
+int            g_bl_w = 0, g_bl_h = 0;               // [video] borderless_size (dev, RES23-S0): the borderless window covers WxH instead of its monitor (a rig whose monitor is smaller than the player's)
+int            g_ui_screen_w = 0, g_ui_screen_h = 0; // [video] ui_screen (dev): the screen the quad layout / pcapture assumes; 0 = the client
+int            g_fps_limit = 0;                      // [video] fps_limit; 0 = unlimited (the default)
+bool           g_no_window = false;                  // [video] no_window: the headless keeper owns the window, hands off
 HMODULE        g_self      = nullptr;
 
 // ---- the display "mode" and the one window -------------------------------------------------------
@@ -491,6 +525,11 @@ bool g_move_hooked = false; // own_MoveWindow is in the exe's import table
 
 bool geometry_owned() { return g_active && !g_no_window && g_kind != backend_kind::null; }
 
+// The client size the windowed game wants at the current display mode: the mode itself, or (RES18) the cropped composition of the mode's frame.
+bool crop_matches_mode() { return g_hud.comp_w > 0 && g_hud.comp_fw == g_mode_w && g_hud.comp_fh == g_mode_h && (g_hud.comp_w < g_mode_w || g_hud.comp_h < g_mode_h); }
+int  native_client_w() { return crop_matches_mode() ? g_hud.comp_w : g_mode_w; }
+int  native_client_h() { return crop_matches_mode() ? g_hud.comp_h : g_mode_h; }
+
 bool backend_is_null() { return g_backend && lstrcmpA(g_backend->name(), "null") == 0; }
 
 void ensure_geometry() {
@@ -527,10 +566,10 @@ void ensure_geometry() {
                 changed = true;
             }
             g_geom_placed = true;
-        } else if (!(style == want && !(ex & WS_EX_TOPMOST) && cr.right == g_mode_w && cr.bottom == g_mode_h)) {
+        } else if (!(style == want && !(ex & WS_EX_TOPMOST) && cr.right == native_client_w() && cr.bottom == native_client_h())) {
             SetWindowLongA(g_hwnd, GWL_STYLE, want);
             SetWindowLongA(g_hwnd, GWL_EXSTYLE, ex & ~WS_EX_TOPMOST);
-            RECT r = {0, 0, g_mode_w, g_mode_h};
+            RECT r = {0, 0, native_client_w(), native_client_h()};
             AdjustWindowRectEx(&r, (DWORD)want, FALSE, (DWORD)GetWindowLongA(g_hwnd, GWL_EXSTYLE));
             const int ww = r.right - r.left, wh = r.bottom - r.top;
             int       x = 0, y = 0;
@@ -559,20 +598,20 @@ void ensure_geometry() {
                 // (video.cpp apply_dpi_awareness): on a scaled monitor the real frame is thicker and the
                 // client came out 4 px short (measured 636x476 for 640x480). Correct by what we got.
                 GetClientRect(g_hwnd, &cr);
-                if (cr.right != g_mode_w || cr.bottom != g_mode_h)
-                    SetWindowPos(g_hwnd, nullptr, 0, 0, ww + (g_mode_w - cr.right), wh + (g_mode_h - cr.bottom),
+                if (cr.right != native_client_w() || cr.bottom != native_client_h())
+                    SetWindowPos(g_hwnd, nullptr, 0, 0, ww + (native_client_w() - cr.right), wh + (native_client_h() - cr.bottom),
                                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
                 GetClientRect(g_hwnd, &cr);
                 ++g_geom_tries;
-                if (cr.right == g_mode_w && cr.bottom == g_mode_h) {
+                if (cr.right == native_client_w() && cr.bottom == native_client_h()) {
                     g_geom_tries = 0;
-                    if (!g_geom_placed || g_geom_logged_w != g_mode_w || g_geom_logged_h != g_mode_h)
+                    if (!g_geom_placed || g_geom_logged_w != native_client_w() || g_geom_logged_h != native_client_h())
                         gfx_log("; [gfx] window: windowed (resizable), client %dx%d at %d,%d", (int)cr.right, (int)cr.bottom, x, y);
-                    g_geom_logged_w = g_mode_w;
-                    g_geom_logged_h = g_mode_h;
+                    g_geom_logged_w = native_client_w();
+                    g_geom_logged_h = native_client_h();
                 } else if (g_geom_tries >= 3) {
                     gfx_log("; [gfx] window: client stuck at %dx%d for a %dx%d mode after 3 tries -- presenting scaled",
-                            (int)cr.right, (int)cr.bottom, g_mode_w, g_mode_h);
+                            (int)cr.right, (int)cr.bottom, native_client_w(), native_client_h());
                 }
             }
             g_geom_placed = true;
@@ -582,7 +621,7 @@ void ensure_geometry() {
     } else {
         MONITORINFO mi = {sizeof(mi)};
         GetMonitorInfoA(MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTOPRIMARY), &mi);
-        const int  mw = mi.rcMonitor.right - mi.rcMonitor.left, mh = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        const int  mw = g_bl_w > 0 ? g_bl_w : mi.rcMonitor.right - mi.rcMonitor.left, mh = g_bl_w > 0 ? g_bl_h : mi.rcMonitor.bottom - mi.rcMonitor.top;
         const LONG want = (style & ~WINDOWED_STYLE) | WS_POPUP;
         RECT       wr;
         GetWindowRect(g_hwnd, &wr);
@@ -631,19 +670,108 @@ void ensure_geometry() {
 // overlay's (first present), so the overlay sits OUTSIDE it and sees client pixels, which are ImGui's
 // own coordinates; the game below sees game pixels.
 
-// The image's rect in CLIENT pixels, or false when there is nothing to map through.
+int  effective_ui_pct();
+int  effective_ui_pct_for(int fw, int fh);
+bool ui_screen_size(int &cw, int &ch);
+void dialogs_now(int fw, int fh, uilayout::dialog_set &ds, uintptr_t *lists = nullptr);
+
+// Game mode m over a fw x fh frame shows the strategic HUD: 2 strategic, 5 paused, or a dialog mode (3 menus, 4 info) over the strategic frame of
+// exactly that size (the frame the last strategic present stamped). The ONE copy of the mode test.
+bool gameplay_dialog_for(int m, int fw, int fh) { return (m == 3 || m == 4) && g_stamp.w > 0 && g_stamp.w == fw && g_stamp.h == fh; }
+bool hud_shown_for(int m, int fw, int fh) { return m == 2 || m == 5 || gameplay_dialog_for(m, fw, fh); }
+
+// The quad list for a frame, with the dialog quad (RES4 stage 6) when a gameplay-size dialog is up: ONE place, so the presenters,
+// the mouse maps, the cursor and pcapture all see the same list.
+// RES18: the composition inside a fw x fh frame, when that frame is the session's rounded-up strategic frame and the game is in a mode that
+// shows it (2 strategic, 5 paused, or the dialog modes 3 / 4 reached from it -- the same test as effective_ui_pct). False = the frame is the picture.
+// The exact-frame key (fw x fh == comp_fw x comp_fh) is KEPT on purpose (RES23-S6 looked at dropping it): the composition is committed when the picker applies
+// a mode, but the callers pass the size of the SURFACE they are asked about (present_surface's s->w x s->h, the framebuffer's WindowWidth/Height), and across a
+// mode change a surface of the OLD size is presented (and a game-mode-2 test passes) before the new frame exists. Without the key that transient frame would
+// take the new frame's crop. The epoch cannot replace it: it counts commits, it does not say which frame size a commit belongs to.
+bool crop_for_frame(int fw, int fh, int &kw, int &kh) {
+    kw = kh = 0;
+    if (g_hud.comp_w <= 0 || fw != g_hud.comp_fw || fh != g_hud.comp_fh || (g_hud.comp_w >= fw && g_hud.comp_h >= fh)) return false;
+    if (!hud_shown_for(at<int>(mh::addr::_G_LLM_GAME_MODE), fw, fh)) return false;
+    kw = g_hud.comp_w;
+    kh = g_hud.comp_h;
+    return true;
+}
+
+// RES23-S1: is the last present's view the layout for exactly these inputs? (It is a pure function of them, so a match IS that layout.)
+bool view_matches(const present_view &v, int cw, int ch, int fw, int fh, int pct, const uilayout::dialog_set &ds, int kw, int kh) {
+    if (!v.valid || v.screen_w != cw || v.screen_h != ch || v.frame_w != fw || v.frame_h != fh || v.pct != pct || v.integer != g_cfg.integer_scale ||
+        v.crop_w != kw || v.crop_h != kh || v.dialogs.n != ds.n)
+        return false;
+    for (int i = 0; i < ds.n; ++i) {
+        const uilayout::irect &a = v.dialogs.r[i], &b = ds.r[i];
+        if (a.x0 != b.x0 || a.y0 != b.y0 || a.x1 != b.x1 || a.y1 != b.y1 || v.dialogs.layered[i] != ds.layered[i]) return false;
+    }
+    return true;
+}
+
+// The quad layout of a (cw x ch screen, fw x fh frame, pct) as it stands NOW, for everything that is not the presenter: the mouse maps, the
+// clip, the cursor, the dialog layers, pcapture. It is the last present's view (g_view) whenever that view was built from the very same
+// inputs -- the normal case, since the presenter and its consumers look at one frame -- and a fresh build otherwise (a mode change or a
+// dialog that appeared since the last present). The fresh one is NOT stored: g_view stays "what the last present showed". RES23-S6 kept the input
+// comparison: the HUD epoch (S2) counts commits of the HUD geometry, but the view also depends on the screen size, the game mode, the presenter and the
+// dialogs, none of which move the epoch -- an epoch key would serve a stale layout after a window resize or when a dialog opens between two presents.
+void view_layout_now(uilayout::layout &L, int cw, int ch, int fw, int fh, int pct) {
+    uilayout::dialog_set ds;
+    if (pct > uilayout::MIN_PCT) dialogs_now(fw, fh, ds);
+    int kw, kh;
+    crop_for_frame(fw, fh, kw, kh);
+    if (view_matches(g_view, cw, ch, fw, fh, pct, ds, kw, kh)) {
+        L = g_view.layout;
+        return;
+    }
+    present_view v;
+    build_present_view(v, cw, ch, fw, fh, pct, g_cfg.integer_scale, &ds, kw, kh);
+    L = v.layout;
+}
+
+// RES4 stage 4: the quad layout the player is looking at NOW, when ui_scale is in force (several quads). False when the
+// presenter shows the single fitted rect (every mapping below then stays the legacy formula, byte for byte). The
+// screen is the client area (or the dev `[video] ui_screen`, whose points are then taken as client pixels).
+bool multi_layout(uilayout::layout &L) {
+    if (!geometry_owned() || !g_hwnd || g_mode_w <= 0 || g_mode_h <= 0) return false;
+    const int pct = effective_ui_pct();
+    int       kw, kh;
+    if (pct <= uilayout::MIN_PCT && !crop_for_frame(g_mode_w, g_mode_h, kw, kh)) return false; // (RES18: a crop is a several-quad layout at 100 too)
+    int cw, ch;
+    if (!ui_screen_size(cw, ch)) return false;
+    view_layout_now(L, cw, ch, g_mode_w, g_mode_h, pct);
+    return !L.single;
+}
+
+// The image's rect in CLIENT pixels, or false when there is nothing to map through. With quads: the rectangle they cover.
 bool image_rect_client(RECT *out) {
     if (!geometry_owned() || !g_hwnd || g_mode_w <= 0 || g_mode_h <= 0) return false;
+    uilayout::layout L;
+    if (multi_layout(L)) {
+        *out = RECT{L.used.x0, L.used.y0, L.used.x1, L.used.y1};
+        return out->right > out->left && out->bottom > out->top;
+    }
     RECT cr;
     if (!GetClientRect(g_hwnd, &cr) || cr.right <= 0 || cr.bottom <= 0) return false;
     *out = fit_image_rect(cr.right, cr.bottom, g_mode_w, g_mode_h, g_cfg.integer_scale);
     return out->right > out->left && out->bottom > out->top;
 }
 
-void map_client_to_game(const RECT &r, int &x, int &y) { image_client_to_game(r, g_mode_w, g_mode_h, x, y); }
+void map_client_to_game(const RECT &r, int &x, int &y) {
+    uilayout::layout L;
+    if (multi_layout(L) && uilayout::screen_to_frame(L, x, y)) return;
+    image_client_to_game(r, g_mode_w, g_mode_h, x, y);
+}
 
 // The CENTRE of game pixel (x,y) in client pixels, so client_to_game(game_to_client(p)) == p.
-void map_game_to_client(const RECT &r, int &x, int &y) { image_game_to_client(r, g_mode_w, g_mode_h, x, y); }
+void map_game_to_client(const RECT &r, int &x, int &y) {
+    uilayout::layout L;
+    if (multi_layout(L)) {
+        uilayout::frame_to_screen(L, x, y); // a hidden pixel lands on the nearest visible one
+        return;
+    }
+    image_game_to_client(r, g_mode_w, g_mode_h, x, y);
+}
 
 void release_clip() {
     if (!g_clipped) return;
@@ -694,13 +822,13 @@ void note_user_size(HWND h) {
     RECT cr;
     if (!GetClientRect(h, &cr) || cr.right <= 0) return;
     const bool was = g_user_sized;
-    g_user_sized   = IsZoomed(h) || cr.right != g_mode_w || cr.bottom != g_mode_h;
+    g_user_sized   = IsZoomed(h) || cr.right != native_client_w() || cr.bottom != native_client_h();
     if (was != g_user_sized || g_user_sized) {
         static int logged = 0;
         if (logged < 16) {
             ++logged;
             gfx_log("; [gfx] window: %s client %ldx%ld (mode %dx%d)%s", g_user_sized ? "player-sized" : "back to native",
-                    cr.right, cr.bottom, g_mode_w, g_mode_h, IsZoomed(h) ? " maximised" : "");
+                    cr.right, cr.bottom, native_client_w(), native_client_h(), IsZoomed(h) ? " maximised" : "");
         }
     }
 }
@@ -1250,11 +1378,877 @@ struct OwnSurface final : IDirectDrawSurface {
     HRESULT STDMETHODCALLTYPE UpdateOverlayZOrder(DWORD, LPDIRECTDRAWSURFACE) override { MH_GFX_UNSUPPORTED("IDirectDrawSurface::UpdateOverlayZOrder"); }
 };
 
+// A PURE read: the percentage the HUD shows at the current game mode over a fw x fh frame. Mode 2 / 5: the committed value (the asked one live until
+// the first commit); a dialog mode over the stamped strategic frame: that frame's percentage (an Options apply moves the stamp at once, RES26: owned_hud_commit_applied; the game
+// does not wait for the resume); everything else 100.
+int effective_ui_pct_for(int fw, int fh) {
+    const int m = at<int>(mh::addr::_G_LLM_GAME_MODE);
+    if (m == 2 || m == 5) {
+        const int p = g_hud.epoch ? g_hud.pct : g_ui_scale_req;
+        return p <= uilayout::MIN_PCT ? uilayout::MIN_PCT : p;
+    }
+    if (m == 3 || m == 4) return gameplay_dialog_for(m, fw, fh) && g_stamp.pct > uilayout::MIN_PCT ? g_stamp.pct : uilayout::MIN_PCT;
+    return uilayout::MIN_PCT;
+}
+int effective_ui_pct() { return effective_ui_pct_for(g_mode_w, g_mode_h); }
+
+// ---- RES4 stage 6: dialog quads ------------------------------------------------------------------------------------
+//
+// A dialog drawn at gameplay size lives in the frame as a widget list centred by llm_ui_widget_list_center (0x004b6fb4), whose rect the
+// function stores in the list at +0x18 x, +0x1c y, +0x20 w, +0x24 h (frame pixels; the widgets are list-relative). The presenter shows
+// that rectangle a second time, scaled by ui_scale about the screen's centre, ABOVE the HUD quads and below the cursor
+// (uilayout::place_dialog); the mouse maps a point inside the quad back to the rectangle's frame pixels, so a click lands on the
+// widget drawn under it. Read afresh at every present (the rect is recomputed every frame the dialog is up). Which list:
+//   * _G_LLM_UI_ACTIVE_DIALOG (0x00654295), when set: the modal dialogs of the strategic view -- generic dialogs (llm_ui_dlg_build_from_table),
+//     the shipment contents, the building construction status; closed by llm_ui_dlg_close_cb, which clears it;
+//   * else, in game mode 3 reached FROM the strategic view, _G_LLM_UI_MENU_WIDGET_LIST (0x0065428d): the ESC menu, the Options screens
+//     it pushes, the lockstep "Player not responding" modal (_G_LLM_UI_WGT_LIST_LOCKSTEP_SYNC).
+// Mode 3 is also every front-end menu: those run at 640x480 with another frame size, and a menu entered without a strategic present
+// before it is never a dialog over the HUD (g_stamp: the frame and epoch of the last mode 2 / 5 present, forgotten by any other mode).
+// A list with no frame widget is the whole window (w x h = the frame): it fits no map and gets no quad (stays 1x).
+constexpr uintptr_t ADDR_UI_ACTIVE_DIALOG = 0x00654295u; // _G_LLM_UI_ACTIVE_DIALOG
+constexpr uintptr_t ADDR_UI_MENU_LIST     = 0x0065428du; // _G_LLM_UI_MENU_WIDGET_LIST
+
+// One list's rect, or false (null, not a list of the exe's image, or a rect that is not inside the frame).
+bool list_rect(uintptr_t list, int fw, int fh, uilayout::irect &r) {
+    if (list < 0x00400000u || list > 0x01200000u) return false;
+    const int x = at<int>(list + 0x18), y = at<int>(list + 0x1c), w = at<int>(list + 0x20), h = at<int>(list + 0x24);
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > fw || y + h > fh) return false;
+    r = uilayout::irect{x, y, x + w, y + h};
+    return true;
+}
+
+// The dialogs up now, bottom to top: the mode-3 menu list (ESC menu, Options, the lockstep modal), then _G_LLM_UI_ACTIVE_DIALOG over it
+// (a confirmation, the shipment list, ...; drawn after the menu list by the game, so it is the upper one). `lists` (optional) gets each
+// one's list address. ds.layered[i] is set when a stage 6b layer exists for exactly that list and rect (layer_valid_for, below).
+bool layer_valid_for(int slot, uintptr_t list, const uilayout::irect &r);
+void layers_drop_all();
+void dialogs_now(int fw, int fh, uilayout::dialog_set &ds, uintptr_t *lists) {
+    ds          = uilayout::dialog_set();
+    const int m = at<int>(mh::addr::_G_LLM_GAME_MODE);
+    if (!hud_shown_for(m, fw, fh)) {
+        layers_drop_all();
+        return;
+    }
+    const uintptr_t act  = (uintptr_t)at<uint32_t>(ADDR_UI_ACTIVE_DIALOG);
+    uintptr_t       menu = 0;
+    if (m == 3 || m == 4) {
+        menu = (uintptr_t)at<uint32_t>(ADDR_UI_MENU_LIST);
+        if (menu == mh::addr::_G_LLM_UI_WGT_LIST_GAMEPLAY_HUD || menu == act) menu = 0;
+    }
+    uintptr_t l[uilayout::MAX_DIALOGS] = {};
+    if (menu && list_rect(menu, fw, fh, ds.r[ds.n])) l[ds.n++] = menu;
+    if (act && list_rect(act, fw, fh, ds.r[ds.n])) l[ds.n++] = act;
+    for (int i = 0; i < ds.n; ++i) {
+        ds.layered[i] = layer_valid_for(i, l[i], ds.r[i]);
+        if (lists) lists[i] = l[i];
+    }
+    if (ds.n == 0) layers_drop_all();
+}
+
+// RES4: one log line per distinct (screen, frame, scale) so a capture's layout is in mh_video.log.
+// The screen the quad layout is built for: the dev override [video] ui_screen, else the game window's client area.
+bool ui_screen_size(int &cw, int &ch) {
+    cw = g_ui_screen_w;
+    ch = g_ui_screen_h;
+    if (cw > 0 && ch > 0) return true;
+    RECT cr;
+    if (!g_hwnd || !GetClientRect(g_hwnd, &cr) || cr.right <= 0 || cr.bottom <= 0) return false;
+    cw = cr.right;
+    ch = cr.bottom;
+    return true;
+}
+
+void log_ui_layout_change(int fw, int fh, int pct, const uilayout::layout &l, int kw) {
+    static int key[6] = {};
+    const int  cw = l.screen_w, ch = l.screen_h;
+    if (cw <= 0 || ch <= 0) return;
+    if (key[0] == cw && key[1] == ch && key[2] == fw && key[3] == fh && key[4] == pct && key[5] == kw) return;
+    key[0] = cw, key[1] = ch, key[2] = fw, key[3] = fh, key[4] = pct, key[5] = kw;
+    const uilayout::render_size ideal = uilayout::ideal_render(cw, ch, pct);
+    if (!l.single) {
+        const int k = (uilayout::whole_panel_rows(l) - uilayout::LIST_TOP) / uilayout::LIST_ROW;
+        gfx_log("; [ui] ui_scale: %d%% -> effective %d.%02d (fits %d whole rows)", pct, l.pct / 100, l.pct % 100, k < 0 ? 0 : k);
+    }
+    if (l.single)
+        gfx_log("; [ui] ui_scale %d%% on %dx%d with a %dx%d frame: single quad (%s); ideal render %dx%d", pct, cw, ch, fw, fh,
+                l.clamped ? "clamped to 100 by the screen size" : "nothing to scale", ideal.w, ideal.h);
+    else {
+        char mapk[24] = "1:1"; // the map factor: 1:1 unless the crop / overlay fit enlarges the composition (whole when integer scaling is on)
+        if (l.map_src_w > 0 && l.map_w != l.map_src_w) {
+            const int k100 = (int)(((int64_t)l.map_w * 100 + l.map_src_w / 2) / l.map_src_w);
+            wsprintfA(mapk, "x%d.%02d", k100 / 100, k100 % 100);
+        }
+        gfx_log("; [ui] ui_scale %d%%%s on %dx%d, frame %dx%d: map %dx%d %s, panel %d wide (%d frame rows), strip %d high, "
+                "composition %dx%d at %d,%d; ideal render %dx%d%s",
+                l.pct, l.clamped ? " (clamped from the request)" : "", cw, ch, fw, fh, l.map_w, l.map_h, mapk, l.panel_w, l.panel_rows, l.strip_h,
+                l.used.w(), l.used.h(), l.used.x0, l.used.y0, ideal.w, ideal.h, ideal.capped ? " (render caps cut the map)" : "");
+    }
+}
+
+// RES18: one log line per distinct (screen, frame, crop) -- what the rig reads (check_res_crop.py).
+void log_crop_layout(int fw, int fh, int kw, int kh, const uilayout::layout &l) {
+    static int key[6] = {};
+    const int  cw = l.screen_w, ch = l.screen_h;
+    if (cw <= 0 || ch <= 0) return;
+    if (key[0] == cw && key[1] == ch && key[2] == fw && key[3] == fh && key[4] == kw && key[5] == kh) return;
+    key[0] = cw, key[1] = ch, key[2] = fw, key[3] = fh, key[4] = kw, key[5] = kh;
+    if (!l.single && !l.crop && l.pct > uilayout::MIN_PCT) return; // (above 100 the `ui_scale` layout line carries the crop's map; the composition line is the 100 form)
+    if (l.single || !l.crop) {
+        gfx_log("; [ui] crop %dx%d of a %dx%d frame on %dx%d: not applied (single quad)", kw, kh, fw, fh, cw, ch);
+        return;
+    }
+    const uilayout::quad &mq = l.q[0], &sq = l.q[1], &pq = l.q[2];
+    const bool            bars = l.used.x0 != 0 || l.used.y0 != 0 || l.used.w() != cw || l.used.h() != ch;
+    gfx_log("; [ui] crop: render %dx%d, composition %dx%d on a %dx%d screen at %d,%d (bars: %s); map %dx%d (frame %dx%d) %s, strip y %d..%d (frame rows %d..%d), "
+            "panel x %d..%d (frame cols %d..%d, %d rows)",
+            fw, fh, l.used.w(), l.used.h(), cw, ch, l.used.x0, l.used.y0, bars ? "yes" : "none", mq.dst.w(), mq.dst.h(), mq.src.w(), mq.src.h(),
+            mq.dst.w() == mq.src.w() ? "1:1" : "scaled", sq.dst.y0, sq.dst.y1, sq.src.y0, sq.src.y1, pq.dst.x0, pq.dst.x1, pq.src.x0, pq.src.x1, pq.src.h());
+}
+
+// ---- RES4 stage 5: the owned, scaled cursor ----------------------------------------------------------------
+//
+// llm_gfx_draw_cursor_menu (0x004a5b4d) is the one routine every cursor draw of the strategic frame and the dialogs goes through
+// (six callers). It blits the cursor sprite (plus up to four overlay sprites) into the frame at _G_LLM_CURSOR_MENU_X/Y minus the
+// hotspot, with three blend modes (opaque, 50% blend, halve-the-backdrop), and STAMPS the tile-visibility / tile-drawn maps for the
+// tiles it covers so the next frame redraws the backdrop. In a scaled layout the cursor must instead be at ui_scale like the rest of
+// the HUD, so this detour (installed only when ui_scale > 100 is asked for):
+//   * scaled layout in force (game mode 2 / 5, several quads) and the cursor visible: runs the STOCK routine twice through the
+//     trampoline, into a CURSOR_SRC^2 scratch (cleared to black, then to white) with the frame globals pointed at it -- surface,
+//     pitch, WindowWidth/Height (the routine clips to G_WIN_W/H = these), the cursor position (the hotspot lands on pixel
+//     CURSOR_HOT), the clip rows and both tile maps (dummy buffers, so no real tile is stamped). The two renderings give the
+//     sprite's premultiplied colour and coverage per pixel (cursor_pixel_from_passes), stored with the game's cursor pixel. Nothing
+//     is drawn into the frame, so the frame never carries a second cursor and leaves no trail to redraw. Every global it touched is
+//     put back; the routine's own leftovers (current sprite, destination) are rewritten before each use by every blit.
+//   * anything else (100%, menus, lobby, galaxy, tactical, a hidden cursor, no layout): drops the stored cursor and runs the
+//     original untouched, so those paths are byte for byte what they were.
+// present_surface then places the stored cursor with uilayout::place_cursor (scaled by s, hotspot on frame_to_screen of the cursor
+// pixel -- the same map a click goes back through) and hands it to the backend as frame_view::cursor, drawn over the quads.
+// Presentation only: it reads the cursor position and writes render globals + scratch, never simulation state.
+constexpr uintptr_t ADDR_CURSOR_MENU_DRAW = 0x004a5b4du;
+constexpr uintptr_t ADDR_CURSOR_MENU_X    = scratch_addr::cursor_menu_x;
+constexpr uintptr_t ADDR_CURSOR_MENU_Y    = scratch_addr::cursor_menu_y;
+constexpr int       CURSOR_MAP_MAX_TW     = 240; // the dummy tile maps hold 8 rows of up to this many tiles
+
+// The stock cursor routine only reads the cursor position and the sprite state and blits into the frame globals' target; the tile-visibility /
+// tile-drawn maps it stamps are dummies in the scratch. Running it twice into a scratch is therefore harmless.
+constexpr scratch_target SCRATCH_CURSOR = {"cursor", ADDR_CURSOR_MENU_DRAW,
+                                           "reads the cursor position + sprite state; its only stores go to the frame target and the tile maps, which the scratch swaps for dummies"};
+
+typedef void(__cdecl *cursor_fn)();
+void         *g_cursor_tramp      = nullptr;
+bool          g_cursor_hook_tried = false;
+overlay_stamp g_cur_stamp; // the present the stored cursor was captured for (seq 0 = none)
+int           g_cur_fx = 0, g_cur_fy = 0;
+int           g_cur_bbox[4] = {0, 0, -1, -1}; // the stored sprite's opaque box, scratch pixels (the rig sizes the overlay with it)
+uint32_t      g_cur_src[uilayout::CURSOR_SRC * uilayout::CURSOR_SRC];
+uint32_t      g_cur_buf[uilayout::CURSOR_MAX * uilayout::CURSOR_MAX];
+uint16_t      g_cur_black[uilayout::CURSOR_SRC * uilayout::CURSOR_SRC];
+uint16_t      g_cur_white[uilayout::CURSOR_SRC * uilayout::CURSOR_SRC];
+uint8_t       g_cur_vis_map[8 * CURSOR_MAP_MAX_TW];
+uint8_t       g_cur_drawn_map[8 * CURSOR_MAP_MAX_TW];
+
+// The present a source captured NOW is for: the next one (the frame being drawn is shown by it). Every capture is stamped with it and the HUD
+// epoch in force (overlay_stamp); the overlay list takes only stamps that match the frame it is built for (ov_window) and drops the rest.
+bool     g_in_present     = false; // present_surface is building / showing its list
+unsigned g_newest_capture = 0;     // the newest present number any source was stamped for
+unsigned capture_seq() { return (unsigned)g_presents + 1; }
+void     stamp_capture(overlay_stamp &s) {
+    s.set(capture_seq(), g_hud.epoch);
+    g_newest_capture = capture_seq();
+}
+// The stamps that belong to the frame in question: inside a present, that present's; anywhere else (pcapture, the mouse, the game thread mid-draw)
+// the frame the framebuffer holds now -- the one drawn since the last present when any source was captured for it, else the last presented one.
+overlay_window ov_window() {
+    overlay_window w;
+    const unsigned p = (unsigned)g_presents;
+    w.seq_lo = w.seq_hi = g_in_present || g_newest_capture <= p ? p : p + 1;
+    w.epoch             = g_hud.epoch;
+    return w;
+}
+
+// THE hook layout (RES23-S7): the several-quad layout the presenter will use for the frame the game renders NOW, for every hook that keeps something out of
+// the frame to draw it at the Interface size afterwards -- the cursor, the dialog layers, the notices, the overlay collect. Like multi_layout, but a lane
+// with no owned window (a null presenter with the dev `ui_screen`) still gets one, so pcapture can show the cursor there. False = STOCK: the thing is drawn
+// into the frame by the game. That includes a requested percentage the layout cannot use: uilayout::build falls back to the 100 base layout (L.pct ==
+// MIN_PCT) when the requested panel / strip does not exceed the fit zoom (a 1280x720 session on a 2560x1440 screen at 175%), and a hook that had looked
+// only at the REQUEST kept the cursor and the ESC menu out of a frame whose presenter placed no overlay for them.
+bool scaled_layout(uilayout::layout &L, int fw, int fh) {
+    if (!g_active || fw <= 0 || fh <= 0) return false;
+    const int pct = effective_ui_pct();
+    if (pct <= uilayout::MIN_PCT) return false;
+    int cw, ch;
+    if (!ui_screen_size(cw, ch)) return false;
+    view_layout_now(L, cw, ch, fw, fh, pct);
+    return !L.single && L.pct > uilayout::MIN_PCT;
+}
+
+// Returns true when the cursor was handled here (nothing is to be drawn into the frame).
+bool __cdecl cursor_scaled_draw() {
+    constexpr int    N = uilayout::CURSOR_SRC;
+    uilayout::layout L;
+    const int        fw = at<int>(mh::addr::WindowWidth), fh = at<int>(mh::addr::WindowHeight);
+    const int        tw = at<int>(mh::addr::_G_LLM_VIEW_TILES_W);
+    if (!g_cursor_tramp || at<int>(mh::addr::_G_LLM_CURSOR_VISIBLE) != 1 || tw <= 0 || tw > CURSOR_MAP_MAX_TW || !scaled_layout(L, fw, fh)) {
+        g_cur_stamp.clear();
+        return false;
+    }
+    const int   saved_mx = at<int>(ADDR_CURSOR_MENU_X), saved_my = at<int>(ADDR_CURSOR_MENU_Y);
+    scratch_cfg c;
+    c.win_w = N, c.win_h = N;                                                        // the routine clips to WindowWidth / Height
+    c.cursor = true, c.cur_x = uilayout::CURSOR_HOT, c.cur_y = uilayout::CURSOR_HOT; // the hotspot lands on pixel CURSOR_HOT
+    c.vis = g_cur_vis_map, c.drawn = g_cur_drawn_map;
+    c.clip = true;
+    scratch_render_bw(SCRATCH_CURSOR, c, N, N, g_cur_black, g_cur_white, g_cur_src, [] { ((cursor_fn)g_cursor_tramp)(); }, g_cur_bbox);
+    g_cur_fx = saved_mx;
+    g_cur_fy = saved_my;
+    stamp_capture(g_cur_stamp);
+    return true;
+}
+
+// clang-format off
+__declspec(naked) void cursor_thunk() {
+    __asm {
+        pushad
+        pushfd
+        call cursor_scaled_draw
+        test al, al
+        jz   run_original
+        popfd
+        popad
+        ret
+    run_original:
+        popfd
+        popad
+        jmp  dword ptr [g_cursor_tramp]
+    }
+}
+// clang-format on
+
+// Arm the detour once (when ui_scale above 100 is asked for, at boot or live). The entry is `cmp dword [_G_LLM_CURSOR_VISIBLE], 1`
+// (7 bytes, then jz): checked against the generated 8 bytes, 7 stolen.
+void install_cursor_hook() {
+    if (g_cursor_hook_tried) return;
+    g_cursor_hook_tried = true;
+    if (*(const uint64_t *)ADDR_CURSOR_MENU_DRAW != mh::exp::entry_llm_gfx_draw_cursor_menu) {
+        gfx_log("; [ui] owned cursor NOT armed -- the cursor routine's entry bytes differ (wrong build, or hooked)");
+        return;
+    }
+    if (mh::hook::install_trampoline(ADDR_CURSOR_MENU_DRAW, (void *)&cursor_thunk, &g_cursor_tramp, 7, mh::hook::entry_claim::exclusive,
+                                     "the RES4 owned cursor (llm_gfx_draw_cursor_menu)", 0))
+        gfx_log("; [ui] owned cursor armed (llm_gfx_draw_cursor_menu detour): scaled layouts draw the cursor at ui_scale");
+    else
+        gfx_log("; [ui] owned cursor NOT armed -- the entry was refused (see the [interlock] line)");
+}
+
+// ---- RES20 / RES23-S5: the scaled floating messages (notices) --------------------------------------------------------------------------------
+//
+// llm_strat_draw_floating_messages (0x0044eb60) prints the notices ("order refused", "????", ...) at frame (10,10) downwards, once per frame, at the
+// tail of the strategic render. They are drawn INTO the map area of the frame, so at ui_scale they stayed 1x while the panel grew. In a scaled layout
+// (game mode 2, or mode 3 over the strategic frame: several quads) this detour runs the STOCK routine twice through the trampoline into a scratch (over black, then over white: the same
+// scratch_render_bw as the cursor), wrapping at the visible map width / s; the pair gives each pixel's coverage and premultiplied colour, and the
+// presenter shows the layer on the map quad scaled by s (uilayout::place_scaled_layer), as the notice slot of the overlay list. NOTHING is drawn into
+// the frame (so the dirty-tile maps need no stamping: the scratch has dummy ones). Any other case runs the original untouched. The capture is stamped
+// for the present of its frame: a mode that does not run this routine (a dialog over the HUD) presents no notice. [video] ui_scale_notices=0 (dev
+// kill switch) never arms the detour: the notices are the game's own, drawn into the frame at 1x.
+//
+// The routine only reads state (the message timers against TOTAL_GAME_TIME, the font, the message queue) and draws; the blink phase follows the
+// game clock, so a second rendering in the same frame is the same picture (REPORT.md 3.5).
+constexpr uintptr_t      ADDR_FLOAT_MSGS = 0x0044eb60u; // llm_strat_draw_floating_messages
+constexpr int            MSG_MAX_W       = 1280;        // the scratch: wrap width <= this, 30 lines of a font <= 17 px fit 512 rows
+constexpr int            MSG_H           = 512;
+constexpr int            MSG_MAP_MAX_TW = 240, MSG_MAP_ROWS = MSG_H / 32;
+constexpr scratch_target SCRATCH_NOTICES  = {"notices", ADDR_FLOAT_MSGS,
+                                             "only reads state (message timers vs TOTAL_GAME_TIME, the queue, the font) and draws -- checked in Ghidra 2026-10-22 (REPORT.md 3.5)"};
+void                    *g_msg_tramp      = nullptr;
+bool                     g_msg_hook_tried = false;
+bool                     g_msg_enabled    = true; // [video] ui_scale_notices (default on); off: the detour is never armed
+overlay_stamp            g_msg_stamp;
+int                      g_msg_w = 0, g_msg_h = 0;
+uint16_t                *g_msg_black = nullptr, *g_msg_white = nullptr;
+size_t                   g_msg_black_cap = 0, g_msg_white_cap = 0;
+uint32_t                *g_msg_src     = nullptr;
+size_t                   g_msg_src_cap = 0, g_msg_buf_cap = 0;
+uint32_t                *g_msg_buf = nullptr;
+uint8_t                  g_msg_vis_map[MSG_MAP_ROWS * MSG_MAP_MAX_TW];
+uint8_t                  g_msg_drawn_map[MSG_MAP_ROWS * MSG_MAP_MAX_TW];
+
+template <class T>
+bool grow(T *&p, size_t &cap, size_t n);
+
+bool __cdecl msgs_scaled_draw() {
+    uilayout::layout L;
+    const int        fw = at<int>(mh::addr::WindowWidth), fh = at<int>(mh::addr::WindowHeight);
+    const int        tw = at<int>(mh::addr::_G_LLM_VIEW_TILES_W);
+    const int        gm = at<int>(mh::addr::_G_LLM_GAME_MODE); // 2 strategic, 3 the ESC menu etc. over it (the game still prints its notices behind the dialog)
+    if (!g_msg_tramp || (gm != 2 && gm != 3) || tw <= 0 || tw > MSG_MAP_MAX_TW || !scaled_layout(L, fw, fh)) {
+        g_msg_stamp.clear();
+        return false;
+    }
+    // wrap at the width the screen shows: the visible map width in frame pixels
+    int ww = (int)((int64_t)L.map_w * 100 / L.pct);
+    if (ww > MSG_MAX_W) ww = MSG_MAX_W;
+    if (ww > fw - uilayout::PANEL_W) ww = fw - uilayout::PANEL_W;
+    if (ww < 160) ww = 160;
+    const size_t n = (size_t)ww * MSG_H;
+    if (!grow(g_msg_black, g_msg_black_cap, n) || !grow(g_msg_white, g_msg_white_cap, n) || !grow(g_msg_src, g_msg_src_cap, n)) {
+        g_msg_stamp.clear();
+        return false;
+    }
+    scratch_cfg c;
+    c.win_w = ww, c.win_h = MSG_H;
+    c.game_win = true; // the routine wraps at the viewport width G_WIN_W
+    c.vis = g_msg_vis_map, c.drawn = g_msg_drawn_map;
+    c.clip         = true;
+    const long any = scratch_render_bw(SCRATCH_NOTICES, c, ww, MSG_H, g_msg_black, g_msg_white, g_msg_src, [] { ((cursor_fn)g_msg_tramp)(); });
+    g_msg_w        = ww;
+    g_msg_h        = MSG_H;
+    if (any)
+        stamp_capture(g_msg_stamp);
+    else
+        g_msg_stamp.clear();
+    return true;
+}
+
+// clang-format off
+__declspec(naked) void msgs_thunk() {
+    __asm {
+        pushad
+        pushfd
+        call msgs_scaled_draw
+        test al, al
+        jz   run_original
+        popfd
+        popad
+        ret
+    run_original:
+        popfd
+        popad
+        jmp  dword ptr [g_msg_tramp]
+    }
+}
+// clang-format on
+
+void install_msgs_hook() {
+    if (g_msg_hook_tried || !g_msg_enabled) return;
+    g_msg_hook_tried = true;
+    if (*(const uint64_t *)ADDR_FLOAT_MSGS != mh::exp::entry_llm_strat_draw_floating_messages) {
+        gfx_log("; [ui] scaled notices NOT armed -- the message routine's entry bytes differ (wrong build, or hooked)");
+        return;
+    }
+    if (mh::hook::install_trampoline(ADDR_FLOAT_MSGS, (void *)&msgs_thunk, &g_msg_tramp, 8, mh::hook::entry_claim::exclusive,
+                                     "the RES20 scaled notices (llm_strat_draw_floating_messages)", 0))
+        gfx_log("; [ui] scaled notices armed (llm_strat_draw_floating_messages detour): notices are drawn at ui_scale");
+    else
+        gfx_log("; [ui] scaled notices NOT armed -- the entry was refused (see the [interlock] line)");
+}
+
+// ---- RES4 stage 6b: translucent dialog layers --------------------------------------------------------------------------
+//
+// The game draws every gameplay-size dialog with ONE routine, llm_ui_widget_list_draw (0x004b7384, EAX = the list). Its frame is a RLE
+// sprite whose blend ops (BNK_FORMAT.md section 5) make the dialog translucent over the map. Stage 6 scaled that 1x copy out of the frame,
+// which carried the map's pixels (under the dialog) along. In 6b, with ui_scale above 100 and the list being a dialog the presenter
+// scales (dialogs_now + a layout quad for it), this detour:
+//   * runs the STOCK draw three times into a frame-shaped scratch (pitch WindowWidth*2, WindowWidth unchanged, the real dirty maps
+//     kept: the stamps are idempotent and the next frame repaints all anyway), the dialog's rect cleared to black, white and mid grey,
+//     and recovers a premultiplied B8G8R8A8 layer per pixel (layer_pixel_from_passes);
+//   * draws NOTHING into the game frame, so the frame under the dialog is the true background (a lower dialog's layer is
+//     composited under the upper one by the presenter);
+//   * the presenter draws the layer scaled, alpha-blended, above the HUD quads and below the cursor (frame_view::overlays).
+// Only the five per-frame callers are taken (return addresses below); any other draw of a list runs stock, and a dialog without a layer
+// is still drawn from the frame by its stage 6 quad. [video] ui_scale_dialog_check=1 (dev) additionally draws the list over the true
+// background in the stock way and diffs it against the layer composited at 1x: the max error is logged. Presentation only.
+constexpr uintptr_t ADDR_LIST_DRAW      = 0x004b7384u;
+constexpr uintptr_t ADDR_UI_SPRITE_BASE = 0x00520395u;                                                                    // [x] - 1 = _G_LLM_GFX_UI_SPRITE_BASE_INDEX
+constexpr uintptr_t LIST_DRAW_CALLERS[] = {0x004b7f04u, 0x004b7f17u, 0x004c7c79u, 0x004c7c8cu, 0x004c75b1u, 0x004cac4fu}; // return addresses (0x004cac4f: llm_ui_paged_list_frame, the info screen)
+
+// The stock list draw writes only the frame target and the dirty-tile stamps (idempotent: the next frame repaints all anyway), so drawing it three
+// more times into a scratch is harmless; the real dirty maps are kept.
+constexpr scratch_target SCRATCH_LIST = {"dialog list", ADDR_LIST_DRAW, "stores only to the frame target and the dirty-tile stamps, which are idempotent (the next frame repaints all anyway)"};
+
+struct dlg_layer {
+    overlay_stamp   stamp; // RES23-S5: the present + HUD epoch this layer was captured for (seq 0 = none)
+    uintptr_t       list = 0;
+    uilayout::irect r;
+    uint32_t       *px  = nullptr;
+    size_t          cap = 0;
+};
+dlg_layer g_layers[uilayout::MAX_DIALOGS];
+
+// RES16: the info screen (game mode 4). Its AVI clip is a widget draw callback that BltFast's into the frame (outside the list's own drawing), so
+// a recovered list layer lacks it. While the layer passes run, the info-clip seam (seams/ui_info_avi.cpp) is told which pass this is
+// (owned_info_layer_pass: 1 = the first two, where it does nothing, 2 = the last, where it decodes the clip and STASHES it instead of blitting it
+// into the frame); the stash is composited into the layer as opaque pixels, and the seam's post step (the cursor and the flip the tick would have
+// run) runs once the layer is stored. Mode 4 is layered only when the seam registered that post step (its tick guard is armed).
+int g_info_pass       = 0;
+void (*g_info_post)() = nullptr;
+struct clip_stash {
+    bool      valid = false;
+    int       x = 0, y = 0, w = 0, h = 0;
+    uint16_t *px  = nullptr;
+    size_t    cap = 0;
+};
+clip_stash g_clip;
+void      *g_list_tramp                     = nullptr;
+bool       g_list_hook_tried                = false;
+bool       g_dlg_check                      = false; // [video] ui_scale_dialog_check
+uint16_t  *g_dscratch                       = nullptr;
+size_t     g_dscratch_cap                   = 0;
+uint16_t  *g_dpass[5]                       = {};
+size_t     g_dpass_cap                      = 0;
+uint32_t  *g_dov_buf[uilayout::MAX_DIALOGS] = {};
+size_t     g_dov_cap[uilayout::MAX_DIALOGS] = {};
+
+bool layer_valid_for(int slot, uintptr_t list, const uilayout::irect &r) {
+    if (slot < 0 || slot >= uilayout::MAX_DIALOGS) return false;
+    const dlg_layer &l = g_layers[slot];
+    return l.stamp.fresh(ov_window()) && l.list == list && l.r.x0 == r.x0 && l.r.y0 == r.y0 && l.r.x1 == r.x1 && l.r.y1 == r.y1;
+}
+
+void layers_drop_all() {
+    for (auto &l : g_layers) l.stamp.clear();
+}
+
+template <class T>
+bool grow(T *&p, size_t &cap, size_t n) {
+    if (cap >= n) return true;
+    T *q = (T *)realloc(p, n * sizeof(T));
+    if (!q) return false;
+    p   = q;
+    cap = n;
+    return true;
+}
+
+void net_log(const char *fmt, ...) {
+    static char          path[MAX_PATH];
+    static unsigned long gen = 0;
+    mh_proc_path(path, MAX_PATH, "%smh_net.log", &gen);
+    char    line[600];
+    va_list ap;
+    va_start(ap, fmt);
+    wvsprintfA(line, fmt, ap);
+    va_end(ap);
+    int n = lstrlenA(line);
+    if (n < (int)sizeof(line) - 2) {
+        line[n++] = '\n';
+        line[n]   = 0;
+    }
+    mh_logq_write(path, line, lstrlenA(line));
+}
+
+// One-time opcode histogram of the dialog frame sprites (ESC / Options panel = widget disp 41, generic dialog frame = disp 40):
+// the V1 RLE stream at sprite header + 0x0E. Pixel counts per op; decides whether black+white recovery is exact (ops 0x40 / 0x60 are not).
+void log_dialog_blend_ops_once() {
+    static bool done = false;
+    if (done) return;
+    done                = true;
+    const int   base    = at<int>(ADDR_UI_SPRITE_BASE) - 1;
+    const char *nm[2]   = {"esc_options_panel_disp41", "generic_dialog_frame_disp40"};
+    const int   disp[2] = {41, 40};
+    for (int k = 0; k < 2; ++k) {
+        const int id = base + disp[k];
+        if (id < 0 || id >= 22000) continue;
+        const uint8_t *hdr     = (const uint8_t *)(uintptr_t)(at<uint32_t>(mh::addr::_G_LLM_GFX_BANK_PIXELS) +
+                                                          ((const uint32_t *)mh::addr::_G_LLM_SPRITE_PIX_OFFSETS)[id]);
+        const uint8_t *p       = hdr + 0x0E;
+        long           cmds[8] = {}, px[8] = {};
+        long           rows = 0;
+        for (int guard = 0; guard < 400000; ++guard) {
+            const uint8_t b = *p++;
+            if (b == 0xFF) break;
+            if (b == 0xFE) {
+                ++rows;
+                continue;
+            }
+            const int t = b >> 5, n = b & 0x1F;
+            ++cmds[t];
+            px[t] += n;
+            switch (t) {
+                case 1: p += n; break;     // opaque: 1 byte per pixel
+                case 2: p += 2 * n; break; // 0x40 palette + scaled background
+                case 3: p += 2 * n; break; // 0x60 clamped
+                case 4: p += n; break;     // 0x80 tint
+                default: break;
+            }
+        }
+        net_log("; RES4: dialog blend ops %s sprite %d: rows %ld cmds/px: skip %ld/%ld opaque %ld/%ld op40 %ld/%ld op60 %ld/%ld tint80 %ld/%ld "
+                "halveA0 %ld/%ld skiplinesC0 %ld",
+                nm[k], id, rows, cmds[0], px[0], cmds[1], px[1], cmds[2], px[2], cmds[3], px[3], cmds[4], px[4], cmds[5], px[5], cmds[6]);
+    }
+}
+
+__declspec(naked) void call_list_stock(uintptr_t) {
+    __asm {
+        pushad
+        mov  eax, [esp + 36]
+        call dword ptr [g_list_tramp]
+        popad
+        ret
+    }
+}
+
+inline int c8(uint16_t p, int c) { // channel c (0 R, 1 G, 2 B) of an RGB565 pixel, expanded to 8 bits
+    if (c == 0) return ((p >> 11) & 0x1f) * 255 / 31;
+    if (c == 1) return ((p >> 5) & 0x3f) * 255 / 63;
+    return (p & 0x1f) * 255 / 31;
+}
+
+// A premultiplied layer pixel over an RGB565 backdrop, back to RGB565 (truncated like the game's own blend, whose LUT terms all floor).
+uint16_t comp565(uint32_t pm, uint16_t bg) {
+    const int a = (int)(pm >> 24);
+    int       o[3];
+    const int pc[3] = {(int)((pm >> 16) & 0xff), (int)((pm >> 8) & 0xff), (int)(pm & 0xff)};
+    for (int c = 0; c < 3; ++c) {
+        o[c] = pc[c] + (c8(bg, c) * (255 - a) + 127) / 255;
+        if (o[c] > 255) o[c] = 255;
+    }
+    return (uint16_t)(((o[0] * 31 / 255) << 11) | ((o[1] * 63 / 255) << 5) | (o[2] * 31 / 255)); // truncation: the game's LUTs floor each term
+}
+
+// The dev proof: the list drawn the stock way over the true backdrop (frame rect + the lower layers) vs the recovered layer composited at 1x.
+// The scratch is the current frame globals' target when this runs.
+void dialog_check(int slot, uintptr_t list, const uilayout::irect &r, int fw, int saved_fb, int saved_pitch) {
+    const int w = r.w(), h = r.h();
+    uint16_t *bg = g_dpass[3], *st = g_dpass[4];
+    for (int y = 0; y < h; ++y)
+        memcpy(bg + (size_t)y * w, (const uint8_t *)(intptr_t)saved_fb + (size_t)(r.y0 + y) * saved_pitch + (size_t)r.x0 * 2, (size_t)w * 2);
+    for (int j = 0; j < slot; ++j) { // the lower dialogs' layers are part of the backdrop
+        if (!g_layers[j].stamp.seq) continue;
+        const uilayout::irect &lr = g_layers[j].r;
+        for (int y = lr.y0; y < lr.y1; ++y)
+            for (int x = lr.x0; x < lr.x1; ++x)
+                if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) {
+                    uint16_t &b = bg[(size_t)(y - r.y0) * w + (x - r.x0)];
+                    b           = comp565(g_layers[j].px[(size_t)(y - lr.y0) * lr.w() + (x - lr.x0)], b);
+                }
+    }
+    for (int y = 0; y < h; ++y) memcpy(g_dscratch + (size_t)(r.y0 + y) * fw + r.x0, bg + (size_t)y * w, (size_t)w * 2);
+    call_list_stock(list);
+    for (int y = 0; y < h; ++y) memcpy(st + (size_t)y * w, g_dscratch + (size_t)(r.y0 + y) * fw + r.x0, (size_t)w * 2);
+    int  mx[3] = {0, 0, 0};
+    long over  = 0;
+    char badtxt[3][200];
+    for (size_t i = 0; i < (size_t)w * h; ++i) {
+        const uint16_t o = comp565(g_layers[slot].px[i], bg[i]), s = st[i];
+        const int      e[3] = {abs(((o >> 11) & 31) - ((s >> 11) & 31)), abs(((o >> 5) & 63) - ((s >> 5) & 63)), abs((o & 31) - (s & 31))};
+        bool           bad  = false;
+        for (int c = 0; c < 3; ++c) {
+            if (e[c] > mx[c]) mx[c] = e[c];
+            if (e[c] > 1) bad = true;
+        }
+        if (bad && ++over <= 3) snprintf(badtxt[over - 1], sizeof(badtxt[0]), "bad px %d,%d: bg %04x stock %04x ours %04x | black %04x white %04x grey %04x layer %08x",
+                                         (int)(i % w), (int)(i / w), bg[i], s, o, g_dpass[0][i], g_dpass[1][i], g_dpass[2][i], (unsigned)g_layers[slot].px[i]);
+    }
+    // One line per distinct result (a steady dialog is checked every frame).
+    static long lastkey[uilayout::MAX_DIALOGS][6] = {};
+    const long  key[6]                            = {(long)list, ((long)r.x0 << 16) | r.y0, mx[0], mx[1], mx[2], over};
+    if (memcmp(lastkey[slot], key, sizeof(key)) != 0) {
+        memcpy(lastkey[slot], key, sizeof(key));
+        net_log("; RES4: dialog layer check slot %d list %08x rect %d,%d %dx%d: max err r=%d g=%d b=%d (565 units), %ld of %d px above 1 -> %s", slot,
+                (unsigned)list, r.x0, r.y0, w, h, mx[0], mx[1], mx[2], over, w * h, over == 0 ? "PASS" : "FAIL");
+        for (long k = 0; k < over && k < 3; ++k) net_log("; RES4: dialog layer check %s", badtxt[k]);
+    }
+}
+
+// The detour body. True = the list was captured as a layer (the caller returns without drawing it).
+bool __cdecl dialog_list_draw(uintptr_t list, uintptr_t ret) {
+    bool ours = false;
+    for (uintptr_t a : LIST_DRAW_CALLERS) ours |= a == ret;
+    if (!ours || !g_list_tramp || !g_active) return false;
+    const int fw = at<int>(mh::addr::WindowWidth), fh = at<int>(mh::addr::WindowHeight);
+    const int m = at<int>(mh::addr::_G_LLM_GAME_MODE);
+    if (m != 2 && m != 3 && m != 4 && m != 5) return false;
+    if (m == 4 && !g_info_post) return false;
+    uilayout::layout L; // the ONE hook layout (scaled_layout): the presenter's, crop included; false = the fitted base, the game draws the dialog into the frame
+    if (fw <= 0 || fh <= 0 || !scaled_layout(L, fw, fh)) return false;
+    uilayout::dialog_set ds;
+    uintptr_t            lists[uilayout::MAX_DIALOGS] = {};
+    dialogs_now(fw, fh, ds, lists);
+    int slot = -1;
+    for (int i = 0; i < ds.n; ++i)
+        if (lists[i] == list) slot = i;
+    if (slot < 0) return false;
+    bool quad = false;
+    for (int j = 0; j < L.ndialogs; ++j) {
+        const uilayout::irect &s = L.dialog_src[j], &d = ds.r[slot];
+        quad |= s.x0 == d.x0 && s.y0 == d.y0 && s.x1 == d.x1 && s.y1 == d.y1;
+    }
+    if (!quad) return false;
+
+    const uilayout::irect r = ds.r[slot];
+    const int             w = r.w(), h = r.h();
+    const size_t          n = (size_t)w * h;
+    if (!grow(g_dscratch, g_dscratch_cap, (size_t)fw * fh) || !grow(g_dpass[0], g_dpass_cap, n * 5)) return false;
+    for (int i = 1; i < 5; ++i) g_dpass[i] = g_dpass[0] + n * i; // one allocation, five w*h arrays
+    if (!grow(g_layers[slot].px, g_layers[slot].cap, n)) return false;
+    log_dialog_blend_ops_once();
+
+    static const uint16_t fills[3] = {0x0000, 0xFFFF, 0x8410};
+    uint32_t             *px       = g_layers[slot].px;
+    long                  grey = 0, covered = 0;
+    {
+        scratch_scope scope(SCRATCH_LIST, scratch_cfg()); // a frame-shaped scratch: WindowWidth unchanged, the real dirty maps kept
+        if (!scope.ok()) return false;
+        const int saved_fb = scope.saved_fb(), saved_pitch = scope.saved_pitch();
+        scope.retarget(g_dscratch, fw);
+        g_clip.valid = false;
+        for (int p = 0; p < 3; ++p) {
+            scratch_fill_rect(g_dscratch, fw, r.x0, r.y0, w, h, fills[p]);
+            g_info_pass = m == 4 ? (p == 2 ? 2 : 1) : 0;
+            call_list_stock(list);
+            g_info_pass = 0;
+            for (int y = 0; y < h; ++y) memcpy(g_dpass[p] + (size_t)y * w, g_dscratch + (size_t)(r.y0 + y) * fw + r.x0, (size_t)w * 2);
+        }
+        for (size_t i = 0; i < n; ++i) {
+            bool ug;
+            px[i] = uilayout::layer_pixel_from_passes(g_dpass[0][i], g_dpass[1][i], g_dpass[2][i], &ug);
+            grey += ug;
+            covered += (px[i] >> 24) != 0;
+        }
+        if (m == 4 && g_clip.valid) { // the AVI clip: opaque pixels of the layer, where the tick would have blitted it into the frame
+            for (int cy = 0; cy < g_clip.h; ++cy) {
+                const int ly = g_clip.y + cy - r.y0;
+                if (ly < 0 || ly >= h) continue;
+                for (int cx = 0; cx < g_clip.w; ++cx) {
+                    const int lx = g_clip.x + cx - r.x0;
+                    if (lx < 0 || lx >= w) continue;
+                    const uint16_t c  = g_clip.px[(size_t)cy * g_clip.w + cx];
+                    const uint32_t r5 = (c >> 11) & 0x1f, g6 = (c >> 5) & 0x3f, b5 = c & 0x1f;
+                    px[(size_t)ly * w + lx] = 0xFF000000u | (((r5 << 3) | (r5 >> 2)) << 16) | (((g6 << 2) | (g6 >> 4)) << 8) | ((b5 << 3) | (b5 >> 2));
+                }
+            }
+        }
+        stamp_capture(g_layers[slot].stamp);
+        g_layers[slot].list = list;
+        g_layers[slot].r    = r;
+        if (g_dlg_check) {
+            dialog_check(slot, list, r, fw, saved_fb, saved_pitch);
+            static long reported = -1;
+            if (grey != reported) {
+                reported = grey;
+                net_log("; RES4: dialog layer slot %d: %ld of %d px recovered with the grey pass, %ld px non-transparent", slot, grey, w * h, covered);
+            }
+        }
+    } // the scratch scope ends: the frame globals are the real frame's again before the info tick's post step
+    if (m == 4 && g_info_post) g_info_post(); // the cursor + flip the info tick skipped (the layer is complete now)
+    return true;
+}
+
+// clang-format off
+__declspec(naked) void list_thunk() {
+    __asm {
+        pushad
+        pushfd
+        mov  ecx, [esp + 36]
+        push ecx
+        push eax
+        call dialog_list_draw
+        add  esp, 8
+        test al, al
+        jz   run_original
+        popfd
+        popad
+        ret
+    run_original:
+        popfd
+        popad
+        jmp  dword ptr [g_list_tramp]
+    }
+}
+// clang-format on
+
+void install_dialog_hook() {
+    if (g_list_hook_tried) return;
+    g_list_hook_tried = true;
+    if (*(const uint64_t *)ADDR_LIST_DRAW != mh::exp::entry_llm_ui_widget_list_draw) {
+        gfx_log("; [ui] dialog layers NOT armed -- the list draw's entry bytes differ (wrong build, or hooked)");
+        return;
+    }
+    if (mh::hook::install_trampoline(ADDR_LIST_DRAW, (void *)&list_thunk, &g_list_tramp, 8, mh::hook::entry_claim::exclusive,
+                                     "the RES4 translucent dialog layers (llm_ui_widget_list_draw)", 0))
+        gfx_log("; [ui] dialog layers armed (llm_ui_widget_list_draw detour): scaled dialogs stay translucent");
+    else
+        gfx_log("; [ui] dialog layers NOT armed -- the entry was refused (see the [interlock] line)");
+}
+
+// RES23-S5: THE overlay list of a fw x fh frame shown now, bottom to top: the scaled notice, the layered dialogs, the cursor -- each placed per ONE
+// layout (L) and taken only when its capture is stamped for this frame (ov_window: the present being built inside present_surface, the frame the
+// framebuffer holds elsewhere) under the HUD epoch in force. A stale source is dropped, never drawn. The callers keep their own gates (the cursor and
+// notice need ui_scale asked or in force, the dialogs need it in force) through `want_*`. sprite_bbox (optional) gets the cursor sprite's box.
+struct overlay_want {
+    bool cursor = false, dialogs = false, notices = false;
+};
+// RES23-S7 defensive: a source captured (so kept OUT of the frame) for the frame in question that the layout cannot place is drawn nowhere -- the bug that
+// hid the cursor and the ESC menu at 1280x720 @175. Logged once per HUD epoch and kind; the hooks decide from the same layout (scaled_layout), so a line
+// here means they disagree again.
+void log_unplaced_once(const char *what, const overlay_window &win) {
+    static unsigned last_epoch[3] = {~0u, ~0u, ~0u};
+    const int       k             = what[0] == 'c' ? 0 : what[0] == 'd' ? 1
+                                                                        : 2;
+    if (last_epoch[k] == win.epoch) return;
+    last_epoch[k] = win.epoch;
+    gfx_log("; [ui] OVERLAY LOST: a %s was captured for this frame (kept out of it) but the present layout places no overlay for it (epoch %u)", what, (unsigned)win.epoch);
+}
+void overlay_collect(overlay_list &out, int fw, int fh, const overlay_want &want, int *sprite_bbox = nullptr) {
+    out = overlay_list();
+    uilayout::layout L;
+    if (!g_active) return;
+    const overlay_window win = ov_window();
+    if (!scaled_layout(L, fw, fh)) {
+        if (want.cursor && g_cur_stamp.fresh(win)) log_unplaced_once("cursor", win);
+        if (want.notices && g_msg_stamp.fresh(win)) log_unplaced_once("notice", win);
+        if (want.dialogs)
+            for (const dlg_layer &c : g_layers)
+                if (c.stamp.fresh(win)) {
+                    log_unplaced_once("dialog layer", win);
+                    break;
+                }
+        return;
+    }
+    if (want.notices && g_msg_stamp.fresh(win)) {
+        const size_t             need = (size_t)L.screen_w * L.screen_h;
+        uilayout::cursor_overlay ov;
+        if (grow(g_msg_buf, g_msg_buf_cap, need) && uilayout::place_scaled_layer(L, g_msg_src, g_msg_w, g_msg_h, 0, 0, g_msg_buf, (int)g_msg_buf_cap, ov))
+            out.add(ov, overlay_slot::notice);
+    }
+    if (want.dialogs) {
+        int n = 0;
+        for (int j = 0; j < L.ndialogs && n < uilayout::MAX_DIALOGS; ++j) {
+            if (!L.dialog_layered[j]) continue;
+            const dlg_layer *lay = nullptr;
+            for (const dlg_layer &c : g_layers) {
+                const uilayout::irect &s = L.dialog_src[j];
+                if (c.stamp.fresh(win) && c.r.x0 == s.x0 && c.r.y0 == s.y0 && c.r.x1 == s.x1 && c.r.y1 == s.y1) lay = &c;
+            }
+            if (!lay) continue;
+            const uilayout::irect &d = L.dialog_dst[j];
+            if (!grow(g_dov_buf[n], g_dov_cap[n], (size_t)d.w() * d.h())) continue;
+            uilayout::cursor_overlay ov;
+            if (uilayout::place_dialog_layer(L, j, lay->px, g_dov_buf[n], (int)g_dov_cap[n], ov)) {
+                out.add(ov, overlay_slot::dialog0 + n);
+                ++n;
+            }
+        }
+    }
+    if (want.cursor && g_cur_stamp.fresh(win)) {
+        uilayout::cursor_overlay ov;
+        if (uilayout::place_cursor(L, g_cur_src, g_cur_fx, g_cur_fy, g_cur_buf, (int)(sizeof(g_cur_buf) / sizeof(g_cur_buf[0])), ov)) {
+            out.add(ov, overlay_slot::cursor);
+            if (sprite_bbox)
+                for (int i = 0; i < 4; ++i) sprite_bbox[i] = g_cur_bbox[i];
+        }
+    }
+}
+
+// One log line per distinct set of dialog quads (mh_video.log), and one when they are gone: the rig's checker reads them.
+void log_dialog_quads(const uilayout::dialog_set &ds) {
+    static int key[1 + 8 * uilayout::MAX_DIALOGS] = {-1};
+    if (!g_view.valid) return;
+    const uilayout::layout &L                                = g_view.layout; // (the quads of this present: g_view.dialogs == ds)
+    int                     k[1 + 8 * uilayout::MAX_DIALOGS] = {ds.n};
+    for (int i = 0; i < ds.n; ++i) {
+        k[1 + 8 * i] = ds.r[i].x0, k[2 + 8 * i] = ds.r[i].y0, k[3 + 8 * i] = ds.r[i].x1, k[4 + 8 * i] = ds.r[i].y1;
+    }
+    for (int i = 0; i < L.ndialogs; ++i) k[5 + 8 * i] = L.dialog_dst[i].x0, k[6 + 8 * i] = L.dialog_dst[i].y0, k[7 + 8 * i] = L.dialog_dst[i].x1, k[8 + 8 * i] = L.dialog_dst[i].y1;
+    if (!memcmp(key, k, sizeof(k))) return;
+    memcpy(key, k, sizeof(k));
+    if (ds.n == 0) gfx_log("; [ui] dialogs gone");
+    int q = 0;
+    for (int i = 0; i < ds.n; ++i) {
+        const uilayout::irect &d = ds.r[i];
+        if (q < L.ndialogs && L.dialog_src[q].x0 == d.x0 && L.dialog_src[q].y0 == d.y0 && L.dialog_src[q].x1 == d.x1 && L.dialog_src[q].y1 == d.y1) {
+            const uilayout::irect &t = L.dialog_dst[q++];
+            gfx_log("; [ui] dialog quad %d: frame %d,%d-%d,%d (%dx%d) -> screen %d,%d-%d,%d (%dx%d) at %d%%", i, d.x0, d.y0, d.x1, d.y1, d.w(), d.h(), t.x0, t.y0, t.x1, t.y1,
+                    t.w(), t.h(), L.pct);
+        } else
+            gfx_log("; [ui] dialog %d: frame %d,%d-%d,%d (%dx%d): no quad (stays 1x)", i, d.x0, d.y0, d.x1, d.y1, d.w(), d.h());
+    }
+}
+
+// ---- RES23-S0: the view epoch log line and the presenter-output capture (`bcapture`) ----------------------------------
+//
+// Both are OBSERVATION only: nothing here changes what is drawn. The epoch line is logged once per CHANGE of (pct in force, screen,
+// frame, composition, game mode, presenter), never per frame, so a later stage can correlate a captured image with the geometry that
+// produced it. `bcapture` asks the presenter for the image it really put on screen (cursor, dialog layers and overlays included);
+// pcapture is the CPU re-composition of the same moment, and tools/check_bcapture.py compares the two.
+char g_bcap_name[96];
+bool g_bcap_pending = false;
+int  g_view_epoch   = 0;
+
+void log_view_epoch(const OwnSurface *s) {
+    static int         key[9]       = {};
+    static const void *last_backend = nullptr;
+    const int          cw = g_view.valid ? g_view.screen_w : 0, ch = g_view.valid ? g_view.screen_h : 0;
+    const int          kw = g_view.crop_w, kh = g_view.crop_h;
+    const int          m   = at<int>(mh::addr::_G_LLM_GAME_MODE);
+    const int          pct = g_cfg.ui_scale_pct;
+    if (key[0] == pct && key[1] == cw && key[2] == ch && key[3] == s->w && key[4] == s->h && key[5] == kw && key[6] == kh && key[7] == m &&
+        last_backend == g_backend)
+        return;
+    key[0] = pct, key[1] = cw, key[2] = ch, key[3] = s->w, key[4] = s->h, key[5] = kw, key[6] = kh, key[7] = m;
+    last_backend             = g_backend;
+    const uilayout::layout l = g_view.valid ? g_view.layout : uilayout::layout();
+    gfx_log("; [ui] view epoch %d: present %u, pct in force %d (requested %d), screen %dx%d, frame %dx%d, composition %dx%d at %d,%d%s, game mode %d, presenter %s, hud epoch %u",
+            ++g_view_epoch, (unsigned)g_presents, pct, g_ui_scale_req, cw, ch, s->w, s->h, l.used.w(), l.used.h(), l.used.x0, l.used.y0,
+            l.single ? " (single quad)" : "", m, g_backend ? g_backend->name() : "none", g_stamp.epoch);
+}
+
+// RES23-S1: the view of this present, built ONCE from the presenter's real target size (the d3d11 swap chain is resized to the client rect first),
+// the frame, the percentage in force (g_cfg.ui_scale_pct, synced just before), the integer flag, the dialogs up and the crop. The dev override
+// [video] ui_screen still wins over the presenter's size, for both presenters.
+void make_present_view(const OwnSurface *s) {
+    int  cw = 0, ch = 0;
+    bool have = false;
+    if (g_ui_screen_w > 0 && g_ui_screen_h > 0) {
+        cw   = g_ui_screen_w;
+        ch   = g_ui_screen_h;
+        have = true;
+    } else if (g_backend && g_backend->target_size(cw, ch))
+        have = true;
+    else
+        have = ui_screen_size(cw, ch);
+    const int            pct = g_cfg.ui_scale_pct;
+    uilayout::dialog_set ds;
+    if (pct > uilayout::MIN_PCT) dialogs_now(s->w, s->h, ds);
+    int kw = 0, kh = 0;
+    crop_for_frame(s->w, s->h, kw, kh);
+    if (!have) {
+        g_view = present_view();
+        return;
+    }
+    build_present_view(g_view, cw, ch, s->w, s->h, pct, g_cfg.integer_scale, &ds, kw, kh);
+}
+
 void present_surface(OwnSurface *s) {
     ++g_presents;
+    struct in_present_guard { // the overlay stamps are read against THIS present until it returns (ov_window)
+        in_present_guard() { g_in_present = true; }
+        ~in_present_guard() { g_in_present = false; }
+    } in_present;
     if (!g_backend) bind_backend(g_hwnd ? g_hwnd : at<HWND>(ADDR_HWND_MAIN));
     log_modules_once();
     ensure_geometry();
+    {
+        const int m = at<int>(mh::addr::_G_LLM_GAME_MODE);
+        if (m == 2 || m == 5) {
+            g_stamp.epoch = g_hud.epoch;
+            g_stamp.pct   = effective_ui_pct_for(s->w, s->h);
+            g_stamp.w = s->w, g_stamp.h = s->h;
+        } else if (m != 3 && m != 4)
+            g_stamp.w = g_stamp.h = 0;
+    }
+    int eff_logged = 0;
+    if (g_ui_scale_req > uilayout::MIN_PCT || g_cfg.ui_scale_pct > uilayout::MIN_PCT) { // (the second term: a request back to 100 must release the quads)
+        const int eff = effective_ui_pct();
+        if (eff != g_cfg.ui_scale_pct) {
+            g_cfg.ui_scale_pct = eff;
+            if (g_backend) g_backend->set_config(g_cfg);
+            gfx_log("; [ui] ui_scale in force: %d%% (game mode %d)", eff, at<int>(mh::addr::_G_LLM_GAME_MODE));
+        }
+        eff_logged = eff;
+    }
+    make_present_view(s); // RES23-S1: the ONE view of this present; the clip, the cursor, the dialogs, the backend and the logs below all read it
+    if (eff_logged > uilayout::MIN_PCT) log_ui_layout_change(s->w, s->h, eff_logged, g_view.layout, g_view.crop_w);
     update_clip();
     g_limiter.pace(g_fps_limit);
     if (!g_backend) return;
@@ -1264,7 +2258,30 @@ void present_surface(OwnSurface *s) {
     f.height = s->h;
     f.pitch  = s->pitch;
     f.format = pixel_format::rgb565;
+    if (crop_for_frame(s->w, s->h, f.crop_w, f.crop_h)) log_crop_layout(s->w, s->h, f.crop_w, f.crop_h, g_view.layout); // RES18
+    // RES23-S5: ONE overlay list (notice, dialog layers, cursor), every source stamped for this present or dropped (overlay_collect)
+    overlay_want want;
+    want.cursor = want.notices = g_ui_scale_req > uilayout::MIN_PCT || g_cfg.ui_scale_pct > uilayout::MIN_PCT; // (the second term: a request back to 100 must release the quads)
+    if (g_cfg.ui_scale_pct > uilayout::MIN_PCT) {                                                              // RES4 stage 6: the dialog quad's source
+        f.dialogs = g_view.dialogs;
+        log_dialog_quads(f.dialogs);
+        want.dialogs = true; // RES4 stage 6b
+    }
+    if (want.cursor || want.dialogs) overlay_collect(f.overlays, s->w, s->h, want);
+    log_view_epoch(s);
+    f.view          = &g_view;
+    const bool bcap = g_bcap_pending;
+    if (bcap) g_backend->arm_output_capture();
     g_backend->present(f); // false = a dropped frame (minimised, device lost), never an error
+    if (bcap) {
+        g_bcap_pending = false;
+        std::vector<uint32_t> px;
+        int                   w = 0, h = 0;
+        if (g_backend->take_output_capture(px, w, h))
+            MH_Capture_WriteBgra32(g_bcap_name, px.data(), w, h);
+        else
+            MH_Capture_WriteBgra32(g_bcap_name, nullptr, 0, 0); // logs "bcapture <name> SKIPPED"
+    }
 }
 
 // Clip `d` to the destination bounds and move `s` by the same amount (1:1 copies only).
@@ -1837,7 +2854,236 @@ void owned_set_vsync(bool on) {
     gfx_log("; [gfx] vsync -> %d (set_config, live, backend %s)", on ? 1 : 0, g_backend ? g_backend->name() : "none");
 }
 
+// ---- RES4: the UI scale ----------------------------------------------------------------------------------
+
+int owned_ui_scale() { return g_ui_scale_req; }
+
+void owned_set_ui_scale(int pct) {
+    if (!g_active) return;
+    if (classic_sizes()) return; // RES25: classic sizes only -- no Interface size scaling, live or at boot
+    if (pct < uilayout::MIN_PCT) pct = uilayout::MIN_PCT;
+    if (pct > uilayout::MAX_PCT) pct = uilayout::MAX_PCT;
+    if (g_ui_scale_req == pct) return;
+    g_ui_scale_req = pct; // the next present applies it (strategic modes only) and logs the layout
+    if (pct > uilayout::MIN_PCT) install_cursor_hook(), install_dialog_hook(), install_msgs_hook();
+    gfx_log("; [ui] ui_scale -> %d%% (applied at the next strategic present)", pct);
+}
+
+// RES23-S0 `bcapture <name>`: the NEXT present writes capture_<name>__b.bmp from what the presenter really put on screen.
+void owned_request_bcapture(const char *name) {
+    lstrcpynA(g_bcap_name, name ? name : "bcapture", (int)sizeof(g_bcap_name));
+    g_bcap_pending = true;
+}
+
+bool owned_present_layout(int frame_w, int frame_h, uilayout::layout *out) {
+    if (!g_active || !out || frame_w <= 0 || frame_h <= 0) return false;
+    int cw, ch;
+    if (!ui_screen_size(cw, ch)) return false;
+    const int pct = effective_ui_pct();
+    view_layout_now(*out, cw, ch, frame_w, frame_h, pct);
+    int        kw, kh;
+    const bool cropped = crop_for_frame(frame_w, frame_h, kw, kh);
+    if (pct > uilayout::MIN_PCT) log_ui_layout_change(frame_w, frame_h, pct, *out, kw); // a headless lane presents nothing: log here too
+    if (cropped) log_crop_layout(frame_w, frame_h, kw, kh, *out);
+    return true;
+}
+
+// RES18: the picker applied a mode whose frame is fw x fh and whose session size is lw x lh (lw <= fw, lh <= fh; equal = no crop).
+void owned_set_crop(int fw, int fh, int lw, int lh) {
+    if (!g_active) return;
+    if (lw <= 0 || lh <= 0 || lw > fw || lh > fh || (lw == fw && lh == fh)) lw = lh = 0;
+    if (g_hud.comp_fw == fw && g_hud.comp_fh == fh && g_hud.comp_w == lw && g_hud.comp_h == lh) return;
+    g_hud.comp_fw = fw, g_hud.comp_fh = fh, g_hud.comp_w = lw, g_hud.comp_h = lh;
+    g_comp_moved = true; // (the picker's mode apply IS the commit point of the composition; the epoch follows at the geometry recommit)
+    if (lw > 0)
+        gfx_log("; [ui] crop armed: session size %dx%d rendered as %dx%d, presented cropped (applies to the strategic frame)", lw, lh, fw, fh);
+    else
+        gfx_log("; [ui] crop off: the %dx%d frame is the picture", fw, fh);
+    if (g_backend) g_backend->on_window_changed();
+}
+
+// RES4 stage 4: the quad layout in force NOW (several quads) for the mouse; false = the legacy single-rect mapping.
+int  owned_info_layer_pass() { return g_info_pass; }
+void owned_set_info_post(void (*cb)()) { g_info_post = cb; }
+void owned_info_clip_stash(void *surface, int x, int y) {
+    OwnSurface *s = static_cast<OwnSurface *>(surface);
+    if (!s || !s->bits || s->w <= 0 || s->h <= 0) return;
+    const size_t n = (size_t)s->w * s->h;
+    if (!grow(g_clip.px, g_clip.cap, n)) return;
+    for (int row = 0; row < s->h; ++row) memcpy(g_clip.px + (size_t)row * s->w, s->bits + (size_t)row * s->pitch, (size_t)s->w * 2);
+    g_clip.x = x, g_clip.y = y, g_clip.w = s->w, g_clip.h = s->h;
+    g_clip.valid = true;
+}
+
+bool owned_ui_layout(uilayout::layout *out) { return g_active && out && multi_layout(*out); }
+
+// RES23-S5: the overlay list (notice, layered dialogs, cursor) over the presented image of a frame_w x frame_h frame (pcapture / bcapture's CPU twin), in
+// static buffers: the same collect the presenter runs, against the frame the framebuffer holds now. sprite_bbox (optional) gets the cursor sprite's box.
+bool owned_overlay_list(int frame_w, int frame_h, overlay_list *out, int *sprite_bbox) {
+    if (!g_active || !out) return false;
+    overlay_want want;
+    want.cursor = want.dialogs = want.notices = true;
+    overlay_collect(*out, frame_w, frame_h, want, sprite_bbox);
+    return true;
+}
+
+// RES4 stage 3: how many frame rows of the side panel the screen shows (Hp = ceil(composition height / s)), or 0 when ui_scale is
+// not in force. The six panel row-count sites take min(WindowHeight, cap, Hp), so no list draws a row nobody sees.
+// WHOLE rows only: floor(composition height / s), not the quad's ceil -- a list row that ends past the visible bottom would be cut by the
+// screen, so the lists size themselves to the rows that fit whole above it (the strip corner included: the panel quad runs to the
+// composition's bottom).
+namespace {
+// The whole panel rows the screen shows NOW (0 = ui_scale not in force), built from the current frame, screen and percentage in force. Only the
+// commit (and the pre-first-commit fallback below) calls it; the P6 thunks read the committed value.
+int live_panel_rows() {
+    uilayout::layout L;
+    return g_active && multi_layout(L) ? uilayout::whole_panel_rows(L) : 0;
+}
+} // namespace
+
+// RES23-S2: the one commit point. `take_pending`: take the asked Interface size (the strategic pre-input of a mode 2 / 5 frame); false = recompute the
+// frame-dependent part for a new frame size at the percentage already committed (the picker applied a mode). Returns true when the percentage or
+// the whole panel rows changed since the previous commit, i.e. every panel mode and the bottom strip are owed a redraw (never on the first commit).
+bool owned_hud_commit(bool take_pending) {
+    if (!g_active) return false;
+    if (!take_pending && !g_hud.epoch) return false; // nothing committed yet: the thunks read the live value
+    const hud_geometry old   = g_hud;
+    const bool         first = old.epoch == 0;
+    if (take_pending) g_hud.pct = g_ui_scale_req <= uilayout::MIN_PCT ? uilayout::MIN_PCT : g_ui_scale_req;
+    if (first) g_hud.epoch = 1; // effective_ui_pct reads g_hud.pct from here on
+    g_hud.hp         = live_panel_rows();
+    g_hud.frame_w    = g_mode_w;
+    g_hud.frame_h    = g_mode_h;
+    const int comp_h = crop_matches_mode() ? g_hud.comp_h : g_hud.frame_h; // the rows of the frame the picture occupies
+    g_hud.vis_h      = g_hud.hp > 0 && g_hud.hp < comp_h ? g_hud.hp : comp_h;
+    g_hud.h_built    = g_built_h;
+    g_hud.list_cap   = g_built_h > 768 ? g_built_h : 768;
+    // Owed: the percentage, Hp or the frame rows the screen shows moved (the lists size themselves to them). A frame size change alone is not.
+    const bool owed    = !first && (g_hud.pct != old.pct || g_hud.hp != old.hp || g_hud.vis_h != old.vis_h);
+    const bool changed = first || owed || g_comp_moved || g_hud.frame_w != old.frame_w || g_hud.frame_h != old.frame_h || g_hud.list_cap != old.list_cap;
+    g_comp_moved       = false;
+    if (changed && !first) ++g_hud.epoch;
+    if (first || g_hud.hp != old.hp)
+        gfx_log("; [ui] side-panel list rows follow the visible panel: Hp %d rows (WindowHeight %d)", g_hud.hp > 0 ? g_hud.hp : 0, *(const int *)0x005202ccu);
+    if (changed)
+        gfx_log("; [ui] hud geometry epoch %u: pct %d, whole panel rows Hp %d, frame %dx%d%s; visible rows %d, list cap %d", g_hud.epoch, g_hud.pct, g_hud.hp, g_hud.frame_w,
+                g_hud.frame_h, owed ? " (changed: every panel mode and the strip are redrawn)" : "", g_hud.vis_h, g_hud.list_cap);
+    return owed;
+}
+// RES26: the picker (or the Options Ok) applied a mode while a dialog mode (3, 4) is up over a strategic frame. The dialog modes present THAT frame at the
+// stamp's size and percentage, so a plain recommit read the OLD frame's stamp (pct 100, one quad, Hp 0) until the strategic pump ran on resume. Here the stamp
+// moves to the new frame and takes the asked Interface size (the commit that follows reads it through effective_ui_pct_for), so the HUD shows the requested
+// size right after Apply. Fields only: nothing is drawn or presented (the surfaces are released inside the mode change). Not for the galaxy switch (the caller
+// gates on it). Returns the commit's `owed`.
+bool owned_hud_commit_applied() {
+    if (!g_active) return false;
+    const int m = at<int>(mh::addr::_G_LLM_GAME_MODE);
+    if ((m != 3 && m != 4) || g_stamp.w <= 0 || !g_hud.epoch) return owned_hud_commit(false);
+    g_stamp.w       = g_mode_w;
+    g_stamp.h       = g_mode_h;
+    g_stamp.pct     = g_ui_scale_req <= uilayout::MIN_PCT ? uilayout::MIN_PCT : g_ui_scale_req;
+    const bool owed = owned_hud_commit(true);
+    g_stamp.epoch   = g_hud.epoch;
+    gfx_log("; [ui] RES26: mode %d applied over the strategic frame: the HUD stamp moves to %dx%d at %d%% now (not at resume)", m, g_stamp.w, g_stamp.h, g_stamp.pct);
+    return owed;
+}
+void owned_hud_set_built(int h_built) {
+    g_built_h = h_built;
+    if (g_hud.epoch) owned_hud_commit(false);
+}
+const hud_geometry &owned_hud_geometry() { return g_hud; }
+// The row-count cap of the scrollable lists: the committed geometry's, and before the first commit what the tables were grown for (the first panel draw runs
+// before the first commit; reading 768 there left the first frame's lists 768 px tall for good, as nothing owes the first commit a redraw).
+int owned_hud_list_cap() { return g_hud.epoch ? g_hud.list_cap : (g_built_h > 768 ? g_built_h : 768); }
+
+int owned_ui_panel_rows() { return g_hud.epoch ? g_hud.hp : live_panel_rows(); }
+
 // True when a file named ddraw.dll (any case) sits in the directory of the running exe.
+// The Windows display scale (percent) of the primary monitor, or 0 when it cannot be read. Effective DPI (what the process is laid out at).
+static int monitor_display_scale_pct(int *dpi_out) {
+    typedef HRESULT(WINAPI * PFN_GetDpiForMonitor)(HMONITOR, int, UINT *, UINT *);
+    HMODULE sh = LoadLibraryA("shcore.dll");
+    if (!sh) return 0;
+    PFN_GetDpiForMonitor f   = (PFN_GetDpiForMonitor)GetProcAddress(sh, "GetDpiForMonitor");
+    int                  pct = 0;
+    if (f) {
+        UINT        dx = 0, dy = 0;
+        const POINT o = {0, 0};
+        if (SUCCEEDED(f(MonitorFromPoint(o, MONITOR_DEFAULTTOPRIMARY), 0 /*MDT_EFFECTIVE_DPI*/, &dx, &dy)) && dx >= 96) {
+            pct = (int)((dx * 100 + 48) / 96);
+            if (dpi_out) *dpi_out = (int)dx;
+        }
+    }
+    FreeLibrary(sh);
+    return pct;
+}
+
+int owned_resolve_ui_scale(const char *ini) {
+    if (classic_sizes(ini)) { // RES25: "Classic sizes only" disables Interface size scaling -- the ini value is kept, not acted on
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            char u[16];
+            mh::config::read_ini_string("video", "ui_scale", "100", u, sizeof(u), ini);
+            if (u[0] && lstrcmpA(u, "100") != 0) gfx_log("; [ui] ui_scale ignored: classic sizes only (ini says %s, in force 100%%)", u);
+        }
+        return uilayout::MIN_PCT;
+    }
+    static int  cached = 0;
+    static char cached_for[64];
+    char        u[16], ov[16];
+    mh::config::read_ini_string("video", "ui_scale", "100", u, sizeof(u), ini);
+    mh::config::read_ini_string("video", "display_scale", "", ov, sizeof(ov), ini);
+    char key[64];
+    wsprintfA(key, "%s|%s", u, ov);
+    if (cached && lstrcmpA(key, cached_for) == 0) return cached;
+    int r = uilayout::MIN_PCT;
+    if (lstrcmpiA(u, "auto") == 0) {
+        int       dpi = 96;
+        const int o   = atoi(ov);
+        int       ds  = o > 0 ? o : monitor_display_scale_pct(&dpi);
+        if (ds <= 0) ds = 100;
+        r = uilayout::auto_scale_pct(ds);
+        gfx_log("; [ui] ui_scale=auto: display scale %d%% (%s) -> %d%%", ds, o > 0 ? "[video] display_scale override" : "primary monitor effective DPI", r);
+    } else {
+        const int p = atoi(u);
+        if (p >= uilayout::MIN_PCT && p <= uilayout::MAX_PCT)
+            r = p;
+        else if (u[0])
+            gfx_log("; [ui] ui_scale=%s not recognised (100..400 percent | auto) -- using 100", u);
+    }
+    cached = r;
+    lstrcpynA(cached_for, key, sizeof(cached_for));
+    return r;
+}
+
+// The choices of the in-game Interface size row, in the launcher's order: Auto, then the percentages ([video] ui_scale).
+static const int UI_SCALE_CHOICES[OWNED_UI_SCALE_CHOICES] = {0, 100, 125, 150, 175, 200};
+
+int owned_ui_scale_choice() {
+    if (g_ui_scale_auto) return 0;
+    int best = 1; // the nearest listed percentage (a hand-written 130 shows as 125)
+    for (int i = 1; i < OWNED_UI_SCALE_CHOICES; ++i)
+        if (abs(UI_SCALE_CHOICES[i] - g_ui_scale_req) < abs(UI_SCALE_CHOICES[best] - g_ui_scale_req)) best = i;
+    return best;
+}
+
+void owned_set_ui_scale_choice(int ix, const char *ini) {
+    if (ix < 0 || ix >= OWNED_UI_SCALE_CHOICES) return;
+    int pct = UI_SCALE_CHOICES[ix];
+    if (ix == 0) { // Auto = the Windows display scale of the primary monitor ([video] display_scale overrides it, as at boot)
+        char ov[16];
+        mh::config::read_ini_string("video", "display_scale", "", ov, sizeof(ov), ini);
+        const int o  = atoi(ov);
+        int       ds = o > 0 ? o : monitor_display_scale_pct(nullptr);
+        if (ds <= 0) ds = 100;
+        pct = uilayout::auto_scale_pct(ds);
+        gfx_log("; [ui] ui_scale=auto (options menu): display scale %d%% -> %d%%", ds, pct);
+    }
+    g_ui_scale_auto = ix == 0;
+    owned_set_ui_scale(pct);
+}
+
 static bool system_ddraw_wrapper_present() {
     char  path[MAX_PATH];
     DWORD n = GetModuleFileNameA(nullptr, path, MAX_PATH);
@@ -1848,10 +3094,39 @@ static bool system_ddraw_wrapper_present() {
     return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES; // NTFS lookup is case-insensitive
 }
 
+// RES4 stage 2: [video] ui_scale = 100|125|150|175|200 (percent) | auto, and the dev key ui_screen=WxH. Drives the
+// presenter's quad list only; the game still renders its own size and takes input as before until stages 3-4.
+static void read_ui_scale_keys(const char *ini) {
+    g_ui_scale_req = owned_resolve_ui_scale(ini);
+    {
+        char ck[8];
+        mh::config::read_ini_string("video", "ui_scale_dialog_check", "0", ck, sizeof(ck), ini); // dev: diff the dialog layer against the stock draw
+        g_dlg_check = ck[0] == '1';
+        mh::config::read_ini_string("video", "ui_scale_notices", "1", ck, sizeof(ck), ini); // dev kill switch (RES20): 0 = the game's own notices, drawn into the frame at 1x
+        g_msg_enabled = ck[0] != '0';
+    }
+    char ui_raw[16];
+    mh::config::read_ini_string("video", "ui_scale", "100", ui_raw, sizeof(ui_raw), ini);
+    g_ui_scale_auto = lstrcmpiA(ui_raw, "auto") == 0 && !classic_sizes(ini);
+    char sc[24];
+    mh::config::read_ini_string("video", "ui_screen", "", sc, sizeof(sc), ini); // dev: WxH for pcapture on a headless lane
+    int sw = 0, sh = 0;
+    if (sc[0] && sscanf(sc, "%dx%d", &sw, &sh) == 2 && sw >= 320 && sh >= 240 && sw <= 8192 && sh <= 8192) {
+        g_ui_screen_w = sw;
+        g_ui_screen_h = sh;
+    }
+    mh::config::read_ini_string("video", "borderless_size", "", sc, sizeof(sc), ini); // dev: the borderless window's size on a rig whose monitor is smaller
+    if (sc[0] && sscanf(sc, "%dx%d", &sw, &sh) == 2 && sw >= 320 && sh >= 240 && sw <= 8192 && sh <= 8192) {
+        g_bl_w = sw;
+        g_bl_h = sh;
+    }
+}
+
 bool install_owned_ddraw(const char *ini) {
     static bool done = false;
     if (done) return g_active;
     done = true;
+    (void)classic_sizes(ini); // RES25: read once, before anything asks for the ui_scale
 
     char v[32];
     mh::config::read_ini_string("video", "backend", "d3d11", v, sizeof(v), ini);
@@ -1884,10 +3159,11 @@ bool install_owned_ddraw(const char *ini) {
     mh::config::read_ini_string("video", "scale", "fit", s, sizeof(s), ini);
     g_cfg.integer_scale = lstrcmpiA(s, "integer") == 0;
     g_cfg.vsync         = mh_ini_get_int("video", "vsync", 1, ini) != 0;
-    g_fps_limit         = (int)mh_ini_get_int("video", "fps_limit", 0, ini);
-    g_no_window         = mh_ini_get_int("video", "no_window", 0, ini) != 0;
-    g_mouse_clip        = mh_ini_get_int("video", "mouse_clip", 1, ini) != 0;
-    g_taskbar_guard     = mh_ini_get_int("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8
+    read_ui_scale_keys(ini);
+    g_fps_limit     = (int)mh_ini_get_int("video", "fps_limit", 0, ini);
+    g_no_window     = mh_ini_get_int("video", "no_window", 0, ini) != 0;
+    g_mouse_clip    = mh_ini_get_int("video", "mouse_clip", 1, ini) != 0;
+    g_taskbar_guard = mh_ini_get_int("video", "taskbar_guard", 1, ini) != 0; // PT-GFX8
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)&install_owned_ddraw, &g_self);
 
@@ -1915,7 +3191,8 @@ bool install_owned_ddraw(const char *ini) {
     install_headless_window_hooks();
     install_owned_window_hooks();
     g_active = true;
-    if (g_kind == backend_kind::d3d11) imgui_overlay::arm(ini); // [video] imgui=1 -- inert otherwise
+    if (g_ui_scale_req > uilayout::MIN_PCT) install_cursor_hook(), install_dialog_hook(), install_msgs_hook(); // RES4 stage 5: the owned cursor; 6b: the dialog layers; RES20: the notices
+    if (g_kind == backend_kind::d3d11) imgui_overlay::arm(ini);                                                // [video] imgui=1 -- inert otherwise
     gfx_log("; [gfx] backend=%s ARMED: owned DirectDraw v1 (loader replaced at %08x/%08x), fps_limit=%d, window=%s, "
             "filter=%s, scale=%s%s",
             v, (unsigned)ACQ, (unsigned)REL, g_fps_limit, g_cfg.window == window_mode::borderless ? "borderless" : "windowed",

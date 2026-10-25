@@ -2,13 +2,14 @@
 #include "orders/admission_log.h" // mp:X3c: the PENDING-admission log (observe-only taps below)
 #include "state/host_api.h"       // LIFT-TABLE S6/S7: these callees are host-API entries now
 
-#include "addr/mh_export.gen.h"   // MH_EXPORT_REPLACE / the entry-thunk shapes
-#include "addr/mh_calls.gen.h"    // typed callables for the original functions we still call OUT to
-#include "addr/mh_regions.gen.h"  // the state region REGISTRY -- where this module's state lives
-#include "orders/order_codec.h"   // ST5: the ONE order-record layout, shared with the wire
-#include "lockstep/turn_engine.h" // mp:U54: fixes().spectate_after_defeat
-#include "mh_spectate.h"          // mp:U54: the spectator status bits
-#include "sim/rng_trace.h"        // LIB-REF step-5000: the ORDER-QUEUE COUNT LEDGER (see below)
+#include "addr/mh_export.gen.h"       // MH_EXPORT_REPLACE / the entry-thunk shapes
+#include "addr/mh_calls.gen.h"        // typed callables for the original functions we still call OUT to
+#include "addr/mh_regions.gen.h"      // the state region REGISTRY -- where this module's state lives
+#include "orders/order_codec.h"       // ST5: the ONE order-record layout, shared with the wire
+#include "orders/order_index_codec.h" // O1c: the 12-bit unit_index encoding
+#include "lockstep/turn_engine.h"     // mp:U54: fixes().spectate_after_defeat
+#include "mh_spectate.h"              // mp:U54: the spectator status bits
+#include "sim/rng_trace.h"            // LIB-REF step-5000: the ORDER-QUEUE COUNT LEDGER (see below)
 
 #include <cstdarg>
 #include <cstdio>
@@ -137,6 +138,7 @@ void set_logger(void (*fn)(const char *)) { g_log = fn; }
 namespace {
 
 bool        g_admin_dedup_exempt = false; // mp:U45, see set_admin_dedup_exempt
+bool        g_order_wide_index   = true;  // O1c, see set_order_wide_index
 inline bool is_diplo_admin(uint16_t code) { return code == 0xf4 || code == 0xf5; }
 
 // The original moves records with `MOV ECX,0x11 / REP MOVSD` -- 17 dwords, the whole 0x44. Both
@@ -148,11 +150,8 @@ inline void copy_record(order *dst, const order *src) { std::memmove(dst, src, s
 // (XOR DH,DH / SHL EAX,8 / OR EDX,EAX @0x00466242-0x004662a7). This is NOT the plain low-byte mask
 // pending_enqueue applies, and it is invisible in the decompile. It is an integrity code: the
 // duplicated form travels on the wire, and both receiving paths (schedule's local copy into PENDING,
-// and pending_enqueue on the remote side) collapse it back with `& 0xff`.
-inline uint16_t dup_low_byte(uint16_t v) {
-    const uint16_t b = static_cast<uint16_t>(v & 0xff);
-    return static_cast<uint16_t>(b | (b << 8));
-}
+// and pending_enqueue on the remote side) collapse it back with `& 0xff`. The encoders live in
+// order_index_codec.h (dup_low_byte; O1c widens unit_index only).
 
 } // namespace
 
@@ -283,16 +282,16 @@ int32_t enqueue(const container_state &st, uint16_t unit_index, uint16_t owner_a
 //
 // Masks four ushort fields to their low byte IN PLACE before copying (004667b4-004667c6). The
 // mutation is invisible to the caller because the record is a by-value stack copy, but it must
-// happen before the copy or the stored record differs. See O1b: if unit_index really is a unit
-// index, that 8-bit mask caps it at 255, which retail never reaches but the 500-unit build does.
+// happen before the copy or the stored record differs. O1c: unit_index is decoded as 12 bits (a superset
+// of the vanilla `& 0xff` for every index < 256); the other three fields keep the 8-bit mask.
 int32_t pending_enqueue(const container_state &st, order *rec) {
     if (*st.pending_count >= PENDING_CAP) {
         admission::note_overflow(); // mp:X3c R5: the reset below destroys admitted records -- latch it
         *st.pending_count = 0;
         return 0;
     }
-    order &in = *rec;
-    in.unit_index &= 0xff;
+    order &in     = *rec;
+    in.unit_index = g_order_wide_index ? decode_index(in.unit_index) : static_cast<uint16_t>(in.unit_index & 0xff);
     in.owner_and_kind &= 0xff;
     in.param0 = static_cast<int16_t>(in.param0 & 0xff);
     in.order_code &= 0xff;
@@ -318,7 +317,7 @@ int32_t stage_scheduled(const container_state &st, const game_calls &gc, char *t
     if (*st.staging_count >= STAGING_CAP) return 0;
 
     order &hdr         = st.staging[*st.staging_count];
-    hdr.unit_index     = dup_low_byte(unit_index);
+    hdr.unit_index     = g_order_wide_index ? encode_index(unit_index) : dup_low_byte(unit_index);
     hdr.owner_and_kind = dup_low_byte(owner_and_kind);
     hdr.param0         = static_cast<int16_t>(dup_low_byte(static_cast<uint16_t>(param0)));
     hdr.order_code     = dup_low_byte(order_code);
@@ -347,7 +346,7 @@ int32_t stage_scheduled(const container_state &st, const game_calls &gc, char *t
 // lockstep-safety invariant, and it is why the horizon only ever increases.
 //
 // The wire gets the STAGING record -- still byte-duplicated. Only the local PENDING copy is collapsed
-// with `& 0xff`, which is the mirror of what pending_enqueue does to a remote one. Sending the masked
+// (unit_index: O1c 12-bit decode; the rest `& 0xff`), which is the mirror of what pending_enqueue does to a remote one. Sending the masked
 // form would break the receiver's integrity check.
 int32_t schedule(const container_state &st, const game_calls &gc) {
     int32_t       flushed = 0;
@@ -373,8 +372,8 @@ int32_t schedule(const container_state &st, const game_calls &gc) {
         order &p = st.pending[*st.pending_count];
         copy_record(&p, &s);
         p.owner_and_kind &= 0xff; // masked in this order in the original, 0x00466411-0x00466492
-        p.unit_index &= 0xff;
-        p.param0 = static_cast<int16_t>(p.param0 & 0xff);
+        p.unit_index = g_order_wide_index ? decode_index(p.unit_index) : static_cast<uint16_t>(p.unit_index & 0xff);
+        p.param0     = static_cast<int16_t>(p.param0 & 0xff);
         p.order_code &= 0xff;
         admission::note(p); // mp:X3c: own human order, stored (masked) form -- observe-only
         *st.pending_count += 1;
@@ -602,6 +601,11 @@ void integrity_check(const container_state &st, const game_calls &gc, const orde
     const uint16_t fields[4] = {rec->unit_index, rec->owner_and_kind,
                                 static_cast<uint16_t>(rec->param0), rec->order_code};
     for (int i = 0; i < 4; ++i) {
+        if (i == 0 && g_order_wide_index) { // O1c: field 0 keeps 4 of its 8 check bits
+            if (index_check_ok(fields[0]) || *st.session_mode != SESSION_MP_LOCKSTEP) continue;
+            gc.force_return_to_main();
+            continue;
+        }
         const uint8_t lo = static_cast<uint8_t>(fields[i] & 0xff);
         // SAR EAX,0x8 after MOVZX (0x004661de-0x004661e5) -- the value is zero-extended first, so the
         // arithmetic shift can never bring in sign bits. A plain >> 8 of the byte is equivalent.
@@ -815,6 +819,8 @@ bool g_suppress_enqueue = false;
 } // namespace
 void set_suppress_enqueue(bool on) { g_suppress_enqueue = on; }
 bool suppress_enqueue() { return g_suppress_enqueue; }
+void set_order_wide_index(bool on) { g_order_wide_index = on; }
+bool order_wide_index() { return g_order_wide_index; }
 void set_admin_dedup_exempt(bool on) { g_admin_dedup_exempt = on; }
 bool admin_dedup_exempt() { return g_admin_dedup_exempt; }
 

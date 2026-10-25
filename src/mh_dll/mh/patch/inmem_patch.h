@@ -119,6 +119,7 @@ struct inmem_manifest {
     const inmem_body    *bodies; // the original bodies the sites land in (F4C-COMP)
     int                  body_count;
     bool                 refs_complete; // false => the cave may only be placed at its baked VA
+    bool                 toggle;        // PT-CAP8: a caps_limits manifest -- verified and staged, written only on a toggle
 };
 
 // THE APPLIER'S TWO HARD CAPS. Public since fork F4C-GATE, because the compile list widened from
@@ -151,6 +152,9 @@ struct apply_result {
     int         refused_site;   // the site index a byte/ownership refusal names, else -1
     uint32_t    actual_base[4]; // per section
     bool        relocated;      // any section did not land on its preferred VA
+    uint32_t    micros;         // PT-CAP8: wall time of the whole apply() in microseconds (QueryPerformanceCounter)
+    int         protect_runs;   // PT-CAP8: page runs the batched write pass protected (0 for a toggle manifest)
+    char        detail[240];    // PT-CAP8: the refusal's one-line detail (the line apply() logs unless APPLY_QUIET_OK), else empty
 };
 
 // The page/memory operations, injectable so the refusal arms can be driven off-rig. Production
@@ -161,6 +165,11 @@ struct patch_host {
     void (*release)(void *p, uint32_t size);
     bool (*protect)(void *p, uint32_t size, uint32_t want, uint32_t *old_out);
     uint8_t *(*at)(uint32_t va); // image VA -> writable pointer. Production: identity.
+    // PT-CAP8 (optional -- null means "assume a page run is uniform"): the page protection of the
+    // region that starts at `p` and the first byte past the uniform region. The batched write pass
+    // merges adjacent pages into runs and must restore EACH page to the protection it had; a run that
+    // crosses from .text (R-X) into .data (RW-) cannot be restored from one VirtualProtect `old` value.
+    bool (*query)(const void *p, uint32_t *region_end, uint32_t *prot);
 };
 void set_host(const patch_host *h);
 
@@ -192,6 +201,61 @@ int verify_sites(const inmem_manifest &m);
 // Returns false if a ref names an offset outside the blob (a generator bug).
 bool relocate_site(const inmem_manifest &m, int site, const uint32_t *actual_base, uint8_t *out);
 bool relocate_section(const inmem_manifest &m, int section, const uint32_t *actual_base, uint8_t *out);
+
+
+// ---- PT-CAP8: THE TOGGLE LAYER AND THE APPLIED-BYTES OVERLAY ---------------------------------------
+//
+// A manifest with `toggle` set is the v0.2.2 LIMIT layer: every site holds either its exact vanilla
+// bytes (OFF, the manifest's `expect`) or its raised bytes (ON, the relocated `repl`). apply() on such a
+// manifest places its sections and fills them, verifies every site still holds the vanilla bytes and
+// registers the bodies -- and writes NO site. It stages each site's ON image here instead, and
+// toggle() flips the whole set at a QUIESCENT point (docs/inmem-patching.md "The limit layer").
+constexpr int MAX_TOGGLE_SITES = 256; // the limits manifest has 51, the AI scratch manifest (PT-CAP11) 165
+constexpr int MAX_TOGGLE_LEN   = 32;  // its longest site is a 12-byte walk backstop
+
+struct toggle_state {
+    const inmem_manifest *m;
+    uint32_t              actual_base[4];
+    bool                  staged; // apply() filled on_bytes
+    bool                  on;     // the last successful toggle() target
+    uint8_t               on_bytes[MAX_TOGGLE_SITES][MAX_TOGGLE_LEN];
+    // PT-CAP9-U8b: the EXACT original bytes of every site, full length INCLUDING the wildcard (mask 0) bytes,
+    // captured by apply() before any write. OFF restores these, not `expect`-under-mask: a wildcard byte is
+    // not ours to ignore on the way back, because the ON image overwrites it (a rel32 displacement inside a
+    // masked instruction) and "keep whatever is there" kept the ON image.
+    uint8_t off_bytes[MAX_TOGGLE_SITES][MAX_TOGGLE_LEN];
+};
+
+enum : uint32_t {
+    // Do not log the success line OR a refusal's detail (apply_result::detail still carries it): the caller states the
+    // outcome in its own words. Also skips the baked-VA occupant diagnostic of a relocatable manifest.
+    APPLY_QUIET_OK = 1u,
+};
+
+// Same contract as apply() above, plus the toggle layer. A manifest with `m.toggle` REQUIRES `ts`
+// (a null `ts` refuses). `flags` is a mask of APPLY_*.
+apply_result apply(const inmem_manifest &m, toggle_state *ts, uint32_t flags = 0);
+
+// Switch a staged toggle manifest to ON (`on` true) or back to OFF. Every site's CURRENT bytes must be
+// either its vanilla image or its ON image -- anything else is a foreign writer, and the call REFUSES
+// (writes nothing, returns false, `*bad_site` names the site). A site already at the target is a no-op.
+// One batched protect/write/restore and one icache flush. On success `ts.on == on`.
+bool toggle(toggle_state &ts, bool on, int *bad_site = nullptr, const char **why = nullptr);
+
+// Which target a toggle manifest's sites are CURRENTLY in: 0 = every site holds its EXACT saved original
+// (every byte, wildcards included), 1 = every site ON,
+// -1 = mixed or foreign (the parity dump and capstest ask; toggle() itself tolerates mixed).
+int toggle_current(const toggle_state &ts);
+
+// Copy, over `inout[0..len)` (which holds what the caller THINKS is at `va`), the bytes the applier
+// WROTE into any applied non-toggle manifest's sites overlapping [va, va+len). This is the compose
+// primitive for a DLL byte patch whose `expect` names bytes a cap manifest has since relocated
+// (hook/patch.h patch_bytes_guarded_caps). The bytes are re-derived from the manifest and the recorded
+// placement; nothing is stored per site.
+void overlay_applied(uint32_t va, uint32_t len, uint8_t *inout);
+
+// Forget every recorded placement (selftest only: the production applier never un-applies).
+void reset_applied_for_test();
 
 // The parity dump: every extent this applier wrote, READ BACK FROM THE LIVE IMAGE, in the format
 // tools/check_inmem_patch_parity.py compares against the mhpatch-produced file. Written only when

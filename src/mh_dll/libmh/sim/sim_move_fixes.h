@@ -43,10 +43,20 @@ struct move_fixes {
     bool block_reset_moving = false; // move_block_reset_moving (mods:M1DT): the wait budget restarts when the blocker changes to a walking friend
     int  replan_detour_cap  = 0;     // move_replan_detour_cap (mods:M1DT): percent of the straight distance a block-wait replan may take, 0 = off
     int  formation_click    = 0;     // move_formation_click (mods:M1G 4b): 0 = off, 1..2 = the old keep rule with N - 1 rings of slack, 3 = the formation moves as one (sim/move/formation.h)
-    bool enter_queue        = false; // move_enter_queue (mods:M1BE): ORDER 0x24 units wait behind an entering friend and ignore the block keys (sim/move/enter_queue.h)
-    bool nudge_idle         = false; // move_nudge_idle
-    bool claim_leader       = false; // move_claim_leader
-    bool swap_headon        = false; // move_swap_headon
+    bool stream_heat        = false; // move_stream_heat (mods:M1WL v2): a lone unit of a stream plans round the next 120 tiles of its mates' paths (sim/move/stream_heat.h)
+    // mods:M1WL v3: the tuning keys, raw as the hook stored them (move_stream_heat_cost / _window / _min_mates / _scale); sh_params_clamped reads them
+    int  stream_heat_cost      = 2;
+    int  stream_heat_window    = 120;
+    int  stream_heat_min_mates = 8;
+    int  stream_heat_scale     = 1;
+    int  stream_heat_retrace   = 0;     // mods:M1WL v4: re-trace a heated plan's route charging the tile stepped onto
+    int  stream_heat_turn      = 0;     // mods:M1WL v4: ... with this penalty for a turn of more than 45 degrees
+    int  stream_heat_scale_cap = 16;    // mods:M1WL v5: the scaled cost grows with the mates on the tile up to this count (move_stream_heat_scale_cap)
+    int  stream_heat_margin    = 0;     // mods:M1WL v5: percent; a heated route longer than (100 + margin)% of the unheated one is replaced by it (0 = off; sh_margin)
+    bool enter_queue           = false; // move_enter_queue (mods:M1BE): ORDER 0x24 units wait behind an entering friend and ignore the block keys (sim/move/enter_queue.h)
+    bool nudge_idle            = false; // move_nudge_idle
+    bool claim_leader          = false; // move_claim_leader
+    bool swap_headon           = false; // move_swap_headon
     // improved_movement: storage doors (mods:M1BE)
     bool storage_door_hold = false; // storage_door_hold: an open storage door stays open while an entering friend is within 2 tiles (sim/move/enter_queue.h)
     // improved_movement: responsiveness (mods:M1G 4c)

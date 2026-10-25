@@ -1,0 +1,43 @@
+# res_notice_modal -- RES23-S5: the notice behind a mode-3 modal. At ui_scale=200 (ini/res4_s200.ini) the notice is a presenter overlay stamped for the present of the
+# frame that printed it. Six notices are printed (the queue reaches under the ESC dialog) and captured live (pcapture + bcapture: the CPU composition and the
+# presenter's own output); then ESC opens the in-game menu (game mode 3). The game still prints its notices while the menu is up, and the detour now takes mode 3 too:
+# the SCALED notice must still show under the menu (the overlay order is notice < dialog layers < cursor, so the dialog covers it where they overlap) and the game's own
+# 1x notice must NOT be in the frame (`capture`). tools/check_res_notice.py --modal 200 asserts that; tools/check_bcapture.py pairs the two image kinds.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+camto 41 52
+gameclock +100
+screensettled
+cursorhold 640 500 6
+notice Order refused: not enough power for this
+notice Order refused: no free slot in the queue here
+notice Order refused: target out of range for it
+notice Order refused: the building is not ready yet
+notice Order refused: not enough credits today
+notice Order refused: unit is busy right now
+gameclock +20
+cursorhold 640 500 6
+pcapture res_nm_notice
+bcapture res_nm_notice
+rawmouse sabs 300 300
+gameclock +40
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+screensettled
+capture res_nm_frame
+pcapture res_nm_modal
+bcapture res_nm_modal
+log res_notice COMPLETE -- the scaled notice shows under the mode-3 menu
+end

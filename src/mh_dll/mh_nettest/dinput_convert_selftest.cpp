@@ -411,6 +411,67 @@ void test_pointer() {
     check("a zero-length packet scales to nothing", ox == 0 && oy == 0);
 }
 
+// RES4 stage 4: with a quad layout the queue keeps a SCREEN-SPACE pointer and steers the game to the frame pixel under it.
+void test_screen_pointer() {
+    namespace ul = mh::gfx::uilayout;
+    ul::layout lay;
+    ul::build(lay, 1280, 800, 1216, 800, 150);
+    mouse_queue q;
+    game_sim    g;
+    g.v            = {};
+    g.v.box_w      = 1216;
+    g.v.box_h      = 800;
+    g.v.div        = 1;
+    g.v.thr        = 6;
+    g.v.last_x     = 1000;
+    g.v.last_y     = 300;
+    g.v.lay        = &lay;
+    uint32_t   seq = 0;
+    di_element out[512];
+    auto       run = [&]() {
+        int n = q.produce(g.v, out, 512, seq);
+        g.apply(out, n);
+        return n;
+    };
+    run(); // seats the pointer on the game's cursor
+    // walk right in screen pixels across the map|panel seam: the game cursor follows the quad mapping
+    bool ok = true;
+    int  sx = 0, sy = 0;
+    {
+        sx = 1000;
+        sy = 300;
+        ul::frame_to_screen(lay, sx, sy);
+    }
+    for (int i = 0; i < 120; ++i) {
+        q.push({mouse_raw::rel, 3, 0, 0});
+        run();
+        sx += 3;
+        if (sx > 1279) sx = 1279;
+        int ex = sx, ey = sy;
+        ul::screen_to_frame(lay, ex, ey);
+        if (g.v.last_x != ex || g.v.last_y != ey) ok = false;
+    }
+    check("screen pointer: 120 relative steps across the seam track screen_to_frame exactly", ok);
+    check("screen pointer: pinned at the right edge the cursor is at W-1 (the edge-scroll rule)", g.v.last_x == 1215);
+    // a click mid-walk keeps its place
+    int btn0 = g.buttons;
+    q.push({mouse_raw::rel, -30, 0, 0});
+    q.push({mouse_raw::button, (int32_t)MOFS_B0, 1, 0});
+    run();
+    check("screen pointer: a button after a move is delivered", g.buttons == (btn0 | 1));
+    // a game-driven move of the cursor re-seats the pointer
+    g.v.last_x = 200;
+    g.v.last_y = 400;
+    q.push({mouse_raw::rel, 1, 0, 0});
+    run();
+    check("screen pointer: a game-driven cursor jump re-seats (200,400 + 1 px lands at 201,400)", g.v.last_x == 201 && g.v.last_y == 400);
+    // without a layout the queue behaves as before
+    g.v.lay = nullptr;
+    q.push({mouse_raw::rel, 5, 0, 0});
+    run();
+    check("no layout: plain relative steps", g.v.last_x == 206);
+}
+
 void test_norm_roundtrip() {
     const int ext[] = {640, 1024, 1280, 1920, 2560, 3840, 5120};
     bool      ok    = true;
@@ -432,6 +493,7 @@ int run_dinputconvtest() {
     test_absolute();
     test_relative();
     test_norm_roundtrip();
+    test_screen_pointer();
     test_pointer();
     printf("dinputconvtest: %d checks, %d failures\n", g_checks, g_fails);
     return g_fails ? 1 : 0;

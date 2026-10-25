@@ -207,7 +207,7 @@ inline void inv_tact_minimap_overlay() { emit_invalidate(LIBMH_EVK_INV_TACT_MINI
 inline void screenshot_save() { emit_event(LIBMH_EVC_EVENT, LIBMH_EVK_SCREENSHOT_SAVE); }
 // The mine-blast exit wipe. libmh states the intent once and the host owns the sixteen frames --
 // the same division SCR_FADE_TRANSITION_RUN makes, for the same reason, and this one absorbs
-// llm_tact_scroll_fade_step whole (that loop was its only site).
+// llm_tact_blast_wipe_brighten_step whole (that loop was its only site).
 inline void tact_blast_transition() { emit_screen(LIBMH_EVK_SCR_TACT_BLAST_TRANSITION); }
 inline void tact_frame_present() { emit_screen(LIBMH_EVK_SCR_TACT_FRAME_PRESENT); }
 // SIMABI-NOTIFY: the STRATEGIC frame's two ends, the sibling pair of tact_frame_present above and

@@ -1,0 +1,10 @@
+{
+  "_why": "The sim keeps running under the info screen (game mode 4) and its AVI clip plays on wall-clock, so every capture after the screen opened moves run to run: dp_p0 0.06-0.11%, df_p1 3-6%, dp_p1 1.5-2.1%, the strategic view after ESC 37-46% (units moved). The row's verdict for those is tools/check_res4_info.py (quad geometry, enlarged-frame pixels, page change, side panel rows); the strict captures are the HUD before the screen opens and the first frame of the dialog's frame.",
+  "_tol": {
+    "capture_res4_if_dp_p0.png": 0.005,
+    "capture_res4_if_df_p1.png": 0.1,
+    "capture_res4_if_dp_p1.png": 0.05,
+    "capture_res4_if_after.png": 0.6,
+    "capture_res4_if_frame_after.png": 0.6
+  }
+}

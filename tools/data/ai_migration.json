@@ -20,27 +20,27 @@
     }
   ],
   "_select_report": {
-    "symbols_augmented_from_callgraph": 437
+    "symbols_augmented_from_callgraph": 435
   },
-  "_method_note": "MEMBERSHIP IS BY NAME PREFIX ('llm_strat_ai_'), not by evidence. A function is in this ledger because someone once called it AI, and drops out the moment it is renamed -- so a misnamed function is silently in, and correcting the name silently removes it along with any progress recorded against it. See _reclassified_out for rows removed that way, and re-read a row's `callers_in_ai` before trusting its membership: a row with callers_in_ai 0 AND reachable_from_root false is only in this file on the strength of its name. Reachability here is UNCUT: a plain BFS from the root over the whole call graph. docs/ai-closure.md cut the BFS at ui/view edges (to keep the closure from swallowing render/audio at 779 functions), so it reports 155 ai-prefixed functions reachable and 63 not. This file reports more reachable (164) and fewer orphans because a path THROUGH a ui function still makes an AI function reachable -- the right test for 'does this need a caller-side hook', which is what batch E turns on. The two are not in conflict; they answer different questions. Layering is computed on AI-only edges, because only AI functions are ever armed and only they can nest with each other.",
+  "_method_note": "MEMBERSHIP IS BY NAME PREFIX ('llm_strat_ai_'), not by evidence. A function is in this ledger because someone once called it AI, and drops out the moment it is renamed -- so a misnamed function is silently in, and correcting the name silently removes it along with any progress recorded against it. See _reclassified_out for rows removed that way, and re-read a row's `callers_in_ai` before trusting its membership: a row with callers_in_ai 0 AND reachable_from_root false is only in this file on the strength of its name. Reachability here is UNCUT: a plain BFS from the root over the whole call graph. The AI closure cut the BFS at ui/view edges (to keep the closure from swallowing render/audio at 779 functions), so it reports 155 ai-prefixed functions reachable and 63 not. This file reports more reachable (164) and fewer orphans because a path THROUGH a ui function still makes an AI function reachable -- the right test for 'does this need a caller-side hook', which is what batch E turns on. The two are not in conflict; they answer different questions. Layering is computed on AI-only edges, because only AI functions are ever armed and only they can nest with each other.",
   "root": "0x004db905",
   "summary": {
-    "functions": 209,
+    "functions": 210,
     "reachable_from_root": 161,
-    "zero_callers": 36,
+    "zero_callers": 37,
     "proto_uncommitted": 1,
-    "writes_shared": 80,
+    "writes_shared": 81,
     "review_required": 30,
     "max_layer": 6,
     "in_cycle": 0,
-    "size_bytes_total": 69611,
+    "size_bytes_total": 69828,
     "size_p90": 777,
     "by_batch": {
       "A": 38,
       "B": 47,
       "C": 62,
       "D": 10,
-      "E": 52
+      "E": 53
     }
   },
   "functions": [
@@ -1021,6 +1021,40 @@
       "evidence_tier": "T2",
       "promoted": true,
       "notes": "AI1A layer 3 (2026-08-01). 3400+ calls, 0 divergences. BOTH ROSTER BRANCHES RAN -- 3525 traced calls took (ref & 0xa0) == 0 (building) and 15 took the unit branch, which is the one thing a wrong selector here would have shown. NOT T1: the engage scratch held only 0 or 1 entries at every traced call, so the dedup loop never scanned a list longer than one and the 256-entry physical bound was never approached. The x87 liveness test is spelled `energy <= 0.0` rather than `!(energy > 0.0)` on purpose -- an UNORDERED compare sets CF and the original appends on a NaN energy; the two spellings differ only there. | promoted 2026-09-01 (AI1-P wave 3: asymmetric ALL PAIRS IDENTICAL/15000 @1x, golden replay control+match+red, island moved)"
+    },
+    {
+      "addr": "0x004d516c",
+      "name": "llm_strat_ai_engage_prune_unseen_candidates",
+      "size_bytes": 217,
+      "signature": "void llm_strat_ai_engage_prune_unseen_candidates(void)",
+      "tags": [
+        "conf:med",
+        "todo:dead"
+      ],
+      "proto_committed": true,
+      "reachable_from_root": false,
+      "layer": 0,
+      "in_cycle": false,
+      "callers_in_ai": 0,
+      "callers_total": 0,
+      "zero_callers": true,
+      "writes_shared": [
+        "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT"
+      ],
+      "writes_island": [
+        "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH"
+      ],
+      "roster_write_via": [],
+      "creates_units": [],
+      "ai_gate_site": false,
+      "batch": "E",
+      "batch_why": "not reachable from players_tick -- fires on another clock, needs a caller-side hook",
+      "review_required": false,
+      "preserve_bug": null,
+      "state": "dead",
+      "evidence_tier": null,
+      "promoted": false,
+      "notes": "DEAD -- never-disassembled region defined 2026-10-21 (EN v419). Nothing reaches it: 0 CALL/JMP refs in the reference manager; TOTAL-ORPHAN under tools/scan_raw_pointers.py (entry LE dword occurs nowhere in initialized memory); a byte scan of every executable block for E8/E9/0F8x rel32 found only its own two internal branches; no fall-through (engage_candidate_add ends in JMP 0x4d74d8); the RU twin 0x4d4c6c is also unreferenced. materialize_fnptr_refs not run (the byte-granular raw-pointer scan covers its candidates). NOT MIGRATED; full evidence in the Ghidra plate."
     },
     {
       "addr": "0x004d5245",

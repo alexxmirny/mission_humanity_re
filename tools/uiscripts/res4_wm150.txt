@@ -1,0 +1,32 @@
+# res4_wm150 -- mods:RES4 stage 4, the window-message mouse at ui_scale=150 (ini/res4_wm150.ini; geometry as res4_s150.txt: client
+# 1280x800, frame 1216x800). A left click POSTED to the window at client (1202,225) -- the scaled panel, which shows frame pixel
+# (1164,150) = the HUD Menu button -- is rewritten to game coordinates by the window subclass (client_to_game through the quad list)
+# and opens the ESC menu; the drawn cursor sits on the mapped pixel before and after (scurpos); Return to game and a click on the
+# MAP (identity quad) leave the cursor at the same client point.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+wmclick 700 400
+scurpos 700 400
+wmclick 1202 225
+retry 1500 1 3 settled value:113
+log res4 wm_menu_opened
+clickv 103
+gamemode 2
+gameclock +100
+wmclick 600 300
+scurpos 600 300
+capture res4_wm_end
+log res4 COMPLETE -- ui_scale=150, window-message mouse: the panel click opened the menu, the cursor follows the quad map
+end

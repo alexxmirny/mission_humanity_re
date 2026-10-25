@@ -1,0 +1,28 @@
+# res_notice_off -- RES23-S5 kill switch: [video] ui_scale_notices=0 (ini/res_notice_off.ini = res4_s200.ini + the key) never arms the notice detour, so at Interface size
+# 200 the notice is the game's OWN: drawn into the frame at 1x (the frame pair differs) and shown 1:1 on the map quad. Same walk as res_notice_200;
+# tools/check_res_notice.py --stock 200 demands the 100% box (not scaled) and a notice in the frame.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+camto 41 52
+gameclock +100
+screensettled
+cursorhold 640 500 6
+pcapture res_notice_before
+capture res_notice_frame_before
+notice Order refused: not enough power for this
+gameclock +20
+cursorhold 640 500 6
+pcapture res_notice_after
+capture res_notice_frame_after
+log res_notice COMPLETE -- kill switch: stock notice at 200%
+end

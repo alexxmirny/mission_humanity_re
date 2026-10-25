@@ -46,7 +46,7 @@
 namespace mh::desync::orders {
 
 inline constexpr int      ORDER_SIZE    = 0x44;        // sizeof(llm_strat_order)
-inline constexpr int      ORDER_QCAP    = 300;         // the due-now queue's capacity
+inline constexpr int      ORDER_QCAP    = 4096;        // the due-now queue's LARGEST capacity (300 vanilla; 4096 with the order layer ON, PT-CAP9-U5)
 inline constexpr uint32_t MAGIC         = 0x524f484du; // "MHOR"
 inline constexpr uint32_t VERSION       = 1;
 inline constexpr uint32_t FLUSH_STEPS   = 50; // ~1 s at 50 steps/s

@@ -1,0 +1,59 @@
+# patching:PT-CAP9-U6 -- the selection cap of the v0.2.3 units raise. Same walk as cap_units_solo.txt (1 human + 1 AI skirmish, mother landed with a
+# shift+right-click); the harness unit-fill fixture (capu_* keys) creates ~440 units round the mother (capu_sel=1 also plants a known pattern in control
+# groups 1 and 2), then THIS script drags a box over the whole view -- far more than the 200 ids a control-group record holds -- and gives the selection
+# one right-click move order. The game's append (llm_strat_unit_ctrlgroup_add_member) has no bound; the clamp (cap_v022_aiscratch_EN, the code splice at
+# 0x00449411) stops it at 200: `logsel` / `loggoal` print the selection and where each selected unit is heading, `; CAPSEL` (mh_harness.log) says whether
+# the records after group 0 still hold the planted bytes. The harness saves + reloads the world at cap_save_at and logs a digest of all ten records either
+# side. tools/check_cap_sel.py judges. Run with libmh.dll absent and `[caps] raise=1` (ini/caps_raise.ini).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log capsel: mother landing ordered, handing the run to the harness fixture
+gameclock 20000
+mark capsel_box
+logsel before_box
+# ---- the box: the whole strategic view, from its top-left to its bottom-right
+cursorhold 40 40 10
+presshold 40 40
+cursorhold 40 40 6
+cursorhold 1600 1000 12
+logsel box_dragging
+release 1600 1000
+gameclock +200
+logsel box
+capture capsel_box
+# ---- one right click on the ground: the whole selection is ordered to move
+loggoal before_order
+cursorhold 1500 700 10
+simrclick 1500 700
+gameclock +400
+loggoal order
+logsel after_order
+capture capsel_order
+gameclock 300000
+capture capsel_end
+log capsel: soak done
+end

@@ -782,7 +782,7 @@
       },
       {
         "addr": "0x0043c323",
-        "name": "llm_tact_scroll_fade_step",
+        "name": "llm_tact_blast_wipe_brighten_step",
         "size_bytes": 118,
         "call_sites": 1,
         "callers": [
@@ -1105,7 +1105,7 @@
         "_G_LLM_TACT_MAP_TILE_HEIGHT_SPRITES",
         "_G_LLM_TACT_MINE_BLAST_TIME_END",
         "_G_LLM_TACT_SAVED_WINDOW_WIDTH",
-        "_G_LLM_TACT_SCROLL_CMD"
+        "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP"
       ],
       "roster_write_via": [
         "llm_tact_map_reset"
@@ -1158,7 +1158,7 @@
         "_G_LLM_TACT_EXIT_CONFIRM_OPEN",
         "_G_LLM_TACT_HOVERED_UNIT_ID",
         "_G_LLM_TACT_MINE_BLAST_TIME_END",
-        "_G_LLM_TACT_SCROLL_CMD",
+        "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
         "_G_LLM_TACT_UNITS"
       ],
       "roster_write_via": [

@@ -5,10 +5,10 @@
   "program": "/eng/mh.exe",
   "note": "call graph with sub:crt functions trimmed",
   "crt_functions_excluded": 300,
-  "crt_edges_dropped": 3232,
+  "crt_edges_dropped": 3233,
   "epilogue_fragments": 6,
-  "tail_jumps": 120,
-  "tail_jumps_midbody": 95,
+  "tail_jumps": 121,
+  "tail_jumps_midbody": 96,
   "tail_calls_promoted_to_links": 10,
   "generated_by": "tools/dump_call_graph.py"
  },
@@ -4985,7 +4985,7 @@
   },
   {
    "id": "0043c323",
-   "name": "llm_tact_scroll_fade_step",
+   "name": "llm_tact_blast_wipe_brighten_step",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -24813,6 +24813,22 @@
     "patch:shift",
     "sub:buildings",
     "sub:units"
+   ]
+  },
+  {
+   "id": "004d516c",
+   "name": "llm_strat_ai_engage_prune_unseen_candidates",
+   "namespace": "Global",
+   "external": false,
+   "thunk": false,
+   "inline": false,
+   "tags": [
+    "conf:med",
+    "sub:ai",
+    "sub:buildings",
+    "sub:map",
+    "sub:units",
+    "todo:dead"
    ]
   },
   {
@@ -54158,6 +54174,16 @@
    "target_name": "llm_strat_bldg_has_aa_weapon",
    "at": "004d50e8",
    "to": "004d74d8",
+   "midbody": true,
+   "reaches": []
+  },
+  {
+   "source": "004d516c",
+   "source_name": "llm_strat_ai_engage_prune_unseen_candidates",
+   "target": "004d8a9d",
+   "target_name": "llm_strat_ai_bldg_has_heli_unit",
+   "at": "004d5240",
+   "to": "004d8b83",
    "midbody": true,
    "reaches": []
   },

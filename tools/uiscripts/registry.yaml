@@ -329,6 +329,50 @@ tests:
       - [tools/check_drag_box.py, --wide, --segment, res_drag_wide_orig, --session, '3']
     tol: 0.0
     desc: 'original configuration: Shift keeping a building type armed, the drag-select box at 1920x1056 (eight drags and the wider-than-half-the-map ones) and the strategic side-panel lists, all drawn by the retail bodies'
+  # tact_scroll (mods:TSCR1): the tactical camera scroll on the pinned game clock. Four single-process steps over a --tactical 11 mission
+  # (the tact_panel entry): the arrow keys and the left screen edge move the camera at [tactical] scroll_px_s = 480 px/s of GAME time
+  # (15 columns/s, 20 rows/s) at the 60 fps stand-in (pin_clock_dt_us=16667) AND the 30 fps one (33333) -- a pace tied to the frame rate
+  # would differ 2x between them; the same again with libmh bound; and the fix-off twin ([tactical] scroll_px_s=0) asserting retail
+  # stepping, one tile per held frame (check_tact_scroll.py --retail), which is also the red-proof that the fix-on check fails on a retail
+  # log. The verdict is the [mtrace] cam= column (cam_trace.ini), not pixels. The shipped configuration (libmh.dll withheld) is the primary arm.
+  - name: tact_scroll
+    budget_s: 30
+    budget_evidence: "19 s solo for the four steps (two green runs 2026-10-24), x1.3, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    solo_steps:
+      - name: tact_scroll_60
+        script: tact_scroll.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/tact_panel.ini, tools/uiscripts/ini/cam_trace.ini]
+        launch_args: --tactical 11
+        deploy_save: '11'
+        harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
+        post_check: [tools/check_tact_scroll.py, --dt-us, '16667', --expect, 'cols=15,rows=20', --tol, '2.0', --min-frames, '60']
+      - name: tact_scroll_30
+        script: tact_scroll_30.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/tact_panel.ini, tools/uiscripts/ini/cam_trace.ini]
+        launch_args: --tactical 11
+        deploy_save: '11'
+        harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=33333;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
+        post_check: [tools/check_tact_scroll.py, --dt-us, '33333', --expect, 'cols=15,rows=20', --tol, '2.0', --min-frames, '40']
+      - name: tact_scroll_lib
+        script: tact_scroll.txt
+        extra_ini: [tools/uiscripts/ini/tact_panel.ini, tools/uiscripts/ini/cam_trace.ini]
+        launch_args: --tactical 11
+        deploy_save: '11'
+        harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
+        post_check: [tools/check_tact_scroll.py, --dt-us, '16667', --expect, 'cols=15,rows=20', --tol, '2.0', --min-frames, '60']
+      - name: tact_scroll_off
+        script: tact_scroll_off.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/tact_panel.ini, tools/uiscripts/ini/cam_trace.ini, tools/uiscripts/ini/tact_scroll_off.ini]
+        launch_args: --tactical 11
+        deploy_save: '11'
+        harness_extra: tact_hash_step=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;pin_rand=1;rand_seed=12345
+        post_check: [tools/check_tact_scroll.py, --dt-us, '16667', --retail, --min-frames, '25']
+    tol: 0.0
+    desc: 'tactical camera scroll paced on the game clock: arrow keys and the left screen edge at 480 px/s (15 columns/s, 20 rows/s) at the 60 and the 30 fps stand-ins, with libmh bound, and the scroll_px_s=0 retail twin (one tile per held frame)'
   # walker_turn (render only, 2026-10-18 dig): a Centaur turning 180 degrees in place. The retail walker frame table (_G_LLM_STRAT_WALKER_FRAME_TABLE,
   # 0x00ae1df8) is filled for 8 of the 24 facings, so a turning walker flashed the north image on 2 of 3 notches; [ui] walker_turn_frames_fix=1
   # (default) fills the other 16 after the retail init (seams/ui_walker_frames.cpp, pure rule seams/walker_frames.h). Shipped configuration
@@ -757,6 +801,27 @@ tests:
     post_check_peers: true
     post_check_session: true
     desc: 'GH1: a START without the gameplay settings is REFUSED by the joiner -- logged, bounced to the browser with the notice, never adopted, never entered'
+  # patching:PT-CAP8 S5: the host plays with `[caps] raise=1` (libmh absent, the release carrier); the joiner has `[caps] relocate=0`, so its
+  # set_limits(true) is refused at the adopt point. It must log the caps line, leave the lobby through the GH1 Start-refusal path (browser notice
+  # `Refused: cannot raise limits`), never adopt, never step; the host starts and stays healthy (limits ON, no DESYNC).
+  - name: caps_client_refused
+    budget_s: 40
+    budget_evidence: "measured 22 s, 26 s, 30 s on the local rig 2026-10-21 (two 2-peer boots, no match is played); x 1.3 = 40"
+    kind: multi
+    no_hash_why: 'the client refuses the Start and never enters a match; the verdict is the caps refusal + bounce in its log and the browser notice'
+    share_lanes: ship_fix_a
+    omit_satellite: [libmh.dll]
+    host: mp_host_start_refused.txt
+    clients: [mp_client_caps_refused.txt]
+    net_extra: transport=udp
+    extra_ini: tools/uiscripts/ini/video_1024.ini
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    extra_ini_client: tools/uiscripts/ini/caps_relocate0.ini
+    timeout: 300
+    post_check: [tools/check_pt2_turret_rate.py, --expect-caps-refused]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP8 S5: a client that cannot raise the limits refuses a Start from a host that uses them -- logged, bounced to the browser with the notice, never adopted, never entered; the host stays healthy'
   # mp:D36: the rc4 rematch shape -- the host LANDS in match 1 (the landing grant goes into the
   # gains-only resource_spent), then rematches a FRESH client process on a shorter-named map.
   # rematch_play cannot see this: its joiner is the same process and nobody lands.
@@ -2369,13 +2434,658 @@ tests:
     # a UI/resolution walk whose frames record retail movement; pinned off, not re-recorded (mods:M1H, user 2026-10-17)
     net_extra: improved_movement=0;group_movement=0;improved_combat=0
     post_check:
-      - [tools/check_res_list.py, 1920x1056, integer]
-      - [tools/check_mode_guards.py, --native, 1920x1056, --segment, galaxy_native_cursor]
+      - [tools/check_res_list.py, 1920x1080, integer]
+      - [tools/check_mode_guards.py, --native, 1920x1080, --segment, galaxy_native_cursor]
       - [tools/check_map_zoom.py, --off, --segment, map_zoom_wheel_off]
       - [tools/check_menu_roundtrip.py, --segment, res_menu_roundtrip]
-      - [tools/check_res_list.py, --ingame, --segment, res_frac, 1280x704, fit]
+      - [tools/check_res_list.py, --ingame, --segment, res_frac, 1280x720, fit]
     tol: 0.0005
-    desc: 'RES3/RES6: the generated resolution list on a pinned 1920x1080 desktop in a mapped borderless window -- boot at Auto 1920x1056 and the galaxy screen, the galaxy cursor carry, wheel_zoom=0, the list order, menu round trips and a size change, the fractional 1.5x size'
+    desc: 'RES3/RES6: the generated resolution list on a pinned 1920x1080 desktop in a mapped borderless window -- boot at Auto 1920x1080 (RES18: rendered 1920x1088, cropped) and the galaxy screen, the galaxy cursor carry, wheel_zoom=0, the list order, menu round trips and a size change, the fractional 1.5x size'
+  # mods:RES4 stages 1-2: [video] ui_scale=150 on a pinned 1920x1080 screen (dev key ui_screen), game frame 1856x1088. `pcapture` is the
+  # presented image (CPU compositor over the quad list), so the row proves quad placement on any lane; the frame itself is unchanged
+  # (res4_frame), the ui_scale=100 rows are the proof that the default presenter did not move.
+  - name: res4_quads
+    budget_s: 30
+    budget_evidence: "4-5 s solo, three green runs (2026-10-19), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_quads.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_quads.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_ui_quads.py, '150', 1920x1080, 1856x1088]
+    tol: 0.0005
+    desc: 'RES4 stages 1-2: ui_scale=150 on a 1920x1080 screen, the 1856x1088 frame of the strategic view and the presented image composed from the quad list (map 1:1, panel and strip 1.5x)'
+  # mods:RES4 stages 3-4: the game renders the ideal frame for the screen and scale (resolution=auto on a pinned desktop), the panel lists
+  # size to Hp = the rows the scaled panel shows, and pointer input maps back through the quad list (owned DirectInput absolute packets at
+  # client pixels: cursor on the map / panel / strip, a HUD click on the scaled panel, the minimap click vs the same click in frame
+  # coordinates, the four edge scrolls). The window is resized to the pinned screen, so the presenter's screen is a real client area.
+  - name: res4_s150
+    budget_s: 90
+    budget_evidence: "35 s of script + boot solo (2026-10-19), floored for suite load"
+    kind: solo
+    script: res4_s150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_ui_quads.py, '150', 1280x800, 1216x800]
+      - [tools/check_res4_input.py, '150', 1216x800, '533']
+      - [tools/check_panel_filler.py, res4_frame]
+    tol: 0.0005
+    desc: 'RES4 stages 3-4 at 150% on a 1280x800 screen: the 1216x800 frame, Hp 533 (whole rows), cursor mapped on map/panel/strip, the HUD Menu clicked on the scaled panel, the minimap click equal to the frame-coordinate click, edge scroll on all four edges'
+  - name: res4_s200
+    budget_s: 90
+    budget_evidence: "35 s of script + boot solo (2026-10-19), floored for suite load"
+    kind: solo
+    script: res4_s200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_ui_quads.py, '200', 1280x960, 1120x928]
+      - [tools/check_res4_input.py, '200', 1120x928, '480']
+      - [tools/check_panel_filler.py, res4_frame]
+    tol: 0.0005
+    desc: 'RES4 stages 3-4 at 200% on a 1280x960 screen: the 1120x928 frame, Hp 480, the same input walk as res4_s150'
+  # mods:RES4 stage 5: the owned cursor. In a scaled layout the cursor is NOT drawn into the game frame; the DLL renders the stock cursor
+  # routine into a scratch and the presenter draws it over the quads at ui_scale with its hotspot on the pointer. Each row parks the pointer
+  # on the map, the scaled panel and the scaled strip (frame capture + presented capture at each stop) and clicks the Menu button with the
+  # scaled cursor on it. tools/check_res4_cursor.py: no pixel differs outside the cursor rect (no trail, no double cursor), the drawn box is
+  # the sprite's box x s on the hotspot, the frame has no cursor of its own.
+  - name: res4_cursor_100
+    budget_s: 30
+    budget_evidence: "13 s solo (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_cursor_100.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    tol: 0.0005
+    desc: 'RES4 stage 5 reference arm at ui_scale=100: the same pointer walk, the game draws its own cursor into the frame, the presented image is the frame (baselines pin that the owned cursor changed nothing at 100)'
+  - name: res4_cursor_150
+    budget_s: 30
+    budget_evidence: "9-14 s solo over three runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_cursor_150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_cursor.py, '150', 1280x800, 1216x800, 'map:300,300', 'panel:1202,225', 'strip:300,780']
+    tol: 0.0005
+    desc: 'RES4 stage 5 at 150% on a 1280x800 screen: the owned cursor over the map, the scaled panel and the scaled strip (presented image), hotspot on the pointer, no cursor in the game frame, no trail; a click with the scaled cursor on the Menu button opens the ESC menu'
+  - name: res4_cursor_200
+    budget_s: 30
+    budget_evidence: "8-13 s solo over three runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_cursor_200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_cursor.py, '200', 1280x960, 1120x928, 'map:300,300', 'panel:1176,301', 'strip:300,940']
+    tol: 0.0005
+    desc: 'RES4 stage 5 at 200% on a 1280x960 screen: the same cursor walk as res4_cursor_150'
+  # mods:RES4 stage 6: gameplay-size dialogs as their own presenter quad.
+  - name: res4_dlg_100
+    budget_s: 30
+    budget_evidence: "8-13 s solo over several runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_dlg_100.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    tol: 0.0005
+    desc: 'RES4 stage 6 at 100%: ESC menu + Options screen through the dialog quad'
+  - name: res4_dlg_150
+    budget_s: 30
+    budget_evidence: "8-13 s solo over several runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_dlg_150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '150', 1280x800, 1216x800, esc, opt]
+    tol: 0.0005
+    desc: 'RES4 stage 6 at 150%: ESC menu + Options screen through the dialog quad'
+  - name: res4_dlg_confirm_150
+    budget_s: 30
+    budget_evidence: "8-13 s solo over several runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_dlg_confirm_150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '150', 1280x800, 1216x800, quit]
+    tol: 0.0005
+    desc: 'RES4 stage 6 at 150%: the Quit confirmation over the ESC menu is a second dialog quad; No is clicked through it'
+  - name: res4_dlg_confirm_200
+    budget_s: 30
+    budget_evidence: "8-13 s solo over several runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_dlg_confirm_200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '200', 1280x960, 1120x928, quit]
+    tol: 0.0005
+    desc: 'RES4 stage 6 at 200%: the Quit confirmation over the ESC menu is a second dialog quad; No is clicked through it'
+  - name: res4_info_175
+    budget_s: 30
+    budget_evidence: "8-15 s solo, four runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_info_175.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res4_info_175.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_info.py]
+    tol: 0.0005
+    desc: 'RES16: the unit/building info screen (game mode 4, its AVI clip playing) is a stage-6b dialog layer at 175% (only its own pixels enlarged; the AVI clip composited into the layer); NEXT is clicked through the quad, ESC returns to mode 2 with the side-panel rows unchanged'
+  - name: res_notice_stale
+    budget_s: 30
+    budget_evidence: "8 s solo, three runs (2026-10-23), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_notice_stale.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res4_info_175.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_notice.py, '--stale', '175']
+    tol: 1.0  # the battle scene animates between runs (0.9% of the info capture); the verdict is the post_check
+    desc: 'RES23-S5: a notice printed in the strategic view is an overlay stamped for its present; over the info screen (game mode 4, no strategic render) the stale entry is dropped (capture log, CPU composition and presenter output)'
+  - name: res4_fit_explicit
+    budget_s: 30
+    budget_evidence: "13 s solo (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_fit_explicit.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res4_fit_explicit.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_fit.py]
+    tol: 0.0005
+    desc: 'RES17: an explicit 1280x960 frame at ui_scale=175 on a 2560x1440 screen is fitted -- the map enlarged by k=1.49 (height-limited), composition 1950x1440, panel and strip at 175%, the ESC menu a dialog quad over the enlarged map'
+  - name: res4_fit_click
+    budget_s: 30
+    budget_evidence: "10-13 s solo (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_fit_click.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res4_fit_click.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_fit.py, --click]
+    tol: 0.0005
+    desc: 'RES17 pointer half: an explicit 1024x768 frame at 175% in a real 1280x1000 window is fitted (map x1.16); the pointer maps through the enlarged map quad and the scaled panel (scurpos), and a click on the scaled Menu button opens the ESC menu'
+  - name: res_crop_1080
+    budget_s: 30
+    budget_evidence: "12-14 s solo, three green runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_crop_1080.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_crop_1080.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_crop.py, '1080']
+    tol: 0.0005
+    desc: 'RES18: resolution=1920x1080 renders 1920x1088 and is presented cropped to 1920x1080 (no bars, strip on the last rows, pointer exact across the cut)'
+  - name: res_crop_720
+    budget_s: 60
+    budget_evidence: "26-36 s solo, three green runs (2026-10-22), x1.5 headroom for the real 1280x720 window"
+    kind: solo
+    script: res_crop_720.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_crop_720.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_crop.py, '720']
+    tol: 1.0
+    desc: 'RES18: resolution=1280x720 in a real 1280x720 window (frame 1280x736): composition, last row / column, edge scroll, pointer across the cut'
+  - name: res_crop_odd
+    budget_s: 30
+    budget_evidence: "15-18 s solo, three green runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_crop_odd.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_crop_odd.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_crop.py, 'odd']
+    tol: 0.0005
+    desc: 'RES18: resolution=1366x768 (neither side a tile multiple): frame 1376x768 presented cropped, panel on the last 160 columns'
+  - name: res_crop_150
+    budget_s: 30
+    budget_evidence: "13-15 s solo, three green runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_crop_150.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_crop_150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_overlay.py, 'crop_150']
+    tol: 0.0005
+    desc: 'RES18/RES21: resolution=1920x1080 (rendered 1920x1088, cropped) at Interface size 150% on a 2560x1440 screen: the cropped frame is fitted like 100, the panel and strip are overlays'
+  - name: res_crop_720_175
+    budget_s: 30
+    budget_evidence: "9-15 s solo, four green runs (2026-10-23, R720 fix), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_crop_720_175.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_crop_720_175.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_fallback.py, crop720_175]
+      - [tools/check_bcapture.py, --require-pair]
+    tol: 0.0005
+    desc: 'R720 fix: resolution=1280x720 (rendered 1280x736, cropped) at Interface size 175 in a borderless 2560x1440 d3d11 window -- a percentage the layout cannot use falls back to the 100 base: the stock cursor and ESC menu stay in the frame and show on screen'
+  - name: res_crop_720_175_gdi
+    budget_s: 30
+    budget_evidence: "9-15 s solo, four green runs (2026-10-23, R720 fix), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_crop_720_175_gdi.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_crop_720_175_gdi.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_fallback.py, crop720_175]
+      - [tools/check_bcapture.py, --require-pair]
+    tol: 0.0005
+    desc: 'R720 fix: res_crop_720_175 on the gdi presenter'
+  - name: res_overlay_125
+    budget_s: 30
+    budget_evidence: "9-15 s solo, four green runs (2026-10-23, R720 fix), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_overlay_125.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_overlay_125.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_fallback.py, fit_125]
+      - [tools/check_bcapture.py, --require-pair]
+    tol: 0.0005
+    desc: 'R720 fix: resolution=2048x1152 at Interface size 125 on a 2560x1440 d3d11 window (fit zoom 1.25 = the 125% panel): the 100 base is shown, the stock cursor and ESC menu stay in the frame and show on screen'
+  - name: res_overlay_100
+    budget_s: 30
+    budget_evidence: "measured 2026-10-22: 6-13 s solo on the shared rig (RES21 overlay rows); 30 s leaves 2x for load"
+    kind: solo
+    script: res_overlay_100.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_overlay_100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_overlay.py, '2048_100']
+    tol: 0.0005
+    desc: 'RES21 (rc3): resolution=2048x1152 on a 2560x1440 screen at Interface size 100: the whole frame at the 100 map zoom, no bars, panel and strip as overlays, the pointer mapped through them'
+  - name: res_overlay_150
+    budget_s: 30
+    budget_evidence: "measured 2026-10-22: 6-13 s solo on the shared rig (RES21 overlay rows); 30 s leaves 2x for load"
+    kind: solo
+    script: res_overlay_150.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_overlay_150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_overlay.py, '2048_150']
+      - [tools/check_panel_filler.py, res_overlay_150_frame]
+    tol: 0.0005
+    desc: 'RES21 (rc3): resolution=2048x1152 on a 2560x1440 screen at Interface size 150: the whole frame at the 100 map zoom, no bars, panel and strip as overlays, the pointer mapped through them'
+  - name: res_overlay_200
+    budget_s: 30
+    budget_evidence: "measured 2026-10-22: 6-13 s solo on the shared rig (RES21 overlay rows); 30 s leaves 2x for load"
+    kind: solo
+    script: res_overlay_200.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_overlay_200.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_overlay.py, '2048_200']
+      - [tools/check_panel_filler.py, res_overlay_200_frame]
+    tol: 0.0005
+    desc: 'RES21 (rc3): resolution=2048x1152 on a 2560x1440 screen at Interface size 200: the whole frame at the 100 map zoom, no bars, panel and strip as overlays, the pointer mapped through them'
+  - name: res_classic
+    budget_s: 30
+    budget_evidence: "8-9 s solo, two green runs (2026-10-23), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_classic.txt
+    deploy_save: ayy30
+    extra_ini: tools/uiscripts/ini/res_classic.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_classic.py]
+    tol: 0.0005
+    desc: 'RES25: resolution=stock (Classic sizes only) with ui_scale=175 in the ini: Interface size scaling off (logged once), no crop / composition (the frame is scaled), HUD at 100%, the Options screen has no Interface size row'
+  - name: res_notice_100
+    budget_s: 30
+    budget_evidence: "14-17 s solo, three green runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_notice_100.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_notice.py, '100']
+    tol: 1.0
+    desc: 'RES20: a floating notice at Interface size 100 is the game''s own (drawn into the frame)'
+  - name: res_notice_200
+    budget_s: 30
+    budget_evidence: "14 s solo, three green runs (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_notice_200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_notice.py, '200']
+    tol: 1.0
+    desc: 'RES20: a floating notice at Interface size 200 is scaled 2x as a presenter overlay (absent from the frame)'
+  - name: res_notice_off
+    budget_s: 30
+    budget_evidence: "13-14 s solo, two green runs (2026-10-23), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_notice_off.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_notice_off.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_notice.py, '--stock', '200']
+    tol: 1.0
+    desc: 'RES23-S5 kill switch: [video] ui_scale_notices=0 at Interface size 200 shows the game''s own notice (in the frame, 1:1), not the scaled overlay'
+  - name: res_notice_modal
+    budget_s: 30
+    budget_evidence: "8 s solo, three runs (2026-10-23), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res_notice_modal.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res_notice.py, '--modal', '200']
+      - [tools/check_bcapture.py, --require-pair]
+    tol: 0.0005
+    desc: 'RES23-S5: six notices printed in the strategic view, then the mode-3 ESC menu: the scaled notice still shows behind the menu (the dialog covers it where they overlap) and the game''s own 1x notice is not in the frame'
+  - name: res4_opt_latch
+    budget_s: 30
+    budget_evidence: "10-14 s solo (2026-10-22), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_opt_latch.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_opt_latch.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_latch.py]
+      - [tools/check_bcapture.py, --require-pair]  # RES23-S0: the gdi presenter's real output == the CPU re-composition
+    tol: 0.0005
+    desc: 'RES19: Interface size 200 -> 125 chosen in the in-game Options (a presenting lane): while the ESC menu is up (game mode 3) the presented image still has the 200% HUD (no blank panel rows); after Return to game it is the 125% layout'
+  - name: res19_user_d3d11
+    budget_s: 30
+    budget_evidence: "15-20 s solo (2026-10-22, RES23-S0, several runs), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res19_user_d3d11.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res19_user_d3d11.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_bcapture.py, --require-pair]
+      - [tools/check_res19_filler.py, d3d11]
+    tol: 0.0005
+    desc: 'RES23-S0: the user rc3 RES19 setup replayed on the owned d3d11 presenter (borderless, explicit 1280x960 frame, Interface size 200, a 2560x1440 window): Options 200 -> 125 Apply, bcapture (the presenter output) in the menu, after the resume and later; reports the panel filler colour below the last whole row'
+  - name: res19_user_gdi
+    budget_s: 30
+    budget_evidence: "15-20 s solo (2026-10-22, RES23-S0, several runs), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res19_user_gdi.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res19_user_gdi.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_bcapture.py, --require-pair]
+      - [tools/check_res19_filler.py, gdi]
+    tol: 0.0005
+    desc: 'RES23-S0: the user rc3 RES19 setup replayed on the owned gdi presenter (borderless, explicit 1280x960 frame, Interface size 200, a 2560x1440 window): Options 200 -> 125 Apply, bcapture (the presenter output) in the menu, after the resume and later; reports the panel filler colour below the last whole row'
+  - name: res_apply_menu_200_d3d11
+    budget_s: 60
+    budget_evidence: "23-37 s solo (2026-10-24, RES26, five runs), x1.6 = 60"
+    kind: solo
+    script: res_apply_menu_200_d3d11.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_apply_menu_200_d3d11.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_bcapture.py, --require-pair]
+      - [tools/check_res26_apply.py]
+    tol: 0.0005
+    desc: 'RES26: the user rc5 setup on the owned d3d11 presenter (1920x1080 session, Interface size 200, a 2560x1440 window): Screen size -> 1920x1440 Apply, then Interface size 200 -> 150 Apply: while the menu (game mode 3) is still up the presented HUD is already the requested size (one panel quad, Hp from the new frame), not the old 100% single quad until the resume'
+  - name: res_apply_menu_200_gdi
+    budget_s: 60
+    budget_evidence: "23-37 s solo (2026-10-24, RES26, five runs), x1.6 = 60"
+    kind: solo
+    script: res_apply_menu_200_gdi.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res_apply_menu_200_gdi.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_bcapture.py, --require-pair]
+      - [tools/check_res26_apply.py]
+    tol: 0.0005
+    desc: 'RES26: the user rc5 setup on the owned gdi presenter (1920x1080 session, Interface size 200, a 2560x1440 window): Screen size -> 1920x1440 Apply, then Interface size 200 -> 150 Apply: while the menu (game mode 3) is still up the presented HUD is already the requested size (one panel quad, Hp from the new frame), not the old 100% single quad until the resume'
+  - name: res19_unit_panel
+    budget_s: 30
+    budget_evidence: "placeholder: the sibling res19_user_gdi rows measure 15-20 s solo; re-measured below"
+    kind: solo
+    script: res19_unit_panel.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res19_unit_panel.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_bcapture.py, --require-pair]
+      - [tools/check_res19_panel.py]
+    tol: 0.0005
+    desc: 'RES23-S2 / RES19: a NON-list side panel (the selected insect groups) when Interface size changes 200 -> 125 in Options: the panel is redrawn at the new size (every panel mode, not only the building lists), the strip extension and corner stay filled, in the menu, after the resume and later'
+  - name: res4_dlg_200
+    budget_s: 30
+    budget_evidence: "8-13 s solo over several runs (2026-10-20), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_dlg_200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '200', 1280x960, 1120x928, esc, opt]
+    tol: 0.0005
+    desc: 'RES4 stage 6 at 200%: ESC menu + Options screen through the dialog quad'
+  # mods:RES4 stage 7: dialogs stage 6b had only read from the decompile. The BUILDING dialog opened from the selected building's red HUD
+  # icon (a generic llm_ui_dlg_build_from_table list in game mode 3: the mother's "can't sell" notice at 100/150, the reactor's sell
+  # confirmation at 200), at 100 (reference), 150 and 200; the button is clicked through the quad. NOT the construction-status dialog proper
+  # (llm_ui_dlg_building_construction_status): no committed save has a building the icon opens it for (see tmp/res4/s7/REPORT.md).
+  - name: res4_bst_100
+    budget_s: 30
+    budget_evidence: "11 s solo (2026-10-21), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_bst_100.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    tol: 0.0005
+    desc: 'RES4 stage 7 at 100%: the building status dialog drawn 1x, Ok clicked (reference arm)'
+  - name: res4_bst_150
+    budget_s: 40
+    budget_evidence: "11-28 s solo over 4 runs (2026-10-21; 28 s under rig contention), x1.3 rounded"
+    kind: solo
+    script: res4_bst_150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '150', 1280x800, 1216x800, 'bst@480,440,880,700']
+    tol: 0.0005
+    desc: 'RES4 stage 7 at 150%: the building status dialog is a scaled translucent layer quad centred on the visible map; Ok clicked through it'
+  - name: res4_bst_200
+    budget_s: 30
+    budget_evidence: "11-13 s solo (2026-10-21), floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    script: res4_bst_200.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s200_dlg.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_dialog.py, '200', 1280x960, 1120x928, 'bst@400,600,900,800', loose]
+    tol: 0.0005
+    desc: 'RES4 stage 7 at 200%: the building status dialog is a scaled translucent layer quad centred on the visible map; Ok clicked through it'
+  # mods:RES4 stage 7: mixed-ui_scale determinism. Host 100%, client 200% (each its own pinned desktop), the stock UI-path start walk; the
+  # row's own verdict is the lockstep hash compare (default for a multi row). The reverse pair + 1500 steps: `python tools/det_arms.py
+  # --determinism --det-local --det-mixed-scale 200:100 --steps 1500`.
+  - name: res4_mixed_scale
+    budget_s: 60
+    budget_evidence: "38 s and 42 s local (2026-10-21) x 1.3 = 55, rounded"
+    kind: multi
+    host: mp_host_res4_mixed.txt
+    clients: [mp_client_res4_mixed.txt]
+    net_extra: transport=udp
+    extra_ini_host: tools/uiscripts/ini/res4_s100.ini
+    extra_ini_client: tools/uiscripts/ini/res4_s200.ini
+    tol: 0.03
+    desc: 'RES4 stage 7: a 100% host and a 200% client play one match; the lockstep state hashes are identical (view scale is not sim state)'
+  - name: res4_lock_150
+    budget_s: 70
+    budget_evidence: "40 s, 43 s, 51 s local (2026-10-21) x 1.3 = 66, rounded"
+    kind: multi
+    no_hash_why: 'a deliberate blackhole stalls the host (the modal under test); the determinism clause of RES4 is the mixed-ui_scale pair, not this row'
+    host: mp_host_res4_lock.txt
+    clients: [mp_client_res4_lock.txt]
+    share_lanes: shim_seq
+    net_extra: transport=udp;rx_timeout_ms=60000;data_timeout_ms=60000
+    extra_ini_host: tools/uiscripts/ini/res4_s150_dlg.ini
+    extra_ini_client: tools/uiscripts/ini/video_1024.ini
+    post_check:
+      - [tools/check_res4_dialog.py, '150', 1280x800, 1216x800, lock]
+    post_check_peers: false
+    tol: 0.01  # the stalled host's frame animates under the modal (df 0.30% run to run); the presented image 0.007%
+    shim: true
+    shim_delay: 0
+    shim_timeline: tools/uiscripts/shim/res4_lock.txt
+    shim_triggers:
+    - cmd: blackhole c2s
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST res4_lock: stall start']
+    - cmd: blackhole off
+      when:
+      - [host, mh_uidrive.log, 'LOG: HOST res4_lock: stall end']
+    timeout: 400
+    desc: 'RES4 stage 7 at 150% (host): the lockstep Player-not-responding modal is a scaled translucent layer quad centred on the visible map'
+  - name: res4_auto
+    budget_s: 60
+    budget_evidence: "~12 s solo (2026-10-19), floored"
+    kind: solo
+    script: res4_auto.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_auto.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_ui_quads.py, '150', 1280x800, 1216x800]
+      - [tools/check_res4_input.py, --auto, '150', 1216x800]
+      - [tools/check_panel_filler.py, res4_frame]
+    tol: 0.0005
+    desc: 'RES4 ui_scale=auto: a faked Windows display scale of 150% ([video] display_scale) resolves to 150%, the session frame is the ideal 1216x800 and the presented image is the quad composition'
+  - name: res4_orders_100
+    budget_s: 60
+    budget_evidence: "~15 s solo (2026-10-19), floored"
+    kind: solo
+    script: res4_orders_100.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s100.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_orders.py]
+    tol: 1.0 # the unit is mid-walk in the capture; the post_check (goal tile equality) is the assertion
+    desc: 'RES4 stage 4 reference arm: at ui_scale=100 a left drag selects unit 5 and a right click at (400,300) orders it to the recorded goal tile (tools/data/res4_orders_goal.json)'
+  - name: res4_orders_150
+    budget_s: 60
+    budget_evidence: "~15 s solo (2026-10-19), floored"
+    kind: solo
+    script: res4_orders_150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_s150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_res4_orders.py]
+    tol: 1.0 # the unit is mid-walk in the capture; the post_check (goal tile equality) is the assertion
+    desc: 'RES4 stage 4 through the scaled UI: the same select + move order at ui_scale=150 reaches the SAME goal tile as res4_orders_100'
+  - name: res4_wm150
+    budget_s: 60
+    budget_evidence: "10 s solo (2026-10-19), floored"
+    kind: solo
+    script: res4_wm150.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_wm150.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    tol: 0.0005
+    desc: 'RES4 stage 4 on the window-message mouse (mouse_absolute=1) at 150%: posted clicks map client -> frame through the quad list; the Menu button on the scaled panel opens the ESC menu'
+  # mods:RES4 in-game options: ESC > Options > Interface size (the [video] ui_scale choice, below Screen size). 100 -> 150 -> 100 on a pinned
+  # 1920x1080 screen with the 1856x1088 frame; the choice applies live and is saved to the ini (check_res4_opt.py), and the presented image at
+  # 150% is the quad composition (check_ui_quads.py). The menu captures are the row's baselines: they show the new row and the shifted Ok/Cancel.
+  - name: res4_opt
+    budget_s: 60
+    budget_evidence: "8-14 s of script + boot solo and beside the other res4 rows (2026-10-20, five green runs), floored for suite load"
+    kind: solo
+    script: res4_opt.txt
+    deploy_save: 2-almost
+    extra_ini: tools/uiscripts/ini/res4_opt.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    post_check:
+      - [tools/check_ui_quads.py, '150', 1920x1080, 1856x1088]
+      - [tools/check_res4_opt.py]
+      - [tools/check_bcapture.py]  # RES23-S0: headless lane -> every bcapture logs SKIPPED (the null presenter shows nothing); agreement is proven on res4_opt_latch
+    tol: 0.0005
+    desc: 'RES4: the in-game Options screen has an Interface size row (Auto, 100..200%) -- two clicks to 150% and Ok apply it live and save [video] ui_scale, the presented image is the 150% composition; four clicks (wrapping through Auto) back to 100% restore the single quad'
   # RES12: the drag-select box (D13c inverted it on a 64-tile map when the anchor scrolled more than K px off-screen: right < left,
   # the outline's dirty-map memset ran off the 4096-byte tile-vis map at 0x004a583d). The three rows run the SAME eight scripted
   # drags + one order on 2-almost.sav: res_drag_stock is the vanilla reference (1024x768, wrap_window=0 -- the game's own corner
@@ -2529,6 +3239,896 @@ tests:
       - [tools/check_a2_progress.py, --expect, fixed]
       - [tools/check_a1_mother_free.py]
     desc: 'under [config] mode=original: mods:A2 fix ON and mods:A1 key ON on the retail game code with the splices'
+  # mods:UNL1 (2026-10-21): the campaign unlock recheck on load / planet arrival ([net] project_gate_fix, the launcher's one "Tech tree fixes" switch, default OFF, F_LOCAL, campaign
+  # only). The user's 0.2.2-rc2 save 8-ayatus-rl-2 (planet 8): retail offers 12 buildings for player 0 and not the spaceport (building 18, unlock row 21),
+  # because propagate_unlocks never re-ran after the load; with project_gate_fix=1 the recheck on the load offers it (avail=1 list_has18=1), OFF it stays stock (0/0).
+  # Two rows, one per configuration: port_unlock_ship = mh.dll WITHOUT libmh.dll (the retail call-splices 0x00447b78 / 0x0044d229 are the product),
+  # port_unlock_lib = libmh bound (llm_strat_planet_transition_finalize is promoted, so its splice is DISPLACED and the twin runs; llm_game_load is NOT promoted in
+  # any configuration today (kSaveClosureOwned = false), so the load splice is still the carrier there and save_live's twin stays dormant -- selftest-only).
+  # The user's own save is a RAISED-limits save ("rl"): it loads only with [caps] raise=1, which needs libmh absent (a promoted body refuses the relocation
+  # manifest), so the user_* steps are ship-only; the gap_* steps manufacture the same state (`unlockdrop`) on the vanilla 2-almost save and run in both.
+  # Each pair runs ON ([net] project_gate_fix=1, set explicitly: the key defaults to 0) then OFF (project_gate_fix=0).
+  - name: port_unlock_ship
+    budget_s: 30
+    budget_evidence: "19 s solo for the four process steps (6+5+4+4 s), two green runs 2026-10-21, x1.3 = 25, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    omit_satellite: [libmh.dll]
+    solo_steps:
+      # the user's own save (raised limits: [caps] raise=1, libmh absent): the spaceport after the load, then a visited-planet round trip
+      - name: user_on
+        script: port_unlock_user.txt
+        deploy_save: 8-ayatus-rl-2
+        extra_ini: tools/uiscripts/ini/caps_raise.ini
+        net_extra: project_gate_fix=1
+        post_check: [tools/check_port_unlock.py, --expect, 'on']
+      - name: user_off
+        script: port_unlock_user.txt
+        deploy_save: 8-ayatus-rl-2
+        extra_ini: tools/uiscripts/ini/caps_raise.ini
+        net_extra: project_gate_fix=0
+        post_check: [tools/check_port_unlock.py, --expect, 'off']
+      # a vanilla campaign save with the gap manufactured (unlockdrop), saved, quit to the menu and loaded back
+      - name: gap_on
+        script: port_unlock_gap.txt
+        deploy_save: 2-almost
+        net_extra: project_gate_fix=1
+        post_check: [tools/check_port_unlock.py, --expect, 'on']
+      - name: gap_off
+        script: port_unlock_gap.txt
+        deploy_save: 2-almost
+        net_extra: project_gate_fix=0
+        post_check: [tools/check_port_unlock.py, --expect, 'off']
+    extra_ini: [tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    desc: 'mods:UNL1 shipped configuration (libmh.dll omitted): the retail call-splices re-run the unlock pass after a campaign load and on arrival at a visited planet (the user save + a manufactured gap), ON and OFF'
+  - name: port_unlock_lib
+    budget_s: 30
+    budget_evidence: "15 s solo for the two process steps (7+7 s), two green runs 2026-10-21, x1.3 = 20, floored at 30 (BUDGET_FLOOR_S)"
+    kind: solo
+    solo_steps:
+      - name: gap_on
+        script: port_unlock_gap.txt
+        deploy_save: 2-almost
+        net_extra: project_gate_fix=1
+        post_check: [tools/check_port_unlock.py, --expect, 'on']
+      - name: gap_off
+        script: port_unlock_gap.txt
+        deploy_save: 2-almost
+        net_extra: project_gate_fix=0
+        post_check: [tools/check_port_unlock.py, --expect, 'off']
+    extra_ini: [tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    desc: 'mods:UNL1 libmh bound: the promoted llm_game_load / llm_strat_planet_transition_finalize bodies carry the unlock recheck twin (a manufactured gap on 2-almost), ON and OFF'
+  # patching:PT-CAP8 hardening (2026-10-20): the ON smoke of the v0.2.2 cap raise. libmh.dll absent (the relocation manifest applies), `[caps] raise=1`
+  # + `mirror_check=1` (ini/caps_raise.ini), a 1-human + 1-AI skirmish. The harness cap-fill fixture (cap_*) places buildings through the game's own debug
+  # construction order until the player is past every vanilla roster cap (> 100 buildings, > 25 storages, > 32 turrets, > 32 mines, > 25 labs, > 8
+  # productions), then the match runs on to 10 game minutes. tools/check_cap_fill.py judges: relocation APPLIED, limits ON, the counts + highest indices
+  # in the raised part, the geometry rows wide, no crash/desync, no mirror-writer report. Overflow records are not hashed yet (PT-CAP8 S2).
+  - name: cap_fill
+    tier: release  # user 2026-10-20: the raise-on smoke runs before a release, not in every full gate
+    budget_s: 90
+    budget_evidence: "measured 38-57 s on the local rig 2026-10-20 (four runs, one with 481 buildings; the 10 game minutes run unthrottled under pin_wallclock) x 1.5"
+    kind: solo
+    script: cap_fill_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=1000;cap_hold=3000;cap_bldg=400;cap_storage=100;cap_turret=126;cap_mine=100;cap_lab=100;cap_prod=60
+    tol: 1.0
+    post_check:
+      - [tools/check_cap_fill.py]
+    desc: 'v0.2.2 cap raise ON (libmh absent, raise=1, mirror_check=1): one player places ~400 buildings (100 turrets/mines/labs/storages, 60 productions) past every vanilla roster cap through the game placement order; the match runs 10 game minutes'
+  # patching:PT-CAP9-U1/U2 (2026-10-21): the ON smoke of the v0.2.3 units + soldiers raise. libmh.dll absent (both relocation manifests apply), `[caps] raise=1`
+  # + `mirror_check=1`, a 1-human + 1-AI skirmish. The harness unit-fill fixture (capu_*) creates units through the game's debug order 0xeb until player 0 owns 490
+  # (the recruit cap 491 leaves 490; every unit carries crew soldiers so the soldier roster passes 100 too); at step 4000 the world is saved and loaded back through the
+  # game's own save/load; the match runs to 5 game minutes. tools/check_cap_units.py judges (clauses in its docstring).
+  - name: cap_units
+    budget_s: 90
+    budget_evidence: "29-46 s solo on the local rig 2026-10-21 (tmp/capraise/u1/row_cap_units.log), 73 s inside the 33-row PT-CAP9 batch 2026-10-22 (tmp/capraise/u8/rows_all.log; 300 game seconds run unthrottled under pin_wallclock) x 1.2"
+    kind: solo
+    script: cap_units_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=480;capu_batch=20;capu_sample=500;capu_hold=1500;cap_sample=0;cap_save_at=4000;cap_save_name=capunits
+    tol: 1.0
+    post_check_session: true  # the `[caps] save:` / `load:` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_units.py]
+    desc: 'v0.2.3 units + soldiers raise ON (libmh absent, raise=1, mirror_check=1): one player owns 490 units (the recruit-cap maximum) (soldiers past 100) through the game create-unit order; a save at step 4000 loads back digest- and count-exact; the match runs 5 game minutes'
+  # patching:PT-CAP9-U5 (2026-10-21): the ORDER LAYERS of the raise (queue 4096 / staging 2048 / pending 32768, bounds, counted refusals, sender quota). libmh absent,
+  # raise=1 (the order layer rides the limit layer: src/patcher/cap_v023_orders_EN.mh.patch.json), a 1-human + 1-AI skirmish. The unit-fill fixture (capu_*) gives player 0
+  # 490 units (the recruit-cap maximum); then the order-burst fixture (capo_*) issues 500 move orders IN ONE SIM STEP through the game's own llm_strat_unit_order_move
+  # (the 10 units past the roster get a second order with the same target) and every unit's goal fields (+0x86/+0x87) are read back: orders APPLIED, not displacement.
+  # tools/check_cap_orders.py judges: the layer STAGED and ON, every ordered unit reached its target, the queue high-water passed 500 with no refusal and no guard hit.
+  - name: cap_orders_sp
+    tier: release
+    budget_s: 50
+    budget_evidence: "measured 20-38 s per row (cap_orders_sp, cap_orders_sp_off; tmp/capraise/u5w/row_sp_12.log) x 1.3"
+    kind: solo
+    script: cap_orders_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=40
+    tol: 1.0
+    post_check_session: true  # the `[caps] orders` census lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'on', --shape, sp, --need-hw-q, '1000']
+    desc: 'PT-CAP9-U5: 500 ctrl-group status-bit orders (+ their 0xfb echoes) in one sim step on a 490-unit roster (raise ON, libmh absent): the queue grows to 1000 records (hw), nothing is refused, every one of the 490 units reaches its target'
+  - name: cap_orders_sp_off
+    tier: release
+    budget_s: 50
+    budget_evidence: "measured 20-38 s per row (cap_orders_sp, cap_orders_sp_off; tmp/capraise/u5w/row_sp_12.log) x 1.3"
+    kind: solo
+    script: cap_orders_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_orders_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=40
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'off', --shape, sp]
+    desc: 'PT-CAP9-U5 negative arm (`[caps] orders_layer=0`, the pre-fix behaviour): the same burst meets the vanilla queue [300]: the 301st enqueue WIPES the queue, so only the orders after the wipe (199 units) are applied'
+  - name: cap_orders_move_sp
+    budget_s: 65
+    budget_evidence: "measured 39-62 s (move_sp) and 47-76 s (move_sp_off, under rig load from two other writers) in tmp/capraise/u5merge/row_sp_1.log + row_move_2.log; solo 39/47 x 1.3 = 51/61, rounded up"
+    kind: solo
+    script: cap_orders_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=40;capo_kind=0
+    tol: 1.0
+    post_check_session: true  # the `[caps] orders` census lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'on', --shape, sp, --records, '1', --slack, '6', --need-hw-q, '500']
+    desc: 'PT-CAP9-U5 move-order variant (post-U4: the path pool holds 500 paths): 500 REAL move orders (1 queue record each in the immediate lane) in one sim step on a 490-unit roster, raise ON, libmh absent: the queue holds all 500 (hw 500, vanilla 300), nothing is refused, 487 of 490 units hold their goal at +40 steps (the other 3 had already arrived)'
+  - name: cap_orders_move_sp_off
+    tier: release
+    budget_s: 65
+    budget_evidence: "measured 39-62 s (move_sp) and 47-76 s (move_sp_off, under rig load from two other writers) in tmp/capraise/u5merge/row_sp_1.log + row_move_2.log; solo 39/47 x 1.3 = 51/61, rounded up"
+    kind: solo
+    script: cap_orders_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_orders_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=40;capo_kind=0
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'off', --shape, sp, --records, '1', --slack, '6']
+    desc: 'PT-CAP9-U5 move-order variant, negative arm (`[caps] orders_layer=0`): the same 500 move orders meet the vanilla queue [300]: the wipe at the 301st record leaves 199 orders, 196 units hold their goal at +40 steps (vs 487 with the layer on)'
+  # patching:PT-CAP9-U7c (= U5d, 2026-10-22): the order QUEUE across a SAVE. The cap_orders_move_sp walk with 450 move orders, and a game_SaveGame in the fire step -- right after
+  # the orders are enqueued, before the next sim step drains the queue (harness capo_save=1) -- loaded back capo_save_gap=20 steps later (a same-step load re-reads the bytes the
+  # mirror already holds and hides the clamp). The queue count (0x5d0194) is saved separately and not mirrored: before U7c a load clamped it to 300 and the 150 tail records were
+  # lost; a raise-OFF build would have run 150 stale records as due orders. tools/check_cap_orders.py --save 450 judges: count 450 + byte-equal records (digest), pending/staging
+  # empty at the save (the planet save has no block for them), a trailer with queue records 300..449, a stamped container, `queue count 450 restored`, and 450 goals applied after the load.
+  - name: cap_orders_save
+    tier: release
+    budget_s: 30
+    budget_evidence: "20 s solo on the local rig 2026-10-22 (tmp/capraise/u7c/row_save_2.log, rows_a.log; 837 game steps unthrottled under pin_wallclock) x 1.4"
+    kind: solo
+    script: cap_orders_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=450;capo_wait=40;capo_kind=0;capo_save=1;capo_save_gap=20;cap_save_name=capord
+    tol: 1.0
+    post_check_session: true  # the `[caps] save:` / `load:` / `orders` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'on', --shape, sp, --records, '1', --slack, '6', --need-hw-q, '450', --save, '450']
+    desc: 'PT-CAP9-U7c: 450 move orders enqueued, saved before the step drains them, loaded 20 steps later (raise ON, libmh absent): the queue count comes back 450 with byte-equal records (the planet-file trailer carries records 300..449), the container is stamped, and 450 units hold their goal'
+  # The raise-OFF arm: the file cap_orders_save writes (tools/uiscripts/saves/capord.sav, committed) is refused at the header by the stamp, with the player-strings message, before any
+  # block is read -- an OFF build never meets a queue count of 450 over a 300-record block (check_cap_save.py --step refuse, the capovf.sav pattern).
+  - name: cap_orders_save_off
+    tier: release
+    budget_s: 10
+    budget_evidence: "4 s solo on the local rig 2026-10-22 (tmp/capraise/u7c/row_off_1.log, rows_a.log: a main-menu walk and one refused load) x 1.4, rounded up to 10 (the lane start dominates)"
+    kind: solo
+    script: cap_save_refused.txt
+    omit_satellite: [libmh.dll]
+    deploy_save: capord
+    extra_ini: [tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    post_check:
+      - [tools/check_cap_save.py, --step, refuse]
+    desc: 'PT-CAP9-U7c negative arm (raise OFF): the 450-order save is refused at the header by the container stamp, with the raised-limits message; nothing is loaded'
+  # patching:PT-CAP9-U5 (2026-10-21): the same 500-order one-frame burst over the NETWORK lane (2 peers, both libmh-less, the host's `[caps] raise=1` adopted by the
+  # client). The host owns player 0 (490 units) and issues 500 ctrl-group status-bit orders in one sim step; each order (a ctrl-group status-bit order + its 0xfb echo) is STAGED twice, parked in
+  # PENDING until the lockstep horizon, then released into the QUEUE on BOTH peers. check_cap_orders --shape mp: applied == 490 on both, staging and pending high-water >= 1000,
+  # nothing refused, the lockstep hash compare clean.
+  - name: cap_orders_mp
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders.txt
+    clients: [mp_client_idle.txt]
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=60
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'on', --shape, mp, --need-hw-staging, '1000']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5: 500 replicated orders in one sim step reach both peers (staging and pending hold all 1000 records, no refusal): applied 490 of 490 on host and client, hashes identical'
+  - name: cap_orders_move_mp
+    tier: release
+    budget_s: 120
+    budget_evidence: "measured 89 s and 91 s, 2 peers + the client's second game (tmp/capraise/u8/movemp/fix/row20.log, row19.log) x 1.3 = 116, rounded to 120; the game over lands at ~45 s of sim, so the row is shorter than cap_orders_mp (the match ends early)"
+    kind: multi
+    host: mp_host_cap_orders_move.txt
+    clients: [mp_client_cap_orders_move.txt]
+    share_lanes: cap_orders_mp
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/caps_post_dump.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=60;capo_kind=0
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    # PT-CAP9-U8b: the host's 490 movers kill the client's only unit, so the match ends in a real game over ON the raise=0 client (raise adopted from the host). The two
+    # extra checks are the crash-at-game-over regression: no peer wrote a crash marker, and the toggle layers' sites are the clean exe's bytes after the revert.
+    post_check:
+      - [tools/check_cap_orders.py, --arm, 'on', --shape, mp, --records, '2', --slack, '6', --need-hw-staging, '1000']
+      - [tools/check_no_crash_marker.py]
+      - [tools/check_caps_off_clean.py]
+    post_check_peers: true
+    post_check_session: true
+    post_check_session_first: true  # the client plays a SECOND game in its process: the checks read the FIRST match's session dirs
+    desc: 'PT-CAP9-U8 + U8b: 500 replicated MOVE orders in one sim step reach both peers (490 units, no refusal, goal fields hold the target, hashes identical to the game over); the host''s movers eliminate the raise=0 client, whose game over must not crash, whose toggle-layer code sites must be its original bytes after the session-close revert, and whose SECOND game in the same process must run'
+  - name: cap_orders_mp_off
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: cap_orders_mp
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/caps_orders_off.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_n=500;capo_wait=60
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'off', --shape, mp]]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5 negative arm (`[caps] orders_layer=0` on both peers): the vanilla staging list [300] takes 2 records per order, so only 150 of the 500 orders reach the game, identically on both peers'
+  # patching:PT-CAP9-U5: BOTH peers burst in the SAME sim step. Each peer's player owns 250 units (the client's roster comes from the same fixture, capu2_*) and its own
+  # peer issues 500 orders for it (two laps per unit): 1000 orders / 2000 records in flight at once, nothing refused, every order applied on both peers.
+  - name: cap_orders_mp2
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders.txt
+    clients: [mp_client_cap_orders.txt]
+    share_lanes: cap_orders_mp
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_wait=60;capu_units=250;capu2_player=1;capu2_units=250;capu2_soldiers=0;capo_n=500;capo2_player=1;capo2_n=500
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'on', --shape, mp, --need-hw-staging, '1000']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5: both peers issue 500 replicated orders in the same sim step (250 units each, 2000 records in flight): every order applied on both peers, identical figures, nothing refused'
+  # Probe (c), a stall-style burst over the SENDER QUOTA: the host issues 1500 orders (3000 records) in one step; the per-player quota (2048 records in staging + pending)
+  # refuses the rest AT THE SENDER, as whole orders (an order and its 0xfb echo are never split): exactly 1024 orders are applied on BOTH peers, the receiver counts no
+  # refusal (ovf 0), the sender counts them, logs the red floating notice once, and the lockstep hash compare stays clean.
+  - name: cap_orders_quota
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders_notice.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: cap_orders_mp
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_wait=60;capu_units=490;capo_n=1500
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'on', --shape, mp, --applied, '1024', --allow-refusal]]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5 probe (c): 1500 orders (3000 records) from one sender in one step: the quota refuses at the sender (whole orders), exactly 1024 applied on both peers, receiver ovf 0, the player notice shown once, hashes identical'
+  # The same probe with the SENDER on the RU language pack: the red floating notice is drawn from lang/ru/mh_strings.txt (SKIPS by name without a pack).
+  - name: cap_orders_quota_ru
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders_notice_ru.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: cap_orders_quota
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise_ru.ini
+    requires: !ref lang_pack_strings_precondition
+    lane_src: !ref LANG_PACK_GAME
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_wait=60;capu_units=490;capo_n=1500
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'on', --shape, mp, --applied, '1024', --allow-refusal]]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5 probe (c) on the RU pack (the sender): 1500 orders (3000 records) from one sender in one step: the quota refuses at the sender (whole orders), exactly 1024 applied on both peers, receiver ovf 0, the player notice shown once, hashes identical'
+  # Probe (d), the CARRY-OVER: `[caps] orders_release_cap=300` (BOTH peers, test knob) lowers the release_due queue bound, so 1000 records are due in one step but the
+  # queue takes 300 per step; the records left in PENDING must be the same ones on every peer. All 500 orders are applied on both and the lockstep hash stays identical
+  # (the det_arms --det-caps --orders shape reports ALL PAIRS IDENTICAL on the same stimulus).
+  - name: cap_orders_carry
+    tier: release
+    budget_s: 230
+    long_why: "a 2-peer match that must reach step ~900 (the fill of a 490-unit roster, then the burst and its 60-step settle) with the lockstep hash compare running; the walk dominates, not the burst"
+    budget_evidence: "measured 173-177 s per row, 2 peers, 15300 hashed steps (tmp/capraise/u5w/row_mp_6.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_orders.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: cap_orders_mp
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/caps_orders_relcap.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_soldiers=0;capu_batch=20;capu_sample=500;capu_hold=300;cap_sample=0;capo_at=300;capo_player=0;capo_wait=60;capu_units=490;capo_n=500
+    tol: 1.0  # the end frame is a live 490-unit scene; the assertion is the post_check, not the pixels
+    timeout: 600
+    post_check: [[tools/check_cap_orders.py, --arm, 'on', --shape, mp, --hwq-exact, '300']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U5 probe (d): more records due than the queue takes (release bound 300): the carry-over applies all 500 orders on both peers, the queue high-water is exactly the bound, hashes identical'
+  # patching:PT-CAP9-U4 (2026-10-21): the 500-paths smoke of the path-slot rework. libmh absent, raise=1, path_check=1, a 1-human + 1-AI skirmish. The unit-fill fixture
+  # (capu_*) gives player 0 490 units; the path fixture (path_*) then sends them, 100 per 10 steps, to one tile >= 60 BFS tiles away, so the path pool holds ~490 paths at
+  # once (ids past 300). tools/check_cap_path.py judges (peak, max id, free count never 0, pool invariants silent, arrival). The OFF arm keeps the raise off: the
+  # relocated pool still serves the vanilla 100 slots.
+  - name: u4_path500
+    budget_s: 50
+    budget_evidence: "35 s solo on the local rig 2026-10-21 (two green runs, tmp/capraise/u4bc/row_u4_path500.log; 3000 game steps unthrottled under pin_wallclock) x 1.3 = 46"
+    kind: solo
+    script: cap_path_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=5;path_dist=60;path_hold=2500;capu_units=490;capu_soldiers=480;capu_batch=20;path_units=490;path_batch=100
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py]
+    desc: 'PT-CAP9-U4: 490 units of one player are ordered to a far tile in batches of 100; the relocated path pool holds ~490 paths at once (slot ids past 300), the free count never hits 0, the pool invariants stay silent and the units arrive'
+  - name: u4_path500_off
+    tier: release
+    budget_s: 35
+    budget_evidence: "24 s solo on the local rig 2026-10-21 (tmp/capraise/u4bc/row_u4_path500_off.log) x 1.3 = 31"
+    kind: solo
+    script: cap_path_off_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini, tools/uiscripts/ini/caps_raise_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=10;path_dist=60;path_hold=1500;capu_units=90;capu_soldiers=90;capu_batch=20;path_units=90;path_batch=90
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py, --negative]
+    desc: 'PT-CAP9-U4 OFF arm (`[caps] raise=0`): the same walk with 90 units on the relocated but vanilla-sized (100 slot) path pool; the limit stays 100, no slot id past 99 is held, the invariants are silent'
+  # patching:PT-CAP9-U7b (= U4d, 2026-10-22): the path pool across a SAVE. The u4_path500 walk with a game_SaveGame + llm_game_load round trip in ONE step at the pool's
+  # peak (harness path_save=1). Before the late load splice the pool was scattered BEFORE the path blocks were read, so every planet load lost the pool (raise ON or OFF).
+  # tools/check_cap_path.py --save judges: the stock window / tails / whole-pool / overflow digests and the per-player census equal across the round trip, the trailer
+  # names the path section, the pool invariants are silent right after the load and the run after it arrives as many units as the no-save arm.
+  - name: u4_path500_save
+    tier: release
+    budget_s: 45
+    budget_evidence: "32 s solo on the local rig 2026-10-22 (tmp/capraise/u7ab/row_fix_save2.log; 3100 game steps unthrottled under pin_wallclock) x 1.4"
+    kind: solo
+    script: cap_path_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=5;path_dist=60;path_hold=2500;capu_units=490;capu_soldiers=480;capu_batch=20;path_units=490;path_batch=100;path_save=1;path_save_hold=400;path_save_id=300;path_save_gap=100;cap_save_name=pathsave
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py, --save, --arrived-min, '73']  # 73 = the no-save arm's arrived (u4_path500, same fixture)
+    desc: 'PT-CAP9-U7b: the 490-unit walk saved and loaded back in one step at the pool peak (>= 400 paths held, ids past 300): the pool, the per-player census and the overflow digest survive the round trip, the trailer names the path section and the units go on to arrive'
+  - name: u4_path500_off_save
+    tier: release
+    budget_s: 32
+    budget_evidence: "23 s solo on the local rig 2026-10-22 (tmp/capraise/u7ab/row_fix_offsave2.log) x 1.4"
+    kind: solo
+    script: cap_path_off_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini, tools/uiscripts/ini/caps_raise_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=10;path_dist=60;path_hold=1500;capu_units=90;capu_soldiers=90;capu_batch=20;path_units=90;path_batch=90;path_save=1;path_save_hold=40;path_save_id=40;path_save_gap=100;cap_save_name=pathsave
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py, --negative, --save, --arrived-min, '18']  # 18 = the no-save arm's arrived (u4_path500_off)
+    desc: 'PT-CAP9-U7b regression arm (`[caps] raise=0`): the 90-unit walk saved and loaded back mid-move: the stock path window (slots 0..99) and the per-player census are identical before and after, and no trailer is written. The load-order bug scattered the pool before the path blocks were read, raise ON or OFF'
+  # patching:PT-CAP9-U4f (2026-10-22): the TACTICAL round trip of the path pool. The u4_path500 walk; at the pool's peak (>= 400 paths held, ids past 300) the harness, between
+  # frames (path_tact=1), saves the planet (map_SavePlanetToDisk), enters a tactical mission (llm_tact_mission_start; the mission overwrites row 0 slots 1..99 and
+  # resets their flags), lets 30 tactical frames run, then empties the active-unit count so the ORIGINAL llm_tact_frame leaves through its own early-exit gate ->
+  # llm_tact_mission_end_return_to_strategic -> map_LoadPlanetFromDisk. tools/check_cap_path.py --save --tact judges: the same digest / census equality as the save arms
+  # (slots >= 100 survive), the mission verifiably disturbed the window, the tails were untouched by it, the pool invariants are silent and the units go on to arrive.
+  - name: u4_path500_tact
+    tier: release
+    budget_s: 50
+    budget_evidence: "35 s solo on the local rig 2026-10-22 (tmp/capraise/u45rest/row_tact_1.log; 3000+ game steps unthrottled under pin_wallclock plus the 30-frame mission) x 1.4"
+    kind: solo
+    script: cap_path_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=5;path_dist=60;path_hold=2500;capu_units=490;capu_soldiers=480;capu_batch=20;path_units=490;path_batch=100;path_tact=1;path_tact_frames=30;path_tact_system=1;path_save_hold=400;path_save_id=300
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py, --save, --tact, --arrived-min, '73']  # 73 = the no-save arm's arrived (u4_path500, same fixture)
+    desc: 'PT-CAP9-U4f: the 490-unit walk interrupted at the pool peak (>= 400 paths held, ids past 300) by a tactical mission (planet saved, mission entered, 30 frames, the game leaves through its own exit gate): the pool, the per-player census and the overflow digest survive the excursion, the mission did not touch slots >= 100, the units go on to arrive'
+  - name: u4_path500_off_tact
+    tier: release
+    budget_s: 33
+    budget_evidence: "23 s solo on the local rig 2026-10-22 (tmp/capraise/u45rest/row_tact_off_1.log) x 1.4"
+    kind: solo
+    script: cap_path_off_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_path_check.ini, tools/uiscripts/ini/caps_raise_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_hold=1000000;capu_sample=500;cap_sample=0;path_at=300;path_player=0;path_gap=10;path_dist=60;path_hold=1500;capu_units=90;capu_soldiers=90;capu_batch=20;path_units=90;path_batch=90;path_tact=1;path_tact_frames=30;path_tact_system=1;path_save_hold=40;path_save_id=40
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_path.py, --negative, --save, --tact, --arrived-min, '18']  # 18 = the no-save arm's arrived (u4_path500_off)
+    desc: 'PT-CAP9-U4f regression arm (`[caps] raise=0`): the 90-unit walk interrupted by the same tactical excursion: the stock path window (slots 0..99) and the per-player census are identical before and after, the mission verifiably disturbed the window, no trailer is written'
+  # patching:PT-CAP9-U5 (UI row, 2026-10-22): 489 units ordered by THREE CONTROL-GROUP clicks in the real UI. libmh absent, raise=1, a 1-human + 1-AI skirmish on the 1856x1088 view. The
+  # unit-fill fixture gives the human 490 units round the mother; tools/uiscripts/cap_ctrlgrp_solo.txt then slows the game, drags three back-to-back boxes (each <= 200 ids, the U6
+  # selection cap), presses Ctrl+1 / Ctrl+2 / Ctrl+3 after each (`key <sc> ctrl`: the selection becomes the group, every member gets a status-bit order + its 0xfb echo, ~370 records in
+  # ONE keystroke), then recalls each group by its digit and right-clicks the ground once per group (a move order per unit + echo). The harness watch (capg_*) is passive;
+  # tools/check_cap_orders_ui.py judges the applied status bits and goal fields of every grouped unit and the order layer's census (hw q 603 vs the vanilla 300).
+  - name: cap_ctrlgrp_ui
+    budget_s: 25
+    budget_evidence: "14 s (ON) / 15 s (OFF) solo on the local rig 2026-10-22 (tmp/capraise/u45rest/row_ui_17.log; ~1000 game steps unthrottled under pin_wallclock) x 1.7, a short row the lane start dominates"
+    kind: solo
+    script: cap_ctrlgrp_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/cap_sel_view.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_maxr=11;capu_soldiers=0;capu_batch=20;capu_sample=1000;capu_hold=300;cap_sample=0;capg_at=300;capg_every=100
+    tol: 1.0
+    post_check_session: true  # the `[caps] orders` census lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_orders_ui.py, --units, '480']
+    desc: 'PT-CAP9-U5 UI row: 489 units grouped by three Ctrl+digit chords (each ~370 queued records in one keystroke) and moved by three digit+right-click pairs, raise ON, libmh absent: every grouped unit carries its status bit and holds the move order''s goal, the queue high-water passes 600 (vanilla 300), nothing is refused'
+  - name: cap_ctrlgrp_ui_off
+    tier: release
+    budget_s: 25
+    budget_evidence: "14 s (ON) / 15 s (OFF) solo on the local rig 2026-10-22 (tmp/capraise/u45rest/row_ui_17.log; ~1000 game steps unthrottled under pin_wallclock) x 1.7, a short row the lane start dominates"
+    kind: solo
+    script: cap_ctrlgrp_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/cap_sel_view.ini, tools/uiscripts/ini/caps_orders_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=490;capu_maxr=11;capu_soldiers=0;capu_batch=20;capu_sample=1000;capu_hold=300;cap_sample=0;capg_at=300;capg_every=100
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_orders_ui.py, --negative, --units, '480']
+    desc: 'PT-CAP9-U5 UI row, negative arm (`[caps] orders_layer=0`): the same three chords and three moves meet the vanilla queue [300]: the burst of one chord wipes the queue, so grouped units miss their status bit or their move order'
+  # patching:PT-CAP11 (2026-10-21): the AI SCRATCH arrays of the raise. libmh absent, raise=1 (+ the AI layer: src/patcher/cap_v022_aiscratch_EN.mh.patch.json), a
+  # 1-human (idle) + 1-AI skirmish. The harness cap-fill fixture fills the AI player's roster (cap_player=1, cap_issue=1: the AI has no owner peer, this peer issues
+  # the placement orders) past 100 buildings and 32 mines while the human's relays (cap2) stand around the AI's mother, and the AI keeps PLAYING for 10 game minutes
+  # (llm_strat_ai_plan_turret_upgrade / _mine_portfolio_rebalance / the engage + scan-target lists run on the enlarged arrays). tools/check_cap_ai.py judges: the AI layer
+  # STAGED and ON, the census (mh_net.log `ai-census`) shows indices past the vanilla bounds, and no `AI GUARD HIT` -- an overflow past the enlarged arrays is a red verdict.
+  - name: cap_ai_scratch
+    tier: release
+    budget_s: 70
+    budget_evidence: "47-54 s solo, three green runs (2026-10-21) x1.3 = 70; the row plays 600 game seconds of an AI skirmish at the raised caps"
+    kind: solo
+    script: cap_ai_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=200;cap_at=300;cap_player=1;cap_issue=1;cap_ai_grant=1;cap_ai_hammer=1;cap_sample=1000;cap_hold=3000;cap_bldg=250;cap_storage=40;cap_turret=40;cap_mine=60;cap_lab=40;cap_prod=20;cap2_player=0;cap2_targets=300
+    tol: 1.0
+    post_check_session: true  # the `[caps] ai-census` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_ai.py]
+    desc: 'PT-CAP11: the AI player owns 250 buildings / 60 mines (past the vanilla 100 / 32) with 300 hostile buildings around its base and plays 10 game minutes on the enlarged AI scratch arrays; the census shows indices past the vanilla bounds and no guard is hit'
+  - name: cap_ai_scratch_off
+    tier: release
+    budget_s: 70
+    budget_evidence: "47-54 s solo, three green runs (2026-10-21) x1.3 = 70; the row plays 600 game seconds of an AI skirmish at the raised caps"
+    kind: solo
+    script: cap_ai_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_ai_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=200;cap_at=300;cap_player=1;cap_issue=1;cap_ai_grant=1;cap_ai_hammer=1;cap_sample=1000;cap_hold=3000;cap_bldg=250;cap_storage=40;cap_turret=40;cap_mine=60;cap_lab=40;cap_prod=20;cap2_player=0;cap2_targets=300
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_ai.py, --negative]
+    desc: 'PT-CAP11 negative arm (`[caps] ai_scratch=0`, the pre-fix behaviour): the same AI-owns-250-buildings / 60-mines match on the VANILLA scratch arrays; the AI indexes them past their size (the census of the bad index is the checker`s verdict)'
+  # patching:PT-CAP9-U3 (2026-10-21): the UNIT-indexed AI scratch arrays (group member list int[100], attack candidates [128]) of the units raise. libmh absent,
+  # raise=1 (+ the AI layer, cap_v022_aiscratch_EN: .mhcapa now holds 10 arrays), a 1-human (idle) + 1-AI skirmish. The harness unit-fill fixture creates units
+  # for the AI player (capu_player=1, capu_issue=1: the AI has no owner peer, this peer issues the create orders) past the vanilla 128 candidates / 100 group
+  # members, the AI keeps PLAYING for 10 game minutes, and every sample logs the AI's unit count and its group sizes (`; CAPU AI`). capu_ai_hammer drives the
+  # game's own scratch writers with those units once the target is met (the natural groups are small). tools/check_cap_ai_units.py judges: the layer STAGED and ON,
+  # the AI owned more than 128 units, the census crossed the vanilla bounds, no `AI GUARD HIT` (an overflow past an enlarged array is red), the game kept stepping.
+  - name: cap_ai_units
+    tier: release
+    budget_s: 150
+    long_why: "the AI player is fed 260 units and the scratch writers are hammered, run unthrottled under pin_wallclock; a shorter run loses the 100+ member AI groups the row exists to exercise"
+    budget_evidence: "104-109 s with both arms running side by side on the local rig 2026-10-21 (tmp/capraise/u36/row21.log) x 1.3"
+    kind: solo
+    script: cap_ai_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=200;capu_at=300;capu_player=1;capu_issue=1;capu_units=260;capu_soldiers=10;capu_batch=20;capu_sample=1000;capu_hold=2000;capu_guard=0;capu_ai_hammer=1;cap_sample=0
+    tol: 1.0
+    post_check_session: true  # the `[caps] ai-census` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_ai_units.py]
+    desc: 'PT-CAP9-U3: the AI player owns 260 units (past the vanilla 128 attack candidates / 100 group members) and plays 10 game minutes on the enlarged unit-indexed AI scratch arrays; the census shows indices past the vanilla bounds and no guard is hit'
+  - name: cap_ai_units_off
+    tier: release
+    budget_s: 30
+    budget_evidence: "10 s solo, two green runs (2026-10-21): ends 5 game seconds after the AIHAMMER census (capu_ai_hammer_stop=1, cap_ai_solo_off.txt) x3 for rig load"
+    kind: solo
+    script: cap_ai_solo_off.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/caps_ai_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=200;capu_at=300;capu_player=1;capu_issue=1;capu_units=260;capu_soldiers=10;capu_batch=20;capu_sample=1000;capu_hold=2000;capu_guard=0;capu_ai_hammer=1;capu_ai_hammer_stop=1;cap_sample=0
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_ai_units.py, --negative]
+    desc: 'PT-CAP9-U3 negative arm (`[caps] ai_scratch=0`, the pre-fix behaviour): the same AI-owns-260-units match on the VANILLA scratch arrays; the AI group sizes (the census of the bad index) exceed the vanilla 100 / 128'
+  # patching:PT-CAP9-U8c (2026-10-22): the COMBINED AI soak -- the one PT-CAP9 done_when clause the split rows (cap_ai_scratch: mines/buildings, cap_ai_units: units) leave
+  # open. The AI owns 260 units AND 60 mines / 250 buildings in ONE match with 300 hostile buildings around its base; the script holds until the sim clock reaches 600 game
+  # seconds (10 game minutes; `gameclock` is the sim clock, not a wall wait). HOLD DESIGN: the fixture's hold no longer demands "no building ever fell" (the match takes one
+  # plain building from the AI at step ~4154: 249 of 250); cap_bldg_floor=200 lets ONLY the plain building count dip, never below 200 (> the vanilla 100), while every
+  # sub-roster (40 storage / 40 turrets / 60 mines / 40 labs / 20 productions -- the families that hold the mine and engage counts) must keep its full target, and the
+  # peak (250, `hi`) is on the TARGETS MET line. Not pinning the base (cap_immortal) keeps the AI free to lose buildings the way a real match does. Both checkers judge:
+  # check_cap_ai.py (mines/buildings past 32/100, engage past 256, no AI GUARD HIT, guard=0x0) and check_cap_ai_units.py (>128 units, hammer, building-guard canary).
+  - name: cap_ai_soak
+    tier: release
+    budget_s: 110
+    budget_evidence: "82 s solo on the local rig 2026-10-22 (tmp/capraise/u8/dock/fix/soak3.log, one green run; 69 s for the earlier red that stopped at the hold) x 1.3"
+    kind: solo
+    script: cap_ai_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=200;cap_at=300;cap_player=1;cap_issue=1;cap_ai_grant=1;cap_ai_hammer=1;cap_sample=1000;cap_hold=3000;cap_bldg=250;cap_bldg_floor=200;cap_storage=40;cap_turret=40;cap_mine=60;cap_lab=40;cap_prod=20;cap2_player=0;cap2_targets=300;capu_at=300;capu_player=1;capu_issue=1;capu_units=260;capu_soldiers=10;capu_batch=20;capu_sample=1000;capu_hold=2000;capu_guard=0;capu_ai_hammer=1
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_ai.py]
+      - [tools/check_cap_ai_units.py]
+    desc: 'PT-CAP9-U8c: the AI player owns 260 units AND 60 mines / 250 buildings at once (past the vanilla 128 / 100 / 32 / 100) with 300 hostile buildings around its base and plays 10 game minutes on the enlarged AI scratch arrays, raise ON, libmh absent; every guard byte untouched, the sub-rosters never fall and the plain building count never drops below 200'
+  # patching:PT-CAP9-U6 (2026-10-21): the SELECTION stays capped at 200 and is made safe (user: no 500-unit control groups). libmh absent, raise=1 (the clamp is a
+  # code splice in the cap_v022_aiscratch_EN toggle layer), a 1-human + 1-AI skirmish; the unit-fill fixture gives the human ~440 units and plants a pattern in
+  # control groups 1 and 2 (capu_sel=1); the script drags a box over all of them, right-clicks the ground once, and the harness saves + reloads the world.
+  # tools/check_cap_sel.py judges: the selection is exactly 200, the planted records after group 0 are byte-identical in every sample, the 200-unit order sent
+  # 200 units (loggoal), the control-group records round-trip the save.
+  - name: cap_sel
+    budget_s: 75
+    budget_evidence: "54 s with both arms side by side on the local rig 2026-10-21 (tmp/capraise/u36/row20.log) x 1.3"
+    kind: solo
+    script: cap_sel_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/cap_sel_view.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=240;capu_maxr=6;capu_proto=3;capu_soldiers=10;capu_batch=20;capu_sample=1000;capu_hold=1500;capu_sel=1;cap_sample=0;cap_save_at=4000;cap_save_name=capsel
+    tol: 1.0
+    post_check_session: true  # the `[caps] save:` / `load:` and `ai-scratch` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_sel.py, --units, "230"]
+    desc: 'PT-CAP9-U6: with 440 own units a box select over all of them selects exactly 200 (the control-group record cap), the records after group 0 keep their bytes, a one-click order moves all 200, and the control groups round-trip a save/load'
+  - name: cap_sel_off
+    tier: release
+    budget_s: 75
+    budget_evidence: "54 s with both arms side by side on the local rig 2026-10-21 (tmp/capraise/u36/row20.log) x 1.3"
+    kind: solo
+    script: cap_sel_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/cap_sel_view.ini, tools/uiscripts/ini/caps_ai_off.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;capu_at=300;capu_player=0;capu_units=240;capu_maxr=6;capu_proto=3;capu_soldiers=10;capu_batch=20;capu_sample=1000;capu_hold=1500;capu_sel=1;cap_sample=0
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_sel.py, --negative, --units, "230"]
+    desc: 'PT-CAP9-U6 negative arm (`[caps] ai_scratch=0`: no clamp, the retail append): the same 440-unit box select writes past group 0 -- the selection count passes 200 and the planted records after it are overwritten'
+  # patching:PT-CAP10 (2026-10-21): POWERED TURRETS past the vanilla 1500-projectile pool. libmh absent, raise=1, mirror_check=1, a 1-human + 1-AI skirmish with BOTH
+  # lobby race spinners set to Alien (cap_turret_solo.txt): the alien laser bunker is the slowest turret projectile of the three (R_LASER2: speed 2.0 / length 400,
+  # a clip of 3 at 0.2 s, range 6) and it is the one whose weapon type SPAWNS a projectile (the human Bunkier1 is R_DZIALO2 = instant area damage, no pool entry).
+  # The harness fixture lays two armies, each 126 bunkers + 60 plants on its OWN mother's network (population granted through the game's debug order 0xec, plants every
+  # 3rd cell of a 6-tile lattice so the sparse grid conducts), each with the OTHER player's unbuilt storage/mine/lab buildings (placed through the same 0xf2 order) on the
+  # half-cell-shifted lattice, i.e. exactly 6 tiles from the bunkers (their reach). Targets are held at full energy so they never die. At step 2900 the world is saved and
+  # loaded back through the game's own game_SaveGame / llm_game_load; the run goes on to 10 game minutes. tools/check_cap_turret.py judges (clauses in its docstring).
+  - name: cap_turret_fire
+    tier: release
+    budget_s: 190
+    budget_evidence: "145 s and 148 s solo on the local rig 2026-10-21 (tmp/capraise/turret/run43.log, run44.log; the 600 game seconds run unthrottled under pin_wallclock) x 1.3"
+    long_why: "10 game minutes of 2 x 126 firing bunkers with ~2700 live projectiles in the pool, unthrottled under pin_wallclock: 145-148 s solo (the 600 s of game clock IS the claim, it cannot end on evidence earlier)"
+    kind: solo
+    script: cap_turret_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=250;cap_hold=3000;cap_bldg=186;cap_storage=0;cap_turret=126;cap_mine=0;cap_lab=0;cap_prod=0;cap_plant=60;cap_plant_every=3;cap_turret_n=0;cap_anchor=-1;cap_off_x=0;cap_off_y=0;cap_pop=5000;cap_pop_ev=100;cap_immortal=1;cap2_player=1;cap2_plant=60;cap2_turret=126;cap2_targets=200;cap2_powered=1;cap_save_at=2900;cap_save_name=capturret;cap2_off_x=0;cap2_off_y=0;cap_space=6
+    timeout: 900
+    tol: 1.0
+    post_check_session: true  # the `[caps] save:` / `load:` lines are the MATCH's (session dir)
+    post_check:
+      - [tools/check_cap_turret.py]
+    desc: 'PT-CAP10: two armies of 126 powered alien laser bunkers (slow projectiles) shoot at the other side''s unbuilt buildings; the live projectile pool passes 1500 (about 2700) and holds for 10 game minutes with the raise ON, mirror_check clean; a save taken at 2700 live projectiles loads back digest- and count-exact'
+  # O1c (2026-10-20): the replicated order lane carries a 12-bit building index. 2 peers, BOTH libmh-less (the retail carrier: four byte patches in
+  # mh.dll), the host's `[caps] raise=1` adopted by the client, the harness cap-fill fixture places 330 buildings, then the OWNER peer issues one
+  # replicated activate order (code 0x80, staffs the target) for building index 300 and every peer samples slot 300 and slot 44 (300 & 0xff, where
+  # an 8-bit lane would land it). check_cap_fill --order wide: slot 300 staffed, slot 44 not, the four sites PATCHED, hashes IDENTICAL.
+  - name: o1c_bldg_order_wide
+    budget_s: 115
+    budget_evidence: "measured 63 s alone (o1c_bldg_order_wide, o1c_bldg_order_alias) and 74 / 94 s when the two ran side by side 2026-10-20 (tmp/capraise/o1c/row_wide_5.log, row_alias_1.log, rows_final.log) x 1.2"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12;cap_order_at=600;cap_order_idx=300;cap_order_wait=200
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --order, wide, --ovf]]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'O1c: a replicated building order for index 300 reaches building 300 on both peers (12-bit lane, retail splice), not building 44; PT-CAP8 S2: the 330-building overflow is HASHED (overflow hash ARMED, per-step compare over 63 + 8 regions, 0 mismatches)'
+  # The fix-off twin: `[net] order_wide_index=0` on both peers is the vanilla 8-bit lane, so the same order lands on slot 44 -- proves the row can see the defect.
+  - name: o1c_bldg_order_alias
+    tier: release
+    budget_s: 115
+    budget_evidence: "measured 63 s alone (o1c_bldg_order_wide, o1c_bldg_order_alias) and 74 / 94 s when the two ran side by side 2026-10-20 (tmp/capraise/o1c/row_wide_5.log, row_alias_1.log, rows_final.log) x 1.2"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    net_extra: order_wide_index=0
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12;cap_order_at=600;cap_order_idx=300;cap_order_wait=200
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --order, alias]]
+    post_check_peers: true
+    desc: 'O1c fix-off twin ([net] order_wide_index=0 on both peers): the same order lands on building 44 -- the 8-bit lane defect, reproduced'
+  # PT-CAP8 S2 (2026-10-20): the overflow records are in the lockstep hash. Same fixture and lanes as o1c_bldg_order_wide (no order probe), plus
+  # ONE negative stimulus: at step 900 the CLIENT alone XORs a pad byte (+0x10b) of building record 300 of player 0 (cap_poke_ovf; a record past the
+  # vanilla window, in no hash manifest region). check_cap_fill --ovf-desync: both peers log a `*** DESYNC` within 2 steps of the poke whose first
+  # region is the first overflow slice (63 ovf_buildings_p0_3), and the live localiser names `buildings p0 #300`.
+  - name: cap_ovf_desync
+    tier: release
+    budget_s: 82
+    budget_evidence: "measured 63 s alone, 3 runs (cap_ovf_desync, cap_ovf_desync_off; tmp/capraise/s23/fix/row_desync_2.log, row_desync_off_1.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12
+    harness_extra_client: cap_poke_ovf=900:0:0:300:267
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --ovf-desync, '900:300']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP8 S2: a byte poked into overflow building record 300 on ONE peer is a DESYNC on both within 2 steps, first_region = ovf_buildings_p0_3, localised to buildings p0 #300 (the S1 hash was blind to it)'
+  # The fix-off twin: `[caps] hash_overflow=0` on both peers is the S1 hash (overflow not folded), so the same poke is INVISIBLE -- proves the row sees what S1 could not.
+  - name: cap_ovf_desync_off
+    tier: release
+    budget_s: 82
+    budget_evidence: "measured 63 s alone, 3 runs (cap_ovf_desync, cap_ovf_desync_off; tmp/capraise/s23/fix/row_desync_2.log, row_desync_off_1.log) x 1.3"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/caps_hash_overflow_off.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12
+    harness_extra_client: cap_poke_ovf=900:0:0:300:267
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --ovf-desync, '900:300', --blind]]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP8 S2 fix-off twin ([caps] hash_overflow=0 on both peers): the same poke raises NO desync -- the S1 behaviour, reproduced'
+  # PT-CAP9-U7d (2026-10-22): the path pool and the order arrays are in the lockstep hash (21 slices: the roster tails, the path pool and the order QUEUE tail -- pending/staging are peer-local and stay out). Same fixture/lanes as cap_ovf_desync; the CLIENT alone XORs one
+  # byte of a record that lives in a NEW slice at step 900 (cap_poke_ovf arr 16 = path slot, 17/18/19 = order queue/pending/staging). check_cap_fill --ovf-desync
+  # STEP:IDX:TARGET: both peers log `*** DESYNC` within 2 steps naming that slice and the LOCALISED line describes the record.
+  - name: cap_ovf_desync_queue
+    tier: release
+    budget_s: 105
+    budget_evidence: "measured 62-66 s alone and 82-88 s when two rows ran side by side, 5 runs (tmp/capraise/u7def/row_queue_1.log, row_path_window_1.log, row_path_tail_1.log, gate/rows_ovf.log, rows_final.log) x 1.2"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12
+    harness_extra_client: cap_poke_ovf=900:17:0:350:5
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --ovf-desync, '900:350:queue']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U7d: a byte poked into queue record 350 (past the vanilla 300) on ONE peer is a DESYNC on both within 2 steps, first_region = ovf_order_queue (83), `order queue #350`'
+  - name: cap_ovf_desync_path_window
+    tier: release
+    budget_s: 105
+    budget_evidence: "measured 62-66 s alone and 82-88 s when two rows ran side by side, 5 runs (tmp/capraise/u7def/row_queue_1.log, row_path_window_1.log, row_path_tail_1.log, gate/rows_ovf.log, rows_final.log) x 1.2"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12
+    harness_extra_client: cap_poke_ovf=900:16:0:50:3
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --ovf-desync, '900:50:path']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U7d: a byte poked into path slot 50 of player 0 (the window, slots 0..99) on ONE peer is a DESYNC on both within 2 steps, first_region = ovf_path_window_p0_1 (79), `path pool p0 slot 50`'
+  - name: cap_ovf_desync_path_tail
+    tier: release
+    budget_s: 105
+    budget_evidence: "measured 62-66 s alone and 82-88 s when two rows ran side by side, 5 runs (tmp/capraise/u7def/row_queue_1.log, row_path_window_1.log, row_path_tail_1.log, gate/rows_ovf.log, rows_final.log) x 1.2"
+    kind: multi
+    host: mp_host_cap_order.txt
+    clients: [mp_client_idle.txt]
+    share_lanes: o1c_bldg_order_wide
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/video_1024.ini]
+    extra_ini_host: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;cap_at=300;cap_player=0;cap_sample=500;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12
+    harness_extra_client: cap_poke_ovf=900:16:5:300:7
+    timeout: 600
+    post_check: [[tools/check_cap_fill.py, --ovf-desync, '900:300:path5']]
+    post_check_peers: true
+    post_check_session: true
+    desc: 'PT-CAP9-U7d: a byte poked into path slot 300 of player 5 (past the vanilla 100) on ONE peer is a DESYNC on both within 2 steps, first_region = ovf_path_tail_p4_5 (76), `path pool p5 slot 300`'
+  # PT-CAP8 S3 (2026-10-20): the RAISED-CAPS SAVE, three processes on one lane (solo_steps), libmh absent (the shipped carrier: mh.dll's four splices
+  # + the D1 mirror hooks). tools/check_cap_save.py judges each step. save_roundtrip (raise ON): the cap-fill fixture fills player 0 past every vanilla cap,
+  # stamps 600 projectile records into the pool slots 1500.. and saves + loads `capovf` through the game's own game_SaveGame / llm_game_load in ONE step:
+  # the overflow digest and the counts are equal, the planet file carries the MHOV trailer, the container is stamped. save_refused_off (raise OFF): the
+  # committed fixture saves/capovf.sav (this step's output) is refused from the main menu with the player-strings message. save_vanilla_on (raise ON):
+  # the stock-written 2-almost.sav loads as ever. save_off (raise OFF): the same save + load-back leaves NO footer / stamp. Release tier like the other raise-ON rows.
+  - name: cap_save_seq
+    tier: release
+    budget_s: 105
+    budget_evidence: "measured 81 s for the four steps (32 + 4 + 22 + 22; save_vanilla_on now plays 6000 steps) on the local rig 2026-10-21 (tmp/capraise/accept/run_item6_capsave_seq.log) x 1.3"
+    kind: solo
+    solo_steps:
+      - name: save_roundtrip
+        script: cap_save_solo.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=1000;cap_hold=300;cap_bldg=400;cap_storage=100;cap_turret=126;cap_mine=100;cap_lab=100;cap_prod=60;cap_prj_synth=600;cap_save_at=2800;cap_save_name=capovf
+        tol: 1.0
+        post_check_session: true  # the `[caps] save:` / `load:` lines are the MATCH's (session dir); the banners are the process dir's
+        post_check:
+          - [tools/check_cap_save.py, --step, save]
+      - name: save_refused_off
+        script: cap_save_refused.txt
+        omit_satellite: [libmh.dll]
+        deploy_save: capovf
+        extra_ini: [tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+        tol: 1.0
+        post_check:
+          - [tools/check_cap_save.py, --step, refuse]
+      - name: save_vanilla_on
+        script: cap_save_vanilla.txt
+        omit_satellite: [libmh.dll]
+        deploy_save: 2-almost
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+        tol: 1.0
+        post_check_session: true
+        post_check:
+          - [tools/check_cap_save.py, --step, vanilla]
+      # the raise-OFF save: the SAME save + load-back with no fixture. Every S3 hook returns before touching the file, so the planet file has NO MHOF footer, the
+      # container is not stamped and the load-back works (the load tail is invisible on a vanilla file). The hooks' zero-write proof is ovftest (5a): two saves of one
+      # state are NOT byte-equal in the original game (the LZW writer keeps stale dictionary state), so a container compare against master is not a witness.
+      - name: save_off
+        script: cap_save_off.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_save_at=1500;cap_save_name=capovf
+        tol: 1.0
+        post_check_session: true
+        post_check:
+          - [tools/check_cap_save.py, --step, 'off']
+    desc: 'PT-CAP8 S3: a raised world (400+ buildings, 600 projectile records past slot 1500) saves and loads back digest-exact with the raise ON (planet-file trailer + container stamp); the same save is REFUSED with a message with the raise OFF; a vanilla save loads with the raise ON'
+  # PT-CAP9-U7f (2026-10-22): OLD raised saves on the current build. rc2_on: the user's shipped v0.2.2-rc2 save (8-ayatus-rl-2.sav, MHOV v1, 8 records) loads with
+  # the raise ON (accepted; the current planet 8's member has NO trailer -- the 8 records sit in the embedded planet-4 member, so the row asserts none applied
+  # and ovftest (7a) applies those 8 from the committed save), it plays ~1000 sim steps and no cap guard is hit. capovf_on: the capovf.sav fixture (MHOV v1, 1305 records) the same way. rc2_off: the rc2 save with the raise OFF is
+  # refused with the raised-limits message (the cap_save_refused script + baseline). tools/check_cap_save.py --step old|refuse.
+  - name: cap_save_old
+    tier: release
+    budget_s: 45
+    budget_evidence: "measured 19-33 s for the three steps (7 + 7 + 4 s of play, plus lane provisioning) in 3 runs (tmp/capraise/u7def/row_save_old_4.log, gate/rows_ovf.log) x 1.4"
+    kind: solo
+    solo_steps:
+      - name: rc2_on
+        script: cap_save_old_rc2.txt
+        omit_satellite: [libmh.dll]
+        deploy_save: 8-ayatus-rl-2
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+        tol: 1.0
+        post_check_session: true
+        post_check:
+          - [tools/check_cap_save.py, --step, old, --records, '0']
+      - name: capovf_on
+        script: cap_save_old_capovf.txt
+        omit_satellite: [libmh.dll]
+        deploy_save: capovf
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+        tol: 1.0
+        post_check_session: true
+        post_check:
+          - [tools/check_cap_save.py, --step, old, --records, '1305']
+      - name: rc2_off
+        script: cap_save_refused.txt
+        omit_satellite: [libmh.dll]
+        deploy_save: 8-ayatus-rl-2
+        extra_ini: [tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+        tol: 1.0
+        post_check:
+          - [tools/check_cap_save.py, --step, refuse]
+    desc: 'PT-CAP9-U7f: the shipped v0.2.2-rc2 raised save (8 MHOV records, in its planet-4 member) and the capovf fixture (1305, current planet) load with the raise ON on the current build -- accepted, the records of the current planet applied (0 / 1305), ~1000 sim steps with no cap guard hit; the rc2 save with the raise OFF is refused with the raised-limits message'
+  # patching:PT-CAP8 acceptance (2026-10-21), item 3: SINGLE-PLAYER orders on the raised building pool. The cap-fill fixture places 330 buildings in a
+  # 1-human + 1-AI skirmish (libmh absent, raise=1); the cap_order probe then issues one activate order through the game's own order queue for building
+  # index 200 (> 127, < 256: the signed-byte band) in step 1 and 300 (> 255: the 8-bit band) in step 2, and checks the target slot was staffed and the
+  # truncated slot (200 & 0x7f = 72 / 300 & 0xff = 44) was not. tools/check_cap_fill.py --order sp. The MP wire twin is o1c_bldg_order_wide.
+  - name: cap_order_sp
+    tier: release
+    budget_s: 55
+    budget_evidence: "measured 39 s for the two steps (20 + 19) on the local rig 2026-10-21 (tmp/capraise/accept/run_ordsp2.log) x 1.4"
+    kind: solo
+    solo_steps:
+      - name: idx200
+        script: cap_order_sp.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=1000;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12;cap_order_at=600;cap_order_idx=200;cap_order_wait=200
+        tol: 1.0
+        post_check:
+          - [tools/check_cap_fill.py, --order, sp]
+      - name: idx300
+        script: cap_order_sp.txt
+        omit_satellite: [libmh.dll]
+        extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+        harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=1000;cap_hold=300;cap_bldg=330;cap_storage=30;cap_turret=40;cap_mine=40;cap_lab=30;cap_prod=12;cap_order_at=600;cap_order_idx=300;cap_order_wait=200
+        tol: 1.0
+        post_check:
+          - [tools/check_cap_fill.py, --order, sp]
+    desc: 'PT-CAP8 SP orders: an activate order for building index 200 and for 300 reaches that building (not its 7-bit / 8-bit alias slot) on the raised pool, single player'
+  # patching:PT-CAP8 acceptance (2026-10-21), item 2: a CAMPAIGN map with the raise ON. The committed stock-written campaign save 2-almost is loaded from the
+  # main menu, the cap-fill fixture fills player 0 past every vanilla cap there, and the raised world is saved + loaded back in one step (cap_save_seq's
+  # save_roundtrip judge: tools/check_cap_save.py --step save).
+  - name: cap_camp_save
+    tier: release
+    budget_s: 35
+    budget_evidence: "measured 24 s on the local rig 2026-10-21 (tmp/capraise/accept/run_camp3.log) x 1.4"
+    kind: solo
+    script: cap_camp_solo.txt
+    deploy_save: 2-almost
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0;cap_at=300;cap_player=0;cap_sample=100;cap_hold=300;cap_bldg=400;cap_storage=100;cap_turret=126;cap_mine=100;cap_lab=100;cap_prod=60;cap_prj_synth=600;cap_save_at=2800;cap_save_name=capcamp
+    tol: 1.0
+    post_check_session: true
+    post_check:
+      - [tools/check_cap_save.py, --step, save]
+    desc: 'PT-CAP8 campaign: on the campaign map of the 2-almost save, player 0 is filled past every vanilla roster cap (400 buildings, 100 turrets/mines/labs/storages, 60 productions), the world is saved and loaded back with equal digest and counts'
   - name: a1_ai_off_shipped
     tier: release
     budget_s: 40
@@ -2594,9 +4194,9 @@ tests:
   # The m1h_mp_moving* rows build five nd cases on both peers of a fresh 2-peer match: shipped, libmh, and the MIXED pair (host shipped, client libmh).
   # They replaced the six m1n_* rows (asserts folded: tools/check_m1h.py header).
   - name: m1h_ship
-    budget_s: 260
-    budget_evidence: "165 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 138 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 195 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
-    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
+    budget_s: 290
+    budget_evidence: "165 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 138 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 195 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s.; mods:M1SH two steps (f21s, f21sn: 11 s each solo, +22 s): 267 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s"
+    long_why: "twenty-five single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
     harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
@@ -2682,7 +4282,7 @@ tests:
         harness_extra: nd_fc=5;nd_fc_at=1500;nd_player=0;nd_tail=1100;nd_delay=140;stop_step=2900
         net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_formation_click=0
         omit_satellite: [libmh.dll]
-        post_check: [tools/check_m1h.py, --case, f17, --arm, 'ship']
+        post_check: [[tools/check_m1h.py, --case, f17, --arm, 'ship'], [tools/check_move_bench.py, --arm, fc_hopwall]] # M1WL v5: the F17 numbers are also a benchmark kind (baseline 88 tiles / worst unit 12)
       - name: f18_fc_below
         script: m1h_f18.txt
         deploy_save: 5-kofu-c
@@ -2714,6 +4314,19 @@ tests:
         net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_enter_queue=0;storage_door_hold=0
         omit_satellite: [libmh.dll]
         post_check: [tools/check_m1h.py, --case, f21n, --arm, 'ship']
+      - name: f21s_shuttle_door
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=3;nd_door_at=1500;nd_player=0;nd_fcn=16;nd_tail=3000;stop_step=4800
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21s, --arm, 'ship']
+      - name: f21sn_shuttle_door_nokey
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=3;nd_door_at=1500;nd_player=0;nd_fcn=16;nd_tail=3000;stop_step=4800
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;storage_door_hold=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_m1h.py, --case, f21sn, --arm, 'ship']
       - name: f6_speed
         script: m1h_f6.txt
         deploy_save: ayy30-tests
@@ -2771,7 +4384,7 @@ tests:
   - name: m1h_orig
     budget_s: 275
     budget_evidence: "177 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 139 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 196 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
-    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
+    long_why: "twenty-four single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
     harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
@@ -2961,9 +4574,9 @@ tests:
         post_check: [tools/check_m1h.py, --case, f10, --arm, 'orig']
 
   - name: m1h_lib
-    budget_s: 410
-    budget_evidence: "268 s for the 19 steps with libmh bound on a quiet machine (2026-10-19, F14-F16 joined; it was 227 s for 16) x1.3; libmh makes each step 2-3x slower than m1h_ship; cause C fixture F17 +10 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +25 s: measured 293 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +20 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +20 s."
-    long_why: "twenty-one single-process steps, each replaying a recorded or scripted movement case to its end"
+    budget_s: 440
+    budget_evidence: "268 s for the 19 steps with libmh bound on a quiet machine (2026-10-19, F14-F16 joined; it was 227 s for 16) x1.3; libmh makes each step 2-3x slower than m1h_ship; cause C fixture F17 +10 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +25 s: measured 293 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +20 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +20 s.; mods:M1SH one step (f21s: 26 s solo): 358 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s"
+    long_why: "twenty-four single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
     harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
@@ -3058,6 +4671,11 @@ tests:
         deploy_save: 5-kofu-c
         harness_extra: nd_door=1;nd_door_at=1500;nd_player=0;nd_fcn=19;nd_tail=3000;stop_step=4800
         post_check: [tools/check_m1h.py, --case, f21, --arm, 'lib']
+      - name: f21s_shuttle_door
+        script: m1h_f21.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=3;nd_door_at=1500;nd_player=0;nd_fcn=16;nd_tail=3000;stop_step=4800
+        post_check: [tools/check_m1h.py, --case, f21s, --arm, 'lib']
       - name: f6_speed
         script: m1h_f6.txt
         deploy_save: ayy30-tests
@@ -3557,3 +5175,238 @@ tests:
     desc: 'mods:M1H 2-peer moving fixture with libmh BOUND on both peers: the same five nd cases, carried by the libmh twins; ALL PAIRS IDENTICAL, equal ND VERDICT / M1N lines on both peers, twin hit counters > 0'
 
   # END m1h
+
+  # BEGIN u022
+  # mods:M1WL v2 (2026-10-24): [net] move_stream_heat, a congestion cost for lone units (v1, the rc7 side lanes, is retired). The harness stream fixture (nd_door=1 + nd_stream=1) docks the soldiers
+  # the 5-kofu-c barracks takes, orders them to open ground ~30 tiles away and prints one `; ST TOTAL` line; tools/check_u022_stream.py judges it.
+  # key 0 = the retail red proof (the column), key 1 = the preset; ship = libmh absent (the retail splice), lib = libmh bound (the twin).
+  - name: u022_stream
+    budget_s: 360
+    budget_evidence: "240 s measured for the six steps (26 + 26 + 26 + 26 + 69 + 69 s; one run on an idle rig, 2026-10-25, M1WL v4; was 186 s for five steps) x1.5 = 360"
+    long_why: "six single-process steps, each docking and then streaming ~45 soldiers"
+    kind: solo
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0
+    timeout_frames: 4000000
+    post_check_session: true
+    tol: 0.0
+    desc: 'mods:M1WL v2 move_stream_heat: a barracks stream spreads over open ground instead of one column (key 1), the retail column with key 0; shipped splice and libmh twin'
+    solo_steps:
+      - name: s_key0
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_u022_stream.py, --key, '0', --arm, 'ship']
+      - name: s_key1
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        omit_satellite: [libmh.dll]
+        post_check: [[tools/check_u022_stream.py, --key, '1', --arm, 'ship'], [tools/check_move_bench.py, --arm, stream_ship]] # M1WL v5: the key-1 numbers are also a benchmark kind
+      # mods:M1WL v4: heat WITHOUT the re-trace (move_stream_heat_retrace=0 = the rc9 behaviour): the middle column of the table key 0 / heat only / heat + re-trace (key 1 is the preset, re-trace on).
+      - name: s_heatonly
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat_retrace=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_u022_stream.py, --key, '2', --arm, 'ship', --tag, '_heatonly']
+      # mods:M1WL v3: a TUNED setting (cost 32 + scale 1) in the shipped splice: the keys act (the numbers print; the clauses are only "all left, none stuck, the rule fired").
+      - name: s_tuned
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat_cost=32;move_stream_heat_scale=1
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_u022_stream.py, --key, '2', --arm, 'ship']
+      - name: l_key0
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat=0
+        post_check: [tools/check_u022_stream.py, --key, '0', --arm, 'lib']
+      - name: l_key1
+        script: u022_stream.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=1;nd_stream=1;nd_door_at=1500;nd_player=0;nd_fcn=45;nd_tail=9000;stop_step=24000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
+        post_check: [[tools/check_u022_stream.py, --key, '1', --arm, 'lib'], [tools/check_move_bench.py, --arm, stream_lib]]
+  # mods:M1WL v3 (user 2026-10-24): the ImGui "Stream heat" section and the heat map over the strategic map, on the u022_stream fixture. bcapture = the presented image.
+  # Two steps: the map in "last plan" mode (tinted tiles = mates on the tile, the planning unit's route in cyan) and in "traffic" mode (units per tile, fading).
+  - name: imgui_heat
+    budget_s: 150
+    budget_evidence: "95 s measured (two steps of 48 s each, one idle rig, 2026-10-24, M1WL v3) x1.5 = 143 -> 150"
+    long_why: "two single-process steps; the wall time is the game clock at 60 fps (38 s of game time per step) -- the heat needs a stream under way"
+    kind: solo
+    deploy_save: 5-kofu-c
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat_min_mates=3
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0;nd_door=1;nd_stream=1;nd_door_at=100;nd_player=0;nd_fcn=8;nd_tail=9000;stop_step=24000
+    omit_satellite: [libmh.dll]
+    tol: 0.0005
+    post_check_session: true
+    solo_steps:
+      - name: plan
+        script: imgui_heat_plan.txt
+        extra_ini: tools/uiscripts/ini/imgui_heat_plan.ini
+        post_check: [tools/check_imgui_heat.py]
+      - name: traffic
+        script: imgui_heat_traffic.txt
+        extra_ini: tools/uiscripts/ini/imgui_heat_traffic.ini
+        post_check: [tools/check_imgui_heat.py]
+    desc: 'mods:M1WL v3: the F11 panel''s Stream heat section (controls + read-outs) and the heat map over the strategic map on the u022_stream stream: last-plan tint + the planning unit''s route, and live traffic'
+  # mods:M1WL v6 (user 2026-10-25): the same panel and heat map at ui_scale=150 on a 2560x1440 client -- the window inside the image, ImGui's pointer on the drawn
+  # cursor over the map / panel / strip, the heat map presented over the whole visible map. bcapture = the presented image (review it; no baseline until approved).
+  - name: imgui_heat_s150
+    budget_s: 90
+    budget_evidence: "48 s on an idle rig (2026-10-25, M1WL v6) x1.5 = 72 -> 90"
+    kind: solo
+    script: imgui_heat_s150.txt
+    extra_ini: tools/uiscripts/ini/imgui_heat_s150.ini
+    deploy_save: 5-kofu-c
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_stream_heat_min_mates=3
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0;nd_door=1;nd_stream=1;nd_door_at=100;nd_player=0;nd_fcn=8;nd_tail=9000;stop_step=24000
+    omit_satellite: [libmh.dll]
+    post_check: [tools/check_imgui_heat_s150.py]
+    desc: 'mods:M1WL v6: the F11 panel and the heat map at ui_scale 150 -- the window inside the game image, the ImGui pointer on the drawn cursor over the map / panel / strip, the heat map over the whole visible map'
+  # END u022
+  # TL-MOVE-BENCH (user 2026-10-24: "Let's create the benchmark"): the 20-order movement benchmark as a gated row. The user's 20 recorded move orders
+  # (tools/uiscripts/m1_moves.csv) replayed on 5-kofu-c by the harness probe `mv_replay`, pin_wallclock, libmh.dll absent. tools/check_move_bench.py
+  # reads the `; MV` lines of the run, prints the table (arrived / near / stopped short / gave up / interrupted, completed unit-orders, detour ratio,
+  # excess tiles, stall episodes, settle steps, last arrival) and goes red when a metric is WORSE than tools/data/move_bench_baseline.json beyond its
+  # tolerance. Re-baseline deliberately: python tools/check_move_bench.py --arm <arm> --update <run-dir>.
+  - name: move_bench
+    budget_s: 120
+    budget_evidence: "41 s idle, 73 s and 92 s with other agents on the rig / 8 busy cores, 150 s once under heavy contention (2026-10-24, five idle + two loaded runs; the replay is byte-identical in all of them, only wall time moves); 226 s with eight busy-loop processes on all 8 cores plus another writer (an artificial extreme: SLOW but the metrics were still byte-identical); budget 120, the 1.5x red line sits at 180 s"
+    kind: solo
+    script: move_bench.txt
+    deploy_save: 5-kofu-c
+    omit_satellite: [libmh.dll]
+    net_extra: improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1_moves.csv;mv_player=0;stop_step=36000
+    timeout_frames: 2000000
+    post_check: [tools/check_move_bench.py, --arm, ship]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH: the 20-order movement benchmark in the SHIPPED configuration (libmh.dll absent, the movement preset on); tools/check_move_bench.py compares the replay against tools/data/move_bench_baseline.json'
+
+  - name: move_bench_retail
+    budget_s: 120
+    budget_evidence: "38-63 s measured (2026-10-24, same spread as move_bench); same budget"
+    tier: release  # the reference arm: retail movement is the control the shipped arm is read against, not a regression check of the fix
+    kind: solo
+    script: move_bench.txt
+    deploy_save: 5-kofu-c
+    omit_satellite: [libmh.dll]
+    net_extra: improved_movement=0;group_movement=0;improved_combat=0
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/m1_moves.csv;mv_player=0;stop_step=36000
+    timeout_frames: 2000000
+    post_check: [tools/check_move_bench.py, --arm, retail]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH reference arm: the same replay with the three movement masters 0 (retail), libmh.dll absent'
+
+  - name: move_bench_lib
+    budget_s: 120
+    budget_evidence: "56-59 s idle (2026-10-24; libmh bound runs ~1.4x the shipped arm) x2 for rig load"
+    tier: release  # the libmh twins are proved step-identical to the splices by m1h_twin_eq; this arm adds the benchmark's metrics on the libmh build, once per release
+    kind: solo
+    script: move_bench.txt
+    deploy_save: 5-kofu-c
+    net_extra: improved_movement=1;group_movement=1;improved_combat=1
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_waves=0;mv_replay=@UISCRIPTS@/m1_moves.csv;mv_player=0;stop_step=36000
+    timeout_frames: 2000000
+    post_check: [tools/check_move_bench.py, --arm, lib]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH: the same replay with libmh.dll BOUND (mv_waves=0 so the pathfind rebind is armed): the libmh twins carry the keys; the metrics must equal the shipped arm'
+
+  # TL-MOVE-BENCH narrow16 (mods:M1WL v5, user 2026-10-25): the user's narrow-path orders as a gated row. 16 soldiers, six recorded orders through the 3-4 tile
+  # passage of Nortus (tools/uiscripts/saves/nortus-3.sav, tools/uiscripts/narrow16_moves.csv) replayed by the harness probe `mv_replay`, the SHIPPED configuration
+  # (the movement presets on, every stream-heat key at its default), pin_wallclock, libmh.dll absent. tools/check_move_bench.py --arm narrow16 prints per-order walked /
+  # excess / detours and goes red on a detour or a longer walk. Re-baseline deliberately: python tools/check_move_bench.py --arm narrow16 --update <run-dir>.
+  - name: move_bench_narrow
+    budget_s: 60
+    budget_evidence: "19-25 s measured idle (2026-10-25, M1WL v5, 8 runs; the probe plays ~7100 steps) x2.5 for rig load = 60"
+    kind: solo
+    script: move_bench_narrow.txt
+    deploy_save: nortus-3
+    omit_satellite: [libmh.dll]
+    net_extra: improved_movement=1;group_movement=1;improved_combat=1;project_gate_fix=1;move_reverse_now=1;move_turn_rate=0;move_route_through_moving_cost=0
+    extra_ini: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/narrow16_moves.csv;mv_player=0;mv_tail=1850;stop_step=12000
+    timeout_frames: 2000000
+    post_check: [tools/check_move_bench.py, --arm, narrow16]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH narrow16: 16 soldiers through the Nortus passage in six recorded orders (the user''s rc10 save); per-order walked / excess / detours against tools/data/move_bench_baseline.json'
+
+  # TL-MOVE-BENCH today6 (mods:M1WL v6, user 2026-10-25 rc11 playtest): the user's own six orders on the same Nortus 3 save (tools/uiscripts/today6_moves.csv, recorded from the
+  # rc11 session: three 6-10 tile detours that stayed under the 50% margin). Same table and checker as narrow16 (kind today6, its own baseline arm).
+  - name: move_bench_today
+    budget_s: 60
+    budget_evidence: "same probe as move_bench_narrow (19-25 s idle); 60 as there"
+    kind: solo
+    script: move_bench_narrow.txt
+    deploy_save: nortus-3
+    omit_satellite: [libmh.dll]
+    net_extra: improved_movement=1;group_movement=1;improved_combat=1;project_gate_fix=1;move_reverse_now=1;move_turn_rate=0;move_route_through_moving_cost=0
+    extra_ini: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;mv_replay=@UISCRIPTS@/today6_moves.csv;mv_player=0;mv_tail=1850;stop_step=12000
+    timeout_frames: 2000000
+    post_check: [tools/check_move_bench.py, --arm, today6]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH today6: the six orders of the user''s rc11 session on the Nortus 3 save; per-order walked / excess / detours against tools/data/move_bench_baseline.json'
+
+  # TL-MOVE-BENCH field200 (mods:M1WL v5, user 2026-10-25): the 200-unit field. The user's units-tests save (tools/uiscripts/saves/u022field.sav): control group 3, 200 soldiers,
+  # half docked in two barracks and half in the field, sent to one click 45 tiles away through a diagonal valley mouth; the state is recorded and
+  # tools/check_move_bench.py (kind field200, tools/move_tracks.py) reads every unit's tile out of it: exits per 100 steps, last exit, most units on one tile, tiles of 100+, width in the
+  # valley, median / worst arrival, reversals, refusals. The field is CHAOTIC (any heat setting moves the numbers by 15% either way): the SPEC is thresholds, not equality.
+  - name: move_bench_field200
+    budget_s: 90
+    budget_evidence: "38-44 s measured idle (2026-10-25, M1WL v5, 6 runs; 13000 sim steps, 200 units, state record on) x2 for rig load = 90"
+    kind: solo
+    script: u022_field200.txt
+    deploy_save: u022field
+    omit_satellite: [libmh.dll]
+    net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;project_gate_fix=1;move_reverse_now=1;move_turn_rate=0;move_route_through_moving_cost=0;move_block_reset_moving=1
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini, tools/uiscripts/ini/state_record.ini]
+    harness_extra: synth_move=0;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;skip_intro_avi=1;stop_step=13000
+    timeout_frames: 4000000
+    post_check: [tools/check_move_bench.py, --arm, field200]
+    post_check_session: true
+    tol: 0.0
+    desc: 'TL-MOVE-BENCH field200: the 200-unit field (barracks stream + field group, one click); exits / congestion / width / arrival / reversals / refusals against thresholds in tools/data/move_bench_baseline.json'
+
+  # mods:PRJ1 (2026-10-22): wrong projectile sprites in the 0.2.2-rc3 playtest. projectile_facing_fix wrapped the facing delta into
+  # -12..11 for every weapon type but 5/6; for a per-facing weapon (24 facings, frame = bullet_anim + stride*(facing-1)) that put a
+  # shot crossing the due-south 24 <-> 1 boundary one frame OUTSIDE its block (1522 an explosion, 1547 another weapon's bullet).
+  # The fix leaves the retail unwrapped delta for every type but 5/6. Both steps load the user's save with the shipped configuration
+  # (mh.dll without libmh.dll, [caps] raise=1, the user's [net] keys) and dump the projectile pool (REGIONS[] 16) every sim step;
+  # check_prj_facing.py counts the weapon-19/20 shots whose frame left its block (shots already wrong in the save are ignored).
+  # fix_on: 0 such shots. rc3_rule (EXPECTED RED, `projectile_facing_fix=2` = the superseded rc3 rule, test only): >= 10 (measured 52).
+  - name: prj_facing_rl4
+    budget_s: 60
+    budget_evidence: "37 s for the two steps solo (2026-10-22, one run: 18 s each) x1.3 = 48, rounded to 60 for rig load"
+    kind: solo
+    omit_satellite: [libmh.dll]
+    net_extra: mother_free_build=1;improved_movement=1;group_movement=1;improved_combat=1;project_gate_fix=1;move_reverse_now=1;move_turn_rate=0;move_route_through_moving_cost=0;move_block_reset_moving=1
+    extra_ini: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: region_hash_step=1;rdump_rid=16;rdump_lo=1;rdump_hi=600
+    timeout_frames: 200000
+    post_check_session: true
+    tol: 1.0
+    desc: 'mods:PRJ1 projectile sprites: 8-ayatus-rl-4 (twin rocket launchers firing due south) with the shipped configuration, caps raise on; the projectile pool is dumped every sim step and no weapon-19/20 shot may leave its 24-frame block (fix_on); the rc3_rule step (projectile_facing_fix=2, the superseded wrapped delta) must show >= 10 such shots'
+    solo_steps:
+      - name: fix_on
+        script: prj_facing_rl4.txt
+        deploy_save: 8-ayatus-rl-4
+        post_check: [tools/check_prj_facing.py]
+      - name: rc3_rule
+        script: prj_facing_rl4.txt
+        deploy_save: 8-ayatus-rl-4
+        net_extra: projectile_facing_fix=2
+        post_check: [tools/check_prj_facing.py, --expect-bad]

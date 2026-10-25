@@ -4,6 +4,8 @@
 #include "sim/move/arrival.h"       // mods:M1H [net] move_distinct_goals
 #include "sim/move/formation.h"     // mods:M1G 4b [net] move_formation_click
 #include "sim/move/route_through.h" // mods:M1H [net] move_route_through_idle
+#include "sim/move/stream_heat.h"   // mods:M1WL v2 [net] move_stream_heat
+#include "sim/move/route_cost.h"    // mods:M1WL v4: the re-trace charges the cost the flood charges
 #include "sim/move/planner_hits.h"  // mods:M1H the twins' hit counters
 
 #include <cstring>
@@ -62,7 +64,81 @@ struct commit_rt_world {
 
 // mods:M1H: move/arrival.h's World over the sim_view / sim_store / the commit's calls (the twin of the live-memory accessor in the
 // retail splice, mh/seams/move_proto_arrival.cpp).
-bool commit_rt_enabled(const move_fixes &mf) { return (mf.route_through_idle && mf.nudge_idle) || mf.route_through_moving || mf.route_through_replanning; }
+bool commit_rt_enabled(const move_fixes &mf) { return (mf.route_through_idle && mf.nudge_idle) || mf.route_through_moving || mf.route_through_replanning || mf.stream_heat; }
+
+// mods:M1WL v2: move/stream_heat.h's World over the sim_view / sim_store (the twin of sh_live_world in mh/seams/move_proto_nudge.cpp).
+struct commit_heat_world {
+    const sim_view &v;
+    sim_store      &own;
+    int32_t         unit_count() const { return v.caps.units; }
+    bool            unit(uint32_t player, int32_t i, move::sh_unit *out) {
+        if (player >= 8 || i < 0 || i >= v.caps.units) return false;
+        const sim::unit &u = unit_of(v, player, i);
+        uint64_t         e = 0; // energy > 0.0 read as raw bits (no x87 / SSE use), as the retail splice does
+        std::memcpy(&e, &u.energy, sizeof(e));
+        out->order       = u.order;
+        out->state       = u.state;
+        out->group       = u.move_group_id;
+        out->alive       = (e >> 63) == 0 && (e << 1) != 0;
+        out->x           = u.x;
+        out->y           = u.y;
+        out->path_slot   = u.path_slot_id < 100 ? u.path_slot_id : 0xff;
+        out->path_cursor = u.path_cursor;
+        return true;
+    }
+    void wp_get(uint32_t player, uint32_t slot, uint32_t entry, uint8_t *heading, uint8_t *run) {
+        const path_waypoint &wp = own.path_buffer_at(player, static_cast<int32_t>(slot), static_cast<int32_t>(entry));
+        *heading                = wp.heading;
+        *run                    = wp.run_length;
+    }
+    void dir_delta(int h, int *dx, int *dy) {
+        *dx = static_cast<int8_t>(v.map_dir_step_deltas[h * 2]);
+        *dy = static_cast<int8_t>(v.map_dir_step_deltas[h * 2 + 1]);
+    }
+    uint32_t &cell_flags(uint32_t flat) { return own.region_cell_at(static_cast<int32_t>(flat >> 8), static_cast<int32_t>(flat & 0xffu)).terrain_flags; }
+    int32_t   member_count() { return *v.group_member_count; }
+    uint32_t  member_handle(int32_t m) { return v.group_members[m].unit_handle; }
+    // mods:M1WL v4 (move::sh_retrace): route_search's tables, the flood's cost for a cost byte, and the route writer
+    const move_fixes              &mf;
+    const move::route_cost_params &rc;
+    void                           route_step(int i, int *dx, int *dy, int *code) {
+        *dy   = static_cast<int8_t>(v.region_route_step_deltas[i * 4 + 0]);
+        *dx   = static_cast<int8_t>(v.region_route_step_deltas[i * 4 + 1]);
+        *code = v.region_route_dir_codes[i];
+    }
+    uint32_t cell_cost(uint32_t low) { return mf.route_cost_mode != 0 ? move::route_cost_calc(rc, low, 1) : low; } // a heated plan is a wave of one
+    uint32_t flood_wrap_mask() { return *v.region_coord_wrap_mask; }                                               // mods:M1WL v5 (sh_margin)
+    void     wp_put(uint32_t player, uint32_t slot, uint32_t entry, uint8_t heading, uint8_t run) {
+        path_waypoint &wp = own.path_buffer_at(player, static_cast<int32_t>(slot), static_cast<int32_t>(entry));
+        wp.heading        = heading;
+        wp.run_length     = run;
+    }
+};
+
+// The commit's own move_group_id / is_plain_move_flag, for the heat inside the bracket (the retail splice reads them off commit's frame).
+int32_t  g_heat_group = 0;
+uint32_t g_heat_plain = 0;
+
+move::sh_state &heat_state() {
+    static move::sh_state s;
+    return s;
+}
+
+move::sh_retrace_stats &heat_retrace_stats() {
+    static move::sh_retrace_stats s;
+    return s;
+}
+
+move::sh_margin_stats &heat_margin_stats() {
+    static move::sh_margin_stats s;
+    return s;
+}
+
+void heat_log(const move::sh_state &s, uint32_t owner, uint32_t unit) {
+    static int lines;
+    if (lines++ >= 60) return;
+    mh::ai::ai_say("; M1WL heat p%u u%u mates=%d tiles=%d\n", owner, unit, s.mates, s.tiles);
+}
 
 // [net] move_route_through_*: lifts the tiles of idle / walking / re-planning friends for ONE planner call (the twin of the retail splice's
 // rt_unmask(), mh/seams/move_proto_nudge.cpp). Used for the commit's own planner call AND (mods:M1DT fix A') for 2a's re-run of it.
@@ -94,6 +170,22 @@ void commit_rt_open(const sim_view &v, sim_store &own, const move_fixes &mf, int
                            mf.route_through_moving_cost, static_cast<int>(static_cast<uint32_t>(own.group_order_goal_x_mut()) & map_width_mask(v)),
                            static_cast<int>(static_cast<uint32_t>(own.group_order_goal_y_mut()) & map_height_mask(v)), logged_rp);
     }
+    if (mf.stream_heat) { // mods:M1WL v2: after the unmasks, so a tile a walker's unmask opened keeps its cost bits under the heat (closed first, LIFO)
+        const move::route_cost_params rc =
+            move::route_cost_params_clamped(mf.route_cost_base, mf.route_cost_ring4, mf.route_cost_ring8, mf.route_cost_ring16, mf.route_gap_wave_full);
+        commit_heat_world     hw{v, own, mf, rc};
+        move::sh_state       &hs = heat_state();
+        const move::sh_params hp = move::sh_params_clamped(mf.stream_heat_cost, mf.stream_heat_window, mf.stream_heat_min_mates, mf.stream_heat_scale, 0, 0, mf.stream_heat_scale_cap);
+        if (move::sh_open(hw, hs, static_cast<uint32_t>(player_id), g_heat_group, g_heat_plain, map_width_mask(v), map_height_mask(v), hp) > 0) {
+            move::planner_hit(move::PH_SH);
+            static bool announced = false;
+            if (!announced) {
+                announced = true;
+                mh::ai::ai_say("; move prototype [net] move_stream_heat=1 active\n");
+            }
+            heat_log(hs, static_cast<uint32_t>(player_id), hw.member_handle(0));
+        }
+    }
     if (opened > 0) {
         static int logged = 0;
         if (logged++ < 200)
@@ -101,6 +193,40 @@ void commit_rt_open(const sim_view &v, sim_store &own, const move_fixes &mf, int
                            static_cast<int>(static_cast<uint32_t>(own.group_order_goal_x_mut()) & map_width_mask(v)),
                            static_cast<int>(static_cast<uint32_t>(own.group_order_goal_y_mut()) & map_height_mask(v)), logged);
     }
+}
+
+// Closes the bracket commit_rt_open() opened: the heat first (it was priced last), then the route-through tiles.
+void commit_rt_restore(const sim_view &v, sim_store &own, move::rt_undo &rt_undo) {
+    const move_fixes             &mf = move_fix();
+    const move::route_cost_params rc =
+        move::route_cost_params_clamped(mf.route_cost_base, mf.route_cost_ring4, mf.route_cost_ring8, mf.route_cost_ring16, mf.route_gap_wave_full);
+    commit_heat_world hw{v, own, mf, rc};
+    if (mf.stream_heat_retrace != 0 && heat_state().n > 0) { // mods:M1WL v4: the heat fired and the planner has run: re-trace while the heat is still priced
+        const move::sh_params hp    = move::sh_params_clamped(mf.stream_heat_cost, mf.stream_heat_window, mf.stream_heat_min_mates, mf.stream_heat_scale,
+                                                              mf.stream_heat_retrace, mf.stream_heat_turn);
+        const uint32_t        owner = static_cast<uint32_t>(*v.group_order_owner);
+        move::sh_retrace_info inf;
+        const int             r = move::sh_retrace(hw, heat_state(), owner, map_width_mask(v), map_height_mask(v), hp, &inf);
+        move::sh_retrace_count(heat_retrace_stats(), r);
+        static int lines;
+        if (r != move::SHR_NONE && lines++ < 4000)
+            mh::ai::ai_say("; M1WL retrace p%u u%u result=%d turn=%d len=%d>%d heat=%d>%d runs=%d>%d turns=%d>%d\n", owner, hw.member_handle(0), r, hp.turn, inf.len_before, inf.len_after,
+                           inf.heat_before, inf.heat_after, inf.runs_before, inf.runs_after, inf.turns_before, inf.turns_after);
+    }
+    if (mf.stream_heat_margin > 0 && heat_state().n > 0) { // mods:M1WL v5: the margin rule, still inside the heat (it puts every cell word back)
+        const move::sh_params hp    = move::sh_params_clamped(mf.stream_heat_cost, mf.stream_heat_window, mf.stream_heat_min_mates, mf.stream_heat_scale, mf.stream_heat_retrace,
+                                                              mf.stream_heat_turn, mf.stream_heat_scale_cap, mf.stream_heat_margin);
+        const uint32_t        owner = static_cast<uint32_t>(*v.group_order_owner);
+        move::sh_margin_info  inf;
+        const int             r = move::sh_margin(hw, heat_state(), owner, map_width_mask(v), map_height_mask(v), hp, &inf);
+        move::sh_margin_count(heat_margin_stats(), r);
+        static int lines;
+        if (r != move::SHM_NONE && lines++ < 4000)
+            mh::ai::ai_say("; M1WL margin p%u u%u result=%d margin=%d len=%d plain=%d\n", owner, hw.member_handle(0), r, hp.margin, inf.len_heated, inf.len_plain);
+    }
+    move::sh_close(hw, heat_state());
+    commit_rt_world w{v, own};
+    move::rt_restore(w, rt_undo);
 }
 
 struct commit_arrival_world {
@@ -160,10 +286,7 @@ struct commit_arrival_world {
         move::rt_undo ru;
         if (rt) commit_rt_open(v, own, mf, player_id, ru);
         c.group_move_order_pathfind(static_cast<int32_t>(mode), static_cast<uint8_t>(target));
-        if (rt) {
-            commit_rt_world w{v, own};
-            move::rt_restore(w, ru);
-        }
+        if (rt) commit_rt_restore(v, own, ru);
     }
     // ---- mods:M1G 4b: move/formation.h's World (the twin of formation_live_world in mh/seams/move_proto_arrival.cpp) ----
     bool true_passable(uint32_t t) {
@@ -287,6 +410,8 @@ void group_move_order_commit(const sim_view &v, sim_store &own, const group_move
     const move_fixes &mf = move_fix();
     const bool        rt = commit_rt_enabled(mf);
     move::rt_undo     rt_undo;
+    g_heat_group = move_group_id; // mods:M1WL v2: the heat reads the commit's group id and plain flag (also for 2a's re-run, which follows)
+    g_heat_plain = is_plain_move_flag;
     if (rt) commit_rt_open(v, own, mf, player_id, rt_undo);
     // 0x0041c9c8-0x0041c9ce: register order EAX=is_plain_move_flag, EDX=target_class, matching
     // mh_calls.gen.h's (int32_t mode, uint8_t target_mask) parameter order.
@@ -300,10 +425,7 @@ void group_move_order_commit(const sim_view &v, sim_store &own, const group_move
         commit_arrival_world w{v, own, c, mf, player_id, rt ? &rt_undo : nullptr};
         fc_handled = move::formation_after_pathfind(w, move_group_id, is_plain_move_flag, static_cast<uint32_t>(target_mask), mf.formation_click - 1);
     }
-    if (rt) {
-        commit_rt_world w{v, own};
-        move::rt_restore(w, rt_undo);
-    }
+    if (rt) commit_rt_restore(v, own, rt_undo);
 
     // [net] move_distinct_goals (mods:M1H; twin of the retail splice at 0x0041c9d3, sim/move/arrival.h): right after the planner
     // returned, before the writeback below. Its single-member re-run of the planner opens the route-through bracket again (mods:M1DT fix A').

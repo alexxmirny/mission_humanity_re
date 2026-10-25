@@ -124,6 +124,25 @@
       "pending": false
     },
     {
+      "section": "video",
+      "key": "ui_scale",
+      "type": "enum",
+      "default": "100",
+      "label": "video.ui_scale",
+      "subtab": "display",
+      "options": [
+        "auto",
+        "100",
+        "125",
+        "150",
+        "175",
+        "200"
+      ],
+      "experimental": true,
+      "restart": false,
+      "pending": false
+    },
+    {
       "section": "input",
       "key": "wheel_zoom",
       "type": "bool",
@@ -351,6 +370,19 @@
       "options": [],
       "experimental": true,
       "restart": true,
+      "pending": false,
+      "host": true
+    },
+    {
+      "section": "caps",
+      "key": "raise",
+      "type": "bool",
+      "default": 0,
+      "label": "caps.raise",
+      "subtab": "gameplay",
+      "options": [],
+      "experimental": true,
+      "restart": false,
       "pending": false,
       "host": true
     },

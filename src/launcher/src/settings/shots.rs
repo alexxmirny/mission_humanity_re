@@ -273,7 +273,7 @@ fn window(ui: &mut Ui, fx: &mut Fx) {
 
 fn harness(fx: Fx) -> Harness<'static, Fx> {
     Harness::builder()
-        .with_size(vec2(800.0, 600.0))
+        .with_size(vec2(800.0, 700.0))
         .with_pixels_per_point(1.0)
         .build_ui_state(window, fx)
 }
@@ -297,6 +297,39 @@ resolution=auto
         &store,
     );
     assert_eq!(m.value("video.resolution"), "auto");
+}
+
+#[test]
+fn interface_size_is_greyed_with_a_hint_under_classic_sizes_and_live_again_under_auto() {
+    i18n::set_locale(Locale::En);
+    let mut h = harness(fixture(Schema::builtin())); // the fixture ini has no resolution key: Classic sizes only
+    h.run();
+    assert!(
+        h.query_by_label("Interface size").is_some(),
+        "greyed, not hidden"
+    );
+    assert!(
+        h.query_by_label_contains("Not used with Classic sizes only")
+            .is_some(),
+        "the reason is drawn under the row"
+    );
+    assert!(!h.state().model.is_dirty(), "nothing was written or reset");
+    h.state_mut().model.set("video.resolution", "auto");
+    h.run();
+    assert!(h.query_by_label("Interface size").is_some());
+    assert!(
+        h.query_by_label_contains("Not used with Classic sizes only")
+            .is_none(),
+        "the hint goes away with Auto"
+    );
+    i18n::set_locale(Locale::Ru);
+    h.state_mut().model.set("video.resolution", "stock");
+    h.run();
+    assert!(
+        h.query_by_label_contains("Не используется при").is_some(),
+        "the Russian pack carries the hint too"
+    );
+    i18n::set_locale(Locale::En);
 }
 
 #[test]
@@ -534,8 +567,18 @@ fn a_new_registry_row_renders_with_no_launcher_change() {
         h.query_by_label("Zoom snap").is_some(),
         "humanised label of the new row"
     );
-    // The synthetic experimental row carries the pill (no shipped Display row is experimental).
-    assert_eq!(h.query_all_by_label("EXPERIMENTAL").count(), 1);
+    // The synthetic experimental row carries the pill, next to the one shipped experimental Display row.
+    assert_eq!(h.query_all_by_label("EXPERIMENTAL").count(), 2);
+    // The shipped experimental Display rows are an explicit list, not "any row".
+    let shipped: Vec<String> = h
+        .state()
+        .model
+        .schema()
+        .rows_in_subtab("display")
+        .filter(|r| r.experimental && r.id != "video.zoom_snap")
+        .map(|r| r.id.clone())
+        .collect();
+    assert_eq!(shipped, ["video.ui_scale"]);
 }
 
 #[test]
@@ -701,9 +744,24 @@ fn review_screenshots() {
     // the 4:3 sizes, the 16:9 sizes (RES3 list order).
     let mut h = harness_wgpu(fixture(Schema::builtin()));
     h.run();
-    h.get_by_role(egui::accesskit::Role::ComboBox).click();
+    h.get_all_by_role(egui::accesskit::Role::ComboBox)
+        .next()
+        .unwrap()
+        .click();
     h.run();
     save(&mut h, &dir, "settings_display_resolution_open_en");
+    // RES25: the Display tab with Classic sizes only (Interface size greyed, hint under it) and with Auto (live) -- English.
+    for (res, name) in [("stock", "classic"), ("auto", "auto")] {
+        let mut fx = fixture(Schema::builtin());
+        fx.model.set("video.resolution", res);
+        fx.state.subtab = "display".into();
+        let mut h = harness_wgpu(fx);
+        save(
+            &mut h,
+            &dir,
+            &format!("settings_display_interface_size_{name}_en"),
+        );
+    }
     // A custom (hand-written) enum value and the Language combo opened is covered by the unit tests;
     // the picture of the language tab above shows the combo closed.
 }
@@ -721,6 +779,59 @@ fn harness_wgpu(fx: Fx) -> Harness<'static, Fx> {
         })
         .wgpu()
         .build_ui_state(window, fx)
+}
+
+/// RES24 review frame: the Resolution dropdown open on a 2560x1440 desktop (the common 4:3 and 16:9 sizes that fit).
+#[test]
+fn resolution_list_review_frame() {
+    let Some(dir) = std::env::var_os("MH_UI_REVIEW_DIR") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    i18n::set_locale(Locale::En);
+    let mut fx = fixture(Schema::builtin());
+    fx.model.set_provider_options(
+        Provider::Resolutions,
+        super::resolutions::options(
+            Some(super::resolutions::Desktop {
+                w: 2560,
+                h: 1440,
+                scale_pct: 100,
+            }),
+            tr("setting.video.resolution.auto"),
+            tr("setting.video.resolution.classic"),
+        ),
+    );
+    fx.model.set("video.resolution", "1920x1080");
+    let mut h = Harness::builder()
+        .with_size(vec2(800.0, 900.0))
+        .with_pixels_per_point(1.0)
+        .with_render_options(eframe::egui_wgpu::RendererOptions {
+            predictable_texture_filtering: false,
+            ..eframe::egui_wgpu::RendererOptions::PREDICTABLE
+        })
+        .wgpu()
+        .build_ui_state(window, fx);
+    h.run();
+    // The row's combo shows the current value; clicking it opens the list. The popup scrolls: one frame per page.
+    h.get_by_value("1920x1080 (16:9)").click();
+    h.run();
+    h.run();
+    for page in 1..=4 {
+        let img = h.render().expect("render");
+        img.save(dir.join(format!("resolution_list_2560x1440_en_p{page}.png")))
+            .expect("save png");
+        h.hover_at(egui::pos2(600.0, 330.0));
+        h.run();
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: vec2(0.0, -170.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run();
+    }
 }
 
 /// Review frames of the big-map hotkey row: default Tab, listening, O set, after Revert.

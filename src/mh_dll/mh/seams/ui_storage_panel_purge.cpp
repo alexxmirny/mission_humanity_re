@@ -16,7 +16,7 @@
 #include "config/config.h"       // mh::config::mode() -- mode=original keeps retail
 #include "hook/patch.h"          // patch_bytes_guarded
 #include "hook/promoted.h"       // promoted_owner_of
-#include "state/roster_caps.h"   // live_roster_caps(): the per-player unit/storage caps the host BOUND
+#include "caps/caps.h"           // mh::caps::rec / g: the storage + unit arrays the game addresses (PT-CAP8)
 #include "net_internal.h"        // seam_log; g_ini
 #include "en_guard.h"            // EN-only build gate
 
@@ -40,15 +40,11 @@ bool in_lockstep_match() { return *(const volatile uint8_t *)mh::addr::_G_LLM_GA
 
 // The dead rows the skipped purge would have removed -- evidence only, read-only.
 uint32_t count_dead_docked(uint32_t p, uint32_t slot) {
-    const auto    caps     = mh::state::live_roster_caps(); // derived, not the stock 25 / 100
-    const int32_t per_st   = caps.storage;
-    const int32_t per_unit = caps.units;
+    const int32_t per_st   = (int32_t)mh::caps::g(mh::caps::UNIT_STORAGE).limit; // the live bounds, not the stock 25 / 100
+    const int32_t per_unit = (int32_t)mh::caps::g(mh::caps::UNITS).limit;
     if (p >= PLAYERS || (int32_t)slot >= per_st) return 0;
-    const auto &lv = mh::state::live();
-    const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(lv.base[mh::state::RID_UNIT_STORAGE]) +
-                     p * per_st + slot;
-    const auto *un = reinterpret_cast<const mh::game::mh_map_object_unit *>(lv.base[mh::state::RID_UNITS]) +
-                     p * per_unit;
+    const auto   *st   = mh::caps::rec<const mh::game::mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, p, slot);
+    const auto   *un   = mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, p, 0);
     uint32_t      dead = 0;
     const int32_t n    = st->docked_count < 0 ? 0 : (st->docked_count > 50 ? 50 : st->docked_count);
     for (int32_t i = 0; i < n; ++i) {

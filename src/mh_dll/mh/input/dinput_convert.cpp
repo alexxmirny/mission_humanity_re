@@ -105,6 +105,27 @@ int mouse_queue::produce(const mouse_view &v, di_element *out, int cap, uint32_t
         if (v.box_h > 0) y = y < 0 ? 0 : y >= v.box_h ? v.box_h - 1
                                                       : y;
     };
+    uint64_t key = 0;
+    if (v.lay) {
+        const auto &L = *v.lay;
+        key           = ((uint64_t)L.screen_w << 48) ^ ((uint64_t)L.screen_h << 32) ^ ((uint64_t)L.frame_w << 20) ^ ((uint64_t)L.frame_h << 8) ^ (uint64_t)L.pct ^ ((uint64_t)L.nquads << 60);
+        for (int i = 0; i < L.ndialogs; ++i) { // RES4 stage 6: a dialog opening / closing / moving re-seats the pointer on the game's cursor pixel
+            const auto &d = L.dialog_dst[i];
+            key ^= (((uint64_t)(uint32_t)d.x0 * 0x9E3779B1u) ^ ((uint64_t)(uint32_t)d.y0 << 21) ^ ((uint64_t)(uint32_t)d.x1 << 7) ^ ((uint64_t)(uint32_t)d.y1 << 40)) * (uint64_t)(i + 1);
+        }
+        if (!ptr_valid_ || key != lay_key_ || (!have_target_ && (v.last_x != pgx_ || v.last_y != pgy_))) {
+            sx_ = v.last_x;
+            sy_ = v.last_y;
+            mh::gfx::uilayout::frame_to_screen(L, sx_, sy_);
+            pgx_    = v.last_x;
+            pgy_    = v.last_y;
+            pacc_x_ = pacc_y_ = 0;
+            lay_key_          = key;
+            ptr_valid_        = true;
+        }
+    } else {
+        ptr_valid_ = false;
+    }
     for (;;) {
         if (have_target_) {
             int tx = tx_, ty = ty_;
@@ -122,6 +143,8 @@ int mouse_queue::produce(const mouse_view &v, di_element *out, int cap, uint32_t
             }
             if (vx != tx || vy != ty) return n; // out of room: resume from the game's accumulator next time
             have_target_ = false;
+            pgx_         = tx;
+            pgy_         = ty;
         }
         if (count_ == 0) return n;
         const mouse_raw &e = q_[head_];
@@ -135,8 +158,16 @@ int mouse_queue::produce(const mouse_view &v, di_element *out, int cap, uint32_t
                     last = nx;
                     --left;
                 }
-                tx_            = q_[last].a;
-                ty_            = q_[last].b;
+                tx_ = q_[last].a;
+                ty_ = q_[last].b;
+                if (v.lay && ptr_valid_) { // an absolute packet re-seats the screen pointer on that game pixel
+                    int ax = tx_, ay = ty_;
+                    clamp_to_box(ax, ay);
+                    sx_ = ax;
+                    sy_ = ay;
+                    mh::gfx::uilayout::frame_to_screen(*v.lay, sx_, sy_);
+                    pacc_x_ = pacc_y_ = 0;
+                }
                 ttime_         = q_[last].time;
                 have_target_   = true;
                 const int used = count_ - left + 1;
@@ -145,6 +176,27 @@ int mouse_queue::produce(const mouse_view &v, di_element *out, int cap, uint32_t
                 continue;
             }
             case mouse_raw::rel: {
+                if (v.lay && ptr_valid_) { // screen-space pointer: counts are screen pixels * div, doubled past thr like the game's
+                    const int qx = carry_step(pacc_x_, e.a, div) / div, qy = carry_step(pacc_y_, e.b, div) / div;
+                    const int dx = (qx < 0 ? -qx : qx) > v.thr ? qx + qx : qx, dy = (qy < 0 ? -qy : qy) > v.thr ? qy + qy : qy;
+                    sx_ += dx;
+                    sy_ += dy;
+                    const auto &u = v.lay->used;
+                    if (sx_ < u.x0) sx_ = u.x0;
+                    if (sx_ >= u.x1) sx_ = u.x1 - 1;
+                    if (sy_ < u.y0) sy_ = u.y0;
+                    if (sy_ >= u.y1) sy_ = u.y1 - 1;
+                    int fx = sx_, fy = sy_;
+                    if (mh::gfx::uilayout::screen_to_frame(*v.lay, fx, fy)) {
+                        tx_          = fx;
+                        ty_          = fy;
+                        ttime_       = e.time;
+                        have_target_ = true;
+                    }
+                    head_ = (head_ + 1) % CAP;
+                    --count_;
+                    continue;
+                }
                 // Both axes or neither: an element pair is not split across two calls.
                 int32_t   ax = acc_x_, ay = acc_y_;
                 const int qx   = carry_step(ax, e.a, div);

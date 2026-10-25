@@ -1,0 +1,53 @@
+# res4_dlg_confirm_200 -- mods:RES4 stage 6: TWO dialog quads at ui_scale=200 on a pinned 1280x960 screen (ini/res4_s200_dlg.ini, frame 1120x928).
+# ESC opens the in-game menu (game mode 3); the pointer is parked on its Quit game button (owned DirectInput, `rawmouse sabs` = CLIENT pixels)
+# and clicked: the "Are you sure you want to leave the game?" confirmation (_G_LLM_UI_ACTIVE_DIALOG) opens OVER the ESC menu. The presenter
+# shows the ESC menu as a quad and the confirmation as a second, upper quad; the click on No goes through the upper quad's inverse map
+# and lands on the ESC menu again. tools/check_res4_dialog.py checks both quads' geometry and the presented pixels of the `quit` capture.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4 frame_ready 1280x960 @200
+
+rawmouse sabs 300 300
+gameclock +40
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+rawmouse sabs 458 310
+scurpos 458 310
+settled &Options
+capture res4_df_esc
+pcapture res4_dp_esc
+log res4 esc_menu_open
+
+rawmouse sabs 458 530
+scurpos 458 530
+rawmouse down l
+rawmouse up l
+screensettled
+dump
+capture res4_df_quit
+pcapture res4_dp_quit
+log res4 confirm_dialog_open
+
+# click No on the confirmation through its (upper) dialog quad: back on the ESC menu
+rawmouse sabs 630 522
+scurpos 630 522
+rawmouse down l
+rawmouse up l
+present &Options
+settled &Options
+log res4 COMPLETE -- ui_scale=200: a confirmation over the ESC menu is a second dialog quad, No clicked through it
+end

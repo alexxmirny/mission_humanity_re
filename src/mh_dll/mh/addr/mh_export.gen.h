@@ -3427,9 +3427,9 @@ using sig_llm_tact_view_shift_row_dec = void(__cdecl *)(void);  // __watcall cal
 inline constexpr uintptr_t addr_llm_tact_mark_view_tiles_dirty = 0x0043c303u;
 inline constexpr uint64_t  entry_llm_tact_mark_view_tiles_dirty = 0x01b800824ffc3d8bull;  // arm guard: the 8 bytes we generated against
 using sig_llm_tact_mark_view_tiles_dirty = void(__cdecl *)(void);  // __watcall callee
-inline constexpr uintptr_t addr_llm_tact_scroll_fade_step = 0x0043c323u;
-inline constexpr uint64_t  entry_llm_tact_scroll_fade_step = 0xa100603af83d8b60ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_tact_scroll_fade_step = void(__cdecl *)(void);  // __watcall callee
+inline constexpr uintptr_t addr_llm_tact_blast_wipe_brighten_step = 0x0043c323u;
+inline constexpr uint64_t  entry_llm_tact_blast_wipe_brighten_step = 0xa100603af83d8b60ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_tact_blast_wipe_brighten_step = void(__cdecl *)(void);  // __watcall callee
 inline constexpr uintptr_t addr_llm_tact_tile_clear_margin_patch = 0x0043c39cu;
 inline constexpr uint64_t  entry_llm_tact_tile_clear_margin_patch = 0x3d8b00824ff42d8bull;  // arm guard: the 8 bytes we generated against
 using sig_llm_tact_tile_clear_margin_patch = void(__cdecl *)(void);  // __mh_watcall_ecx_ebx_volatile callee
@@ -7636,6 +7636,9 @@ using sig_llm_strat_ai_group_remove = void(__cdecl *)(int32_t player, uint32_t g
 inline constexpr uintptr_t addr_llm_strat_ai_engage_candidate_add = 0x004d50b3u;
 inline constexpr uint64_t  entry_llm_strat_ai_engage_candidate_add = 0xa3b2e80000001068ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_ai_engage_candidate_add = void(__cdecl *)(uint32_t target_ref, int32_t target_index);  // __watcall callee
+inline constexpr uintptr_t addr_llm_strat_ai_engage_prune_unseen_candidates = 0x004d516cu;
+inline constexpr uint64_t  entry_llm_strat_ai_engage_prune_unseen_candidates = 0xa2f9e80000001868ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_strat_ai_engage_prune_unseen_candidates = void(__cdecl *)(void);  // __watcall callee
 inline constexpr uintptr_t addr_llm_strat_ai_engage_rank_candidates_by_range = 0x004d5245u;
 inline constexpr uint64_t  entry_llm_strat_ai_engage_rank_candidates_by_range = 0x0000004068e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_ai_engage_rank_candidates_by_range = void(__cdecl *)(uint32_t source_ref, int32_t source_index);  // __mh_watcall_ecx_ebx_volatile callee
@@ -10897,11 +10900,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_tact_mark_view_tiles_dirty() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_tact_mark_view_tiles_dirty, (void *)mh_export_thunk_llm_tact_mark_view_tiles_dirty, "llm_tact_mark_view_tiles_dirty", ::mh::exp::entry_llm_tact_mark_view_tiles_dirty); \
     }
-#define MH_EXPORT_REPLACE_llm_tact_scroll_fade_step(IMPL) \
-    static ::mh::exp::sig_llm_tact_scroll_fade_step mh_export_impl_llm_tact_scroll_fade_step = IMPL; \
-    MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_tact_scroll_fade_step, mh_export_impl_llm_tact_scroll_fade_step) \
-    static bool mh_export_install_llm_tact_scroll_fade_step() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_tact_scroll_fade_step, (void *)mh_export_thunk_llm_tact_scroll_fade_step, "llm_tact_scroll_fade_step", ::mh::exp::entry_llm_tact_scroll_fade_step); \
+#define MH_EXPORT_REPLACE_llm_tact_blast_wipe_brighten_step(IMPL) \
+    static ::mh::exp::sig_llm_tact_blast_wipe_brighten_step mh_export_impl_llm_tact_blast_wipe_brighten_step = IMPL; \
+    MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_tact_blast_wipe_brighten_step, mh_export_impl_llm_tact_blast_wipe_brighten_step) \
+    static bool mh_export_install_llm_tact_blast_wipe_brighten_step() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_tact_blast_wipe_brighten_step, (void *)mh_export_thunk_llm_tact_blast_wipe_brighten_step, "llm_tact_blast_wipe_brighten_step", ::mh::exp::entry_llm_tact_blast_wipe_brighten_step); \
     }
 #define MH_EXPORT_REPLACE_llm_tact_tile_clear_margin_patch(IMPL) \
     static ::mh::exp::sig_llm_tact_tile_clear_margin_patch mh_export_impl_llm_tact_tile_clear_margin_patch = IMPL; \
@@ -19315,6 +19318,12 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_strat_ai_engage_candidate_add() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_strat_ai_engage_candidate_add, (void *)mh_export_thunk_llm_strat_ai_engage_candidate_add, "llm_strat_ai_engage_candidate_add", ::mh::exp::entry_llm_strat_ai_engage_candidate_add); \
     }
+#define MH_EXPORT_REPLACE_llm_strat_ai_engage_prune_unseen_candidates(IMPL) \
+    static ::mh::exp::sig_llm_strat_ai_engage_prune_unseen_candidates mh_export_impl_llm_strat_ai_engage_prune_unseen_candidates = IMPL; \
+    MH_EXPORT_THUNK_e_void__callee(mh_export_thunk_llm_strat_ai_engage_prune_unseen_candidates, mh_export_impl_llm_strat_ai_engage_prune_unseen_candidates) \
+    static bool mh_export_install_llm_strat_ai_engage_prune_unseen_candidates() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_strat_ai_engage_prune_unseen_candidates, (void *)mh_export_thunk_llm_strat_ai_engage_prune_unseen_candidates, "llm_strat_ai_engage_prune_unseen_candidates", ::mh::exp::entry_llm_strat_ai_engage_prune_unseen_candidates); \
+    }
 #define MH_EXPORT_REPLACE_llm_strat_ai_engage_rank_candidates_by_range(IMPL) \
     static ::mh::exp::sig_llm_strat_ai_engage_rank_candidates_by_range mh_export_impl_llm_strat_ai_engage_rank_candidates_by_range = IMPL; \
     MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_strat_ai_engage_rank_candidates_by_range, mh_export_impl_llm_strat_ai_engage_rank_candidates_by_range) \
@@ -23134,10 +23143,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_tact_mark_view_tiles_dirty() { \
         (void)mh_export_impl_llm_tact_mark_view_tiles_dirty; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_tact_scroll_fade_step(IMPL) \
-    static ::mh::exp::sig_llm_tact_scroll_fade_step mh_export_impl_llm_tact_scroll_fade_step = IMPL; \
-    static bool mh_export_install_llm_tact_scroll_fade_step() { \
-        (void)mh_export_impl_llm_tact_scroll_fade_step; return false; \
+#define MH_EXPORT_REPLACE_llm_tact_blast_wipe_brighten_step(IMPL) \
+    static ::mh::exp::sig_llm_tact_blast_wipe_brighten_step mh_export_impl_llm_tact_blast_wipe_brighten_step = IMPL; \
+    static bool mh_export_install_llm_tact_blast_wipe_brighten_step() { \
+        (void)mh_export_impl_llm_tact_blast_wipe_brighten_step; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_tact_tile_clear_margin_patch(IMPL) \
     static ::mh::exp::sig_llm_tact_tile_clear_margin_patch mh_export_impl_llm_tact_tile_clear_margin_patch = IMPL; \
@@ -30148,6 +30157,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static ::mh::exp::sig_llm_strat_ai_engage_candidate_add mh_export_impl_llm_strat_ai_engage_candidate_add = IMPL; \
     static bool mh_export_install_llm_strat_ai_engage_candidate_add() { \
         (void)mh_export_impl_llm_strat_ai_engage_candidate_add; return false; \
+    }
+#define MH_EXPORT_REPLACE_llm_strat_ai_engage_prune_unseen_candidates(IMPL) \
+    static ::mh::exp::sig_llm_strat_ai_engage_prune_unseen_candidates mh_export_impl_llm_strat_ai_engage_prune_unseen_candidates = IMPL; \
+    static bool mh_export_install_llm_strat_ai_engage_prune_unseen_candidates() { \
+        (void)mh_export_impl_llm_strat_ai_engage_prune_unseen_candidates; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_strat_ai_engage_rank_candidates_by_range(IMPL) \
     static ::mh::exp::sig_llm_strat_ai_engage_rank_candidates_by_range mh_export_impl_llm_strat_ai_engage_rank_candidates_by_range = IMPL; \

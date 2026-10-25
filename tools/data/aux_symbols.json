@@ -1366,7 +1366,7 @@
     "_G_LLM_TACT_QUIT_TILE_ROW",
     "_G_LLM_TACT_SAVED_WINDOW_WIDTH",
     "_G_LLM_TACT_SCREENSHOT_COUNTER",
-    "_G_LLM_TACT_SCROLL_CMD",
+    "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
     "_G_LLM_TACT_SEE_ENEMY_FLAG",
     "_G_LLM_TACT_SEL_PANEL_ICON_COUNT",
     "_G_LLM_TACT_SEL_PANEL_ICON_GFX",
@@ -3503,7 +3503,7 @@
     "llm_tact_quantize_facing_dir",
     "llm_tact_render_view",
     "llm_tact_save_screenshot",
-    "llm_tact_scroll_fade_step",
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_scroll_target_proximity_tick",
     "llm_tact_select_next_unit",
     "llm_tact_selection_clear_unless_ctrl",
@@ -21238,7 +21238,7 @@
      "LAB_0043c313"
     ],
     "0043c323": [
-     "llm_tact_scroll_fade_step"
+     "llm_tact_blast_wipe_brighten_step"
     ],
     "0043c339": [
      "LAB_0043c339"
@@ -85237,7 +85237,7 @@
      "_G_LLM_BOOT_STAGE"
     ],
     "00558ba0": [
-     "_G_LLM_TACT_SCROLL_CMD"
+     "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP"
     ],
     "00558ba4": [
      "_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER"
@@ -103121,7 +103121,7 @@
     [
      "0043c323",
      "0043c398",
-     "llm_tact_scroll_fade_step"
+     "llm_tact_blast_wipe_brighten_step"
     ],
     [
      "0043c39c",

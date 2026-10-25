@@ -38,7 +38,7 @@
 #include "seams/door_watch.h"
 #include "addr/mh_regions.gen.h" // mh::state::live(), the RIDs read below
 #include "addr/mh_structs.gen.h" // the record layouts
-#include "state/roster_caps.h"   // live_roster_caps(): the per-player caps the host bound
+#include "caps/caps.h"           // mh::caps::rec / g: the arrays the game addresses (PT-CAP8)
 #include "net_internal.h"        // seam_log; g_ini
 
 namespace {
@@ -81,10 +81,9 @@ int put(char *b, int n, int cap, const char *fmt, A... a) {
 void stall_line(uint32_t mstep, uint32_t p, int slot, const mh::game::mh_map_object_unit_storage &st,
                 uint32_t since) {
     using namespace mh::state;
-    const auto     caps  = live_roster_caps();
     const auto    &lv    = live();
-    const auto    *bl    = reinterpret_cast<const mh::game::mh_map_object_building *>(lv.base[RID_BUILDINGS]);
-    const auto    *un    = reinterpret_cast<const mh::game::mh_map_object_unit *>(lv.base[RID_UNITS]);
+    const auto    &gb    = mh::caps::g(mh::caps::BUILDINGS);
+    const auto    &gu    = mh::caps::g(mh::caps::UNITS);
     const auto    *pass  = reinterpret_cast<const uint8_t *>(lv.base[RID_PASSABLE]);
     const auto    *pop   = reinterpret_cast<const mh::game::mh_llm_strat_pop_stats *>(lv.base[RID_STRAT_POP_STATS]);
     const auto    *cfu   = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(lv.base[RID_UNIT]);
@@ -95,8 +94,8 @@ void stall_line(uint32_t mstep, uint32_t p, int slot, const mh::game::mh_map_obj
                                                  "storage %d -> building %ld",
                            (unsigned long)(mstep - since), (unsigned long)since, (unsigned long)mstep, (unsigned long)p, slot,
                            (long)st.b_index);
-    if (st.b_index > 0 && st.b_index < caps.buildings) {
-        const auto &bd = bl[p * (uint32_t)caps.buildings + (uint32_t)st.b_index];
+    if (st.b_index > 0 && st.b_index < (int32_t)gb.limit) {
+        const auto &bd = *mh::caps::rec<const mh::game::mh_map_object_building>(mh::caps::BUILDINGS, p, (uint32_t)st.b_index);
         n              = put(b, n, CAP,
                              " type %u at (%u,%u) state %u online_state %d built_flags 0x%02X efficiency %.3f workers %u",
                              (unsigned)bd.building_id, (unsigned)bd.x, (unsigned)bd.y, (unsigned)bd.state, (int)bd.online_state,
@@ -111,8 +110,8 @@ void stall_line(uint32_t mstep, uint32_t p, int slot, const mh::game::mh_map_obj
     }
     // Every unit of this player homed on this storage in a boarding/exit state: what the exit gate weighs.
     int listed = 0, more = 0;
-    for (int32_t i = 1; i < caps.units; ++i) {
-        const auto &u = un[p * (uint32_t)caps.units + (uint32_t)i];
+    for (int32_t i = 1; i < (int32_t)gu.limit; ++i) {
+        const auto &u = *mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, p, (uint32_t)i);
         if (u.home_storage_slot != (uint8_t)slot || u.state < BOARD_LO || u.state > BOARD_HI) continue;
         if (listed >= MAX_UNITS) {
             ++more;
@@ -130,8 +129,8 @@ void stall_line(uint32_t mstep, uint32_t p, int slot, const mh::game::mh_map_obj
     }
     if (!listed) n = put(b, n, CAP, "; no unit homed here is in a boarding/exit state");
     if (more) n = put(b, n, CAP, " (+%d more)", more);
-    if (st.door_mutex_unit > 0 && st.door_mutex_unit < caps.units) {
-        const auto &u = un[p * (uint32_t)caps.units + (uint32_t)st.door_mutex_unit];
+    if (st.door_mutex_unit > 0 && st.door_mutex_unit < (int32_t)gu.limit) {
+        const auto &u = *mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, p, (uint32_t)st.door_mutex_unit);
         n             = put(b, n, CAP, "; holder u%ld state 0x%02X order 0x%02X at (%u,%u) microstep %ld",
                             (long)st.door_mutex_unit, (unsigned)u.state, (unsigned)u.order, (unsigned)u.x, (unsigned)u.y,
                             (long)u.move_microstep);
@@ -176,8 +175,7 @@ void door_watch_tick(uint32_t mstep) {
     g_last = mstep;
     if (mstep % CHECK_EVERY) return;
     using namespace mh::state;
-    const auto caps  = live_roster_caps();
-    int        slots = caps.storage;
+    int slots = (int)mh::caps::g(mh::caps::UNIT_STORAGE).limit;
     if (slots > MAX_SLOTS) {
         if (!g_clamp_said) {
             g_clamp_said = true;
@@ -188,11 +186,10 @@ void door_watch_tick(uint32_t mstep) {
         }
         slots = MAX_SLOTS;
     }
-    const auto *sto = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(live().base[RID_UNIT_STORAGE]);
-    if (sto == nullptr || slots <= 0) return;
+    if (slots <= 0) return;
     for (uint32_t p = 0; p < PLAYERS; ++p) {
         for (int s = 1; s < slots; ++s) { // slot 0 is never used by the game (release_door_held_by_unit)
-            const auto &st   = sto[p * (uint32_t)caps.storage + (uint32_t)s];
+            const auto &st   = *mh::caps::rec<const mh::game::mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, p, (uint32_t)s);
             track      &t    = g_t[p][s];
             const bool  busy = st.b_index != 0 && (st.door_mutex_unit != 0 || st.door_waiter_count != 0);
             if (!busy) {

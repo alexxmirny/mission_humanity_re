@@ -1,0 +1,14 @@
+# patching:PT-CAP8 S3 (slice G) -- step 3 of cap_save_seq: a VANILLA save loads with the raise ON (tools/check_cap_save.py --step vanilla).
+# The lane's only save is 2-almost.sav (a campaign save written by a stock build: no overflow trailer, a stock version header). Load game
+# from the main menu must enter the game exactly as it always did -- no refusal, no stamp, no trailer.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +60000
+capture vanilla_loaded
+log cap: a vanilla save loaded with the raise ON
+end

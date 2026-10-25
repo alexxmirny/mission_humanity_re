@@ -1,0 +1,68 @@
+{
+ "_what": "PT-CAP8 S1: the DLL byte patches that overlap a v0.2.2 / v0.2.3 cap manifest site and are ALLOWED to, because they COMPOSE: the hook keeps its site, its install guard compares against the bytes actually present (the applied relocation manifest's relocated bytes, via mh::patch::overlay_applied) and its stub replicates the displaced instruction against mh_caps_base[X]. Every cap_set_overlaps row of tools/data/inmem_composition_census.json must be listed here; `check_inmem_composition.py --strict` additionally greps `source` for patch_bytes_guarded_caps(<install_token>, ...) -- RED until PT-CAP8 S1 Slice C converts the three installs (spec section 4).",
+ "allowed": [
+  {
+   "patch": "turret_clip_fix",
+   "site": "0x00462abb",
+   "source": "src/mh_dll/mh/seams/net_lockstep.cpp",
+   "install_token": "ADDR_TURRET_CLIP_CREATE",
+   "why": "turrets array base inside the displaced MOV [eax+0xcc1005],1 (0x462ab9, 7 bytes)"
+  },
+  {
+   "patch": "turret_clip_refill",
+   "site": "0x0047c6ca",
+   "source": "src/mh_dll/mh/seams/net_lockstep.cpp",
+   "install_token": "ADDR_TURRET_CLIP_REFILL",
+   "why": "turrets array base inside the displaced CMP [eax+0xcc100f],0 (0x47c6c8, 9 bytes)"
+  },
+  {
+   "patch": "mother_free_seed",
+   "site": "0x00491eaf",
+   "source": "src/mh_dll/mh/seams/net_lockstep.cpp",
+   "install_token": "ADDR_MF_SEED",
+   "why": "buildings array base inside the displaced CMP word [eax+0xc3d2b7],0 (0x491eac, 8 bytes)"
+  },
+  {
+   "patch": "move_near_enough",
+   "site": "0x00482b5d",
+   "source": "src/mh_dll/mh/seams/move_proto_arrival.cpp",
+   "install_token": "ADDR_ARR_RETRY",
+   "why": "units array base inside the displaced INC byte [eax+0xdd8cf3] (0x482b5b, 13 bytes): v0.2.3 relocates the units (PT-CAP9-U1)"
+  },
+  {
+   "patch": "move_near_enough",
+   "site": "0x00482b63",
+   "source": "src/mh_dll/mh/seams/move_proto_arrival.cpp",
+   "install_token": "ADDR_ARR_RETRY",
+   "why": "units array base inside the displaced CMP byte [eax+0xdd8cf3],4 (second disp32 of the same 13 bytes)"
+  },
+  {
+   "patch": "move_reverse_now",
+   "site": "0x00466c01",
+   "source": "src/mh_dll/mh/seams/move_proto_respond.cpp",
+   "install_token": "ADDR_RV_SITE",
+   "why": "units player stride (0x5b04) is the imm32 of the displaced IMUL EDX,[EBP-0x34],imm32 (0x466bfe, 7 bytes)"
+  },
+  {
+   "patch": "move_squad_merge_fix",
+   "site": "0x0047ebe4",
+   "source": "src/mh_dll/mh/seams/combat_proto.cpp",
+   "install_token": "ADDR_SQM_STATE_CMP",
+   "why": "units array base inside the displaced CMP word [eax+disp32],1 (0x47ebe1, 8 bytes)"
+  }
+ ],
+ "embedded": [
+  {
+   "patch": "order_wide_decode_local",
+   "va": "0x0046643d",
+   "rebuilt_by": "src/mh_dll/mh/seams/order_wide_index.cpp local_rebind (registered with mh::caps::orders::set_local_rebind)",
+   "why": "the load of the PENDING base+8 inside the 27-byte local-decode form; rebuilt from the live pending base whenever the order layer toggles (PT-CAP9-U5 U5a)"
+  },
+  {
+   "patch": "order_wide_decode_local",
+   "va": "0x00466451",
+   "rebuilt_by": "src/mh_dll/mh/seams/order_wide_index.cpp local_rebind (registered with mh::caps::orders::set_local_rebind)",
+   "why": "the store half of the same 27 bytes (pending base+8), rebuilt with it"
+  }
+ ]
+}

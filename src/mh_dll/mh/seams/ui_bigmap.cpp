@@ -56,6 +56,7 @@
 #include "seams/strat_pre_input.h"
 #include "config/ini_read.h"
 #include "state/region_runtime.h"
+#include "caps/caps.h"    // mh::caps::rec / g: the building array the game addresses (PT-CAP8)
 #include "net_internal.h" // seam_log, g_ini
 #include "en_guard.h"
 
@@ -613,7 +614,7 @@ constexpr uintptr_t ADDR_WIN_C57    = 0x00500c57u;                      // ..._C
 constexpr uintptr_t ADDR_WIN_C5F    = 0x00500c5fu;                      // ..._C5F: empty-tile move window
 constexpr unsigned  SEL_UNIT = 0x20, SEL_UNIT2 = 0x80, SEL_BLDG = 0x40; // type masks of the tile finders
 constexpr int       BLDG_TYPE_A_TURRET = 5, BLDG_TYPE_H_TURRET = 25;
-constexpr int       CFG_BUILDING_STRIDE = 0x842, MAP_BUILDING_STRIDE = 0x111, MAP_BUILDINGS_PER_SIDE = 100;
+constexpr int       CFG_BUILDING_STRIDE = 0x842;
 constexpr int       TILE_VISIBILITY_OFF = 7; // tile_objects element +7: the visibility refcount (0 = not in sight)
 
 int g_dt_milli = 0, g_win_milli = 0; // T_CUR - T_PREV and game_speed * the empty-tile window, x1000, for the log line
@@ -657,14 +658,13 @@ void right_click_order(const Shown &S, int x, int y) {
     if (group == 0) {
         // iu.c 307-352: nothing selected. Only a selected TURRET with a visible enemy on the tile acts.
         const unsigned bsel = *mh::state::ptr<const uint16_t>(mh::state::RID_STRAT_UI_SELECTED_BLDG_INDEX);
-        if (bsel == 0 || !visible || side > 7 || bsel >= (unsigned)MAP_BUILDINGS_PER_SIDE) {
+        if (bsel == 0 || !visible || side > 7 || bsel >= mh::caps::g(mh::caps::BUILDINGS).limit) {
             log_order(x, y, tc, tr, "no order (nothing selected)", group, 0, shift);
             return;
         }
-        const uint8_t *bl   = mh::state::ptr<const uint8_t>(mh::state::RID_BUILDINGS);
         const uint8_t *cfgb = mh::state::ptr<const uint8_t>(mh::state::RID_BUILDING);
-        if (!bl || !cfgb) return;
-        const uint8_t *b  = bl + ((size_t)side * MAP_BUILDINGS_PER_SIDE + bsel) * MAP_BUILDING_STRIDE;
+        if (!cfgb) return;
+        const uint8_t *b  = mh::caps::rec<const uint8_t>(mh::caps::BUILDINGS, side, bsel);
         const unsigned id = (unsigned)(b[2] | (b[3] << 8));                            // map_object_building.building_id
         const int      ty = id < 100 ? cfgb[(size_t)id * CFG_BUILDING_STRIDE + 8] : 0; // cfg Building.type
         if (ty != BLDG_TYPE_A_TURRET && ty != BLDG_TYPE_H_TURRET) {

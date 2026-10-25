@@ -267,7 +267,7 @@ int tr_refusal_reason(const char *ascii, wchar_t *out, int cap, bool *matched) {
     static const Str ids[] = {Str::REFUSE_OLD_CLIENT_CP, Str::REFUSE_OLD_HOST_CP, Str::REFUSE_CODEPAGE,
                               Str::REFUSE_NEWER_PROTOCOL, Str::REFUSE_OLDER_PROTOCOL, Str::REFUSE_MALFORMED,
                               Str::REFUSE_NO_MATCH_ID, Str::REFUSE_NEWER_THAN_HOST, Str::REFUSE_NOT_OUR_LOBBY,
-                              Str::REFUSE_CP_MISMATCH, Str::REFUSE_UNKNOWN};
+                              Str::REFUSE_CP_MISMATCH, Str::REFUSE_CAPS, Str::REFUSE_UNKNOWN};
     return localize(ids, (int)(sizeof(ids) / sizeof(ids[0])), ascii, out, cap, matched);
 }
 

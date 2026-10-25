@@ -20,6 +20,10 @@
 #endif
 #include <windows.h>
 #include <stdint.h>
+#include <vector>
+
+#include "gfx/ui_layout.h"    // RES4 stage 5: cursor_overlay
+#include "gfx/overlay_list.h" // RES23-S5: overlay_list
 
 namespace mh::gfx {
 
@@ -43,6 +47,38 @@ enum class scale_filter : uint8_t { point,
 enum class window_mode : uint8_t { windowed,
                                    borderless };
 
+// RES23-S1: the view of ONE present -- everything a presenter, the mouse maps, the clip, the cursor, the dialogs and pcapture need to agree on,
+// built once per present (ddraw_own.cpp present_surface) and handed to the backend inside frame_view. `layout` is uilayout::build for
+// (screen, frame, pct, integer, dialogs, crop), always (at 100 and no crop it is the single fitted rect); `multi` says it holds several
+// quads (the presenter then draws layout.q[]; otherwise it draws the single fitted rect itself). `screen` is the presenter's
+// real target size (the d3d11 back buffer after its resize, the gdi client rect), or the dev override [video] ui_screen.
+// THE ONLY uilayout::build CALL OUTSIDE THE SELFTESTS IS build_present_view() below.
+struct present_view {
+    bool                 valid    = false;
+    bool                 multi    = false;
+    int                  screen_w = 0, screen_h = 0;
+    int                  frame_w = 0, frame_h = 0;
+    int                  pct     = 100; // the percentage in force for this present
+    bool                 integer = false;
+    int                  crop_w = 0, crop_h = 0; // RES18 composition inside the frame; 0 = none
+    uilayout::dialog_set dialogs;
+    uilayout::layout     layout;
+};
+
+inline void build_present_view(present_view &v, int screen_w, int screen_h, int frame_w, int frame_h, int pct, bool integer, const uilayout::dialog_set *dialogs,
+                               int crop_w, int crop_h) {
+    v          = present_view();
+    v.valid    = true;
+    v.screen_w = screen_w, v.screen_h = screen_h;
+    v.frame_w = frame_w, v.frame_h = frame_h;
+    v.pct     = pct;
+    v.integer = integer;
+    v.crop_w = crop_w, v.crop_h = crop_h;
+    if (dialogs && dialogs->n > 0) v.dialogs = *dialogs;
+    uilayout::build(v.layout, screen_w, screen_h, frame_w, frame_h, pct, integer, v.dialogs.n > 0 ? &v.dialogs : nullptr, crop_w, crop_h);
+    v.multi = !v.layout.single;
+}
+
 // One frame as the game composed it. `pixels` is valid only for the duration of present().
 struct frame_view {
     const void  *pixels;
@@ -50,6 +86,19 @@ struct frame_view {
     int          height; // in rows
     int          pitch;  // in BYTES (may exceed width * 2)
     pixel_format format;
+    // RES4 stage 6: the frame rectangles of the gameplay-size dialogs up (the ESC menu, a confirmation over it, ...), bottom to top; n = 0
+    // when none. At ui_scale above 100 the quad list gains a scaled dialog quad for each (uilayout::build's `dialogs`).
+    uilayout::dialog_set dialogs;
+    // RES23-S5: THE overlay list -- the scaled notice, the translucent layers of the dialogs whose dialogs.layered[] is set (stage 6b), the owned cursor
+    // (stage 5), bottom to top, already scaled and clipped to the screen (premultiplied B8G8R8A8), drawn over the quads. Empty = the game's own cursor and
+    // notices are in the frame. Valid only for the duration of present(), like `pixels`.
+    overlay_list overlays;
+    // RES18: the composition inside this frame when the session size is not a multiple of the 32 px tile (the game rendered
+    // ceil32(W) x ceil32(H)); 0 = the frame is the whole picture. The presenters build the crop layout from it (uilayout::build).
+    int crop_w = 0, crop_h = 0;
+    // RES23-S1: this present's view (null = none, e.g. a selftest that only wants the single fitted rect). The presenters take their quad
+    // layout from it and never call uilayout::build themselves.
+    const present_view *view = nullptr;
 };
 
 struct backend_config {
@@ -60,6 +109,10 @@ struct backend_config {
     // (falls back to the aspect fit when not even 1x fits). The image rect -- and so the mouse
     // mapping, which reads the same fit_image_rect -- follows it.
     bool integer_scale = false;
+    // RES4 [video] ui_scale in percent (100 = off = the single-rect presenter above, unchanged). Above 100 the
+    // frame is drawn as the quad list gfx/ui_layout.h builds (map 1:1, side panel and bottom strip scaled).
+    // Live (set_config). The mouse mapping follows it from stage 4.
+    int ui_scale_pct = 100;
 };
 
 // Where a fw x fh frame lands inside a cw x ch client area: the largest rect with the frame's aspect
@@ -151,8 +204,25 @@ public:
     // The window mode is NOT live: restyling the window is the owner's job, then re-attach.
     virtual void set_config(const backend_config &) {}
 
+    // RES23-S1: the size of the surface this presenter draws into RIGHT NOW (gdi: the client rect; d3d11: the swap chain's back buffer, which it
+    // resizes to the client rect first). Called by present_surface just before it builds the present_view. False = nothing to draw into
+    // (minimised, no device) or a presenter with no target (null).
+    virtual bool target_size(int &w, int &h) {
+        (void)w, (void)h;
+        return false;
+    }
+
     // Window lost or regained focus / was resized by the user.
     virtual void on_window_changed() {}
+
+    // RES23-S0 `bcapture`: what the presenter really put on screen (cursor, dialog layers and any overlay included).
+    // arm_output_capture() is called just BEFORE present(); take_output_capture() just AFTER it and fills `bgra`
+    // (w*h, top row first, alpha forced to 255). False = this backend shows nothing (null) or the read failed.
+    virtual void arm_output_capture() {}
+    virtual bool take_output_capture(std::vector<uint32_t> &bgra, int &w, int &h) {
+        (void)bgra, (void)w, (void)h;
+        return false;
+    }
 
     // Release everything. After detach() the object may be deleted or attach()ed again.
     virtual void detach() = 0;

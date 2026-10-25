@@ -6,7 +6,8 @@
 //
 #include "sim/resid/sim_planet_transition_finalize.h"
 
-#include "addr/mh_calls.gen.h" // typed callables for the effectful/frontier originals we call OUT to
+#include "addr/mh_calls.gen.h"                            // typed callables for the effectful/frontier originals we call OUT to
+#include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h" // mods:UNL1 progress_recheck_after_arrival
 #include "state/host_api.h"
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -23,6 +24,7 @@ const planet_transition_finalize_calls &live_planet_transition_finalize_calls() 
         MH_LIBMH_BIND(llm_strat_deploy_starting_squad),
         MH_LIBMH_BIND(llm_strat_player_presence_lost), // the ORIGINAL -- see the header's routing note
         mh::state::evt::inv_viewport,
+        &mh::sim::progress_recheck_after_arrival, // mods:UNL1
     };
     return c;
 }
@@ -88,6 +90,10 @@ void planet_transition_finalize(const sim_view &v, sim_store &own,
     if (progress_of(v, me, inv).acquired != 1 && v.planet_status[planet] != PLANET_STATUS_UNKNOWN) {
         c.player_presence_lost(static_cast<uint32_t>(*v.local_player_slot), 0u);
     }
+
+    // mods:UNL1: the retail call-splice at 0x0044d229 runs the unlock recheck here, in front of the tail call. Gated inside
+    // (switch on, single-player, a visited planet); after player_presence_lost so a lost planet is rechecked in its final state.
+    if (c.recheck_unlocks) c.recheck_unlocks();
 
     // 0x0044d229: unconditional tail.
     c.cam_mark_viewport_dirty();

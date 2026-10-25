@@ -137,6 +137,7 @@ SCHEMA = {
             "post_check": "list[str]|list[list[str]]",
             "post_check_peers": "bool",
             "post_check_session": "bool",
+            "post_check_session_first": "bool",  # PT-CAP9-U8b: with post_check_session -- hand the checks the FIRST session dir of a lane that plays a second game
             "relay": "bool",
             "relay_args": "list[str]",
             "relay_client_only": "bool",
@@ -218,6 +219,9 @@ RARE_KEYS = {
     "client_sequence": "lobby_seq: client N+1 launches after the runner ended client N's process (tooling:TL-SUITE-FOLD)",
     "hash_skip_clients": "map_tcp: the refused sequence client never reaches a match, so its lane has no hashes to pair (tooling:TL-SUITE-FOLD)",
     "client_cfg": "lobby_seq: per-client ini fragment / [net] knob / dead-IP flag / tol (tooling:TL-SUITE-FOLD)",
+    # PT-CAP9-U8b: cap_orders_move_mp -- the raise=0 client plays a SECOND game in its process after the game over, so its newest session dir is
+    # the second game's; the post-checks (the order burst, no crash marker, sites back at their original bytes) read the FIRST match's.
+    "post_check_session_first": "cap_orders_move_mp: the client plays a second game in its process; the post_checks read the first match's session dirs (patching:PT-CAP9-U8b)",
     # Generic, cross-cutting mechanisms that happen to be narrow today because few rows need them
     # yet -- not bespoke branches, so not candidates for deletion.
     "budget_evidence": "generic --check-budgets evidence field; 1 row raised its budget_s recently (tooling:TL-SUITE-TIMEOUT-CLASS, done)",

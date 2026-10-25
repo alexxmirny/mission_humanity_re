@@ -1,0 +1,22 @@
+# res4_auto -- mods:RES4: [video] ui_scale=auto with a faked display scale of 150% (ini/res4_auto.ini) resolves to 150%: the session frame is the
+# ideal 1216x800 of a 1280x800 screen and the presented image is the same quad composition as res4_s150 (tools/check_ui_quads.py), and
+# mh_video.log carries `[ui] ui_scale=auto: display scale 150% (...) -> 150%` (tools/check_res4_input.py --auto). The real monitor-DPI path
+# (GetDpiForMonitor) is not exercised by a rig: it cannot change a monitor's scale; the mapping from a scale to a step is uilayouttest's.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+pcapture res4_150
+capture res4_frame
+log res4 COMPLETE -- ui_scale=auto resolved through a faked display scale
+end

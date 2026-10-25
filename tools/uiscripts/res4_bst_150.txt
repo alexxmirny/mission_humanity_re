@@ -1,0 +1,43 @@
+# res4_bst_150 -- mods:RES4 stage 7: a building dialog (opened from the selected building's HUD panel; game mode 3, _G_LLM_UI_ACTIVE_DIALOG, a generic
+# llm_ui_dlg_build_from_table list drawn per frame through the llm_ui_widget_list_draw 0x004b7384 detour) at ui_scale=150 on a pinned 1280x800 screen
+# (frame 1216x800). Twins: res4_bst_100 (reference, nothing scaled) and res4_bst_200 (selects the reactor there, see its header).
+# 2-almost: a map click selects the mother (frame coords), the HUD's red icon (panel x 1056 + 18, y 271) opens the dialog -- for an operational
+# mother "You can't sell your mother/pioneer" + Ok. tools/check_res4_dialog.py: it is ONE scaled translucent layer quad centred on the visible map.
+# The click on Ok goes through the quad's inverse map (rawmouse sabs = CLIENT pixels) and closes it (mode 2). The sim keeps running under this
+# dialog, so the animated rect round the mother (flames, units) is exempt from the frame-vs-presented equality (the check's `@rect`).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +100
+log res4 frame_ready 1280x800 @150
+simclick 720 620
+gameclock +300
+simclick 1074 271
+retry 1500 3 3 gamemode 3
+present Ok
+settled Ok
+screensettled
+capture res4_df_bst
+pcapture res4_dp_bst
+log res4 building_dialog_open
+# Ok through the scaled quad (screen px; the dialog centre is (520,376), Ok sits 37 frame px below it)
+rawmouse sabs 519 431
+scurpos 519 431
+settled Ok
+rawmouse down l
+rawmouse up l
+gamemode 2
+absent Ok
+gameclock +100
+log res4 COMPLETE -- ui_scale=150: the building dialog is a scaled layer quad, Ok clicked through it
+end

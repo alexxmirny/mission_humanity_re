@@ -424,6 +424,129 @@ driven from a dated one-off. Three of those eleven only became catchable
 after the *harness* was fixed: a mutation the driver cannot OBSERVE is not a mutation the check caught, which is worth remembering before
 writing the next mutation driver.
 
+## Raised-caps trailer (patching:PT-CAP8 S3)
+
+With the v0.2.2 cap raise ON the game addresses wide arrays (buildings `[p][0..500)`, unit_storage / turrets / mines / labs /
+productions `[p][0..127)`, the projectile pool `[0..4000)`). The vanilla save blocks keep their ORIGINAL bases and sizes (D1: the stock
+`.bss` extents are the canonical mirror, gathered at the planet-save entry and scattered after the load's last array block), so they
+carry only the VANILLA WINDOW. The records past it ("overflow") ride in two additive places; the code is `mh/caps/ovf_save.{h,cpp}` (pure,
+`net_selftest ovftest` section 5) and the four splices of `mh/patch/caps_install.cpp`. libmh is untouched; the splices exist only in the
+relocated layout and are carried by mh.dll alone (the shipped configuration has no libmh).
+
+**The per-planet trailer** -- the last bytes of `save%02d.dat` / `qsave%02d.dat`, after the vanilla reader's last block:
+
+```
+[MHOV blob: ovf_header 32 B | section 16 B + records ...]   [u32 ovf_len]  [u32 'MHOF' = 0x464F484D]
+```
+
+The 8-byte footer is the last 8 bytes of the file. The blob is the one MHOV codec (`mh/caps/ovf.h`, also used by the scene dump and the
+world resync): sparse, only records with a non-zero byte, exact bytes, `layout_fp` over the array geometry, an FNV-64 body sum, and every
+refusal code writes nothing. Written only while `raised()` AND at least one record is non-zero past the window; otherwise NOTHING is
+appended and the file is a plain vanilla save. The container embeds each member file VERBATIM (`u32 length` + bytes), so the trailer
+rides along. Projectiles `[1500, 4000)` are a section like any other (the live count is slot 0's `active` dword, inside the window).
+
+**The container stamp** -- `game_SaveGame`'s 40-byte version header is the build's own table slot (EN: slot 5, `0x5d08f4 + 5*0x28`,
+index at `0x5d09e4`). When raised() and any member the container will embed ends in a footer, the header becomes that slot with bytes
+29..32 replaced by `MHC1`: a sixth value no build's table holds. The vanilla compare at `llm_game_load` then fails for retail, v0.2.1 and
+a raise-OFF v0.2.2 -- BEFORE any block is read, state untouched (this is the refusal; a warn has no safe meaning, because with the limits
+OFF the game's loops stop at the vanilla bound and loaded overflow would sit unaddressed). The member set is the predicate of
+`0x44741a`, re-implemented in `stamp_needed()` (`Planets[i].system_index == CurrentSystem && (G_PLANET_STATUS[i] != 0 || G_PLANET_INDEX == i)`,
+`i = 1..0x1f`; the path is the game's own `save\` + `temp\` + `save%02d.dat`, opened read-only through Win32 so the game's FILE state is
+untouched). Same idea as the SVX extension above ("an extension must stamp a version string the vanilla table does not contain"), a
+different carrier: the SVX tags live in libmh's driver, this one rides the original writer.
+
+| site (EN) | original | splice |
+| --- | --- | --- |
+| `0x004480e0` | `CALL utils_close_file` ending `map_SavePlanetToDisk` (EAX = FILE) | `save_close_stub`: `save_tail()` appends blob + footer, then JMP to close |
+| `0x0044725c` | `CALL utils_write_to_file` of the 40-byte header (`game_SaveGame`) | `header_write_stub`: EAX := the stamp when `stamp_needed()` |
+| `0x004476b4` | `CALL utils_read_from_file` of the 40-byte header (`llm_game_load`) | `header_read_stub`: do the read, then `version_check()` |
+| `0x004bb76d` | `CALL llm_ui_dlg_msgbox_ok` of the load-failure box (`llm_menu_loadgame_confirm`) | `loadfail_msg_stub`: EAX := the player-strings row `caps.load_refused` when the refusal flag is armed |
+| `0x0044851b` (D1) | `ADD [EBP-0x20],EAX` after the path free-count block, the LAST block of the wide set (`map_LoadPlanetFromDisk`) | the scatter detour: `canon_scatter()`, `load_tail(FILE=[EBP-0x28], fail=&[EBP-0x20])`, `path::after_load(ids16)` |
+
+**Why the load splice sits at `0x0044851b` and not behind the labs block (`0x00448488`, PT-CAP8 .. PT-CAP9-U4).** `map_LoadPlanetFromDisk` reads the
+path pool AFTER the seven roster arrays: the buffers (`0x4484ec`, 480000 bytes at `0xaee8c0`), the busy flags (`0x448501`, `0xb74bb0`) and the
+per-player free count (`0x448516`, `0xb63bc0`), then the passable plane. A scatter at `0x00448488` therefore published the stock mirror BEFORE
+the file's pool was read into it: the pool the world kept was the one it had when the load began (the next `canon_gather` overwrote the loaded
+mirror with it), `after_load` read the stale flags, and the file's free count (500 - busy of the SAVING run) overwrote the recomputed one. It
+hit every planet load -- raise ON or OFF, the tactical return included -- but a same-step save + load hides it (the mirror already holds the
+saved bytes); the `u4_path500_off_save` / `u4_path500_save` rows load the file 100 steps after the save. Nothing between the two sites reads a
+wide array, and the six stolen bytes are the same `add [ebp-0x20],eax ; mov ebx,[ebp-0x28]` pair, so the detour is unchanged. `tools/check_cap_save.py
+--sites` pins the new site against the clean exe (the instructions before it must be the free-count block's own set-up).
+
+`version_check()`: the header is the stamp and `raised()` -> rewritten to the table slot (the vanilla compare accepts it, same index);
+the header is the stamp and OFF -> left alone (the compare fails, the game closes the file and returns 0), refusal flag armed. Any other
+header is untouched. `load_tail()` runs mid-file (the load reads further blocks after the arrays): `tell`, `seek(-8, END)`, read the
+footer, and **restore the position on every path** (the game's own `fseek 0x004cfc13` / `ftell 0x004cfd07`). No footer -> nothing else
+(the vanilla reader's behaviour); footer + raised -> blob read, `ovf::apply` (the tails were zeroed by `canon_scatter` just before);
+footer + OFF -> `++*fail`, refusal flag armed (the backstop for the paths that never pass the container: the tactical hand-off,
+quick-load -- the load then fails the vanilla way); footer + raised + corrupt blob -> `++*fail`, nothing written.
+
+**The message.** `llm_menu_loadgame_confirm` shows the generic load-failure text from `G_TEXT_PTRS[0x2b5]`; with the refusal flag armed
+the splice shows `caps.load_refused` ("This save uses raised limits. Turn on Raised limits in the launcher to load it.", RU/DE/FR/IT/PL
+in `src/formats/mh_strings/`). The box draws centred lines and never wraps, so the text is broken at the space nearest its middle (an
+embedded LF is honoured).
+
+**MHOV version 2 (PT-CAP9-U7a, v0.2.3).** The blob is versioned. VERSION 1 (v0.2.2) has one `layout_fp` over the seven v0.2.2 arrays and nine
+section kinds (the wide arrays). VERSION 2 adds, in the same 32-byte header / 16-byte section / 4-byte record framing:
+
+* header `features` (v1: `reserved`, 0): `FEAT_PATH_ID16` = the units' 16-bit path ids (unit `+0xda`) in this file are valid; `layout_fp` is 0
+  (every section carries its own geometry and a `kind_ver`, so an unknown kind is told apart from a damaged one);
+* section `flags` / `kind_ver` (v1: `reserved`, 0): `SEC_OPTIONAL` (skip, do not refuse), `kind_ver` = 1;
+* kind 9 `PATH_SLOT`: 8 players x slots 100..500 (500 = the sink), record = `{busy flag, 300 x {heading, run}}` = 601 bytes, written only when a slot
+  has a non-zero byte, SAVE only (a world blob never carries the pool until PT-CAP9-U7e);
+* kinds 10 `ORDER_QUEUE` / 11 `ORDER_PENDING` / 12 `ORDER_STAGING` (PT-CAP9-U7c): see below.
+
+**MHOV version 2 -- the order kinds (PT-CAP9-U7c).** The three order arrays (`orders.h`: queue 300 -> 4096, pending 1000 -> 32768, staging 300 -> 2048,
+all 0x44-byte records) are ONE array each: a section has `players` 1, every record's `player` is 0 and `idx` is the record index. Unlike the sparse roster
+kinds a section holds **every** record in `[stock, live count)`, zero ones included, because the highest index + 1 is the one thing the stock blocks cannot
+carry: the queue count is saved separately (block `0x5d0194` at `0x447d4b`) and is not mirrored, so a count of 450 over a 300-record block used to be
+written as-is -- an OFF build ran the 150 missing records as due orders, and a raised load clamped the count and lost the tail. Now: the SAVE blob
+carries kind 10 only (the planet save has **no block** for pending or staging -- `save_table.gen.h` marks only the queue and its count `MF_SAVE`; the SP
+rows log `p=0 s=0` at the save point, and the tactical hand-off goes through the same `SavePlanetToDisk`); the WORLD blob carries all three. Any
+order section makes the blob version 2, so the footer exists, the container is stamped and an OFF / retail build refuses the file at the header.
+`FEAT_PATH_ID16` is set only when the path pool is relocated (the 16-bit ids are a path-pool fact, not an orders one). The sections are REQUIRED: a
+build whose order layer is not ON refuses them (`OVF_ERR_NOT_RELOCATED`) rather than run a queue over a hole.
+
+**The count protocol.** `canon_scatter()` copies the stock window in, zeroes the wide tails and clamps the three counts, **keeping the pre-clamp counts**;
+after the MHOV apply the caller runs `orders::finish_scatter()`: a count comes back only when the codec restored exactly records `[stock, count)` of that
+array (contiguous, none missing); otherwise it stays clamped and the drop is logged (`[caps] orders: queue count N restored (records 300..N-1 came from
+the MHOV blob)` / `... did not come back (K of M records) -- clamped ... DROPPED`). Callers: the load hook (`caps_install.cpp`), the world resync import
+(`world_sync.cpp`) and the scene import (`scene_dump.cpp`) -- the latter two also fix the resync tail drop at the codec level (the end-to-end resync under
+the raise is still PT-CAP9-U7e: the cap rows run libmh-absent, and a libmh-bound build refuses the orders manifest).
+
+**Evidence (PT-CAP9-U7c).** `net_selftest ovftest` section 8 (61 checks: every kind round-trips through scatter / apply / finish_scatter, a zero record inside the tail, a short tail stays clamped, every refusal code, the stamp predicate over a fake planet file, the worst case in `max_bytes_world()`); rows `cap_orders_save` (450 move orders saved before the step drains them, loaded 20 steps later: count 450, byte-equal records by digest, 450 goals applied; without the restore it reads 297) and `cap_orders_save_off` (the committed `tools/uiscripts/saves/capord.sav` refused by the stamp with the raise OFF), judged by `tools/check_cap_orders.py --save 450` / `check_cap_save.py --step refuse`.
+
+Reader: an unknown / newer VERSION, an unknown feature bit or section flag, a required section of an unknown kind, a newer `kind_ver`, a geometry
+this build does not share, or memory this run did not relocate is REFUSED (`OVF_ERR_VERSION / FEATURE / KIND / LAYOUT / ELEM / NOT_RELOCATED`;
+nothing is written); the same section marked `SEC_OPTIONAL` is framed by `nrec * (4 + elem)`, counted in the header total and applied to nothing.
+Writer: **version 1 whenever the content fits it** (an rc build keeps loading such saves; byte-identical to the v0.2.2 writer -- `ovftest` 7a
+re-encodes the user's rc2 save and `capovf.sav` byte for byte), version 2 only when kind 9 has records. A v2 trailer's size is logged:
+`[caps] save: planet P trailer N records (B bytes) v2 path K` (the `u4_path500_save` row: 1107 records, 297707 bytes, 317 of them paths; the worst
+case is +1.9 MB per planet save). `load_tail()` reports the features of the trailer it applied (`last_load_features()`); `path::after_load(ids16)`
+trusts the units' 16-bit ids only when `FEAT_PATH_ID16` is set, otherwise it re-derives them from the byte as before. **The file's free count is
+vanilla-shaped:** `map_SavePlanetToDisk` writes the free-count block from the stock array, which holds `500 - busy` while raised, and a build without the
+raise loads a save with nothing past the window (it is not stamped); `save_begin()` puts `100 - busy(slots 0..99)` there for the save and
+`save_end()` (the close splice, and the next sim step in case the save aborted) puts the live counts back. After a load the counts are recomputed.
+
+**Raise OFF is byte-for-byte vanilla.** Every new branch is `raised()`-gated or read-only: `save_tail` and `stamp_needed` return before
+touching anything, `version_check` only acts on the stamp, `load_tail` writes nothing without a footer. `ovftest` (5a) pins "0 bytes, no
+write, no seek, no read" with the raise OFF and with nothing past the window. A raw "compare against master's file" is NOT a witness
+(see "THE ORIGINAL IS NOT BYTE-REPRODUCIBLE" below: two saves of one state differ, 291165 vs 290296 bytes); the witnesses are the hooks'
+zero-write proof, the tutorial + campaign replays, and the `cap_save_seq` `save_off` step (no footer on the planet file, header not
+stamped, the load-back works).
+
+**Evidence.** `net_selftest ovftest` section 5 (130 checks with the S2 ones): fake FILE with position restore on every path, a stamp
+that differs from all six slots, `version_check` on every genuine header, the member predicate over every index. Rig: the `cap_save_seq`
+row (`tools/check_cap_save.py`, four processes on one lane, libmh absent): `save_roundtrip` (400+ buildings, 100 of each sub-roster, 60
+productions, 600 projectile records past slot 1500 saved + loaded back in ONE step: overflow digest equal, 1305 records, planet file
+ends in a footer of 225066 bytes, container stamped, `raised save accepted`), `save_refused_off` (the committed
+`tools/uiscripts/saves/capovf.sav` with the raise OFF: refused at the header with the message on screen, frame
+`baselines/cap_save_refused/`), `save_vanilla_on` (a stock-written save loads with the raise ON), `save_off`.
+
+**Limits, stated.** (1) Recorder / ring / field-report checkpoints do not carry overflow (S2's documented gap). (2) The tactical hand-off (spec R9) goes through the same `SavePlanetToDisk` / `LoadPlanetFromDisk`, so by construction it now carries the overflow through the same hooks (before S3 the load zeroed the tails); it is NOT exercised by a row of its own -- the container's current-planet member is the same code path. (3) A
+promoted libmh save/load walker would have to carry the trailer itself (`dll_patch_manifest.json` rows `caps_save_*`, carrier `none:`
+-- the walkers are not promoted, `mh::config::kSaveClosureOwned = false`).
+
 ## Blocks do not align to symbols — the shifted-block idiom
 
 Found by the ST1 region registry (RI-STATE), which flagged two save blocks reaching past the array

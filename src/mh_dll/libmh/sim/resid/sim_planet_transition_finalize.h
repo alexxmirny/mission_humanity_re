@@ -13,6 +13,10 @@ struct planet_transition_finalize_calls {
     int32_t (*deploy_starting_squad)();                               // llm_strat_deploy_starting_squad @0x00465d16
     uint32_t (*player_presence_lost)(uint32_t player, uint32_t mode); // llm_strat_player_presence_lost @0x00498089 (ORIGINAL -- not mh::sim::player_presence_lost)
     void (*cam_mark_viewport_dirty)();                                // llm_map_cam_mark_viewport_dirty @0x004a5a6b
+    // mods:UNL1 (`[net] project_gate_fix`): the unlock recheck run just BEFORE the tail's cam_mark_viewport_dirty, where
+    // the retail call-splice at 0x0044d229 runs it. The live table binds mh::sim::progress_recheck_after_arrival (which owns the
+    // switch / single-player / visited-planet gates); nullptr = none (the table the pre-UNL1 selftests build).
+    void (*recheck_unlocks)();
 };
 
 const planet_transition_finalize_calls &live_planet_transition_finalize_calls();

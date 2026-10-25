@@ -1,0 +1,67 @@
+# mods:RES4 stage 7 HOST -- the lockstep "Player not responding" modal (llm_net_lockstep_overlay_*, game mode 3, its list is the menu list, drawn per
+# frame through the llm_ui_widget_list_draw 0x004b7384 detour at 0x004c7c79/0x004c7c8c) at ui_scale on a pinned screen. The HOST runs ui_scale
+# (extra_ini_host); the client is a plain 1024 peer (mp_client_res4_lock.txt).
+#
+# THE STALL IS FORCED (as dialog_stall): the row's shim triggers `blackhole c2s` on this script's `res4_lock: stall start` log line and lift it on
+# `... end`; `stalled <ms>` proves it was in force. 3500 ms parked is inside the modal window [6 s, 10 s) of data silence (see
+# mp_host_dialog_stall.txt); the row sets rx/data timeouts to 60 s so the walk's own steps cannot tip the client over.
+#
+# Checks (tools/check_res4_dialog.py, stage `lock`): the modal is ONE scaled translucent layer quad centred on the visible map; then the pointer is
+# put on its Reset counter button through the quad's inverse map (rawmouse sabs = CLIENT pixels) and the game's own hit test (`hovered`) sees the
+# button under it (lock2 shows it highlighted). The click is injected too, but its effect is not asserted: the counter text did not change in the
+# capture (what Reset counter does is not RE'd here), so this row proves the pointer MAPPING over the modal, not the button's action.
+# NB: `scurpos` cannot gate here -- during the stall the drawn cursor global is not refreshed (the walk waited forever on it).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+winsize 1280 800
+winclient 1280 800
+screensettled
+gameclock +200
+log HOST res4_lock: frame_ready 1280x800
+logsel lock_pre
+log HOST res4_lock: stall start
+stalled 3500
+present Reset counter
+settled Reset counter
+screensettled
+dump
+logsel lock_stalled
+capture res4_df_lock
+pcapture res4_dp_lock
+log HOST res4_lock: modal_open
+# the pointer on Reset counter (screen px: the quad is 1.5x the 390x306 list at screen 228,147; the button's frame centre (432,425) maps to
+# (519,438)); the game's own hit test sees the widget under the pointer THROUGH the quad's inverse map, then the click is consumed
+rawmouse sabs 519 438
+hovered Reset counter
+rawmouse down l
+rawmouse up l
+screensettled
+capture res4_df_lock2
+pcapture res4_dp_lock2
+log HOST res4_lock: clicked
+log HOST res4_lock: stall end
+absent Reset counter
+signal hostdone
+end

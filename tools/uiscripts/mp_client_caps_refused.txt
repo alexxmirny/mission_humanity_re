@@ -1,0 +1,35 @@
+# patching:PT-CAP8 S5 CLIENT walk for caps_client_refused: the host plays with `[caps] raise=1`, this joiner has `[caps] relocate=0` (cannot raise), so it
+# must REFUSE the Start (never play unraised against a raised host) and be bounced to the browser with `Refused: cannot raise limits`.
+# Same join walk as mp_client_idle.txt up to the lobby; then, instead of the match, the destination is the browser.
+# Asserted here: the lobby goes away, the browser is back (`Join game`) and the notice is up. The post_check reads the
+# logs (refusal + bounce logged, no ADOPTED, no entry, no hashed sim step).
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+present Network players
+signal lobby
+settled Cancel
+
+# THE BOUNCE: the Start arrives, the client refuses it, and leaves the way a Cancel does.
+absent Network players
+onscreen Join game
+present Refused: cannot raise limits
+# let the browser finish its slide-in/rescan, then re-gate on the notice (the same discipline as mp_client_join_refused.txt)
+settled Join game
+present Refused: cannot raise limits
+capture caps_refused_browser
+log CLIENT: host Start refused (cannot raise the limits the host uses) -> back on the browser, notice up
+end

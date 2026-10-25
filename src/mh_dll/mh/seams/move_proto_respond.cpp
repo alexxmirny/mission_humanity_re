@@ -31,7 +31,8 @@
 #include "addr/mh_structs.gen.h"
 #include "hook/patch.h"    // patch_bytes_guarded
 #include "hook/promoted.h" // promoted_owner_of
-#include "state/roster_caps.h"
+#include "caps/caps.h"     // mh::caps::rec / g + mh_caps_row_bytes for rv_stub (PT-CAP8)
+#include "caps/orders.h"   // mh::caps::orders::base / cap: the order queue the game addresses (PT-CAP9-U5)
 #include "seams/net_internal.h"
 #include "seams/move_carrier.h"
 #include "en_guard.h"
@@ -65,9 +66,9 @@ const char *rs_state_name(int s) {
 
 // ---- state access (live bases: the hosted exe or the standalone host's own allocation) ---------------------------------------
 mh_map_object_unit *unit_rec(uint32_t player, int32_t idx) {
-    const auto caps = mh::state::live_roster_caps();
-    if (player >= 8 || idx < 0 || idx >= caps.units) return nullptr;
-    return reinterpret_cast<mh_map_object_unit *>(mh::state::live().base[mh::state::RID_UNITS]) + player * caps.units + idx;
+    const auto &u = mh::caps::g(mh::caps::UNITS);
+    if (player >= u.players || idx < 0 || (uint32_t)idx >= u.limit) return nullptr;
+    return mh::caps::rec<mh_map_object_unit>(mh::caps::UNITS, player, (uint32_t)idx);
 }
 const mh_cfg_final_struct_Unit *cfg_of(const mh_map_object_unit &u) {
     const auto *c = reinterpret_cast<const mh_cfg_final_struct_Unit *>(mh::state::live().base[mh::state::RID_UNIT]);
@@ -92,10 +93,8 @@ struct splice_world {
     uint32_t                   mask_x() { return reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->width_mask; }
     uint32_t                   mask_y() { return reinterpret_cast<const mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->height_mask; }
     mh_llm_strat_crew_soldier *soldier(uint32_t player, uint32_t si) {
-        const auto caps = mh::state::live_roster_caps();
-        auto      *sold = reinterpret_cast<mh_llm_strat_crew_soldier *>(mh::state::live().base[mh::state::RID_STRAT_SOLDIERS]);
-        if (!sold || si >= static_cast<uint32_t>(caps.soldiers)) return nullptr;
-        return &sold[player * caps.soldiers + si];
+        if (si >= mh::caps::g(mh::caps::SOLDIERS).limit) return nullptr;
+        return mh::caps::rec<mh_llm_strat_crew_soldier>(mh::caps::SOLDIERS, player, si);
     }
     void note_reverse(uint32_t player, int32_t idx, uint32_t fx, uint32_t fy, uint32_t tx, uint32_t ty, int ms) {
         if (g_mv_hit[MVH_REVERSE] >= 200) return; // the evidence line: bounded, a log only (the hit is counted after the apply)
@@ -119,8 +118,9 @@ double g_rs_turn_scale = 1.0; // 2^-k
 
 // Called from the dispatcher's retain path with the record just deferred. The rule is mh::sim::mvc::reverse_try (sim/move/respond.h).
 static void __cdecl rs_reverse(uint32_t player, int32_t idx, int32_t slot, int32_t boarding) {
-    const auto *queue = reinterpret_cast<const mh::game::mh_llm_strat_order *>(mh::state::live().base[mh::state::RID_STRAT_ORDER_QUEUE]);
-    if (!queue || slot < 0 || slot >= 300) return;
+    // PT-CAP9-U5: the queue the GAME is using (the wide array with the order layer ON) and its live bound, not the registry's stock mirror.
+    const auto *queue = reinterpret_cast<const mh::game::mh_llm_strat_order *>(mh::caps::orders::base(mh::caps::orders::QUEUE));
+    if (!queue || slot < 0 || static_cast<uint32_t>(slot) >= mh::caps::orders::cap(mh::caps::orders::QUEUE)) return;
     const mh::game::mh_llm_strat_order &q = queue[slot];
     splice_world                        w;
     if (mh::sim::mvc::reverse_try(w, player, idx, q.args[0], q.args[1], static_cast<uint16_t>(q.order_code), boarding != 0)) mv_hit(MVH_REVERSE);
@@ -140,7 +140,8 @@ __declspec(naked) static void rv_stub() {
         add   esp, 16
     rv_skip:
         popad
-        imul  edx, dword ptr [ebp - 0x34], 0x5b04   // the displaced instruction
+        mov   edx, dword ptr [ebp - 0x34]           // the displaced `imul edx,[ebp-0x34],0x5b04`, with the stride read from
+        imul  edx, dword ptr [mh_caps_row_bytes + 4 * MH_CAPS_IDX_UNITS] // the caps table (stock 100*233 = 0x5b04 today)
         push  0x00466c05
         ret
     }
@@ -179,7 +180,7 @@ void install_move_proto_respond() {
         g_rv_state = -2;
     } else {
         make_jmp(repl, sizeof(RV_EXPECT), ADDR_RV_SITE, reinterpret_cast<void *>(&rv_stub));
-        g_rv_state = mh::hook::patch_bytes_guarded(ADDR_RV_SITE, RV_EXPECT, repl, sizeof(RV_EXPECT)) ? 1 : -1;
+        g_rv_state = mh::hook::patch_bytes_guarded_caps(ADDR_RV_SITE, RV_EXPECT, repl, sizeof(RV_EXPECT)) ? 1 : -1;
     }
     if (mh::hook::promoted_owner_of(ADDR_TR_SITE)) {
         g_tr_state = -2;

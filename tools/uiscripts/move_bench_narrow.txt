@@ -1,0 +1,18 @@
+# TL-MOVE-BENCH narrow16 (mods:M1WL v5, user 2026-10-25: "find the tests for narrow path that you made - use them in benchmarks too"): the user's rc10
+# 'Pathfinding testing - Nortus 3' save (tools/uiscripts/saves/nortus-3.sav): 16 soldiers sent through the 3-4 tile passage at (125-133, 28-33) in SIX recorded
+# move orders (tools/uiscripts/narrow16_moves.csv). Under [net] move_stream_heat_cost=32 two of the orders made 4-5 detours of 25-53 tiles through the loop
+# north of the gap (the rc10 report's O2 and O5); the margin rule removes them. The verdict is NOT a frame: tools/check_move_bench.py (kind narrow16) reads the
+# probe's `; MV ...` lines and the net log and compares them with tools/data/move_bench_baseline.json. The one capture (right after the load) is the row's only frame baseline.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+gameclock +200
+capture move_bench_narrow
+gameclock +640000
+log move_bench_narrow: probe finished
+end

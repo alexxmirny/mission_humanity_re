@@ -658,6 +658,13 @@ LIGHT_RULES = (
         (),
         _GFX_ROWS,
     ),
+    # RES23-S6: a new / changed [video] key (ui_scale_notices, ui_scale_row, ...) is read by the presenter rows; the registry file alone used to run only the base set.
+    (
+        "ini key registry ([video] keys the UI rows read)",
+        r"^src/mh_dll/mh/config/ini_keys\.def$",
+        (),
+        _GFX_ROWS + ("res4_s150", "res_notice_100"),
+    ),
     (
         "input",
         r"^src/mh_dll/mh/(input/|seams/(ui_keyrepeat|ui_chat_input))",
@@ -665,6 +672,13 @@ LIGHT_RULES = (
         _INPUT_ROWS,
     ),
     ("menu / HUD UI", r"^src/mh_dll/mh/(ui/|seams/(ui_|mp_menu))", (), _UI_ROWS),
+    # TSCR1: the tactical camera-scroll splice and its pacer; the row measures the rate at two frame-rate stand-ins.
+    (
+        "tactical camera scroll (TSCR1)",
+        r"^src/mh_dll/(mh/seams/tact_scroll|mh/include/mh_tactscroll|libmh/tact/tact_scroll_pace)",
+        (),
+        ("tact_scroll",),
+    ),
     # TL-LIGHT-WALL-CAP: the `loopback` token (the six wall-bound udp/link suites, ~162 s plain and
     # again under ASan) is earned only by sources those suites EXECUTE: the mh_net / mh_net_udp
     # transports, the loopback selftest sources themselves, and adaptive_window.h (the one seams header
@@ -689,6 +703,16 @@ LIGHT_RULES = (
         r"^src/mh_dll/mh/seams/map_transfer",
         ("x2a_map_variant",),
         _MAP_ROWS,
+    ),
+    # PT-CAP8 slice D: the cap-raise layer (relocation applier, mh::caps table, the cap_v022 manifests/generators) is exactly what
+    # the ship-only A,C replays cannot attribute: arm B (all-original) vs C (the recording) is what proves the relocated layout
+    # is behaviour-neutral. The `abc3` token turns the two recorded-session units back to A,B,C for this run.
+    (
+        "cap-raise layer (relocation / limits / mh::caps)",
+        r"^src/mh_dll/mh/(patch|caps)/|^src/mh_dll/mh/desync/(desync_watch|scene_dump|world_sync)\.|^src/patcher/cap_v022_|^src/patcher/cap_v023_"
+        r"|^tools/gen_cap_(v022|units)_manifests\.py$",
+        ("abc3",),
+        (),
     ),
     # Named so they do not read as unmapped: the base set already runs what exercises them
     # (det/spdet read mh_harness.log; inmem applies the manifests; the smoke boots the shipped ini).
@@ -741,6 +765,7 @@ def light_selection(files, tests=None, registry_rows=()):
     sel = {
         "asan": False,
         "loopback": False,
+        "abc3": False,
         "units": set(),
         "rows": set(),
         "reasons": [],
@@ -756,7 +781,7 @@ def light_selection(files, tests=None, registry_rows=()):
             if re.search(rx, f):
                 hit = True
                 for u in units_:
-                    if u in ("asan", "loopback"):
+                    if u in ("asan", "loopback", "abc3"):
                         sel[u] = True
                     else:
                         sel["units"].add(u)
@@ -923,7 +948,7 @@ def light_units(args, sel, tests=()):
     # so A-vs-C detects what A-vs-B + B-vs-C detect; it gives up only ATTRIBUTION (promotion bug vs
     # replay drift), which the full profile's three arms still provide. One game, so weight 1.
     for r in rows:
-        if r["name"] in LIGHT_ABC_UNITS:
+        if r["name"] in LIGHT_ABC_UNITS and not sel.get("abc3"):
             r["cmd"] = r["cmd"] + ["--ui-abc-arms", "A,C"]
             r["weight"] = 1
             r["why"] = r["why"].split(",")[0] + ", SHIP ARM ONLY (A vs the recording oracle C)"
@@ -1465,6 +1490,21 @@ def _selftest_light():
     )
     full_abc = [r for r in units(_selftest_args()) if r["name"] in LIGHT_ABC_UNITS]
     hit = hit and not any("--ui-abc-arms" in r["cmd"] for r in full_abc)
+    # PT-CAP8 slice D: a change under the cap-raise layer puts the two recorded sessions back on A,B,C (no --ui-abc-arms, weight 2)
+    cap_sel = light_selection(["src/mh_dll/mh/caps/caps.cpp"], [])
+    cap_abc = [
+        r for r in light_units(_selftest_args(), cap_sel, []) if r["name"] in LIGHT_ABC_UNITS
+    ]
+    hit = (
+        hit
+        and cap_sel["abc3"]
+        and light_selection(["src/mh_dll/mh/desync/desync_watch.cpp"], [])[
+            "abc3"
+        ]  # PT-CAP8 S2: the hash wiring is part of the layer
+        and not light_selection(["src/mh_dll/mh/ui/ui_runtime.cpp"], [])["abc3"]
+        and len(cap_abc) == 2
+        and all("--ui-abc-arms" not in r["cmd"] and r["weight"] == 2 for r in cap_abc)
+    )
     print("  %-34s %s" % ("light abc = A,C; full keeps A,B,C", "ok" if hit else "XX"))
     ok = ok and hit
 
@@ -1525,7 +1565,10 @@ def _selftest_light():
         gone = sorted(promised - live)
         roster = {r["name"] for r in units(_selftest_args())}
         ugone = sorted(
-            (set(LIGHT_BASE_UNITS).union(*(set(r[2]) for r in LIGHT_RULES)) - {"asan", "loopback"})
+            (
+                set(LIGHT_BASE_UNITS).union(*(set(r[2]) for r in LIGHT_RULES))
+                - {"asan", "loopback", "abc3"}
+            )
             - roster
         )
         roster_suites = {
@@ -2326,6 +2369,7 @@ def main():
         rec["_light_selection"] = {
             "asan": sel["asan"],
             "loopback": sel["loopback"],
+            "abc3": sel.get("abc3", False),
             "units": sorted(sel["units"]),
             "rows": sorted(sel["rows"]),
             "unmapped": sel["unmapped"],

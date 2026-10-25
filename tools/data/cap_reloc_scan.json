@@ -1,0 +1,2597 @@
+{
+  "_generated_by": "tools/scan_cap_reloc_sites.py --rescan",
+  "_what": "PT-CAP8 S0 whole-.text relocation-field census of the clean EN exe against the cap manifests' byte extents. Every field of every cataloged array, covered or not; the uncovered ones carry a liveness verdict. Fields themselves: tools/data/cap_reloc_hits.json.",
+  "exe_md5": "b3b389e8eb228638de8dbbc5c228118b",
+  "closure_manifests": [],
+  "closure_globs": [
+    "cap_v022_*.mh.patch.json",
+    "cap_v023_*.mh.patch.json"
+  ],
+  "arrays": [
+    {
+      "name": "buildings",
+      "base": 12833440,
+      "elem": 273,
+      "count": 100,
+      "row": 27300,
+      "size": 218400,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "unit_storage",
+      "base": 13051840,
+      "elem": 244,
+      "count": 25,
+      "row": 6100,
+      "size": 48800,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "turrets",
+      "base": 13373408,
+      "elem": 55,
+      "count": 32,
+      "row": 1760,
+      "size": 14080,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "mines",
+      "base": 13644928,
+      "elem": 56,
+      "count": 32,
+      "row": 1792,
+      "size": 14336,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "labs",
+      "base": 13643136,
+      "elem": 8,
+      "count": 25,
+      "row": 200,
+      "size": 1600,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "productions",
+      "base": 14493256,
+      "elem": 405,
+      "count": 8,
+      "row": 3240,
+      "size": 25920,
+      "scope": "v0.2.2",
+      "players": 8
+    },
+    {
+      "name": "units",
+      "base": 14519368,
+      "elem": 233,
+      "count": 100,
+      "row": 23300,
+      "size": 186400,
+      "scope": "PT-CAP9",
+      "players": 8
+    },
+    {
+      "name": "soldiers",
+      "base": 14738856,
+      "elem": 29,
+      "count": 100,
+      "row": 2900,
+      "size": 23200,
+      "scope": "PT-CAP9",
+      "players": 8
+    },
+    {
+      "name": "projectiles",
+      "base": 14801816,
+      "elem": 121,
+      "count": 1500,
+      "row": 181500,
+      "size": 181500,
+      "scope": "v0.2.2",
+      "players": 1
+    }
+  ],
+  "coverage_by_array_role": {
+    "buildings": {
+      "row_stride": {
+        "covered": 1208,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 1559,
+        "partial": 0,
+        "none": 0
+      },
+      "imm_addr": {
+        "covered": 17,
+        "partial": 0,
+        "none": 2
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "abs": {
+        "covered": 2,
+        "partial": 0,
+        "none": 0
+      },
+      "data_ptr": {
+        "covered": 0,
+        "partial": 0,
+        "none": 2
+      },
+      "shift_chain": {
+        "covered": 254,
+        "partial": 0,
+        "none": 0
+      }
+    },
+    "units": {
+      "row_stride": {
+        "covered": 1641,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 1891,
+        "partial": 0,
+        "none": 0
+      },
+      "imm_addr": {
+        "covered": 11,
+        "partial": 0,
+        "none": 2
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 3
+      },
+      "data_ptr": {
+        "covered": 0,
+        "partial": 0,
+        "none": 1
+      }
+    },
+    "labs": {
+      "row_stride": {
+        "covered": 32,
+        "partial": 0,
+        "none": 0
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "disp": {
+        "covered": 19,
+        "partial": 0,
+        "none": 0
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 4
+      }
+    },
+    "unit_storage": {
+      "row_stride": {
+        "covered": 259,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 261,
+        "partial": 0,
+        "none": 0
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 3,
+        "partial": 0,
+        "none": 2
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 5
+      }
+    },
+    "productions": {
+      "row_stride": {
+        "covered": 56,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 56,
+        "partial": 0,
+        "none": 0
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 11
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      }
+    },
+    "projectiles": {
+      "imm_addr": {
+        "covered": 4,
+        "partial": 0,
+        "none": 2
+      },
+      "abs": {
+        "covered": 5,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 64,
+        "partial": 0,
+        "none": 0
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 4
+      },
+      "data_ptr": {
+        "covered": 0,
+        "partial": 0,
+        "none": 1
+      }
+    },
+    "turrets": {
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 7
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "row_stride": {
+        "covered": 77,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 87,
+        "partial": 0,
+        "none": 0
+      }
+    },
+    "mines": {
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 5
+      },
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "row_stride": {
+        "covered": 29,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 30,
+        "partial": 0,
+        "none": 0
+      }
+    },
+    "soldiers": {
+      "block_size": {
+        "covered": 1,
+        "partial": 0,
+        "none": 2
+      },
+      "imm_addr": {
+        "covered": 15,
+        "partial": 0,
+        "none": 2
+      },
+      "end": {
+        "covered": 0,
+        "partial": 0,
+        "none": 3
+      },
+      "row_stride": {
+        "covered": 163,
+        "partial": 0,
+        "none": 0
+      },
+      "disp": {
+        "covered": 166,
+        "partial": 0,
+        "none": 0
+      },
+      "data_ptr": {
+        "covered": 0,
+        "partial": 0,
+        "none": 1
+      }
+    }
+  },
+  "raw_coincidence_count": 1582,
+  "weak_stride_noise_dropped": 4,
+  "raw_only_count": 0,
+  "raw_only": [],
+  "uncovered_count": 83,
+  "uncovered": [
+    {
+      "va": "0x00447efb",
+      "w": 4,
+      "array": "buildings",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447efa",
+      "ins": "mov edx, 0x35520",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f00",
+      "w": 4,
+      "array": "buildings",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447eff",
+      "ins": "mov eax, 0xc3d2a0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x004483e7",
+      "w": 4,
+      "array": "buildings",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x004483e6",
+      "ins": "mov edx, 0x35520",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x004483ec",
+      "w": 4,
+      "array": "buildings",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x004483eb",
+      "ins": "mov eax, 0xc3d2a0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00511108",
+      "w": 4,
+      "array": "buildings",
+      "role": "data_ptr",
+      "status": "none",
+      "ins_va": "0x00511108",
+      "ins": "dword in DGROUP",
+      "fn": null,
+      "fn_entry": null,
+      "liveness": "orphan",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x0055e590",
+      "w": 4,
+      "array": "buildings",
+      "role": "data_ptr",
+      "status": "none",
+      "ins_va": "0x0055e590",
+      "ins": "dword in DGROUP",
+      "fn": null,
+      "fn_entry": null,
+      "liveness": "orphan",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x00447f8e",
+      "w": 4,
+      "array": "labs",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f8d",
+      "ins": "mov edx, 0x640",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f93",
+      "w": 4,
+      "array": "labs",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f92",
+      "ins": "mov eax, 0xd02d80",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x0044847a",
+      "w": 4,
+      "array": "labs",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00448479",
+      "ins": "mov edx, 0x640",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0044847f",
+      "w": 4,
+      "array": "labs",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x0044847e",
+      "ins": "mov eax, 0xd02d80",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0044b42c",
+      "w": 4,
+      "array": "labs",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0044b42a",
+      "ins": "mov dword ptr [edx + 0xd033c0], eax",
+      "fn": "llm_game_cheats_table_init",
+      "fn_entry": "0x0044b3eb",
+      "liveness": "live",
+      "chain": [
+        "llm_game_cheats_table_init",
+        "llm_strat_mode_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_strat_mode_init"
+      ]
+    },
+    {
+      "va": "0x0044b63c",
+      "w": 4,
+      "array": "labs",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0044b63a",
+      "ins": "mov eax, dword ptr [eax + 0xd033c0]",
+      "fn": "FUN_0044b5fe",
+      "fn_entry": "0x0044b5fe",
+      "liveness": "dead",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x0044b650",
+      "w": 4,
+      "array": "labs",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0044b64e",
+      "ins": "mov edx, dword ptr [eax + 0xd033c0]",
+      "fn": "FUN_0044b5fe",
+      "fn_entry": "0x0044b5fe",
+      "liveness": "dead",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x0044b703",
+      "w": 4,
+      "array": "labs",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0044b701",
+      "ins": "mov edx, dword ptr [eax + 0xd033c0]",
+      "fn": "llm_debug_console_dispatch",
+      "fn_entry": "0x0044b67f",
+      "liveness": "live",
+      "chain": [
+        "llm_debug_console_dispatch",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "llm_strat_input_update"
+      ]
+    },
+    {
+      "va": "0x00447eac",
+      "w": 4,
+      "array": "mines",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00447eab",
+      "ins": "mov eax, 0xd06c80",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f4f",
+      "w": 4,
+      "array": "mines",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f4e",
+      "ins": "mov edx, 0x3800",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f54",
+      "w": 4,
+      "array": "mines",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f53",
+      "ins": "mov eax, 0xd03480",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00448398",
+      "w": 4,
+      "array": "mines",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00448397",
+      "ins": "mov eax, 0xd06c80",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0044843b",
+      "w": 4,
+      "array": "mines",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x0044843a",
+      "ins": "mov edx, 0x3800",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448440",
+      "w": 4,
+      "array": "mines",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x0044843f",
+      "ins": "mov eax, 0xd03480",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0045612f",
+      "w": 4,
+      "array": "mines",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0045612e",
+      "ins": "mov eax, 0xd06c80",
+      "fn": "map_FillDefaults",
+      "fn_entry": "0x0045603e",
+      "liveness": "live",
+      "chain": [
+        "map_FillDefaults",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap_pre",
+        "llm_strat_mode_init"
+      ]
+    },
+    {
+      "va": "0x004a3692",
+      "w": 4,
+      "array": "mines",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a3691",
+      "ins": "mov eax, 0xd06c80",
+      "fn": "llm_map_load_halfres_plane",
+      "fn_entry": "0x004a3594",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap"
+      ]
+    },
+    {
+      "va": "0x004a49df",
+      "w": 4,
+      "array": "mines",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a49de",
+      "ins": "mov esi, 0xd06c80",
+      "fn": "llm_map_load_halfres_plane_loose",
+      "fn_entry": "0x004a48f9",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane_loose",
+        "llm_map_load_loose_fallback",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_map_load_loose_fallback"
+      ]
+    },
+    {
+      "va": "0x00447ed6",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00447ed5",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f3a",
+      "w": 4,
+      "array": "productions",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f39",
+      "ins": "mov edx, 0x6540",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f3f",
+      "w": 4,
+      "array": "productions",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f3e",
+      "ins": "mov eax, 0xdd2648",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x004483c2",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004483c1",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448426",
+      "w": 4,
+      "array": "productions",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00448425",
+      "ins": "mov edx, 0x6540",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0044842b",
+      "w": 4,
+      "array": "productions",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x0044842a",
+      "ins": "mov eax, 0xdd2648",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00454e27",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00454e25",
+      "ins": "mov eax, dword ptr [eax + 0xdd8b88]",
+      "fn": "llm_strat_landing_spots_reroll_out_of_bounds",
+      "fn_entry": "0x00454de5",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_landing_spots_reroll_out_of_bounds",
+        "llm_game_land_players_on_planet",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_game_land_players_on_planet"
+      ]
+    },
+    {
+      "va": "0x00454e4b",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00454e49",
+      "ins": "mov eax, dword ptr [eax + 0xdd8b88]",
+      "fn": "llm_strat_landing_spots_reroll_out_of_bounds",
+      "fn_entry": "0x00454de5",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_landing_spots_reroll_out_of_bounds",
+        "llm_game_land_players_on_planet",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_game_land_players_on_planet"
+      ]
+    },
+    {
+      "va": "0x00454e69",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00454e67",
+      "ins": "mov dword ptr [eax + 0xdd8b88], edx",
+      "fn": "llm_strat_landing_spots_reroll_out_of_bounds",
+      "fn_entry": "0x00454de5",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_landing_spots_reroll_out_of_bounds",
+        "llm_game_land_players_on_planet",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_game_land_players_on_planet"
+      ]
+    },
+    {
+      "va": "0x00454fc2",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00454fc0",
+      "ins": "mov ebx, dword ptr [eax + 0xdd8b88]",
+      "fn": "llm_strat_claim_landing_spot",
+      "fn_entry": "0x00454eb2",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_claim_landing_spot",
+        "llm_game_land_players_on_planet",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_game_land_players_on_planet",
+        "llm_strat_spawn_enemy_landing"
+      ]
+    },
+    {
+      "va": "0x00456162",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00456161",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "map_FillDefaults",
+      "fn_entry": "0x0045603e",
+      "liveness": "live",
+      "chain": [
+        "map_FillDefaults",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap_pre",
+        "llm_strat_mode_init"
+      ]
+    },
+    {
+      "va": "0x004a3b42",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a3b41",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "llm_map_load_landing_spots",
+      "fn_entry": "0x004a3b1c",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_landing_spots",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap"
+      ]
+    },
+    {
+      "va": "0x004a3b74",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a3b73",
+      "ins": "mov edi, 0xdd8b88",
+      "fn": "llm_map_load_landing_spots",
+      "fn_entry": "0x004a3b1c",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_landing_spots",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap"
+      ]
+    },
+    {
+      "va": "0x004a4f6e",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a4f6d",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "llm_map_load_landing_spots_loose",
+      "fn_entry": "0x004a4f48",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_landing_spots_loose",
+        "llm_map_load_loose_fallback",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_map_load_loose_fallback"
+      ]
+    },
+    {
+      "va": "0x004a4fa5",
+      "w": 4,
+      "array": "productions",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a4fa4",
+      "ins": "mov eax, 0xdd8b88",
+      "fn": "llm_map_load_landing_spots_loose",
+      "fn_entry": "0x004a4f48",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_landing_spots_loose",
+        "llm_map_load_loose_fallback",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_map_load_loose_fallback"
+      ]
+    },
+    {
+      "va": "0x00447dc0",
+      "w": 4,
+      "array": "projectiles",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447dbf",
+      "ins": "mov edx, 0x2c4fc",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447dc5",
+      "w": 4,
+      "array": "projectiles",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447dc4",
+      "ins": "mov eax, 0xe1db98",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x004482ac",
+      "w": 4,
+      "array": "projectiles",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x004482ab",
+      "ins": "mov edx, 0x2c4fc",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x004482b1",
+      "w": 4,
+      "array": "projectiles",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x004482b0",
+      "ins": "mov eax, 0xe1db98",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00456206",
+      "w": 4,
+      "array": "projectiles",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00456204",
+      "ins": "mov dword ptr [0xe4a094], 0",
+      "fn": "map_FillDefaults",
+      "fn_entry": "0x0045603e",
+      "liveness": "live",
+      "chain": [
+        "map_FillDefaults",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap_pre",
+        "llm_strat_mode_init"
+      ]
+    },
+    {
+      "va": "0x00462c4f",
+      "w": 4,
+      "array": "projectiles",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00462c4d",
+      "ins": "mov dword ptr [0xe4a094], 0",
+      "fn": "map_CreateBuilding",
+      "fn_entry": "0x004622cb",
+      "liveness": "live",
+      "chain": [
+        "map_CreateBuilding",
+        "llm_bldg_construct_finalize",
+        "llm_strat_order_queue_dispatch",
+        "llm_strat_sim_step",
+        "llm_strat_sim_tick",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "llm_bldg_construct_finalize"
+      ]
+    },
+    {
+      "va": "0x00479db4",
+      "w": 4,
+      "array": "projectiles",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00479db2",
+      "ins": "cmp dword ptr [0xe4a094], 0",
+      "fn": "llm_strat_bldg_completion_dispatch",
+      "fn_entry": "0x004795dd",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_bldg_completion_dispatch",
+        "llm_strat_bldg_state_researching",
+        "[address-taken at 0x0045f69e, 0x006cfa9e]"
+      ],
+      "callers": [
+        "llm_strat_bldg_state_charge_gate",
+        "llm_strat_bldg_state_upgrading",
+        "llm_strat_bldg_state_researching",
+        "llm_strat_bldg_state_prod_working",
+        "llm_strat_bldg_state_mine_extracting",
+        "llm_strat_bldg_construction_complete"
+      ]
+    },
+    {
+      "va": "0x00479dc7",
+      "w": 4,
+      "array": "projectiles",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00479dc5",
+      "ins": "mov dword ptr [0xe4a094], 0",
+      "fn": "llm_strat_bldg_completion_dispatch",
+      "fn_entry": "0x004795dd",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_bldg_completion_dispatch",
+        "llm_strat_bldg_state_researching",
+        "[address-taken at 0x0045f69e, 0x006cfa9e]"
+      ],
+      "callers": [
+        "llm_strat_bldg_state_charge_gate",
+        "llm_strat_bldg_state_upgrading",
+        "llm_strat_bldg_state_researching",
+        "llm_strat_bldg_state_prod_working",
+        "llm_strat_bldg_state_mine_extracting",
+        "llm_strat_bldg_construction_complete"
+      ]
+    },
+    {
+      "va": "0x00511194",
+      "w": 4,
+      "array": "projectiles",
+      "role": "data_ptr",
+      "status": "none",
+      "ins_va": "0x00511194",
+      "ins": "dword in DGROUP",
+      "fn": null,
+      "fn_entry": null,
+      "liveness": "orphan",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x00447f10",
+      "w": 4,
+      "array": "soldiers",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f0f",
+      "ins": "mov edx, 0x5aa0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f15",
+      "w": 4,
+      "array": "soldiers",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f14",
+      "ins": "mov eax, 0xe0e5a8",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x004483fc",
+      "w": 4,
+      "array": "soldiers",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x004483fb",
+      "ins": "mov edx, 0x5aa0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448401",
+      "w": 4,
+      "array": "soldiers",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00448400",
+      "ins": "mov eax, 0xe0e5a8",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448a88",
+      "w": 4,
+      "array": "soldiers",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00448a87",
+      "ins": "mov eax, 0xe14048",
+      "fn": "llm_cfg_save_final_snapshot",
+      "fn_entry": "0x004489a7",
+      "liveness": "dead",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x00448bba",
+      "w": 4,
+      "array": "soldiers",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00448bb9",
+      "ins": "mov eax, 0xe14048",
+      "fn": "llm_cfg_load_final_snapshot",
+      "fn_entry": "0x00448ad9",
+      "liveness": "dead",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x0045ebc2",
+      "w": 4,
+      "array": "soldiers",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0045ebc0",
+      "ins": "mov dword ptr [edx + 0xe14048], eax",
+      "fn": "cfg_final_tree_Construct",
+      "fn_entry": "0x0045eb8b",
+      "liveness": "live",
+      "chain": [
+        "cfg_final_tree_Construct",
+        "cfg_ConstructTrees",
+        "ConstructObjects",
+        "cfg_Init",
+        "InitSafe",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "cfg_ConstructTrees"
+      ]
+    },
+    {
+      "va": "0x00656948",
+      "w": 4,
+      "array": "soldiers",
+      "role": "data_ptr",
+      "status": "none",
+      "ins_va": "0x00656948",
+      "ins": "dword in DGROUP",
+      "fn": null,
+      "fn_entry": null,
+      "liveness": "orphan",
+      "chain": [],
+      "callers": []
+    },
+    {
+      "va": "0x00447e97",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00447e96",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f79",
+      "w": 4,
+      "array": "turrets",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f78",
+      "ins": "mov edx, 0x3700",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f7e",
+      "w": 4,
+      "array": "turrets",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f7d",
+      "ins": "mov eax, 0xcc0fe0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00448383",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x00448382",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448465",
+      "w": 4,
+      "array": "turrets",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00448464",
+      "ins": "mov edx, 0x3700",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0044846a",
+      "w": 4,
+      "array": "turrets",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00448469",
+      "ins": "mov eax, 0xcc0fe0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0045610d",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0045610c",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "map_FillDefaults",
+      "fn_entry": "0x0045603e",
+      "liveness": "live",
+      "chain": [
+        "map_FillDefaults",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap_pre",
+        "llm_strat_mode_init"
+      ]
+    },
+    {
+      "va": "0x004a35b7",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a35b6",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "llm_map_load_halfres_plane",
+      "fn_entry": "0x004a3594",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap"
+      ]
+    },
+    {
+      "va": "0x004a360e",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a360d",
+      "ins": "mov edi, 0xcc46e0",
+      "fn": "llm_map_load_halfres_plane",
+      "fn_entry": "0x004a3594",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "map_ReadMap"
+      ]
+    },
+    {
+      "va": "0x004a491c",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a491b",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "llm_map_load_halfres_plane_loose",
+      "fn_entry": "0x004a48f9",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane_loose",
+        "llm_map_load_loose_fallback",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_map_load_loose_fallback"
+      ]
+    },
+    {
+      "va": "0x004a496b",
+      "w": 4,
+      "array": "turrets",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a496a",
+      "ins": "mov eax, 0xcc46e0",
+      "fn": "llm_map_load_halfres_plane_loose",
+      "fn_entry": "0x004a48f9",
+      "liveness": "live",
+      "chain": [
+        "llm_map_load_halfres_plane_loose",
+        "llm_map_load_loose_fallback",
+        "map_ReadMap",
+        "map_ReadMap_pre",
+        "llm_strat_session_begin_multi",
+        "llm_game_start_tutorial",
+        "[address-taken at 0x0064fe23, 0x008b6623]"
+      ],
+      "callers": [
+        "llm_map_load_loose_fallback"
+      ]
+    },
+    {
+      "va": "0x00447f64",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447f63",
+      "ins": "mov edx, 0xbea0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447f69",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447f68",
+      "ins": "mov eax, 0xc727c0",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00448450",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x0044844f",
+      "ins": "mov edx, 0xbea0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x00448455",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00448454",
+      "ins": "mov eax, 0xc727c0",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0049ae45",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049ae42",
+      "ins": "mov word ptr [eax + 0xc7e660], 0x77",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x0049ae99",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049ae98",
+      "ins": "mov edi, 0xc7e660",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x0049af1f",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049af1e",
+      "ins": "mov eax, 0xc7e660",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x0049af3c",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049af3b",
+      "ins": "mov eax, 0xc7e660",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x004a1a3a",
+      "w": 4,
+      "array": "unit_storage",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x004a1a38",
+      "ins": "mov ebx, dword ptr [eax + 0xc7e660]",
+      "fn": "llm_strat_minimap_render",
+      "fn_entry": "0x004a17b3",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_render",
+        "llm_strat_minimap_frame",
+        "llm_strat_render_view",
+        "llm_ui_dlg_quit_cancel_cb",
+        "[address-taken at 0x006539c7, 0x008ba1c7]"
+      ],
+      "callers": [
+        "llm_strat_minimap_frame"
+      ]
+    },
+    {
+      "va": "0x00447ee6",
+      "w": 4,
+      "array": "units",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x00447ee5",
+      "ins": "mov edx, 0x2d820",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x00447eeb",
+      "w": 4,
+      "array": "units",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x00447eea",
+      "ins": "mov eax, 0xdd8c48",
+      "fn": "map_SavePlanetToDisk",
+      "fn_entry": "0x00447bb3",
+      "liveness": "live",
+      "chain": [
+        "map_SavePlanetToDisk",
+        "llm_strat_try_enter_tactical_mission",
+        "llm_strat_input_update",
+        "llm_strat_frame",
+        "llm_ui_tutorial_step_enter_cb",
+        "[address-taken at 0x00651033, 0x008b7833]"
+      ],
+      "callers": [
+        "game_SaveGame",
+        "SwitchToPlanet",
+        "llm_strat_try_enter_tactical_mission"
+      ]
+    },
+    {
+      "va": "0x004483d2",
+      "w": 4,
+      "array": "units",
+      "role": "block_size",
+      "status": "none",
+      "ins_va": "0x004483d1",
+      "ins": "mov edx, 0x2d820",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x004483d7",
+      "w": 4,
+      "array": "units",
+      "role": "imm_addr",
+      "status": "none",
+      "ins_va": "0x004483d6",
+      "ins": "mov eax, 0xdd8c48",
+      "fn": "map_LoadPlanetFromDisk",
+      "fn_entry": "0x00448107",
+      "liveness": "live",
+      "chain": [
+        "map_LoadPlanetFromDisk",
+        "SwitchToPlanet",
+        "llm_strat_planet_transition_perform_switch",
+        "llm_strat_planet_transition_tick",
+        "[address-taken at 0x004c432f, 0x0073472f]"
+      ],
+      "callers": [
+        "llm_game_load",
+        "SwitchToPlanet",
+        "llm_tact_mission_end_return_to_strategic"
+      ]
+    },
+    {
+      "va": "0x0049ad9c",
+      "w": 4,
+      "array": "units",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049ad99",
+      "ins": "mov word ptr [eax + 0xe06468], 0",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x0049add9",
+      "w": 4,
+      "array": "units",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049add6",
+      "ins": "mov word ptr [eax + 0xe06468], 0x40",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x0049adf1",
+      "w": 4,
+      "array": "units",
+      "role": "end",
+      "status": "none",
+      "ins_va": "0x0049adee",
+      "ins": "mov word ptr [eax + 0xe06468], 0x80",
+      "fn": "llm_strat_minimap_init",
+      "fn_entry": "0x0049ad06",
+      "liveness": "live",
+      "chain": [
+        "llm_strat_minimap_init",
+        "llm_boot_stage_tick",
+        "llm_frame_dispatch",
+        "llm_wnd_proc",
+        "[address-taken at 0x004a0719, 0x00710b19]"
+      ],
+      "callers": [
+        "llm_boot_stage_tick"
+      ]
+    },
+    {
+      "va": "0x00511180",
+      "w": 4,
+      "array": "units",
+      "role": "data_ptr",
+      "status": "none",
+      "ins_va": "0x00511180",
+      "ins": "dword in DGROUP",
+      "fn": null,
+      "fn_entry": null,
+      "liveness": "orphan",
+      "chain": [],
+      "callers": []
+    }
+  ],
+  "baseline_v022": [
+    {
+      "va": "0x00447dc0",
+      "array": "projectiles",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447dc5",
+      "array": "projectiles",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447ee6",
+      "array": "units",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447eeb",
+      "array": "units",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447efb",
+      "array": "buildings",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f00",
+      "array": "buildings",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f10",
+      "array": "soldiers",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f15",
+      "array": "soldiers",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f3a",
+      "array": "productions",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f3f",
+      "array": "productions",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f4f",
+      "array": "mines",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f54",
+      "array": "mines",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f64",
+      "array": "unit_storage",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f69",
+      "array": "unit_storage",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f79",
+      "array": "turrets",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f7e",
+      "array": "turrets",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f8e",
+      "array": "labs",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00447f93",
+      "array": "labs",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004482ac",
+      "array": "projectiles",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004482b1",
+      "array": "projectiles",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004483d2",
+      "array": "units",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004483d7",
+      "array": "units",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004483e7",
+      "array": "buildings",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004483ec",
+      "array": "buildings",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004483fc",
+      "array": "soldiers",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448401",
+      "array": "soldiers",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448426",
+      "array": "productions",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x0044842b",
+      "array": "productions",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x0044843b",
+      "array": "mines",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448440",
+      "array": "mines",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448450",
+      "array": "unit_storage",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448455",
+      "array": "unit_storage",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x00448465",
+      "array": "turrets",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x0044846a",
+      "array": "turrets",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x0044847a",
+      "array": "labs",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x0044847f",
+      "array": "labs",
+      "role": "imm_addr",
+      "liveness": "live",
+      "state": "by_design"
+    },
+    {
+      "va": "0x004560d3",
+      "array": "projectiles",
+      "role": "block_size",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x00492718",
+      "array": "buildings",
+      "role": "row_stride",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x00492721",
+      "array": "buildings",
+      "role": "disp",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x00492755",
+      "array": "buildings",
+      "role": "row_stride",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x0049275e",
+      "array": "buildings",
+      "role": "disp",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x004927af",
+      "array": "buildings",
+      "role": "row_stride",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x004927b8",
+      "array": "buildings",
+      "role": "disp",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x004927ec",
+      "array": "buildings",
+      "role": "row_stride",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x004927f5",
+      "array": "buildings",
+      "role": "disp",
+      "liveness": "live",
+      "state": "closed"
+    },
+    {
+      "va": "0x004e28d6",
+      "array": "buildings",
+      "role": "shift_chain",
+      "liveness": "live",
+      "state": "closed"
+    }
+  ],
+  "_baseline_why": "Uncovered NON-dead fields of the v0.2.2 arrays. state=open means PT-CAP8 S1 still owes the patch; --check goes red on any uncovered live field NOT listed here, on a listed field that is now covered (flip it to closed with --rescan), and, under --strict, on any open one. by_design = a save/load block size that stays vanilla under the trailer design (PT-CAP8 S3), never owed a patch."
+}

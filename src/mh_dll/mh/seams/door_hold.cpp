@@ -16,6 +16,12 @@
 //   vehicles_h         0x00476b81      0x00476b86     0x00476c0c
 //   barracks_garage_a  0x004767ed      0x004767f2     0x00476878
 //
+// mods:M1SH ("cover every door"): three more handlers close on the same rule and get the same splice (open state, same 5-byte MOV, same stub):
+//   llm_strat_bldg_anim_state_shuttle_a    0x00477d9e  (type 0x0d)  site 0x00477f92  continue 0x00477f97  open-hold 0x0047801d
+//   llm_strat_bldg_anim_state_shuttle_h    0x0047815f  (type 0x21)  site 0x00478353  continue 0x00478358  open-hold 0x004783de
+//   llm_strat_bldg_anim_state_airfield_a   0x00477881  (type 9)     site 0x00477a4e  continue 0x00477a53  open-hold 0x00477ad2
+// Not spliced (no matching rule / no door state machine): helipad 0x004773f4 and port 0x004786f5 (mutex unit state tests), airfield_h, helipad_a, port_h.
+//
 // Key 0 = the stubs return 0 at once: the displaced instruction plus the original continuation, so the handlers run their retail bytes.
 // Determinism: units scanned in index order, integer reads only (unit records, tile objects, the storage record), no clock, no rand; it writes
 // nothing. If libmh fills the building tick2 table with its own thunks these retail bodies are dead and the libmh twin carries the key (the carrier
@@ -30,7 +36,7 @@
 
 #include "addr/mh_regions.gen.h" // mh::state::live(), RID_*
 #include "addr/mh_structs.gen.h"
-#include "state/roster_caps.h"
+#include "caps/caps.h"     // mh::caps::rec / g: the unit + storage arrays the game addresses (PT-CAP8)
 #include "hook/patch.h"    // patch_bytes_guarded
 #include "hook/promoted.h" // promoted_owner_of
 #include "seams/net_internal.h"
@@ -49,24 +55,30 @@ constexpr uintptr_t ADDR_CUR_BUILDING = 0x00e162dc; // _G_LLM_STRAT_CUR_BUILDING
 constexpr uintptr_t ADDR_CUR_PLAYER   = 0x00e58144; // _G_LLM_STRAT_CUR_PLAYER (word)
 constexpr uint32_t  OFF_SUB_ID        = 0xc6;       // building.sub_id (byte): the storage slot
 
-constexpr uintptr_t ADDR_DH_SOLDIERS = 0x00477075; // soldiers_h caseD_2
-constexpr uintptr_t ADDR_DH_VEHICLES = 0x00476b81; // vehicles_h caseD_2
-constexpr uintptr_t ADDR_DH_BARRACKS = 0x004767ed; // barracks_garage_a caseD_2
+constexpr uintptr_t ADDR_DH_SOLDIERS  = 0x00477075; // soldiers_h caseD_2
+constexpr uintptr_t ADDR_DH_VEHICLES  = 0x00476b81; // vehicles_h caseD_2
+constexpr uintptr_t ADDR_DH_BARRACKS  = 0x004767ed; // barracks_garage_a caseD_2
+constexpr uintptr_t ADDR_DH_SHUTTLE_A = 0x00477f92; // shuttle_a open-door close test (mods:M1SH)
+constexpr uintptr_t ADDR_DH_SHUTTLE_H = 0x00478353; // shuttle_h open-door close test
+constexpr uintptr_t ADDR_DH_AIRFIELD  = 0x00477a4e; // airfield_a caseD_2
 
 const uint8_t DH_EXPECT[5] = {0xA1, 0xDC, 0x62, 0xE1, 0x00}; // MOV EAX,[CUR_BUILDING]
 
-int g_dh_state_soldiers = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
-int g_dh_state_vehicles = 0;
-int g_dh_state_barracks = 0;
+int g_dh_state_soldiers  = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
+int g_dh_state_vehicles  = 0;
+int g_dh_state_barracks  = 0;
+int g_dh_state_shuttle_a = 0;
+int g_dh_state_shuttle_h = 0;
+int g_dh_state_airfield  = 0;
 
 const char *dh_state_name(int s) {
     return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns the function; its twin carries the key, see the carrier line)" : "not installed"));
 }
 
 mh_map_object_unit *unit_rec(uint32_t player, int32_t idx) {
-    const auto caps = mh::state::live_roster_caps();
-    if (player >= 8 || idx < 0 || idx >= caps.units) return nullptr;
-    return reinterpret_cast<mh_map_object_unit *>(mh::state::live().base[mh::state::RID_UNITS]) + player * caps.units + idx;
+    const auto &u = mh::caps::g(mh::caps::UNITS);
+    if (player >= u.players || idx < 0 || (uint32_t)idx >= u.limit) return nullptr;
+    return mh::caps::rec<mh_map_object_unit>(mh::caps::UNITS, player, (uint32_t)idx);
 }
 
 // The retail splice's WORLD for the shared rule (sim/move/enter_queue.h): live game memory.
@@ -77,7 +89,7 @@ struct splice_world {
     }
     uint32_t mask_x() { return reinterpret_cast<const mh::game::mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->width_mask; }
     uint32_t mask_y() { return reinterpret_cast<const mh::game::mh_llm_strat_map_geom *>(mh::state::live().base[mh::state::RID_GENERAL])->height_mask; }
-    int32_t  unit_limit() { return mh::state::live_roster_caps().units; }
+    int32_t  unit_limit() { return static_cast<int32_t>(mh::caps::g(mh::caps::UNITS).limit); }
     void     hit_dh() { mv_hit(MVH_DH); }
 };
 
@@ -92,6 +104,12 @@ uintptr_t g_dh_ret_veh   = 0x00476b86;
 uintptr_t g_dh_hold_veh  = 0x00476c0c;
 uintptr_t g_dh_ret_bar   = 0x004767f2;
 uintptr_t g_dh_hold_bar  = 0x00476878;
+uintptr_t g_dh_ret_sha   = 0x00477f97;
+uintptr_t g_dh_hold_sha  = 0x0047801d;
+uintptr_t g_dh_ret_shh   = 0x00478358;
+uintptr_t g_dh_hold_shh  = 0x004783de;
+uintptr_t g_dh_ret_air   = 0x00477a53;
+uintptr_t g_dh_hold_air  = 0x00477ad2;
 }
 
 // 1 = keep the open door open. Only a door that is otherwise idle can close, so only then is the scan worth doing.
@@ -101,9 +119,9 @@ static int __cdecl dh_decide() {
     const uint8_t *b      = *reinterpret_cast<const uint8_t *const *>(ADDR_CUR_BUILDING);
     if (!b) return 0;
     const uint32_t slot = b[OFF_SUB_ID];
-    const auto     caps = mh::state::live_roster_caps();
-    if (player >= 8 || slot >= static_cast<uint32_t>(caps.storage)) return 0;
-    const auto *st = reinterpret_cast<const mh_map_object_unit_storage *>(mh::state::live().base[mh::state::RID_UNIT_STORAGE]) + player * caps.storage + slot;
+    const auto    &sg   = mh::caps::g(mh::caps::UNIT_STORAGE);
+    if (player >= sg.players || slot >= sg.limit) return 0;
+    const auto *st = mh::caps::rec<mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, player, slot);
     if (st->door_mutex_unit != 0 || st->door_waiter_count != 0) return 0; // retail keeps the door open anyway
     splice_world w;
     return mh::sim::mvc::dh_entering_near(w, player, static_cast<int32_t>(slot), st->exit_tile_x, st->exit_tile_y) ? 1 : 0;
@@ -154,6 +172,51 @@ __declspec(naked) static void dh_stub_barracks() {
         jmp   dword ptr [g_dh_hold_bar]
     }
 }
+
+__declspec(naked) static void dh_stub_sha() {
+    __asm {
+        pushad
+        call  dh_decide
+        test  eax, eax
+        jnz   dh_hold
+        popad
+        mov   eax, dword ptr ds:[0x00e162dc]    // the displaced instruction
+        jmp   dword ptr [g_dh_ret_sha]
+    dh_hold:
+        popad
+        jmp   dword ptr [g_dh_hold_sha]
+    }
+}
+
+__declspec(naked) static void dh_stub_shh() {
+    __asm {
+        pushad
+        call  dh_decide
+        test  eax, eax
+        jnz   dh_hold
+        popad
+        mov   eax, dword ptr ds:[0x00e162dc]    // the displaced instruction
+        jmp   dword ptr [g_dh_ret_shh]
+    dh_hold:
+        popad
+        jmp   dword ptr [g_dh_hold_shh]
+    }
+}
+
+__declspec(naked) static void dh_stub_air() {
+    __asm {
+        pushad
+        call  dh_decide
+        test  eax, eax
+        jnz   dh_hold
+        popad
+        mov   eax, dword ptr ds:[0x00e162dc]    // the displaced instruction
+        jmp   dword ptr [g_dh_ret_air]
+    dh_hold:
+        popad
+        jmp   dword ptr [g_dh_hold_air]
+    }
+}
 // clang-format on
 
 namespace {
@@ -188,12 +251,34 @@ void install_door_hold() {
         jmp_to(ADDR_DH_BARRACKS, reinterpret_cast<void *>(&dh_stub_barracks), repl);
         g_dh_state_barracks = mh::hook::patch_bytes_guarded(ADDR_DH_BARRACKS, DH_EXPECT, repl, 5) ? 1 : -1;
     }
+    if (mh::hook::promoted_owner_of(ADDR_DH_SHUTTLE_A)) {
+        g_dh_state_shuttle_a = -2;
+    } else {
+        jmp_to(ADDR_DH_SHUTTLE_A, reinterpret_cast<void *>(&dh_stub_sha), repl);
+        g_dh_state_shuttle_a = mh::hook::patch_bytes_guarded(ADDR_DH_SHUTTLE_A, DH_EXPECT, repl, 5) ? 1 : -1;
+    }
+    if (mh::hook::promoted_owner_of(ADDR_DH_SHUTTLE_H)) {
+        g_dh_state_shuttle_h = -2;
+    } else {
+        jmp_to(ADDR_DH_SHUTTLE_H, reinterpret_cast<void *>(&dh_stub_shh), repl);
+        g_dh_state_shuttle_h = mh::hook::patch_bytes_guarded(ADDR_DH_SHUTTLE_H, DH_EXPECT, repl, 5) ? 1 : -1;
+    }
+    if (mh::hook::promoted_owner_of(ADDR_DH_AIRFIELD)) {
+        g_dh_state_airfield = -2;
+    } else {
+        jmp_to(ADDR_DH_AIRFIELD, reinterpret_cast<void *>(&dh_stub_air), repl);
+        g_dh_state_airfield = mh::hook::patch_bytes_guarded(ADDR_DH_AIRFIELD, DH_EXPECT, repl, 5) ? 1 : -1;
+    }
     mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_SOLDIERS, g_dh_state_soldiers);
     mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_VEHICLES, g_dh_state_vehicles);
     mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_BARRACKS, g_dh_state_barracks);
-    char b[320];
-    wsprintfA(b, "; move prototype splice (mods:M1BE storage door hold): soldiers_h %s; vehicles_h %s; barracks_garage_a %s\n", dh_state_name(g_dh_state_soldiers),
-              dh_state_name(g_dh_state_vehicles), dh_state_name(g_dh_state_barracks));
+    mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_SHUTTLE_A, g_dh_state_shuttle_a);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_SHUTTLE_H, g_dh_state_shuttle_h);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_DOOR_AIRFIELD, g_dh_state_airfield);
+    char b[480];
+    wsprintfA(b, "; move prototype splice (mods:M1BE/M1SH storage door hold): soldiers_h %s; vehicles_h %s; barracks_garage_a %s; shuttle_a %s; shuttle_h %s; airfield_a %s\n",
+              dh_state_name(g_dh_state_soldiers), dh_state_name(g_dh_state_vehicles), dh_state_name(g_dh_state_barracks), dh_state_name(g_dh_state_shuttle_a),
+              dh_state_name(g_dh_state_shuttle_h), dh_state_name(g_dh_state_airfield));
     seam_log(b);
 }
 
@@ -203,6 +288,8 @@ void mh_set_storage_door_hold(int on) {
     on      = on != 0;
     g_dh_on = 0;
     mh::seams::mv::request(mh::seams::mv::KEY_STORAGE_DOOR_HOLD, on, 0);
-    if (!on || (g_dh_state_soldiers != 1 && g_dh_state_vehicles != 1 && g_dh_state_barracks != 1)) return;
+    if (!on || (g_dh_state_soldiers != 1 && g_dh_state_vehicles != 1 && g_dh_state_barracks != 1 && g_dh_state_shuttle_a != 1 &&
+                g_dh_state_shuttle_h != 1 && g_dh_state_airfield != 1))
+        return;
     g_dh_on = 1;
 }

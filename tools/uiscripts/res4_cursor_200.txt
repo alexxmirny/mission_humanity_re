@@ -1,0 +1,54 @@
+# res4_cursor_200 -- mods:RES4 stage 5: the owned cursor at ui_scale=200 on a pinned 1280x960 screen (ini/res4_s200.ini, frame 1120x928).
+# The pointer is parked (owned DirectInput, `rawmouse sabs` = CLIENT pixels) on the map (1:1), on the scaled side panel (the HUD Menu
+# button) and on the scaled bottom strip. At each stop `capture` is the game's own frame and `pcapture` the PRESENTED image: the cursor is
+# an overlay the presenter draws at 200% over the quads, not part of the frame. tools/check_res4_cursor.py demands: nothing differs outside
+# the cursor rect (no trail, no second cursor), the drawn box is the sprite's box scaled by 200% and hung on the pointer's hotspot, the game
+# frame carries no cursor of its own. Last, the HUD Menu button is CLICKED with the scaled cursor sitting on it: the ESC menu opens (a click
+# lands where the scaled cursor's hotspot points).
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winsize 1280 960
+winclient 1280 960
+screensettled
+gameclock +100
+log res4 frame_ready 1280x960 @200
+
+rawmouse sabs 300 300
+scurpos 300 300
+gameclock +40
+capture res4_cf_map
+pcapture res4_cp_map
+
+rawmouse sabs 1176 301
+scurpos 1176 301
+gameclock +40
+capture res4_cf_panel
+pcapture res4_cp_panel
+
+rawmouse sabs 300 940
+scurpos 300 940
+gameclock +40
+capture res4_cf_strip
+pcapture res4_cp_strip
+
+# click-through: the scaled cursor sits on the Menu button; the click opens the ESC menu
+rawmouse sabs 1176 301
+scurpos 1176 301
+gameclock +40
+rawmouse down l
+rawmouse up l
+retry 1500 3 3 settled value:113
+log res4 menu_opened_by_scaled_cursor_click
+clickv 103
+gamemode 2
+gameclock +100
+log res4 COMPLETE -- ui_scale=200: owned cursor on map, panel and strip, hotspot click-through
+end

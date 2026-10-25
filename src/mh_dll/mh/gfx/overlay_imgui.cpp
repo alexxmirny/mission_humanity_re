@@ -80,16 +80,20 @@
 #endif
 #include <windows.h>
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
+#include <float.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <d3d11.h>
 
 #include "imgui.h"
+#include "imgui_internal.h" // FindWindowByName / SetWindowPos(ImGuiWindow*): the panel is clamped BEFORE its Begin, so a title-bar drag never shows an out-of-image frame
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 
 #include "gfx/overlay_imgui.h"
+#include "gfx/heat_xf.h"
 #include "gfx/present_backend.h"       // fit_image_rect -- the presenter's image rect
 #include "gfx/ddraw_own.h"             // owned_filter / owned_set_filter / owned_vsync: the live options
 #include "input/dinput_own.h"          // PT-INPUT1: the owned DirectInput's mouse filter point
@@ -99,6 +103,10 @@
 #include "include/mh_log_sink.h"       // LOG1: async log sink
 #include "include/mh_overlay_export.h" // MH_Overlay_Provider* -- the debug overlay's readouts
 #include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the harness `hotkey` action
+#include "include/mh_mapzoom_export.h" // MH_MapZoom_Get -- the zoom crop (mods:M1WL v3 heat map)
+#include "addr/mh_structs.gen.h"       // mh_llm_strat_map_geom (the camera wrap masks)
+#include "state/region_runtime.h"      // mh::state::ptr / RID_GENERAL / RID_MAP_CAM_COL / ROW
+#include "seams/heat_ui.h"             // mods:M1WL v3: the Stream heat section's reads and the live setter
 
 #pragma comment(lib, "user32.lib")
 
@@ -381,6 +389,16 @@ void drain_keyboard() {
 // With no DI mouse ([input] mouse_absolute=1, the harness's `wmclick`) the game cursor is the mapped OS
 // pointer anyway; ImGui still takes its position from the game cursor, and its buttons from messages.
 bool cursor_client(float *x, float *y) { // the game cursor in client pixels; false when unmappable
+    // M1WL v6: the presenter's own mapping first -- it knows the ui_scale quad layout (map 1:1, HUD panel and strip enlarged), which the plain
+    // letterbox below does not, so the drawn cursor and this point are the same pixel. The letterbox stays as the fallback (no owned presenter).
+    {
+        POINT p = {(LONG)*x, (LONG)*y};
+        if (mh::gfx::owned_game_to_client(&p)) {
+            *x = (float)p.x;
+            *y = (float)p.y;
+            return true;
+        }
+    }
     int mw = 0, mh = 0;
     if (!g_hwnd || !mh::gfx::owned_mode_size(&mw, &mh)) return false;
     RECT cr;
@@ -440,9 +458,19 @@ void filter_mouse_records(di_object_data *rg, DWORD *inout) {
     if (!g_open && !g_di_swallowed) return; // closed and nothing owed: untouched
     const bool feed = g_open && g_ctx;
     if (feed) ImGui::SetCurrentContext(g_ctx);
-    int       x = rd<int>(ADDR_DI_LAST_X), y = rd<int>(ADDR_DI_LAST_Y);
-    const int bw = rd<int>(ADDR_DI_BOUND_W), bh = rd<int>(ADDR_DI_BOUND_H);
-    auto      pos_event = [&]() {
+    // M1WL v6: the position is the DRAWN cursor (the game's screen cursor), not the DirectInput accumulator: once the pointer is over the ui_scale HUD
+    // panel the two differ (rc11 trace: 4441 of 8271 rows, e.g. 1759,332 against 1526,459), so clicks and the panel hit-test followed the wrong point.
+    // The batch's motion records are added on top (the game integrates them after this filter runs), clamped to the mode box.
+    int x = rd<int>(ADDR_CURSOR_X), y = rd<int>(ADDR_CURSOR_Y);
+    int bw = rd<int>(ADDR_DI_BOUND_W), bh = rd<int>(ADDR_DI_BOUND_H);
+    {
+        int mw = 0, mh = 0;
+        if (mh::gfx::owned_mode_size(&mw, &mh) && mw > 0 && mh > 0) {
+            bw = mw;
+            bh = mh;
+        }
+    }
+    auto pos_event = [&]() {
         float cx = (float)x, cy = (float)y;
         if (feed && cursor_client(&cx, &cy)) ImGui::GetIO().AddMousePosEvent(cx, cy);
     };
@@ -800,10 +828,259 @@ void draw_presenter_controls() {
     }
 }
 
+// ---- mods:M1WL v3: the "Stream heat" section and the heat map ---------------------------------------------------------------------------------
+// The section changes the movement planner's stream-heat keys LIVE (single player only; greyed in a lockstep session, seams/heat_ui.h), and draws a
+// heat map over the strategic map. The map is DISPLAY ONLY: it reads the unit table (traffic), a DLL-side snapshot the heat rule fills on each plan
+// (last plan) and the planning unit's live path; it writes no sim memory and consumes no RNG. It draws only while the panel is open (the overlay
+// does not exist otherwise) and only in the strategic map mode, clipped to the map view so the HUD panel and the bottom strip stay clean.
+//
+// TILE -> SCREEN. The strategic view draws world pixel (cam_col * 32 + p) at viewport pixel p, with the zoom module's crop in between (MH_MapZoom_Get:
+// crop origin zl / zt, size zcw x zch, stretched over the W x H viewport): a tile at column offset dc from the camera starts at viewport pixel
+// (dc * 32 - zl) * W / zcw. The camera, like the map, is a torus: dc is folded into [-w/2, w/2). The viewport pixel is a GAME pixel (the viewport
+// sits at the frame's origin); game -> client goes through the presenter's mapping (owned_game_to_client) at two far corners, which gives the linear map
+// even where [video] ui_scale lays the frame out as several quads (the map quad is 1:1).
+constexpr uintptr_t ADDR_GAME_MODE = mh::addr::_G_LLM_GAME_MODE;
+constexpr uintptr_t ADDR_VIEW_W    = mh::addr::G_WIN_W; // the strategic viewport (window minus the 160 px panel)
+constexpr uintptr_t ADDR_VIEW_H    = mh::addr::G_WIN_H;
+constexpr int       HEAT_TILE_PX   = mh::gfx::heat::HEAT_TILE_PX;
+
+int g_heat_map = 0; // 0 off, 1 last plan, 2 traffic ([video] imgui_heat_map = the mode at start)
+
+using mh::gfx::heat::heat_xf;
+
+bool heat_transform(heat_xf *x) {
+    if (rd<uint8_t>(ADDR_GAME_MODE) != 2) return false; // the strategic map only
+    const int   vw = rd<int32_t>(ADDR_VIEW_W), vh = rd<int32_t>(ADDR_VIEW_H);
+    const auto *geom = mh::state::ptr<const mh::game::mh_llm_strat_map_geom>(mh::state::RID_GENERAL);
+    if (vw < 64 || vh < 64 || !geom) return false;
+    x->mw = (int)geom->width_mask + 1;
+    x->mh = (int)geom->height_mask + 1;
+    if (x->mw < 8 || x->mh < 8 || (x->mw & (x->mw - 1)) || (x->mh & (x->mh - 1))) return false;
+    x->vw    = vw;
+    x->vh    = vh;
+    x->camc  = *mh::state::ptr<const int32_t>(mh::state::RID_MAP_CAM_COL);
+    x->camr  = *mh::state::ptr<const int32_t>(mh::state::RID_MAP_CAM_ROW);
+    int z100 = 100, zl = 0, zt = 0, zcw = 0, zch = 0;
+    MH_MapZoom_Get(&z100, &zl, &zt, &zcw, &zch);
+    x->zl    = zcw > 0 ? zl : 0;
+    x->zt    = zch > 0 ? zt : 0;
+    x->zcw   = zcw > 0 ? zcw : vw;
+    x->zch   = zch > 0 ? zch : vh;
+    POINT p0 = {0, 0}, p1 = {vw / 2, vh / 2}, pc = {vw - 1, vh - 1};
+    if (!mh::gfx::owned_game_to_client(&p0) || !mh::gfx::owned_game_to_client(&p1) || !mh::gfx::owned_game_to_client(&pc)) return false;
+    if (!x->set_map_points(p0.x, p0.y, p1.x, p1.y, pc.x, pc.y)) return false;
+    x->ok = true;
+    return true;
+}
+
+uint8_t g_heat_level[65536]; // traffic mode: the decayed units-per-tile level (0 .. 255)
+uint8_t g_heat_now[65536];
+
+ImU32 heat_color_plan(int count) { // 1 mate yellow -> 4 and more red
+    const int   c = count < 1 ? 1 : (count > 4 ? 4 : count);
+    const float t = (float)(c - 1) / 3.0f;
+    return IM_COL32(255, (int)(220.0f - 180.0f * t), 0, (int)(95.0f + 80.0f * t));
+}
+
+ImU32 heat_color_traffic(int level) { // blue -> magenta -> red as the level climbs
+    const float t = (float)level / 255.0f;
+    return IM_COL32((int)(40.0f + 215.0f * t), (int)(90.0f * (1.0f - t)), (int)(255.0f * (1.0f - t * 0.6f)), (int)(70.0f + 120.0f * t));
+}
+
+void draw_heat_map() {
+    if (g_heat_map == 0) return;
+    heat_xf x;
+    if (!heat_transform(&x)) return;
+    ImDrawList *dl = ImGui::GetBackgroundDrawList();
+    // clip to the map view: the viewport corners in client pixels
+    dl->PushClipRect(ImVec2(x.ox, x.oy), ImVec2(x.cx1, x.cy1), true);
+    if (g_heat_map == 1) {
+        const mh::heatui::snapshot &sn = mh::heatui::last_plan();
+        for (int k = 0; k < sn.n; ++k) {
+            if (sn.cnt[k] == 0) continue;
+            const ImU32 col = heat_color_plan(sn.cnt[k]);
+            x.each_copy((int)(sn.flat[k] >> 8), (int)(sn.flat[k] & 0xff), [&](int di, int dj) {
+                ImVec2 a, b;
+                if (x.tile_rect(di, dj, &a, &b)) dl->AddRectFilled(a, b, col);
+            });
+        }
+        if (sn.seq != 0) { // the planning unit's route from where it is now
+            static uint32_t route[300 * 4];
+            const int       n = mh::heatui::unit_route(sn.player, sn.unit, route, 300 * 4);
+            // The route is UNWRAPPED: the first tile at its first visible offset, every later one a small signed step from the one before, so the line
+            // stays one piece across the fold seam. It is then drawn at each map-width shift that lands in view (a view wider than the map repeats it).
+            int pc = 0, pr = 0, ui = 0, uj = 0, pui = 0, puj = 0;
+            for (int k = 0; k < n; ++k) {
+                const int c = (int)(route[k] >> 8), r = (int)(route[k] & 0xff);
+                pui = ui;
+                puj = uj;
+                if (k == 0) {
+                    ui = x.first_i(c);
+                    uj = x.first_j(r);
+                } else {
+                    ui += x.fold(c - pc, x.mw);
+                    uj += x.fold(r - pr, x.mh);
+                }
+                pc = c;
+                pr = r;
+                for (int sj = -1; sj <= 1; ++sj)
+                    for (int si = -1; si <= 1; ++si) {
+                        ImVec2 a, b;
+                        if (!x.tile_rect(ui + si * x.mw, uj + sj * x.mh, &a, &b)) continue;
+                        const ImVec2 c2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
+                        dl->AddRectFilled(ImVec2(c2.x - 2.0f, c2.y - 2.0f), ImVec2(c2.x + 2.0f, c2.y + 2.0f), IM_COL32(0, 230, 255, 230));
+                        ImVec2 pa, pb;
+                        if (k > 0 && x.tile_rect(pui + si * x.mw, puj + sj * x.mh, &pa, &pb))
+                            dl->AddLine(ImVec2((pa.x + pb.x) * 0.5f, (pa.y + pb.y) * 0.5f), c2, IM_COL32(0, 230, 255, 200), 1.5f);
+                    }
+            }
+        }
+    } else {
+        mh::heatui::traffic_sample(g_heat_now);
+        for (int i = 0; i < 65536; ++i) {
+            int lv = g_heat_level[i];
+            lv -= (lv >> 3) + (lv ? 1 : 0); // a short decay (about 20 presents)
+            const int now = g_heat_now[i] * 64;
+            if (now > lv) lv = now > 255 ? 255 : now;
+            g_heat_level[i] = (uint8_t)lv;
+        }
+        const int i0 = (x.zl / HEAT_TILE_PX) - 1, i1 = (x.zl + x.zcw) / HEAT_TILE_PX + 1;
+        const int j0 = (x.zt / HEAT_TILE_PX) - 1, j1 = (x.zt + x.zch) / HEAT_TILE_PX + 1;
+        for (int dj = j0; dj <= j1; ++dj)
+            for (int di = i0; di <= i1; ++di) {
+                const uint32_t c = (uint32_t)(x.camc + di) & (uint32_t)(x.mw - 1), r = (uint32_t)(x.camr + dj) & (uint32_t)(x.mh - 1);
+                const int      lv = g_heat_level[(c << 8) | r];
+                if (lv == 0) continue;
+                ImVec2 a, b;
+                if (!x.tile_rect(di, dj, &a, &b)) continue;
+                dl->AddRectFilled(a, b, heat_color_traffic(lv));
+            }
+    }
+    dl->PopClipRect();
+}
+
+// A slider whose value is applied when the drag ENDS (one log line, one hook run per edit instead of one per frame); while it is held it shows the
+// value being dragged, not the one in force.
+struct heat_edit {
+    bool active = false;
+    int  v      = 0;
+};
+bool heat_slider(const char *label, int cur, int lo, int hi, heat_edit &e, const char *shown, int *applied) {
+    int v = e.active ? e.v : cur;
+    if (ImGui::SliderInt(label, &v, lo, hi, shown, ImGuiSliderFlags_AlwaysClamp)) {
+        e.active = true;
+        e.v      = v;
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        e.active = false;
+        *applied = v;
+        return true;
+    }
+    if (!ImGui::IsItemActive() && !ImGui::IsItemEdited()) e.active = false;
+    return false;
+}
+
+void draw_heat_section() {
+    if (!ImGui::CollapsingHeader("Stream heat", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    using namespace mh::gameplay;
+    mh::heatui::live_values lv;
+    mh::heatui::get_live(&lv);
+    const char *why    = nullptr;
+    const bool  locked = heat_locked(&why);
+    if (locked) ImGui::TextDisabled("locked: %s", why);
+    else ImGui::TextDisabled("single player; acts from the next plan");
+    static const int LEGAL[16] = {0, 2, 32, 34, 64, 66, 96, 98, 128, 130, 160, 162, 192, 194, 224, 226}; // sim/move/stream_heat.h sh_legal_cost
+    int              idx       = 1;
+    for (int i = 0; i < 16; ++i)
+        if (LEGAL[i] == lv.cost) idx = i;
+    static heat_edit e_cost, e_win, e_mates, e_turn, e_cap, e_margin;
+    int              ap = 0;
+    ImGui::BeginDisabled(locked);
+    bool on = lv.on != 0;
+    if (ImGui::Checkbox("heat on", &on)) heat_set_live(HEAT_ON, on ? 1 : 0);
+    ImGui::SameLine();
+    bool scale = lv.scale != 0;
+    if (ImGui::Checkbox("scale by mates", &scale)) heat_set_live(HEAT_SCALE, scale ? 1 : 0);
+    bool retrace = lv.retrace != 0;
+    if (ImGui::Checkbox("re-trace", &retrace)) heat_set_live(HEAT_RETRACE, retrace ? 1 : 0);
+    char shown[24];
+    wsprintfA(shown, "%d", LEGAL[e_cost.active ? e_cost.v : idx]);
+    if (heat_slider("cost", idx, 0, 15, e_cost, shown, &ap)) heat_set_live(HEAT_COST, LEGAL[ap]);
+    wsprintfA(shown, "%d tiles", e_win.active ? e_win.v : lv.window);
+    if (heat_slider("window", lv.window, 1, 160, e_win, shown, &ap)) heat_set_live(HEAT_WINDOW, ap);
+    wsprintfA(shown, "%d mates", e_mates.active ? e_mates.v : lv.min_mates);
+    if (heat_slider("min mates", lv.min_mates, 1, 64, e_mates, shown, &ap)) heat_set_live(HEAT_MIN_MATES, ap);
+    wsprintfA(shown, "%d", e_turn.active ? e_turn.v : lv.turn);
+    if (heat_slider("turn penalty", lv.turn, 0, 32, e_turn, shown, &ap)) heat_set_live(HEAT_TURN, ap);
+    wsprintfA(shown, "%d mates", e_cap.active ? e_cap.v : lv.scale_cap);
+    if (heat_slider("scale cap", lv.scale_cap, 1, 64, e_cap, shown, &ap)) heat_set_live(HEAT_SCALE_CAP, ap);
+    if (e_margin.active ? e_margin.v == 0 : lv.margin == 0) wsprintfA(shown, "off");
+    else wsprintfA(shown, "%d%%", e_margin.active ? e_margin.v : lv.margin);
+    if (heat_slider("margin %", lv.margin, 0, 200, e_margin, shown, &ap)) heat_set_live(HEAT_MARGIN, ap);
+    ImGui::EndDisabled();
+    const mh::heatui::snapshot &sn = mh::heatui::last_plan();
+    if (sn.seq != 0)
+        ImGui::TextWrapped("hits %u | last plan: p%u unit %u, %d mates, %d of %d tiles priced (cost %d%s), step %u", (unsigned)mh::heatui::hit_counter(), (unsigned)sn.player, (unsigned)sn.unit,
+                           sn.mates, sn.priced, sn.tiles, sn.cost, sn.scale ? " x mates" : "", (unsigned)sn.step);
+    else ImGui::Text("hits %u | no plan priced yet", (unsigned)mh::heatui::hit_counter());
+    {
+        uint32_t rt_plans = 0, rt_changed = 0, rt_refused = 0;
+        mh::heatui::retrace_counts(&rt_plans, &rt_changed, &rt_refused);
+        ImGui::Text("re-traced %u | changed %u | refused %u", (unsigned)rt_plans, (unsigned)rt_changed, (unsigned)rt_refused);
+        uint32_t mg_checks = 0, mg_kept = 0;
+        mh::heatui::margin_counts(&mg_checks, &mg_kept);
+        ImGui::Text("margin checked %u | margin kept %u", (unsigned)mg_checks, (unsigned)mg_kept);
+    }
+    ImGui::TextUnformatted("heat map");
+    ImGui::SameLine();
+    ImGui::RadioButton("off", &g_heat_map, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("last plan", &g_heat_map, 1);
+    ImGui::SameLine();
+    ImGui::RadioButton("traffic", &g_heat_map, 2);
+    if (g_heat_map == 1) ImGui::TextDisabled("yellow 1 .. red 4+ mates; cyan = route");
+    else if (g_heat_map == 2) ImGui::TextDisabled("blue 1 .. red 4+ units, fading");
+    if (g_heat_map != 0 && rd<uint8_t>(ADDR_GAME_MODE) != 2) ImGui::TextDisabled("(strategic map only)");
+    // Once, for script authors: where the section's controls are, in client pixels.
+    static bool s_logged = false;
+    if (!s_logged && ImGui::GetItemRectMin().x > 0.0f) {
+        s_logged = true;
+        log("; [imgui] heat section drawn: locked=%d on=%d cost=%d window=%d mates=%d scale=%d retrace=%d turn=%d cap=%d margin=%d map=%d", locked ? 1 : 0, lv.on, lv.cost, lv.window, lv.min_mates, lv.scale, lv.retrace, lv.turn, lv.scale_cap, lv.margin, g_heat_map);
+    }
+}
+
 void draw_panel() {
     const ImGuiIO &io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
+    // M1WL v6: the window lives INSIDE the game image. Client pixels (16, 16) are the letterbox bar when the frame is centred (the image starts at x=282 or
+    // 320 at ui_scale), where the cursor cannot go (it is clamped to the image) -- the user found the panel "created outside of screen area". So: the first
+    // position is the image's top-left + 16, every frame the window is clamped back inside the image, and its height is capped to the image's (less 32)
+    // so it scrolls. The image is small while the menus show (640x480): the CLAMP is what is drawn, the position the user chose (s_want) is kept apart and
+    // restored when the image grows, and the cap never goes below 480 (the smallest image the game has), so the first-use auto-fit made at menu time is
+    // not cut short by the menu-sized image.
+    RECT img = {0, 0, (LONG)io.DisplaySize.x, (LONG)io.DisplaySize.y};
+    if (!mh::gfx::owned_image_rect(&img)) img = RECT{0, 0, (LONG)io.DisplaySize.x, (LONG)io.DisplaySize.y};
+    static ImVec2 s_want, s_left; // the position kept (what the user chose); where the window stood at the end of the last frame
+    const float   cap = (float)(img.bottom - img.top) - 32.0f > 480.0f ? (float)(img.bottom - img.top) - 32.0f : 480.0f;
+    if (ImGuiWindow *win = ImGui::FindWindowByName("mh debug")) {
+        // A position that is not where this code left the window is the user's drag: keep it as the wish. The wish is clamped into the image every frame,
+        // BEFORE Begin (a drag has already moved the window in NewFrame, so no out-of-image frame is ever drawn); the window is only moved when the clamp
+        // differs, so the drag itself is never fought.
+        if (win->Pos.x != s_left.x || win->Pos.y != s_left.y) s_want = win->Pos;
+        float       px = s_want.x, py = s_want.y;
+        const float xmax = (float)img.right - win->Size.x, ymax = (float)img.bottom - win->Size.y;
+        px = px > xmax ? xmax : px;
+        py = py > ymax ? ymax : py;
+        px = px < (float)img.left ? (float)img.left : px;
+        py = py < (float)img.top ? (float)img.top : py;
+        if (px != win->Pos.x || py != win->Pos.y) ImGui::SetWindowPos(win, ImVec2(px, py), ImGuiCond_Always);
+        s_left = ImVec2(px, py);
+    } else {
+        s_want = ImVec2((float)img.left + 16.0f, (float)img.top + 16.0f);
+        ImGui::SetNextWindowPos(s_want, ImGuiCond_Always);
+        s_left = s_want;
+    }
     ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, cap));
     // NoResize: a resizable window is hovered up to style.WindowBorderHoverPadding (4 px) OUTSIDE its
     // drawn edge (the resize-grab band; the style asserts it > 0). The player judges "am I on the panel"
     // by the cursor they see, so hover -- and with it the swallow -- flips exactly at the drawn edge.
@@ -812,12 +1089,23 @@ void draw_panel() {
     const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
     g_npanels             = 0;
     g_panels[g_npanels++] = {wp.x, wp.y, wp.x + ws.x, wp.y + ws.y};
+    {
+        static int s_last[8] = {-1, -1, -1, -1, -1, -1, -1, -1}, s_wlog = 0;
+        const int  now[8] = {(int)wp.x, (int)wp.y, (int)(wp.x + ws.x), (int)(wp.y + ws.y), (int)img.left, (int)img.top, (int)img.right, (int)img.bottom};
+        if (s_wlog < 24 && memcmp(s_last, now, sizeof(now)) != 0) { // every move / resize of the window or the image (capped)
+            memcpy(s_last, now, sizeof(now));
+            ++s_wlog;
+            log("; [imgui] window %d,%d..%d,%d image %d,%d..%d,%d", now[0], now[1], now[2], now[3], now[4], now[5], now[6], now[7]);
+        }
+    }
     if (body) {
         ImGui::Text("%s closes  |  output %.0fx%.0f  |  %.1f fps", g_key_spec, io.DisplaySize.x, io.DisplaySize.y,
                     io.Framerate);
         ImGui::TextDisabled("swallowed msgs m=%ld k=%ld  drained DI m=%ld k=%ld", g_swallowed_mouse, g_swallowed_keys,
                             g_drained_mouse, g_drained_keys);
         draw_presenter_controls();
+        ImGui::Separator();
+        draw_heat_section();
         ImGui::Separator();
         // The same readouts the framebuffer debug overlay can page through ([debug] pages), every one
         // of them -- built-in first, then the families other seams registered (net.*).
@@ -873,7 +1161,9 @@ bool arm(const char *ini) {
     if (!spec[0]) lstrcpynA(spec, "F11", sizeof(spec));
     lstrcpynA(g_key_spec, spec, sizeof(g_key_spec));
     g_open_at_start = mh_ini_get_int("video", "imgui_open_at_start", 0, ini) != 0;
-    g_armed         = true;
+    g_heat_map      = (int)mh_ini_get_int("video", "imgui_heat_map", 0, ini); // mods:M1WL v3: the heat map mode at start (0 off, 1 last plan, 2 traffic)
+    if (g_heat_map < 0 || g_heat_map > 2) g_heat_map = 0;
+    g_armed = true;
     log("; [imgui] ARMED: Dear ImGui overlay on the d3d11 presenter, toggle=%s (vk 0x%02x%s%s%s)", g_key_spec, g_key.vk,
         g_key.ctrl ? " +ctrl" : "", g_key.alt ? " +alt" : "", g_key.shift ? " +shift" : "");
     if (g_open_at_start) log("; [imgui] imgui_open_at_start=1 -- the overlay opens on the first present");
@@ -919,6 +1209,7 @@ void on_frame(ID3D11Device *device, ID3D11DeviceContext *context, HWND hwnd) {
     const bool os_cursor_hidden    = GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) == 0;
     ImGui::GetIO().MouseDrawCursor = os_cursor_hidden && g_want_mouse;
     ImGui::NewFrame();
+    draw_heat_map(); // mods:M1WL v3: behind the panel, over the game frame; display only
     draw_panel();
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -928,6 +1219,16 @@ void on_frame(ID3D11Device *device, ID3D11DeviceContext *context, HWND hwnd) {
     g_want_mouse = io.WantCaptureMouse;
     g_mouse_pos  = io.MousePos;
     g_want_kbd   = io.WantCaptureKeyboard;
+    { // M1WL v6 evidence: where ImGui's pointer is for a game cursor (tools/check_imgui_heat.py maps the game point through the logged layout independently)
+        static int s_gx = -9999, s_gy = -9999, s_n = 0;
+        const int  gx = rd<int>(ADDR_CURSOR_X), gy = rd<int>(ADDR_CURSOR_Y);
+        if (s_n < 200 && (abs(gx - s_gx) >= 8 || abs(gy - s_gy) >= 8)) {
+            ++s_n;
+            s_gx = gx;
+            s_gy = gy;
+            log("; [imgui] cursor game %d,%d = client %d,%d (di %d,%d bound %d,%d)", gx, gy, (int)io.MousePos.x, (int)io.MousePos.y, rd<int>(ADDR_DI_LAST_X), rd<int>(ADDR_DI_LAST_Y), rd<int>(ADDR_DI_BOUND_W), rd<int>(ADDR_DI_BOUND_H));
+        }
+    }
     // Capture just ENDED: drop what DirectInput buffered since the last forwarded message (see INPUT).
     if (was_mouse && !g_want_mouse) drain_mouse();
     if (was_kbd && !g_want_kbd) drain_keyboard();

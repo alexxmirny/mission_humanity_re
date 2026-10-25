@@ -3722,7 +3722,7 @@
    "id": "TACT_MOVE_PATH_TRACE_COST_SUM"
   },
   {
-   "name": "_G_LLM_TACT_SCROLL_CMD",
+   "name": "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
    "base": 5606304,
    "size": 4,
    "extent": 4,
@@ -3738,7 +3738,7 @@
      "shadow"
     ]
    },
-   "id": "TACT_SCROLL_CMD"
+   "id": "TACT_MINE_BLAST_SHAKE_STEP"
   },
   {
    "name": "_G_LLM_TACT_FX_SPLASH_SPARE_NONZERO_OWNER",

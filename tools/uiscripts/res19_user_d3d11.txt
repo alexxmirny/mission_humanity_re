@@ -1,0 +1,59 @@
+# res19_user_d3d11 -- mods:RES23-S0: the user's rc3 RES19 setup, replayed on a presenting lane (ini/res19_user_<presenter>.ini; the two rows run this same script under two names so their baselines do not collide:
+# explicit 1280x960 frame, Interface size 200, a borderless window covering 2560x1440 ([video] borderless_size, the rig monitor is 1920x1080), strategic game).
+# RES19 (the report): "after Apply the bottom filler of the side panel is black until the game resumes". The rig's oracle (pcapture)
+# never read the presenter, so this script takes BOTH: pcapture (the CPU re-composition) and bcapture (what the presenter put on screen).
+#  a  strategic view at 200% (r19_200, bcapture only: a 2560x1440 PNG is ~1.2 MB of baseline, so the pcapture twin is taken where it matters);
+#  b  ESC > Options: Interface size 200 -> Auto -> 100 -> 125 (three clicks) and Ok: back in the ESC menu (game mode 3) -- r19_menu;
+#  c  Return to game: the 125% layout (r19_resume), then again after more frames (r19_later) -- the filler under the last whole row of the panel.
+# tools/check_res19_filler.py measures the filler band below the last whole row in every bcapture and reports its colour.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+gameclock +300
+winclient 2560 1440
+screensettled
+gameclock +100
+log res19 frame_ready
+cursorhold 1000 700 6
+bcapture r19_200
+
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 618 507
+settled Ok
+click 618 507
+settled Ok
+click 618 507
+settled Ok
+clickl Ok
+absent Screen size
+present &Options
+settled &Options
+gamemode 3
+screensettled
+pcapture r19_menu
+bcapture r19_menu
+log res19 applied_in_menu
+
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 1000 700 6
+screensettled
+gameclock +100
+pcapture r19_resume
+bcapture r19_resume
+gameclock +600
+screensettled
+bcapture r19_later
+log res19 COMPLETE -- 200 -> 125 applied through Options, captured in the menu, after the resume and after 600 more ticks
+end

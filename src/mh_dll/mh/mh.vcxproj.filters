@@ -6,6 +6,9 @@
     <Filter Include="addr">
       <UniqueIdentifier>{B2FD189B-C5D8-5EC6-B3E1-EC668982F7C4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="caps">
+      <UniqueIdentifier>{A2D656DD-1463-5251-AFF9-2E50FAC80BBE}</UniqueIdentifier>
+    </Filter>
     <Filter Include="config">
       <UniqueIdentifier>{622BBD39-10E9-59D2-9471-BFA8591E4B0E}</UniqueIdentifier>
     </Filter>
@@ -81,10 +84,28 @@
     <ClCompile Include="hook\promoted.cpp">
       <Filter>hook</Filter>
     </ClCompile>
+    <ClCompile Include="caps\caps.cpp">
+      <Filter>caps</Filter>
+    </ClCompile>
+    <ClCompile Include="caps\orders.cpp">
+      <Filter>caps</Filter>
+    </ClCompile>
+    <ClCompile Include="caps\ovf.cpp">
+      <Filter>caps</Filter>
+    </ClCompile>
+    <ClCompile Include="caps\ovf_save.cpp">
+      <Filter>caps</Filter>
+    </ClCompile>
+    <ClCompile Include="caps\path_pool.cpp">
+      <Filter>caps</Filter>
+    </ClCompile>
     <ClCompile Include="patch\inmem_patch.cpp">
       <Filter>patch</Filter>
     </ClCompile>
     <ClCompile Include="patch\inmem_install.cpp">
+      <Filter>patch</Filter>
+    </ClCompile>
+    <ClCompile Include="patch\caps_install.cpp">
       <Filter>patch</Filter>
     </ClCompile>
     <ClCompile Include="hook\tombstone.cpp">
@@ -146,6 +167,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_crew_reminder.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\tact_scroll.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_bldg_build_probe.cpp">
@@ -230,6 +254,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\lang_pack.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_options_scale.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\standalone.cpp">
@@ -319,6 +346,9 @@
     <ClCompile Include="seams\bldg_pip_guard.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\order_wide_index.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="desync\seed_sanity.cpp">
       <Filter>desync</Filter>
     </ClCompile>
@@ -377,6 +407,9 @@
       <Filter>gfx</Filter>
     </ClCompile>
     <ClCompile Include="gfx\wheel_list.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\ui_layout.cpp">
       <Filter>gfx</Filter>
     </ClCompile>
     <ClCompile Include="gfx\ddraw_own.cpp">
@@ -450,6 +483,9 @@
     <ClInclude Include="gfx\map_zoom.h">
       <Filter>gfx</Filter>
     </ClInclude>
+    <ClInclude Include="gfx\ui_layout.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
     <ClInclude Include="seams\strat_pre_input.h">
       <Filter>seams</Filter>
     </ClInclude>
@@ -469,6 +505,12 @@
       <Filter>gfx</Filter>
     </ClInclude>
     <ClInclude Include="gfx\overlay_imgui.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\heat_xf.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="gfx\overlay_list.h">
       <Filter>gfx</Filter>
     </ClInclude>
     <ClInclude Include="..\include\imgui\imgui.h">
@@ -562,6 +604,9 @@
     <ClInclude Include="seams\bldg_pip_guard.h">
       <Filter>seams</Filter>
     </ClInclude>
+    <ClInclude Include="seams\order_wide_index.h">
+      <Filter>seams</Filter>
+    </ClInclude>
     <ClInclude Include="desync\seed_sanity.h">
       <Filter>desync</Filter>
     </ClInclude>
@@ -586,6 +631,21 @@
     <ClInclude Include="desync\world_sync_core.h">
       <Filter>desync</Filter>
     </ClInclude>
+    <ClInclude Include="caps\caps.h">
+      <Filter>caps</Filter>
+    </ClInclude>
+    <ClInclude Include="caps\orders.h">
+      <Filter>caps</Filter>
+    </ClInclude>
+    <ClInclude Include="caps\ovf.h">
+      <Filter>caps</Filter>
+    </ClInclude>
+    <ClInclude Include="caps\ovf_save.h">
+      <Filter>caps</Filter>
+    </ClInclude>
+    <ClInclude Include="caps\path_pool.h">
+      <Filter>caps</Filter>
+    </ClInclude>
     <ClInclude Include="hook\patch.h">
       <Filter>hook</Filter>
     </ClInclude>
@@ -605,6 +665,9 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_langpack_export.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_optscale_export.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_module_bind.h">

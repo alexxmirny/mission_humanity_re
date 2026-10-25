@@ -61,6 +61,9 @@
 #include "addr/mh_addrs.gen.h"
 #include "addr/mh_calls.gen.h"
 #include "addr/mh_regions.gen.h"
+#include "caps/caps.h"   // PT-CAP8 S2: raised() decides the overflow-hash latch
+#include "caps/orders.h" // PT-CAP9-U5: the order queue the game addresses (the recorder reads it)
+#include "caps/ovf.h"    // PT-CAP8 S2: the overflow extension (8 slices, incremental sums)
 #include "en_guard.h"
 #include "include/mh_net_export.h"
 #include "include/mh_run_context.h"       // MH_RunDir (the snapshot lands next to the run's logs)
@@ -265,14 +268,33 @@ constexpr bool all_regions_fit_v2() {
 }
 static_assert(all_regions_fit_v2(), "a hash slice outgrew the v2 localisation's 128 x 64 blocks (512 KB)");
 
-uint64_t g_fp2      = 0;     // v2::fp_v2(g_manifest_fp, inc::HASH_KIND)
+uint64_t g_fp2      = 0;     // v2::fp_v2(g_manifest_fp, inc::HASH_KIND) -- folded with the overflow kind while g_ovf_on
 bool     g_v2_armed = false; // per_step=1 and the tracker + journal are allocated
-bool     g_v2_step  = false; // THIS step's tracker update is ours (set before state_hub::step)
-uint32_t g_jr_last  = 0;     // the last step the journal was fed
-void    *g_jr_mem   = nullptr;
-uint8_t *g_ev       = nullptr; // the rebuilt state at an incident step (lazily, sum of slice lens)
-uint32_t g_ev_off[N];
-uint32_t g_ev_oq_live = 0;
+
+// ---- PT-CAP8 S2: the overflow hash (mh/caps/ovf.h) --------------------------------------------------------
+// With the cap raise ON the records past the vanilla window are hashed by an EXTENSION of the manifest: 8 slices
+// with their own incremental tracker, stepped right after the shared one and folded into the per-step state hash
+// and the v2 fingerprint. It is latched ONCE per match, at the first v2 step (set_limits cannot flip inside a
+// match). With the raise OFF none of this is allocated or stepped and every value below is the pre-S2 one.
+constexpr int NX = N + mh::caps::ovf::SLICES; // the per-region vector length while the extension is armed
+static_assert(NX <= MAX_REGIONS, "the overflow slices outgrew the desync sample's wire record");
+uint64_t               g_fp2_off        = 0;     // the arm-time fingerprint: what g_fp2 is while the extension is off
+bool                   g_ovf_on         = false; // the extension is armed for THIS match
+bool                   g_ovf_decided    = false; // the latch was taken this match
+bool                   g_ovf_raised_at  = false; // caps::raised() at the latch
+bool                   g_ovf_drift_said = false;
+int                    g_hash_overflow  = 1; // [caps] hash_overflow (C_DEV; 0 = the S1 behaviour: overflow not hashed)
+volatile LONG          g_nreg           = N; // regions a v2 REGIONS frame carries (recv thread reads, main thread writes)
+void                  *g_ovf_mem        = nullptr;
+mh::caps::ovf::tracker g_ovf;
+int64_t                g_ovf_ticks = 0, g_ovf_max_ticks = 0, g_ovf_steps = 0; // the extension's own per-step cost, for the COST line
+bool                   g_v2_step = false;                                     // THIS step's tracker update is ours (set before state_hub::step)
+uint32_t               g_jr_last = 0;                                         // the last step the journal was fed
+void                  *g_jr_mem  = nullptr;
+uint8_t               *g_ev      = nullptr; // the rebuilt state at an incident step (lazily, sum of slice lens)
+uint32_t               g_ev_off[NX];
+bool                   g_ev_has_ovf = false; // the evidence buffer was sized for the extension too
+uint32_t               g_ev_oq_live = 0;
 
 v2::ticker       g_tick;
 v2::localiser    g_loc;
@@ -624,6 +646,13 @@ void on_first_mismatch(uint32_t step) { mh::desync::state_ring::on_first_mismatc
 // verdict or the v2 per-step one), exactly once per match. `first_region` is -1 when it is not known
 // yet (v2: the live localisation names it a link latency later). What reacts today: the D25 snapshot
 // latch. mp:D41's ring flush belongs here too.
+// The name of a v2 region index: the manifest's N regions, then (PT-CAP8 S2) the overflow slices.
+const char *region_label(int r) {
+    if (r >= 0 && r < N) return mh::state::HASH_REGIONS[r].name;
+    if (r >= N && r < NX) return mh::caps::ovf::slice(r - N).name;
+    return "?";
+}
+
 void on_first_mismatch_detected(uint32_t step, int sender, int first_region) {
     if (g_first_mismatch_seen) return;
     g_first_mismatch_seen = true;
@@ -637,8 +666,7 @@ void on_first_mismatch_detected(uint32_t step, int sender, int first_region) {
         say("; [desync] snapshot ARMED by the mismatch at step %lu (first_region=%d %s): up to %d full-state "
             "dumps, on every step divisible by %lu\n",
             (unsigned long)step, first_region,
-            (first_region >= 0 && first_region < N) ? mh::state::HASH_REGIONS[first_region].name
-                                                    : "(pending: live localisation)",
+            (first_region >= 0 && first_region < NX) ? region_label(first_region) : "(pending: live localisation)",
             SNAPSHOT_MAX, (unsigned long)snapshot_grid(g_cfg.every));
     }
 }
@@ -819,7 +847,7 @@ void drain_pending() {
 // cost. `g_reused_samples` came pre-hashed from the determinism harness, which had already paid for
 // its own log; those add nothing and must not be averaged into the mean or the number loses meaning.
 void emit_status_line() {
-    char cost[320];
+    char cost[480];
     if (g_v2_armed && g2_steps && g_qpc_freq) {
         // mp:D44: the per-step path's cost is the shared tracker's update (with every listener's run
         // sink and the undo journal in it) plus the fold, the compare and the TICK -- per sim step.
@@ -831,6 +859,11 @@ void emit_status_line() {
                     "HASH_KIND %lu); v2 wire %.0f B/s sent at 50 steps/s, %d step(s) per TICK%s",
                     mean, (double)g2_max_ticks * f, (long)g2_steps, (unsigned long)mh::state::inc::HASH_KIND, bps,
                     TICK_BATCH, g_legacy_on ? "; FALLBACK walk on for a v1 peer" : "");
+        if (g_ovf_on && g_ovf_steps) { // PT-CAP8 S2: the extension's share, already inside the per-step figure above
+            const size_t at = strlen(cost);
+            _snprintf_s(cost + at, sizeof(cost) - at, _TRUNCATE, "; overflow hash ON: %.0f us mean, %.0f us max (included above)",
+                        (double)g_ovf_ticks * f / (double)g_ovf_steps, (double)g_ovf_max_ticks * f);
+        }
     } else if (g_hash_samples && g_qpc_freq) {
         const double us          = (double)g_hash_ticks * 1000000.0 / (double)g_qpc_freq / (double)g_hash_samples;
         const double per_step_us = us / (double)(g_cfg.every > 0 ? g_cfg.every : 1);
@@ -851,7 +884,7 @@ void emit_status_line() {
         (int)(g_hash_samples + g_reused_samples + g2_steps), (int)g_hash_samples, (int)g_reused_samples,
         g_compared + g2_compared, g_mismatches + g2_mismatches, g_too_old + g2_too_old, g_bad_frames,
         g_order_mismatches, g_order_absent_peer, (unsigned long)g_step, g_v2_armed ? 1 : 0, g2_compared,
-        g2_mismatches, g2_incidents, g_loc.nresults(), g_legacy_on ? 1 : 0, cost, g_cfg.every, N, wire_size(N));
+        g2_mismatches, g2_incidents, g_loc.nresults(), g_legacy_on ? 1 : 0, cost, g_cfg.every, (int)g_nreg, wire_size(N));
 }
 
 // D21 clause (d): the cost has to be MEASURED and the cadence chosen from that number rather than
@@ -1276,6 +1309,7 @@ int install(const char *ini_path) {
     g_cfg.state_record = mh_ini_get_int("desync", "state_record", g_cfg.state_record, ini_path);
     g_cfg.ring.enabled = mh_ini_get_int("desync", "state_ring", g_cfg.ring.enabled, ini_path);
     g_cfg.per_step     = mh_ini_get_int("desync", "per_step", g_cfg.per_step, ini_path);
+    g_hash_overflow    = mh_ini_get_int("caps", "hash_overflow", 1, ini_path); // PT-CAP8 S2 (C_DEV; the release always reads 1)
 
     if (!g_cfg.enabled) {
         say("; [desync] NOT armed: [desync] enabled=0%s\n",
@@ -1353,7 +1387,8 @@ int install(const char *ini_path) {
     if (mh::net::transport_present()) MH_Net_SetHashHandler(on_hash_frame_rx);
     g_armed = true;
 
-    g_fp2 = v2::fp_v2(g_manifest_fp, mh::state::inc::HASH_KIND);
+    g_fp2_off = v2::fp_v2(g_manifest_fp, mh::state::inc::HASH_KIND);
+    g_fp2     = g_fp2_off;
     say("; [desync] ARMED: every=%d steps, %d regions (%d excluded from the verdict), manifest "
         "fp=%08X%08X, %d wire bytes/sample, action=%d, snapshot=%d (max %d), per_step=%d\n",
         g_cfg.every, N, n_excluded, (unsigned)(g_manifest_fp >> 32), (unsigned)g_manifest_fp,
@@ -1513,6 +1548,16 @@ void session_reset() {
         g_pending.clear();
         g_v2q_head = g_v2q_count = g_v2q_dropped = 0;
         LeaveCriticalSection(&g_cs);
+    }
+    // PT-CAP8 S2: the overflow extension is latched per match -- back to the arm-time values, and the tracker forgets its shadow.
+    if (g_ovf_on || g_ovf_decided) {
+        g_ovf_on         = false;
+        g_ovf_decided    = false;
+        g_ovf_drift_said = false;
+        InterlockedExchange(&g_nreg, N);
+        g_fp2 = g_fp2_off;
+        world_sync::set_fp2(g_fp2);
+        if (g_ovf_mem) g_ovf.attach(g_ovf_mem);
     }
     // mp:D44: a new match's peers announce their wire versions afresh.
     g_tick.clear(N);
@@ -1739,28 +1784,38 @@ void describe_offset(int r, uint32_t off, char *out, size_t cap) {
 void tick_flush();
 
 struct LiveLocHost final : v2::loc_host {
-    int         nregions() const override { return N; }
-    uint32_t    region_len(int r) const override { return mh::state::HASH_REGIONS[r].len; }
-    const char *region_name(int r) const override { return mh::state::HASH_REGIONS[r].name; }
-    bool        excluded(int r) const override { return g_excluded[r]; }
+    int         nregions() const override { return (int)g_nreg; }
+    uint32_t    region_len(int r) const override { return r < N ? mh::state::HASH_REGIONS[r].len : mh::caps::ovf::slice(r - N).len; }
+    const char *region_name(int r) const override { return region_label(r); }
+    bool        excluded(int r) const override { return r < N && g_excluded[r]; }
     uint64_t    fp() const override { return g_fp2; }
     bool        per_at(uint32_t s, uint64_t *out) override {
         const v2::ticker::mine_entry *m = g_tick.find_mine(s);
         if (!m) return false;
-        memcpy(out, m->per, sizeof(uint64_t) * N);
+        memcpy(out, m->per, sizeof(uint64_t) * (size_t)g_nreg);
         return true;
     }
     // The state at step s: the tracker's shadow (the state at THIS step, updated a moment ago) with the
     // journal's entries for the steps after s replayed backwards over it.
     bool materialize(uint32_t s) override {
         if (!g_jr.covers(s) || s > g_step || g_jr_last != g_step) return false;
+        if (g_ev && g_ovf_on && !g_ev_has_ovf) { // a match that armed the extension after an OFF one sized the buffer
+            VirtualFree(g_ev, 0, MEM_RELEASE);
+            g_ev = nullptr;
+        }
         if (!g_ev) {
             uint32_t total = 0;
             for (int i = 0; i < N; ++i) {
                 g_ev_off[i] = total;
                 total += (mh::state::HASH_REGIONS[i].len + 63u) & ~63u;
             }
-            g_ev = static_cast<uint8_t *>(VirtualAlloc(nullptr, total, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+            if (g_ovf_on)
+                for (int e = 0; e < mh::caps::ovf::SLICES; ++e) {
+                    g_ev_off[N + e] = total;
+                    total += (mh::caps::ovf::slice(e).len + 63u) & ~63u;
+                }
+            g_ev_has_ovf = g_ovf_on;
+            g_ev         = static_cast<uint8_t *>(VirtualAlloc(nullptr, total, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
             if (!g_ev) {
                 say("; [desync] LOCALISE: cannot allocate the %lu-byte evidence buffer (err %lu) -- region level "
                     "only\n",
@@ -1770,6 +1825,8 @@ struct LiveLocHost final : v2::loc_host {
         }
         const mh::state::inc::tracker &tr = mh::desync::state_hub::tracker();
         for (int i = 0; i < N; ++i) memcpy(g_ev + g_ev_off[i], tr.shadow(i), mh::state::HASH_REGIONS[i].len);
+        if (g_ovf_on)
+            for (int e = 0; e < mh::caps::ovf::SLICES; ++e) memcpy(g_ev + g_ev_off[N + e], g_ovf.shadow(e), mh::caps::ovf::slice(e).len);
         g_jr.undo_to(s, [](int r, uint32_t b, const uint8_t *bytes, uint32_t n) {
             memcpy(g_ev + g_ev_off[r] + b * 64u, bytes, n);
         });
@@ -1780,11 +1837,17 @@ struct LiveLocHost final : v2::loc_host {
     }
     const uint8_t *evidence(int r) override { return g_ev + g_ev_off[r]; }
     uint64_t       block_hash(int r, uint32_t b) override {
+        if (r >= N) { // an overflow slice: the extension's own block hash (region id HASH_REGION_COUNT + e, keep = all 0xff)
+            const uint32_t len = mh::caps::ovf::slice(r - N).len;
+            const uint32_t n   = (len - b * 64u) < 64u ? (len - b * 64u) : 64u;
+            return mh::caps::ovf::block_hash(r - N, b, evidence(r) + b * 64u, n);
+        }
         return mh::state::inc::block_hash_masked(r, b, evidence(r), mh::state::HASH_REGIONS[r].len,
                                                        mh::desync::state_hub::tracker().mask_knobs(),
                                                  r == mh::state::HIDX_ORDER_QUEUE ? g_ev_oq_live : 0);
     }
     uint8_t keep(int r, uint32_t off) override {
+        if (r >= N) return 0xff;
         return mh::state::inc::keep_byte(r, off, mh::state::HASH_REGIONS[r].len,
                                          mh::desync::state_hub::tracker().mask_knobs(), g_ev_oq_live);
     }
@@ -1797,7 +1860,10 @@ struct LiveLocHost final : v2::loc_host {
         g2_tx_bytes += (uint64_t)len;
     }
     void log(const char *line) override { say("%s", line); }
-    void describe(int r, uint32_t off, char *out, size_t cap) override { describe_offset(r, off, out, cap); }
+    void describe(int r, uint32_t off, char *out, size_t cap) override {
+        if (r >= N) mh::caps::ovf::describe(r - N, off, out, cap);
+        else describe_offset(r, off, out, cap);
+    }
     void on_regions(int sender, uint32_t s, int first_region, int ndiff) override {
         const int si       = (sender >= 0 && sender < VPEERS) ? sender : 0;
         g_regions_seen[si] = {true, s, first_region, ndiff};
@@ -1818,7 +1884,7 @@ void pend_resolve(int sender, uint32_t s, int first_region, int ndiff, const cha
         say("; [desync] *** DESYNC step=%lu peer=%d mine=%08X%08X theirs=%08X%08X first_region=%d %s (mismatch #%d, "
             "per-step: %d region(s) differ at this step)\n",
             (unsigned long)s, sender, (unsigned)(p.mine >> 32), (unsigned)p.mine, (unsigned)(p.theirs >> 32),
-            (unsigned)p.theirs, first_region, mh::state::HASH_REGIONS[first_region].name, p.no, ndiff);
+            (unsigned)p.theirs, first_region, region_label(first_region), p.no, ndiff);
     else
         say("; [desync] *** DESYNC step=%lu peer=%d mine=%08X%08X theirs=%08X%08X first_region=-1 (unknown: %s) "
             "(mismatch #%d, per-step)\n",
@@ -1896,7 +1962,7 @@ void on_tick_verdict(const v2::tick_verdict &v) {
 
 bool v2_frame_rx(int sender, const unsigned char *buf, int len) {
     v2::hdr h;
-    if (!v2::frame_ok(buf, len, N, h)) return false;
+    if (!v2::frame_ok(buf, len, (int)g_nreg, h)) return false;
     if (sender >= 0 && sender < VPEERS) InterlockedExchange(&g_peer_v2[sender], 1);
     // The v1 INERT rule, in STEPS: v1 waited for 8 samples, i.e. 8 x `every` steps of a peer's lead,
     // and a v2 TICK carries steps, not samples -- counting frames would call a peer that merely started
@@ -2022,13 +2088,68 @@ bool v2_wanted() {
     return !(v2n == 0 && v1 > 0 && v1 >= MH_Net_PeerCount());
 }
 
+// PT-CAP8 S2: the per-match latch of the overflow extension (E5), taken at the first v2 step. Returns true when
+// it armed the extension on THIS call (the tracker was primed here).
+bool ovf_latch() {
+    g_ovf_decided   = true;
+    g_ovf_raised_at = mh::caps::raised();
+    if (!g_ovf_raised_at || !g_hash_overflow) return false;
+    if (!g_ovf_mem) {
+        g_ovf_mem = VirtualAlloc(nullptr, mh::caps::ovf::tracker::arena_bytes(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!g_ovf_mem) {
+            say("; [caps] overflow hash NOT armed: cannot allocate the %lu-byte arena (err %lu) -- this peer will read as a "
+                "different build than a raised peer that could\n",
+                (unsigned long)mh::caps::ovf::tracker::arena_bytes(), GetLastError());
+            return false;
+        }
+    }
+    g_ovf.attach(g_ovf_mem);
+    if (!g_ovf.prime()) {
+        say("; [caps] overflow hash NOT armed: the roster arrays are not relocated\n");
+        return false;
+    }
+    g_ovf_on = true;
+    InterlockedExchange(&g_nreg, NX);
+    g_fp2 = mh::caps::ovf::fp_on(g_fp2_off);
+    world_sync::set_fp2(g_fp2);
+    g_tick.clear(NX); // step 0 of the extended vector has no history
+    g_jr.clear(g_step);
+    g_ovf_ticks = g_ovf_max_ticks = g_ovf_steps = 0;
+    say("; [caps] overflow hash ARMED: %d slices, %lu bytes, fp %08X%08X\n", mh::caps::ovf::SLICES,
+        (unsigned long)mh::caps::ovf::total_bytes(), (unsigned)(g_fp2 >> 32), (unsigned)g_fp2);
+    return true;
+}
+
 // One step of the v2 path, right after the shared tracker was updated for this step.
 void v2_step() {
     LARGE_INTEGER t0, t1;
     QueryPerformanceCounter(&t0);
-    uint64_t per[N];
+    const bool fresh = !g_ovf_decided && ovf_latch();
+    if (g_ovf_decided && !g_ovf_drift_said && mh::caps::raised() != g_ovf_raised_at) {
+        g_ovf_drift_said = true;
+        say("; [caps] limits changed inside a match -- overflow hash keeps the match-start state\n");
+    }
+    uint64_t per[NX];
     mh::desync::state_hub::tracker().region_hashes(per);
-    const uint64_t st = fold_state(per, g_excluded, N);
+    uint64_t st;
+    if (g_ovf_on) {
+        // E2: the ON state hash is the OFF fold continued over the 8 extension sums.
+        LARGE_INTEGER o0, o1;
+        QueryPerformanceCounter(&o0);
+        if (!fresh) {
+            if (mh::desync::state_hub::last_primed()) g_ovf.prime();
+            else g_ovf.update(&g_jtap);
+        }
+        g_ovf.sums(per + N);
+        QueryPerformanceCounter(&o1);
+        const int64_t od = o1.QuadPart - o0.QuadPart;
+        g_ovf_ticks += od;
+        if (od > g_ovf_max_ticks) g_ovf_max_ticks = od;
+        ++g_ovf_steps;
+        st = mh::caps::ovf::fold_ext(fold_state(per, g_excluded, N), per + N);
+    } else {
+        st = fold_state(per, g_excluded, N);
+    }
     tick_add(st); // before judging: an incident frame this step triggers must follow our TICK for it
     g_tick.put_mine(g_step, st, g_order_digest, per, on_tick_verdict);
     v2_drain();
@@ -2209,7 +2330,8 @@ bool configure_order_record(int enabled, const char *refused) {
 
 void on_order_dispatch() {
     const int32_t n = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
-    mh::desync::orders::dispatch(mh::state::ptr<const uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE), (int)n);
+    // PT-CAP9-U5: the queue the GAME is dispatching (the wide array with the order layer ON), not the registry's stock mirror.
+    mh::desync::orders::dispatch(mh::caps::orders::base(mh::caps::orders::QUEUE), (int)n);
 }
 
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state) { step_common(per, n, state, true); }

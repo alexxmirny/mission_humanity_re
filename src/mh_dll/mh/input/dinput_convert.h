@@ -19,6 +19,8 @@
 
 #include <stdint.h>
 
+#include "gfx/ui_layout.h"
+
 namespace mh::input {
 
 // DIDEVICEOBJECTDATA as DirectInput 5 lays it out (16 bytes; DI8 appended uAppData).
@@ -192,6 +194,10 @@ struct mouse_view {
     int last_x, last_y;
     int box_w, box_h;
     int div, thr;
+    // RES4 stage 4: the quad layout in force (several quads), or null. The queue then keeps a SCREEN-SPACE pointer: relative
+    // counts move it over the screen, and the game's cursor is steered (abs_step) to the frame pixel under it, so the
+    // pointer crosses the 1:1 map and the scaled panel/strip without the hidden map columns under them ever being visited.
+    const mh::gfx::uilayout::layout *lay = nullptr;
 };
 
 // One captured mouse packet, in capture order.
@@ -243,6 +249,13 @@ private:
     bool      have_target_ = false;
     int       tx_ = 0, ty_ = 0;
     uint32_t  ttime_ = 0;
+    // RES4 screen-space pointer (only while mouse_view::lay is set): the pointer in screen pixels, the game pixel it was
+    // last steered to (a game-driven move of the cursor shows as the game's accumulator differing: re-seat), and the layout
+    // it was seated under.
+    bool     ptr_valid_ = false;
+    int      sx_ = 0, sy_ = 0, pgx_ = 0, pgy_ = 0;
+    uint64_t lay_key_ = 0;
+    int32_t  pacc_x_ = 0, pacc_y_ = 0; // the pointer's own remainder carry (counts)
 };
 
 } // namespace mh::input

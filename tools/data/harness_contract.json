@@ -176,6 +176,114 @@
    ]
   },
   {
+   "export": "?savegame_now@save@mh@@YAIPAD@Z",
+   "mangled": "?savegame_now@save@mh@@YAIPAD@Z",
+   "pretty": "unsigned int __cdecl mh::save::savegame_now(char *)",
+   "slot": "mh_save_savegame_now",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_CanonGather",
+   "mangled": "_MH_Caps_CanonGather",
+   "pretty": "_MH_Caps_CanonGather",
+   "slot": "MH_Caps_CanonGather",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_CanonScatter",
+   "mangled": "_MH_Caps_CanonScatter",
+   "pretty": "_MH_Caps_CanonScatter",
+   "slot": "MH_Caps_CanonScatter",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_OrderGeom",
+   "mangled": "_MH_Caps_OrderGeom",
+   "pretty": "_MH_Caps_OrderGeom",
+   "slot": "MH_Caps_OrderGeom",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_OvfDigest",
+   "mangled": "_MH_Caps_OvfDigest",
+   "pretty": "_MH_Caps_OvfDigest",
+   "slot": "MH_Caps_OvfDigest",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_OvfSums",
+   "mangled": "_MH_Caps_OvfSums",
+   "pretty": "_MH_Caps_OvfSums",
+   "slot": "MH_Caps_OvfSums",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_PathCensus",
+   "mangled": "_MH_Caps_PathCensus",
+   "pretty": "_MH_Caps_PathCensus",
+   "slot": "MH_Caps_PathCensus",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_PathCheckNow",
+   "mangled": "_MH_Caps_PathCheckNow",
+   "pretty": "_MH_Caps_PathCheckNow",
+   "slot": "MH_Caps_PathCheckNow",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_PathDigests",
+   "mangled": "_MH_Caps_PathDigests",
+   "pretty": "_MH_Caps_PathDigests",
+   "slot": "MH_Caps_PathDigests",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_PathLimit",
+   "mangled": "_MH_Caps_PathLimit",
+   "pretty": "_MH_Caps_PathLimit",
+   "slot": "MH_Caps_PathLimit",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_PathViolations",
+   "mangled": "_MH_Caps_PathViolations",
+   "pretty": "_MH_Caps_PathViolations",
+   "slot": "MH_Caps_PathViolations",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_Caps_Rec",
+   "mangled": "_MH_Caps_Rec",
+   "pretty": "_MH_Caps_Rec",
+   "slot": "MH_Caps_Rec",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_Core_ArmPaths",
    "mangled": "_MH_Core_ArmPaths",
    "pretty": "_MH_Core_ArmPaths",

@@ -26,6 +26,16 @@ void MH_Capture_OnPresent(void);
 // ENTRY (i.e. from the on_present path) so the back-buffer is still locked.
 void MH_Capture_Shot(const char *name);
 
+// RES4 `pcapture`: like MH_Capture_Shot but the file is the PRESENTED image -- the quad list composed on the CPU
+// over the game frame, bars black -- at the presenter's screen size. Same validity window as MH_Capture_Shot.
+void MH_Capture_ShotPresented(const char *name);
+
+// RES23-S0 `bcapture`: capture_<name>__b.bmp of what the PRESENTER put on screen (gdi client area / d3d11 back buffer after
+// the overlay pass), written by the next present. MH_Capture_ShotBackbuffer only requests it; MH_Capture_WriteBgra32 is the
+// present's reply (px == nullptr logs a SKIPPED line: a null / absent presenter shows nothing).
+void MH_Capture_ShotBackbuffer(const char *name);
+void MH_Capture_WriteBgra32(const char *name, const unsigned int *px, int w, int h);
+
 #ifdef __cplusplus
 }
 #endif

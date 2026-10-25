@@ -99,6 +99,36 @@
       "why": "mods:M1H -- the post_check of the m1h_ship / m1h_orig / m1h_lib / m1h_off / m1h_twin_eq* / m1h_mp_moving* UI rows: judges each movement-preset fixture from the logs (the outcome, the splice or twin hit counters, the carrier text, the ND VERDICT / M1N lines of both peers) and compares a shipped run's per-step state hash with a libmh run's (--vs, --hash-cmp)",
       "evidence": "invoked by tools/uiscripts/registry.yaml's m1h_* rows (post_check, post_check_session, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
+    "check_u022_stream.py": {
+      "class": "keep",
+      "why": "mods:M1WL -- the post_check of the u022_stream UI row (move_stream_heat): reads the harness stream fixture's `; ST TOTAL` / `; ST PLAN` lines and the seam / twin hit counters and asserts the retail column with key 0 and the spread with key 1 (distinct tiles, lanes at the gate, nobody stuck, exit rate not worse, median arrival within 5%, reversals not above key 0, first-plan route lengthening p90 <= 110%)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's u022_stream row (post_check, four steps)"
+    },
+    "check_imgui_heat.py": {
+      "class": "keep",
+      "why": "mods:M1WL v3 -- the post_check of the imgui_heat UI row: the live setter of the ImGui Stream heat section ran end to end (one `; [heat] live set` line with the clicked value), the section was built with the step's heat map mode, and the heat rule priced a plan (the map had data)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's imgui_heat row (post_check, two steps)"
+    },
+    "check_imgui_heat_s150.py": {
+      "class": "keep",
+      "why": "mods:M1WL v6 -- the post_check of the imgui_heat_s150 UI row: at ui_scale 150 with letterbox bars the ImGui window lies inside the image and ImGui's pointer is the drawn cursor over the map, the panel and the strip (checked against the logged quad layout by the checker's own arithmetic)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's imgui_heat_s150 row (post_check); gated by lint_repo's --selftest row"
+    },
+    "check_move_bench.py": {
+      "class": "keep",
+      "why": "TL-MOVE-BENCH -- the post_check of the move_bench / move_bench_retail / move_bench_lib UI rows: computes the 20-order movement benchmark's metrics from the probe's `; MV` lines (ORDERSUM / VERDICT + the tools/m1_detours.py detour ratios), prints the table and goes red when a metric is worse than tools/data/move_bench_baseline.json beyond its tolerance; --update re-baselines deliberately; the extension point for later movement scenarios",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's move_bench* rows (post_check, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "move_tracks.py": {
+      "class": "keep",
+      "why": "mods:M1WL v5 -- per-unit tile tracks out of a `[desync] state_record=1` file (the tile_objects region) and the metrics of the 200-unit field benchmark (exits per 100 steps, most units on one tile, width in the valley, arrival, reversals, refusals); promoted from the U022 one-off scripts so the move_bench_field200 row can gate on it",
+      "evidence": "imported by tools/check_move_bench.py (kind field200, the move_bench_field200 row's post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_prj_facing.py": {
+      "class": "keep",
+      "why": "mods:PRJ1 -- the post_check of the prj_facing_rl4 UI row: counts the weapon-19/20 shots of 8-ayatus-rl-4 whose frame left their 24-frame block in the harness projectile-pool dump (0 expected; --expect-bad for the superseded rc3 rule, >= 10)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's prj_facing_rl4 row (post_check, both steps)"
+    },
     "check_mv_marshal.py": {
       "class": "keep",
       "why": "mods:M1N field fix (rc10 playtest, 2026-10-16) -- the m1n_marshal_idle / m1n_marshal_headon / m1n_marshal_off UI rows' post_check: reads the `; MV ORDERSUM` lines of the harness mv_replay probe and the seam's `; M1N *-marshal` lines and asserts a unit stalled in group-move marshal beside a friend in a one-tile corridor gets past it (and, with the keys at 0, that retail still stalls)",
@@ -153,6 +183,11 @@
       "class": "keep",
       "why": "mp:SES3/SES3c (tooling:TL-SUITE-SPLICE-CAM) -- reads the camera latches on the [input] mouse_trace line; the cam_latch scenario's post-check (two --segment verdicts off one boot) and the reader a player's stuck-scroll log is judged with",
       "evidence": "invoked by tools/test_ui.py (TESTS post_check, cam_latch); its own --selftest plants a log per outcome"
+    },
+    "check_tact_scroll.py": {
+      "class": "keep",
+      "why": "mods:TSCR1 -- reads the [mtrace] cam= column of a tactical run and judges the camera scroll rate per game second (tiles = cam delta, frames = f delta, times the pinned dt): the tact_scroll row's post_check, paced (15 columns/s, 20 rows/s at 480 px/s, equal at the 60 and 30 fps stand-ins) or --retail (one tile per held frame, the fix-off twin and the red-proof that the paced check fails on a retail log)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's tact_scroll row (post_check, four solo_steps); its own --selftest plants a log per outcome"
     },
     "check_freeze_watchdog.py": {
       "class": "keep",
@@ -348,6 +383,120 @@
       "evidence": "the res_walk_auto row (res_menu_roundtrip segment) in tools/uiscripts/registry.yaml names it as its post_check; `check_menu_roundtrip.py --selftest` plants every negative and is run by hand",
       "hand_run": true
     },
+    "check_ui_quads.py": {
+      "class": "keep",
+      "why": "mods:RES4 stages 1-2: the presented image (the game frame composed into the ui_scale quad list) is invisible to a framebuffer capture, so the res4_quads row captures it with `pcapture` and this checker rebuilds the same image from the unscaled capture with its OWN implementation of the quad arithmetic (nothing shared with gfx/ui_layout.cpp) and demands pixel equality, plus the `; [ui] ui_scale` layout line in mh_video.log (so two identical pictures from a scale that never took effect cannot pass). Absence of the log line or of either capture is RED",
+      "evidence": "the res4_quads row in tools/uiscripts/registry.yaml names it as its post_check; `check_ui_quads.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_cursor.py": {
+      "class": "keep",
+      "why": "mods:RES4 stage 5: in a scaled layout the cursor is an overlay the presenter draws at ui_scale, not part of the game frame, so a framebuffer capture cannot see it. The checker rebuilds the presented image from the unscaled frame capture with check_ui_quads' independent quad arithmetic and demands: nothing differs outside the logged cursor rect (no trail, no second cursor), the drawn box equals the sprite's opaque box (mh_capture.log `pcapture cursor rect ... sprite ...`) scaled by s and hung on the pointer's hotspot, and the game frame has no cursor of its own (the frames of two stops equal in the first stop's 1x cursor box). Any missing line, capture or rect is RED",
+      "evidence": "the res4_cursor_150 and res4_cursor_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_cursor.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_dialog.py": {
+      "class": "keep",
+      "why": "mods:RES4 stage 6: a gameplay-size dialog (ESC menu, Options, a confirmation) is its own presenter quad at ui_scale, which a framebuffer capture cannot see. The checker reads the logged quads (mh_capture.log `pcapture dialog ... screen ...`) and demands the frame rect is the one the game centred (a misread list is RED), the screen rect is round(w s) x round(h s), covers the 1x copy, fits and is centred on the visible map, and that the presented pixels equal an independent composition (check_ui_quads' HUD arithmetic, then each dialog sampled by the pixel-centre rule) outside the cursor rect; the dialog pixels differ between the first two stages (the click on the scaled button opened another screen). Any missing line or capture is RED",
+      "evidence": "the res4_dlg_150, res4_dlg_200 and res4_dlg_confirm_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_dialog.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_fit.py": {
+      "class": "keep",
+      "why": "mods:RES17: an explicit frame smaller than the screen's room is FITTED (the map enlarged by one factor k), not shown as a small 1:1 box. Reads the layout line of mh_video.log (map WxH xK, panel, strip, composition filling the screen height or width) and re-derives the presented image from the game frame capture with its own quad arithmetic (map enlarged by k, strip and panel at s, black aspect bars) demanding pixel equality outside the cursor rect, plus the ESC dialog quad covering the enlarged copy of its frame rect. A 1:1 small box, a wrong composition or a differing pixel is RED",
+      "evidence": "the res4_fit_explicit and res4_fit_click (--click) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_fit.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_info.py": {
+      "class": "keep",
+      "why": "mods:RES16: the unit/building info screen (game mode 4) is a stage-6b dialog layer at ui_scale (its AVI clip is stashed by the tick and composited into the layer). Reads the logged dialog quad and pcapture dialog lines (480x480 frame rect, a screen rect scaled by s, one layer), checks the map around the window art stays at normal scale and the clip rect is a busy picture, requires page 1 to differ from page 0 (the NEXT click through the scaled quad landed) and the side-panel list rows to be the same before and after ESC. No quad line, no layer, an unscaled rect or a changed panel is RED",
+      "evidence": "the res4_info_175 row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_info.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res26_apply.py": {
+      "class": "keep",
+      "why": "mods:RES26: the HUD shows the requested Interface size right after Options Apply while the menu (game mode 3) is still up. Reads the mh_video.log `view epoch` lines (pct in force == the asked percentage in game modes 3/4 after the first strategic frame, never a single quad at a >100 request) and compares the presented side-panel list rows of the menu bcapture with the resume one. A stale 100% single quad over a 200% request (the pre-RES26 stamp of the old frame) is RED",
+      "evidence": "the res_apply_menu_200_d3d11 / res_apply_menu_200_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_res26_apply.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_latch.py": {
+      "class": "keep",
+      "why": "mods:RES19: an Interface size chosen in Options shows only after the game resumes. Reads mh_video.log (`ui_scale in force: 125% (game mode 2)`, never mode 3 or 4, layout lines in presentation order) and demands the presented ESC-menu image keeps the 200% side-panel list rows of the strategic reference while the image after Return to game has the narrower 125% layout. The old behaviour (the new percentage applied to the HUD quads in mode 3 over a frame holding the old panel) is RED",
+      "evidence": "the res4_opt_latch row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_latch.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res_crop.py": {
+      "class": "keep",
+      "why": "mods:RES18: a session size off the 32 px tile grid is rendered rounded up and presented cropped. Reads mh_video.log (`[video] crop: WxH renders as FWxFH`, `SetDisplayMode FWxFH`, the `[ui] crop:` / `ui_scale` layout lines) and the frame / presented captures, and compares the presented image with a composition this tool derives independently (map top-left, strip = the frame's last 32 rows, panel = its last 160 columns). Bars, a strip off the last rows, a wrong panel slice or a vacuous run is RED",
+      "evidence": "the res_crop_1080 / res_crop_720 / res_crop_odd rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_crop.py --selftest`",
+      "hand_run": true
+    },
+    "check_panel_filler.py": {
+      "class": "keep",
+      "why": "mods:RES23-S3 (the RES22 visual rule): whole empty side-panel slots below the visible rows of the game frame must be teal, only the partial gap under the last whole row is pink (approved RES4 rule). Probes the panel column of the frame capture using the Hp log line; pink whole slots or a teal partial gap is RED",
+      "evidence": "the res4_s150 / res4_s200 / res4_auto / res_overlay_150 / res_overlay_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_panel_filler.py --selftest`",
+      "hand_run": true
+    },
+    "check_res_notice.py": {
+      "class": "keep",
+      "why": "mods:RES20: the floating in-game notices scale with Interface size. From the before / after presented captures of a printed notice, the changed-pixel box has one line's height x the percentage and starts at the 100% anchor x the percentage; above 100 the game frame must hold no notice (it is an overlay), at 100 it must (the stock path). A notice that stays 1x is RED. --stock (kill switch [video] ui_scale_notices=0): the notice must be the game's own, in the frame, 1:1. --modal (RES23-S5): the scaled notice shows behind the mode-3 ESC menu, the dialog covers it where they overlap, and the stock 1x notice is not in the frame. --stale (RES23-S5): a notice printed in the strategic view is dropped over the info screen (mode 4), in the capture log, the CPU composition and the presenter output",
+      "evidence": "the res_notice_100 / res_notice_200 / res_notice_off (--stock) / res_notice_modal (--modal) / res_notice_stale (--stale) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_notice.py --selftest`",
+      "hand_run": true
+    },
+    "check_res_fallback.py": {
+      "class": "keep",
+      "why": "mods:RES18/RES23 (R720 fix): an Interface size the layout cannot use (the panel at that size does not exceed the fit zoom's) falls back to the 100 base layout, and the hooks that keep the cursor / dialog lists / notices out of the frame must stand down. Reads the frame, pcapture and bcapture of a strategic view (cursor on A, then B) and the ESC menu: exactly one cursor source (the game's own, in the frame, no overlay), the cursor on screen at the zoomed hotspot, the ESC menu in the frame and on screen. No cursor and no ESC menu (the user's rc4 1280x720 @175 report) is RED",
+      "evidence": "the res_crop_720_175 / res_crop_720_175_gdi / res_overlay_125 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_fallback.py --selftest`",
+      "hand_run": true
+    },
+    "check_res_classic.py": {
+      "class": "keep",
+      "why": "mods:RES25: Classic sizes only (resolution=stock) is no resolution work and no Interface size scaling. Reads mh_video.log (the ui_scale-ignored / classic-sizes / options-row-off lines, no scaled layout, crop or picker line, every view epoch a 100% single quad) and the captures: the presented image equals the 640x480 frame scaled with no quads, and Screen size steps through exactly three entries. A scaled layout, a crop, a fourth size or a vacuous run is RED",
+      "evidence": "the res_classic row in tools/uiscripts/registry.yaml names it as its post_check; `check_res_classic.py --selftest`",
+      "hand_run": true
+    },
+    "check_res_overlay.py": {
+      "class": "keep",
+      "why": "mods:RES21: an explicit resolution above 100% shows the whole frame at the 100 zoom with the panel and strip drawn over it. Re-derives the composition independently from the layout log line and the frame capture and compares the presented image pixel for pixel; bars, a changed map zoom or wrong overlay size is RED",
+      "evidence": "the res_overlay_100 / _150 / _200 and res_crop_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_overlay.py --selftest`",
+      "hand_run": true
+    },
+    "check_res4_input.py": {
+      "class": "keep",
+      "why": "mods:RES4 stages 3-4: a UI capture cannot say that the game was asked for the ideal frame, that the panel lists follow Hp, or that a pointer click on the SCALED panel reached the same place as the click in frame coordinates. Reads mh_video.log: the `ui_scale=P%: the session frame is WxH` line, the `side-panel list rows follow the visible panel: Hp N` line, and the minimap / four-edge-scroll camera lines the res4_s150 / res4_s200 scripts log with `logsel`. Any missing line, a minimap click that lands elsewhere than its frame-coordinate twin, an edge that does not scroll, or two edges that scroll the same way is RED",
+      "evidence": "the res4_s150 and res4_s200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_input.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_bcapture.py": {
+      "class": "keep",
+      "why": "mods:RES23-S0: a pcapture is the CPU re-composition of the game frame and never reads the presenter, so a presenter-only bug is invisible to it. `bcapture <n>` writes capture_<n>__b.bmp from what the presenter really put on screen (gdi: the same draw calls run into a client-sized DIB; d3d11: the back buffer after the overlay pass); this tool compares each pair: equal sizes, the differing-pixel fraction within the filter tolerance (gdi 0.2%, d3d11 1% point / 3% area) and no 32x32 block mostly different. A size mismatch, a missing layer or a black band is RED; a null presenter's SKIPPED line is not an error unless --require-pair",
+      "evidence": "the res4_opt, res4_opt_latch, res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_bcapture.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res19_filler.py": {
+      "class": "keep",
+      "why": "mods:RES23-S0 / RES19: the user's rc3 report (the bottom strip's extension and corner black after Apply in Options) was filed as d3d11-only without the rig ever reading the presenter. Reads the layout lines of mh_video.log, derives the regions from them, and reports their colour in every bcapture (and pcapture twin) of the res19_user_* rows -- BLACK = RES19 reproduced on that presenter. Since RES23-S2 it measures the bottom-strip extension right of the status bar, the strip corner under the side panel and the panel filler, and is RED by default (--expect any = report only): the rows are the RES19 acceptance",
+      "evidence": "the res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res19_filler.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res19_panel.py": {
+      "class": "keep",
+      "why": "mods:RES23-S2 / RES19: hp_pump used to redraw only the building-list panel modes after an Interface size change, so a selected unit / ship card kept the old size's pixels. The row res19_unit_panel selects the mother ship, changes Interface size 200 -> 125 in Options and resumes; this checks the log (the commit that took 125% owed every panel mode and the strip a redraw, and was taken in game mode 2, never behind the menu) and the presenter's bcaptures (the panel's lower part and the strip extension are not black in the menu, after the resume and 600 ticks later)",
+      "evidence": "the res19_unit_panel row in tools/uiscripts/registry.yaml names it as its post_check; `check_res19_panel.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_opt.py": {
+      "class": "keep",
+      "why": "mods:RES4 in-game options: a picture cannot say that the Options screen's Interface size choice reached the ini the launcher writes, or that the presenter changed live. Reads mh_video.log: the `options menu: Interface size -> N (saved; the ini reads back [video] ui_scale=N)` lines (150 then 100, read back equal to what was written), the `ui_scale -> P%` presenter changes in the same order and the 150% layout line, and the presented captures: 150% differs from the first 100% image and the image back at 100% is not the 150% composition. A missing line, a write that did not stick or an unchanged picture is RED",
+      "evidence": "the res4_opt row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_opt.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
+    "check_res4_orders.py": {
+      "class": "keep",
+      "why": "mods:RES4 stage 4: a capture cannot say that an order given through the scaled UI reached the tile the same order has at 100%. Reads the `; [sel]` / `; [goal]` lines the res4_orders_100 / res4_orders_150 scripts log and demands the unit selected (exactly unit 5) and its goal tile equal the committed record tools/data/res4_orders_goal.json, which both rows share, so the two rows agree by construction. A missing line, a camera that was not pinned, a different selection or a different goal is RED",
+      "evidence": "the res4_orders_100 and res4_orders_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_orders.py --selftest` plants the negatives and is run by hand",
+      "hand_run": true
+    },
     "check_res_list.py": {
       "class": "keep",
       "why": "RES3: a UI capture is the composed game frame and cannot say what the presenter was asked for. Reads mh_video.log: the generated list armed and chose the expected size, the owned display was asked for the RENDERED size (not the desktop height, which left black rows at the bottom), and the size got the expected integer/fit scaling rule. Absence is RED",
@@ -375,8 +524,7 @@
     "m1_detours.py": {
       "class": "keep",
       "why": "offline detour analysis of the `[harness] mv_replay` movement probe log (actual vs shortest vs planned route, cause attribution, router-model check); the probe it reads ships in mh_harness",
-      "evidence": "no machine invoker -- run by a human on a probe log; stdlib only, reads nothing but the log it is given",
-      "hand_run": true
+      "evidence": "imported by tools/check_move_bench.py (the move_bench* UI rows' post_check) and run by a human on a probe log; stdlib only, reads nothing but the log it is given"
     },
     "make_cfgmod_sav.py": {
       "class": "keep",
@@ -404,6 +552,11 @@
       "class": "keep",
       "why": "mods:A2: the a2_project_gate* UI scenarios' post_check -- reads the harness's `; PROGRESS` probe lines (Nortus save loaded, the conquest and the lab's inventions played through game_UpdateProgress): with `[net] project_gate_fix=1` no PROJECT with all depend[] met is left hidden after the conquest; at the default (0, retail) the projects stay hidden (the fix-off twin runs the same check red)",
       "evidence": "invoked by the a2_project_gate* rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_port_unlock.py": {
+      "class": "keep",
+      "why": "mods:UNL1: the port_unlock_ship / port_unlock_lib UI scenarios' post_check -- reads the `; [port]` lines of the logport op (the local side's unlock row 21 = V_alien_Port, building 18 = the spaceport in its offer list, every enabled player's unlock-row counts and offer list) after the user's 8-ayatus-rl-2 campaign save is loaded and after planet arrivals: with `[net] project_gate_fix` ON the spaceport is offered (avail=1, list_has18=1), OFF it is stock (0/0); absence of the probe or a non-single-player session is RED",
+      "evidence": "invoked by the port_unlock_* rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
     },
     "check_pt5_turret_poll.py": {
       "class": "keep",
@@ -858,6 +1011,12 @@
       "class": "keep",
       "why": "importing-host stock-base table for LIB-REF-SPLIT",
       "evidence": "no machine invoker -- run by a one-per-change regeneration of the LIB-REF-SPLIT stock-base table (its output is committed, so nothing has to run it per gate)",
+      "hand_run": true
+    },
+    "gen_ovf_fixtures.py": {
+      "class": "keep",
+      "why": "recorder: cuts the user's rc2 playtest save's MHOV blob into ovftest's fixture header (PT-CAP9-U7a: the shipped v0.2.2 writer's bytes must still check(), apply and re-encode byte-identically)",
+      "evidence": "no machine invoker -- run by a bring-your-own-game user regenerating the ovftest fixture locally -- the recorder ships, the recording does not (fork-inventory section 3)",
       "hand_run": true
     },
     "gen_lzw_fixtures.py": {
@@ -1690,6 +1849,111 @@
       "why": "mods:MM1-MM3: the minimap's widest zoom keeps its resources, corners and view box -- reads the seam's boot line (all three parts armed) and the RES9 geometry line the top-level box draw logs on res_walk's 128-tile ayy30 at zoom 1; the pixels are the capture baselines' job. Absence of a line is RED",
       "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment minimap_plus); `check_minimap_plus.py --selftest` plants every negative and is run by hand",
       "hand_run": true
+    },
+    "scan_cap_reloc_sites.py": {
+      "class": "keep",
+      "why": "PT-CAP8 S0: whole-.text relocation-field census of the cap arrays vs the manifests' byte extents (offline, hermetic --check)",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "scan_cap_units_census.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U0: units/soldiers relocation census, every site classified move / exclude-with-reason, plus the 91/100/200/300 limit list; hermetic --check",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "check_cap_units.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U1: judges the cap_units row (units + soldiers raise ON, libmh absent): relocation, limits, 499 units, soldiers past 100, save/load round trip, no desync/mirror report",
+      "evidence": "post_check of tools/uiscripts/registry.yaml cap_units; invoked by tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_path.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U4: judges the u4_path500 rows (path pool relocated, up to ~490 units holding a path at once with ids past 300, free count never 0, pool invariants silent; OFF arm stays at the vanilla 100 slots)",
+      "evidence": "post_check of tools/uiscripts/registry.yaml u4_path500 / u4_path500_off; invoked by tools/lint_repo.py (--selftest)"
+    },
+    "gen_cap_path_sites.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U4b: derives the path-slot pool sites (relocation, raise-switched rewrites, caves) from the U4a census for tools/gen_cap_units_manifests.py",
+      "evidence": "imported by tools/gen_cap_units_manifests.py (invoked by tools/lint_repo.py --check, --selftest)"
+    },
+    "lint_unit_stride.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U2: no hard-coded 100-unit player stride and no unit-mirror read in mh_harness / mh (units are [8][500] once relocated)",
+      "evidence": "invoked by tools/lint_repo.py (check, --selftest)"
+    },
+    "gen_cap_units_manifests.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U1: generates the v0.2.3 units + soldiers relocation and limit cap manifests (cap_v023_units_reloc_EN / cap_v023_units_limits_EN) from the U0 census and its limit verdicts, with the P1-P6 proofs",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "scan_cap_path_slots.py": {
+      "class": "keep",
+      "why": "PT-CAP9-U4a: path-slot census (path_slot_id, buffer/flags/count/data pointers, loop bounds) classified always_on / raise_switched / unchanged, hole +0xda..+0xdb untouched, hook-overlap check, --residual image mode for the U4b gate",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "gen_cap_v022_manifests.py": {
+      "class": "keep",
+      "why": "PT-CAP8 S1: generates the v0.2.2 relocation + limit cap manifests (cap_v022_reloc_EN / cap_v022_limits_EN) from the July manifests, the split plan and the scan baseline, with the P1-P6 proofs",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "gen_cap_split_plan.py": {
+      "class": "keep",
+      "why": "PT-CAP8 S0: the v0.2.2 relocation/limit/storage-cap split plan, as data; hermetic --check against the cap manifests",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "check_cap_fill.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP8 hardening: the cap_fill UI scenario's post_check -- reads the harness cap-fill fixture's `; CAP` lines and the `[caps]` net-log banners of a raise=1, libmh-less run: relocation APPLIED, limits ON, the wide geometry rows, every family past its vanilla cap (counts and highest index in the raised part), the game stepping on after the verdict, no desync, and a silent mirror_check watch",
+      "evidence": "invoked by the cap_fill row of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_save.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP8 S3: the cap_save_seq UI scenario's post_check (--step save|refuse|vanilla|off) -- the raised-caps save round trip (equal overflow digest/counts across save + load, the planet-file MHOF footer, the container stamp, the raised-save-accepted / load-REFUSED lines, the raise-OFF save with no footer) and the four splice sites against the clean exe (--sites)",
+      "evidence": "invoked by the cap_save_seq row of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_turret.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP10: the cap_turret_fire UI scenario's post_check -- the powered-turret projectile test of the cap raise: both powered armies standing and attacking, the live projectile pool over the vanilla 1500 and held, 10 game minutes played, a silent mirror_check watch, and the save round trip taken with the pool over 1500 (equal live census, digest and counts across save + load)",
+      "evidence": "invoked by the cap_turret_fire row of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_ai.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP11: the cap_ai_scratch / cap_ai_scratch_off UI scenarios' post_check -- the relocated AI scratch arrays (connectivity flags, mine scratch, engage scratch, scan targets) under the cap raise: layer STAGED and ON, every guard intact, the four arrays past their vanilla size; --negative for the layer-OFF arm where the vanilla engage array is overrun",
+      "evidence": "invoked by the cap_ai_scratch rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_sel.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U6: the cap_sel / cap_sel_off UI scenarios' post_check -- a box select over 440 own units selects exactly 200 (the control-group record cap), the records after group 0 keep their planted bytes, a one-click order moves all 200, the control groups round-trip a save/load; --negative for the clamp-less arm where the retail append overruns the record",
+      "evidence": "invoked by the cap_sel rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_ai_units.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U3: the cap_ai_units / cap_ai_units_off UI scenarios' post_check -- the unit-indexed AI scratch arrays (group member list, attack candidates) under the units raise: an AI with 260 units, layer STAGED and ON, every guard intact, both arrays past their vanilla size, no byte changed after the vanilla arrays; --negative for the layer-OFF arm where the vanilla arrays are overrun",
+      "evidence": "invoked by the cap_ai_units rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "gen_cap_ai_manifest.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP11: generates the caps_ai toggle manifest (cap_v022_aiscratch_EN) and ai_scratch_layout.gen.h from the capstone sweep of the stock extents; hermetic --check against the cached site list",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "check_cap_orders_ui.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U5 (UI row): the cap_ctrlgrp_ui / cap_ctrlgrp_ui_off scenarios' post_check -- ~490 units grouped by three Ctrl+digit chords and moved by three digit+right-click pairs through the real UI: every grouped unit carries its status bit and holds the move order's goal, the queue high-water passes the vanilla 300 with nothing refused; --negative asserts the vanilla drop with the order layer off",
+      "evidence": "invoked by the cap_ctrlgrp rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_cap_orders.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U5: the cap_orders_sp / cap_orders_mp (and _off) UI scenarios' post_check -- the order layers (queue 4096 / staging 2048 / pending 32768) under the cap raise: layer STAGED and ON, a 500-order one-frame burst fully APPLIED (identically on every peer), high-waters past the vanilla bounds, nothing refused, no guard hit; --arm off asserts the vanilla drop",
+      "evidence": "invoked by the cap_orders rows of tools/uiscripts/registry.yaml (post_check) and tools/lint_repo.py (--selftest)"
+    },
+    "check_caps_off_clean.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U8b: the cap_orders_move_mp UI scenario's post_check -- after a raised match ends in a game over on the raise=0 client, every toggle-layer code site (limits, units limits, AI scratch, orders) is back at its ORIGINAL bytes (clean EN exe overlaid with the boot-time relocation layers, wildcard bytes included); reads the DLL's `[caps] post_match_dump=1` dumps",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's cap_orders_move_mp row (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
+    },
+    "gen_cap_orders_manifest.py": {
+      "class": "keep",
+      "why": "patching:PT-CAP9-U5: generates the caps_orders toggle manifest (cap_v023_orders_EN) and orders_layout.gen.h from the capstone sweep of the stock order-array extents (with the RESYNC restarts for queue_dispatch's inline jump tables); hermetic --check against the cached site list",
+      "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
     }
   }
 }

@@ -18,7 +18,7 @@
 #include "hook/detour.h"         // install_trampoline + WATCOM_PROLOGUE
 #include "hook/patch.h"          // patch_bytes_guarded
 #include "hook/promoted.h"       // promoted_owner_of
-#include "state/roster_caps.h"   // live_roster_caps()
+#include "caps/caps.h"           // mh::caps::rec / g: the storage + unit arrays the game addresses (PT-CAP8)
 #include "net_internal.h"        // seam_log; g_ini
 #include "en_guard.h"            // EN-only build gate
 #include "ui_info_guard.h"       // the pure decision
@@ -255,26 +255,24 @@ void __cdecl storage_gate(const uint8_t *bldg) {
     const bool injected = mh::info_guard::test_hit(g_test_row_n, g_test_row_seen);
     if (injected) req += 40; // the rig's forced stale row: far past any docked list
 
-    const uint32_t p      = at<uint16_t>(mh::addr::PlayerSide);
-    const uint32_t slot   = bldg ? bldg[0xc6] : 0; // sub_id: the storage slot
-    const auto     caps   = mh::state::live_roster_caps();
-    const int32_t  scroll = at<int32_t>(ADDR_STORAGE_SCROLL);
+    const uint32_t p          = at<uint16_t>(mh::addr::PlayerSide);
+    const uint32_t slot       = bldg ? bldg[0xc6] : 0; // sub_id: the storage slot
+    const int32_t  stor_limit = (int32_t)mh::caps::g(mh::caps::UNIT_STORAGE).limit;
+    const int32_t  unit_limit = (int32_t)mh::caps::g(mh::caps::UNITS).limit;
+    const int32_t  scroll     = at<int32_t>(ADDR_STORAGE_SCROLL);
     int32_t        count = 0, did = -1;
     uint32_t       proto = 0;
-    if (p < 8 && (int32_t)slot < caps.storage) {
-        const auto &lv = mh::state::live();
-        const auto *st = reinterpret_cast<const mh::game::mh_map_object_unit_storage *>(lv.base[mh::state::RID_UNIT_STORAGE]) +
-                         p * caps.storage + slot;
+    if (p < 8 && (int32_t)slot < stor_limit) {
+        const auto *st    = mh::caps::rec<const mh::game::mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, p, slot);
         count             = st->docked_count;
         const int32_t row = req + scroll;
         if (row >= 1 && row <= 50) did = st->docked_units[row - 1];
-        if (did >= 0 && did < caps.units) {
-            const auto *un = reinterpret_cast<const mh::game::mh_map_object_unit *>(lv.base[mh::state::RID_UNITS]) +
-                             p * caps.units + did;
-            proto = un->unit_proto_id;
+        if (did >= 0 && did < unit_limit) {
+            const auto *un = mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, p, (uint32_t)did);
+            proto          = un->unit_proto_id;
         }
     }
-    const storage_row v = storage_request_check(req, scroll, count, did, caps.units, proto);
+    const storage_row v = storage_request_check(req, scroll, count, did, unit_limit, proto);
     if (v == storage_row::ok && !injected) return;
     if (v == storage_row::ok) { /* knob: row moved by +40 but the check passed (cannot happen) */
     }

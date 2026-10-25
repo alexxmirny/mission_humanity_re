@@ -1,0 +1,36 @@
+# patching:PT-CAP8 S3 (slice G) -- the raise-OFF save, step 4 of cap_save_seq (tools/check_cap_save.py --step off).
+# The cap_save_solo walk (menu -> 1 human + 1 AI skirmish -> mother landed) with NO fixture: the harness only saves `capovf` through
+# game_SaveGame at `cap_save_at`, writes the SAME state again with the S3 hooks passed through (`cap_save_twin=1`, MH_Caps_SaveSplices(0) =
+# master's own save code) and compares the two containers byte for byte (`; CAP SAVE TWIN ... same=1`), then loads `capovf` straight back
+# through llm_game_load. Raise OFF: a raise-OFF save is byte-for-byte what master wrote, and the load tail is invisible on a vanilla file.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 shift
+gameclock 6000
+log cap: mother landing ordered, handing the run to the harness fixture
+gameclock 60000
+log cap: saved and loaded back in one step (see mh_harness.log `; CAP SAVE` / `; CAP LOAD`)
+capture cap_save_off_end
+end

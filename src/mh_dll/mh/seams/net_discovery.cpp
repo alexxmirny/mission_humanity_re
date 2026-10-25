@@ -20,6 +20,8 @@
 #include "include/mh_log_sink.h" // mp:LOG2: session.json goes through the log sink's writer
 #include "include/mh_net_export.h"
 #include "config/gameplay.h"             // PT-SET1
+#include "caps/caps.h"                   // PT-CAP8: note_world_ended at the session close
+#include "include/mh_caps_export.h"      // PT-CAP9-U8b: MH_Caps_DumpPostMatch
 #include "include/mh_seam_export.h"      // MH_Seam_StartTransport (async connect kick)
 #include "include/mh_chatinput_export.h" // MH_ChatInput_Codepage -- the pinned input codepage (F3)
 #include "mh_net_proto/session_info.h"   // SESSION_INFO descriptor + lobby-id (S1/S2 discovery)
@@ -362,7 +364,7 @@ constexpr uintptr_t ADDR_MAP_PCOUNT            = ADDR_CUR_MAP + 0x08;          /
 constexpr uintptr_t ADDR_MP_LOBBY_SLOTS        = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
 constexpr int       MP_SLOT_STRIDE             = 0x39;
 constexpr int       MP_SLOT_STATUS             = 0x0b; // slot_status byte (0 = empty)
-constexpr uint16_t  MH_MP_HOST_VERSION         = 6;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability, 6 = RL11's release version in the JOIN)
+constexpr uint16_t  MH_MP_HOST_VERSION         = 7;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability, 6 = RL11's release version in the JOIN, 7 = O1c's 12-bit order index: documentary, MIN stays 6)
 constexpr uint16_t  MH_MP_HOST_VERSION_MIN_U59 = 6;    // the first host version this transport still accepts: U59's prefix + U61's mesh + U63's failover capability + RL11's build-stating JOIN (a v3/v4 host's WELCOME carries capability 1/2, refused; a v5 host cannot read our v6 JOIN)
 
 // slot_status enum (llm_lobby_player_slot.slot_status, offset 0x0b): OPEN=0, HUMAN=1, AI=2, CLOSED=3.
@@ -976,6 +978,11 @@ namespace {
 bool close_session_active() { return MH_RunDir_SessionActive() != 0; }
 bool close_net_started() { return MH_Net_IsStarted() != 0; }
 
+void close_restore_local() {
+    mh::gameplay::restore_local("session closed");
+    MH_Caps_DumpPostMatch(); // PT-CAP9-U8b: `[caps] post_match_dump=1` -- the runtime proof the sites came back byte-exact
+}
+
 void close_resets() {
     // (F3c restored the adopted codepage here. MP-LANG retired the adoption: chat is UTF-8 and the
     // codepage is a purely local setting, so there is nothing to give back at a session's end.)
@@ -984,7 +991,10 @@ void close_resets() {
     mh::seams::maps::session_reset();
     // PT-SET1: the match is over: back to this process's own values for the next lobby/skirmish. NOT
     // recorded -- close_record (next in the plan) samples what the finished match actually ran.
-    mh::gameplay::restore_local("session closed");
+    // PT-CAP8: the world is over -- the limit layer may change again. PT-CAP9-U8b: but this runs INSIDE the sim step when the match
+    // ends in a game over (on_gameover -> the unit tick), and restore_local flips the caps limit sites: deferred to a quiescent point
+    // (mh::caps::quiescent_point, first present at the main menu) when a world has stepped; immediate for a lobby-only close.
+    mh::caps::end_world_deferred(close_restore_local);
 }
 
 // mp:RM1 + mp:U41b: the two end-of-match rollups. Shared by the record and by the harness stop's

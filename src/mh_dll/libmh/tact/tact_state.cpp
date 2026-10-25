@@ -272,7 +272,7 @@ tact_state state() {
                    ptr<int32_t>(RID_HEIGHT), ptr<int32_t>(RID_VIEW_TILES_W),
                    ptr<int32_t>(RID_VIEW_TILES_H), ptr<double>(RID_TACT_CAM_COL_F),
                    ptr<double>(RID_TACT_CAM_ROW_F), ptr<int32_t>(RID_TACT_CLICK_ACTION_TAKEN),
-                   ptr<int32_t>(RID_TACT_SCROLL_CMD), ptr<uint8_t *>(RID_FRAMEBUFFER),
+                   ptr<int32_t>(RID_TACT_MINE_BLAST_SHAKE_STEP), ptr<uint8_t *>(RID_FRAMEBUFFER),
                    ptr<int32_t>(RID_TACT_MOVE_CUR_COL), ptr<int32_t>(RID_TACT_MOVE_CUR_ROW),
                    ptr<fx_entry>(RID_TACT_FX_POOL), ptr<int32_t>(RID_TACT_FX_LIVE_COUNT),
                    // llm_tact_mission_load's write set (2026-08-26).
