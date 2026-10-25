@@ -2,10 +2,10 @@
   "schema": 2,
   "kind": "launcher",
   "channel": "latest",
-  "version": "0.2.1-rc2",
-  "issued_at": "2026-10-20T19:11:16Z",
-  "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/launcher-v0.2.1-rc2/mh_launcher.exe",
-  "sha256": "2862561a1dbf54e3d62ab932e6a426cd3dbd1f6a74b08b1de1f19c9d3e2aa8d9",
+  "version": "0.2.1",
+  "issued_at": "2026-10-25T16:34:32Z",
+  "url": "https://github.com/alexxmirny/mission_humanity_re/releases/download/launcher-v0.2.1/mh_launcher.exe",
+  "sha256": "a66f34b8ff2437352eb1f6369ec5df179372021cde87b454bfc189f1eb96476e",
   "size": 11204608,
-  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/launcher-v0.2.1-rc2"
+  "notes_url": "https://github.com/alexxmirny/mission_humanity_re/releases/tag/launcher-v0.2.1"
 }
