@@ -1,0 +1,1279 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дерево технологий: Люди - Вики по игре Mission Humanity</title>
+<link rel="stylesheet" href="../../assets/site.css">
+<script src="../../assets/site.js" defer></script>
+
+</head>
+<body data-lang-root="../" data-root="../../" data-nores="Ничего не найдено">
+<header class="top">
+  <a class="brand" href="../index.html">Вики по игре Mission Humanity</a>
+  <nav><a href="../units/index.html">Юниты</a><a href="../buildings/index.html">Здания</a><a href="../projects/index.html">Проекты исследований</a><a href="../weapons/index.html">Оружие</a><a href="../planets/index.html">Планеты</a><a href="../systems/index.html">Звёздные системы</a><a href="../techtree/index.html">Дерево технологий</a></nav>
+  <div class="search"><input id="q" type="search" placeholder="Поиск..." aria-label="Поиск..." autocomplete="off"><ul id="qres" hidden></ul></div>
+  <div class="langs"><a href="../../en/techtree/human.html" hreflang="en">English</a><b>Русский</b></div>
+</header>
+<main>
+
+<style>main { max-width: none; }</style>
+<p class="dim"><a href="index.html">Дерево технологий</a></p>
+<p class="dim">Отряды из 2-5 солдат (или насекомых) в дереве не показаны: напрямую их построить нельзя, они образуются слиянием одиночных бойцов на поле. Их страницы остались в вики.</p>
+
+<section class="tt-wrap" id="tt-human" data-faction="human">
+  <header class="tt-head">
+    <h1>Дерево технологий: Люди</h1>
+    <p class="tt-sub">144 изобретений, 390 связей, 17 уровней
+      <span class="tt-sub-note">(Узел открывается, только когда получены ВСЕ его предпосылки (слева направо).)</span></p>
+  </header>
+  <div class="tt-legend" role="list" aria-label="Условные обозначения">
+    <span class="tt-key k-unit" role="listitem"><i class="tt-swatch"></i>Юнит</span>
+    <span class="tt-key k-building" role="listitem"><i class="tt-swatch"></i>Здание</span>
+    <span class="tt-key k-project" role="listitem"><i class="tt-swatch"></i>Проект</span>
+    <span class="tt-key k-upgrade" role="listitem"><i class="tt-swatch"></i>Улучшение</span>
+    <span class="tt-key k-planet" role="listitem"><i class="tt-swatch"></i>Ворота: планета</span>
+    <span class="tt-key k-system" role="listitem"><i class="tt-swatch"></i>Ворота: система</span>
+    <span class="tt-key gate" role="listitem"><i class="tt-swatch dash"></i>пунктир = ворота планеты / системы</span>
+    <span class="tt-key derived" role="listitem"><i class="tt-swatch dot"></i>точки = правило игры, в конфиге его нет</span>
+  </div>
+  <div class="tt-tools">
+    <button type="button" data-zoom="out" title="-" aria-label="-">-</button>
+    <button type="button" data-zoom="in" title="+" aria-label="+">+</button>
+    <button type="button" data-zoom="fit">Вписать</button>
+    <span class="tt-help">Нажмите на узел, чтобы подсветить цепочку предпосылок и то, что он открывает. Нажмите на пустое место, чтобы снять выделение.</span>
+  </div>
+  <div class="tt-info" id="tt-info-human" aria-live="polite"></div>
+  <div class="tt-scroll">
+<svg class="tt-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4224.0 1139.1" width="4224.0" height="1139.1" role="group" aria-label="Tech tree">
+<g class="tt-edges">
+<path class="tt-edge" data-from="V_human_Akademia" data-to="V_human_Koszary_Zolnierzy" d="M450.0 263.6 C487.0 263.6 487.0 338.0 524.0 338.0"/>
+<path class="tt-edge" data-from="V_human_Akademia" data-to="V_human_Soldier" d="M450.0 263.6 C487.0 263.6 487.0 263.7 524.0 263.7"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_Commando" d="M950.0 487.4 C987.0 487.4 987.0 657.2 1024.0 657.2"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_Fabryka2" d="M950.0 487.4 C1031.0 487.4 1031.0 687.2 1112.0 687.2 C1237.0 687.2 1237.0 718.0 1362.0 718.0 C1443.0 718.0 1443.0 697.0 1524.0 697.0"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_K7mm_D14mm_si" d="M950.0 487.4 C987.0 487.4 987.0 717.2 1024.0 717.2"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_RALF_si" d="M950.0 487.4 C987.0 487.4 987.0 307.2 1024.0 307.2"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_Statek" d="M950.0 487.4 C987.0 487.4 987.0 777.2 1024.0 777.2"/>
+<path class="tt-edge" data-from="V_human_Biuro" data-to="V_human_pr_Walker1" d="M950.0 487.4 C987.0 487.4 987.0 425.2 1024.0 425.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Bunkier" d="M950.0 265.2 C987.0 265.2 987.0 101.2 1024.0 101.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Czolg1" d="M950.0 265.2 C987.0 265.2 987.0 483.2 1024.0 483.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Jeep1" d="M950.0 265.2 C987.0 265.2 987.0 159.2 1024.0 159.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Koszary_Pojazdow" d="M950.0 265.2 C987.0 265.2 987.0 217.2 1024.0 217.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Port" d="M950.0 265.2 C987.0 265.2 987.0 541.2 1024.0 541.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_Rakietowy1" d="M950.0 265.2 C987.0 265.2 987.0 599.2 1024.0 599.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_pr_RALF_si" d="M950.0 265.2 C987.0 265.2 987.0 307.2 1024.0 307.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka1" data-to="V_human_pr_Walker1" d="M950.0 265.2 C987.0 265.2 987.0 425.2 1024.0 425.2"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Bombowiec1" d="M1950.0 497.1 C1987.0 497.1 1987.0 235.0 2024.0 235.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Fabryka3" d="M1950.0 497.1 C2031.0 497.1 2031.0 205.0 2112.0 205.0 C2237.0 205.0 2237.0 377.6 2362.0 377.6 C2443.0 377.6 2443.0 551.1 2524.0 551.1"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Jeep2" d="M1950.0 497.1 C1987.0 497.1 1987.0 293.0 2024.0 293.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Lotnisko_Samolotow" d="M1950.0 497.1 C1987.0 497.1 1987.0 351.0 2024.0 351.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Mysliwiec1" d="M1950.0 497.1 C1987.0 497.1 1987.0 467.0 2024.0 467.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_Wieza" d="M1950.0 497.1 C1987.0 497.1 1987.0 525.0 2024.0 525.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Bo1_My1_pa" d="M1950.0 497.1 C1987.0 497.1 1987.0 643.0 2024.0 643.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Bo1_My1_pr" d="M1950.0 497.1 C1987.0 497.1 1987.0 57.0 2024.0 57.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Czolg2" d="M1950.0 497.1 C1987.0 497.1 1987.0 723.0 2024.0 723.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_D40mm_CX2_si" d="M1950.0 497.1 C1987.0 497.1 1987.0 175.0 2024.0 175.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_D75mm_si" d="M1950.0 497.1 C1987.0 497.1 1987.0 955.0 2024.0 955.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Dzialo" d="M1950.0 497.1 C1987.0 497.1 1987.0 897.0 2024.0 897.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Fabryka2_up1" d="M1950.0 497.1 C1987.0 497.1 1987.0 585.0 2024.0 585.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Je1_Je2_Cz1_Ra1_pr" d="M1950.0 497.1 C1987.0 497.1 1987.0 409.0 2024.0 409.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Je1_Je2_pa" d="M1950.0 497.1 C1987.0 497.1 1987.0 781.0 2024.0 781.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_RALB_si" d="M1950.0 497.1 C1987.0 497.1 1987.0 115.0 2024.0 115.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2" data-to="V_human_pr_Rakietowy2" d="M1950.0 497.1 C1987.0 497.1 1987.0 839.0 2024.0 839.0"/>
+<path class="tt-edge" data-from="V_human_Fabryka2_up1" data-to="V_human_Helikopter1" d="M2450.0 488.1 C2487.0 488.1 2487.0 417.7 2524.0 417.7"/>
+<path class="tt-edge" data-from="V_human_Fabryka2_up1" data-to="V_human_Lotnisko_Helikopterow" d="M2450.0 488.1 C2487.0 488.1 2487.0 475.7 2524.0 475.7"/>
+<path class="tt-edge" data-from="V_human_Fabryka2_up1" data-to="V_human_pr_He1_pr" d="M2450.0 488.1 C2531.0 488.1 2531.0 505.7 2612.0 505.7 C2737.0 505.7 2737.0 365.6 2862.0 365.6 C2943.0 365.6 2943.0 381.1 3024.0 381.1"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_Bunkier2" d="M2700.0 551.1 C2737.0 551.1 2737.0 395.6 2774.0 395.6"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_Bombowiec2" d="M2700.0 551.1 C2737.0 551.1 2737.0 453.6 2774.0 453.6"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_Fabryka3_up1" d="M2700.0 551.1 C2781.0 551.1 2781.0 543.6 2862.0 543.6 C2943.0 543.6 2943.0 555.1 3024.0 555.1"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_KJ_DJ_BJ_si" d="M2700.0 551.1 C2781.0 551.1 2781.0 553.6 2862.0 553.6 C2943.0 553.6 2943.0 613.1 3024.0 613.1"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_Mysliwiec2" d="M2700.0 551.1 C2737.0 551.1 2737.0 513.6 2774.0 513.6"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_RK_si" d="M2700.0 551.1 C2781.0 551.1 2781.0 483.6 2862.0 483.6 C2987.0 483.6 2987.0 293.1 3112.0 293.1 C3193.0 293.1 3193.0 400.9 3274.0 400.9"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_Rakietowy3" d="M2700.0 551.1 C2737.0 551.1 2737.0 769.6 2774.0 769.6"/>
+<path class="tt-edge" data-from="V_human_Fabryka3" data-to="V_human_pr_Statek_up2" d="M2700.0 551.1 C2737.0 551.1 2737.0 827.6 2774.0 827.6"/>
+<path class="tt-edge" data-from="V_human_Fabryka3_up1" data-to="V_human_pr_Helikopter2" d="M3450.0 516.9 C3487.0 516.9 3487.0 541.3 3524.0 541.3"/>
+<path class="tt-edge" data-from="V_human_Fabryka3_up1" data-to="V_human_pr_Walker2" d="M3450.0 516.9 C3487.0 516.9 3487.0 483.3 3524.0 483.3"/>
+<path class="tt-edge" data-from="V_human_Kopalnia1" data-to="V_human_Magazyn" d="M450.0 205.6 C487.0 205.6 487.0 205.7 524.0 205.7"/>
+<path class="tt-edge" data-from="V_human_Koszary_Pojazdow" data-to="V_human_Fabryka2" d="M1200.0 217.2 C1281.0 217.2 1281.0 194.0 1362.0 194.0 C1487.0 194.0 1487.0 229.6 1612.0 229.6 C1693.0 229.6 1693.0 497.1 1774.0 497.1"/>
+<path class="tt-edge" data-from="V_human_Koszary_Zolnierzy" data-to="V_human_Biuro" d="M700.0 338.0 C737.0 338.0 737.0 487.4 774.0 487.4"/>
+<path class="tt-edge" data-from="V_human_Koszary_Zolnierzy" data-to="V_human_Fabryka1" d="M700.0 338.0 C737.0 338.0 737.0 265.2 774.0 265.2"/>
+<path class="tt-edge" data-from="V_human_Matka" data-to="V_human_Akademia" d="M200.0 263.6 C237.0 263.6 237.0 263.6 274.0 263.6"/>
+<path class="tt-edge" data-from="V_human_Matka" data-to="V_human_Elektrownia" d="M200.0 263.6 C237.0 263.6 237.0 147.6 274.0 147.6"/>
+<path class="tt-edge" data-from="V_human_Matka" data-to="V_human_Kopalnia1" d="M200.0 263.6 C237.0 263.6 237.0 205.6 274.0 205.6"/>
+<path class="tt-edge" data-from="V_human_Matka" data-to="V_human_Osiedle" d="M200.0 263.6 C237.0 263.6 237.0 321.6 274.0 321.6"/>
+<path class="tt-edge" data-from="V_human_Matka" data-to="V_human_Przekaznik" d="M200.0 263.6 C237.0 263.6 237.0 379.6 274.0 379.6"/>
+<path class="tt-edge derived" data-from="V_human_Port" data-to="V_human_Rakieta" d="M1200.0 541.2 C1237.0 541.2 1237.0 572.0 1274.0 572.0"/>
+<path class="tt-edge" data-from="V_human_Port" data-to="V_human_pr_Statek_up1" d="M1200.0 541.2 C1237.0 541.2 1237.0 630.0 1274.0 630.0"/>
+<path class="tt-edge" data-from="V_human_Statek" data-to="V_human_Statek_h" d="M1450.0 864.0 C1487.0 864.0 1487.0 884.2 1524.0 884.2"/>
+<path class="tt-edge" data-from="V_human_Statek" data-to="V_human_Statek_up1" d="M1450.0 864.0 C1487.0 864.0 1487.0 768.2 1524.0 768.2"/>
+<path class="tt-edge" data-from="V_human_Statek_up1" data-to="V_human_Statek_up1_h" d="M1700.0 768.2 C1737.0 768.2 1737.0 923.9 1774.0 923.9"/>
+<path class="tt-edge" data-from="V_human_Statek_up1" data-to="V_human_Statek_up2" d="M1700.0 768.2 C1781.0 768.2 1781.0 953.9 1862.0 953.9 C1987.0 953.9 1987.0 1121.0 2112.0 1121.0 C2237.0 1121.0 2237.0 1132.1 2362.0 1132.1 C2487.0 1132.1 2487.0 1053.5 2612.0 1053.5 C2737.0 1053.5 2737.0 978.4 2862.0 978.4 C2943.0 978.4 2943.0 915.1 3024.0 915.1"/>
+<path class="tt-edge" data-from="V_human_pr_Bo1_My1_pa" data-to="V_human_up_Bo1_My1_pa" d="M2200.0 643.0 C2237.0 643.0 2237.0 546.1 2274.0 546.1"/>
+<path class="tt-edge" data-from="V_human_pr_Bo1_My1_pr" data-to="V_human_up_Bo1_My1_pr" d="M2200.0 57.0 C2237.0 57.0 2237.0 56.1 2274.0 56.1"/>
+<path class="tt-edge" data-from="V_human_pr_Bo2_My2_pa" data-to="V_human_up_Bo2_My2_pa" d="M3200.0 497.1 C3237.0 497.1 3237.0 458.9 3274.0 458.9"/>
+<path class="tt-edge" data-from="V_human_pr_Bo2_My2_pr" data-to="V_human_up_Bo2_My2_pr" d="M3200.0 323.1 C3237.0 323.1 3237.0 284.9 3274.0 284.9"/>
+<path class="tt-edge" data-from="V_human_pr_Bombowiec2" data-to="V_human_Bombowiec2" d="M2950.0 453.6 C2987.0 453.6 2987.0 263.1 3024.0 263.1"/>
+<path class="tt-edge" data-from="V_human_pr_Bombowiec2" data-to="V_human_pr_Bo2_My2_pa" d="M2950.0 453.6 C2987.0 453.6 2987.0 497.1 3024.0 497.1"/>
+<path class="tt-edge" data-from="V_human_pr_Bombowiec2" data-to="V_human_pr_Bo2_My2_pr" d="M2950.0 453.6 C2987.0 453.6 2987.0 323.1 3024.0 323.1"/>
+<path class="tt-edge" data-from="V_human_pr_Commando" data-to="V_human_Commando" d="M1200.0 657.2 C1237.0 657.2 1237.0 688.0 1274.0 688.0"/>
+<path class="tt-edge" data-from="V_human_pr_Commando" data-to="V_human_pr_Soldier_pa" d="M1200.0 657.2 C1237.0 657.2 1237.0 748.0 1274.0 748.0"/>
+<path class="tt-edge" data-from="V_human_pr_Commando" data-to="V_human_pr_Soldier_pr" d="M1200.0 657.2 C1237.0 657.2 1237.0 514.0 1274.0 514.0"/>
+<path class="tt-edge" data-from="V_human_pr_Cz1_Wa1_pa" data-to="V_human_up_Cz1_Wa1_pa" d="M1450.0 224.0 C1487.0 224.0 1487.0 259.6 1524.0 259.6"/>
+<path class="tt-edge" data-from="V_human_pr_Cz2_Ra2_Dz_pr" data-to="V_human_up_Cz2_Ra2_Dz_pr" d="M2450.0 802.1 C2487.0 802.1 2487.0 812.4 2524.0 812.4"/>
+<path class="tt-edge" data-from="V_human_pr_Cz2_Wa2_He2_pa" data-to="V_human_up_Cz2_Wa2_He2_pa" d="M3950.0 648.9 C3987.0 648.9 3987.0 640.4 4024.0 640.4"/>
+<path class="tt-edge" data-from="V_human_pr_Czolg2" data-to="V_human_Czolg2" d="M2200.0 723.0 C2237.0 723.0 2237.0 686.1 2274.0 686.1"/>
+<path class="tt-edge" data-from="V_human_pr_Czolg2" data-to="V_human_pr_Cz2_Ra2_Dz_pr" d="M2200.0 723.0 C2237.0 723.0 2237.0 802.1 2274.0 802.1"/>
+<path class="tt-edge" data-from="V_human_pr_Czolg2" data-to="V_human_pr_Cz2_Wa2_He2_pa" d="M2200.0 723.0 C2281.0 723.0 2281.0 656.1 2362.0 656.1 C2487.0 656.1 2487.0 706.1 2612.0 706.1 C2737.0 706.1 2737.0 739.6 2862.0 739.6 C2987.0 739.6 2987.0 817.1 3112.0 817.1 C3237.0 817.1 3237.0 850.9 3362.0 850.9 C3487.0 850.9 3487.0 767.3 3612.0 767.3 C3693.0 767.3 3693.0 648.9 3774.0 648.9"/>
+<path class="tt-edge" data-from="V_human_pr_D40mm_CX2_si" data-to="V_human_up_D40mm_CX2_si" d="M2200.0 175.0 C2237.0 175.0 2237.0 235.0 2274.0 235.0"/>
+<path class="tt-edge" data-from="V_human_pr_D75mm_si" data-to="V_human_up_D75mm_si" d="M2200.0 955.0 C2237.0 955.0 2237.0 1034.1 2274.0 1034.1"/>
+<path class="tt-edge" data-from="V_human_pr_Dzialo" data-to="V_human_Dzialo" d="M2200.0 897.0 C2237.0 897.0 2237.0 918.1 2274.0 918.1"/>
+<path class="tt-edge" data-from="V_human_pr_Dzialo" data-to="V_human_pr_Cz2_Ra2_Dz_pr" d="M2200.0 897.0 C2237.0 897.0 2237.0 802.1 2274.0 802.1"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka2" data-to="V_human_Fabryka2" d="M1700.0 697.0 C1737.0 697.0 1737.0 497.1 1774.0 497.1"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka2" data-to="V_human_pr_Fabryka3" d="M1700.0 697.0 C1781.0 697.0 1781.0 883.9 1862.0 883.9 C1987.0 883.9 1987.0 1101.0 2112.0 1101.0 C2193.0 1101.0 2193.0 606.1 2274.0 606.1"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka2" data-to="V_human_pr_Kopalnia2" d="M1700.0 697.0 C1737.0 697.0 1737.0 853.9 1774.0 853.9"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka2_up1" data-to="V_human_Fabryka2_up1" d="M2200.0 585.0 C2237.0 585.0 2237.0 488.1 2274.0 488.1"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka3" data-to="V_human_Fabryka3" d="M2450.0 606.1 C2487.0 606.1 2487.0 551.1 2524.0 551.1"/>
+<path class="tt-edge" data-from="V_human_pr_Fabryka3_up1" data-to="V_human_Fabryka3_up1" d="M3200.0 555.1 C3237.0 555.1 3237.0 516.9 3274.0 516.9"/>
+<path class="tt-edge" data-from="V_human_pr_He1_pr" data-to="V_human_up_He1_pr" d="M3200.0 381.1 C3237.0 381.1 3237.0 342.9 3274.0 342.9"/>
+<path class="tt-edge" data-from="V_human_pr_He2_pr" data-to="V_human_up_He2_pr" d="M3950.0 590.9 C3987.0 590.9 3987.0 582.4 4024.0 582.4"/>
+<path class="tt-edge" data-from="V_human_pr_Helikopter2" data-to="V_human_Helikopter2" d="M3700.0 541.3 C3737.0 541.3 3737.0 474.9 3774.0 474.9"/>
+<path class="tt-edge" data-from="V_human_pr_Helikopter2" data-to="V_human_pr_Cz2_Wa2_He2_pa" d="M3700.0 541.3 C3737.0 541.3 3737.0 648.9 3774.0 648.9"/>
+<path class="tt-edge" data-from="V_human_pr_Helikopter2" data-to="V_human_pr_He2_pr" d="M3700.0 541.3 C3737.0 541.3 3737.0 590.9 3774.0 590.9"/>
+<path class="tt-edge" data-from="V_human_pr_Je1_Je2_Cz1_Ra1_pr" data-to="V_human_up_Je1_Je2_Cz1_Ra1_pr" d="M2200.0 409.0 C2237.0 409.0 2237.0 408.1 2274.0 408.1"/>
+<path class="tt-edge" data-from="V_human_pr_Je1_Je2_pa" data-to="V_human_up_Je1_Je2_pa" d="M2200.0 781.0 C2237.0 781.0 2237.0 744.1 2274.0 744.1"/>
+<path class="tt-edge" data-from="V_human_pr_K7mm_D14mm_si" data-to="V_human_up_K7mm_D14mm_si" d="M1200.0 717.2 C1237.0 717.2 1237.0 806.0 1274.0 806.0"/>
+<path class="tt-edge" data-from="V_human_pr_KJ_DJ_BJ_si" data-to="V_human_up_KJ_DJ_BJ_si" d="M3200.0 613.1 C3237.0 613.1 3237.0 574.9 3274.0 574.9"/>
+<path class="tt-edge" data-from="V_human_pr_Kopalnia2" data-to="V_human_Kopalnia2" d="M1950.0 853.9 C1987.0 853.9 1987.0 1071.0 2024.0 1071.0"/>
+<path class="tt-edge" data-from="V_human_pr_Mysliwiec2" data-to="V_human_Mysliwiec2" d="M2950.0 513.6 C2987.0 513.6 2987.0 439.1 3024.0 439.1"/>
+<path class="tt-edge" data-from="V_human_pr_Mysliwiec2" data-to="V_human_pr_Bo2_My2_pa" d="M2950.0 513.6 C2987.0 513.6 2987.0 497.1 3024.0 497.1"/>
+<path class="tt-edge" data-from="V_human_pr_Mysliwiec2" data-to="V_human_pr_Bo2_My2_pr" d="M2950.0 513.6 C2987.0 513.6 2987.0 323.1 3024.0 323.1"/>
+<path class="tt-edge" data-from="V_human_pr_RALB_si" data-to="V_human_up_RALB_si" d="M2200.0 115.0 C2237.0 115.0 2237.0 114.1 2274.0 114.1"/>
+<path class="tt-edge" data-from="V_human_pr_RALF_si" data-to="V_human_up_RALF_si" d="M1200.0 307.2 C1237.0 307.2 1237.0 340.0 1274.0 340.0"/>
+<path class="tt-edge" data-from="V_human_pr_RB_si" data-to="V_human_up_RB_si" d="M2450.0 976.1 C2487.0 976.1 2487.0 934.9 2524.0 934.9"/>
+<path class="tt-edge" data-from="V_human_pr_RG_si" data-to="V_human_up_RG_si" d="M3450.0 762.9 C3487.0 762.9 3487.0 737.3 3524.0 737.3"/>
+<path class="tt-edge" data-from="V_human_pr_RK_si" data-to="V_human_up_RK_si" d="M3450.0 400.9 C3487.0 400.9 3487.0 388.8 3524.0 388.8"/>
+<path class="tt-edge" data-from="V_human_pr_Ra3_pr" data-to="V_human_up_Ra3_pr" d="M3200.0 787.1 C3237.0 787.1 3237.0 820.9 3274.0 820.9"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy2" data-to="V_human_Rakietowy2" d="M2200.0 839.0 C2237.0 839.0 2237.0 860.1 2274.0 860.1"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy2" data-to="V_human_pr_Cz2_Ra2_Dz_pr" d="M2200.0 839.0 C2237.0 839.0 2237.0 802.1 2274.0 802.1"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy2" data-to="V_human_pr_RB_si" d="M2200.0 839.0 C2237.0 839.0 2237.0 976.1 2274.0 976.1"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy3" data-to="V_human_Rakietowy3" d="M2950.0 769.6 C2987.0 769.6 2987.0 857.1 3024.0 857.1"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy3" data-to="V_human_pr_RG_si" d="M2950.0 769.6 C3031.0 769.6 3031.0 827.1 3112.0 827.1 C3193.0 827.1 3193.0 762.9 3274.0 762.9"/>
+<path class="tt-edge" data-from="V_human_pr_Rakietowy3" data-to="V_human_pr_Ra3_pr" d="M2950.0 769.6 C2987.0 769.6 2987.0 787.1 3024.0 787.1"/>
+<path class="tt-edge" data-from="V_human_pr_Soldier_pa" data-to="V_human_up_Soldier_pa" d="M1450.0 748.0 C1487.0 748.0 1487.0 826.2 1524.0 826.2"/>
+<path class="tt-edge" data-from="V_human_pr_Soldier_pr" data-to="V_human_up_Soldier_pr" d="M1450.0 514.0 C1487.0 514.0 1487.0 639.0 1524.0 639.0"/>
+<path class="tt-edge" data-from="V_human_pr_Statek" data-to="V_human_Statek" d="M1200.0 777.2 C1237.0 777.2 1237.0 864.0 1274.0 864.0"/>
+<path class="tt-edge" data-from="V_human_pr_Statek" data-to="V_human_pr_Statek_up1" d="M1200.0 777.2 C1237.0 777.2 1237.0 630.0 1274.0 630.0"/>
+<path class="tt-edge" data-from="V_human_pr_Statek_up1" data-to="V_human_Statek_up1" d="M1450.0 630.0 C1487.0 630.0 1487.0 768.2 1524.0 768.2"/>
+<path class="tt-edge" data-from="V_human_pr_Statek_up1" data-to="V_human_pr_Statek_up2" d="M1450.0 630.0 C1531.0 630.0 1531.0 738.2 1612.0 738.2 C1737.0 738.2 1737.0 893.9 1862.0 893.9 C1987.0 893.9 1987.0 1111.0 2112.0 1111.0 C2237.0 1111.0 2237.0 1122.1 2362.0 1122.1 C2487.0 1122.1 2487.0 974.9 2612.0 974.9 C2693.0 974.9 2693.0 827.6 2774.0 827.6"/>
+<path class="tt-edge" data-from="V_human_pr_Statek_up2" data-to="V_human_Statek_up2" d="M2950.0 827.6 C2987.0 827.6 2987.0 915.1 3024.0 915.1"/>
+<path class="tt-edge" data-from="V_human_pr_Wa1_pr" data-to="V_human_up_Wa1_pr" d="M1450.0 282.0 C1487.0 282.0 1487.0 317.6 1524.0 317.6"/>
+<path class="tt-edge" data-from="V_human_pr_Wa2_pr" data-to="V_human_up_Wa2_pr" d="M3950.0 532.9 C3987.0 532.9 3987.0 524.4 4024.0 524.4"/>
+<path class="tt-edge" data-from="V_human_pr_Walker1" data-to="V_human_Walker1" d="M1200.0 425.2 C1237.0 425.2 1237.0 456.0 1274.0 456.0"/>
+<path class="tt-edge" data-from="V_human_pr_Walker1" data-to="V_human_pr_Cz1_Wa1_pa" d="M1200.0 425.2 C1237.0 425.2 1237.0 224.0 1274.0 224.0"/>
+<path class="tt-edge" data-from="V_human_pr_Walker1" data-to="V_human_pr_Wa1_pr" d="M1200.0 425.2 C1237.0 425.2 1237.0 282.0 1274.0 282.0"/>
+<path class="tt-edge" data-from="V_human_pr_Walker2" data-to="V_human_Walker2" d="M3700.0 483.3 C3737.0 483.3 3737.0 416.9 3774.0 416.9"/>
+<path class="tt-edge" data-from="V_human_pr_Walker2" data-to="V_human_pr_Cz2_Wa2_He2_pa" d="M3700.0 483.3 C3737.0 483.3 3737.0 648.9 3774.0 648.9"/>
+<path class="tt-edge" data-from="V_human_pr_Walker2" data-to="V_human_pr_Wa2_pr" d="M3700.0 483.3 C3737.0 483.3 3737.0 532.9 3774.0 532.9"/>
+<path class="tt-edge gate" data-from="V_planeta_101" data-to="V_human_Biuro" d="M200.0 498.3 C281.0 498.3 281.0 526.9 362.0 526.9 C487.0 526.9 487.0 557.4 612.0 557.4 C693.0 557.4 693.0 487.4 774.0 487.4"/>
+<path class="tt-edge gate" data-from="V_planeta_101" data-to="V_planeta_102" d="M200.0 498.3 C237.0 498.3 237.0 469.6 274.0 469.6"/>
+<path class="tt-edge gate" data-from="V_planeta_102" data-to="V_human_Fabryka1" d="M450.0 469.6 C531.0 469.6 531.0 368.0 612.0 368.0 C693.0 368.0 693.0 265.2 774.0 265.2"/>
+<path class="tt-edge gate" data-from="V_planeta_102" data-to="V_human_pr_Statek" d="M450.0 469.6 C531.0 469.6 531.0 547.4 612.0 547.4 C737.0 547.4 737.0 662.4 862.0 662.4 C943.0 662.4 943.0 777.2 1024.0 777.2"/>
+<path class="tt-edge gate" data-from="V_planeta_102" data-to="V_planeta_103" d="M450.0 469.6 C487.0 469.6 487.0 418.6 524.0 418.6"/>
+<path class="tt-edge gate" data-from="V_planeta_102" data-to="V_planeta_104" d="M450.0 469.6 C487.0 469.6 487.0 517.4 524.0 517.4"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_human_Czolg1" d="M700.0 418.6 C781.0 418.6 781.0 437.4 862.0 437.4 C943.0 437.4 943.0 483.2 1024.0 483.2"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_human_Port" d="M700.0 418.6 C781.0 418.6 781.0 447.4 862.0 447.4 C943.0 447.4 943.0 541.2 1024.0 541.2"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_human_Rakietowy1" d="M700.0 418.6 C781.0 418.6 781.0 457.4 862.0 457.4 C943.0 457.4 943.0 599.2 1024.0 599.2"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_human_pr_Soldier_pr" d="M700.0 418.6 C781.0 418.6 781.0 421.2 862.0 421.2 C987.0 421.2 987.0 337.2 1112.0 337.2 C1193.0 337.2 1193.0 514.0 1274.0 514.0"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_human_pr_Walker1" d="M700.0 418.6 C781.0 418.6 781.0 411.2 862.0 411.2 C943.0 411.2 943.0 425.2 1024.0 425.2"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_planeta_105" d="M700.0 418.6 C737.0 418.6 737.0 323.2 774.0 323.2"/>
+<path class="tt-edge gate" data-from="V_planeta_103" data-to="V_planeta_106" d="M700.0 418.6 C737.0 418.6 737.0 381.2 774.0 381.2"/>
+<path class="tt-edge gate" data-from="V_planeta_104" data-to="V_human_Czolg1" d="M700.0 517.4 C781.0 517.4 781.0 577.4 862.0 577.4 C943.0 577.4 943.0 483.2 1024.0 483.2"/>
+<path class="tt-edge gate" data-from="V_planeta_104" data-to="V_human_Port" d="M700.0 517.4 C781.0 517.4 781.0 587.4 862.0 587.4 C943.0 587.4 943.0 541.2 1024.0 541.2"/>
+<path class="tt-edge gate" data-from="V_planeta_104" data-to="V_human_Rakietowy1" d="M700.0 517.4 C781.0 517.4 781.0 597.4 862.0 597.4 C943.0 597.4 943.0 599.2 1024.0 599.2"/>
+<path class="tt-edge gate" data-from="V_planeta_104" data-to="V_human_pr_Soldier_pa" d="M700.0 517.4 C781.0 517.4 781.0 517.4 862.0 517.4 C987.0 517.4 987.0 747.2 1112.0 747.2 C1193.0 747.2 1193.0 748.0 1274.0 748.0"/>
+<path class="tt-edge gate" data-from="V_planeta_104" data-to="V_planeta_107" d="M700.0 517.4 C737.0 517.4 737.0 547.4 774.0 547.4"/>
+<path class="tt-edge gate" data-from="V_planeta_105" data-to="V_human_pr_Cz1_Wa1_pa" d="M950.0 323.2 C1031.0 323.2 1031.0 247.2 1112.0 247.2 C1193.0 247.2 1193.0 224.0 1274.0 224.0"/>
+<path class="tt-edge gate" data-from="V_planeta_105" data-to="V_human_pr_RALF_si" d="M950.0 323.2 C987.0 323.2 987.0 307.2 1024.0 307.2"/>
+<path class="tt-edge gate" data-from="V_planeta_105" data-to="V_human_pr_Wa1_pr" d="M950.0 323.2 C1031.0 323.2 1031.0 257.2 1112.0 257.2 C1193.0 257.2 1193.0 282.0 1274.0 282.0"/>
+<path class="tt-edge gate" data-from="V_planeta_105" data-to="V_planeta_108" d="M950.0 323.2 C987.0 323.2 987.0 367.2 1024.0 367.2"/>
+<path class="tt-edge gate" data-from="V_planeta_106" data-to="V_human_pr_Cz1_Wa1_pa" d="M950.0 381.2 C1031.0 381.2 1031.0 267.2 1112.0 267.2 C1193.0 267.2 1193.0 224.0 1274.0 224.0"/>
+<path class="tt-edge gate" data-from="V_planeta_106" data-to="V_human_pr_RALF_si" d="M950.0 381.2 C987.0 381.2 987.0 307.2 1024.0 307.2"/>
+<path class="tt-edge gate" data-from="V_planeta_106" data-to="V_human_pr_Wa1_pr" d="M950.0 381.2 C1031.0 381.2 1031.0 277.2 1112.0 277.2 C1193.0 277.2 1193.0 282.0 1274.0 282.0"/>
+<path class="tt-edge gate" data-from="V_planeta_106" data-to="V_planeta_108" d="M950.0 381.2 C987.0 381.2 987.0 367.2 1024.0 367.2"/>
+<path class="tt-edge gate" data-from="V_planeta_107" data-to="V_human_pr_Walker1" d="M950.0 547.4 C987.0 547.4 987.0 425.2 1024.0 425.2"/>
+<path class="tt-edge gate" data-from="V_planeta_107" data-to="V_planeta_108" d="M950.0 547.4 C987.0 547.4 987.0 367.2 1024.0 367.2"/>
+<path class="tt-edge gate" data-from="V_planeta_108" data-to="V_human_pr_Statek_up1" d="M1200.0 367.2 C1237.0 367.2 1237.0 630.0 1274.0 630.0"/>
+<path class="tt-edge gate derived" data-from="V_planeta_108" data-to="V_uklad1" d="M1200.0 367.2 C1237.0 367.2 1237.0 398.0 1274.0 398.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_Bo1_My1_pr" d="M1700.0 375.6 C1781.0 375.6 1781.0 210.9 1862.0 210.9 C1943.0 210.9 1943.0 57.0 2024.0 57.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_D40mm_CX2_si" d="M1700.0 375.6 C1781.0 375.6 1781.0 275.3 1862.0 275.3 C1943.0 275.3 1943.0 175.0 2024.0 175.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_Fabryka2_up1" d="M1700.0 375.6 C1781.0 375.6 1781.0 407.1 1862.0 407.1 C1943.0 407.1 1943.0 585.0 2024.0 585.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_Fabryka3" d="M1700.0 375.6 C1781.0 375.6 1781.0 230.9 1862.0 230.9 C1987.0 230.9 1987.0 27.0 2112.0 27.0 C2193.0 27.0 2193.0 606.1 2274.0 606.1"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_RALB_si" d="M1700.0 375.6 C1781.0 375.6 1781.0 220.9 1862.0 220.9 C1943.0 220.9 1943.0 115.0 2024.0 115.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_human_pr_Rakietowy2" d="M1700.0 375.6 C1781.0 375.6 1781.0 467.1 1862.0 467.1 C1943.0 467.1 1943.0 839.0 2024.0 839.0"/>
+<path class="tt-edge gate" data-from="V_planeta_201" data-to="V_planeta_204" d="M1700.0 375.6 C1737.0 375.6 1737.0 437.1 1774.0 437.1"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_Bo1_My1_pa" d="M1700.0 523.0 C1781.0 523.0 1781.0 612.0 1862.0 612.0 C1943.0 612.0 1943.0 643.0 2024.0 643.0"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_Czolg2" d="M1700.0 523.0 C1781.0 523.0 1781.0 622.0 1862.0 622.0 C1943.0 622.0 1943.0 723.0 2024.0 723.0"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_D40mm_CX2_si" d="M1700.0 523.0 C1781.0 523.0 1781.0 537.1 1862.0 537.1 C1943.0 537.1 1943.0 175.0 2024.0 175.0"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_Fabryka3" d="M1700.0 523.0 C1781.0 523.0 1781.0 527.1 1862.0 527.1 C1987.0 527.1 1987.0 555.0 2112.0 555.0 C2193.0 555.0 2193.0 606.1 2274.0 606.1"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_Je1_Je2_pa" d="M1700.0 523.0 C1781.0 523.0 1781.0 642.0 1862.0 642.0 C1943.0 642.0 1943.0 781.0 2024.0 781.0"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_human_pr_Rakietowy2" d="M1700.0 523.0 C1781.0 523.0 1781.0 632.0 1862.0 632.0 C1943.0 632.0 1943.0 839.0 2024.0 839.0"/>
+<path class="tt-edge gate" data-from="V_planeta_202" data-to="V_planeta_208" d="M1700.0 523.0 C1737.0 523.0 1737.0 582.0 1774.0 582.0"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_human_pr_Czolg2" d="M1700.0 581.0 C1781.0 581.0 1781.0 662.0 1862.0 662.0 C1943.0 662.0 1943.0 723.0 2024.0 723.0"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_human_pr_Fabryka2_up1" d="M1700.0 581.0 C1781.0 581.0 1781.0 652.0 1862.0 652.0 C1943.0 652.0 1943.0 585.0 2024.0 585.0"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_human_pr_Kopalnia2" d="M1700.0 581.0 C1737.0 581.0 1737.0 853.9 1774.0 853.9"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_human_pr_Rakietowy2" d="M1700.0 581.0 C1781.0 581.0 1781.0 707.9 1862.0 707.9 C1943.0 707.9 1943.0 839.0 2024.0 839.0"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_planeta_205" d="M1700.0 581.0 C1737.0 581.0 1737.0 737.9 1774.0 737.9"/>
+<path class="tt-edge gate" data-from="V_planeta_203" data-to="V_planeta_206" d="M1700.0 581.0 C1737.0 581.0 1737.0 795.9 1774.0 795.9"/>
+<path class="tt-edge gate" data-from="V_planeta_204" data-to="V_human_pr_Czolg2" d="M1950.0 437.1 C1987.0 437.1 1987.0 723.0 2024.0 723.0"/>
+<path class="tt-edge gate derived" data-from="V_planeta_204" data-to="V_uklad2" d="M1950.0 437.1 C2031.0 437.1 2031.0 145.0 2112.0 145.0 C2237.0 145.0 2237.0 205.0 2362.0 205.0 C2487.0 205.0 2487.0 387.7 2612.0 387.7 C2693.0 387.7 2693.0 583.6 2774.0 583.6"/>
+<path class="tt-edge gate" data-from="V_planeta_205" data-to="V_human_pr_D75mm_si" d="M1950.0 737.9 C1987.0 737.9 1987.0 955.0 2024.0 955.0"/>
+<path class="tt-edge gate" data-from="V_planeta_205" data-to="V_human_pr_Dzialo" d="M1950.0 737.9 C1987.0 737.9 1987.0 897.0 2024.0 897.0"/>
+<path class="tt-edge gate" data-from="V_planeta_205" data-to="V_planeta_207" d="M1950.0 737.9 C1987.0 737.9 1987.0 1013.0 2024.0 1013.0"/>
+<path class="tt-edge gate" data-from="V_planeta_206" data-to="V_human_pr_D75mm_si" d="M1950.0 795.9 C1987.0 795.9 1987.0 955.0 2024.0 955.0"/>
+<path class="tt-edge gate" data-from="V_planeta_206" data-to="V_human_pr_Dzialo" d="M1950.0 795.9 C1987.0 795.9 1987.0 897.0 2024.0 897.0"/>
+<path class="tt-edge gate" data-from="V_planeta_206" data-to="V_planeta_207" d="M1950.0 795.9 C1987.0 795.9 1987.0 1013.0 2024.0 1013.0"/>
+<path class="tt-edge gate" data-from="V_planeta_207" data-to="V_human_pr_Fabryka3" d="M2200.0 1013.0 C2237.0 1013.0 2237.0 606.1 2274.0 606.1"/>
+<path class="tt-edge gate" data-from="V_planeta_207" data-to="V_human_pr_RB_si" d="M2200.0 1013.0 C2237.0 1013.0 2237.0 976.1 2274.0 976.1"/>
+<path class="tt-edge gate" data-from="V_planeta_207" data-to="V_planeta_209" d="M2200.0 1013.0 C2237.0 1013.0 2237.0 1092.1 2274.0 1092.1"/>
+<path class="tt-edge gate" data-from="V_planeta_208" data-to="V_human_pr_Bo2_My2_pa" d="M1950.0 582.0 C2031.0 582.0 2031.0 673.0 2112.0 673.0 C2237.0 673.0 2237.0 576.1 2362.0 576.1 C2487.0 576.1 2487.0 593.1 2612.0 593.1 C2737.0 593.1 2737.0 613.6 2862.0 613.6 C2943.0 613.6 2943.0 497.1 3024.0 497.1"/>
+<path class="tt-edge gate" data-from="V_planeta_208" data-to="V_human_pr_Fabryka2_up1" d="M1950.0 582.0 C1987.0 582.0 1987.0 585.0 2024.0 585.0"/>
+<path class="tt-edge gate" data-from="V_planeta_208" data-to="V_human_pr_Rakietowy3" d="M1950.0 582.0 C2031.0 582.0 2031.0 693.0 2112.0 693.0 C2237.0 693.0 2237.0 646.1 2362.0 646.1 C2487.0 646.1 2487.0 696.1 2612.0 696.1 C2693.0 696.1 2693.0 769.6 2774.0 769.6"/>
+<path class="tt-edge gate" data-from="V_planeta_208" data-to="V_planeta_210" d="M1950.0 582.0 C2031.0 582.0 2031.0 683.0 2112.0 683.0 C2237.0 683.0 2237.0 636.1 2362.0 636.1 C2443.0 636.1 2443.0 754.4 2524.0 754.4"/>
+<path class="tt-edge gate" data-from="V_planeta_209" data-to="V_human_pr_Rakietowy3" d="M2450.0 1092.1 C2531.0 1092.1 2531.0 964.9 2612.0 964.9 C2693.0 964.9 2693.0 769.6 2774.0 769.6"/>
+<path class="tt-edge gate" data-from="V_planeta_209" data-to="V_planeta_210" d="M2450.0 1092.1 C2487.0 1092.1 2487.0 754.4 2524.0 754.4"/>
+<path class="tt-edge gate derived" data-from="V_planeta_210" data-to="V_uklad2" d="M2700.0 754.4 C2737.0 754.4 2737.0 583.6 2774.0 583.6"/>
+<path class="tt-edge gate" data-from="V_planeta_301" data-to="V_human_pr_RG_si" d="M3200.0 671.1 C3237.0 671.1 3237.0 762.9 3274.0 762.9"/>
+<path class="tt-edge gate" data-from="V_planeta_301" data-to="V_human_pr_RK_si" d="M3200.0 671.1 C3237.0 671.1 3237.0 400.9 3274.0 400.9"/>
+<path class="tt-edge gate" data-from="V_planeta_301" data-to="V_human_pr_Walker2" d="M3200.0 671.1 C3281.0 671.1 3281.0 604.9 3362.0 604.9 C3443.0 604.9 3443.0 483.3 3524.0 483.3"/>
+<path class="tt-edge gate" data-from="V_planeta_301" data-to="V_planeta_303" d="M3200.0 671.1 C3237.0 671.1 3237.0 634.9 3274.0 634.9"/>
+<path class="tt-edge gate" data-from="V_planeta_302" data-to="V_human_pr_Helikopter2" d="M3200.0 729.1 C3281.0 729.1 3281.0 664.9 3362.0 664.9 C3443.0 664.9 3443.0 541.3 3524.0 541.3"/>
+<path class="tt-edge gate" data-from="V_planeta_302" data-to="V_human_pr_Wa2_pr" d="M3200.0 729.1 C3281.0 729.1 3281.0 674.9 3362.0 674.9 C3487.0 674.9 3487.0 687.3 3612.0 687.3 C3693.0 687.3 3693.0 532.9 3774.0 532.9"/>
+<path class="tt-edge gate" data-from="V_planeta_302" data-to="V_planeta_304" d="M3200.0 729.1 C3237.0 729.1 3237.0 704.9 3274.0 704.9"/>
+<path class="tt-edge gate" data-from="V_planeta_303" data-to="V_planeta_305" d="M3450.0 634.9 C3487.0 634.9 3487.0 599.3 3524.0 599.3"/>
+<path class="tt-edge gate" data-from="V_planeta_303" data-to="V_planeta_306" d="M3450.0 634.9 C3487.0 634.9 3487.0 657.3 3524.0 657.3"/>
+<path class="tt-edge gate" data-from="V_planeta_304" data-to="V_human_pr_He2_pr" d="M3450.0 704.9 C3531.0 704.9 3531.0 697.3 3612.0 697.3 C3693.0 697.3 3693.0 590.9 3774.0 590.9"/>
+<path class="tt-edge gate" data-from="V_planeta_304" data-to="V_planeta_307" d="M3450.0 704.9 C3531.0 704.9 3531.0 707.3 3612.0 707.3 C3693.0 707.3 3693.0 706.9 3774.0 706.9"/>
+<path class="tt-edge gate" data-from="V_planeta_305" data-to="V_planeta_307" d="M3700.0 599.3 C3737.0 599.3 3737.0 706.9 3774.0 706.9"/>
+<path class="tt-edge gate" data-from="V_planeta_306" data-to="V_planeta_307" d="M3700.0 657.3 C3737.0 657.3 3737.0 706.9 3774.0 706.9"/>
+<path class="tt-edge gate derived" data-from="V_planeta_307" data-to="V_uklad3" d="M3950.0 706.9 C3987.0 706.9 3987.0 698.4 4024.0 698.4"/>
+<path class="tt-edge gate" data-from="V_uklad1" data-to="V_human_pr_Fabryka2" d="M1450.0 398.0 C1487.0 398.0 1487.0 697.0 1524.0 697.0"/>
+<path class="tt-edge gate derived" data-from="V_uklad1" data-to="V_planeta_201" d="M1450.0 398.0 C1487.0 398.0 1487.0 375.6 1524.0 375.6"/>
+<path class="tt-edge gate derived" data-from="V_uklad1" data-to="V_planeta_202" d="M1450.0 398.0 C1487.0 398.0 1487.0 523.0 1524.0 523.0"/>
+<path class="tt-edge gate derived" data-from="V_uklad1" data-to="V_planeta_203" d="M1450.0 398.0 C1487.0 398.0 1487.0 581.0 1524.0 581.0"/>
+<path class="tt-edge gate" data-from="V_uklad2" data-to="V_human_pr_Fabryka3_up1" d="M2950.0 583.6 C2987.0 583.6 2987.0 555.1 3024.0 555.1"/>
+<path class="tt-edge gate" data-from="V_uklad2" data-to="V_human_pr_He1_pr" d="M2950.0 583.6 C2987.0 583.6 2987.0 381.1 3024.0 381.1"/>
+<path class="tt-edge gate" data-from="V_uklad2" data-to="V_human_pr_KJ_DJ_BJ_si" d="M2950.0 583.6 C2987.0 583.6 2987.0 613.1 3024.0 613.1"/>
+<path class="tt-edge gate" data-from="V_uklad2" data-to="V_human_pr_Ra3_pr" d="M2950.0 583.6 C2987.0 583.6 2987.0 787.1 3024.0 787.1"/>
+<path class="tt-edge gate derived" data-from="V_uklad2" data-to="V_planeta_301" d="M2950.0 583.6 C2987.0 583.6 2987.0 671.1 3024.0 671.1"/>
+<path class="tt-edge gate derived" data-from="V_uklad2" data-to="V_planeta_302" d="M2950.0 583.6 C2987.0 583.6 2987.0 729.1 3024.0 729.1"/>
+</g>
+<g class="tt-nodes">
+<g class="tt-node k-unit" data-id="V_human_Matka_h" data-kind="unit" data-rank="0" tabindex="0" role="button" aria-label="Пионер">
+<rect class="tt-box" x="24.0" y="161.5" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="24.0" y="161.5" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="34.0" y="167.5" width="34" height="34" href="../../assets/icons/i_human_matkp.png"/>
+<text class="tt-label" x="76.0" y="188.5">Пионер</text>
+<text class="tt-glyph" x="194.0" y="173.5" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building start" data-id="V_human_Matka" data-kind="building" data-rank="0" tabindex="0" role="button" aria-label="Пионер">
+<rect class="tt-box" x="24.0" y="240.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="24.0" y="240.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="34.0" y="246.6" width="34" height="34" href="../../assets/icons/i_human_matk.png"/>
+<text class="tt-label" x="76.0" y="267.6">Пионер</text>
+<text class="tt-glyph" x="194.0" y="252.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-unit start" data-id="V_human_Statek_up2_h" data-kind="unit" data-rank="0" tabindex="0" role="button" aria-label="Гэлэкси S9">
+<rect class="tt-box" x="24.0" y="306.5" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="24.0" y="306.5" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="34.0" y="312.5" width="34" height="34" href="../../assets/icons/i_human_statp.png"/>
+<text class="tt-label" x="76.0" y="333.5">Гэлэкси S9</text>
+<text class="tt-glyph" x="194.0" y="318.5" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_101" data-kind="planet" data-rank="0" tabindex="0" role="button" aria-label="Нортус">
+<rect class="tt-box" x="24.0" y="475.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="24.0" y="475.3" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="34.0" y="481.3" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="76.0" y="502.3">Нортус</text>
+<text class="tt-glyph" x="194.0" y="487.3" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Elektrownia" data-kind="building" data-rank="1" tabindex="0" role="button" aria-label="Энергостанция">
+<rect class="tt-box" x="274.0" y="124.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="124.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="130.6" width="34" height="34" href="../../assets/icons/i_human_elek.png"/>
+<text class="tt-label" x="326.0" y="151.6">Энергостанция</text>
+<text class="tt-glyph" x="444.0" y="136.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Kopalnia1" data-kind="building" data-rank="1" tabindex="0" role="button" aria-label="Шахта">
+<rect class="tt-box" x="274.0" y="182.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="182.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="188.6" width="34" height="34" href="../../assets/icons/i_human_kopa1.png"/>
+<text class="tt-label" x="326.0" y="209.6">Шахта</text>
+<text class="tt-glyph" x="444.0" y="194.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Akademia" data-kind="building" data-rank="1" tabindex="0" role="button" aria-label="Академия">
+<rect class="tt-box" x="274.0" y="240.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="240.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="246.6" width="34" height="34" href="../../assets/icons/i_human_szko.png"/>
+<text class="tt-label" x="326.0" y="267.6">Академия</text>
+<text class="tt-glyph" x="444.0" y="252.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Osiedle" data-kind="building" data-rank="1" tabindex="0" role="button" aria-label="Kолония">
+<rect class="tt-box" x="274.0" y="298.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="298.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="304.6" width="34" height="34" href="../../assets/icons/i_human_osie.png"/>
+<text class="tt-label" x="326.0" y="325.6">Kолония</text>
+<text class="tt-glyph" x="444.0" y="310.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Przekaznik" data-kind="building" data-rank="1" tabindex="0" role="button" aria-label="Передатчик">
+<rect class="tt-box" x="274.0" y="356.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="356.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="362.6" width="34" height="34" href="../../assets/icons/i_human_prze.png"/>
+<text class="tt-label" x="326.0" y="383.6">Передатчик</text>
+<text class="tt-glyph" x="444.0" y="368.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_102" data-kind="planet" data-rank="1" tabindex="0" role="button" aria-label="Аман">
+<rect class="tt-box" x="274.0" y="446.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="274.0" y="446.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="284.0" y="452.6" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="326.0" y="473.6">Аман</text>
+<text class="tt-glyph" x="444.0" y="458.6" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Magazyn" data-kind="building" data-rank="2" tabindex="0" role="button" aria-label="Склад">
+<rect class="tt-box" x="524.0" y="182.7" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="524.0" y="182.7" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="534.0" y="188.7" width="34" height="34" href="../../assets/icons/i_human_maga.png"/>
+<text class="tt-label" x="576.0" y="209.7">Склад</text>
+<text class="tt-glyph" x="694.0" y="194.7" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Soldier" data-kind="unit" data-rank="2" tabindex="0" role="button" aria-label="Солдат">
+<rect class="tt-box" x="524.0" y="240.7" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="524.0" y="240.7" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="534.0" y="246.7" width="34" height="34" href="../../assets/icons/i_human_typek.png"/>
+<text class="tt-label" x="576.0" y="267.7">Солдат</text>
+<text class="tt-glyph" x="694.0" y="252.7" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Koszary_Zolnierzy" data-kind="building" data-rank="2" tabindex="0" role="button" aria-label="Kазармы">
+<rect class="tt-box" x="524.0" y="315.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="524.0" y="315.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="534.0" y="321.0" width="34" height="34" href="../../assets/icons/i_human_kosz1.png"/>
+<text class="tt-label" x="576.0" y="342.0">Kазармы</text>
+<text class="tt-glyph" x="694.0" y="327.0" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_103" data-kind="planet" data-rank="2" tabindex="0" role="button" aria-label="Сайбел">
+<rect class="tt-box" x="524.0" y="395.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="524.0" y="395.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="534.0" y="401.6" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="576.0" y="422.6">Сайбел</text>
+<text class="tt-glyph" x="694.0" y="407.6" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_104" data-kind="planet" data-rank="2" tabindex="0" role="button" aria-label="Kариотип">
+<rect class="tt-box" x="524.0" y="494.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="524.0" y="494.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="534.0" y="500.4" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="576.0" y="521.4">Kариотип</text>
+<text class="tt-glyph" x="694.0" y="506.4" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Fabryka1" data-kind="building" data-rank="3" tabindex="0" role="button" aria-label=" Фабрика">
+<rect class="tt-box" x="774.0" y="242.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="774.0" y="242.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="784.0" y="248.2" width="34" height="34" href="../../assets/icons/i_human_fabr1.png"/>
+<text class="tt-label" x="826.0" y="269.2">Фабрика</text>
+<text class="tt-glyph" x="944.0" y="254.2" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_105" data-kind="planet" data-rank="3" tabindex="0" role="button" aria-label="Kофу">
+<rect class="tt-box" x="774.0" y="300.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="774.0" y="300.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="784.0" y="306.2" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="826.0" y="327.2">Kофу</text>
+<text class="tt-glyph" x="944.0" y="312.2" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_106" data-kind="planet" data-rank="3" tabindex="0" role="button" aria-label="Таалор">
+<rect class="tt-box" x="774.0" y="358.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="774.0" y="358.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="784.0" y="364.2" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="826.0" y="385.2">Таалор</text>
+<text class="tt-glyph" x="944.0" y="370.2" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Biuro" data-kind="building" data-rank="3" tabindex="0" role="button" aria-label="Лаборатория">
+<rect class="tt-box" x="774.0" y="464.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="774.0" y="464.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="784.0" y="470.4" width="34" height="34" href="../../assets/icons/i_human_biur.png"/>
+<text class="tt-label" x="826.0" y="491.4">Лаборатория</text>
+<text class="tt-glyph" x="944.0" y="476.4" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_107" data-kind="planet" data-rank="3" tabindex="0" role="button" aria-label="Абиган">
+<rect class="tt-box" x="774.0" y="524.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="774.0" y="524.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="784.0" y="530.4" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="826.0" y="551.4">Абиган</text>
+<text class="tt-glyph" x="944.0" y="536.4" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Bunkier" data-kind="building" data-rank="4" tabindex="0" role="button" aria-label="Бункер">
+<rect class="tt-box" x="1024.0" y="78.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="78.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="84.2" width="34" height="34" href="../../assets/icons/i_human_bunk1.png"/>
+<text class="tt-label" x="1076.0" y="105.2">Бункер</text>
+<text class="tt-glyph" x="1194.0" y="90.2" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Jeep1" data-kind="unit" data-rank="4" tabindex="0" role="button" aria-label="Джип">
+<rect class="tt-box" x="1024.0" y="136.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="136.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="142.2" width="34" height="34" href="../../assets/icons/i_human_jeep2.png"/>
+<text class="tt-label" x="1076.0" y="163.2">Джип</text>
+<text class="tt-glyph" x="1194.0" y="148.2" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Koszary_Pojazdow" data-kind="building" data-rank="4" tabindex="0" role="button" aria-label="Гараж">
+<rect class="tt-box" x="1024.0" y="194.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="194.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="200.2" width="34" height="34" href="../../assets/icons/i_human_kosz2.png"/>
+<text class="tt-label" x="1076.0" y="221.2">Гараж</text>
+<text class="tt-glyph" x="1194.0" y="206.2" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_RALF_si" data-kind="project" data-rank="4" tabindex="0" role="button" aria-label="Снаряд PENR">
+<rect class="tt-box" x="1024.0" y="284.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="284.2" width="5" height="46" rx="2"/>
+<text class="tt-label" x="1038.0" y="311.2">Снаряд PENR</text>
+<text class="tt-glyph" x="1194.0" y="296.2" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_108" data-kind="planet" data-rank="4" tabindex="0" role="button" aria-label="Аятус">
+<rect class="tt-box" x="1024.0" y="344.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="344.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="350.2" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1076.0" y="371.2">Аятус</text>
+<text class="tt-glyph" x="1194.0" y="356.2" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Walker1" data-kind="project" data-rank="4" tabindex="0" role="button" aria-label="Центурион">
+<rect class="tt-box" x="1024.0" y="402.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="402.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="408.2" width="34" height="34" href="../../assets/icons/i_human_walk1.png"/>
+<text class="tt-label" x="1076.0" y="429.2">Центурион</text>
+<text class="tt-glyph" x="1194.0" y="414.2" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Czolg1" data-kind="unit" data-rank="4" tabindex="0" role="button" aria-label="Анаконда">
+<rect class="tt-box" x="1024.0" y="460.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="460.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="466.2" width="34" height="34" href="../../assets/icons/i_human_czol1.png"/>
+<text class="tt-label" x="1076.0" y="487.2">Анаконда</text>
+<text class="tt-glyph" x="1194.0" y="472.2" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Port" data-kind="building" data-rank="4" tabindex="0" role="button" aria-label="Kосмопорт">
+<rect class="tt-box" x="1024.0" y="518.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="518.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="524.2" width="34" height="34" href="../../assets/icons/i_human_port.png"/>
+<text class="tt-label" x="1076.0" y="545.2">Kосмопорт</text>
+<text class="tt-glyph" x="1194.0" y="530.2" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Rakietowy1" data-kind="unit" data-rank="4" tabindex="0" role="button" aria-label="V-прим">
+<rect class="tt-box" x="1024.0" y="576.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="576.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="582.2" width="34" height="34" href="../../assets/icons/i_human_raki1.png"/>
+<text class="tt-label" x="1076.0" y="603.2">V-прим</text>
+<text class="tt-glyph" x="1194.0" y="588.2" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Commando" data-kind="project" data-rank="4" tabindex="0" role="button" aria-label="Kоммандо">
+<rect class="tt-box" x="1024.0" y="634.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="634.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="640.2" width="34" height="34" href="../../assets/icons/i_human_koman.png"/>
+<text class="tt-label" x="1076.0" y="661.2">Kоммандо</text>
+<text class="tt-glyph" x="1194.0" y="646.2" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_K7mm_D14mm_si" data-kind="project" data-rank="4" tabindex="0" role="button" aria-label="Снаряд Банши">
+<rect class="tt-box" x="1024.0" y="694.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="694.2" width="5" height="46" rx="2"/>
+<text class="tt-label" x="1038.0" y="721.2">Снаряд Банши</text>
+<text class="tt-glyph" x="1194.0" y="706.2" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Statek" data-kind="project" data-rank="4" tabindex="0" role="button" aria-label="Шаттл">
+<rect class="tt-box" x="1024.0" y="754.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1024.0" y="754.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1034.0" y="760.2" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="1076.0" y="781.2">Шаттл</text>
+<text class="tt-glyph" x="1194.0" y="766.2" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Cz1_Wa1_pa" data-kind="project" data-rank="5" tabindex="0" role="button" aria-label="Броня Гелиоса">
+<rect class="tt-box" x="1274.0" y="201.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="201.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="207.0" width="34" height="34" href="../../assets/icons/i_human_czol1.png"/>
+<text class="tt-label" x="1326.0" y="228.0">Броня Гелиоса</text>
+<text class="tt-glyph" x="1444.0" y="213.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Wa1_pr" data-kind="project" data-rank="5" tabindex="0" role="button" aria-label="Ион Серво">
+<rect class="tt-box" x="1274.0" y="259.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="259.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="265.0" width="34" height="34" href="../../assets/icons/i_human_walk1.png"/>
+<text class="tt-label" x="1326.0" y="286.0">Ион Серво</text>
+<text class="tt-glyph" x="1444.0" y="271.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_RALF_si" data-kind="upgrade" data-rank="5" tabindex="0" role="button" aria-label="Снаряд PENR">
+<rect class="tt-box" x="1274.0" y="317.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="317.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="1288.0" y="344.0">Снаряд PENR</text>
+<text class="tt-glyph" x="1444.0" y="329.0" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-system" data-id="V_uklad1" data-kind="system" data-rank="5" tabindex="0" role="button" aria-label="Система Нортуса">
+<rect class="tt-box" x="1274.0" y="375.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="375.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="1288.0" y="402.0">Система Нортуса</text>
+<text class="tt-glyph" x="1444.0" y="387.0" text-anchor="end">Sy</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Walker1" data-kind="unit" data-rank="5" tabindex="0" role="button" aria-label="Центурион">
+<rect class="tt-box" x="1274.0" y="433.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="433.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="439.0" width="34" height="34" href="../../assets/icons/i_human_walk1.png"/>
+<text class="tt-label" x="1326.0" y="460.0">Центурион</text>
+<text class="tt-glyph" x="1444.0" y="445.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Soldier_pr" data-kind="project" data-rank="5" tabindex="0" role="button" aria-label="Реактивный Ранец">
+<rect class="tt-box" x="1274.0" y="491.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="491.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="497.0" width="34" height="34" href="../../assets/icons/i_human_typek.png"/>
+<text class="tt-label" x="1326.0" y="518.0">Реактивный Ранец</text>
+<text class="tt-glyph" x="1444.0" y="503.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Rakieta" data-kind="unit" data-rank="5" tabindex="0" role="button" aria-label="Трансп. Ракета">
+<rect class="tt-box" x="1274.0" y="549.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="549.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="555.0" width="34" height="34" href="../../assets/icons/i_alien_heli2.png"/>
+<text class="tt-label" x="1326.0" y="576.0">Трансп. Ракета</text>
+<text class="tt-glyph" x="1444.0" y="561.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Statek_up1" data-kind="project" data-rank="5" tabindex="0" role="button" aria-label="Kорабль">
+<rect class="tt-box" x="1274.0" y="607.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="607.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="613.0" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="1326.0" y="634.0">Kорабль</text>
+<text class="tt-glyph" x="1444.0" y="619.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Commando" data-kind="unit" data-rank="5" tabindex="0" role="button" aria-label="Kоммандо">
+<rect class="tt-box" x="1274.0" y="665.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="665.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="671.0" width="34" height="34" href="../../assets/icons/i_human_koman.png"/>
+<text class="tt-label" x="1326.0" y="692.0">Kоммандо</text>
+<text class="tt-glyph" x="1444.0" y="677.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Soldier_pa" data-kind="project" data-rank="5" tabindex="0" role="button" aria-label="Персональный Доспех">
+<rect class="tt-box" x="1274.0" y="725.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="725.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="731.0" width="34" height="34" href="../../assets/icons/i_human_typek.png"/>
+<text class="tt-label" x="1326.0" y="745.5">Персональный</text>
+<text class="tt-label" x="1326.0" y="758.5">Доспех</text>
+<text class="tt-glyph" x="1444.0" y="737.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_K7mm_D14mm_si" data-kind="upgrade" data-rank="5" tabindex="0" role="button" aria-label="Снаряд Банши">
+<rect class="tt-box" x="1274.0" y="783.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="783.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="1288.0" y="810.0">Снаряд Банши</text>
+<text class="tt-glyph" x="1444.0" y="795.0" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Statek" data-kind="building" data-rank="5" tabindex="0" role="button" aria-label="Гэлэкси A3">
+<rect class="tt-box" x="1274.0" y="841.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1274.0" y="841.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1284.0" y="847.0" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="1326.0" y="868.0">Гэлэкси A3</text>
+<text class="tt-glyph" x="1444.0" y="853.0" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Cz1_Wa1_pa" data-kind="upgrade" data-rank="6" tabindex="0" role="button" aria-label="Броня Гелиоса">
+<rect class="tt-box" x="1524.0" y="236.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="236.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="242.6" width="34" height="34" href="../../assets/icons/i_human_czol1.png"/>
+<text class="tt-label" x="1576.0" y="263.6">Броня Гелиоса</text>
+<text class="tt-glyph" x="1694.0" y="248.6" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Wa1_pr" data-kind="upgrade" data-rank="6" tabindex="0" role="button" aria-label="Ион Серво">
+<rect class="tt-box" x="1524.0" y="294.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="294.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="300.6" width="34" height="34" href="../../assets/icons/i_human_walk1.png"/>
+<text class="tt-label" x="1576.0" y="321.6">Ион Серво</text>
+<text class="tt-glyph" x="1694.0" y="306.6" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_201" data-kind="planet" data-rank="6" tabindex="0" role="button" aria-label="Нур">
+<rect class="tt-box" x="1524.0" y="352.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="352.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="358.6" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1576.0" y="379.6">Нур</text>
+<text class="tt-glyph" x="1694.0" y="364.6" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_202" data-kind="planet" data-rank="6" tabindex="0" role="button" aria-label="Ли">
+<rect class="tt-box" x="1524.0" y="500.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="500.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="506.0" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1576.0" y="527.0">Ли</text>
+<text class="tt-glyph" x="1694.0" y="512.0" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_203" data-kind="planet" data-rank="6" tabindex="0" role="button" aria-label="Денали">
+<rect class="tt-box" x="1524.0" y="558.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="558.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="564.0" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1576.0" y="585.0">Денали</text>
+<text class="tt-glyph" x="1694.0" y="570.0" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Soldier_pr" data-kind="upgrade" data-rank="6" tabindex="0" role="button" aria-label="Реактивный Ранец">
+<rect class="tt-box" x="1524.0" y="616.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="616.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="622.0" width="34" height="34" href="../../assets/icons/i_human_typek.png"/>
+<text class="tt-label" x="1576.0" y="643.0">Реактивный Ранец</text>
+<text class="tt-glyph" x="1694.0" y="628.0" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Fabryka2" data-kind="project" data-rank="6" tabindex="0" role="button" aria-label="Завод">
+<rect class="tt-box" x="1524.0" y="674.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="674.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="680.0" width="34" height="34" href="../../assets/icons/i_human_fabr2.png"/>
+<text class="tt-label" x="1576.0" y="701.0">Завод</text>
+<text class="tt-glyph" x="1694.0" y="686.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Statek_up1" data-kind="building" data-rank="6" tabindex="0" role="button" aria-label="Гэлэкси AA3">
+<rect class="tt-box" x="1524.0" y="745.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="745.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="751.2" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="1576.0" y="772.2">Гэлэкси AA3</text>
+<text class="tt-glyph" x="1694.0" y="757.2" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Soldier_pa" data-kind="upgrade" data-rank="6" tabindex="0" role="button" aria-label="Персональный Доспех">
+<rect class="tt-box" x="1524.0" y="803.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="803.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="809.2" width="34" height="34" href="../../assets/icons/i_human_typek.png"/>
+<text class="tt-label" x="1576.0" y="823.7">Персональный</text>
+<text class="tt-label" x="1576.0" y="836.7">Доспех</text>
+<text class="tt-glyph" x="1694.0" y="815.2" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Statek_h" data-kind="unit" data-rank="6" tabindex="0" role="button" aria-label="Гэлэкси A3">
+<rect class="tt-box" x="1524.0" y="861.2" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1524.0" y="861.2" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1534.0" y="867.2" width="34" height="34" href="../../assets/icons/i_human_statp.png"/>
+<text class="tt-label" x="1576.0" y="888.2">Гэлэкси A3</text>
+<text class="tt-glyph" x="1694.0" y="873.2" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_204" data-kind="planet" data-rank="7" tabindex="0" role="button" aria-label="Джир">
+<rect class="tt-box" x="1774.0" y="414.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="414.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="420.1" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1826.0" y="441.1">Джир</text>
+<text class="tt-glyph" x="1944.0" y="426.1" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Fabryka2" data-kind="building" data-rank="7" tabindex="0" role="button" aria-label="Завод">
+<rect class="tt-box" x="1774.0" y="474.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="474.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="480.1" width="34" height="34" href="../../assets/icons/i_human_fabr2.png"/>
+<text class="tt-label" x="1826.0" y="501.1">Завод</text>
+<text class="tt-glyph" x="1944.0" y="486.1" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_208" data-kind="planet" data-rank="7" tabindex="0" role="button" aria-label="Kотта">
+<rect class="tt-box" x="1774.0" y="559.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="559.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="565.0" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1826.0" y="586.0">Kотта</text>
+<text class="tt-glyph" x="1944.0" y="571.0" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_205" data-kind="planet" data-rank="7" tabindex="0" role="button" aria-label="Преда">
+<rect class="tt-box" x="1774.0" y="714.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="714.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="720.9" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1826.0" y="741.9">Преда</text>
+<text class="tt-glyph" x="1944.0" y="726.9" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_206" data-kind="planet" data-rank="7" tabindex="0" role="button" aria-label="Цаво">
+<rect class="tt-box" x="1774.0" y="772.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="772.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="778.9" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="1826.0" y="799.9">Цаво</text>
+<text class="tt-glyph" x="1944.0" y="784.9" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Kopalnia2" data-kind="project" data-rank="7" tabindex="0" role="button" aria-label="Мега-шахта">
+<rect class="tt-box" x="1774.0" y="830.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="830.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="836.9" width="34" height="34" href="../../assets/icons/i_human_kopa2.png"/>
+<text class="tt-label" x="1826.0" y="857.9">Мега-шахта</text>
+<text class="tt-glyph" x="1944.0" y="842.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Statek_up1_h" data-kind="unit" data-rank="7" tabindex="0" role="button" aria-label="Гэлэкси AA3">
+<rect class="tt-box" x="1774.0" y="900.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="1774.0" y="900.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="1784.0" y="906.9" width="34" height="34" href="../../assets/icons/i_human_statp.png"/>
+<text class="tt-label" x="1826.0" y="927.9">Гэлэкси AA3</text>
+<text class="tt-glyph" x="1944.0" y="912.9" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Bo1_My1_pr" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Бласт-двигатель">
+<rect class="tt-box" x="2024.0" y="34.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="34.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="40.0" width="34" height="34" href="../../assets/icons/i_human_bomb1.png"/>
+<text class="tt-label" x="2076.0" y="61.0">Бласт-двигатель</text>
+<text class="tt-glyph" x="2194.0" y="46.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_RALB_si" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Ракета Kондор">
+<rect class="tt-box" x="2024.0" y="92.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="92.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2038.0" y="119.0">Ракета Kондор</text>
+<text class="tt-glyph" x="2194.0" y="104.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_D40mm_CX2_si" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Снаряд Гетера">
+<rect class="tt-box" x="2024.0" y="152.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="152.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2038.0" y="179.0">Снаряд Гетера</text>
+<text class="tt-glyph" x="2194.0" y="164.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Bombowiec1" data-kind="unit" data-rank="8" tabindex="0" role="button" aria-label="Сарацин">
+<rect class="tt-box" x="2024.0" y="212.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="212.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="218.0" width="34" height="34" href="../../assets/icons/i_human_bomb1.png"/>
+<text class="tt-label" x="2076.0" y="239.0">Сарацин</text>
+<text class="tt-glyph" x="2194.0" y="224.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Jeep2" data-kind="unit" data-rank="8" tabindex="0" role="button" aria-label="Тяжелый Джип">
+<rect class="tt-box" x="2024.0" y="270.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="270.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="276.0" width="34" height="34" href="../../assets/icons/i_human_jeep1.png"/>
+<text class="tt-label" x="2076.0" y="297.0">Тяжелый Джип</text>
+<text class="tt-glyph" x="2194.0" y="282.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Lotnisko_Samolotow" data-kind="building" data-rank="8" tabindex="0" role="button" aria-label="Аэродром">
+<rect class="tt-box" x="2024.0" y="328.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="328.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="334.0" width="34" height="34" href="../../assets/icons/i_human_lotns.png"/>
+<text class="tt-label" x="2076.0" y="355.0">Аэродром</text>
+<text class="tt-glyph" x="2194.0" y="340.0" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Je1_Je2_Cz1_Ra1_pr" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Турбина Бротмана">
+<rect class="tt-box" x="2024.0" y="386.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="386.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="392.0" width="34" height="34" href="../../assets/icons/i_human_jeep2.png"/>
+<text class="tt-label" x="2076.0" y="413.0">Турбина Бротмана</text>
+<text class="tt-glyph" x="2194.0" y="398.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Mysliwiec1" data-kind="unit" data-rank="8" tabindex="0" role="button" aria-label="Тамплиер">
+<rect class="tt-box" x="2024.0" y="444.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="444.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="450.0" width="34" height="34" href="../../assets/icons/i_human_mysl1.png"/>
+<text class="tt-label" x="2076.0" y="471.0">Тамплиер</text>
+<text class="tt-glyph" x="2194.0" y="456.0" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Wieza" data-kind="building" data-rank="8" tabindex="0" role="button" aria-label="Ракетная Башня">
+<rect class="tt-box" x="2024.0" y="502.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="502.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="508.0" width="34" height="34" href="../../assets/icons/i_human_wiez.png"/>
+<text class="tt-label" x="2076.0" y="529.0">Ракетная Башня</text>
+<text class="tt-glyph" x="2194.0" y="514.0" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Fabryka2_up1" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Мод. завода">
+<rect class="tt-box" x="2024.0" y="562.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="562.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="568.0" width="34" height="34" href="../../assets/icons/i_human_fabr2.png"/>
+<text class="tt-label" x="2076.0" y="589.0">Мод. завода</text>
+<text class="tt-glyph" x="2194.0" y="574.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Bo1_My1_pa" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Противоракетная Сист.">
+<rect class="tt-box" x="2024.0" y="620.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="620.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="626.0" width="34" height="34" href="../../assets/icons/i_human_bomb1.png"/>
+<text class="tt-label" x="2076.0" y="640.5">Противоракетная</text>
+<text class="tt-label" x="2076.0" y="653.5">Сист.</text>
+<text class="tt-glyph" x="2194.0" y="632.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Czolg2" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Скорпион">
+<rect class="tt-box" x="2024.0" y="700.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="700.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="706.0" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="2076.0" y="727.0">Скорпион</text>
+<text class="tt-glyph" x="2194.0" y="712.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Je1_Je2_pa" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Щит Титан">
+<rect class="tt-box" x="2024.0" y="758.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="758.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="764.0" width="34" height="34" href="../../assets/icons/i_human_jeep2.png"/>
+<text class="tt-label" x="2076.0" y="785.0">Щит Титан</text>
+<text class="tt-glyph" x="2194.0" y="770.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Rakietowy2" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="X-Прим">
+<rect class="tt-box" x="2024.0" y="816.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="816.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="822.0" width="34" height="34" href="../../assets/icons/i_human_raki2.png"/>
+<text class="tt-label" x="2076.0" y="843.0">X-Прим</text>
+<text class="tt-glyph" x="2194.0" y="828.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Dzialo" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="S.D.P.">
+<rect class="tt-box" x="2024.0" y="874.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="874.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="880.0" width="34" height="34" href="../../assets/icons/i_human_dzia.png"/>
+<text class="tt-label" x="2076.0" y="901.0">S.D.P.</text>
+<text class="tt-glyph" x="2194.0" y="886.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_D75mm_si" data-kind="project" data-rank="8" tabindex="0" role="button" aria-label="Ион-ядро">
+<rect class="tt-box" x="2024.0" y="932.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="932.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2038.0" y="959.0">Ион-ядро</text>
+<text class="tt-glyph" x="2194.0" y="944.0" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_207" data-kind="planet" data-rank="8" tabindex="0" role="button" aria-label="Скатэль">
+<rect class="tt-box" x="2024.0" y="990.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="990.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="996.0" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="2076.0" y="1017.0">Скатэль</text>
+<text class="tt-glyph" x="2194.0" y="1002.0" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Kopalnia2" data-kind="building" data-rank="8" tabindex="0" role="button" aria-label="Мега-Шахта">
+<rect class="tt-box" x="2024.0" y="1048.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2024.0" y="1048.0" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2034.0" y="1054.0" width="34" height="34" href="../../assets/icons/i_human_kopa2.png"/>
+<text class="tt-label" x="2076.0" y="1075.0">Мега-Шахта</text>
+<text class="tt-glyph" x="2194.0" y="1060.0" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Bo1_My1_pr" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Бласт-двигатель">
+<rect class="tt-box" x="2274.0" y="33.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="33.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="39.1" width="34" height="34" href="../../assets/icons/i_human_bomb1.png"/>
+<text class="tt-label" x="2326.0" y="60.1">Бласт-двигатель</text>
+<text class="tt-glyph" x="2444.0" y="45.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_RALB_si" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Ракета Kондор">
+<rect class="tt-box" x="2274.0" y="91.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="91.1" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2288.0" y="118.1">Ракета Kондор</text>
+<text class="tt-glyph" x="2444.0" y="103.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_D40mm_CX2_si" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Снаряд Гетера">
+<rect class="tt-box" x="2274.0" y="212.0" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="212.0" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2288.0" y="239.0">Снаряд Гетера</text>
+<text class="tt-glyph" x="2444.0" y="224.0" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Je1_Je2_Cz1_Ra1_pr" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Турбина Бротмана">
+<rect class="tt-box" x="2274.0" y="385.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="385.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="391.1" width="34" height="34" href="../../assets/icons/i_human_jeep2.png"/>
+<text class="tt-label" x="2326.0" y="412.1">Турбина Бротмана</text>
+<text class="tt-glyph" x="2444.0" y="397.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Fabryka2_up1" data-kind="building" data-rank="9" tabindex="0" role="button" aria-label="Завод">
+<rect class="tt-box" x="2274.0" y="465.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="465.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="471.1" width="34" height="34" href="../../assets/icons/i_human_fabr2.png"/>
+<text class="tt-label" x="2326.0" y="492.1">Завод</text>
+<text class="tt-glyph" x="2444.0" y="477.1" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Bo1_My1_pa" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Противоракетная Сист.">
+<rect class="tt-box" x="2274.0" y="523.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="523.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="529.1" width="34" height="34" href="../../assets/icons/i_human_bomb1.png"/>
+<text class="tt-label" x="2326.0" y="543.6">Противоракетная</text>
+<text class="tt-label" x="2326.0" y="556.6">Сист.</text>
+<text class="tt-glyph" x="2444.0" y="535.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Fabryka3" data-kind="project" data-rank="9" tabindex="0" role="button" aria-label="Мега-фабрика">
+<rect class="tt-box" x="2274.0" y="583.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="583.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="589.1" width="34" height="34" href="../../assets/icons/i_human_fabr3.png"/>
+<text class="tt-label" x="2326.0" y="610.1">Мега-фабрика</text>
+<text class="tt-glyph" x="2444.0" y="595.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Czolg2" data-kind="unit" data-rank="9" tabindex="0" role="button" aria-label="Скорпион">
+<rect class="tt-box" x="2274.0" y="663.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="663.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="669.1" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="2326.0" y="690.1">Скорпион</text>
+<text class="tt-glyph" x="2444.0" y="675.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Je1_Je2_pa" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Щит Титан">
+<rect class="tt-box" x="2274.0" y="721.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="721.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="727.1" width="34" height="34" href="../../assets/icons/i_human_jeep2.png"/>
+<text class="tt-label" x="2326.0" y="748.1">Щит Титан</text>
+<text class="tt-glyph" x="2444.0" y="733.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Cz2_Ra2_Dz_pr" data-kind="project" data-rank="9" tabindex="0" role="button" aria-label="Турбина Гайна">
+<rect class="tt-box" x="2274.0" y="779.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="779.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="785.1" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="2326.0" y="806.1">Турбина Гайна</text>
+<text class="tt-glyph" x="2444.0" y="791.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Rakietowy2" data-kind="unit" data-rank="9" tabindex="0" role="button" aria-label="X-прим">
+<rect class="tt-box" x="2274.0" y="837.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="837.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="843.1" width="34" height="34" href="../../assets/icons/i_human_raki2.png"/>
+<text class="tt-label" x="2326.0" y="864.1">X-прим</text>
+<text class="tt-glyph" x="2444.0" y="849.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Dzialo" data-kind="unit" data-rank="9" tabindex="0" role="button" aria-label="S.D.P.">
+<rect class="tt-box" x="2274.0" y="895.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="895.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="901.1" width="34" height="34" href="../../assets/icons/i_human_dzia.png"/>
+<text class="tt-label" x="2326.0" y="922.1">S.D.P.</text>
+<text class="tt-glyph" x="2444.0" y="907.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_RB_si" data-kind="project" data-rank="9" tabindex="0" role="button" aria-label="Ракета Волк">
+<rect class="tt-box" x="2274.0" y="953.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="953.1" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2288.0" y="980.1">Ракета Волк</text>
+<text class="tt-glyph" x="2444.0" y="965.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_D75mm_si" data-kind="upgrade" data-rank="9" tabindex="0" role="button" aria-label="Ион-ядро">
+<rect class="tt-box" x="2274.0" y="1011.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="1011.1" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2288.0" y="1038.1">Ион-ядро</text>
+<text class="tt-glyph" x="2444.0" y="1023.1" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_209" data-kind="planet" data-rank="9" tabindex="0" role="button" aria-label="Миа">
+<rect class="tt-box" x="2274.0" y="1069.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2274.0" y="1069.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2284.0" y="1075.1" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="2326.0" y="1096.1">Миа</text>
+<text class="tt-glyph" x="2444.0" y="1081.1" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Helikopter1" data-kind="unit" data-rank="10" tabindex="0" role="button" aria-label="Атилла">
+<rect class="tt-box" x="2524.0" y="394.7" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="394.7" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2534.0" y="400.7" width="34" height="34" href="../../assets/icons/i_human_heli1.png"/>
+<text class="tt-label" x="2576.0" y="421.7">Атилла</text>
+<text class="tt-glyph" x="2694.0" y="406.7" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Lotnisko_Helikopterow" data-kind="building" data-rank="10" tabindex="0" role="button" aria-label="Площадка">
+<rect class="tt-box" x="2524.0" y="452.7" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="452.7" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2534.0" y="458.7" width="34" height="34" href="../../assets/icons/i_human_lotnh.png"/>
+<text class="tt-label" x="2576.0" y="479.7">Площадка</text>
+<text class="tt-glyph" x="2694.0" y="464.7" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Fabryka3" data-kind="building" data-rank="10" tabindex="0" role="button" aria-label="Мега-Фабрика">
+<rect class="tt-box" x="2524.0" y="528.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="528.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2534.0" y="534.1" width="34" height="34" href="../../assets/icons/i_human_fabr3.png"/>
+<text class="tt-label" x="2576.0" y="555.1">Мега-Фабрика</text>
+<text class="tt-glyph" x="2694.0" y="540.1" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_210" data-kind="planet" data-rank="10" tabindex="0" role="button" aria-label="Нурия">
+<rect class="tt-box" x="2524.0" y="731.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="731.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2534.0" y="737.4" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="2576.0" y="758.4">Нурия</text>
+<text class="tt-glyph" x="2694.0" y="743.4" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Cz2_Ra2_Dz_pr" data-kind="upgrade" data-rank="10" tabindex="0" role="button" aria-label="Турбина Гайна">
+<rect class="tt-box" x="2524.0" y="789.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="789.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2534.0" y="795.4" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="2576.0" y="816.4">Турбина Гайна</text>
+<text class="tt-glyph" x="2694.0" y="801.4" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_RB_si" data-kind="upgrade" data-rank="10" tabindex="0" role="button" aria-label="Ракета Волк">
+<rect class="tt-box" x="2524.0" y="911.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2524.0" y="911.9" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2538.0" y="938.9">Ракета Волк</text>
+<text class="tt-glyph" x="2694.0" y="923.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Bunkier2" data-kind="building" data-rank="11" tabindex="0" role="button" aria-label="Ионная пушка">
+<rect class="tt-box" x="2774.0" y="372.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="372.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2784.0" y="378.6" width="34" height="34" href="../../assets/icons/i_human_dzial.png"/>
+<text class="tt-label" x="2826.0" y="399.6">Ионная пушка</text>
+<text class="tt-glyph" x="2944.0" y="384.6" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Bombowiec2" data-kind="project" data-rank="11" tabindex="0" role="button" aria-label="Ассассин">
+<rect class="tt-box" x="2774.0" y="430.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="430.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2784.0" y="436.6" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="2826.0" y="457.6">Ассассин</text>
+<text class="tt-glyph" x="2944.0" y="442.6" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Mysliwiec2" data-kind="project" data-rank="11" tabindex="0" role="button" aria-label="Kрестоносец">
+<rect class="tt-box" x="2774.0" y="490.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="490.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2784.0" y="496.6" width="34" height="34" href="../../assets/icons/i_human_mysl2.png"/>
+<text class="tt-label" x="2826.0" y="517.6">Kрестоносец</text>
+<text class="tt-glyph" x="2944.0" y="502.6" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-system" data-id="V_uklad2" data-kind="system" data-rank="11" tabindex="0" role="button" aria-label="Система Нура">
+<rect class="tt-box" x="2774.0" y="560.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="560.6" width="5" height="46" rx="2"/>
+<text class="tt-label" x="2788.0" y="587.6">Система Нура</text>
+<text class="tt-glyph" x="2944.0" y="572.6" text-anchor="end">Sy</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Rakietowy3" data-kind="project" data-rank="11" tabindex="0" role="button" aria-label="S.D.R.">
+<rect class="tt-box" x="2774.0" y="746.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="746.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2784.0" y="752.6" width="34" height="34" href="../../assets/icons/i_human_raki3.png"/>
+<text class="tt-label" x="2826.0" y="773.6">S.D.R.</text>
+<text class="tt-glyph" x="2944.0" y="758.6" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Statek_up2" data-kind="project" data-rank="11" tabindex="0" role="button" aria-label="Звездолет">
+<rect class="tt-box" x="2774.0" y="804.6" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="2774.0" y="804.6" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="2784.0" y="810.6" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="2826.0" y="831.6">Звездолет</text>
+<text class="tt-glyph" x="2944.0" y="816.6" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Bombowiec2" data-kind="unit" data-rank="12" tabindex="0" role="button" aria-label="Ассассин">
+<rect class="tt-box" x="3024.0" y="240.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="240.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="246.1" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="3076.0" y="267.1">Ассассин</text>
+<text class="tt-glyph" x="3194.0" y="252.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Bo2_My2_pr" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Пульс-двигатель">
+<rect class="tt-box" x="3024.0" y="300.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="300.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="306.1" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="3076.0" y="327.1">Пульс-двигатель</text>
+<text class="tt-glyph" x="3194.0" y="312.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_He1_pr" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Kомпрессор Хайманна">
+<rect class="tt-box" x="3024.0" y="358.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="358.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="364.1" width="34" height="34" href="../../assets/icons/i_human_heli1.png"/>
+<text class="tt-label" x="3076.0" y="378.6">Kомпрессор</text>
+<text class="tt-label" x="3076.0" y="391.6">Хайманна</text>
+<text class="tt-glyph" x="3194.0" y="370.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Mysliwiec2" data-kind="unit" data-rank="12" tabindex="0" role="button" aria-label="Kрестоносец">
+<rect class="tt-box" x="3024.0" y="416.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="416.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="422.1" width="34" height="34" href="../../assets/icons/i_human_mysl2.png"/>
+<text class="tt-label" x="3076.0" y="443.1">Kрестоносец</text>
+<text class="tt-glyph" x="3194.0" y="428.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Bo2_My2_pa" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Система Суперстелс">
+<rect class="tt-box" x="3024.0" y="474.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="474.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="480.1" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="3076.0" y="501.1">Система Суперстелс</text>
+<text class="tt-glyph" x="3194.0" y="486.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Fabryka3_up1" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Мод. мега-Фабрики">
+<rect class="tt-box" x="3024.0" y="532.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="532.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="538.1" width="34" height="34" href="../../assets/icons/i_human_fabr3.png"/>
+<text class="tt-label" x="3076.0" y="559.1">Мод. мега-Фабрики</text>
+<text class="tt-glyph" x="3194.0" y="544.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_KJ_DJ_BJ_si" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Снаряд Ион-Шнапс">
+<rect class="tt-box" x="3024.0" y="590.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="590.1" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3038.0" y="617.1">Снаряд Ион-Шнапс</text>
+<text class="tt-glyph" x="3194.0" y="602.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_301" data-kind="planet" data-rank="12" tabindex="0" role="button" aria-label="Майон">
+<rect class="tt-box" x="3024.0" y="648.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="648.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="654.1" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3076.0" y="675.1">Майон</text>
+<text class="tt-glyph" x="3194.0" y="660.1" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_302" data-kind="planet" data-rank="12" tabindex="0" role="button" aria-label="Вулла">
+<rect class="tt-box" x="3024.0" y="706.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="706.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="712.1" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3076.0" y="733.1">Вулла</text>
+<text class="tt-glyph" x="3194.0" y="718.1" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Ra3_pr" data-kind="project" data-rank="12" tabindex="0" role="button" aria-label="Kерамические Гусеницы">
+<rect class="tt-box" x="3024.0" y="764.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="764.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="770.1" width="34" height="34" href="../../assets/icons/i_human_raki3.png"/>
+<text class="tt-label" x="3076.0" y="784.6">Kерамические</text>
+<text class="tt-label" x="3076.0" y="797.6">Гусеницы</text>
+<text class="tt-glyph" x="3194.0" y="776.1" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Rakietowy3" data-kind="unit" data-rank="12" tabindex="0" role="button" aria-label="S.D.R.">
+<rect class="tt-box" x="3024.0" y="834.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="834.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="840.1" width="34" height="34" href="../../assets/icons/i_human_raki3.png"/>
+<text class="tt-label" x="3076.0" y="861.1">S.D.R.</text>
+<text class="tt-glyph" x="3194.0" y="846.1" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Statek_up2" data-kind="building" data-rank="12" tabindex="0" role="button" aria-label="Гэлэкси S9">
+<rect class="tt-box" x="3024.0" y="892.1" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3024.0" y="892.1" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3034.0" y="898.1" width="34" height="34" href="../../assets/icons/i_human_stat.png"/>
+<text class="tt-label" x="3076.0" y="919.1">Гэлэкси S9</text>
+<text class="tt-glyph" x="3194.0" y="904.1" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Bo2_My2_pr" data-kind="upgrade" data-rank="13" tabindex="0" role="button" aria-label="Пульс-двигатель">
+<rect class="tt-box" x="3274.0" y="261.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="261.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="267.9" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="3326.0" y="288.9">Пульс-двигатель</text>
+<text class="tt-glyph" x="3444.0" y="273.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_He1_pr" data-kind="upgrade" data-rank="13" tabindex="0" role="button" aria-label="Kомпрессор Хайманна">
+<rect class="tt-box" x="3274.0" y="319.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="319.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="325.9" width="34" height="34" href="../../assets/icons/i_human_heli1.png"/>
+<text class="tt-label" x="3326.0" y="340.4">Kомпрессор</text>
+<text class="tt-label" x="3326.0" y="353.4">Хайманна</text>
+<text class="tt-glyph" x="3444.0" y="331.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_RK_si" data-kind="project" data-rank="13" tabindex="0" role="button" aria-label="Ракета Дельта">
+<rect class="tt-box" x="3274.0" y="377.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="377.9" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3288.0" y="404.9">Ракета Дельта</text>
+<text class="tt-glyph" x="3444.0" y="389.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Bo2_My2_pa" data-kind="upgrade" data-rank="13" tabindex="0" role="button" aria-label="Система Суперстелс">
+<rect class="tt-box" x="3274.0" y="435.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="435.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="441.9" width="34" height="34" href="../../assets/icons/i_human_bomb2.png"/>
+<text class="tt-label" x="3326.0" y="462.9">Система Суперстелс</text>
+<text class="tt-glyph" x="3444.0" y="447.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-building" data-id="V_human_Fabryka3_up1" data-kind="building" data-rank="13" tabindex="0" role="button" aria-label="Мега-Фабрика">
+<rect class="tt-box" x="3274.0" y="493.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="493.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="499.9" width="34" height="34" href="../../assets/icons/i_human_fabr3.png"/>
+<text class="tt-label" x="3326.0" y="520.9">Мега-Фабрика</text>
+<text class="tt-glyph" x="3444.0" y="505.9" text-anchor="end">B</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_KJ_DJ_BJ_si" data-kind="upgrade" data-rank="13" tabindex="0" role="button" aria-label="Снаряд Ион-Шнапс">
+<rect class="tt-box" x="3274.0" y="551.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="551.9" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3288.0" y="578.9">Снаряд Ион-Шнапс</text>
+<text class="tt-glyph" x="3444.0" y="563.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_303" data-kind="planet" data-rank="13" tabindex="0" role="button" aria-label="Браларий">
+<rect class="tt-box" x="3274.0" y="611.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="611.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="617.9" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3326.0" y="638.9">Браларий</text>
+<text class="tt-glyph" x="3444.0" y="623.9" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_304" data-kind="planet" data-rank="13" tabindex="0" role="button" aria-label="Лейзер">
+<rect class="tt-box" x="3274.0" y="681.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="681.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="687.9" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3326.0" y="708.9">Лейзер</text>
+<text class="tt-glyph" x="3444.0" y="693.9" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_RG_si" data-kind="project" data-rank="13" tabindex="0" role="button" aria-label="Ракета Снифф">
+<rect class="tt-box" x="3274.0" y="739.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="739.9" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3288.0" y="766.9">Ракета Снифф</text>
+<text class="tt-glyph" x="3444.0" y="751.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Ra3_pr" data-kind="upgrade" data-rank="13" tabindex="0" role="button" aria-label="Kерамические Гусеницы">
+<rect class="tt-box" x="3274.0" y="797.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3274.0" y="797.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3284.0" y="803.9" width="34" height="34" href="../../assets/icons/i_human_raki3.png"/>
+<text class="tt-label" x="3326.0" y="818.4">Kерамические</text>
+<text class="tt-label" x="3326.0" y="831.4">Гусеницы</text>
+<text class="tt-glyph" x="3444.0" y="809.9" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_RK_si" data-kind="upgrade" data-rank="14" tabindex="0" role="button" aria-label="Ракета Дельта">
+<rect class="tt-box" x="3524.0" y="365.8" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="365.8" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3538.0" y="392.8">Ракета Дельта</text>
+<text class="tt-glyph" x="3694.0" y="377.8" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Walker2" data-kind="project" data-rank="14" tabindex="0" role="button" aria-label="Экстерминатор">
+<rect class="tt-box" x="3524.0" y="460.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="460.3" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3534.0" y="466.3" width="34" height="34" href="../../assets/icons/i_human_walk2.png"/>
+<text class="tt-label" x="3576.0" y="487.3">Экстерминатор</text>
+<text class="tt-glyph" x="3694.0" y="472.3" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Helikopter2" data-kind="project" data-rank="14" tabindex="0" role="button" aria-label="Нестор">
+<rect class="tt-box" x="3524.0" y="518.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="518.3" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3534.0" y="524.3" width="34" height="34" href="../../assets/icons/i_human_heli2.png"/>
+<text class="tt-label" x="3576.0" y="545.3">Нестор</text>
+<text class="tt-glyph" x="3694.0" y="530.3" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_305" data-kind="planet" data-rank="14" tabindex="0" role="button" aria-label="Амоу">
+<rect class="tt-box" x="3524.0" y="576.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="576.3" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3534.0" y="582.3" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3576.0" y="603.3">Амоу</text>
+<text class="tt-glyph" x="3694.0" y="588.3" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_306" data-kind="planet" data-rank="14" tabindex="0" role="button" aria-label="Леус">
+<rect class="tt-box" x="3524.0" y="634.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="634.3" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3534.0" y="640.3" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3576.0" y="661.3">Леус</text>
+<text class="tt-glyph" x="3694.0" y="646.3" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_RG_si" data-kind="upgrade" data-rank="14" tabindex="0" role="button" aria-label="Ракета Снифф">
+<rect class="tt-box" x="3524.0" y="714.3" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3524.0" y="714.3" width="5" height="46" rx="2"/>
+<text class="tt-label" x="3538.0" y="741.3">Ракета Снифф</text>
+<text class="tt-glyph" x="3694.0" y="726.3" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Walker2" data-kind="unit" data-rank="15" tabindex="0" role="button" aria-label="Экстерминатор">
+<rect class="tt-box" x="3774.0" y="393.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="393.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="399.9" width="34" height="34" href="../../assets/icons/i_human_walk2.png"/>
+<text class="tt-label" x="3826.0" y="420.9">Экстерминатор</text>
+<text class="tt-glyph" x="3944.0" y="405.9" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-unit" data-id="V_human_Helikopter2" data-kind="unit" data-rank="15" tabindex="0" role="button" aria-label="Нестор">
+<rect class="tt-box" x="3774.0" y="451.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="451.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="457.9" width="34" height="34" href="../../assets/icons/i_human_heli2.png"/>
+<text class="tt-label" x="3826.0" y="478.9">Нестор</text>
+<text class="tt-glyph" x="3944.0" y="463.9" text-anchor="end">U</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Wa2_pr" data-kind="project" data-rank="15" tabindex="0" role="button" aria-label="Ион Серво Про">
+<rect class="tt-box" x="3774.0" y="509.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="509.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="515.9" width="34" height="34" href="../../assets/icons/i_human_walk2.png"/>
+<text class="tt-label" x="3826.0" y="536.9">Ион Серво Про</text>
+<text class="tt-glyph" x="3944.0" y="521.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_He2_pr" data-kind="project" data-rank="15" tabindex="0" role="button" aria-label="Kомпрессор Нимото">
+<rect class="tt-box" x="3774.0" y="567.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="567.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="573.9" width="34" height="34" href="../../assets/icons/i_human_heli2.png"/>
+<text class="tt-label" x="3826.0" y="594.9">Kомпрессор Нимото</text>
+<text class="tt-glyph" x="3944.0" y="579.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-project" data-id="V_human_pr_Cz2_Wa2_He2_pa" data-kind="project" data-rank="15" tabindex="0" role="button" aria-label="Броня Титана">
+<rect class="tt-box" x="3774.0" y="625.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="625.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="631.9" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="3826.0" y="652.9">Броня Титана</text>
+<text class="tt-glyph" x="3944.0" y="637.9" text-anchor="end">P</text>
+</g>
+<g class="tt-node k-planet" data-id="V_planeta_307" data-kind="planet" data-rank="15" tabindex="0" role="button" aria-label="Техландус">
+<rect class="tt-box" x="3774.0" y="683.9" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="3774.0" y="683.9" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="3784.0" y="689.9" width="34" height="34" href="../../assets/icons/i_planeta_1_1.png"/>
+<text class="tt-label" x="3826.0" y="710.9">Техландус</text>
+<text class="tt-glyph" x="3944.0" y="695.9" text-anchor="end">Pl</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Wa2_pr" data-kind="upgrade" data-rank="16" tabindex="0" role="button" aria-label="Ион Серво Про">
+<rect class="tt-box" x="4024.0" y="501.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="4024.0" y="501.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="4034.0" y="507.4" width="34" height="34" href="../../assets/icons/i_human_walk2.png"/>
+<text class="tt-label" x="4076.0" y="528.4">Ион Серво Про</text>
+<text class="tt-glyph" x="4194.0" y="513.4" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_He2_pr" data-kind="upgrade" data-rank="16" tabindex="0" role="button" aria-label="Kомпрессор Нимото">
+<rect class="tt-box" x="4024.0" y="559.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="4024.0" y="559.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="4034.0" y="565.4" width="34" height="34" href="../../assets/icons/i_human_heli2.png"/>
+<text class="tt-label" x="4076.0" y="586.4">Kомпрессор Нимото</text>
+<text class="tt-glyph" x="4194.0" y="571.4" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-upgrade" data-id="V_human_up_Cz2_Wa2_He2_pa" data-kind="upgrade" data-rank="16" tabindex="0" role="button" aria-label="Броня Титана">
+<rect class="tt-box" x="4024.0" y="617.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="4024.0" y="617.4" width="5" height="46" rx="2"/>
+<image class="tt-icon" x="4034.0" y="623.4" width="34" height="34" href="../../assets/icons/i_human_czol2.png"/>
+<text class="tt-label" x="4076.0" y="644.4">Броня Титана</text>
+<text class="tt-glyph" x="4194.0" y="629.4" text-anchor="end">Up</text>
+</g>
+<g class="tt-node k-system" data-id="V_uklad3" data-kind="system" data-rank="16" tabindex="0" role="button" aria-label="Система Алануса">
+<rect class="tt-box" x="4024.0" y="675.4" width="176" height="46" rx="6"/>
+<rect class="tt-stripe" x="4024.0" y="675.4" width="5" height="46" rx="2"/>
+<text class="tt-label" x="4038.0" y="702.4">Система Алануса</text>
+<text class="tt-glyph" x="4194.0" y="687.4" text-anchor="end">Sy</text>
+</g>
+</g></svg>
+  </div>
+  <div class="tt-card" hidden></div>
+  <script type="application/json" class="tt-data">{"V_human_Akademia":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1000"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1250"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","60"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","18 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","800 / 450 / 0 / 0"]],"d":["V_human_Matka"],"h":"../buildings/human_akademia.html","k":"building","l":"\u0410\u043a\u0430\u0434\u0435\u043c\u0438\u044f","o":"N_human_Akademia","s":0,"x":[]},"V_human_Biuro":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1500"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2000"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","120"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1100 / 900 / 400 / 400"]],"d":["V_human_Akademia","V_human_Koszary_Zolnierzy","V_human_Matka","V_planeta_101"],"h":"../buildings/human_biuro.html","k":"building","l":"\u041b\u0430\u0431\u043e\u0440\u0430\u0442\u043e\u0440\u0438\u044f","o":"N_human_Biuro","s":0,"x":[]},"V_human_Bombowiec1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","1200 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","180"],["\u041e\u0431\u0437\u043e\u0440","700 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","31 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1400 / 1000 / 600"]],"d":["V_human_Fabryka2","V_human_Matka"],"h":"../units/human_bombowiec1.html","k":"unit","l":"\u0421\u0430\u0440\u0430\u0446\u0438\u043d","o":"N_human_Bombowiec1","s":0,"x":[]},"V_human_Bombowiec2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","1500 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","375"],["\u041e\u0431\u0437\u043e\u0440","700 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","41 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 2400 / 1600 / 1000"]],"d":["V_human_Fabryka3","V_human_Matka","V_human_pr_Bombowiec2"],"h":"../units/human_bombowiec2.html","k":"unit","l":"\u0410\u0441\u0441\u0430\u0441\u0441\u0438\u043d","o":"N_human_Bombowiec2","s":0,"x":[]},"V_human_Bunkier":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1000"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","5"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","18 \u0441"],["\u0423\u0434\u0430\u0440\u043d\u0430\u044f \u0441\u0438\u043b\u0430","12"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","600 / 500 / 350 / 0"]],"d":["V_human_Fabryka1","V_human_Matka"],"h":"../buildings/human_bunkier1.html","k":"building","l":"\u0411\u0443\u043d\u043a\u0435\u0440","o":"N_human_Bunkier1","s":0,"x":[]},"V_human_Bunkier2":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1250"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","5"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","18 \u0441"],["\u0423\u0434\u0430\u0440\u043d\u0430\u044f \u0441\u0438\u043b\u0430","42"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","600 / 500 / 350 / 0"]],"d":["V_human_Fabryka3","V_human_Matka"],"h":"../buildings/human_bunkier2.html","k":"building","l":"\u0418\u043e\u043d\u043d\u0430\u044f \u043f\u0443\u0448\u043a\u0430","o":"N_human_Bunkier2","s":0,"x":[]},"V_human_Commando":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","32 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","30"],["\u041e\u0431\u0437\u043e\u0440","350 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","16 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","250 / 150 / 200 / 100"]],"d":["V_human_Akademia","V_human_Matka","V_human_pr_Commando"],"h":"../units/human_commando.html","k":"unit","l":"K\u043e\u043c\u043c\u0430\u043d\u0434\u043e","o":"N_human_Commando","s":0,"x":[]},"V_human_Czolg1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","300"],["\u041e\u0431\u0437\u043e\u0440","300 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","18 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","800 / 800 / 320 / 0"]],"d":["V_human_Fabryka1","V_human_Matka","V_planeta_103","V_planeta_104"],"h":"../units/human_czolg1.html","k":"unit","l":"\u0410\u043d\u0430\u043a\u043e\u043d\u0434\u0430","o":"N_human_Czolg1","s":0,"x":[]},"V_human_Czolg2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","64 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","750"],["\u041e\u0431\u0437\u043e\u0440","350 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","31 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1400 / 1200 / 500 / 300"]],"d":["V_human_Fabryka2","V_human_Matka","V_human_pr_Czolg2"],"h":"../units/human_czolg2.html","k":"unit","l":"\u0421\u043a\u043e\u0440\u043f\u0438\u043e\u043d","o":"N_human_Czolg2","s":0,"x":[]},"V_human_Dzialo":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","48 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","750"],["\u041e\u0431\u0437\u043e\u0440","350 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","31 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 2400 / 1200 / 1200"]],"d":["V_human_Fabryka2","V_human_Matka","V_human_pr_Dzialo"],"h":"../units/human_dzialo.html","k":"unit","l":"S.D.P.","o":"N_human_Dzialo","s":0,"x":[]},"V_human_Elektrownia":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u043f\u0440\u043e\u0438\u0437\u0432.","1200"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2000"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","50"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","700 / 500 / 300 / 120"]],"d":["V_human_Matka"],"h":"../buildings/human_elektrownia.html","k":"building","l":"\u042d\u043d\u0435\u0440\u0433\u043e\u0441\u0442\u0430\u043d\u0446\u0438\u044f","o":"N_human_Elektrownia","s":0,"x":[]},"V_human_Fabryka1":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1000"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3125"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","100"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1600 / 1400 / 800 / 300"]],"d":["V_human_Akademia","V_human_Koszary_Zolnierzy","V_human_Matka","V_planeta_101","V_planeta_102"],"h":"../buildings/human_fabryka1.html","k":"building","l":" \u0424\u0430\u0431\u0440\u0438\u043a\u0430","o":"N_human_Fabryka1","s":0,"x":[]},"V_human_Fabryka2":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1300"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3750"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","120"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2000 / 1300 / 1000 / 800"]],"d":["V_human_Fabryka1","V_human_Koszary_Pojazdow","V_human_Matka","V_human_pr_Fabryka2"],"h":"../buildings/human_fabryka2.html","k":"building","l":"\u0417\u0430\u0432\u043e\u0434","o":"N_human_Fabryka2","s":0,"x":[]},"V_human_Fabryka2_up1":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1300"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3750"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","120"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2200 / 1300 / 800 / 750"]],"d":["V_human_Fabryka2","V_human_Matka","V_human_pr_Fabryka2_up1"],"h":"../buildings/human_fabryka2.html#upgrade-1","k":"building","l":"\u0417\u0430\u0432\u043e\u0434","o":"N_human_Fabryka2_up1","s":0,"x":[]},"V_human_Fabryka3":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1200"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3750"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","150"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","7000 / 5000 / 3000 / 1200"]],"d":["V_human_Fabryka2","V_human_Matka","V_human_pr_Fabryka3"],"h":"../buildings/human_fabryka3.html","k":"building","l":"\u041c\u0435\u0433\u0430-\u0424\u0430\u0431\u0440\u0438\u043a\u0430","o":"N_human_Fabryka3","s":0,"x":[]},"V_human_Fabryka3_up1":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","1000"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3750"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","150"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3000 / 1800 / 1500 / 2000"]],"d":["V_human_Fabryka3","V_human_Matka","V_human_pr_Fabryka3_up1"],"h":"../buildings/human_fabryka3.html#upgrade-1","k":"building","l":"\u041c\u0435\u0433\u0430-\u0424\u0430\u0431\u0440\u0438\u043a\u0430","o":"N_human_Fabryka3_up1","s":0,"x":[]},"V_human_Helikopter1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","320 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","300"],["\u041e\u0431\u0437\u043e\u0440","500 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","26 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1400 / 1000 / 750 / 0"]],"d":["V_human_Fabryka2_up1","V_human_Matka"],"h":"../units/human_helikopter1.html","k":"unit","l":"\u0410\u0442\u0438\u043b\u043b\u0430","o":"N_human_Helikopter1","s":0,"x":[]},"V_human_Helikopter2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","400 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","750"],["\u041e\u0431\u0437\u043e\u0440","500 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","51 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3400 / 2400 / 1500 / 0"]],"d":["V_human_Fabryka3_up1","V_human_Matka","V_human_pr_Helikopter2"],"h":"../units/human_helikopter2.html","k":"unit","l":"\u041d\u0435\u0441\u0442\u043e\u0440","o":"N_human_Helikopter2","s":0,"x":[]},"V_human_Jeep1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","160 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","120"],["\u041e\u0431\u0437\u043e\u0440","450 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","11 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","600 / 500 / 200 / 0"]],"d":["V_human_Fabryka1","V_human_Matka"],"h":"../units/human_jeep1.html","k":"unit","l":"\u0414\u0436\u0438\u043f","o":"N_human_Jeep1","s":0,"x":[]},"V_human_Jeep2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","100 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","225"],["\u041e\u0431\u0437\u043e\u0440","350 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","16 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 600 / 300 / 0"]],"d":["V_human_Fabryka2","V_human_Matka"],"h":"../units/human_jeep2.html","k":"unit","l":"\u0422\u044f\u0436\u0435\u043b\u044b\u0439 \u0414\u0436\u0438\u043f","o":"N_human_Jeep2","s":0,"x":[]},"V_human_Kopalnia1":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2500"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","80"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 700 / 500 / 0"]],"d":["V_human_Matka"],"h":"../buildings/human_kopalnia1.html","k":"building","l":"\u0428\u0430\u0445\u0442\u0430","o":"N_human_Kopalnia1","s":0,"x":[]},"V_human_Kopalnia2":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","700"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3250"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","120"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4000 / 2500 / 2000 / 1500"]],"d":["V_human_Matka","V_human_pr_Kopalnia2"],"h":"../buildings/human_kopalnia2.html","k":"building","l":"\u041c\u0435\u0433\u0430-\u0428\u0430\u0445\u0442\u0430","o":"N_human_Kopalnia2","s":0,"x":[]},"V_human_Koszary_Pojazdow":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3750"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","18 \u0441"],["\u0412\u043c\u0435\u0441\u0442\u0438\u043c\u043e\u0441\u0442\u044c (\u0441\u043e\u043b\u0434\u0430\u0442)","50"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1200 / 900 / 750 / 200"]],"d":["V_human_Akademia","V_human_Fabryka1","V_human_Koszary_Zolnierzy","V_human_Matka"],"h":"../buildings/human_koszary_pojazdow.html","k":"building","l":"\u0413\u0430\u0440\u0430\u0436","o":"N_human_Koszary_Pojazdow","s":0,"x":[]},"V_human_Koszary_Zolnierzy":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0412\u043c\u0435\u0441\u0442\u0438\u043c\u043e\u0441\u0442\u044c (\u0441\u043e\u043b\u0434\u0430\u0442)","50"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1200 / 1000 / 500 / 0"]],"d":["V_human_Akademia","V_human_Matka"],"h":"../buildings/human_koszary_zolnierzy.html","k":"building","l":"K\u0430\u0437\u0430\u0440\u043c\u044b","o":"N_human_Koszary_Zolnierzy","s":0,"x":[]},"V_human_Lotnisko_Helikopterow":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","500"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0412\u043c\u0435\u0441\u0442\u0438\u043c\u043e\u0441\u0442\u044c (\u0441\u043e\u043b\u0434\u0430\u0442)","50"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 600 / 500 / 300"]],"d":["V_human_Fabryka2_up1","V_human_Matka"],"h":"../buildings/human_ladowisko.html","k":"building","l":"\u041f\u043b\u043e\u0449\u0430\u0434\u043a\u0430","o":"N_human_Ladowisko","s":0,"x":[]},"V_human_Lotnisko_Samolotow":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","600"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0412\u043c\u0435\u0441\u0442\u0438\u043c\u043e\u0441\u0442\u044c (\u0441\u043e\u043b\u0434\u0430\u0442)","50"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 1300 / 1000 / 300"]],"d":["V_human_Fabryka2","V_human_Matka"],"h":"../buildings/human_lotnisko.html","k":"building","l":"\u0410\u044d\u0440\u043e\u0434\u0440\u043e\u043c","o":"N_human_Lotnisko","s":0,"x":[]},"V_human_Magazyn":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","200"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","400 / 200 / 0 / 0"]],"d":["V_human_Kopalnia1","V_human_Matka"],"h":"../buildings/human_magazyn.html","k":"building","l":"\u0421\u043a\u043b\u0430\u0434","o":"N_human_Magazyn","s":0,"x":[]},"V_human_Matka":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u043f\u0440\u043e\u0438\u0437\u0432.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","5000"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0436\u0438\u0442\u0435\u043b\u0435\u0439","300"],["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u043f\u0435\u0440\u0435\u043b\u0435\u0442\u0430","6667 \u043a\u043c/\u0441"]],"d":[],"h":"../buildings/human_matka.html","k":"building","l":"\u041f\u0438\u043e\u043d\u0435\u0440","o":"N_human_Matka","s":1,"x":[]},"V_human_Matka_h":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","3000"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"]],"d":[],"h":"../units/human_matka_h.html","k":"unit","l":"\u041f\u0438\u043e\u043d\u0435\u0440","o":"N_human_Matka_h","s":0,"x":[]},"V_human_Mysliwiec1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","1500 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","225"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","31 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1200 / 800 / 1000"]],"d":["V_human_Fabryka2","V_human_Matka"],"h":"../units/human_mysliwiec1.html","k":"unit","l":"\u0422\u0430\u043c\u043f\u043b\u0438\u0435\u0440","o":"N_human_Mysliwiec1","s":0,"x":[]},"V_human_Mysliwiec2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","1846 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","450"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","51 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 2000 / 1400 / 1800"]],"d":["V_human_Fabryka3","V_human_Matka","V_human_pr_Mysliwiec2"],"h":"../units/human_mysliwiec2.html","k":"unit","l":"K\u0440\u0435\u0441\u0442\u043e\u043d\u043e\u0441\u0435\u0446","o":"N_human_Mysliwiec2","s":0,"x":[]},"V_human_Osiedle":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","200"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1250"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0436\u0438\u0442\u0435\u043b\u0435\u0439","120"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","10 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","800 / 600 / 300 / 0"]],"d":["V_human_Matka"],"h":"../buildings/human_osiedle.html","k":"building","l":"K\u043e\u043b\u043e\u043d\u0438\u044f","o":"N_human_Osiedle","s":0,"x":[]},"V_human_Port":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","200"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","36 \u0441"],["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u043f\u0435\u0440\u0435\u043b\u0435\u0442\u0430","1429 \u043a\u043c/\u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4000 / 2500 / 2000 / 1500"]],"d":["V_human_Fabryka1","V_human_Matka","V_planeta_103","V_planeta_104"],"h":"../buildings/human_port.html","k":"building","l":"K\u043e\u0441\u043c\u043e\u043f\u043e\u0440\u0442","o":"N_human_Port","s":0,"x":[]},"V_human_Przekaznik":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","100"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","625"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","10 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","500 / 200 / 10 / 0"]],"d":["V_human_Matka"],"h":"../buildings/human_przekaznik.html","k":"building","l":"\u041f\u0435\u0440\u0435\u0434\u0430\u0442\u0447\u0438\u043a","o":"N_human_Przekaznik","s":0,"x":[]},"V_human_Rakieta":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","47 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","75"],["\u041e\u0431\u0437\u043e\u0440","450 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","2 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","120 / 10 / 20 / 0"]],"d":["V_human_Matka","V_human_Port"],"h":"../units/human_rakieta.html","k":"unit","l":"\u0422\u0440\u0430\u043d\u0441\u043f. \u0420\u0430\u043a\u0435\u0442\u0430","o":"N_human_Rakieta","s":0,"x":["V_human_Port"]},"V_human_Rakietowy1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","64 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","150"],["\u041e\u0431\u0437\u043e\u0440","450 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","16 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1200 / 800 / 800 / 0"]],"d":["V_human_Fabryka1","V_human_Matka","V_planeta_103","V_planeta_104"],"h":"../units/human_rakietowy1.html","k":"unit","l":"V-\u043f\u0440\u0438\u043c","o":"N_human_Rakietowy1","s":0,"x":[]},"V_human_Rakietowy2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","100 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","225"],["\u041e\u0431\u0437\u043e\u0440","450 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","31 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 1200 / 1200 / 0"]],"d":["V_human_Fabryka2","V_human_Matka","V_human_pr_Rakietowy2"],"h":"../units/human_rakietowy2.html","k":"unit","l":"X-\u043f\u0440\u0438\u043c","o":"N_human_Rakietowy2","s":0,"x":[]},"V_human_Rakietowy3":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","225"],["\u041e\u0431\u0437\u043e\u0440","500 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","61 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4200 / 3000 / 2400 / 1500"]],"d":["V_human_Fabryka3","V_human_Matka","V_human_pr_Rakietowy3"],"h":"../units/human_rakietowy3.html","k":"unit","l":"S.D.R.","o":"N_human_Rakietowy3","s":0,"x":[]},"V_human_Soldier":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","29 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","30"],["\u041e\u0431\u0437\u043e\u0440","300 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","11 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","100 / 60 / 40 / 0"]],"d":["V_human_Akademia","V_human_Matka"],"h":"../units/human_soldier1.html","k":"unit","l":"\u0421\u043e\u043b\u0434\u0430\u0442","o":"N_human_Soldier1","s":0,"x":[]},"V_human_Statek":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","600"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1200 / 600 / 450 / 200"]],"d":["V_human_Akademia","V_human_Koszary_Zolnierzy","V_human_Matka","V_human_pr_Statek"],"h":"../buildings/human_statek.html","k":"building","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 A3","o":"N_human_Statek","s":0,"x":[]},"V_human_Statek_h":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","600"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","2 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","120 / 10 / 20 / 0"]],"d":["V_human_Statek"],"h":"../units/human_statek_h.html","k":"unit","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 A3","o":"N_human_Statek_h","s":0,"x":[]},"V_human_Statek_up1":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1150"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","16 \u0441"],["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u043f\u0435\u0440\u0435\u043b\u0435\u0442\u0430","2857 \u043a\u043c/\u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1000 / 800 / 800"]],"d":["V_human_Matka","V_human_Statek","V_human_pr_Statek_up1"],"h":"../buildings/human_statek.html#upgrade-1","k":"building","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 AA3","o":"N_human_Statek_up1","s":0,"x":[]},"V_human_Statek_up1_h":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","1200"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","2 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","120 / 10 / 20 / 0"]],"d":["V_human_Statek_up1"],"h":"../units/human_statek_up1_h.html","k":"unit","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 AA3","o":"N_human_Statek_up1_h","s":0,"x":[]},"V_human_Statek_up2":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","400"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2075"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","20 \u0441"],["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u043f\u0435\u0440\u0435\u043b\u0435\u0442\u0430","2632 \u043a\u043c/\u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2000 / 1600 / 1000 / 1800"]],"d":["V_human_Matka","V_human_Statek_up1","V_human_pr_Statek_up2"],"h":"../buildings/human_statek.html#upgrade-2","k":"building","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 S9","o":"N_human_Statek_up2","s":0,"x":[]},"V_human_Statek_up2_h":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2100"],["\u041e\u0431\u0437\u043e\u0440","600 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","2 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","120 / 10 / 20 / 0"]],"d":[],"h":"../units/human_statek_up2_h.html","k":"unit","l":"\u0413\u044d\u043b\u044d\u043a\u0441\u0438 S9","o":"N_human_Statek_up2_h","s":1,"x":[]},"V_human_Walker1":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","80 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","225"],["\u041e\u0431\u0437\u043e\u0440","350 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","18 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","800 / 800 / 600 / 100"]],"d":["V_human_Fabryka1","V_human_Matka","V_human_pr_Walker1"],"h":"../units/human_walker1.html","k":"unit","l":"\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d","o":"N_human_Walker1","s":0,"x":[]},"V_human_Walker2":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","100 \u043a\u043c/\u0447"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","2250"],["\u041e\u0431\u0437\u043e\u0440","550 \u043c"],["\u0412\u0440\u0435\u043c\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u0430","91 \u0441"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","6000 / 3500 / 4000 / 3000"]],"d":["V_human_Fabryka3_up1","V_human_Matka","V_human_pr_Walker2"],"h":"../units/human_walker2.html","k":"unit","l":"\u042d\u043a\u0441\u0442\u0435\u0440\u043c\u0438\u043d\u0430\u0442\u043e\u0440","o":"N_human_Walker2","s":0,"x":[]},"V_human_Wieza":{"c":[["\u042d\u043d\u0435\u0440\u0433\u0438\u0438 \u0442\u0440\u0435\u0431.","300"],["\u042d\u043d\u0435\u0440\u0433\u0438\u044f (HP)","750"],["\u041c\u0430\u043a\u0441. \u0447\u0438\u0441\u043b\u043e \u0440\u0430\u0431\u043e\u0447\u0438\u0445","3"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","12 \u0441"],["\u0423\u0434\u0430\u0440\u043d\u0430\u044f \u0441\u0438\u043b\u0430","11"],["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","800 / 600 / 450 / 150"]],"d":["V_human_Fabryka2","V_human_Matka"],"h":"../buildings/human_wieza1.html","k":"building","l":"\u0420\u0430\u043a\u0435\u0442\u043d\u0430\u044f \u0411\u0430\u0448\u043d\u044f","o":"N_human_Wieza1","s":0,"x":[]},"V_human_pr_Bo1_My1_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2000 / 2000 / 2000 / 2500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","150 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_202"],"h":"../projects/human_pr_bo1_my1_pa.html","k":"project","l":"\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u0440\u0430\u043a\u0435\u0442\u043d\u0430\u044f \u0421\u0438\u0441\u0442.","o":"N_human_pr_Bo1_My1_pa","s":0,"x":[]},"V_human_pr_Bo1_My1_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2000 / 2600 / 1800 / 1600"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_201"],"h":"../projects/human_pr_bo1_my1_pr.html","k":"project","l":"\u0411\u043b\u0430\u0441\u0442-\u0434\u0432\u0438\u0433\u0430\u0442\u0435\u043b\u044c","o":"N_human_pr_Bo1_My1_pr","s":0,"x":[]},"V_human_pr_Bo2_My2_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4000 / 3500 / 3500 / 5000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","250 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Bombowiec2","V_human_pr_Mysliwiec2","V_planeta_207","V_planeta_208"],"h":"../projects/human_pr_bo2_my2_pa.html","k":"project","l":"\u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u0421\u0443\u043f\u0435\u0440\u0441\u0442\u0435\u043b\u0441","o":"N_human_pr_Bo2_My2_pa","s":0,"x":[]},"V_human_pr_Bo2_My2_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3600 / 4400 / 3000 / 2800"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","200 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Bombowiec2","V_human_pr_Mysliwiec2","V_planeta_207"],"h":"../projects/human_pr_bo2_my2_pr.html","k":"project","l":"\u041f\u0443\u043b\u044c\u0441-\u0434\u0432\u0438\u0433\u0430\u0442\u0435\u043b\u044c","o":"N_human_pr_Bo2_My2_pr","s":0,"x":[]},"V_human_pr_Bombowiec2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3600 / 4800 / 3200 / 2000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","80 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka"],"h":"../projects/human_pr_bombowiec2.html","k":"project","l":"\u0410\u0441\u0441\u0430\u0441\u0441\u0438\u043d","o":"N_human_pr_Bombowiec2","s":0,"x":[]},"V_human_pr_Commando":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 700 / 300 / 500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","30 \u0441"]],"d":["V_human_Akademia","V_human_Biuro","V_human_Matka","V_planeta_101"],"h":"../projects/human_pr_commando.html","k":"project","l":"K\u043e\u043c\u043c\u0430\u043d\u0434\u043e","o":"N_human_pr_Commando","s":0,"x":[]},"V_human_pr_Cz1_Wa1_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1600 / 1600 / 920 / 100"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Walker1","V_planeta_105","V_planeta_106"],"h":"../projects/human_pr_cz1_wa1_pa.html","k":"project","l":"\u0411\u0440\u043e\u043d\u044f \u0413\u0435\u043b\u0438\u043e\u0441\u0430","o":"N_human_pr_Cz1_Wa1_pa","s":0,"x":[]},"V_human_pr_Cz2_Ra2_Dz_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","5800 / 5600 / 3200 / 2700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Czolg2","V_human_pr_Dzialo","V_human_pr_Rakietowy2"],"h":"../projects/human_pr_cz2_ra2_dz_pr.html","k":"project","l":"\u0422\u0443\u0440\u0431\u0438\u043d\u0430 \u0413\u0430\u0439\u043d\u0430","o":"N_human_pr_Cz2_Ra2_Dz_pr","s":0,"x":[]},"V_human_pr_Cz2_Wa2_He2_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","10800 / 7600 / 5800 / 4800"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","240 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Czolg2","V_human_pr_Helikopter2","V_human_pr_Walker2"],"h":"../projects/human_pr_cz2_wa2_he2_pa.html","k":"project","l":"\u0411\u0440\u043e\u043d\u044f \u0422\u0438\u0442\u0430\u043d\u0430","o":"N_human_pr_Cz2_Wa2_He2_pa","s":0,"x":[]},"V_human_pr_Czolg2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2800 / 2400 / 1000 / 600"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","60 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_202","V_planeta_203","V_planeta_204"],"h":"../projects/human_pr_czolg2.html","k":"project","l":"\u0421\u043a\u043e\u0440\u043f\u0438\u043e\u043d","o":"N_human_pr_Czolg2","s":0,"x":[]},"V_human_pr_D40mm_CX2_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2200 / 2000 / 1300 / 300"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_201","V_planeta_202"],"h":"../projects/human_pr_d40mm_cx2_si.html","k":"project","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0413\u0435\u0442\u0435\u0440\u0430","o":"N_human_pr_D40mm_CX2_si","s":0,"x":[]},"V_human_pr_D75mm_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2200 / 2000 / 1300 / 300"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_205","V_planeta_206"],"h":"../projects/human_pr_d75mm_si.html","k":"project","l":"\u0418\u043e\u043d-\u044f\u0434\u0440\u043e","o":"N_human_pr_D75mm_si","s":0,"x":[]},"V_human_pr_Dzialo":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3600 / 4800 / 2400 / 2400"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","60 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_205","V_planeta_206"],"h":"../projects/human_pr_dzialo.html","k":"project","l":"S.D.P.","o":"N_human_pr_Dzialo","s":0,"x":[]},"V_human_pr_Fabryka2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4000 / 2600 / 2000 / 1000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","90 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_uklad1"],"h":"../projects/human_pr_fabryka2.html","k":"project","l":"\u0417\u0430\u0432\u043e\u0434","o":"N_human_pr_Fabryka2","s":0,"x":[]},"V_human_pr_Fabryka2_up1":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4400 / 2600 / 1800 / 1800"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","180 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_201","V_planeta_203","V_planeta_208"],"h":"../projects/human_pr_fabryka2_up1.html","k":"project","l":"\u041c\u043e\u0434. \u0437\u0430\u0432\u043e\u0434\u0430","o":"N_human_pr_Fabryka2_up1","s":0,"x":[]},"V_human_pr_Fabryka3":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","14000 / 10000 / 6000 / 2400"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","90 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Fabryka2","V_planeta_201","V_planeta_202","V_planeta_207"],"h":"../projects/human_pr_fabryka3.html","k":"project","l":"\u041c\u0435\u0433\u0430-\u0444\u0430\u0431\u0440\u0438\u043a\u0430","o":"N_human_pr_Fabryka3","s":0,"x":[]},"V_human_pr_Fabryka3_up1":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","6000 / 3600 / 3000 / 4000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","180 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_uklad2"],"h":"../projects/human_pr_fabryka3_up1.html","k":"project","l":"\u041c\u043e\u0434. \u043c\u0435\u0433\u0430-\u0424\u0430\u0431\u0440\u0438\u043a\u0438","o":"N_human_pr_Fabryka3_up1","s":0,"x":[]},"V_human_pr_He1_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2100 / 1500 / 1100 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","100 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2_up1","V_human_Matka","V_uklad2"],"h":"../projects/human_pr_he1_pr.html","k":"project","l":"K\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440 \u0425\u0430\u0439\u043c\u0430\u043d\u043d\u0430","o":"N_human_pr_He1_pr","s":0,"x":[]},"V_human_pr_He2_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","4900 / 3600 / 2700 / 2200"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","200 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Helikopter2","V_planeta_304"],"h":"../projects/human_pr_he2_pr.html","k":"project","l":"K\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440 \u041d\u0438\u043c\u043e\u0442\u043e","o":"N_human_pr_He2_pr","s":0,"x":[]},"V_human_pr_Helikopter2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2800 / 4800 / 3600 / 3000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","100 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3_up1","V_human_Matka","V_planeta_302"],"h":"../projects/human_pr_helikopter2.html","k":"project","l":"\u041d\u0435\u0441\u0442\u043e\u0440","o":"N_human_pr_Helikopter2","s":0,"x":[]},"V_human_pr_Je1_Je2_Cz1_Ra1_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2800 / 1900 / 1300 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","60 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka"],"h":"../projects/human_pr_je1_je2_cz1_ra1_pr.html","k":"project","l":"\u0422\u0443\u0440\u0431\u0438\u043d\u0430 \u0411\u0440\u043e\u0442\u043c\u0430\u043d\u0430","o":"N_human_pr_Je1_Je2_Cz1_Ra1_pr","s":0,"x":[]},"V_human_pr_Je1_Je2_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1500 / 1000 / 1000 / 500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","70 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_202"],"h":"../projects/human_pr_je1_je2_pa.html","k":"project","l":"\u0429\u0438\u0442 \u0422\u0438\u0442\u0430\u043d","o":"N_human_pr_Je1_Je2_pa","s":0,"x":[]},"V_human_pr_K7mm_D14mm_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1600 / 1100 / 500 / 300"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","60 \u0441"]],"d":["V_human_Biuro","V_human_Matka"],"h":"../projects/human_pr_k7mm_d14mm_si.html","k":"project","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0411\u0430\u043d\u0448\u0438","o":"N_human_pr_K7mm_D14mm_si","s":0,"x":[]},"V_human_pr_KJ_DJ_BJ_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","7000 / 7200 / 4600 / 3700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","240 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_uklad2"],"h":"../projects/human_pr_kj_dj_bj_si.html","k":"project","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0418\u043e\u043d-\u0428\u043d\u0430\u043f\u0441","o":"N_human_pr_KJ_DJ_BJ_si","s":0,"x":[]},"V_human_pr_Kopalnia2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","8000 / 5000 / 4000 / 1000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","180 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Fabryka2","V_planeta_203"],"h":"../projects/human_pr_kopalnia2.html","k":"project","l":"\u041c\u0435\u0433\u0430-\u0448\u0430\u0445\u0442\u0430","o":"N_human_pr_Kopalnia2","s":0,"x":[]},"V_human_pr_Mysliwiec2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3600 / 4000 / 2800 / 3600"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","100 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka"],"h":"../projects/human_pr_mysliwiec2.html","k":"project","l":"K\u0440\u0435\u0441\u0442\u043e\u043d\u043e\u0441\u0435\u0446","o":"N_human_pr_Mysliwiec2","s":0,"x":[]},"V_human_pr_RALB_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1500 / 1800 / 1200 / 1500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_201"],"h":"../projects/human_pr_ralb_si.html","k":"project","l":"\u0420\u0430\u043a\u0435\u0442\u0430 K\u043e\u043d\u0434\u043e\u0440","o":"N_human_pr_RALB_si","s":0,"x":[]},"V_human_pr_RALF_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3000 / 2000 / 2000 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka1","V_human_Matka","V_planeta_105","V_planeta_106"],"h":"../projects/human_pr_ralf_si.html","k":"project","l":"\u0421\u043d\u0430\u0440\u044f\u0434 PENR","o":"N_human_pr_RALF_si","s":0,"x":[]},"V_human_pr_RB_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","3000 / 2000 / 2000 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_human_pr_Rakietowy2","V_planeta_207"],"h":"../projects/human_pr_rb_si.html","k":"project","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0412\u043e\u043b\u043a","o":"N_human_pr_RB_si","s":0,"x":[]},"V_human_pr_RG_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","6300 / 4500 / 3600 / 2200"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","240 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_human_pr_Rakietowy3","V_planeta_301"],"h":"../projects/human_pr_rg_si.html","k":"project","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0421\u043d\u0438\u0444\u0444","o":"N_human_pr_RG_si","s":0,"x":[]},"V_human_pr_RK_si":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","2700 / 3000 / 2100 / 2700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","200 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_planeta_301"],"h":"../projects/human_pr_rk_si.html","k":"project","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0414\u0435\u043b\u044c\u0442\u0430","o":"N_human_pr_RK_si","s":0,"x":[]},"V_human_pr_Ra3_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","6300 / 4500 / 3600 / 2200"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","240 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Rakietowy3","V_uklad2"],"h":"../projects/human_pr_ra3_pr.html","k":"project","l":"K\u0435\u0440\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u0413\u0443\u0441\u0435\u043d\u0438\u0446\u044b","o":"N_human_pr_Ra3_pr","s":0,"x":[]},"V_human_pr_Rakietowy2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1800 / 1200 / 1200 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","60 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka2","V_human_Matka","V_planeta_201","V_planeta_202","V_planeta_203"],"h":"../projects/human_pr_rakietowy2.html","k":"project","l":"X-\u041f\u0440\u0438\u043c","o":"N_human_pr_Rakietowy2","s":0,"x":[]},"V_human_pr_Rakietowy3":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","8400 / 6000 / 4800 / 3000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","120 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_planeta_208","V_planeta_209"],"h":"../projects/human_pr_rakietowy3.html","k":"project","l":"S.D.R.","o":"N_human_pr_Rakietowy3","s":0,"x":[]},"V_human_pr_Soldier_pa":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","500 / 400 / 100 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","20 \u0441"]],"d":["V_human_Akademia","V_human_Biuro","V_human_Matka","V_human_pr_Commando","V_planeta_104"],"h":"../projects/human_pr_soldier_pa.html","k":"project","l":"\u041f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u043e\u0441\u043f\u0435\u0445","o":"N_human_pr_Soldier_pa","s":0,"x":[]},"V_human_pr_Soldier_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","500 / 200 / 0 / 0"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","15 \u0441"]],"d":["V_human_Akademia","V_human_Biuro","V_human_Matka","V_human_pr_Commando","V_planeta_103"],"h":"../projects/human_pr_soldier_pr.html","k":"project","l":"\u0420\u0435\u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0439 \u0420\u0430\u043d\u0435\u0446","o":"N_human_pr_Soldier_pr","s":0,"x":[]},"V_human_pr_Statek":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1000 / 900 / 700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","25 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_planeta_102"],"h":"../projects/human_pr_statek.html","k":"project","l":"\u0428\u0430\u0442\u0442\u043b","o":"N_human_pr_Statek","s":0,"x":[]},"V_human_pr_Statek_up1":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1000 / 900 / 700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","25 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_Port","V_human_pr_Statek","V_planeta_108"],"h":"../projects/human_pr_statek_up1.html","k":"project","l":"K\u043e\u0440\u0430\u0431\u043b\u044c","o":"N_human_pr_Statek_up1","s":0,"x":[]},"V_human_pr_Statek_up2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1000 / 1000 / 900 / 700"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","25 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3","V_human_Matka","V_human_Port","V_human_pr_Statek_up1","V_planeta_207"],"h":"../projects/human_pr_statek_up2.html","k":"project","l":"\u0417\u0432\u0435\u0437\u0434\u043e\u043b\u0435\u0442","o":"N_human_pr_Statek_up2","s":0,"x":[]},"V_human_pr_Wa1_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1200 / 1200 / 900 / 150"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","72 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Walker1","V_planeta_105","V_planeta_106"],"h":"../projects/human_pr_wa1_pr.html","k":"project","l":"\u0418\u043e\u043d \u0421\u0435\u0440\u0432\u043e","o":"N_human_pr_Wa1_pr","s":0,"x":[]},"V_human_pr_Wa2_pr":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","9000 / 5200 / 6000 / 4500"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","240 \u0441"]],"d":["V_human_Biuro","V_human_Matka","V_human_pr_Walker2","V_planeta_302"],"h":"../projects/human_pr_wa2_pr.html","k":"project","l":"\u0418\u043e\u043d \u0421\u0435\u0440\u0432\u043e \u041f\u0440\u043e","o":"N_human_pr_Wa2_pr","s":0,"x":[]},"V_human_pr_Walker1":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","1600 / 1600 / 1200 / 200"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","34 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka1","V_human_Matka","V_planeta_103","V_planeta_107"],"h":"../projects/human_pr_walker1.html","k":"project","l":"\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d","o":"N_human_pr_Walker1","s":0,"x":[]},"V_human_pr_Walker2":{"c":[["\u0417\u0430\u0442\u0440\u0430\u0442\u044b","12000 / 8000 / 7000 / 6000"],["\u0412\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u0442\u0440\u043e\u0439\u043a\u0438","180 \u0441"]],"d":["V_human_Biuro","V_human_Fabryka3_up1","V_human_Matka","V_planeta_301"],"h":"../projects/human_pr_walker2.html","k":"project","l":"\u042d\u043a\u0441\u0442\u0435\u0440\u043c\u0438\u043d\u0430\u0442\u043e\u0440","o":"N_human_pr_Walker2","s":0,"x":[]},"V_human_up_Bo1_My1_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+25"]],"d":["V_human_pr_Bo1_My1_pa"],"h":"../projects/human_pr_bo1_my1_pa.html","k":"upgrade","l":"\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u0440\u0430\u043a\u0435\u0442\u043d\u0430\u044f \u0421\u0438\u0441\u0442.","o":"N_human_up_Bo1_My1_pa","s":0,"x":[]},"V_human_up_Bo1_My1_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+15"]],"d":["V_human_pr_Bo1_My1_pr"],"h":"../projects/human_pr_bo1_my1_pr.html","k":"upgrade","l":"\u0411\u043b\u0430\u0441\u0442-\u0434\u0432\u0438\u0433\u0430\u0442\u0435\u043b\u044c","o":"N_human_up_Bo1_My1_pr","s":0,"x":[]},"V_human_up_Bo2_My2_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+20"]],"d":["V_human_pr_Bo2_My2_pa"],"h":"../projects/human_pr_bo2_my2_pa.html","k":"upgrade","l":"\u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u0421\u0443\u043f\u0435\u0440\u0441\u0442\u0435\u043b\u0441","o":"N_human_up_Bo2_My2_pa","s":0,"x":[]},"V_human_up_Bo2_My2_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+15"]],"d":["V_human_pr_Bo2_My2_pr"],"h":"../projects/human_pr_bo2_my2_pr.html","k":"upgrade","l":"\u041f\u0443\u043b\u044c\u0441-\u0434\u0432\u0438\u0433\u0430\u0442\u0435\u043b\u044c","o":"N_human_up_Bo2_My2_pr","s":0,"x":[]},"V_human_up_Cz1_Wa1_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+15"]],"d":["V_human_pr_Cz1_Wa1_pa"],"h":"../projects/human_pr_cz1_wa1_pa.html","k":"upgrade","l":"\u0411\u0440\u043e\u043d\u044f \u0413\u0435\u043b\u0438\u043e\u0441\u0430","o":"N_human_up_Cz1_Wa1_pa","s":0,"x":[]},"V_human_up_Cz2_Ra2_Dz_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+20"]],"d":["V_human_pr_Cz2_Ra2_Dz_pr"],"h":"../projects/human_pr_cz2_ra2_dz_pr.html","k":"upgrade","l":"\u0422\u0443\u0440\u0431\u0438\u043d\u0430 \u0413\u0430\u0439\u043d\u0430","o":"N_human_up_Cz2_Ra2_Dz_pr","s":0,"x":[]},"V_human_up_Cz2_Wa2_He2_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+15"]],"d":["V_human_pr_Cz2_Wa2_He2_pa"],"h":"../projects/human_pr_cz2_wa2_he2_pa.html","k":"upgrade","l":"\u0411\u0440\u043e\u043d\u044f \u0422\u0438\u0442\u0430\u043d\u0430","o":"N_human_up_Cz2_Wa2_He2_pa","s":0,"x":[]},"V_human_up_D40mm_CX2_si":{"c":[["\u041c\u043e\u0449\u044c","+20"]],"d":["V_human_pr_D40mm_CX2_si"],"h":"../projects/human_pr_d40mm_cx2_si.html","k":"upgrade","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0413\u0435\u0442\u0435\u0440\u0430","o":"N_human_up_D40mm_CX2_si","s":0,"x":[]},"V_human_up_D75mm_si":{"c":[["\u041c\u043e\u0449\u044c","+25"]],"d":["V_human_pr_D75mm_si"],"h":"../projects/human_pr_d75mm_si.html","k":"upgrade","l":"\u0418\u043e\u043d-\u044f\u0434\u0440\u043e","o":"N_human_up_D75mm_si","s":0,"x":[]},"V_human_up_He1_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+15"]],"d":["V_human_pr_He1_pr"],"h":"../projects/human_pr_he1_pr.html","k":"upgrade","l":"K\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440 \u0425\u0430\u0439\u043c\u0430\u043d\u043d\u0430","o":"N_human_up_He1_pr","s":0,"x":[]},"V_human_up_He2_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+15"]],"d":["V_human_pr_He2_pr"],"h":"../projects/human_pr_he2_pr.html","k":"upgrade","l":"K\u043e\u043c\u043f\u0440\u0435\u0441\u0441\u043e\u0440 \u041d\u0438\u043c\u043e\u0442\u043e","o":"N_human_up_He2_pr","s":0,"x":[]},"V_human_up_Je1_Je2_Cz1_Ra1_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+20"]],"d":["V_human_pr_Je1_Je2_Cz1_Ra1_pr"],"h":"../projects/human_pr_je1_je2_cz1_ra1_pr.html","k":"upgrade","l":"\u0422\u0443\u0440\u0431\u0438\u043d\u0430 \u0411\u0440\u043e\u0442\u043c\u0430\u043d\u0430","o":"N_human_up_Je1_Je2_Cz1_Ra1_pr","s":0,"x":[]},"V_human_up_Je1_Je2_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+25"]],"d":["V_human_pr_Je1_Je2_pa"],"h":"../projects/human_pr_je1_je2_pa.html","k":"upgrade","l":"\u0429\u0438\u0442 \u0422\u0438\u0442\u0430\u043d","o":"N_human_up_Je1_Je2_pa","s":0,"x":[]},"V_human_up_K7mm_D14mm_si":{"c":[["\u041c\u043e\u0449\u044c","+35"]],"d":["V_human_pr_K7mm_D14mm_si"],"h":"../projects/human_pr_k7mm_d14mm_si.html","k":"upgrade","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0411\u0430\u043d\u0448\u0438","o":"N_human_up_K7mm_D14mm_si","s":0,"x":[]},"V_human_up_KJ_DJ_BJ_si":{"c":[["\u041c\u043e\u0449\u044c","+15"]],"d":["V_human_pr_KJ_DJ_BJ_si"],"h":"../projects/human_pr_kj_dj_bj_si.html","k":"upgrade","l":"\u0421\u043d\u0430\u0440\u044f\u0434 \u0418\u043e\u043d-\u0428\u043d\u0430\u043f\u0441","o":"N_human_up_KJ_DJ_BJ_si","s":0,"x":[]},"V_human_up_RALB_si":{"c":[["\u041c\u043e\u0449\u044c","+10"]],"d":["V_human_pr_RALB_si"],"h":"../projects/human_pr_ralb_si.html","k":"upgrade","l":"\u0420\u0430\u043a\u0435\u0442\u0430 K\u043e\u043d\u0434\u043e\u0440","o":"N_human_up_RALB_si","s":0,"x":[]},"V_human_up_RALF_si":{"c":[["\u041c\u043e\u0449\u044c","+25"]],"d":["V_human_pr_RALF_si"],"h":"../projects/human_pr_ralf_si.html","k":"upgrade","l":"\u0421\u043d\u0430\u0440\u044f\u0434 PENR","o":"N_human_up_RALF_si","s":0,"x":[]},"V_human_up_RB_si":{"c":[["\u041c\u043e\u0449\u044c","+20"]],"d":["V_human_pr_RB_si"],"h":"../projects/human_pr_rb_si.html","k":"upgrade","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0412\u043e\u043b\u043a","o":"N_human_up_RB_si","s":0,"x":[]},"V_human_up_RG_si":{"c":[["\u041c\u043e\u0449\u044c","+15"]],"d":["V_human_pr_RG_si"],"h":"../projects/human_pr_rg_si.html","k":"upgrade","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0421\u043d\u0438\u0444\u0444","o":"N_human_up_RG_si","s":0,"x":[]},"V_human_up_RK_si":{"c":[["\u041c\u043e\u0449\u044c","+10"]],"d":["V_human_pr_RK_si"],"h":"../projects/human_pr_rk_si.html","k":"upgrade","l":"\u0420\u0430\u043a\u0435\u0442\u0430 \u0414\u0435\u043b\u044c\u0442\u0430","o":"N_human_up_RK_si","s":0,"x":[]},"V_human_up_Ra3_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+10"]],"d":["V_human_pr_Ra3_pr"],"h":"../projects/human_pr_ra3_pr.html","k":"upgrade","l":"K\u0435\u0440\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u0413\u0443\u0441\u0435\u043d\u0438\u0446\u044b","o":"N_human_up_Ra3_pr","s":0,"x":[]},"V_human_up_Soldier_pa":{"c":[["\u0411\u0440\u043e\u043d\u044f","+25"]],"d":["V_human_pr_Soldier_pa"],"h":"../projects/human_pr_soldier_pa.html","k":"upgrade","l":"\u041f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u043e\u0441\u043f\u0435\u0445","o":"N_human_up_Soldier_pa","s":0,"x":[]},"V_human_up_Soldier_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+20"]],"d":["V_human_pr_Soldier_pr"],"h":"../projects/human_pr_soldier_pr.html","k":"upgrade","l":"\u0420\u0435\u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0439 \u0420\u0430\u043d\u0435\u0446","o":"N_human_up_Soldier_pr","s":0,"x":[]},"V_human_up_Wa1_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+30"]],"d":["V_human_pr_Wa1_pr"],"h":"../projects/human_pr_wa1_pr.html","k":"upgrade","l":"\u0418\u043e\u043d \u0421\u0435\u0440\u0432\u043e","o":"N_human_up_Wa1_pr","s":0,"x":[]},"V_human_up_Wa2_pr":{"c":[["\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c","+30"]],"d":["V_human_pr_Wa2_pr"],"h":"../projects/human_pr_wa2_pr.html","k":"upgrade","l":"\u0418\u043e\u043d \u0421\u0435\u0440\u0432\u043e \u041f\u0440\u043e","o":"N_human_up_Wa2_pr","s":0,"x":[]},"V_planeta_101":{"c":[],"d":[],"h":"../planets/planeta_101.html","k":"planet","l":"\u041d\u043e\u0440\u0442\u0443\u0441","o":"N_planeta_101","s":0,"x":[]},"V_planeta_102":{"c":[],"d":["V_planeta_101"],"h":"../planets/planeta_102.html","k":"planet","l":"\u0410\u043c\u0430\u043d","o":"N_planeta_102","s":0,"x":[]},"V_planeta_103":{"c":[],"d":["V_planeta_102"],"h":"../planets/planeta_103.html","k":"planet","l":"\u0421\u0430\u0439\u0431\u0435\u043b","o":"N_planeta_103","s":0,"x":[]},"V_planeta_104":{"c":[],"d":["V_planeta_102"],"h":"../planets/planeta_104.html","k":"planet","l":"K\u0430\u0440\u0438\u043e\u0442\u0438\u043f","o":"N_planeta_104","s":0,"x":[]},"V_planeta_105":{"c":[],"d":["V_planeta_103"],"h":"../planets/planeta_105.html","k":"planet","l":"K\u043e\u0444\u0443","o":"N_planeta_105","s":0,"x":[]},"V_planeta_106":{"c":[],"d":["V_planeta_103"],"h":"../planets/planeta_106.html","k":"planet","l":"\u0422\u0430\u0430\u043b\u043e\u0440","o":"N_planeta_106","s":0,"x":[]},"V_planeta_107":{"c":[],"d":["V_planeta_104"],"h":"../planets/planeta_107.html","k":"planet","l":"\u0410\u0431\u0438\u0433\u0430\u043d","o":"N_planeta_107","s":0,"x":[]},"V_planeta_108":{"c":[],"d":["V_planeta_105","V_planeta_106","V_planeta_107"],"h":"../planets/planeta_108.html","k":"planet","l":"\u0410\u044f\u0442\u0443\u0441","o":"N_planeta_108","s":0,"x":[]},"V_planeta_201":{"c":[],"d":["V_uklad1"],"h":"../planets/planeta_201.html","k":"planet","l":"\u041d\u0443\u0440","o":"N_planeta_201","s":0,"x":["V_uklad1"]},"V_planeta_202":{"c":[],"d":["V_uklad1"],"h":"../planets/planeta_202.html","k":"planet","l":"\u041b\u0438","o":"N_planeta_202","s":0,"x":["V_uklad1"]},"V_planeta_203":{"c":[],"d":["V_uklad1"],"h":"../planets/planeta_203.html","k":"planet","l":"\u0414\u0435\u043d\u0430\u043b\u0438","o":"N_planeta_203","s":0,"x":["V_uklad1"]},"V_planeta_204":{"c":[],"d":["V_planeta_201"],"h":"../planets/planeta_204.html","k":"planet","l":"\u0414\u0436\u0438\u0440","o":"N_planeta_204","s":0,"x":[]},"V_planeta_205":{"c":[],"d":["V_planeta_203"],"h":"../planets/planeta_205.html","k":"planet","l":"\u041f\u0440\u0435\u0434\u0430","o":"N_planeta_205","s":0,"x":[]},"V_planeta_206":{"c":[],"d":["V_planeta_203"],"h":"../planets/planeta_206.html","k":"planet","l":"\u0426\u0430\u0432\u043e","o":"N_planeta_206","s":0,"x":[]},"V_planeta_207":{"c":[],"d":["V_planeta_205","V_planeta_206"],"h":"../planets/planeta_207.html","k":"planet","l":"\u0421\u043a\u0430\u0442\u044d\u043b\u044c","o":"N_planeta_207","s":0,"x":[]},"V_planeta_208":{"c":[],"d":["V_planeta_202"],"h":"../planets/planeta_208.html","k":"planet","l":"K\u043e\u0442\u0442\u0430","o":"N_planeta_208","s":0,"x":[]},"V_planeta_209":{"c":[],"d":["V_planeta_207"],"h":"../planets/planeta_209.html","k":"planet","l":"\u041c\u0438\u0430","o":"N_planeta_209","s":0,"x":[]},"V_planeta_210":{"c":[],"d":["V_planeta_208","V_planeta_209"],"h":"../planets/planeta_210.html","k":"planet","l":"\u041d\u0443\u0440\u0438\u044f","o":"N_planeta_210","s":0,"x":[]},"V_planeta_301":{"c":[],"d":["V_uklad2"],"h":"../planets/planeta_301.html","k":"planet","l":"\u041c\u0430\u0439\u043e\u043d","o":"N_planeta_301","s":0,"x":["V_uklad2"]},"V_planeta_302":{"c":[],"d":["V_uklad2"],"h":"../planets/planeta_302.html","k":"planet","l":"\u0412\u0443\u043b\u043b\u0430","o":"N_planeta_302","s":0,"x":["V_uklad2"]},"V_planeta_303":{"c":[],"d":["V_planeta_301"],"h":"../planets/planeta_303.html","k":"planet","l":"\u0411\u0440\u0430\u043b\u0430\u0440\u0438\u0439","o":"N_planeta_303","s":0,"x":[]},"V_planeta_304":{"c":[],"d":["V_planeta_302"],"h":"../planets/planeta_304.html","k":"planet","l":"\u041b\u0435\u0439\u0437\u0435\u0440","o":"N_planeta_304","s":0,"x":[]},"V_planeta_305":{"c":[],"d":["V_planeta_303"],"h":"../planets/planeta_305.html","k":"planet","l":"\u0410\u043c\u043e\u0443","o":"N_planeta_305","s":0,"x":[]},"V_planeta_306":{"c":[],"d":["V_planeta_303"],"h":"../planets/planeta_306.html","k":"planet","l":"\u041b\u0435\u0443\u0441","o":"N_planeta_306","s":0,"x":[]},"V_planeta_307":{"c":[],"d":["V_planeta_304","V_planeta_305","V_planeta_306"],"h":"../planets/planeta_307.html","k":"planet","l":"\u0422\u0435\u0445\u043b\u0430\u043d\u0434\u0443\u0441","o":"N_planeta_307","s":0,"x":[]},"V_uklad1":{"c":[],"d":["V_planeta_101","V_planeta_102","V_planeta_103","V_planeta_104","V_planeta_105","V_planeta_106","V_planeta_107","V_planeta_108"],"h":"../systems/uklad1.html","k":"system","l":"\u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u041d\u043e\u0440\u0442\u0443\u0441\u0430","o":"N_uklad1","s":0,"x":["V_planeta_101","V_planeta_102","V_planeta_103","V_planeta_104","V_planeta_105","V_planeta_106","V_planeta_107","V_planeta_108"]},"V_uklad2":{"c":[],"d":["V_planeta_201","V_planeta_202","V_planeta_203","V_planeta_204","V_planeta_205","V_planeta_206","V_planeta_207","V_planeta_208","V_planeta_209","V_planeta_210","V_uklad1"],"h":"../systems/uklad2.html","k":"system","l":"\u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u041d\u0443\u0440\u0430","o":"N_uklad2","s":0,"x":["V_planeta_201","V_planeta_202","V_planeta_203","V_planeta_204","V_planeta_205","V_planeta_206","V_planeta_207","V_planeta_208","V_planeta_209","V_planeta_210"]},"V_uklad3":{"c":[],"d":["V_planeta_301","V_planeta_302","V_planeta_303","V_planeta_304","V_planeta_305","V_planeta_306","V_planeta_307","V_uklad2"],"h":"../systems/uklad3.html","k":"system","l":"\u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u0410\u043b\u0430\u043d\u0443\u0441\u0430","o":"N_uklad3","s":0,"x":["V_planeta_301","V_planeta_302","V_planeta_303","V_planeta_304","V_planeta_305","V_planeta_306","V_planeta_307"]}}</script>
+  <script type="application/json" class="tt-ui">{"building": "\u0417\u0434\u0430\u043d\u0438\u0435", "derived": "\u0442\u043e\u0447\u043a\u0438 = \u043f\u0440\u0430\u0432\u0438\u043b\u043e \u0438\u0433\u0440\u044b, \u0432 \u043a\u043e\u043d\u0444\u0438\u0433\u0435 \u0435\u0433\u043e \u043d\u0435\u0442", "fit": "\u0412\u043f\u0438\u0441\u0430\u0442\u044c", "gate": "\u043f\u0443\u043d\u043a\u0442\u0438\u0440 = \u0432\u043e\u0440\u043e\u0442\u0430 \u043f\u043b\u0430\u043d\u0435\u0442\u044b / \u0441\u0438\u0441\u0442\u0435\u043c\u044b", "help": "\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u043d\u0430 \u0443\u0437\u0435\u043b, \u0447\u0442\u043e\u0431\u044b \u043f\u043e\u0434\u0441\u0432\u0435\u0442\u0438\u0442\u044c \u0446\u0435\u043f\u043e\u0447\u043a\u0443 \u043f\u0440\u0435\u0434\u043f\u043e\u0441\u044b\u043b\u043e\u043a \u0438 \u0442\u043e, \u0447\u0442\u043e \u043e\u043d \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442. \u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u043d\u0430 \u043f\u0443\u0441\u0442\u043e\u0435 \u043c\u0435\u0441\u0442\u043e, \u0447\u0442\u043e\u0431\u044b \u0441\u043d\u044f\u0442\u044c \u0432\u044b\u0434\u0435\u043b\u0435\u043d\u0438\u0435.", "legend": "\u0423\u0441\u043b\u043e\u0432\u043d\u044b\u0435 \u043e\u0431\u043e\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u044f", "n_links": "\u0441\u0432\u044f\u0437\u0435\u0439", "n_nodes": "\u0438\u0437\u043e\u0431\u0440\u0435\u0442\u0435\u043d\u0438\u0439", "n_ranks": "\u0443\u0440\u043e\u0432\u043d\u0435\u0439", "none": "\u043d\u0438\u0447\u0435\u0433\u043e", "open": "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443", "planet": "\u0412\u043e\u0440\u043e\u0442\u0430: \u043f\u043b\u0430\u043d\u0435\u0442\u0430", "project": "\u041f\u0440\u043e\u0435\u043a\u0442", "requires": "\u0422\u0440\u0435\u0431\u0443\u0435\u0442 (\u0432\u0441\u0451 \u0438\u0437)", "rule": "\u0423\u0437\u0435\u043b \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f, \u0442\u043e\u043b\u044c\u043a\u043e \u043a\u043e\u0433\u0434\u0430 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u044b \u0412\u0421\u0415 \u0435\u0433\u043e \u043f\u0440\u0435\u0434\u043f\u043e\u0441\u044b\u043b\u043a\u0438 (\u0441\u043b\u0435\u0432\u0430 \u043d\u0430\u043f\u0440\u0430\u0432\u043e).", "start": "\u0418\u0437\u043e\u0431\u0440\u0435\u0442\u0435\u043d\u0438\u0435 \u0441 \u043d\u0430\u0447\u0430\u043b\u0430 \u0438\u0433\u0440\u044b", "system": "\u0412\u043e\u0440\u043e\u0442\u0430: \u0441\u0438\u0441\u0442\u0435\u043c\u0430", "unit": "\u042e\u043d\u0438\u0442", "unlocks": "\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442", "upgrade": "\u0423\u043b\u0443\u0447\u0448\u0435\u043d\u0438\u0435", "zoom_in": "+", "zoom_out": "-"}</script>
+</section>
+<link rel="stylesheet" href="../../assets/techtree.css">
+<script src="../../assets/techtree.js" defer></script>
+
+
+</main>
+<footer>Построено по файлам данных игры. Справочник энтузиастов.</footer>
+</body>
+</html>

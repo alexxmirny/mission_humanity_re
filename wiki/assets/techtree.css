@@ -1,0 +1,125 @@
+:root {
+  --tt-bg: #f6f7f9;
+  --tt-fg: #1c2129;
+  --tt-dim-fg: #5b6573;
+  --tt-box: #ffffff;
+  --tt-box-line: #b8c0cc;
+  --tt-edge: #8d97a6;
+  --tt-pre: #c2410c;
+  --tt-unl: #1d6fd1;
+  --tt-sel: #111827;
+  --tt-card-bg: #ffffff;
+  --tt-k-unit: #2f8f5b;
+  --tt-k-building: #8a6d1f;
+  --tt-k-project: #7c4dbd;
+  --tt-k-upgrade: #c0392b;
+  --tt-k-planet: #2878a8;
+  --tt-k-system: #4a5568;
+  --tt-k-none: #888;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --tt-bg: #14181f;
+    --tt-fg: #e4e8ee;
+    --tt-dim-fg: #98a2b3;
+    --tt-box: #1d2430;
+    --tt-box-line: #3a4556;
+    --tt-edge: #5e6a7d;
+    --tt-pre: #fb923c;
+    --tt-unl: #60a5fa;
+    --tt-sel: #f9fafb;
+    --tt-card-bg: #1d2430;
+    --tt-k-unit: #4fc487;
+    --tt-k-building: #d4b04a;
+    --tt-k-project: #b08be8;
+    --tt-k-upgrade: #ee7a6d;
+    --tt-k-planet: #5aa9d6;
+    --tt-k-system: #94a3b8;
+  }
+}
+:root[data-theme="dark"] {
+  --tt-bg: #14181f;
+  --tt-fg: #e4e8ee;
+  --tt-dim-fg: #98a2b3;
+  --tt-box: #1d2430;
+  --tt-box-line: #3a4556;
+  --tt-edge: #5e6a7d;
+  --tt-pre: #fb923c;
+  --tt-unl: #60a5fa;
+  --tt-sel: #f9fafb;
+  --tt-card-bg: #1d2430;
+  --tt-k-unit: #4fc487;
+  --tt-k-building: #d4b04a;
+  --tt-k-project: #b08be8;
+  --tt-k-upgrade: #ee7a6d;
+  --tt-k-planet: #5aa9d6;
+  --tt-k-system: #94a3b8;
+}
+.tt-body {
+  margin: 0;
+  background: var(--tt-bg);
+  color: var(--tt-fg);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.tt-wrap { position: relative; padding: 12px 16px; }
+.tt-head h1 { font-size: 20px; margin: 0 0 4px; }
+.tt-sub, .tt-help { color: var(--tt-dim-fg); font-size: 12px; margin: 0; }
+.tt-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0; font-size: 12px; }
+.tt-key { display: inline-flex; align-items: center; gap: 5px; }
+.tt-swatch { display: inline-block; width: 14px; height: 10px; border-radius: 2px; background: var(--k, var(--tt-k-none)); }
+.tt-swatch.dash { background: none; border-top: 2px dashed var(--tt-edge); height: 0; }
+.tt-swatch.dot { background: none; border-top: 2px dotted var(--tt-edge); height: 0; }
+.tt-key.k-unit { --k: var(--tt-k-unit); }
+.tt-key.k-building { --k: var(--tt-k-building); }
+.tt-key.k-project { --k: var(--tt-k-project); }
+.tt-key.k-upgrade { --k: var(--tt-k-upgrade); }
+.tt-key.k-planet { --k: var(--tt-k-planet); }
+.tt-key.k-system { --k: var(--tt-k-system); }
+.tt-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.tt-tools button {
+  min-width: 32px; padding: 3px 10px; cursor: pointer;
+  background: var(--tt-box); color: var(--tt-fg); border: 1px solid var(--tt-box-line); border-radius: 4px;
+}
+.tt-info { min-height: 3.2em; font-size: 13px; margin-bottom: 6px; }
+.tt-info button.lnk, .tt-info a { background: none; border: 0; padding: 0; color: var(--tt-unl); cursor: pointer; font: inherit; text-decoration: underline; }
+.tt-info .tt-list { color: var(--tt-dim-fg); }
+.tt-scroll { overflow: auto; border: 1px solid var(--tt-box-line); border-radius: 6px; background: var(--tt-bg); max-height: 80vh; }
+.tt-svg { display: block; }
+
+.tt-edge { fill: none; stroke: var(--tt-edge); stroke-width: 1.2; opacity: .75; }
+.tt-edge.gate { stroke-dasharray: 5 4; }
+.tt-edge.derived { stroke-dasharray: 1.5 4; stroke-linecap: round; stroke-width: 1.8; }
+.tt-node { cursor: pointer; outline: none; }
+.tt-box { fill: var(--tt-box); stroke: var(--tt-box-line); stroke-width: 1; }
+.tt-stripe { fill: var(--k, var(--tt-k-none)); }
+.tt-node.k-unit { --k: var(--tt-k-unit); }
+.tt-node.k-building { --k: var(--tt-k-building); }
+.tt-node.k-project { --k: var(--tt-k-project); }
+.tt-node.k-upgrade { --k: var(--tt-k-upgrade); }
+.tt-node.k-planet { --k: var(--tt-k-planet); }
+.tt-node.k-system { --k: var(--tt-k-system); }
+.tt-label { fill: var(--tt-fg); font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; }
+.tt-glyph { fill: var(--k); font: 700 9px system-ui, sans-serif; }
+.tt-node.start .tt-box { stroke-dasharray: 3 2; }
+.tt-node:focus-visible .tt-box { stroke: var(--tt-sel); stroke-width: 2; }
+.tt-node:hover .tt-box { stroke: var(--tt-sel); }
+
+.tt-svg.has-sel .tt-node, .tt-svg.has-sel .tt-edge { opacity: .18; }
+.tt-svg.has-sel .tt-node.sel, .tt-svg.has-sel .tt-node.pre, .tt-svg.has-sel .tt-node.unl,
+.tt-svg.has-sel .tt-edge.on-pre, .tt-svg.has-sel .tt-edge.on-unl { opacity: 1; }
+.tt-node.sel .tt-box { stroke: var(--tt-sel); stroke-width: 3; }
+.tt-node.pre .tt-box { stroke: var(--tt-pre); stroke-width: 2.5; }
+.tt-node.unl .tt-box { stroke: var(--tt-unl); stroke-width: 2.5; }
+.tt-edge.on-pre { stroke: var(--tt-pre); stroke-width: 2.2; }
+.tt-edge.on-unl { stroke: var(--tt-unl); stroke-width: 2.2; }
+
+.tt-card {
+  position: fixed; z-index: 10; max-width: 260px; padding: 8px 10px; pointer-events: none;
+  background: var(--tt-card-bg); color: var(--tt-fg); border: 1px solid var(--tt-box-line);
+  border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); font-size: 12px;
+}
+.tt-card b { display: block; font-size: 13px; }
+.tt-card dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 4px 0 0; }
+.tt-card dt { color: var(--tt-dim-fg); }
+.tt-card dd { margin: 0; }
+@media (max-width: 600px) { .tt-wrap { padding: 8px 16px; } }
