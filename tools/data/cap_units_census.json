@@ -50312,19 +50312,6 @@
  },
  "v022_auto": {
   "0x00412441": 4,
-  "0x004131c0": 6,
-  "0x004141cc": 7,
-  "0x00414212": 7,
-  "0x00414252": 10,
-  "0x004142b2": 10,
-  "0x0041639f": 6,
-  "0x00416472": 6,
-  "0x004164b6": 6,
-  "0x00416515": 6,
-  "0x00417e56": 10,
-  "0x00417f74": 7,
-  "0x004180de": 10,
-  "0x00418136": 10,
   "0x0044a2ec": 6,
   "0x0044a443": 6,
   "0x00456379": 7,
@@ -50375,6 +50362,71 @@
   "0x004e6054": 8
  },
  "verdicts": {
+  "0x004131c0": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x004141cc": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00414212": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00414252": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x004142b2": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x0041639f": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00416472": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x004164b6": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00416515": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00417e56": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00417f74": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x004180de": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
+  "0x00418136": {
+   "verdict": "keep",
+   "code": "avail_row_stride",
+   "why": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride"
+  },
   "0x0043fb21": {
    "verdict": "keep",
    "code": "shuttle_status",
@@ -50902,6 +50954,7 @@
   "keep": {
    "ai_distance": 6,
    "ai_pct": 2,
+   "avail_row_stride": 13,
    "cheat_penalty": 2,
    "elevation": 1,
    "group_scratch": 2,

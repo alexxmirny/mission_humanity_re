@@ -21,6 +21,7 @@
 #include "sim/sim_path_group_steps.h"                     // mods:M1X set_move_attack_heading_fix
 #include "sim/sim_unit_state_squad_merge.h"               // mods:M1C set_move_squad_merge_fix
 #include "sim/sim_projectile_facing.h"                    // mods:M1C set_projectile_facing_fix
+#include "sim/sim_unit_soldier_screen_pos.h"              // mp:DSHEAL set_soldier_origin_anim_fix
 #include "sim/sim_merge_goal.h"                           // mods:M1X set_move_merge_goal_fix
 #include "sim/sim_attack_range_footprint.h"               // mods:M1C set_attack_range_footprint
 #include "sim/sim_move_fixes.h"                           // mods:M1H set_move_fixes (the planner / walker / marshal keys without a twin yet)
@@ -720,6 +721,7 @@ void                set_fixes(const reimpl_fixes &f) {
     mh::sim::set_move_squad_merge_fix(f.move_squad_merge_fix);                                  // mods:M1C
     mh::sim::set_move_merge_goal_fix(f.move_merge_goal_fix);                                    // mods:M1X
     mh::sim::set_projectile_facing_fix(f.projectile_facing_fix);                                // mods:M1C
+    mh::sim::set_soldier_origin_anim_fix(f.soldier_origin_anim_fix);                            // mp:DSHEAL
     mh::sim::set_attack_range_footprint(f.attack_range_footprint);                              // mods:M1C
     {
         // mods:M1H lane A: the remaining movement keys -> the switchboard the lane B / C twins read (sim/sim_move_fixes.h).

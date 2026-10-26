@@ -254,7 +254,8 @@ tests:
         extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/bigmap_orders.ini]
         harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
         # a pixel test of the big-map right click; pinned to retail movement so the arrived frames do not follow the movement defaults (mods:M1H, user 2026-10-17)
-        net_extra: improved_movement=0;group_movement=0;improved_combat=0
+        # and to the retail shot origin: mp:DSHEAL's soldier_origin_anim_fix changes the shots in c_armed..f_nothing (0.01-0.34%)
+        net_extra: improved_movement=0;group_movement=0;improved_combat=0;soldier_origin_anim_fix=0
         post_check: [tools/check_bigmap.py, --orders]
         tol: 0.0
       # mods:MM4C: the same with [ui] bigmap_orders=0: the right click on the big map is swallowed and does nothing.
@@ -264,7 +265,8 @@ tests:
         extra_ini: [tools/uiscripts/ini/video_1024.ini, tools/uiscripts/ini/bigmap_orders_off.ini]
         harness_extra: pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
         # a pixel test of the swallowed right click; pinned to retail movement so the frame does not follow the movement defaults (mods:M1H, user 2026-10-17)
-        net_extra: improved_movement=0;group_movement=0;improved_combat=0
+        # and to the retail shot origin: mp:DSHEAL's soldier_origin_anim_fix moves one projectile pixel in the b_after frame (0.006%)
+        net_extra: improved_movement=0;group_movement=0;improved_combat=0;soldier_origin_anim_fix=0
         post_check: [tools/check_bigmap.py, --orders-off]
         tol: 0.0
       # mods:MM4: the big map, [ui] bigmap=0: Tab held draws nothing (the frame is the stock one). 2-almost at 1024x768 with libmh bound, camera pinned (camto), Tab held through the harness chord table.
@@ -3319,6 +3321,48 @@ tests:
     post_check:
       - [tools/check_cap_fill.py]
     desc: 'v0.2.2 cap raise ON (libmh absent, raise=1, mirror_check=1): one player places ~400 buildings (100 turrets/mines/labs/storages, 60 productions) past every vanilla roster cap through the game placement order; the match runs 10 game minutes'
+  # patching:PT-CAP12 (2026-10-26): the build/research tables are read at the stock row stride for every seat. A 1-human + 3-AI skirmish (seats 0-3, all Human); `logavail`
+  # logs AvailableBuildings[8][50] as the game's writers filled it (stride 200) and as the retail build panel reads it (the IMUL stride immediate live at 0x4163a1). The v0.2.2
+  # relocation layer once rewrote 13 such immediates 200 -> 1016 (the labs stride; 25 labs x 8 B = 50 ints x 4 B), so seats >= 2 read AvailableProjects. tools/check_avail_rows.py
+  # judges. Three arms: raise=0 and raise=1 with libmh.dll absent (the relocation layer is always applied), and raise=1 with libmh present.
+  - name: avail_rows_r0
+    tier: release
+    budget_s: 30
+    budget_evidence: "10-14 s solo on the local rig 2026-10-26 (tmp/u022/rc1pub/ptcap12/run_green_all.log; 30 game seconds under pin_wallclock) x 2"
+    kind: solo
+    script: avail_rows_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise_off.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    post_check:
+      - [tools/check_avail_rows.py]
+    desc: 'PT-CAP12 (libmh absent, raise=0): in a 1-human + 3-AI skirmish every seat reads the stock Human build list at the stock AvailableBuildings row stride; the panel stride immediate is 200'
+  - name: avail_rows_r1
+    tier: release
+    budget_s: 30
+    budget_evidence: "10-14 s solo on the local rig 2026-10-26 (tmp/u022/rc1pub/ptcap12/run_green_all.log; 30 game seconds under pin_wallclock) x 2"
+    kind: solo
+    script: avail_rows_solo.txt
+    omit_satellite: [libmh.dll]
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    post_check:
+      - [tools/check_avail_rows.py]
+    desc: 'PT-CAP12 (libmh absent, raise=1): the same 1-human + 3-AI skirmish with the cap raise ON; every seat still reads the stock Human build list at the stock row stride'
+  - name: avail_rows_libmh
+    tier: release
+    budget_s: 30
+    budget_evidence: "10-14 s solo on the local rig 2026-10-26 (tmp/u022/rc1pub/ptcap12/run_green_all.log; 30 game seconds under pin_wallclock) x 2"
+    kind: solo
+    script: avail_rows_solo.txt
+    extra_ini: [tools/uiscripts/ini/caps_raise.ini, tools/uiscripts/ini/log_debug.ini]
+    harness_extra: skip_intro_avi=1;pin_wallclock=1;pin_clock_dt_us=16667;pin_clock_base_s=1000;synth_move=0;region_hash_step=0
+    tol: 1.0
+    post_check:
+      - [tools/check_avail_rows.py]
+    desc: 'PT-CAP12 (libmh present, raise=1): the libmh twins (sim_lt_available_remove, sim_map_fill_defaults keep stride 200) and the retail panel reader agree for every seat'
   # patching:PT-CAP9-U1/U2 (2026-10-21): the ON smoke of the v0.2.3 units + soldiers raise. libmh.dll absent (both relocation manifests apply), `[caps] raise=1`
   # + `mirror_check=1`, a 1-human + 1-AI skirmish. The harness unit-fill fixture (capu_*) creates units through the game's debug order 0xeb until player 0 owns 490
   # (the recruit cap 491 leaves 490; every unit carries crew soldiers so the soldier roster passes 100 too); at step 4000 the world is saved and loaded back through the
@@ -5410,3 +5454,39 @@ tests:
         deploy_save: 8-ayatus-rl-4
         net_extra: projectile_facing_fix=2
         post_check: [tools/check_prj_facing.py, --expect-bad]
+
+  # mp:DSHEAL (2026-10-26): the sim read the RENDER-ONLY soldier anim_change_count (+0x1b) through llm_strat_unit_soldier_get_sprite_screen_pos
+  # (the shot origin of llm_strat_unit_fire_weapon), so two peers whose screens drew different counters made 0 vs 2 scatter RNG draws and
+  # desynced (v0.2.2-rc1 public match 44f21f93). Configuration (1) (mh.dll without libmh.dll): the retail splice at 0x00491166 is under test.
+  # The harness probe (soa_at) loads u022field.sav (200 soldiers), calls the game's function for 6 soldier units with the head soldier's counter
+  # set to 0, 4 .. 252 and logs the origins; tools/check_soa.py: fixed = the origin is the same for all 64 counters, retail = it depends on them.
+  - name: soa_probe
+    budget_s: 15
+    budget_evidence: "4 s and 5 s measured on the local rig 2026-10-26 (one run each) x3"
+    kind: solo
+    script: soa_probe.txt
+    deploy_save: u022field
+    omit_satellite: [libmh.dll]
+    extra_ini: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: soa_at=30;soa_units=6
+    timeout_frames: 200000
+    post_check: [tools/check_soa.py, --expect, fixed]
+    post_check_session: true
+    tol: 1.0
+    desc: 'mp:DSHEAL: the shot origin of a soldier unit is the same for every anim_change_count (retail splice at 0x00491166, libmh absent)'
+  - name: soa_probe_retail
+    tier: release  # the fix-off negative: the probe must SEE the dependence, or the row above proves nothing
+    budget_s: 15
+    budget_evidence: "4 s and 5 s measured on the local rig 2026-10-26 (one run each) x3"
+    kind: solo
+    script: soa_probe.txt
+    deploy_save: u022field
+    omit_satellite: [libmh.dll]
+    net_extra: soldier_origin_anim_fix=0
+    extra_ini: tools/uiscripts/ini/caps_raise.ini
+    harness_extra: soa_at=30;soa_units=6
+    timeout_frames: 200000
+    post_check: [tools/check_soa.py, --expect, retail]
+    post_check_session: true
+    tol: 1.0
+    desc: 'mp:DSHEAL negative arm: `[net] soldier_origin_anim_fix=0` (retail bytes) -- the origin depends on anim_change_count for at least one soldier unit'

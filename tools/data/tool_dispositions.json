@@ -129,6 +129,11 @@
       "why": "mods:PRJ1 -- the post_check of the prj_facing_rl4 UI row: counts the weapon-19/20 shots of 8-ayatus-rl-4 whose frame left their 24-frame block in the harness projectile-pool dump (0 expected; --expect-bad for the superseded rc3 rule, >= 10)",
       "evidence": "invoked by tools/uiscripts/registry.yaml's prj_facing_rl4 row (post_check, both steps)"
     },
+    "check_soa.py": {
+      "class": "keep",
+      "why": "mp:DSHEAL -- the post_check of the soa_probe / soa_probe_retail UI rows: reads the harness shot-origin probe's `; SOA ORIGIN` lines (the game's llm_strat_unit_soldier_get_sprite_screen_pos called with the render-only soldier anim_change_count set to 0..252) and asserts the origin is the same for every counter with [net] soldier_origin_anim_fix on (--expect fixed) and that it depends on the counter with the key at 0 (--expect retail)",
+      "evidence": "invoked by tools/uiscripts/registry.yaml's soa_probe* rows (post_check, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
     "check_mv_marshal.py": {
       "class": "keep",
       "why": "mods:M1N field fix (rc10 playtest, 2026-10-16) -- the m1n_marshal_idle / m1n_marshal_headon / m1n_marshal_off UI rows' post_check: reads the `; MV ORDERSUM` lines of the harness mv_replay probe and the seam's `; M1N *-marshal` lines and asserts a unit stalled in group-move marshal beside a friend in a one-tile corridor gets past it (and, with the keys at 0, that retail still stalls)",
@@ -1859,6 +1864,11 @@
       "class": "keep",
       "why": "PT-CAP9-U0: units/soldiers relocation census, every site classified move / exclude-with-reason, plus the 91/100/200/300 limit list; hermetic --check",
       "evidence": "invoked by tools/lint_repo.py (--check, --selftest)"
+    },
+    "check_avail_rows.py": {
+      "class": "keep",
+      "why": "PT-CAP12: judges the avail_rows rows (1 human + 3 AI): every seat reads its build list at the stock AvailableBuildings row stride, the panel stride immediate stays 200",
+      "evidence": "post_check of tools/uiscripts/registry.yaml avail_rows_*; invoked by tools/lint_repo.py (--selftest)"
     },
     "check_cap_units.py": {
       "class": "keep",

@@ -691,14 +691,39 @@ inline bool advert_should_send(double horizon_before, double horizon_now) {
 //
 // `clock + step` is nudged up if rounding would leave it one ulp under `max_sent`: a horizon that
 // reads back a hair below the value on the wire is exactly the bug, only smaller.
-constexpr double HZ_RESTART_S = 2.0; // a sent max more than this ahead of the clock = a restarted clock
+constexpr double HZ_RESTART_S         = 2.0; // the floor of the restart margin (below)
+constexpr double HZ_RESTART_CEIL_MULT = 5.0; // mp:LSCEIL -- the margin is at least this many ceilings
 
-inline bool horizon_max_is_stale(double clock_s, double max_sent_s) {
-    return clock_s + HZ_RESTART_S < max_sent_s; // the same rule on_time_tick's g_hz_max_seen uses
+// mp:LSCEIL -- a sent max more than this ahead of the clock = a restarted clock. The lookahead is capped at the
+// ceiling ([net] lockstep_max_ms: 400 / 600 / 800 / 1000), so a LEGITIMATE horizon is at most ~ceiling ahead; the
+// margin keeps 5x headroom over it (2 s at the shipped 400 ms, 5 s at 1000 ms) instead of the old fixed 2 s,
+// which at a 1 s ceiling would be a 2x margin and above 2 s read every real horizon as a new match.
+inline double horizon_restart_s(double ceil_s) {
+    const double m = HZ_RESTART_CEIL_MULT * ceil_s;
+    return m > HZ_RESTART_S ? m : HZ_RESTART_S; // NaN / non-positive ceiling -> the 2 s floor
 }
 
-inline double monotone_step(double target_s, double clock_s, double max_sent_s) {
-    if (!(max_sent_s > 0.0) || horizon_max_is_stale(clock_s, max_sent_s)) return target_s;
+// mp:LSCEIL -- the command-delay ceiling choices the launcher offers ([net] lockstep_max_ms, ms). The shipped build
+// takes ONLY these: any other value snaps to the nearest (a tie goes down); a dev build ([dev] unlock=1) keeps any
+// value in 30 .. 10000. Garbage (<= 0) is the 400 ms default either way.
+constexpr int LS_CEIL_CHOICES_MS[4] = {400, 600, 800, 1000};
+inline int    lockstep_ceiling_ms(int v, bool dev_unlocked) {
+    if (v <= 0) return LS_CEIL_CHOICES_MS[0];
+    if (dev_unlocked) return v < 30 ? 30 : (v > 10000 ? 10000 : v);
+    int best = LS_CEIL_CHOICES_MS[0];
+    for (int c : LS_CEIL_CHOICES_MS) {
+        const int dc = c > v ? c - v : v - c, db = best > v ? best - v : v - best;
+        if (dc < db) best = c;
+    }
+    return best;
+}
+
+inline bool horizon_max_is_stale(double clock_s, double max_sent_s, double restart_s = HZ_RESTART_S) {
+    return clock_s + restart_s < max_sent_s; // the same rule on_time_tick's g_hz_max_seen uses
+}
+
+inline double monotone_step(double target_s, double clock_s, double max_sent_s, double restart_s = HZ_RESTART_S) {
+    if (!(max_sent_s > 0.0) || horizon_max_is_stale(clock_s, max_sent_s, restart_s)) return target_s;
     const double need = max_sent_s - clock_s;
     if (!(need > target_s)) return target_s;
     double step = need;
@@ -709,9 +734,9 @@ inline double monotone_step(double target_s, double clock_s, double max_sent_s) 
 // The horizon a writer that does its OWN arithmetic (the eager hook, the heartbeat) may put on the
 // wire: clock + step, never below the maximum already sent (or held -- `floor_s` is the HORIZON
 // global's current value where the caller can read it safely).
-inline double monotone_horizon(double clock_s, double step_s, double floor_s) {
+inline double monotone_horizon(double clock_s, double step_s, double floor_s, double restart_s = HZ_RESTART_S) {
     const double h = clock_s + step_s;
-    if (floor_s > 0.0 && !horizon_max_is_stale(clock_s, floor_s) && h < floor_s) return floor_s;
+    if (floor_s > 0.0 && !horizon_max_is_stale(clock_s, floor_s, restart_s) && h < floor_s) return floor_s;
     return h;
 }
 

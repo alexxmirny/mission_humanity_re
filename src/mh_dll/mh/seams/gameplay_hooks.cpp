@@ -293,6 +293,13 @@ static const hook_row k_hooks[] = {
          fx.projectile_facing_fix = on != 0;
          mh_set_projectile_facing_fix(on);
      }},
+    // mp:DSHEAL: the shot origin must not read the render-only soldier anim_change_count. Default ON (not a follower of
+    // improved_combat: a desync fix, not a balance prototype); the host's value travels like every other match rule.
+    {"net", "soldier_origin_anim_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on               = v.i != 0;
+         fx.soldier_origin_anim_fix = on != 0;
+         mh_set_soldier_origin_anim_fix(on);
+     }},
     // patching:PT-CAP8 [caps] raise: the v0.2.2 roster limit layer (buildings 100 -> 500, storage/turrets/mines/labs 25|32 -> 127,
     // productions 8 -> 127, projectiles 1500 -> 4000). The ARRAYS are relocated at boot whatever this says (mh::caps); this only flips
     // the 51 limit sites, at the PT-SET1 apply points (boot LOCAL, host PUBLISHED at Start, client ADOPTED before begin_map_load) -- all
@@ -305,6 +312,10 @@ static const hook_row k_hooks[] = {
          // O1c: the replicated order lane carries a 12-bit building index (seams/order_wide_index.cpp), so
          // raise=1 in multiplayer no longer mis-targets building orders past index 255.
      }},
+    // mp:LSCEIL [net] lockstep_max_ms: the command-delay ceiling of the adaptive lookahead (400 / 600 / 800 / 1000 ms). Not sim-affecting
+    // (each peer's controller keeps its own lookahead below it), but the host's choice is adopted so every peer in a match runs the same
+    // ceiling; the apply points are all before the lockstep starts. The setter snaps to the allowed set and scales the restart margin.
+    {"net", "lockstep_max_ms", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &) { mh_set_lockstep_max_ms(v.i); }},
     {nullptr, nullptr, nullptr}, // sentinel: keeps the array non-empty if every synced row is ever removed
 };
 

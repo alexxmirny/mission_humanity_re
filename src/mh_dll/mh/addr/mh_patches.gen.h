@@ -1542,6 +1542,7 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"attack_range_footprint",        0x00484fc6u, "llm_strat_unit_state_attack_building", "migrated:attack_range_footprint"},
     {"attack_range_footprint",        0x004831c0u, "llm_strat_unit_group_step_ground", "migrated:attack_range_footprint"},
     {"projectile_facing_fix",         0x00441424u, "llm_strat_projectile_tick", "migrated:projectile_facing_fix"},
+    {"soldier_origin_anim_fix",       0x00491166u, "llm_strat_unit_soldier_get_sprite_screen_pos", "migrated:soldier_origin_anim_fix"},
     {"replay_boundary_notes",         0x004bb74cu, "llm_menu_loadgame_confirm", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
     {"replay_boundary_notes",         0x0044ceceu, "SwitchToPlanet", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
     {"replay_boundary_notes",         0x0044d418u, "llm_tact_mission_end_return_to_strategic", "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash"},
@@ -1555,6 +1556,6 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"caps_load_version",             0x004476b4u, "llm_game_load", "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself"},
     {"caps_load_refusal_msg",         0x004bb76du, "llm_menu_loadgame_confirm", "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself"},
 };
-inline constexpr int registered_patch_count = 160;
+inline constexpr int registered_patch_count = 161;
 
 } // namespace mh::addr

@@ -63,7 +63,9 @@ void unit_soldier_get_sprite_screen_pos(const sim_view &v, const unit_soldier_ge
     // signed-divide-by-4 idiom (SAR/SHL/SBB/SAR @ 0x00491186-0x00491190) -- see the header HAZARD
     // note. sign is 0 or -1; `- (sign << 2) - (sign != 0)` folds in the exact +3-when-negative bias
     // the asm's SHL+SBB pair computes, then the final `>> 2` is the arithmetic-shift floor.
-    const int32_t anim_sum   = (int32_t)s.anim_change_count + u.move_microstep;
+    // mp:DSHEAL [net] soldier_origin_anim_fix: anim_change_count is a render-only counter (the renderers write it, the
+    // hash masks it), yet this index feeds the SIM's shot origin -- with the key on it reads as 0, as the retail splice does.
+    const int32_t anim_sum   = (soldier_origin_anim_fix() ? 0 : (int32_t)s.anim_change_count) + u.move_microstep;
     const int32_t sign       = anim_sum >> 31;
     const int32_t div4       = (anim_sum - (sign << 2) - (sign != 0 ? 1 : 0)) >> 2;
     const int32_t sprite_idx = sprite_base + (div4 % 8);

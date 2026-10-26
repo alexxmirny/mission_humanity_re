@@ -54,12 +54,14 @@
 #include "caps/caps.h"                      // mh::caps::rec / g: the unit + building arrays the game addresses (PT-CAP8)
 #include "sim/sim_attack_range_footprint.h" // the shared aim-tile rule (header-only)
 #include "sim/sim_projectile_facing.h"      // mods:M1C projectile_facing_fix (header-only)
+#include "patch/inmem_patch.h"              // mp:DSHEAL overlay_applied: the displaced MOVZX as the cap manifest left it
 #include "net_internal.h"                   // seam_log
 #include "seams/move_carrier.h"             // mods:M1H: site states, requested values, stub hit counters
 
 int g_sqm_rt  = 0; // [net] move_squad_merge_fix in force
 int g_arf_rt  = 0; // [net] attack_range_footprint in force
 int g_pff_rt  = 0; // [net] projectile_facing_fix in force
+int g_soa_rt  = 0; // [net] soldier_origin_anim_fix in force (mp:DSHEAL)
 int g_pff_rc3 = 0; // TEST ONLY: projectile_facing_fix=2 -> the rc3 wrapped delta (expected-red arm of prj_facing_rl4)
 
 namespace {
@@ -461,6 +463,60 @@ __declspec(naked) void pff_stub() {
 }
 // clang-format on
 
+// ---- [net] soldier_origin_anim_fix (mp:DSHEAL; the rule: libmh/sim/sim_unit_soldier_screen_pos.h) -----------------------
+// llm_strat_unit_soldier_get_sprite_screen_pos 0x00491086 feeds the SHOT ORIGIN of llm_strat_unit_fire_weapon from the
+// sprite index `proto.sprite + ... + ((soldier.anim_change_count + unit.move_microstep) / 4) % 8`. anim_change_count is
+// written by the renderers only (and masked out of the state hash), so each peer's screen leaked into the origin, the
+// scatter bound (0 or 2 RNG draws) and the damage cell / projectile spawn. 0x00491166 is
+// `MOVZX EDX, byte ptr [EAX+soldier.anim_change_count]` (7 bytes; the disp32 is the soldiers array, which the cap manifest
+// may have relocated). It becomes CALL cave + 2 NOP; the cave (built at install from the displaced bytes as they are
+// NOW, so a relocated array is followed) is
+//     cmp dword ptr [g_soa_rt],0 ; je orig ; xor edx,edx ; ret ; orig: <displaced MOVZX> ; ret
+// i.e. EDX = 0 with the key on (the counter read as 0), the retail load with it off. EAX/ECX/ESP are untouched.
+constexpr uintptr_t ADDR_SOA_LOAD      = 0x00491166;
+const uint8_t       SOA_LOAD_EXPECT[7] = {0x0F, 0xB6, 0x90, 0xC3, 0xE5, 0xE0, 0x00};
+int                 g_soa_state        = 0; // 1 carried, 2 DISPLACED (libmh twin), -1 MISMATCHED
+
+void install_soldier_origin_anim() {
+    if (mh::hook::promoted_owner_of(ADDR_SOA_LOAD)) {
+        g_soa_state = 2;
+        return;
+    }
+    // The displaced instruction exactly as the live image holds it (vanilla + whatever the cap manifest rewrote).
+    uint8_t orig[7];
+    memcpy(orig, SOA_LOAD_EXPECT, sizeof(orig));
+    mh::patch::overlay_applied(static_cast<uint32_t>(ADDR_SOA_LOAD), sizeof(orig), orig);
+    if (orig[0] != 0x0F || orig[1] != 0xB6 || orig[2] != 0x90) {
+        g_soa_state = -1;
+        return;
+    }
+    uint8_t *cave = static_cast<uint8_t *>(VirtualAlloc(nullptr, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!cave) {
+        g_soa_state = -1;
+        return;
+    }
+    const uint32_t flag = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&g_soa_rt));
+    uint8_t       *q    = cave;
+    *q++                = 0x83; // cmp dword ptr [g_soa_rt],0
+    *q++                = 0x3D;
+    memcpy(q, &flag, 4);
+    q += 4;
+    *q++ = 0x00;
+    *q++ = 0x74; // je orig
+    *q++ = 0x03;
+    *q++ = 0x31; // xor edx,edx
+    *q++ = 0xD2;
+    *q++ = 0xC3;                   // ret
+    memcpy(q, orig, sizeof(orig)); // orig: the displaced MOVZX
+    q += sizeof(orig);
+    *q++ = 0xC3; // ret
+    FlushInstructionCache(GetCurrentProcess(), cave, 32);
+    uint8_t repl[7];
+    rel_call(repl, ADDR_SOA_LOAD, reinterpret_cast<uintptr_t>(cave));
+    repl[5] = repl[6] = 0x90;
+    g_soa_state       = mh::hook::patch_bytes_guarded_caps(ADDR_SOA_LOAD, SOA_LOAD_EXPECT, repl, 7) ? 1 : -1;
+}
+
 void install_projectile_facing() {
     if (mh::hook::promoted_owner_of(ADDR_PFF_DELTA)) {
         g_pff_state = 2;
@@ -531,6 +587,10 @@ void install_combat_proto() {
               carried, displaced, bad, g_sqm_state == 1 ? "carried" : (g_sqm_state == 2 ? "DISPLACED (libmh twin)" : "MISMATCHED"));
     seam_log(b);
     install_projectile_facing();
+    install_soldier_origin_anim();
+    wsprintfA(b, "; combat prototype splice (mp:DSHEAL): soldier origin anim fix %s\n",
+              g_soa_state == 1 ? "carried" : (g_soa_state == 2 ? "DISPLACED (libmh twin)" : "MISMATCHED"));
+    seam_log(b);
     mh::seams::mv::note_site(mh::seams::mv::SITE_PFF, g_pff_state == 1 ? 1 : (g_pff_state == 2 ? -2 : -1));
     wsprintfA(b, "; combat prototype splice (mods:M1C): projectile facing %s\n",
               g_pff_state == 1 ? "carried" : (g_pff_state == 2 ? "DISPLACED (libmh twin)" : "MISMATCHED"));
@@ -551,6 +611,14 @@ int mh_set_move_squad_merge_fix(int on) {
     g_sqm_rt = (on && g_sqm_state == 1) ? 1 : 0;
     mh::seams::mv::request(mh::seams::mv::KEY_SQUAD_MERGE, on, 0);
     return (on == 0 || g_sqm_rt || g_sqm_state == 2) ? 1 : 0;
+}
+
+// mp:DSHEAL: default ON, host-synced; 1 = in force (or carried by the libmh twin), 0 = refused (the splice MISMATCHED).
+int mh_set_soldier_origin_anim_fix(int on) {
+    on       = on != 0;
+    g_soa_rt = (on && g_soa_state == 1) ? 1 : 0;
+    if (on && g_soa_state == -1) seam_log("; soldier_origin_anim_fix NOT ACTIVE: the splice at 0x00491166 MISMATCHED\n");
+    return (on == 0 || g_soa_rt || g_soa_state == 2) ? 1 : 0;
 }
 
 int mh_set_projectile_facing_fix(int on) {

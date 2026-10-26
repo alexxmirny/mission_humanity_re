@@ -471,6 +471,24 @@
       "pending": false
     },
     {
+      "section": "net",
+      "key": "lockstep_max_ms",
+      "type": "int",
+      "default": 400,
+      "label": "net.lockstep_max_ms",
+      "subtab": "multiplayer",
+      "options": [
+        400,
+        600,
+        800,
+        1000
+      ],
+      "experimental": false,
+      "restart": false,
+      "pending": false,
+      "host": true
+    },
+    {
       "section": "log",
       "key": "level",
       "type": "enum",

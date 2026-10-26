@@ -1,0 +1,15 @@
+# mp:DSHEAL: load u022field.sav (200 soldiers) and let the harness shot-origin probe run (harness_extra soa_at=...). The probe calls the
+# game's llm_strat_unit_soldier_get_sprite_screen_pos for a few soldier units with the render-only anim_change_count set to 0, 4 .. 252 and
+# logs the origins; tools/check_soa.py judges the log. The one capture only satisfies the runner; the verdict is the log, not pixels (tol 1.0).
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+capture soa_probe
+gameclock +200
+log soa: done
+end

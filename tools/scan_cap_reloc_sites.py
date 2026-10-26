@@ -802,6 +802,17 @@ def address_taken(img, entries):
 # object's base) and `data_ptr` (an initialised-data dword that happens to fall in a range) are listed
 # for review but never gate: neither has an instruction that dereferences the array.
 GATING = {"disp", "abs", "imm_addr", "row_stride", "row_multiple", "block_size", "shift_chain"}
+# PT-CAP12 (2026-10-26): the 13 IMUL-200 sites this scan reports as `labs row_stride` that are NOT the labs array. 0xc8 is also
+# AvailableBuildings[8][50]'s row stride (50 ints x 4 B; 0x50aa37) and the AvailableProjects category stride (0x50b077), and labs[8][25] x 8 B is
+# the same 200: a scan by immediate cannot tell them apart. They are false positives (every one sits in a build/research UI or available-list
+# function that never addresses `labs`), so evaluate() does not gate on them and gen_cap_v022_manifests.py excludes them from the relocation
+# layer (and proves it: its stride-only check). Function -> VAs are listed there.
+NOT_LABS_STRIDE = frozenset(
+    [
+        0x4131C2, 0x4141CF, 0x414215, 0x4163A1, 0x416474, 0x4164B8, 0x416517,
+        0x414258, 0x4142B8, 0x417E5C, 0x417F77, 0x4180E4, 0x41813C,
+    ]
+)  # fmt: skip
 
 
 def hit_status(cov, f):
@@ -1148,6 +1159,8 @@ def evaluate(summary, hits, cov, strict=False):
     for f in hits:
         if f["role"] not in GATING:
             continue
+        if f["array"] == "labs" and f["role"] == "row_stride" and f["va"] in NOT_LABS_STRIDE:
+            continue  # PT-CAP12: a 200-byte stride of another table, see NOT_LABS_STRIDE
         st = hit_status(cov, f)
         key = ("0x%08x" % f["va"], f["array"], f["role"])
         if st == "covered":

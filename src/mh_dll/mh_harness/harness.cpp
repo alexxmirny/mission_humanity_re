@@ -951,6 +951,15 @@ struct Config {
     int u49_gap    = 7;   // steps between the two undock orders (the 936e0006 incident: 7)
     int u49_settle = 900; // steps after the second order before the follow-up move order
     int u49_tail   = 300; // steps after the move order before the final verdict line
+    // ---- mp:DSHEAL: THE SHOT-ORIGIN PROBE (2026-10-26) ----------------------------------------------------
+    // llm_strat_unit_soldier_get_sprite_screen_pos (the shot origin of llm_strat_unit_fire_weapon) must not depend on
+    // the render-only soldier anim_change_count (+0x1b). At step `soa_at` the probe takes up to `soa_units` live soldier
+    // units, and for each calls the ORIGINAL function (whatever is installed: the retail splice with libmh absent, the
+    // libmh twin otherwise) with the head soldier's counter set to 0, 4, 8, ... 252 (64 values; the sprite frame is
+    // (counter + move_microstep) / 4 % 8, so 32 values cover every frame twice), logging `; SOA ...` lines
+    // tools/check_soa.py reads, then restores the counter. The counter is render-only and outside the hash. 0 = off.
+    int soa_at    = 0;
+    int soa_units = 6;
     // ---- patching:PT-FIX1: THE TURRET-SLOT-REUSE FIXTURE (2026-10-10) -------------------------------
     // A destroyed turret's rubble (state 4, up to 20 s) keeps its sub_id; retail ticks the rubble's
     // reload every step with a growing budget, and once a new turret has taken the freed slot that
@@ -1973,6 +1982,8 @@ void load_config() {
     g_cfg.u49_gap                 = mh_ini_get_int("harness", "u49_gap", g_cfg.u49_gap, g_ini_path);
     g_cfg.u49_settle              = mh_ini_get_int("harness", "u49_settle", g_cfg.u49_settle, g_ini_path);
     g_cfg.u49_tail                = mh_ini_get_int("harness", "u49_tail", g_cfg.u49_tail, g_ini_path);
+    g_cfg.soa_at                  = mh_ini_get_int("harness", "soa_at", g_cfg.soa_at, g_ini_path);
+    g_cfg.soa_units               = mh_ini_get_int("harness", "soa_units", g_cfg.soa_units, g_ini_path);
     g_cfg.pt1_at                  = mh_ini_get_int("harness", "pt1_at", g_cfg.pt1_at, g_ini_path);
     g_cfg.pt1_player              = mh_ini_get_int("harness", "pt1_player", g_cfg.pt1_player, g_ini_path);
     g_cfg.pt1_timer_ms            = mh_ini_get_int("harness", "pt1_timer_ms", g_cfg.pt1_timer_ms, g_ini_path);
@@ -13313,6 +13324,42 @@ void mv_arm_waves() {
     else append_line(g_log_path, "; MV WAVES ARMED: read-only exit observer on llm_strat_group_move_order_pathfind\n");
 }
 
+// ---- mp:DSHEAL: the shot-origin probe (see the config block) ----------------------------------------------------
+// Runs once, after the step's hash (outside the HASH-INPUT span). It writes ONE render-only byte per probed soldier and puts it back.
+bool g_soa_done = false;
+
+void soa_tick() {
+    if (g_cfg.soa_at <= 0 || g_step < (uint32_t)g_cfg.soa_at || g_soa_done) return;
+    g_soa_done = true;
+    const auto *U = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+    char        m[256];
+    int         probed = 0;
+    for (unsigned p = 0; p < 8 && probed < g_cfg.soa_units; ++p) {
+        for (unsigned u = 1; u < 100 && probed < g_cfg.soa_units; ++u) {
+            const auto &unit = live_unit_row(p)[u];
+            if (!(unit.energy > 0.0) || U[unit.unit_proto_id].soldier_count <= 0) continue;
+            const unsigned head = (unsigned)(unit.unit_above[0] | (unit.unit_above[1] << 8));
+            if (head == 0 || head >= 100) continue;
+            uint8_t *cnt = static_cast<uint8_t *>(MH_Caps_Rec(MH_CAPS_IDX_SOLDIERS, p, head)) + 0x1bu;
+            const uint8_t saved = *cnt;
+            wsprintfA(m, "; SOA UNIT p=%u u=%u proto=%d head=%u microstep=%d saved_cnt=%u\n", p, u, (int)unit.unit_proto_id, head,
+                      (int)unit.move_microstep, (unsigned)saved);
+            append_line(g_log_path, m);
+            for (unsigned c = 0; c < 256; c += 4) {
+                *cnt = (uint8_t)c;
+                uint32_t ox = 0, oy = 0;
+                mh::call::llm_strat_unit_soldier_get_sprite_screen_pos((uint16_t)p, (int32_t)u, 0, &ox, &oy);
+                wsprintfA(m, "; SOA ORIGIN p=%u u=%u cnt=%u x=%u y=%u\n", p, u, c, ox, oy);
+                append_line(g_log_path, m);
+            }
+            *cnt = saved;
+            ++probed;
+        }
+    }
+    wsprintfA(m, "; SOA DONE step=%lu units=%d\n", g_step, probed);
+    append_line(g_log_path, m);
+}
+
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
 // ---- mp:D38 row 5: the dead-docked-unit fixture (see the config block) ---------------------------
 enum { D38_BLDG = 0,
@@ -13905,6 +13952,7 @@ void on_sim_step() {
     }
     verdict_snap_tick(); // mp:SES7b -- after the hash, at the instant the desync watch snapshots
     u49_tick();          // mp:U49 -- the double-undock fixture (after the hash: outside the HASH-INPUT span)
+    soa_tick();          // mp:DSHEAL -- the shot-origin probe (after the hash)
     pt1_tick();          // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
     pt3_tick();          // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
     pt2_tick();          // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)

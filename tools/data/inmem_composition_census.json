@@ -2,17 +2,17 @@
   "_generated_by": "tools/check_inmem_composition.py",
   "_what": "The fork F4C-COMP composition census: how much of the src/patcher static-patch surface lands inside a function some other mh.dll mechanism claims. Re-derived from committed inputs only; `--check` requires byte-identity. Containment is STRICT (entry <= va <= end), the predicate mh::hook::promoted_owner_of evaluates at runtime.",
   "entry_window_bytes": 8,
-  "sites_total": 54961,
+  "sites_total": 54948,
   "orphan_sites": 483,
   "promotable_bodies": 403,
   "verified_bodies": 953,
   "detour_target_addrs": 92,
   "detour_target_bodies": 92,
   "unresolved_install_sites": 16,
-  "sites_in_promotable_body": 12100,
+  "sites_in_promotable_body": 12098,
   "sites_in_detour_target": 5582,
-  "sites_in_either": 13212,
-  "sites_in_verified_not_promotable": 31397,
+  "sites_in_either": 13210,
+  "sites_in_verified_not_promotable": 31395,
   "sites_in_entry_window_of_claimed_body": 93,
   "top_claimed_bodies": [
     {
@@ -656,7 +656,7 @@
       "fn": "llm_rand"
     }
   ],
-  "dll_patch_extents": 160,
+  "dll_patch_extents": 161,
   "dll_patches_dynamic_unchecked": [
     "interlock_selftest_fake_entry",
     "hostapi_selftest_unbound_hook_table",
@@ -891,6 +891,24 @@
       "relation": "start"
     },
     {
+      "patch": "soldier_origin_anim_fix",
+      "addr": "0x00491166",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00491169",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "soldier_origin_anim_fix",
+      "addr": "0x00491166",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00491169",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
       "patch": "turret_clip_fix",
       "addr": "0x00462ab9",
       "len": 7,
@@ -1069,6 +1087,15 @@
       "len": 8,
       "manifest": "cap_v023_units_reloc_EN",
       "site": "0x0047ebe4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "soldier_origin_anim_fix",
+      "addr": "0x00491166",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00491169",
       "site_len": 4,
       "relation": "interior"
     },

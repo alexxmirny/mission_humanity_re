@@ -790,7 +790,12 @@ mod tests {
             [
                 g(
                     "connection",
-                    &["launcher.relay_mode", "net.force_relay", "net.port"]
+                    &[
+                        "launcher.relay_mode",
+                        "net.force_relay",
+                        "net.port",
+                        "net.lockstep_max_ms"
+                    ]
                 ),
                 g("overlay", &["hud.net_indicator", "hud.net_indicator_key"]),
             ]
@@ -855,7 +860,7 @@ mod tests {
             .filter(|r| r.host)
             .map(|r| r.id.as_str())
             .collect();
-        assert_eq!(host.len(), 10, "{host:?}");
+        assert_eq!(host.len(), 11, "{host:?}");
         assert!(host
             .iter()
             .all(|id| id.starts_with("net.") || *id == "caps.raise"));

@@ -2760,6 +2760,32 @@ static int run_udpstatstest() {
         us_check(monotone_step(0.25, 10.0, 0.0) == 0.25, "mp:D30 -- no max yet -> the target");
         us_check(monotone_horizon(10.0, 0.25, 10.4) == 10.4 && monotone_horizon(10.0, 0.25, 10.1) == 10.25,
                  "mp:D30 -- monotone_horizon floors at the held horizon and otherwise adds the step");
+        // mp:LSCEIL -- the command-delay ceiling choices and the restart margin that scales with them.
+        us_check(lockstep_ceiling_ms(400, false) == 400 && lockstep_ceiling_ms(600, false) == 600 && lockstep_ceiling_ms(800, false) == 800 &&
+                     lockstep_ceiling_ms(1000, false) == 1000,
+                 "mp:LSCEIL -- the four launcher choices pass through");
+        us_check(lockstep_ceiling_ms(0, false) == 400 && lockstep_ceiling_ms(-5, false) == 400 && lockstep_ceiling_ms(200, false) == 400 &&
+                     lockstep_ceiling_ms(499, false) == 400 && lockstep_ceiling_ms(500, false) == 400 && lockstep_ceiling_ms(501, false) == 600 &&
+                     lockstep_ceiling_ms(3000, false) == 1000,
+                 "mp:LSCEIL -- the shipped build snaps any other value to the nearest choice (ties down)");
+        us_check(lockstep_ceiling_ms(250, true) == 250 && lockstep_ceiling_ms(3000, true) == 3000 && lockstep_ceiling_ms(5, true) == 30 &&
+                     lockstep_ceiling_ms(99999, true) == 10000 && lockstep_ceiling_ms(0, true) == 400,
+                 "mp:LSCEIL -- a dev build ([dev] unlock=1) keeps free values in 30..10000");
+        us_check(horizon_restart_s(0.4) == 2.0 && horizon_restart_s(0.6) == 3.0 && horizon_restart_s(1.0) == 5.0 &&
+                     horizon_restart_s(0.0) == 2.0 && horizon_restart_s(-1.0) == 2.0,
+                 "mp:LSCEIL -- the restart margin is max(2 s, 5 x ceiling)");
+        {
+            // A legitimate horizon 1 s ahead of the clock at a 1000 ms ceiling (plus the paged-list keepalive bump): NOT a restarted clock.
+            const double r1000 = horizon_restart_s(1.0);
+            us_check(!horizon_max_is_stale(10.0, 11.0, r1000) && !horizon_max_is_stale(10.0, 11.6, r1000) && !horizon_max_is_stale(10.0, 14.9, r1000),
+                     "mp:LSCEIL -- at a 1000 ms ceiling a horizon 1 s (and up to 4.9 s) ahead is live, not a restart");
+            us_check(horizon_max_is_stale(10.0, 15.1, r1000) && horizon_max_is_stale(10.0, 12.5), "mp:LSCEIL -- a real restart (clock far behind the sent max) is still caught");
+            // monotone_step honours the margin: the floor holds a 1.2 s horizon at ceiling 1000, the old fixed margin held it too (< 2 s), but a 2.5 s one only with the scaled margin.
+            us_check(monotone_step(0.25, 10.0, 12.5, r1000) >= 2.5 - 1e-9 && monotone_step(0.25, 10.0, 12.5) == 0.25,
+                     "mp:LSCEIL -- the D30 floor keeps a 2.5 s horizon at the 1000 ms margin (and ignores it at the default 2 s margin)");
+            us_check(monotone_horizon(10.0, 0.25, 12.5, r1000) == 12.5 && monotone_horizon(10.0, 0.25, 12.5) == 10.25,
+                     "mp:LSCEIL -- monotone_horizon takes the same margin");
+        }
         us_check(order_is_late(10.713, 10.72) && order_is_late(10.72, 10.72) && !order_is_late(10.73, 10.72),
                  "mp:D30 -- order_is_late is release_due's !(exec > clock)");
         volatile double zero = 0.0;

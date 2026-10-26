@@ -866,6 +866,11 @@ def declare_checks(args):
         "units/soldiers smoke checker -- planted negatives still go red (check_cap_units --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_cap_units.py"), "--selftest"],
     )
+    # PT-CAP12: the avail_rows rows' checker (hermetic: planted log lines).
+    check(
+        "build-list stride checker -- planted negatives still go red (check_avail_rows --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_avail_rows.py"), "--selftest"],
+    )
     # PT-CAP9-U4: the u4_path500 rows' checker (hermetic: planted log lines).
     check(
         "path-slot smoke checker -- planted negatives still go red (check_cap_path --selftest)",
@@ -1718,6 +1723,12 @@ def declare_checks(args):
     check(
         "mods:PRJ1 projectile-frame post-check -- the negative cases still fire (check_prj_facing --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_prj_facing.py"), "--selftest"],
+    )
+    # mp:DSHEAL. The soa_probe* post-check runs only with the rig; its clauses (the origin flat across the 64 counters, the negative arm
+    # seeing a dependence, a truncated or empty probe) are gated here off planted logs.
+    check(
+        "mp:DSHEAL shot-origin post-check -- the negative cases still fire (check_soa --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_soa.py"), "--selftest"],
     )
     # mp:D47. The positive-control post-check (cfg_newgame_mp_poke) runs only with the rig; its clauses --
     # the poke's match step, its region, a late poke -- are gated here off planted logs.

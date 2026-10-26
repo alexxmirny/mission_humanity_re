@@ -88,6 +88,17 @@ SAVE_BASES = [
     0x447F00, 0x447F3F, 0x447F54, 0x447F69, 0x447F7E, 0x447F93, 0x447DC5,
     0x4483EC, 0x44842B, 0x448440, 0x448455, 0x44846A, 0x44847F, 0x4482B1,
 ]  # fmt: skip
+# PT-CAP12 (2026-10-26): 13 plan rows classed (stride, labs) that are NOT the labs array. The IMUL imm 0xc8 (200) at each is the
+# AvailableBuildings[8][50] row stride (0x50aa37; 50 ints x 4 B = 200) or the AvailableProjects category stride (0x50b077) -- 25 labs x 8 B
+# also equals 200, and the July grand manifest inherited the collision as "row stride 200->1016". Rewriting them made the build/research
+# panels read player slot N at +N*1016 (slot 2+ landed in AvailableProjects). Left at 200: they are plain UI/sim arrays we never relocate.
+# Function -> VAs: llm_ui_build_menu_item_select 4131c2; game_AddToAvailableBuildings 4141cf; game_RemoveFromAvailableBuildings 414215;
+# llm_strat_bldg_available_build_menu_count 4163a1; llm_ui_bldg_available_projects_tab_process_events 416474 4164b8;
+# llm_ui_bldg_build_menu_icon_draw 416517; game_AddProjectToAvailable 414258; game_RemoveFromAvailableProjects 4142b8;
+# llm_ui_build_panel_project_row_draw 417e5c; llm_strat_bldg_count_available_projects 417f77; llm_ui_bldg_project_panel_tick 4180e4 41813c.
+NOT_LABS_STRIDE = (
+    scan.NOT_LABS_STRIDE
+)  # one list, shared with the scanner (its --check must not call them uncovered labs fields)
 GAP_SITES = {  # va -> (expect hex, kind, array, note)
     0x492718: ("a4 6a 00 00", "stride", "buildings", "link_to_network IMUL stride"),
     0x492721: ("a2 d2 c3 00", "base", "buildings", "link_to_network [eax+base+2]"),
@@ -279,6 +290,12 @@ def derive_reloc_sites(ctx):
     seen_save = set()
     for va, ln, mi, layer, cls, arr_s, _rule, _fn in rows:
         if layer != "a" or cls == "walk_backstop":
+            continue
+        if va in NOT_LABS_STRIDE:
+            if (cls, arr_s) != ("stride", "labs"):
+                raise Refuse(
+                    "NOT_LABS_STRIDE %#x is %s/%s, expected stride/labs" % (va, cls, arr_s)
+                )
             continue
         if cls == "base" and va in save:
             seen_save.add(va)
@@ -830,12 +847,51 @@ def _extents(b):
     }
 
 
+def stride_only_violations(rows):
+    """PT-CAP12 proof. rows: (va, array, kind, fn) with kind in stride|base|clear. A function that scales by an array's row
+    stride but never addresses that array (no base operand, no clear/extent size) is almost surely a COLLISION: the same imm
+    (200 = labs 25x8 = AvailableBuildings 50x4) read as a different table's stride. -> sorted [(array, fn, [va...])]."""
+    by = {}
+    for va, arr, kind, fn in rows:
+        if fn is None:
+            continue
+        e = by.setdefault((arr, fn), {"stride": [], "anchor": 0})
+        if kind == "stride":
+            e["stride"].append(va)
+        else:
+            e["anchor"] += 1
+    return sorted(
+        (a, fn, sorted(e["stride"])) for (a, fn), e in by.items() if e["stride"] and not e["anchor"]
+    )
+
+
+def plan_anchor_rows(ctx, keep=None):
+    """The v0.2.2 relocation rows of the split plan as stride_only_violations input; `keep` (a set of VAs) restricts them."""
+    P = ctx.plan["packed"]
+    kind = {"stride": "stride", "shift_splice": "stride", "base": "base", "clear_size": "clear"}
+    out = []
+    for va, _ln, _mi, layer, cls, arr, _rule, fi in P["rows"]:
+        if layer != "a" or cls not in kind or (keep is not None and va not in keep):
+            continue
+        out.append((va, arr, kind[cls], P["fns"][fi] if fi >= 0 else None))
+    return out
+
+
+def prove_stride_only(b, ctx):
+    keep = {s["va"] for s in b.reloc}
+    return [
+        "stride-only: %s in %s scales by the row stride at %s but has no base/clear site of the array "
+        "(collision? see NOT_LABS_STRIDE)" % (a, fn, ", ".join("%#x" % v for v in vas))
+        for a, fn, vas in stride_only_violations(plan_anchor_rows(ctx, keep))
+    ]
+
+
 def prove_hermetic(b, ctx, tmpdir=None):
     """Everything provable without the exe. -> [failure strings]."""
     f = []
     # counts
-    if len(b.reloc) != 3945:
-        f.append("reloc has %d sites, expected 3945" % len(b.reloc))
+    if len(b.reloc) != 3945 - len(NOT_LABS_STRIDE):
+        f.append("reloc has %d sites, expected %d" % (len(b.reloc), 3945 - len(NOT_LABS_STRIDE)))
     if len(b.limits) != 51:
         f.append("limits has %d sites, expected 51" % len(b.limits))
     # P6 sorted
@@ -911,6 +967,8 @@ def prove_hermetic(b, ctx, tmpdir=None):
     for va in GAP_SITES:
         if not any(s["va"] == va for s in b.reloc):
             f.append("gap site %#x missing from the reloc manifest" % va)
+    # PT-CAP12: no stride-only function (a false array-collision rewrite)
+    f += prove_stride_only(b, ctx)
     # P5
     f += prove_p5(b)
     # refs complete
@@ -1263,7 +1321,10 @@ def selftest(exe):
     b, f = derive_with_proofs(ctx, img, md5)
     f += prove_hermetic(b, ctx)
     expect("the unmutated derivation is green against the exe", not f, f[:3])
-    expect("3945 reloc sites and 51 limit sites", len(b.reloc) == 3945 and len(b.limits) == 51)
+    expect(
+        "3932 reloc sites and 51 limit sites",
+        len(b.reloc) == 3945 - len(NOT_LABS_STRIDE) and len(b.limits) == 51,
+    )
     expect("the populate cave carries the stock-cap shape (cmp ecx,0x32 / jne / xor ecx,ecx)",
            not [x for x in cave_crosscheck(b, ctx) if "populate" in x])  # fmt: skip
     expect(
@@ -1364,6 +1425,14 @@ def selftest(exe):
         "mutation 10: the 0x4e28ae splice exit reading flags goes RED (P3)",
         any("repair_splice" in x for x in ff),
         ff[:2],
+    )
+    # 11. PT-CAP12: the inherited false labs-stride rows, planted back, are exactly the stride-only functions
+    v = stride_only_violations(plan_anchor_rows(ctx))
+    expect(
+        "mutation 11: the 13 false labs-stride sites planted back go RED (stride-only), and only they",
+        {x for _a, _f, vs in v for x in vs} == set(NOT_LABS_STRIDE)
+        and {a for a, _f, _v in v} == {"labs"},
+        [(a, f, [hex(x) for x in vs]) for a, f, vs in v],
     )
     print("gen_cap_v022_manifests --selftest: %s" % ("FAIL" if fails else "PASS"))
     return 1 if fails else 0

@@ -723,6 +723,10 @@ struct reimpl_fixes {
     // wrapped into -12..11 (0 for weapon types 5/6, whose frame is sector-based) -- sim/sim_projectile_facing.h. Retail
     // carrier: combat_proto.cpp at 0x00441424.
     bool projectile_facing_fix = false;
+    // [net] soldier_origin_anim_fix -- mp:DSHEAL: llm_strat_unit_soldier_get_sprite_screen_pos (the shot origin) reads the
+    // RENDER-ONLY soldier anim_change_count; with the key on it reads as 0 (sim/sim_unit_soldier_screen_pos.h). Host-set
+    // (F_HOSTSYNC, default ON), SIM-AFFECTING. Retail carrier: combat_proto.cpp at 0x00491166. Initialiser = stock (off).
+    bool soldier_origin_anim_fix = false;
 
     // [net] attack_range_footprint -- mods:M1C: weapon range to a BUILDING is measured to the footprint tile nearest
     // the attacker instead of the centre (sim/sim_attack_range_footprint.h), in the attack-building issuer, the move

@@ -1874,6 +1874,7 @@ enum {
     OP_A_LIFTOFF,    // mods:A1: `liftoff` -- every live mother building of the watched player -> state TO_UNIT (0x7c)
     OP_A_LOGSEL,     // `logsel <label>` -- RES12: a `; [sel] <label> cam= gest= btn= n= bldg= ids=` line (control group 0, sorted) in mh_video.log
     OP_A_LOGGOAL,    // `loggoal <label> [@side:id]` -- mods:MM4C: a `; [goal] <label> n= goals=id:x:y,..` line: control group 0's units' goal_x:goal_y (sorted by id), or the one unit `@side:id`, in mh_video.log
+    OP_A_LOGAVAIL,   // patching:PT-CAP12: `logavail <label>` -- a `; [avail] <label> side= ui_stride= ...` line: AvailableBuildings rows at the stock stride and at the stride the retail build panel was patched to read
     OP_A_LOGPORT,    // mods:UNL1: `logport <label>` -- a `; [port] <label> side= planet= avail= list_has18= ...` line + one `;   [port] <label> p=` line per player (unlock rows, offer lists)
     OP_A_UNLOCKDROP, // mods:UNL1: `unlockdrop` -- open the retail gap on purpose: the first BUILDING unlock of the watched (default local) player that sits in its offer list and whose prerequisites are all acquired is made un-offered (row available=0, building removed from the offer list)
     OP_A_TRAVEL,     // mods:UNL1: `travel <planet>` -- SwitchToPlanet(planet), the call the star-map transition makes first (the world switches; finalize has NOT run)
@@ -2638,6 +2639,9 @@ void parse_line(const char *line) {
         }
     } else if (strcmp(op, "logsel") == 0) {
         s->op = OP_A_LOGSEL;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logavail") == 0) {
+        s->op = OP_A_LOGAVAIL;
         copy_trim(s->text, sizeof(s->text), arg);
     } else if (strcmp(op, "logport") == 0) {
         s->op = OP_A_LOGPORT;
@@ -3772,6 +3776,32 @@ click_result do_action(const Step *s) {
             mh::call::llm_strat_planet_transition_finalize();
             ui_log("; [script] arrive (llm_strat_planet_transition_finalize)");
             break;
+        case OP_A_LOGAVAIL: {
+            // patching:PT-CAP12: the per-player available-buildings table AvailableBuildings[8][50] (int32, stock row stride 200 = 0xc8)
+            // as the game's own writers fill it (`s<k>`, the stock stride) and as the retail build panel READS it (`u<k>`). The panel's
+            // row stride is the IMUL immediate at 0x004163a1 (llm_strat_bldg_available_build_menu_count); the v0.2.2 relocation layer once
+            // rewrote it 200 -> 1016 (the labs stride) by mistake, so for any seat k >= 2 `u<k>` was not `s<k>`. Non-zero ints only.
+            const uint32_t ui_stride = *(const uint32_t *)0x004163a1u;
+            char           line[4096];
+            int            len = wsprintfA(line, "; [avail] %s side=%u ui_stride=%u", s->text, (unsigned)*(const uint16_t *)mh::addr::PlayerSide, (unsigned)ui_stride);
+            for (int pass = 0; pass < 2; ++pass) {
+                const uint32_t stride = pass == 0 ? 200u : ui_stride;
+                for (uint32_t k = 0; k < 8 && stride > 0 && stride <= 4096; ++k) {
+                    const int32_t *row = (const int32_t *)(mh::addr::AvailableBuildings + k * stride);
+                    len += wsprintfA(line + len, " %c%u=", pass == 0 ? 's' : 'u', (unsigned)k);
+                    int n = 0;
+                    for (int i = 0; i < 50 && len < (int)sizeof(line) - 16; ++i)
+                        if (row[i] != 0) len += wsprintfA(line + len, "%s%d", n++ ? "," : "", (int)row[i]);
+                    if (!n) line[len++] = '-';
+                }
+            }
+            line[len++] = '\n';
+            line[len]   = 0;
+            mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+            mh_logq_write(g_mark_vid, line, len);
+            ui_log("; [script] %.440s", line); // ui_log's stack line is bounded: the full line is in mh_video.log
+            break;
+        }
         case OP_A_LOGPORT: {
             // mods:UNL1: the tech-tree state the unlock recheck acts on. progress[p][i] = {available, acquired, f3} at 0x00c38750 + p*900 + i*3;
             // AvailableBuildings[p][50] int32 (0 = empty slot) at 0x0050aa37; G_PLANET_STATUS int32[32]. `avail`/`list_has18` are the spaceport

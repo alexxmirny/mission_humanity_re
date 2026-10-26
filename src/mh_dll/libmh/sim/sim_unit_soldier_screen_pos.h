@@ -5,6 +5,22 @@
 
 namespace mh::sim {
 
+// [net] soldier_origin_anim_fix (mp:DSHEAL) -- the shot origin must not depend on the soldier's anim_change_count.
+// That byte (+0x1b) is written by the RENDERERS only (llm_strat_render_tile_object / _render_bldg_docked_unit), so
+// what each peer's screen drew leaked through the sprite index -> mount offsets -> llm_strat_unit_fire_weapon's shot
+// origin -> llm_strat_weapon_scatter_offset's distance-derived bound (0 or 2 extra RNG draws) and, on projectile weapons,
+// llm_strat_projectile_spawn. With the key on the sprite-frame sum is `unit.move_microstep` alone, i.e. exactly what the
+// retail body computes with the counter read as 0 (the retail carrier is `XOR EDX,EDX` over the 7-byte MOVZX at
+// 0x00491166, mh/seams/combat_proto.cpp). Initialiser = off (stock); set from reimpl_fixes by set_fixes.
+namespace soldier_origin_anim_detail {
+inline bool &flag() {
+    static bool on = false;
+    return on;
+}
+} // namespace soldier_origin_anim_detail
+inline void set_soldier_origin_anim_fix(bool on) { soldier_origin_anim_detail::flag() = on; }
+inline bool soldier_origin_anim_fix() { return soldier_origin_anim_detail::flag(); }
+
 // The one outward call. Indirected for the same reason as sim_unit_on_destroyed.h /
 // sim_unit_update_soldiers.h: a direct mh::call:: inside a detail:: body reaches into the live game
 // image, which makes the body untestable by net_selftest.exe simtest. Signature copied verbatim from

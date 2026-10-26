@@ -2911,6 +2911,28 @@
    "note": "mods:M1C (2026-10-14), dev key, default -1 = follow improved_combat (on: 1), host-set. llm_strat_projectile_tick re-aims a flying shot's sprite each tick by (new facing - facing) * stride on anim_frame and anim_loop_frame, the difference NOT wrapped: crossing the 24/1 facing boundary (due south) adds +-23 strides and the frame runs in another animation (2-almost repro: W2 loop 2049 -> 2072, frames 2074..2077). `SUB EDX,[EAX+0x59]; MOV EAX,[0x00e1538c]` (guard 2B 50 59 A1 8C 53 E1 00) becomes CALL pff_stub + 3 NOP; the stub redoes both and, with the key on, sets EDX to 0 for weapon types 5/6 (sector-based start frame; every shipped type 5/6 weapon is non-homing) and leaves the retail UNWRAPPED difference for every other type (those are per-facing, frame = base + stride*(facing-1), so the +-23 jump is the exact step; the rc3 rule wrapped it into -12..11 and put the frame one stride outside the weapon's block, mods:PRJ1; value 2 = that superseded rule, test only). Carrier: the libmh twin in sim/sim_projectile_tick.cpp, gated by reimpl_fixes::projectile_facing_fix (sim/sim_projectile_facing.h; tmp/m1/merge_path_and_fx.md)."
   },
   {
+   "id": "soldier_origin_anim_fix",
+   "sources": [
+    {
+     "file": "mh/seams/combat_proto.cpp",
+     "expr": "ADDR_SOA_LOAD"
+    }
+   ],
+   "addrs": [
+    "0x00491166"
+   ],
+   "lens": [
+    7
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_soldier_get_sprite_screen_pos"
+   ],
+   "knob": "soldier_origin_anim_fix",
+   "carrier": "migrated:soldier_origin_anim_fix",
+   "note": "mp:DSHEAL (2026-10-26), fixed key, default 1, host-set (F_HOSTSYNC). llm_strat_unit_soldier_get_sprite_screen_pos feeds llm_strat_unit_fire_weapon's SHOT ORIGIN from `MOVZX EDX, byte ptr [EAX+soldier.anim_change_count]` (0f b6 90 c3 e5 e0 00) + unit.move_microstep -> sprite index -> mount offsets. anim_change_count is written by the renderers only (llm_strat_render_tile_object / _render_bldg_docked_unit) and masked out of the state hash, so what each peer drew changed the origin, hence llm_strat_weapon_scatter_offset's bound (0 or 2 RNG draws) and the area-damage cell / projectile spawn: the v0.2.2-rc1 public match 44f21f93 desync (tmp/u022/rc1pub/desync/REPORT.md). The 7 bytes become CALL cave + 2 NOP; the cave (built at install from the displaced bytes as the cap manifest left them, so a relocated soldiers array is followed) is `cmp [flag],0; je orig; xor edx,edx; ret; orig: <displaced MOVZX>; ret`: EDX = 0 with the key on, the retail load with it off. Carrier: the libmh twin in sim/sim_unit_soldier_screen_pos.cpp, gated by reimpl_fixes::soldier_origin_anim_fix (sim/sim_unit_soldier_screen_pos.h)."
+  },
+  {
    "id": "replay_boundary_notes",
    "sources": [
     {

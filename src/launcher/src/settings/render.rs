@@ -470,7 +470,11 @@ fn control(ui: &mut Ui, model: &mut Model, state: &mut RenderState, row: &Row) {
                 .iter()
                 .map(|o| (o.clone(), option_label(row, o)))
                 .collect();
-            segmented(ui, model, row, opts);
+            if row.control == Control::Combo {
+                combo(ui, model, row, opts);
+            } else {
+                segmented(ui, model, row, opts);
+            }
         }
         Kind::Int | Kind::Float | Kind::Str => text_box(ui, model, row, id, false),
         Kind::Hotkey => hotkey(ui, model, state, row),

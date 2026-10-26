@@ -750,6 +750,17 @@ fn review_screenshots() {
         .click();
     h.run();
     save(&mut h, &dir, "settings_display_resolution_open_en");
+    // mp:LSCEIL: the Max command delay dropdown (Multiplayer > Connection) opened.
+    let mut fx = fixture(Schema::builtin());
+    fx.state.subtab = "multiplayer".into();
+    let mut h = harness_wgpu(fx);
+    h.run();
+    h.get_all_by_role(egui::accesskit::Role::ComboBox)
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    save(&mut h, &dir, "settings_multiplayer_delay_open_en");
     // RES25: the Display tab with Classic sizes only (Interface size greyed, hint under it) and with Auto (live) -- English.
     for (res, name) in [("stock", "classic"), ("auto", "auto")] {
         let mut fx = fixture(Schema::builtin());

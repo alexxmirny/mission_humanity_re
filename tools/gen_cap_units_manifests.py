@@ -837,6 +837,18 @@ def prove_hermetic(b):
             "%d path_slot_id relocation sites tagged, the U4 design counts %d"
             % (n_u4, U4_DIRECT_SITES)
         )
+    # PT-CAP12: no stride-only function (the v0.2.2 false-collision class, here over units/soldiers)
+    kinds = {"row_stride": "stride", "row_multiple": "stride", "block_size": "clear"}
+    rows = [
+        (d["va"], d["array"], kinds.get(d["role"], "base"), d["fn"])
+        for d in cen.site_dicts(b.doc["sites"])
+        if d["class"] == "move" and d["role"] != "shift_chain"
+    ]
+    for a_, fn_, vas in gcv.stride_only_violations(rows):
+        f.append(
+            "stride-only: %s in %s scales by the row stride at %s but has no base/clear site of the array"
+            % (a_, fn_, ", ".join("%#x" % v for v in vas))
+        )
     # PT-CAP9-U4b: the path-slot pool sites (census coverage, extents, cave counts)
     f += gp.prove(
         b.path_census,

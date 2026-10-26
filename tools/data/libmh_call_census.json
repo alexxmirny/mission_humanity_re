@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 206,
+  "distinct_callees": 207,
   "config_measures": {
    "hosted": {
     "sites": 1573,
@@ -37,7 +37,7 @@
   "by_status": {
    "dead": 2,
    "original": 119,
-   "translated": 85
+   "translated": 86
   },
   "modules": {
    "desync": {
@@ -59,8 +59,8 @@
     "outward_distinct": 3
    },
    "seams": {
-    "sites": 363,
-    "distinct": 199,
+    "sites": 364,
+    "distinct": 200,
     "outward_sites": 191,
     "outward_distinct": 119
    },
@@ -1609,6 +1609,17 @@
    "status": "translated",
    "domain": "sim",
    "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_soldier_get_sprite_screen_pos",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
    "promoted": false,
    "sites": 1,
    "modules": {

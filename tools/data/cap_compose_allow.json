@@ -49,6 +49,13 @@
    "source": "src/mh_dll/mh/seams/combat_proto.cpp",
    "install_token": "ADDR_SQM_STATE_CMP",
    "why": "units array base inside the displaced CMP word [eax+disp32],1 (0x47ebe1, 8 bytes)"
+  },
+  {
+   "patch": "soldier_origin_anim_fix",
+   "site": "0x00491169",
+   "source": "src/mh_dll/mh/seams/combat_proto.cpp",
+   "install_token": "ADDR_SOA_LOAD",
+   "why": "soldiers array base inside the displaced MOVZX EDX, byte [eax+disp32] (0x491166, 7 bytes): the cave replays the displaced bytes as the manifest left them"
   }
  ],
  "embedded": [

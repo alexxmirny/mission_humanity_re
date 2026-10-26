@@ -446,10 +446,14 @@ alignas(8) double g_hz_hb_sent = 0.0;
 // advertised (mh::netstats::mirror_horizon), so the host's committed horizon keeps moving at live pace. Set by
 // MH_Lockstep_WorldSyncBegin, cleared when the fast-forward ends.
 volatile LONG g_ws_mirror = 0;
-inline bool   hz_stale(double clk, double v) { return !g_ws_mirror && mh::netstats::horizon_max_is_stale(clk, v); }
-double        ws_mirror_horizon(double floor_h); // defined after slot_is_active_human
-double        ws_extend_floor(double h);
-void          ws_mirror_upkeep();
+// mp:LSCEIL -- the restart-detection margin of "is this floor stale?", scaled with the lookahead ceiling by the setter
+// mh_set_lockstep_max_ms (max(2 s, 5 x ceiling): 2 s at the shipped 400 ms, 5 s at 1000 ms).
+double g_hz_restart_s = mh::netstats::HZ_RESTART_S;
+
+inline bool hz_stale(double clk, double v) { return !g_ws_mirror && mh::netstats::horizon_max_is_stale(clk, v, g_hz_restart_s); }
+double      ws_mirror_horizon(double floor_h); // defined after slot_is_active_human
+double      ws_extend_floor(double h);
+void        ws_mirror_upkeep();
 // mp:D30 -- the lookahead actually pinned into STEP_SIZE this frame: max(g_lockstep_step,
 // max_sent - clock), mh::netstats::monotone_step. Written by on_time_tick under g_hb_cs, read by the
 // heartbeat under g_hb_cs and by the eager hook on the main thread. 0 = no pin this match yet.
@@ -2540,7 +2544,7 @@ void monotone_pin() {
     memcpy(&clk, (const void *)ADDR_GAME_CLOCK, sizeof(double));
     const bool   ls  = *(const uint8_t *)ADDR_SESSION_MODE == 3;
     const double m   = ls ? horizon_sent_max(clk) : 0.0;
-    const double eff = mh::netstats::monotone_step(g_lockstep_step, clk, m);
+    const double eff = mh::netstats::monotone_step(g_lockstep_step, clk, m, g_hz_restart_s);
     if (g_hb_cs_ready) EnterCriticalSection(&g_hb_cs);
     g_eff_step = eff;
     if (g_hb_cs_ready) LeaveCriticalSection(&g_hb_cs);
@@ -2844,15 +2848,13 @@ void on_time_tick() {
         double h, clk;
         memcpy(&h, (const void *)ADDR_LOCAL_HORIZON, sizeof(double));
         memcpy(&clk, (const void *)ADDR_GAME_CLOCK, sizeof(double));
-        // A horizon more than 2 s ahead of the clock is a restarted clock, not a shrink: the
-        // lookahead is capped at [net] lockstep_max_ms (SHIPPED 0.4 s) and the paged-list keepalive
-        // bumps by one scaled step at a time. THE 2 s IS NOT INDEPENDENT OF THAT CAP -- it is the
-        // cap with headroom, so anyone raising lockstep_max_ms has to come back here: at the
-        // shipped 400 ms the margin is 5x, at a 1 s ceiling it would be 2x, and at anything above
-        // 2 s a legitimate horizon reads as a restarted clock and this resets every window.
-        // mp:P11 measured the ceiling as adequate through RTT 600 (where it does clamp, 4-5 windows
-        // per peer, and the pair still converges), so no raise is shipped -- but the coupling is
-        // written down here rather than rediscovered.
+        // A horizon more than max(2 s, 5 x ceiling) ahead of the clock is a restarted clock, not a shrink:
+        // the lookahead is capped at [net] lockstep_max_ms (400 / 600 / 800 / 1000, the host's launcher
+        // setting; SHIPPED 0.4 s) and the paged-list keepalive bumps by one scaled step at a time. THE
+        // MARGIN IS NOT INDEPENDENT OF THAT CAP -- it is the cap with headroom (5x), so it SCALES with it
+        // (g_hz_restart_s, set by mh_set_lockstep_max_ms; mh::netstats::horizon_restart_s): a fixed 2 s
+        // would be a 2x margin at a 1 s ceiling and, above 2 s, read a legitimate horizon as a restarted
+        // clock and reset every window. (mp:LSCEIL; selftest: net_selftest "lsceil".)
         // mp:D30 -- the sent maxima now FLOOR every advert, so they must not outlive their match: a new
         // match's clock restarts, and a maximum left over from a short previous match would sit less
         // than HZ_RESTART_S ahead of it and hold the new match's lookahead up. Reset both on the clock
@@ -6644,9 +6646,9 @@ void lockstep_install_core() {
     // knob alone will NOT take the lookahead under 3 sub-steps; that guard is what a frozen client
     // cost us.
     g_ls_min = mh_ini_get_int("net", "lockstep_min_ms", 30, g_ini) / 1000.0;
-    g_ls_max = mh_ini_get_int("net", "lockstep_max_ms", 400, g_ini) / 1000.0;
+    // mp:LSCEIL -- [net] lockstep_max_ms is a HOST-SYNCED launcher setting now (F_HOSTSYNC): it reaches g_ls_max through
+    // mh_set_lockstep_max_ms from the PT-SET1 apply (boot LOCAL, host PUBLISHED, client ADOPTED), never by a direct ini read.
     if (g_ls_min < 0.010) g_ls_min = 0.010; // below ~1 clock quantum the sim cannot make progress
-    if (g_ls_max < g_ls_min) g_ls_max = g_ls_min;
     // Strategic sim sub-step interval (movement-smoothness experiment). Independent of the lockstep
     // lookahead above: smaller => the committed window is consumed in finer sim steps => smoother unit
     // motion, SAME network horizon. 0 = leave the game default (0.1s / 10Hz). Fractional ms allowed.
@@ -7328,6 +7330,22 @@ int mh_set_turret_reload_realtime(int on) {
         else seam_log("; turret reload realtime fix OFF ([net] turret_reload_realtime_fix=0, PT-FIX2): retail -- the reload timer drains by the re-counted budget (2-3x fast at 10/20 ms steps)\n");
     }
     return taken == on;
+}
+
+// mp:LSCEIL -- the command-delay ceiling ([net] lockstep_max_ms) from the PT-SET1 apply (boot LOCAL, host PUBLISHED, client
+// ADOPTED, lobby close LOCAL again). Shipped build: snapped to 400 / 600 / 800 / 1000 (mh::netstats::lockstep_ceiling_ms);
+// `[dev] unlock=1` keeps any 30..10000. Scales the restart-detection margin with it and logs the effective value, so both
+// peers' mh_net.log carry the number the adaptive controller will use.
+void mh_set_lockstep_max_ms(int ms) {
+    const int eff = mh::netstats::lockstep_ceiling_ms(ms, mh_ini_dev_unlocked(g_ini));
+    double    mx  = eff / 1000.0;
+    if (mx < g_ls_min) mx = g_ls_min;
+    g_ls_max       = mx;
+    g_hz_restart_s = mh::netstats::horizon_restart_s(mx);
+    char b[160];
+    wsprintfA(b, "; [lsceil] command delay ceiling %ld ms (asked %d), restart margin %ld ms\n", (long)(g_ls_max * 1000.0), ms,
+              (long)(g_hz_restart_s * 1000.0));
+    seam_log(b);
 }
 
 // The multiplier of the realtime drain, clamped to [0.1, 10] as mh::sim::clamp_turret_fire_rate_mult does (NaN -> 2.0).

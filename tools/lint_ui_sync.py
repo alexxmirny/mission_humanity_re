@@ -152,6 +152,7 @@ KNOWN_ACTION_OPS = frozenset(
         "reveal",
         "savegame",
         "delsave",
+        "logavail",  # patching:PT-CAP12
         "logport",  # mods:UNL1 fixture ops
         "unlockdrop",
         "travel",

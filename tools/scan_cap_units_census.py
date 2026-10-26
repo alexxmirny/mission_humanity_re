@@ -126,6 +126,7 @@ KEEP_CODES = {
     "tutorial_units": "tutorial step scan over units[0..99]: the scripted mission never owns 100 units",
     "tutorial_buildings": "tutorial step scan over buildings[..]: scripted mission, buildings stay stock-sized",
     "tutorial_state": "tutorial compares a building state (99 / 100)",
+    "avail_row_stride": "AvailableBuildings[8][50] row stride 200 / AvailableProjects category stride (PT-CAP12): not an index bound, and not the labs stride",
 }
 
 
@@ -139,6 +140,19 @@ def _k(code, why=""):
 
 VERDICTS = {
     0x43FB21: _k("shuttle_status"),
+    0x4131C0: _k("avail_row_stride"),
+    0x4141CC: _k("avail_row_stride"),
+    0x414212: _k("avail_row_stride"),
+    0x414252: _k("avail_row_stride"),
+    0x4142B2: _k("avail_row_stride"),
+    0x41639F: _k("avail_row_stride"),
+    0x416472: _k("avail_row_stride"),
+    0x4164B6: _k("avail_row_stride"),
+    0x416515: _k("avail_row_stride"),
+    0x417E56: _k("avail_row_stride"),
+    0x417F74: _k("avail_row_stride"),
+    0x4180DE: _k("avail_row_stride"),
+    0x418136: _k("avail_row_stride"),
     0x440E2E: _k("stack_frame"),
     0x4420D7: _k("sound_volume"),
     0x442E38: _k("sound_volume"),

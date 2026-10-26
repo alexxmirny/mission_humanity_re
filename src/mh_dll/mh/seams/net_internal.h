@@ -342,6 +342,7 @@ void lockstep_transport_started();        // start the horizon-heartbeat thread 
 // answers 1 = in force, 0 = refused (the fix is asked for but its splice is MISMATCHED: logged, gate stays 0 = retail).
 int  mh_set_turret_reload_realtime(int on);
 void mh_set_turret_fire_rate_mult(double m);
+void mh_set_lockstep_max_ms(int ms); // mp:LSCEIL: [net] lockstep_max_ms, the command-delay ceiling (snapped to 400/600/800/1000 in the shipped build)
 int  mh_set_turret_clip_fix(int on);
 int  mh_set_turret_fire_poll_fix(int on);
 int  mh_set_mother_free_build(int on);       // mods:A1
@@ -395,6 +396,7 @@ int  mh_set_move_group_speed(int on);                                           
 void install_combat_proto();                                                                                                           // mods:M1C (seams/combat_proto.cpp), called from install_move_proto
 int  mh_set_move_squad_merge_fix(int on);                                                                                              // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
 int  mh_set_attack_range_footprint(int on);                                                                                            // mods:M1C: 1 = in force, 0 = refused
+int  mh_set_soldier_origin_anim_fix(int on);                                                                                           // mp:DSHEAL: 1 = in force (or carried by the libmh twin), 0 = refused
 int  mh_set_projectile_facing_fix(int on);                                                                                             // mods:M1C: 1 = in force (or carried by the libmh twin), 0 = refused
 
 // ---- cross-TU surface of net_discovery.cpp (synth session / browser / S2-S4 discovery+join) --
