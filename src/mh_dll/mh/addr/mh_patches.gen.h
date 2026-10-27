@@ -1477,6 +1477,7 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"storage_door_hold",             0x00477f92u, "llm_strat_bldg_anim_state_shuttle_a", "migrated:storage_door_hold"},
     {"storage_door_hold",             0x00478353u, "llm_strat_bldg_anim_state_shuttle_h", "migrated:storage_door_hold"},
     {"storage_door_hold",             0x00477a4eu, "llm_strat_bldg_anim_state_airfield_a", "migrated:storage_door_hold"},
+    {"move_queue_flank_guard",        0x004d7f3au, "llm_strat_unit_queue_advance_search", "migrated:move_queue_flank_guard"},
     {"move_route_through_idle",       0x0041c9ceu, "llm_strat_group_move_order_commit", "migrated:move_route_through_idle,move_route_through_moving,move_route_through_replanning,move_formation_click,move_stream_heat"},
     {"diplo_order_dedup_fix",         0x0046667bu, "llm_strat_order_release_due", "migrated:diplo_order_dedup_fix"},
     {"overlay_dialog_guard",          0x0043f072u, "llm_strat_time_tick", "migrated:overlay_dialog_guard"},
@@ -1556,6 +1557,6 @@ inline constexpr mh::hook::patch_decl registered_patches[] = {
     {"caps_load_version",             0x004476b4u, "llm_game_load", "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself"},
     {"caps_load_refusal_msg",         0x004bb76du, "llm_menu_loadgame_confirm", "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself"},
 };
-inline constexpr int registered_patch_count = 161;
+inline constexpr int registered_patch_count = 162;
 
 } // namespace mh::addr

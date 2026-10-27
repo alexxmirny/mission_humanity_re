@@ -1889,6 +1889,28 @@
    "note": "mods:M1BE (2026-10-20), dev key, default -1 = follow improved_movement (on: 1), host-set. User playtest 0.2.1-rc22: a group ordered into a barracks enters one unit per ~4.7 s because the door closes in the ~1 s gap before the next soldier stands on the door tile (tmp/m1be/REPORT.md). The three storage-door building animation handlers (soldiers_h 0x00476e9d, vehicles_h 0x004769a9, barracks_garage_a 0x00476627) test `door_mutex_unit == 0 && door_waiter_count == 0` in the OPEN door state (online_state 2, caseD_2) to decide whether to close. The case opens with `MOV EAX,[CUR_BUILDING]` (guard A1 DC 62 E1 00, 5 bytes) which becomes `JMP stub`; the stub (pushad) asks dh_decide(): 1 = an own unit with ORDER 0x24 and home_storage_slot = this storage stands on the map within 2 tiles (Chebyshev, wrapped) of the storage's door tile (exit_tile_x/y), so jump to the handler's own open-hold branch (0x00477100 / 0x00476c0c / 0x00476878) and the door stays open; 0 = run the displaced MOV and continue at +5. Only a door that is otherwise idle is scanned. Units are scanned in index order, integer reads only, nothing written. The rule is sim/move/enter_queue.h dh_entering_near, shared with the libmh twin (sim_bldg_anim_state_online.cpp door_may_close). With libmh binding the building tick2 table these retail bodies are dead and the carrier line says libmh twin. mods:M1SH (2026-10-24, user: \"cover every door\"): three more sites of the SAME shape and guard in the OPEN door state: shuttle_a 0x00477d9e (type 0x0d; site 0x00477f92, continue 0x00477f97, open-hold 0x0047801d), shuttle_h 0x0047815f (type 0x21; 0x00478353 / 0x00478358 / 0x004783de), airfield_a 0x00477881 (type 9, case 2; 0x00477a4e / 0x00477a53 / 0x00477ad2). Same dh_decide, same key."
   },
   {
+   "id": "move_queue_flank_guard",
+   "sources": [
+    {
+     "file": "mh/seams/move_proto_nudge.cpp",
+     "expr": "ADDR_QF_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004d7f3a"
+   ],
+   "lens": [
+    8
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_queue_advance_search"
+   ],
+   "knob": "move_queue_flank_guard",
+   "carrier": "migrated:move_queue_flank_guard",
+   "note": "mp:U75 (2026-10-27), dev key, default -1 = follow improved_movement (on: 1), host-set. Player report 01M5WMNKXS2Q0PN3AJWWP5F48Q: units leaving a garage squeeze diagonally through cliff corners and one ended sealed in a 1-tile notch for good. The shuffle search llm_strat_unit_queue_advance_search 0x004d7f3a (run by llm_strat_storage_resolve_exit_blockage when a friendly idle unit holds the exit tile) takes a diagonal neighbour on a tile-only test; the route planner requires one open flank. Whole-body redirect: the first 8 bytes (guard 55 89 E5 68 1C 00 00 00 = PUSH EBP / MOV EBP,ESP / PUSH 0x1c) become JMP qf_stub + 3 NOP. Key 0: the stub runs the displaced prologue and continues at 0x004d7f42 (retail body, byte for byte). Key 1: qf_search (move_proto_nudge.cpp), a transcription of the libmh twin with the same writes to the hashed _G_LLM_UNITQ_* islands, takes a diagonal only past an open flank (passable != 0 or a unit on the tile; sim/move/queue_flank.h) in both neighbour loops, returns 0 when nothing legal exists (the exiting unit waits), and caps the DFS depth at the typed FRONTIER[128] / CLOSED[1024] extents. The same key also gates the flank rule in pick_nudge_tile (sim/move/nudge.h, the move_nudge_idle splices). With libmh binding llm_strat_unit_queue_advance these retail bodies are bypassed and the carrier line says libmh twin (sim_unit_queue_advance.cpp)."
+  },
+  {
    "id": "move_route_through_idle",
    "sources": [
     {

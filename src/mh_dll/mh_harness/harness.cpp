@@ -1325,6 +1325,10 @@ struct Config {
     int nd_sgx = -1, nd_sgy = -1; // mods:M1WL: the stream goal tile (-1 = the first clear 5x5 on a ring of radius 30..18 round the door)
     int nd_stream  = 0; // mods:M1WL: 1 = after the F21 units are docked, order them out to open ground ~30 tiles away and measure the stream (ST lines)
     int nd_door_at = 0;
+    // ---- mp:U75: nd_door = 4 is the garage-exit corner fixture (door_tick): after the soldiers dock, a diamond wall of radius qf_r is raised round the exit
+    // tile and every soldier is undocked at once; qf_tail = the most steps watched after the order.
+    int qf_r    = 4;
+    int qf_tail = 2500;
     // ---- THE ALL-AI SOAK (2026-08-05) -------------------------------------------------------------
     // Convert every HUMAN player slot to an AI-controlled one, so a solo run is an N-way AI match and
     // the LOCAL slot gets a real AI base too. The coverage lever that `loadgame_at` is for start
@@ -2142,6 +2146,8 @@ void load_config() {
     g_cfg.nd_sgx               = mh_ini_get_int("harness", "nd_sgx", g_cfg.nd_sgx, g_ini_path);
     g_cfg.nd_sgy               = mh_ini_get_int("harness", "nd_sgy", g_cfg.nd_sgy, g_ini_path);
     g_cfg.nd_door_at           = mh_ini_get_int("harness", "nd_door_at", g_cfg.nd_door_at, g_ini_path);
+    g_cfg.qf_r                 = mh_ini_get_int("harness", "qf_r", g_cfg.qf_r, g_ini_path);
+    g_cfg.qf_tail              = mh_ini_get_int("harness", "qf_tail", g_cfg.qf_tail, g_ini_path);
     g_cfg.conq_phase_timeout   = mh_ini_get_int("harness", "conq_phase_timeout", g_cfg.conq_phase_timeout, g_ini_path);
     g_cfg.all_ai               = mh_ini_get_int("harness", "all_ai", g_cfg.all_ai, g_ini_path);
     g_cfg.all_ai_observer      = mh_ini_get_int("harness", "all_ai_observer", g_cfg.all_ai_observer, g_ini_path);
@@ -11754,6 +11760,8 @@ enum { DR_PREP = 0,
        DR_ORDER,
        DR_WATCH,
        DR_STREAM,
+       DR_QWALL,
+       DR_QWATCH,
        DR_FINISHED,
        DR_FAILED };
 unsigned g_dr_want  = 0;
@@ -11991,6 +11999,180 @@ void st_tick() {
     }
 }
 
+// ---- mp:U75: the garage-exit corner fixture (nd_door = 4) ---------------------------------------------------------------------------------
+// The F21 flow docks nd_fcn (<= 40) soldiers in player nd_player's barracks (phases DR_PREP..DR_WATCH, as nd_door = 1). Then, at the first step after
+// the last one docked:
+//   QWALL   a diamond of blocked tiles (|dx| + |dy| == qf_r, the passable plane poked, every peer the same step) is raised round the storage's exit tile, with
+//           ONE gap (a side whose wall tile and the two tiles beyond it are clear), so the room inside holds fewer tiles than there are soldiers and its
+//           boundary is a DIAGONAL wall line: every step from the room to the outside across the rim is a diagonal between two blocked tiles (a corner
+//           cut). Up to eight one-tile NOTCHES (a clear tile whose four neighbours are poked blocked) sit just outside the rim, reachable only
+//           diagonally. The terrain window (2 * QF_W + 1 square round the door) is logged: '#' = terrain-blocked (passable 0 and no unit claim), '.' = open.
+//   QEXIT   every docked soldier is undocked (order 0x20 through the replicated lane, the u49 call) in ONE step: "exit all".
+//   QWATCH  every step each soldier that has left the storage (state not 0x1f..0x22) is sampled; a tile change is logged. At the end (qf_tail steps after
+//           the order, or 300 quiet steps once everyone is out) the QF TOTAL line and one QF END line per soldier are written. Lines:
+//   QF SETUP / QF ROW (terrain) / QF NOTCH / QF EXIT / QF LAND (first on-map sample) / QF MV step u from to st / QF END / QF TOTAL
+//   tools/check_u75_queue_flank.py reads them: corner cuts = diagonal tile changes whose two flank tiles are both '#'; sealed = soldiers whose end tile lies
+//   in a 4-connected open component of at most 3 tiles that does not touch the window border.
+constexpr int QF_W = 14;
+int           g_qf_unit[64], g_qf_n = 0, g_qf_px[64], g_qf_py[64], g_qf_mv = 0, g_qf_quiet = 0;
+bool          g_qf_on[64];
+uint32_t      g_qf_order_at = 0;
+
+// 1 = a step of the live passable plane the fixture may wall: clear ground with nothing on it
+inline bool qf_clean(int x, int y) {
+    const uint32_t idx = ((uint32_t)x << 8) | (uint32_t)y;
+    return pf_passable()[idx] != 0 && pf_tobj()[idx].class_owner == 0;
+}
+inline bool qf_in_storage(unsigned s) { return s >= 0x1fu && s <= 0x22u; }
+
+void qf_wall_and_log(int dx, int dy, int R, uint32_t mw, uint32_t mh_) {
+    auto wrapx = [&](int x) { return (int)((uint32_t)(x + (int)mw) % mw); };
+    auto wrapy = [&](int y) { return (int)((uint32_t)(y + (int)mh_) % mh_); };
+    auto poke  = [&](int x, int y) { *(uint8_t *)(&pf_passable()[((uint32_t)wrapx(x) << 8) | (uint32_t)wrapy(y)]) = 0; };
+    auto clean = [&](int x, int y) { return qf_clean(wrapx(x), wrapy(y)); };
+    char m[512];
+    // the gap: the first side whose wall tile and the two tiles outward of it are clean
+    static const int SIDE[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    int              gx = 0, gy = 0, side = -1;
+    for (int k = 0; k < 4 && side < 0; ++k) {
+        bool ok = true;
+        for (int d = 0; d <= 2; ++d) ok = ok && clean(dx + SIDE[k][0] * (R + d), dy + SIDE[k][1] * (R + d));
+        ok = ok && clean(dx + SIDE[k][0] * (R - 1), dy + SIDE[k][1] * (R - 1));
+        if (ok) side = k;
+    }
+    if (side >= 0) {
+        gx = dx + SIDE[side][0] * R;
+        gy = dy + SIDE[side][1] * R;
+    }
+    int walled = 0, rim_blocked = 0, rim_total = 0;
+    for (int ox = -R; ox <= R; ++ox)
+        for (int oy = -R; oy <= R; ++oy) {
+            if ((ox < 0 ? -ox : ox) + (oy < 0 ? -oy : oy) != R) continue;
+            const int x = dx + ox, y = dy + oy;
+            if (side >= 0 && x == gx && y == gy) continue;
+            ++rim_total;
+            if (clean(x, y)) {
+                poke(x, y);
+                ++walled;
+            }
+            const uint32_t idx = ((uint32_t)wrapx(x) << 8) | (uint32_t)wrapy(y);
+            if (pf_passable()[idx] == 0 && (pf_tobj()[idx].class_owner & 0x80u) == 0) ++rim_blocked;
+        }
+    // notches just outside the rim: P = (sx*(R+1), sy*2) and (sx*2, sy*(R+1)); P and its four neighbours must be clean
+    int notches = 0;
+    for (int sx = -1; sx <= 1; sx += 2)
+        for (int sy = -1; sy <= 1; sy += 2)
+            for (int variant = 0; variant < 2; ++variant) {
+                const int px = dx + (variant ? sx * 2 : sx * (R + 1)), py = dy + (variant ? sy * (R + 1) : sy * 2);
+                static const int N4[5][2] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                bool             ok       = true;
+                for (int q = 0; q < 5; ++q) ok = ok && clean(px + N4[q][0], py + N4[q][1]);
+                if (!ok) continue;
+                for (int q = 1; q < 5; ++q) poke(px + N4[q][0], py + N4[q][1]);
+                ++notches;
+                wsprintfA(m, "; QF NOTCH at %d,%d\n", wrapx(px), wrapy(py));
+                append_line(g_log_path, m);
+            }
+    wsprintfA(m, "; QF SETUP step=%lu door=%d,%d r=%d gap=%d,%d walled=%d notches=%d window=%d map=%u,%u rim=%d/%d\n", g_step, dx, dy, R, side >= 0 ? wrapx(gx) : -1, side >= 0 ? wrapy(gy) : -1, walled, notches, QF_W, mw, mh_, rim_blocked, rim_total);
+    append_line(g_log_path, m);
+    // the terrain window, one line per row (y ascending), x ascending
+    for (int oy = -QF_W; oy <= QF_W; ++oy) {
+        char row[2 * QF_W + 2];
+        for (int ox = -QF_W; ox <= QF_W; ++ox) {
+            const uint32_t idx = ((uint32_t)wrapx(dx + ox) << 8) | (uint32_t)wrapy(dy + oy);
+            const bool     blk = pf_passable()[idx] == 0 && (pf_tobj()[idx].class_owner & 0x80u) == 0;
+            const uint8_t  co  = pf_tobj()[idx].class_owner;
+            row[ox + QF_W]     = !blk ? '.' : ((co & 0x40u) ? 'B' : ((co & 0x10u) ? 'T' : '#'));
+        }
+        row[2 * QF_W + 1] = 0;
+        wsprintfA(m, "; QF ROW y=%d %s\n", wrapy(dy + oy), row);
+        append_line(g_log_path, m);
+    }
+}
+
+// phase 0 (QWALL + QEXIT): true once it acted; phase 1 (QWATCH): true when the fixture is done
+bool qf_tick_phase(unsigned p, int phase, mh::game::mh_map_object_unit *un, mh::game::mh_map_object_unit_storage *st, int slot, const mh::game::mh_cfg_final_struct_Unit *U,
+                   uint32_t side, uint32_t mw, uint32_t mh_) {
+    char m[512];
+    if (phase == 0) { // QWALL + QEXIT in one step, once every docked soldier is settled PARKED (the last one is still entering at the DR TOTAL step; U49 drops a 0x20 for a unit that is not parked)
+        for (int i = 0; i < st[slot].docked_count && i < 50; ++i)
+            if (un[st[slot].docked_units[i]].state != 0x1fu) return false;
+        const int dx = (int)st[slot].exit_tile_x, dy = (int)st[slot].exit_tile_y;
+        int       R  = g_cfg.qf_r < 3 ? 3 : (g_cfg.qf_r > 8 ? 8 : g_cfg.qf_r);
+        qf_wall_and_log(dx, dy, R, mw, mh_);
+        g_qf_n = 0;
+        for (int i = 0; i < st[slot].docked_count && i < 50 && g_qf_n < 64; ++i) g_qf_unit[g_qf_n++] = st[slot].docked_units[i];
+        for (int k = 0; k < g_qf_n; ++k) {
+            g_qf_on[k] = false;
+            g_qf_px[k] = g_qf_py[k] = -1;
+        }
+        if (side == p) {
+            for (int k = 0; k < g_qf_n; ++k) {
+                const int u = g_qf_unit[k];
+                mh::call::llm_strat_order_scratch_reset();
+                mh::call::llm_strat_order_scratch_set_field(0, 0);
+                mh::call::llm_strat_order_scratch_set_field(1, 0);
+                mh::call::llm_strat_order_dispatch((uint16_t)u, (uint32_t)(p | 0x80u), U[un[u].unit_proto_id].default_op_code, 0x20);
+            }
+        }
+        g_qf_order_at = g_step;
+        wsprintfA(m, "; QF EXIT step=%lu n=%d %s\n", g_step, g_qf_n, side == p ? "issued here" : "the owner peer issues it");
+        append_line(g_log_path, m);
+        return true;
+    }
+    // QWATCH
+    const int el = (int)(g_step - g_qf_order_at);
+    bool      moved = false;
+    for (int k = 0; k < g_qf_n; ++k) {
+        const int      u  = g_qf_unit[k];
+        const unsigned s  = un[u].state;
+        const bool     on = !qf_in_storage(s) && un[u].energy > 0.0;
+        if (!on) {
+            g_qf_on[k] = false;
+            continue;
+        }
+        const int x = (int)un[u].x, y = (int)un[u].y;
+        if (!g_qf_on[k]) {
+            g_qf_on[k] = true;
+            g_qf_px[k] = x;
+            g_qf_py[k] = y;
+            wsprintfA(m, "; QF LAND step=%lu el=%d u=%d at %d,%d st=0x%02x\n", g_step, el, u, x, y, s);
+            append_line(g_log_path, m);
+            moved = true;
+            continue;
+        }
+        if (x != g_qf_px[k] || y != g_qf_py[k]) {
+            wsprintfA(m, "; QF MV step=%lu el=%d u=%d %d,%d %d,%d st=0x%02x\n", g_step, el, u, g_qf_px[k], g_qf_py[k], x, y, s);
+            append_line(g_log_path, m);
+            g_qf_px[k] = x;
+            g_qf_py[k] = y;
+            ++g_qf_mv;
+            moved = true;
+        }
+    }
+    g_qf_quiet = moved ? 0 : g_qf_quiet + 1;
+    int out = 0, waiting = 0, parked = 0;
+    for (int k = 0; k < g_qf_n; ++k) {
+        const unsigned s = un[g_qf_unit[k]].state;
+        if (!qf_in_storage(s)) ++out;
+        else if (s == 0x22u) ++waiting;
+        else if (s == 0x1fu) ++parked;
+    }
+    const bool all_out = out == g_qf_n;
+    if (el >= g_cfg.qf_tail || (all_out && g_qf_quiet >= 300) || (!all_out && g_qf_quiet >= 1200)) {
+        for (int k = 0; k < g_qf_n; ++k) {
+            const int u = g_qf_unit[k];
+            wsprintfA(m, "; QF END u=%d at %d,%d st=0x%02x\n", u, (int)un[u].x, (int)un[u].y, (unsigned)un[u].state);
+            append_line(g_log_path, m);
+        }
+        wsprintfA(m, "; QF TOTAL steps=%d n=%d out=%d waiting=%d parked=%d moves=%d quiet=%d docked_left=%d\n", el, g_qf_n, out, waiting, parked, g_qf_mv, g_qf_quiet,
+                  (int)st[slot].docked_count);
+        append_line(g_log_path, m);
+        return true;
+    }
+    return false;
+}
+
 void door_tick() {
     if (g_cfg.nd_door <= 0 || g_cfg.nd_door_at <= 0 || g_step < (uint32_t)g_cfg.nd_door_at || g_dr_phase >= DR_FINISHED) return;
     const unsigned p = (unsigned)g_cfg.nd_player;
@@ -12219,10 +12401,16 @@ void door_tick() {
                 wsprintfA(m, "; DR TOTAL steps=%d n=%d docked=%d giveups=%d closes=%d firstdock=%d lastdock=%d eff=%d\n", el, g_dr_n, ndocked, g_dr_giveups, g_dr_closes, g_dr_first,
                           g_dr_last, (int)(bl[g_dr_bidx].efficiency * 1000.0));
                 append_line(g_log_path, m);
-                g_dr_phase = DR_FINISHED;
+                g_dr_phase = g_cfg.nd_door == 4 && ndocked > 0 ? DR_QWALL : DR_FINISHED; // mp:U75
             }
             return;
         }
+        case DR_QWALL:
+            if (qf_tick_phase(p, 0, un, st, g_dr_slot, U, side, mw, mh_)) g_dr_phase = DR_QWATCH;
+            return;
+        case DR_QWATCH:
+            if (qf_tick_phase(p, 1, un, st, g_dr_slot, U, side, mw, mh_)) g_dr_phase = DR_FINISHED;
+            return;
         case DR_STREAM: st_tick(); return;
         default: return;
     }

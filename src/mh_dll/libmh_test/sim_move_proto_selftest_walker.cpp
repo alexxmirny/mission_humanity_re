@@ -26,6 +26,7 @@
 #include "sim/move/group_speed.h"
 #include "sim/move/near_enough.h"
 #include "sim/move/nudge.h"
+#include "sim/move/queue_flank.h"
 #include "sim/move/respond.h"
 #include "sim/move/world_c.h"
 #include "sim/sim_move_fixes.h"
@@ -1001,6 +1002,64 @@ void test_walker_body(sim_fixture &fx) {
     }
 }
 
+
+// =====================================================================================================
+// A4 -- mp:U75: move_queue_flank_guard (sim/move/queue_flank.h) and its use in pick_nudge_tile
+// =====================================================================================================
+void test_queue_flank() {
+    using namespace mh::sim::move;
+    // the pure rules
+    ck(qf_tile_open(1, 0) && qf_tile_open(5, 0), "Q1: a passable tile (any non-zero byte) is open");
+    ck(!qf_tile_open(0, 0) && !qf_tile_open(0, 0x40) && !qf_tile_open(0, 0x10), "Q2: passable 0 with no unit claim (terrain, building 0x40, tree 0x10) is blocked");
+    ck(qf_tile_open(0, 0x80) && qf_tile_open(0, 0x81), "Q3: passable 0 under a unit (class bit 0x80) is open: occupancy, not terrain");
+    ck(qf_step_ok(true, 1, 0, false, false) && qf_step_ok(true, 0, -1, false, false), "Q4: an orthogonal step is never refused");
+    ck(!qf_step_ok(true, 1, -1, false, false), "Q5: a diagonal between two blocked flanks is refused");
+    ck(qf_step_ok(true, 1, -1, true, false) && qf_step_ok(true, 1, -1, false, true), "Q6: one open flank is enough");
+    ck(qf_step_ok(false, 1, -1, false, false), "Q7: key off: nothing is refused");
+    ck(qf_may_descend(true, 126, 0) && !qf_may_descend(true, 127, 0), "Q8: the frontier extent (128) caps the descent");
+    ck(qf_may_descend(true, 0, 1022) && !qf_may_descend(true, 0, 1023), "Q9: the closed extent (1024) caps the descent, counting the live nodes");
+    ck(qf_may_descend(false, 500, 5000), "Q10: key off: no cap (retail)");
+    // pick_nudge_tile: B (idx 2) at (5,6) is nudged by A at (5,5) walking south (leg heading 1). Everything round B is blocked except the two
+    // diagonals ahead, (4,7) and (6,7): both would cut a corner (their flanks (4,6)/(5,7) and (6,6)/(5,7) are walls).
+    auto build = [](fake_world &w) {
+        w.put(1, 5, 5, 0x0f);
+        auto &b         = w.put(2, 5, 6, 1);
+        b.facing_target = 7;
+        for (uint32_t x = 4; x <= 6; ++x)
+            for (uint32_t y = 5; y <= 7; ++y) {
+                if ((x == 5 && (y == 5 || y == 6)) || (y == 7 && x != 5)) continue; // A, B and the two diagonals stay
+                w.passable[fake_world::ti(x, y)] = 0;
+            }
+        return &b;
+    };
+    for (int k = 0; k < 2; ++k) {
+        fake_world w;
+        auto      *b  = build(w);
+        uint32_t   nx = 0, ny = 0;
+        bool       straight = false;
+        const bool picked   = mh::sim::mvc::ndg::pick_nudge_tile(w, *b, 1, 5, 5, 0xff, 0xff, &nx, &ny, &straight, k == 1);
+        if (k == 0) ck(picked && ny == 7 && (nx == 4 || nx == 6), "Q11: key off: the corner-cutting diagonal is picked (retail)");
+        else ck(!picked, "Q12: key on: both diagonals cut a corner, nothing is picked");
+    }
+    { // one flank opened: the diagonal is legal again
+        fake_world w;
+        auto      *b                     = build(w);
+        w.passable[fake_world::ti(4, 6)] = 1;
+        w.passable[fake_world::ti(6, 6)] = 0;
+        uint32_t   nx = 0, ny = 0;
+        const bool picked = mh::sim::mvc::ndg::pick_nudge_tile(w, *b, 1, 5, 5, 0xff, 0xff, &nx, &ny, nullptr, true);
+        ck(picked && nx == 4 && (ny == 6 || ny == 7), "Q13: key on: an open flank tile makes the diagonal (or the orthogonal tile itself) legal");
+    }
+    { // a flank held by a unit counts as open
+        fake_world w;
+        auto      *b                              = build(w);
+        w.tiles[fake_world::ti(4, 6)].class_owner = 0x80; // a unit stands there: passable 0 is occupancy
+        uint32_t nx = 0, ny = 0;
+        ck(mh::sim::mvc::ndg::pick_nudge_tile(w, *b, 1, 5, 5, 0xff, 0xff, &nx, &ny, nullptr, true) && nx == 4 && ny == 7,
+           "Q14: key on: a flank tile holding a unit is open, so (4,7) is legal");
+    }
+}
+
 } // namespace
 
 void run_move_proto_resp_tests(); // mods:M1G 4c: sim_move_proto_selftest_resp.cpp
@@ -1012,6 +1071,7 @@ void run_move_proto_walker_tests() {
     test_near_enough();
     test_group_speed();
     test_nudge();
+    test_queue_flank();
     static sim_fixture fx;
     test_walker_body(fx);
     run_move_proto_resp_tests(); // mods:M1G 4c: move_reverse_now rule + move_turn_rate scale

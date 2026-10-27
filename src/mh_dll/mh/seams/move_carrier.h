@@ -73,6 +73,7 @@ enum site_id : int {
     SITE_DOOR_SHUTTLE_A, // 0x00477f92  shuttle_a anim state, open door close test (mods:M1SH)
     SITE_DOOR_SHUTTLE_H, // 0x00478353  shuttle_h anim state, open door close test
     SITE_DOOR_AIRFIELD,  // 0x00477a4e  airfield_a anim state, case 2
+    SITE_QF,             // 0x004d7f3a  unit_queue_advance_search entry: the shuffle takes a diagonal only past an open flank, depth-capped (move_queue_flank_guard, mp:U75)
     SITE_COUNT
 };
 
@@ -117,6 +118,7 @@ enum mv_hit_id : int {
     MVH_EQ, // mods:M1BE move_enter_queue: an entering unit waited behind an entering friend
     MVH_DH, // mods:M1BE storage_door_hold: an open door was kept open
     MVH_SH, // mods:M1WL v2 move_stream_heat: a lone unit planned with a stream's tiles priced
+    MVH_QF, // mp:U75 move_queue_flank_guard: a corner-cutting diagonal (or an over-deep descent) was refused
     MVH_COUNT
 };
 
@@ -164,6 +166,7 @@ enum key_id : int {
     KEY_ENTER_QUEUE,
     KEY_STORAGE_DOOR_HOLD,
     KEY_STREAM_HEAT,
+    KEY_QUEUE_FLANK,
     KEY_COUNT
 };
 

@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 207,
+  "distinct_callees": 208,
   "config_measures": {
    "hosted": {
     "sites": 1573,
@@ -37,7 +37,7 @@
   "by_status": {
    "dead": 2,
    "original": 119,
-   "translated": 86
+   "translated": 87
   },
   "modules": {
    "desync": {
@@ -59,8 +59,8 @@
     "outward_distinct": 3
    },
    "seams": {
-    "sites": 364,
-    "distinct": 200,
+    "sites": 369,
+    "distinct": 201,
     "outward_sites": 191,
     "outward_distinct": 119
    },
@@ -1230,9 +1230,20 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 3,
+   "sites": 4,
    "modules": {
-    "seams": 3
+    "seams": 4
+   }
+  },
+  {
+   "name": "llm_strat_order_issue_0xf_adjacent_by_offset",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
    }
   },
   {
@@ -1274,9 +1285,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -1285,9 +1296,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 4,
    "modules": {
-    "seams": 2
+    "seams": 4
    }
   },
   {

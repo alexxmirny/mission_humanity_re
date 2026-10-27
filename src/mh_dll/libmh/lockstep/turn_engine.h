@@ -767,6 +767,7 @@ struct reimpl_fixes {
     bool move_block_reset_moving        = false; // mods:M1DT fix 4a: the block-wait budget restarts when the blocker changes to a walking friend
     int  move_replan_detour_cap         = 0;     // mods:M1DT fix 4b: percent of the straight distance a block-wait replan may take (0 = off)
     bool move_enter_queue               = false; // mods:M1BE: ORDER 0x24 units wait behind an entering friend and ignore the block-wait / sidestep / cooldown keys
+    bool move_queue_flank_guard         = false; // mp:U75: the unit-queue shuffle and the idle nudge take a diagonal step only past an open flank tile; the shuffle search is depth-capped
     bool storage_door_hold              = false; // mods:M1BE: an open storage door stays open while an entering friend is within 2 tiles
     int  move_formation_click           = 0;     // mods:M1G 4b: 0 off, 1..2 = the old keep rule (N - 1 rings of slack), 3 = the formation moves as one
     bool move_stream_heat               = false; // mods:M1WL v2: a lone unit of a stream (>= 8 groupmates walking) prices the tiles of its mates' next 120 path steps (sim/move/stream_heat.h)

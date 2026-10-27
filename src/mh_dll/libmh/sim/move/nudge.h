@@ -36,14 +36,16 @@
 
 #include "addr/mh_structs.gen.h"
 #include "sim/move/enter_queue.h" // mods:M1BE: eq_wait_behind_enterer (move_enter_queue)
+#include "sim/move/queue_flank.h" // mp:U75: the flank rule (move_queue_flank_guard)
 
 namespace mh::sim::mvc {
 
 struct nudge_keys {
-    bool nudge = false; // move_nudge_idle
-    bool claim = false; // move_claim_leader
-    bool swap  = false; // move_swap_headon
-    bool enter = false; // move_enter_queue (mods:M1BE): wait behind an entering friend of the same storage (enter_queue.h)
+    bool nudge  = false; // move_nudge_idle
+    bool claim  = false; // move_claim_leader
+    bool swap   = false; // move_swap_headon
+    bool enter  = false; // move_enter_queue (mods:M1BE): wait behind an entering friend of the same storage (enter_queue.h)
+    bool qflank = false; // move_queue_flank_guard (mp:U75): pick_nudge_tile takes a diagonal only with an open flank (queue_flank.h)
 };
 
 constexpr uint16_t NDG_ST_IDLE = 0x01, NDG_ST_MARSHAL = 0x0a, NDG_ST_HOP = 0x0c, NDG_ST_WALK = 0x0f, NDG_ST_STEP_ADJACENT = 0x36;
@@ -101,7 +103,7 @@ inline int next_leg(W &w, const unit_t &u, uint32_t player, int *cursor_out) {
 // ---- 3e-1: where does the idle blocker go --------------------------------------------------------------------------------
 template <class W>
 inline bool pick_nudge_tile(W &w, const unit_t &b, int leg, uint32_t sx, uint32_t sy, uint32_t mask_x, uint32_t mask_y, uint32_t *ox, uint32_t *oy,
-                            bool *straight = nullptr) {
+                            bool *straight = nullptr, bool qflank = false) {
     static const int ks[7] = {2, -2, 1, -1, 3, -3, 0}; // perpendicular, then the diagonals, then (last resort) straight ahead
     int              best  = 1000;
     if (straight) *straight = false;
@@ -113,6 +115,12 @@ inline bool pick_nudge_tile(W &w, const unit_t &b, int leg, uint32_t sx, uint32_
         const uint32_t nx = (b.x + static_cast<uint32_t>(dx)) & mask_x, ny = (b.y + static_cast<uint32_t>(dy)) & mask_y;
         if (nx == sx && ny == sy) continue;
         if (w.pass(nx, ny) == 0 || w.tile(nx, ny).building != 0) continue; // step_adjacent's own test: passable and unoccupied
+        if (qflank && dx != 0 && dy != 0) {                                // mp:U75: a diagonal between two blocked flanks is a corner cut the planner forbids
+            const uint32_t fx = (b.x + static_cast<uint32_t>(dx)) & mask_x, fy = (b.y + static_cast<uint32_t>(dy)) & mask_y;
+            if (!mh::sim::move::qf_step_ok(true, dx, dy, mh::sim::move::qf_tile_open(w.pass(fx, b.y), w.tile(fx, b.y).class_owner),
+                                           mh::sim::move::qf_tile_open(w.pass(b.x, fy), w.tile(b.x, fy).class_owner)))
+                continue;
+        }
         const int score = turn_notches(b.facing_target, h) + (ks[i] == 0 ? 30 : 0);
         if (score < best) {
             best = score;
@@ -314,7 +322,7 @@ inline int nd_decide(W &w, const nudge_keys &k, uint32_t sx, uint32_t sy, uint32
         if (B->state == NDG_ST_IDLE && cb->default_op_code == NDG_ST_IDLE && B->order_queued == 0 && B->move_microstep >= NDG_MS_SETTLED) {
             uint32_t nx, ny;
             bool     straight = false;
-            if (pick_nudge_tile(w, *B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight)) {
+            if (pick_nudge_tile(w, *B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight, k.qflank)) {
                 // only straight ahead is free (a one-tile corridor): pushing the friend ahead of us tile after tile is worse than trading
                 // tiles with it, as the marshal site does (3e-4); the push stays as the fallback when the trade cannot be set up
                 if (straight && A->move_microstep >= NDG_MS_SETTLED && A->order_queued == 0 && nd_trade(w, *A, ai, *B, bi, ap, hA, cursA)) {
@@ -430,7 +438,7 @@ inline bool mk_decide(W &w, const nudge_keys &k, uint32_t player, uint32_t idx) 
         if (k.nudge && B->state == NDG_ST_IDLE && cb->default_op_code == NDG_ST_IDLE && B->order_queued == 0) {
             uint32_t nx, ny;
             bool     straight = false;
-            if (pick_nudge_tile(w, *B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight) && !straight) {
+            if (pick_nudge_tile(w, *B, hA, sx, sy, mask_x, mask_y, &nx, &ny, &straight, k.qflank) && !straight) {
                 B->goal_x = static_cast<uint8_t>(nx);
                 B->goal_y = static_cast<uint8_t>(ny);
                 B->state  = NDG_ST_STEP_ADJACENT;

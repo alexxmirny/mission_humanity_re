@@ -327,7 +327,7 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
             // this handler, so the twin carries the keys). All keys off = the retail block below, byte for byte.
             const move_fixes     &mf               = move_fix();
             int32_t               detour_requested = -1;
-            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon, mf.enter_queue};
+            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon, mf.enter_queue, mf.queue_flank_guard};
             if (nk.nudge || nk.claim || nk.swap || nk.enter) {
                 mvc::libmh_world<unit_state_move_walker_calls> mw{v, own, c};
                 detour_requested = mvc::nd_decide(mw, nk, old_x, old_y, new_x, new_y); // -1 = run the retail check

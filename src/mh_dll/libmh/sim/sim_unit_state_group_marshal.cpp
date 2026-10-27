@@ -217,7 +217,7 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
             }
 
             const move_fixes     &mf = move_fix();
-            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon};
+            const mvc::nudge_keys nk{mf.nudge_idle, mf.claim_leader, mf.swap_headon, false, mf.queue_flank_guard};
             const bool            nudging = nk.nudge || nk.swap; // the marshal sites ask for these two keys only
 
             if (member.path_slot_id == 0xffu) {

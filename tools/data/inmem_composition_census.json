@@ -656,7 +656,7 @@
       "fn": "llm_rand"
     }
   ],
-  "dll_patch_extents": 161,
+  "dll_patch_extents": 162,
   "dll_patches_dynamic_unchecked": [
     "interlock_selftest_fake_entry",
     "hostapi_selftest_unbound_hook_table",

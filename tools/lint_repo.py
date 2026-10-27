@@ -1627,6 +1627,10 @@ def declare_checks(args):
         [sys.executable, os.path.join(REPO, "tools", "check_u49_undock.py"), "--selftest"],
     )
     check(
+        "mp:U75 queue flank guard -- the negative cases still fire (check_u75_queue_flank --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u75_queue_flank.py"), "--selftest"],
+    )
+    check(
         "patching:PT-FIX3 air order deadlock -- the negative cases still fire (check_pt3_air_order --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_pt3_air_order.py"), "--selftest"],
     )

@@ -766,6 +766,7 @@ void                set_fixes(const reimpl_fixes &f) {
         mf.stream_heat_margin        = f.move_stream_heat_margin;
         mf.enter_queue               = f.move_enter_queue;
         mf.storage_door_hold         = f.storage_door_hold;
+        mf.queue_flank_guard         = f.move_queue_flank_guard;
         mh::sim::set_move_fixes(mf);
     }
 }

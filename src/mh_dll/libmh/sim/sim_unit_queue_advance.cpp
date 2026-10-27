@@ -7,9 +7,12 @@
 //
 #include "sim/sim_unit_queue_advance.h"
 
-#include "addr/mh_calls.gen.h"  // mh::call::llm_strat_order_issue_0xf_adjacent_by_offset -- bound live below
-#include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
-#include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
+#include "addr/mh_calls.gen.h"    // mh::call::llm_strat_order_issue_0xf_adjacent_by_offset -- bound live below
+#include "sim/move/queue_flank.h" // mp:U75: move_queue_flank_guard
+#include "sim/move/twin_hit_c.h"  // mp:U75: the twin hit counter
+#include "sim/sim_move_fixes.h"   // mp:U75: the key (mh::sim::move_fix())
+#include "ai/ai_state.h"          // ai_say / trace_budget -- the shared trace sink, not AI state
+#include "addr/mh_rebind.gen.h"   // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
 
 namespace mh::sim {
@@ -35,11 +38,24 @@ inline uint32_t pack_tile(uint8_t x, uint8_t y) {
     return (static_cast<uint32_t>(x) << 8) | static_cast<uint32_t>(y);
 }
 
+// mp:U75: the flank rule for the step `dir` from (x, y): a diagonal needs one open flank tile (sim/move/queue_flank.h).
+inline bool flank_ok(const sim_view &v, bool guard, uint8_t x, uint8_t y, int32_t dir) {
+    const int32_t dx = static_cast<int8_t>(v.unitq_neighbor_dx[dir]), dy = static_cast<int8_t>(v.unitq_neighbor_dy[dir]);
+    if (!guard || dx == 0 || dy == 0) return true;
+    const uint32_t fx = pack_tile(static_cast<uint8_t>((x + dx) & *v.width_m), y);
+    const uint32_t fy = pack_tile(x, static_cast<uint8_t>((y + dy) & *v.height_m));
+    const bool     ok = mh::sim::move::qf_step_ok(guard, dx, dy, mh::sim::move::qf_tile_open(v.passable[fx], v.tile_objects[fx].class_owner),
+                                                  mh::sim::move::qf_tile_open(v.passable[fy], v.tile_objects[fy].class_owner));
+    if (!ok) mh::sim::mvc::twin_hit(mh::sim::mvc::TS_QF);
+    return ok;
+}
+
 int32_t unit_queue_advance_search(const sim_view &v, sim_store &own, uint32_t player,
                                   uint32_t unit_index, const unit_queue_advance_search_calls &c) {
-    own.unitq_cur_tile_mut()       = 0; // 0x004d7f4e
-    own.unitq_frontier_count_mut() = 0; // 0x004d7f58
-    own.unitq_closed_count_mut()   = 0; // 0x004d7f62
+    const bool guard               = mh::sim::move_fix().queue_flank_guard; // mp:U75
+    own.unitq_cur_tile_mut()       = 0;                                     // 0x004d7f4e
+    own.unitq_frontier_count_mut() = 0;                                     // 0x004d7f58
+    own.unitq_closed_count_mut()   = 0;                                     // 0x004d7f62
 
     uint32_t cur_unit = unit_index; // EBX across outer-loop iterations
 
@@ -62,6 +78,9 @@ int32_t unit_queue_advance_search(const sim_view &v, sim_store &own, uint32_t pl
             const uint32_t cur_tile  = pack_tile(nx, ny);
             own.unitq_cur_tile_mut() = cur_tile; // 0x004d7fe1
 
+            if (!flank_ok(v, guard, stage_x, stage_y, dir)) {
+                continue; // mp:U75: a diagonal between two blocked flanks
+            }
             if (v.passable[cur_tile] != 0 && v.passable[cur_tile] != 5 &&
                 v.tile_objects[cur_tile].class_owner == 0) {
                 own.unitq_frontier_at(stage_idx).dir = static_cast<uint16_t>(dir); // 0x004d8008
@@ -87,6 +106,9 @@ int32_t unit_queue_advance_search(const sim_view &v, sim_store &own, uint32_t pl
 
             if (static_cast<uint32_t>(v.tile_objects[cur_tile].class_owner) != (player | 0x80u)) {
                 continue; // LAB_004d8108: INC ESI
+            }
+            if (!flank_ok(v, guard, stage_x, stage_y, dir)) {
+                continue; // mp:U75: a diagonal between two blocked flanks
             }
 
             // already committed in FRONTIER? (0x004d8077-0x004d8096, via the real
@@ -116,6 +138,10 @@ int32_t unit_queue_advance_search(const sim_view &v, sim_store &own, uint32_t pl
                 continue; // LAB_004d8108
             }
 
+            if (!mh::sim::move::qf_may_descend(guard, stage_idx, own.unitq_closed_count_mut())) {
+                mh::sim::mvc::twin_hit(mh::sim::mvc::TS_QF);
+                continue; // mp:U75: the search would index past FRONTIER[127] / CLOSED[1023]
+            }
             // new node -- commit the staged entry and descend (0x004d80d7-0x004d8103).
             own.unitq_frontier_at(stage_idx).dir = static_cast<uint16_t>(dir);
             own.unitq_frontier_count_mut()       = stage_idx + 1;

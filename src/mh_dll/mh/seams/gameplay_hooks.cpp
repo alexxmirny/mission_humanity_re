@@ -198,6 +198,13 @@ static const hook_row k_hooks[] = {
          fx.move_formation_click = n <= 0 ? 0 : (n > 3 ? 3 : n);
          mh_set_move_formation_click(n);
      }},
+    // mp:U75: the unit-queue shuffle (a storage exit that makes room) and the idle nudge take a diagonal step only past an open flank tile, as the
+    // route planner does; the shuffle search cannot index past its arrays. Default: on with improved_movement; 0 = retail.
+    {"net", "move_queue_flank_guard", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
+         const int on              = mv(v, 1, 0);
+         fx.move_queue_flank_guard = on != 0;
+         mh_set_move_queue_flank_guard(on);
+     }},
     // mods:M1WL v2: stream heat (sim/move/stream_heat.h). 0 retail; 1 = a lone unit of a stream prices the tiles its groupmates are about to walk.
     {"net", "move_stream_heat", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) {
          const int on        = mv(v, 1, 0);

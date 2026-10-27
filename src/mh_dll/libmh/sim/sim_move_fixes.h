@@ -58,6 +58,7 @@ struct move_fixes {
     bool claim_leader          = false; // move_claim_leader
     bool swap_headon           = false; // move_swap_headon
     // improved_movement: storage doors (mods:M1BE)
+    bool queue_flank_guard = false; // move_queue_flank_guard (mp:U75): the unit-queue shuffle and the idle nudge take a diagonal step only with an open flank tile; the shuffle search is depth-capped (sim/move/queue_flank.h)
     bool storage_door_hold = false; // storage_door_hold: an open storage door stays open while an entering friend is within 2 tiles (sim/move/enter_queue.h)
     // improved_movement: responsiveness (mods:M1G 4c)
     bool reverse_now = false; // move_reverse_now: slide back at once when a new goal lies behind

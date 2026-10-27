@@ -4238,8 +4238,8 @@ tests:
   # The m1h_mp_moving* rows build five nd cases on both peers of a fresh 2-peer match: shipped, libmh, and the MIXED pair (host shipped, client libmh).
   # They replaced the six m1n_* rows (asserts folded: tools/check_m1h.py header).
   - name: m1h_ship
-    budget_s: 290
-    budget_evidence: "165 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 138 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 195 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s.; mods:M1SH two steps (f21s, f21sn: 11 s each solo, +22 s): 267 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s"
+    budget_s: 335
+    budget_evidence: "165 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 138 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 195 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s.; mods:M1SH two steps (f21s, f21sn: 11 s each solo, +22 s): 267 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s; mp:U75 two steps (u75_ship, u75_ship_off: 17 s each solo, 2026-10-27) +34 s x1.3 = +45 s"
     long_why: "twenty-five single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
@@ -4424,7 +4424,19 @@ tests:
         net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;route_corridor_mode=2;move_formation_click=0
         omit_satellite: [libmh.dll]
         post_check: [tools/check_m1h.py, --case, f10, --arm, 'ship']
-
+      - name: u75_ship
+        script: u75_qf.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=4;nd_door_at=1500;nd_player=0;nd_fcn=40;nd_tail=6000;qf_r=4;qf_tail=6500;stop_step=14000
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_u75_queue_flank.py, --arm, 'ship']
+      - name: u75_ship_off
+        script: u75_qf.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=4;nd_door_at=1500;nd_player=0;nd_fcn=40;nd_tail=6000;qf_r=4;qf_tail=6500;stop_step=14000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_queue_flank_guard=0
+        omit_satellite: [libmh.dll]
+        post_check: [tools/check_u75_queue_flank.py, --arm, 'ship_off']
   - name: m1h_orig
     budget_s: 275
     budget_evidence: "177 s for the 19 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 139 s for 16) x1.3; cause C fixture F17 +8 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +20 s: measured 196 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."
@@ -4618,8 +4630,8 @@ tests:
         post_check: [tools/check_m1h.py, --case, f10, --arm, 'orig']
 
   - name: m1h_lib
-    budget_s: 440
-    budget_evidence: "268 s for the 19 steps with libmh bound on a quiet machine (2026-10-19, F14-F16 joined; it was 227 s for 16) x1.3; libmh makes each step 2-3x slower than m1h_ship; cause C fixture F17 +10 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +25 s: measured 293 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +20 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +20 s.; mods:M1SH one step (f21s: 26 s solo): 358 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s"
+    budget_s: 565
+    budget_evidence: "268 s for the 19 steps with libmh bound on a quiet machine (2026-10-19, F14-F16 joined; it was 227 s for 16) x1.3; libmh makes each step 2-3x slower than m1h_ship; cause C fixture F17 +10 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +25 s: measured 293 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +20 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +20 s.; mods:M1SH one step (f21s: 26 s solo): 358 s for the whole row measured 2026-10-24 with two rows in parallel, budget +30 s; mp:U75 two steps (u75_lib, u75_lib_off: 48 and 47 s solo, 2026-10-27) +95 s x1.3 = +125 s"
     long_why: "twenty-four single-process steps, each replaying a recorded or scripted movement case to its end"
     kind: solo
     net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1
@@ -4766,7 +4778,17 @@ tests:
         harness_extra: pf_at=300;pf_player=0;pf_n=8;pf_pick=2;pf_reveal=1;pf_deferred=1;pf_spread=3;pf_tail=1500;pf_sample=100;stop_step=3700
         net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;route_corridor_mode=2;move_formation_click=0
         post_check: [tools/check_m1h.py, --case, f10, --arm, 'lib']
-
+      - name: u75_lib
+        script: u75_qf.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=4;nd_door_at=1500;nd_player=0;nd_fcn=40;nd_tail=6000;qf_r=4;qf_tail=6500;stop_step=14000
+        post_check: [tools/check_u75_queue_flank.py, --arm, 'lib']
+      - name: u75_lib_off
+        script: u75_qf.txt
+        deploy_save: 5-kofu-c
+        harness_extra: nd_door=4;nd_door_at=1500;nd_player=0;nd_fcn=40;nd_tail=6000;qf_r=4;qf_tail=6500;stop_step=14000
+        net_extra: sim_step_ms=20;turret_reload_realtime_fix=1;turret_fire_rate_mult=2;turret_clip_fix=0;turret_fire_poll_fix=1;mother_free_build=1;mother_free_build_ai=0;improved_movement=1;group_movement=1;improved_combat=1;move_queue_flank_guard=0
+        post_check: [tools/check_u75_queue_flank.py, --arm, 'lib_off']
   - name: m1h_off
     budget_s: 215
     budget_evidence: "134 s for the 16 steps on a quiet machine (2026-10-19, F14-F16 joined; it was 110 s for 13) x1.3; cause C fixture F17 +7 s measured 2026-10-19 (machine loaded by other agents), budget +15 s; M1G 4b v3 two steps (F18, F19) +15 s: measured 149 s with eight rows running in parallel (2026-10-19) 0.2.1 hotfix fixture F20 (f20_fc_thin_wall) +10 s: one more single-process step, 7-8 s measured on a quiet machine (2026-10-20), budget +10 s."

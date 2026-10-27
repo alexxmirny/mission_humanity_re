@@ -770,6 +770,11 @@
       "why": "mp:U49: the u49_undock_double / u49_undock_double_retail UI scenarios' cross-peer post_check -- reads the harness fixture's `; U49` probe lines (two 0x20 undock orders 7 steps apart for one docked soldier, then a MOVE): with `[net] undock_reentry_fix=1` the unit walks out, the door mutex returns to 0 and the move is consumed; with =0 (retail dispatch) it sits in EXIT_WAIT holding the door itself and the move is never consumed",
       "evidence": "invoked by tools/test_ui.py's u49_* TESTS entries (post_check, post_check_peers) and tools/lint_repo.py (--selftest)"
     },
+    "check_u75_queue_flank.py": {
+      "class": "keep",
+      "why": "mp:U75: the m1h_ship / m1h_lib u75_* steps' post_check -- reads the harness garage-exit fixture's `; QF` lines (terrain window, every soldier tile change): with `[net] move_queue_flank_guard=1` the storage-exit shuffle makes 0 corner cuts (diagonal step between two blocked tiles) and seals no soldier in a notch; with =0 (retail) it cuts corners, which proves the on arms are green for the right reason; libmh arm also demands the same move stream as the retail splice",
+      "evidence": "invoked by tools/test_ui.py's m1h_ship / m1h_lib u75_* solo steps (post_check) and --selftest"
+    },
     "classify_reg_preservation.py": {
       "class": "archive",
       "why": "Ghidra per-function register-preservation classifier",

@@ -86,6 +86,7 @@
 #include "desync/replay_record.h"   // replay_rec::current_step: the sim step of a plan, for the snapshot
 #include "seams/move_carrier.h"     // mods:M1H: site states, requested values, stub hit counters
 #include "sim/move/nudge.h"         // mods:M1H lane C: the decision (3e-1..3e-4), shared with the libmh twin
+#include "sim/move/queue_flank.h"   // mp:U75: the flank rule + depth cap of move_queue_flank_guard, shared with the libmh twins
 #include "sim/move/route_through.h" // mods:M1H lane B: move_route_through_idle's rule (rt_unmask / rt_restore), shared with the libmh twin
 #include "sim/move/stream_heat.h"   // mods:M1WL v2: move_stream_heat's rule (sh_open / sh_close), shared with the libmh twin
 #include "sim/move/blocked.h"       // mods:M1DT: blocker_info for the walker block site (move_proto_blocked.cpp)
@@ -137,6 +138,7 @@ int g_rt_state  = 0; // the route-planner splice: same codes as g_nd_state
 int g_mk2_state = 0;
 int g_mk_state  = 0; // the marshal splice: same codes as g_nd_state
 int g_nd_state  = 0; // 1 carried, -1 MISMATCHED, -2 DISPLACED, 0 not installed
+int g_qf_state  = 0; // the queue-advance search splice (mp:U75): same codes
 
 const char *nd_state_name(int s) {
     return s == 1 ? "carried" : (s == -1 ? "the splice MISMATCHED" : (s == -2 ? "DISPLACED (libmh owns move_walker; its twin carries the keys, see the carrier line)" : "not installed"));
@@ -220,6 +222,8 @@ extern "C" {
 int                             g_nd_nudge   = 0;             // [net] move_nudge_idle in force
 int                             g_nd_claim   = 0;             // [net] move_claim_leader in force
 int                             g_nd_swap    = 0;             // [net] move_swap_headon in force
+int                             g_qf_req     = 0;             // [net] move_queue_flank_guard in force (mp:U75; the stub tests it, the nudge decisions pass it on)
+uintptr_t                       g_qf_ret     = 0x004d7f42;    // qf_stub: the first instruction after the displaced prologue
 int                             g_eq_on      = 0;             // [net] move_enter_queue in force (mods:M1BE; also read by move_proto_blocked.cpp)
 uintptr_t                       g_nd_orig_fn = FN_STEP_CHECK; // the stub's tail-jump target
 uintptr_t                       g_mk_ret     = ADDR_MK_RET;   // mk_stub: continue the retail clock-bump branch
@@ -247,7 +251,7 @@ int mv_fc_run(int32_t group_id, uint32_t mode, uint32_t target, const void *undo
 static int __cdecl nd_decide(uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy) {
     if (!(g_nd_nudge | g_nd_claim | g_nd_swap | g_eq_on)) return -1;
     splice_world w;
-    return mh::sim::mvc::nd_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0, g_eq_on != 0}, sx, sy, dx, dy);
+    return mh::sim::mvc::nd_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0, g_eq_on != 0, g_qf_req != 0}, sx, sy, dx, dy);
 }
 
 // clang-format off
@@ -290,7 +294,7 @@ __declspec(naked) static void nd_stub() {
 static int __cdecl mk_decide(uint32_t player, uint32_t idx) {
     if (!(g_nd_nudge | g_nd_swap)) return 0;
     splice_world w;
-    return mh::sim::mvc::mk_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0}, player, idx) ? 1 : 0;
+    return mh::sim::mvc::mk_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0, false, g_qf_req != 0}, player, idx) ? 1 : 0;
 }
 
 // clang-format off
@@ -617,6 +621,186 @@ __declspec(naked) static void rt_stub() {
 }
 // clang-format on
 
+// ---- mp:U75: [net] move_queue_flank_guard -- the unit-queue shuffle search --------------------------------------------------------
+// llm_strat_unit_queue_advance_search (0x004d7f3a, __watcall EAX = player, EDX = unit index, returns the chain length in EAX; ~0x26c bytes,
+// one callee, llm_strat_order_issue_0xf_adjacent_by_offset) is the "make room" shuffle a storage exit runs when a friendly idle unit stands on
+// the exit tile. It is a DFS through the crowd that takes the first neighbour tile (8 directions, diagonals included) that is passable and
+// unoccupied and then orders every unit of the chain one step. It tests only the destination tile, so a diagonal step between two wall tiles
+// cuts a cliff corner (the route planner forbids it) and can seal a unit in a one-tile notch. Report 01M5WMNKXS2Q0PN3AJWWP5F48Q.
+//
+// THE SPLICE. The function's first 8 bytes (PUSH EBP / MOV EBP,ESP / PUSH 0x1c) become JMP qf_stub + 3 NOPs. Key off: the stub runs the three
+// displaced instructions and continues at 0x004d7f42, so the retail body runs byte for byte (nothing about the original's writes changes).
+// Key on: the stub calls qf_search, a transcription of the libmh twin (sim_unit_queue_advance.cpp) with the flank rule and the depth cap; it
+// makes the SAME writes to the hashed _G_LLM_UNITQ_* globals, in the same order, so a libmh peer and a plain peer hash the same.
+//
+// RULE (sim/move/queue_flank.h). A diagonal direction is taken, in both neighbour loops, only if at least one orthogonal flank tile is OPEN
+// (passable != 0 or holds a unit). If nothing legal exists the search returns 0 and the exiting unit waits. The descent is capped at the typed
+// extent of _G_LLM_UNITQ_FRONTIER (128; the real extent is unproven) and _G_LLM_UNITQ_CLOSED (1024).
+constexpr uintptr_t ADDR_QF_SITE = 0x004d7f3a;
+const uint8_t       QF_EXPECT[8] = {0x55, 0x89, 0xE5, 0x68, 0x1C, 0x00, 0x00, 0x00};
+
+struct qf_node {
+    uint32_t tile; // x << 8 | y
+    uint16_t dir;
+    uint16_t unit;
+};
+
+static int __cdecl qf_search(uint32_t player, uint32_t unit_index) {
+    const auto        &live     = mh::state::live();
+    volatile uint32_t *cur_tile = reinterpret_cast<volatile uint32_t *>(live.base[mh::state::RID_UNITQ_CUR_TILE]);
+    volatile int32_t  *fcount   = reinterpret_cast<volatile int32_t *>(live.base[mh::state::RID_UNITQ_FRONTIER_COUNT]);
+    volatile int32_t  *ccount   = reinterpret_cast<volatile int32_t *>(live.base[mh::state::RID_UNITQ_CLOSED_COUNT]);
+    volatile int32_t  *iter     = reinterpret_cast<volatile int32_t *>(live.base[mh::state::RID_UNITQ_ITER]);
+    qf_node           *frontier = reinterpret_cast<qf_node *>(live.base[mh::state::RID_UNITQ_FRONTIER]);
+    qf_node           *closed   = reinterpret_cast<qf_node *>(live.base[mh::state::RID_UNITQ_CLOSED]);
+    const int32_t     *ndx      = reinterpret_cast<const int32_t *>(live.base[mh::state::RID_UNITQ_NEIGHBOR_DX]);
+    const int32_t     *ndy      = reinterpret_cast<const int32_t *>(live.base[mh::state::RID_UNITQ_NEIGHBOR_DY]);
+    const uint32_t     wm       = *reinterpret_cast<const uint8_t *>(live.base[mh::state::RID_WIDTH_M]);
+    const uint32_t     hm       = *reinterpret_cast<const uint8_t *>(live.base[mh::state::RID_HEIGHT_M]);
+    const bool         guard    = true; // the stub only calls with the key on
+
+    *cur_tile         = 0;
+    *fcount           = 0;
+    *ccount           = 0;
+    uint32_t cur_unit = unit_index;
+
+    for (;;) {
+        const int32_t stage_idx = *fcount;
+        if (stage_idx < 0 || stage_idx >= mh::sim::move::QF_FRONTIER_NODES) break; // cannot happen (the descent is capped); never write past the array
+        const mh_map_object_unit *su = unit_rec(player, static_cast<int32_t>(cur_unit));
+        if (!su) break; // an unreadable unit: end the search with what is committed
+        const uint8_t sx = su->x, sy = su->y;
+        frontier[stage_idx].tile = (static_cast<uint32_t>(sx) << 8) | sy;
+        frontier[stage_idx].unit = static_cast<uint16_t>(cur_unit);
+
+        // the flank rule for direction d from (sx, sy)
+        auto dir_ok = [&](int32_t d) {
+            const int dx = static_cast<int8_t>(ndx[d]), dy = static_cast<int8_t>(ndy[d]);
+            if (dx == 0 || dy == 0) return true;
+            const uint32_t fx = (sx + static_cast<uint32_t>(dx)) & wm, fy = (sy + static_cast<uint32_t>(dy)) & hm;
+            const bool     ox = mh::sim::move::qf_tile_open(*pass_of(fx, sy), tile_of(fx, sy)->class_owner);
+            const bool     oy = mh::sim::move::qf_tile_open(*pass_of(sx, fy), tile_of(sx, fy)->class_owner);
+            const bool     ok = mh::sim::move::qf_step_ok(guard, dx, dy, ox, oy);
+            if (!ok) mv_hit(MVH_QF);
+            return ok;
+        };
+
+        bool found_free = false;
+        for (int32_t d = 0; d < 8; ++d) {
+            const uint32_t nx = (sx + static_cast<uint32_t>(static_cast<int8_t>(ndx[d]))) & wm & 0xffu;
+            const uint32_t ny = (sy + static_cast<uint32_t>(static_cast<int8_t>(ndy[d]))) & hm & 0xffu;
+            *cur_tile         = (nx << 8) | ny;
+            if (!dir_ok(d)) continue;
+            const uint8_t p = *pass_of(nx, ny);
+            if (p != 0 && p != 5 && tile_of(nx, ny)->class_owner == 0) {
+                frontier[stage_idx].dir = static_cast<uint16_t>(d);
+                *fcount                 = stage_idx + 1;
+                found_free              = true;
+                break;
+            }
+        }
+        if (found_free) break;
+
+        bool descended = false;
+        for (int32_t d = 0; d < 8; ++d) {
+            const uint32_t nx = (sx + static_cast<uint32_t>(static_cast<int8_t>(ndx[d]))) & wm & 0xffu;
+            const uint32_t ny = (sy + static_cast<uint32_t>(static_cast<int8_t>(ndy[d]))) & hm & 0xffu;
+            const uint32_t t  = (nx << 8) | ny;
+            *cur_tile         = t;
+            if (static_cast<uint32_t>(tile_of(nx, ny)->class_owner) != (player | 0x80u)) continue;
+            if (!dir_ok(d)) continue;
+            bool seen = false;
+            *iter     = 0;
+            while (*iter < *fcount) {
+                if (frontier[*iter].tile == t) {
+                    seen = true;
+                    break;
+                }
+                *iter = *iter + 1;
+            }
+            if (!seen) {
+                *iter = 0;
+                while (*iter < *ccount) {
+                    if (closed[*iter].tile == t) {
+                        seen = true;
+                        break;
+                    }
+                    *iter = *iter + 1;
+                }
+            }
+            if (seen) continue;
+            if (!mh::sim::move::qf_may_descend(guard, stage_idx, *ccount)) {
+                mv_hit(MVH_QF);
+                continue;
+            }
+            frontier[stage_idx].dir = static_cast<uint16_t>(d);
+            *fcount                 = stage_idx + 1;
+            cur_unit                = tile_of(nx, ny)->building;
+            descended               = true;
+            break;
+        }
+        if (descended) continue;
+
+        if (*fcount == 0) break;
+        // dead end: the staged node goes to CLOSED, pop, resume from the parent
+        const int32_t closed_idx = *ccount;
+        if (closed_idx < 0 || closed_idx >= mh::sim::move::QF_CLOSED_NODES) {
+            *fcount = 0; // cannot happen (qf_may_descend keeps live + closed nodes within the array); never write past it
+            break;
+        }
+        closed[closed_idx] = frontier[stage_idx];
+        const int32_t nf   = stage_idx - 1;
+        *fcount            = nf;
+        cur_unit           = frontier[nf].unit;
+        *ccount            = closed_idx + 1;
+    }
+
+    const int32_t n = *fcount;
+    *iter           = 0;
+    while (*iter < n) {
+        const qf_node &f = frontier[*iter];
+        mh::call::llm_strat_order_issue_0xf_adjacent_by_offset(player, f.unit, ndx[f.dir & 7], ndy[f.dir & 7]);
+        *iter = *iter + 1;
+    }
+    return n;
+}
+
+// clang-format off
+__declspec(naked) static void qf_stub() {
+    __asm {
+        cmp   g_qf_req, 0
+        je    qf_retail
+        push  ecx                               // the original saves ECX (watcall callee-saved); the C++ body may clobber it
+        push  edx                               // unit index
+        push  eax                               // player
+        call  qf_search
+        add   esp, 8
+        pop   ecx
+        ret
+    qf_retail:
+        push  ebp                               // the three displaced instructions
+        mov   ebp, esp
+        push  0x1c
+        jmp   dword ptr [g_qf_ret]
+    }
+}
+// clang-format on
+
+static void install_queue_flank() {
+    if (mh::hook::promoted_owner_of(ADDR_QF_SITE)) {
+        g_qf_state = -2;
+    } else {
+        uint8_t       repl[8] = {0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90};
+        const int32_t rel     = static_cast<int32_t>(reinterpret_cast<uintptr_t>(&qf_stub) - (ADDR_QF_SITE + 5));
+        memcpy(repl + 1, &rel, sizeof(rel));
+        g_qf_state = mh::hook::patch_bytes_guarded(ADDR_QF_SITE, QF_EXPECT, repl, 8) ? 1 : -1;
+    }
+    char b[200];
+    wsprintfA(b, "; move prototype splice (mp:U75 queue-advance flank guard): %s\n", nd_state_name(g_qf_state));
+    seam_log(b);
+    mh::seams::mv::note_site(mh::seams::mv::SITE_QF, g_qf_state);
+}
+
 void install_move_proto_nudge() {
     if (mh::hook::promoted_owner_of(ADDR_ND_CALL)) {
         g_nd_state = -2;
@@ -661,6 +845,7 @@ void install_move_proto_nudge() {
     }
     wsprintfA(b, "; move prototype splice (mods:M1N route planner, idle friends are not walls): %s\n", nd_state_name(g_rt_state));
     seam_log(b);
+    install_queue_flank(); // mp:U75
     mh::seams::mv::note_site(mh::seams::mv::SITE_ND, g_nd_state);
     mh::seams::mv::note_site(mh::seams::mv::SITE_MK, g_mk_state);
     mh::seams::mv::note_site(mh::seams::mv::SITE_MK2, g_mk2_state);
@@ -679,6 +864,18 @@ int mh_set_move_nudge_idle(int on) {
     mh::seams::mv::request(mh::seams::mv::KEY_NUDGE_IDLE, on, 0);
     if (!on || g_nd_state != 1) return 0;
     g_nd_nudge = 1;
+    return 1;
+}
+
+// mp:U75: the shuffle search's flank guard + depth cap (the splice at 0x004d7f3a) and the same flank rule in the idle nudge's tile pick.
+// 1 = in force on at least one retail site (the libmh twin carries the rest; the carrier line says which).
+int mh_set_move_queue_flank_guard(int on) {
+    on       = on != 0;
+    g_qf_req = 0;
+    mh::seams::mv::request(mh::seams::mv::KEY_QUEUE_FLANK, on, 0);
+    if (!on) return 0;
+    if (g_qf_state != 1 && g_nd_state != 1) return 0;
+    g_qf_req = 1;
     return 1;
 }
 

@@ -36,12 +36,13 @@ enum twin_site : int { TS_BLOCKED,
                        TS_CAPOK,
                        TS_EQ, // mods:M1BE move_enter_queue: an entering unit waits behind an entering friend
                        TS_DH, // mods:M1BE storage_door_hold: the open door was kept open for an entering unit
+                       TS_QF, // mp:U75 move_queue_flank_guard: the shuffle search refused a corner-cutting diagonal or an over-deep descent
                        TS_COUNT };
 
 inline const char *twin_site_name(int s) {
     static const char *const names[TS_COUNT] = {"blocked", "nudge", "mk", "mk2", "speed_commit", "speed_walk", "arr_retry",
                                                 "arf_issue_repos", "arf_issue_alt", "arf_jit_repos", "arf_jit_alt", "arf_jit_walk", "arf_walk",
-                                                "arf_fire", "arf_reaim", "arf_step", "proj_facing", "reverse", "turn", "replan_cap", "enter_queue", "door_hold"};
+                                                "arf_fire", "arf_reaim", "arf_step", "proj_facing", "reverse", "turn", "replan_cap", "enter_queue", "door_hold", "queue_flank"};
     return (s >= 0 && s < TS_COUNT) ? names[s] : "?";
 }
 

@@ -68,6 +68,7 @@ constexpr int       R_ROUTE_LEG      = static_cast<int>(mh::rebind::ROW_llm_stra
 constexpr int       R_SLOT_DIST      = static_cast<int>(mh::rebind::ROW_llm_strat_slot_dist_to_ref);
 constexpr int       R_STEP_CHECK     = static_cast<int>(mh::rebind::ROW_llm_strat_path_step_check_and_request_detour);
 constexpr int       R_DETOUR         = static_cast<int>(mh::rebind::ROW_llm_strat_unit_path_detour);
+constexpr int       R_QUEUE_ADVANCE  = static_cast<int>(mh::rebind::ROW_llm_strat_unit_queue_advance);
 constexpr int       R_ORDER_DISPATCH = static_cast<int>(mh::rebind::ROW_llm_strat_order_queue_dispatch);
 constexpr uintptr_t F_SIM_STEP       = 0x0043f512; // llm_strat_sim_step: the dispatcher's only caller
 
@@ -130,6 +131,9 @@ const site_desc k_site[SITE_COUNT] = {
     /* SITE_DOOR_SHUTTLE_A */ {"door_shuttle_a", 0x00477f92, 0x00477d9e, {}, 0, MVH_DH, true, 0, true},
     /* SITE_DOOR_SHUTTLE_H */ {"door_shuttle_h", 0x00478353, 0x0047815f, {}, 0, MVH_DH, true, 0, true},
     /* SITE_DOOR_AIRFIELD */ {"door_airfield", 0x00477a4e, 0x00477881, {}, 0, MVH_DH, true, 0, true},
+    // mp:U75: the shuffle search is called from retail storage code (resolve_exit_blockage, enter) through llm_strat_unit_queue_advance (0x004dbf27, a JMP
+    // tail); the libmh bodies of those callers reach their own twin when the queue_advance row is armed, and this retail splice otherwise.
+    /* SITE_QF */ {"queue_flank", 0x004d7f3a, 0, {R_QUEUE_ADVANCE}, 1, MVH_QF, true, 0x004dbf27},
 };
 
 const char *const k_hit_name[MVH_COUNT] = {
@@ -170,6 +174,7 @@ const char *const k_hit_name[MVH_COUNT] = {
     "enter_queue",
     "door_hold",
     "stream_heat",
+    "queue_flank",
 };
 
 // ---- per-key description ---------------------------------------------------------------------------------------------------
@@ -221,6 +226,7 @@ const key_desc k_key[KEY_COUNT] = {
     /* KEY_ENTER_QUEUE */ {"move_enter_queue", "sim_unit_state_move_walker.cpp:unit_state_move_walker (the nudge site + the blocked block; sim/move/enter_queue.h)", {SITE_ND, SITE_BLOCKED}, 2},
     /* KEY_STORAGE_DOOR_HOLD */ {"storage_door_hold", "sim_bldg_anim_state_online.cpp:bldg_anim_state_soldiers_h / vehicles_h / barracks_garage_a / shuttle_a / shuttle_h / airfield_a (door_may_close)", {SITE_DOOR_SOLDIERS, SITE_DOOR_VEHICLES, SITE_DOOR_BARRACKS, SITE_DOOR_SHUTTLE_A, SITE_DOOR_SHUTTLE_H, SITE_DOOR_AIRFIELD}, 6},
     /* KEY_STREAM_HEAT */ {"move_stream_heat", "sim_group_move_order_commit.cpp:group_move_order_commit (commit_rt_open: sh_open; sim/move/stream_heat.h)", {SITE_SH}, 1},
+    /* KEY_QUEUE_FLANK */ {"move_queue_flank_guard", "sim_unit_queue_advance.cpp:unit_queue_advance_search + move/nudge.h:pick_nudge_tile (sim_unit_state_move_walker.cpp / sim_unit_state_group_marshal.cpp)", {SITE_QF, SITE_ND, SITE_MK, SITE_MK2}, 4},
 };
 
 // ---- live state ------------------------------------------------------------------------------------------------------------
