@@ -158,6 +158,10 @@
    "globs": ["docs/*.md"],
    "why": "The remaining 76 docs: the RE research record (subsystem findings, closures, inventories, plans, session-facing measurements). WITHHELD per the user's Q4 answer (2026-09-15: publish the recommended set minus dead-ends; this rule's recommendation was withhold). Flipped 2026-09-16 at F5E phase 2, after the code-side citations into these docs were re-authored (G5: 400 lines, one plain-language mechanism name per doc); individual promotion later is a one-glob move into docs-recommended-publish."},
 
+  {"id": "private-omp-harness", "disposition": "withhold",
+   "globs": [".omp/**"],
+   "why": "Private coding-assistant orchestration and configuration, like the withheld Claude harness. It is not game/runtime code or part of the published toolchain."},
+
   {"id": "private-research-layers", "disposition": "withhold",
    "globs": ["notes/**", "session_reports/**", "tasks/**", "tracker/**", ".claude/**", "report/**",
              "NOTES.md", "TASKS.md", "ROADMAP.md", "CLAUDE.md"],
@@ -204,7 +208,7 @@
    "why": "fork F5D: the CI workflow. It is written FOR the public tree -- it drives lint_repo.py --ci, which is the mode that exists because the private research layers will not be there. Kept as its own rule rather than folded into repo-config so the public tree's own gate is visible as a line in this ledger."},
 
   {"id": "public-doc-set", "disposition": "publish",
-   "globs": ["README.md", "INSTALL.md", "LICENSE", "THIRD_PARTY.md", "src/README.md"],
+   "globs": ["README.md", "INSTALL.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY.md", "src/README.md"],
    "why": "fork F5F: the public tree's own front door -- what the project is, how to build it, how to run each of the three configurations, the MIT grant on our code, and the third-party/retail-IP notices. Written FOR the public cut and citing only paths this ledger publishes. WHY src/README.md IS IN THIS ROW rather than left to source-tree (which would also match it, later): it is part of the same rewritten doc set, and it is the row's ANCHOR -- the four root files are not in the index until the cut stages them, and a rule matching zero tracked paths is a FAILURE by _falsifiability (2). Anchoring on a tracked member of the set keeps the rule honest and alive from the moment it is written. First-match-wins, so source-tree still covers everything else under src/."},
 
   {"id": "repo-config", "disposition": "publish",

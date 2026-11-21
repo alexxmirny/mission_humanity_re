@@ -1,0 +1,20 @@
+# TILESET1: enable the matching fixture, then load the sole existing save through the real menu.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+cursor 310 132
+cursor 310 132
+press 310 132
+release 310 132
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+mapsize 64
+simstep 100
+capture tileset_save_loaded_libmh
+simresume
+savegame tilesetreload
+log TILESET1 matching custom save loaded and resaved
+end

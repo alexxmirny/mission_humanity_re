@@ -97,8 +97,8 @@ enum dc_fn : int {
     DC_llm_unit_state_is_boarding,
     DC_llm_unit_status_bit_clear,
     DC_llm_unit_status_bit_set,
-    DC_llm_unit_transport_unload_docked,
-    DC_llm_unit_transport_unload_field,
+    DC_llm_unit_squad_split_docked,
+    DC_llm_unit_squad_split_field,
     DC_w_sprintf__vss,
     DC_COUNT,
 };
@@ -178,8 +178,8 @@ inline const char *dc_name(int fn) {
         "llm_unit_state_is_boarding",
         "llm_unit_status_bit_clear",
         "llm_unit_status_bit_set",
-        "llm_unit_transport_unload_docked",
-        "llm_unit_transport_unload_field",
+        "llm_unit_squad_split_docked",
+        "llm_unit_squad_split_field",
         "w_sprintf__vss",
     };
     return (fn >= 0 && fn < DC_COUNT) ? n[fn] : "?";
@@ -946,18 +946,18 @@ inline void dc_stub_llm_unit_status_bit_set(int32_t a0, int32_t a1, uint8_t a2) 
     e.a[2] = (long long)a2;
     dc().events.push_back(e);
 }
-inline void dc_stub_llm_unit_transport_unload_docked(uint32_t a0, uint32_t a1) {
+inline void dc_stub_llm_unit_squad_split_docked(uint32_t a0, uint32_t a1) {
     dc_event e{};
-    e.fn   = DC_llm_unit_transport_unload_docked;
+    e.fn   = DC_llm_unit_squad_split_docked;
     e.na   = 2;
     e.nd   = 0;
     e.a[0] = (long long)a0;
     e.a[1] = (long long)a1;
     dc().events.push_back(e);
 }
-inline void dc_stub_llm_unit_transport_unload_field(uint32_t a0, uint32_t a1) {
+inline void dc_stub_llm_unit_squad_split_field(uint32_t a0, uint32_t a1) {
     dc_event e{};
-    e.fn   = DC_llm_unit_transport_unload_field;
+    e.fn   = DC_llm_unit_squad_split_field;
     e.na   = 2;
     e.nd   = 0;
     e.a[0] = (long long)a0;
@@ -1055,8 +1055,8 @@ inline dispatch_calls recording_calls() {
         dc_stub_llm_unit_state_is_boarding,
         dc_stub_llm_unit_status_bit_clear,
         dc_stub_llm_unit_status_bit_set,
-        dc_stub_llm_unit_transport_unload_docked,
-        dc_stub_llm_unit_transport_unload_field,
+        dc_stub_llm_unit_squad_split_docked,
+        dc_stub_llm_unit_squad_split_field,
         dc_stub_w_sprintf__vss,
     };
     return c;

@@ -4,6 +4,7 @@
 // banner for the aliased-out-pointer preserved bug and the unbacked-enum literal derivation.
 //
 #include "sim/sim_unit_state_attack_building.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 #include "sim/move/twin_hit_c.h"            // mods:M1H: twin hit counters
 
@@ -42,6 +43,7 @@ void unit_state_attack_building(const sim_view &v, sim_store &own,
     // forward (unlike move_walker's mid-step gates); every tick either fires, re-plans, or does
     // nothing, and the budget is simply zeroed regardless.
     own.tick_budget() = 0.0;
+    if (!order_tasks_adapter::primary_access(v, own)) return;
 
     // 0x00484e3c-0x00484e76: are we facing the target yet?
     int32_t self_fine_x = 0, self_fine_y = 0;
@@ -65,6 +67,7 @@ void unit_state_attack_building(const sim_view &v, sim_store &own,
         u.target_ref   = 0;
         u.target_index = 0;
         c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+        order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
         return;
     }
 

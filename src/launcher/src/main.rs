@@ -39,6 +39,7 @@ mod launch;
 mod log;
 mod machine;
 mod migrate;
+mod mods;
 mod paths;
 mod procs;
 mod relay;
@@ -71,7 +72,7 @@ usage: mh_launcher [options]
                         relay from the accepted manifest is written into mh_net.ini +
                         mh_key.txt; the lobby is the game's own)
   --exit-after-launch   close the launcher once the game it started has exited
-  --view <name>         open on play | settings | report | about | diagnostics
+  --view <name>         open on play | mods | settings | report | about | diagnostics
                         (default: play; the old names status, launch and update open Play)
   --size <W>x<H>        initial window size in points (default 1280x720)
   --app-dir <path>      keep launcher state here instead of %LOCALAPPDATA%\\MissionHumanity

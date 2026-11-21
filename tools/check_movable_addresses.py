@@ -72,21 +72,22 @@ EXEMPT = {
 # edit at all.
 ROW = re.compile(
     r'\{"([^"]+)",\s*(?:MH_STOCK_BASE\()?0x[0-9a-fA-F]+u\)?,\s*(\d+)u,\s*(\d+)u,\s*OWN_\w+,'
-    r"\s*static_cast<uint8_t>\([^)]*\),\s*(true|false),\s*(true|false),\s*(true|false)\}"
+    r"\s*static_cast<uint8_t>\([^)]*\),\s*(true|false),\s*(true|false),\s*(true|false),\s*(true|false)\}"
 )
 USE = re.compile(r"mh::addr::([A-Za-z_][A-Za-z0-9_]*)")
 
 
-def movable_regions():
+def movable_regions(src=None):
     """The movable regions as (base, size, name), sorted by base, off the generated registry.
 
     Read from the HEADER rather than re-derived from tools/data/*.json on purpose: the header is the
     artefact the DLL compiles against, so this gate and the bind cannot disagree about which regions
     move. Mirrors mh_regions.gen.h's own `is_movable()`.
     """
-    src = open(HEADER, encoding="utf-8").read()
+    if src is None:
+        src = open(HEADER, encoding="utf-8").read()
     rows = [
-        (m.group(1), int(m.group(2)), int(m.group(3)), m.group(6) == "true")
+        (m.group(1), int(m.group(2)), int(m.group(3)), m.group(6) == "true", m.group(7) == "true")
         for m in ROW.finditer(src)
     ]
     if not rows:
@@ -112,8 +113,8 @@ def movable_regions():
     # predicates, one question.
     return sorted(
         (base[n], size, n)
-        for n, size, reach, reloc in rows
-        if reloc and reach and reach == size and n in base
+        for n, size, reach, reloc, native in rows
+        if not native and reloc and reach and reach == size and n in base
     )
 
 
@@ -254,6 +255,27 @@ def selftest():
         fails += 1
     else:
         print("ok: %d movable region(s) parsed out of the generated registry" % len(mv))
+
+    synthetic = "\n".join(
+        '{"%s", MH_STOCK_BASE(0x%08xu), 4u, 4u, OWN_WORLD, static_cast<uint8_t>(MF_HASH), true, false, %s, %s}'
+        % (name, base, reloc, native)
+        for name, base, reloc, native in (
+            ("stock", 4096, "true", "false"),
+            ("blocked", 8192, "false", "false"),
+            ("native", 0, "true", "true"),
+        )
+    )
+    if movable_regions(synthetic) != [(4096, 4, "stock")]:
+        print("SELFTEST FAIL: stock mobility/blocked/native distinction is wrong")
+        fails += 1
+    else:
+        print("ok: only relocatable stock regions admit original addresses")
+    try:
+        movable_regions('{"malformed", 0x0u}')
+        print("SELFTEST FAIL: malformed/empty rows passed")
+        fails += 1
+    except SystemExit:
+        print("ok: malformed/empty rows refuse rather than passing vacuously")
 
     # THE ARM WITH TEETH: a file ALREADY at its baseline may not gain one more use. Driven off a
     # SYNTHETIC pair rather than off whatever the tree happens to contain -- the baseline is empty now

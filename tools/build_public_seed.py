@@ -378,10 +378,10 @@ ATTR_GROUP_TEXT = {
 # --refresh` cannot repair it (plain --refresh is stat-only). Stating eol here makes it a property
 # of the REPOSITORY, so it holds for a fresh clone on a box nobody controls.""",
     "def": """\
-# The hand-derived module-definition files: LF blobs whose drift gate (gen_harness_contract --check
-# / gen_libmh_contract --check) compares rendered text against the checkout. Pinned per PATH, not
-# `*.def`, because libmh_std.def and proxy_exports.gen.def are CRLF blobs written that way by their
-# generators, and renormalising them would flip THEIR gates.""",
+# Hand-derived module and generated strategic binding definitions: LF blobs whose drift gates
+# compare rendered bytes against the checkout. Pinned per PATH, not `*.def`, because libmh_std.def
+# and proxy_exports.gen.def are CRLF blobs written by their generators; renormalising those
+# would flip their gates.""",
     "crlf": """\
 # -- Visual Studio project files: CRLF, because VS writes them that way --
 #
@@ -425,6 +425,16 @@ GITATTRIBUTES_ROWS = [
     ),
     _keep(
         "src/mh_dll/libmh_dll/libmh.def       text eol=lf", "def", "Hand-derived, gate-compared."
+    ),
+    _keep(
+        "src/mh_dll/mh_common/include/mh_strategic_ini.gen.def text eol=lf",
+        "def",
+        "Generated strategic INI definitions, byte-compared by their drift gate.",
+    ),
+    _keep(
+        "src/mh_dll/mh_common/include/mh_strategic_legacy.gen.def text eol=lf",
+        "def",
+        "Generated strategic legacy definitions, byte-compared by their drift gate.",
     ),
     _keep("*.vcxproj text eol=crlf", "crlf", "12 published project files Visual Studio rewrites."),
     _keep("*.filters text eol=crlf", "crlf", "12 published filter files, same reason."),

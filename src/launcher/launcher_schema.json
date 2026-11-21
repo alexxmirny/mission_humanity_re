@@ -83,6 +83,12 @@
     "net.relay": {
       "hidden": true
     },
+    "mods.enabled": {
+      "hidden": true
+    },
+    "lang.locale": {
+      "hidden": true
+    },
     "video.fps_limit": {
       "min": 30,
       "max": 360,

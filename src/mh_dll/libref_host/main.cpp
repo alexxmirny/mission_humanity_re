@@ -72,11 +72,13 @@
 
 #include "addr/mh_regions.gen.h"
 #include "lockstep/turn_engine.h"
+#include "../mh_common/participant_boundary.h"
 #include "sim/libtrans/sim_lt_frame.h"
 #include "sim/rng_trace.h" // C-prime: the RNG draw-sequence trace
 #include "sim/sim_state.h"
 #include "orders/order_queue.h" // mh::orders::set_suppress_enqueue -- the replay arm's suppression
 #include "sim/sim_step.h"
+#include "mh_order_stream.h"
 #include "fp/x87.h"        // raw_x87_cw / raw_mxcsr -- the FPENV lines, symmetric with the harness
 #include "state/host_in.h" // mh::libmh_in::trap_count/last_trap -- the refusal counter
 // LIB-REF-LIVE: the importing host's view of the RECORDING's address space, for re-stamping carried
@@ -88,6 +90,11 @@
 #include "state/nav_trailer.h"
 #include "state/region_view.h"
 #include "state/world_snapshot.h"
+#include "mh_storage_policy.h"
+#include "state/storage_policy_runtime.h"
+#include "state/order_tasks_runtime.h"
+#include "state/region_runtime.h"
+#include "storage_policy_save_host.h"
 
 namespace {
 
@@ -172,10 +179,17 @@ constexpr int MAX_FILES = 16;
 FILE         *g_files[MAX_FILES];
 
 int32_t h_vfs_open(const char *path, int32_t mode) {
+    namespace storage      = mh::refhost::storage_save;
+    const bool save_output = storage::is_save_output(path);
+    if (mode == MH_VFS_WRITE && save_output && storage::planet_save_prepare() != 1) return 0;
     for (int i = 0; i < MAX_FILES; ++i) {
         if (g_files[i] != nullptr) continue;
-        FILE *f = std::fopen(path, mode == MH_VFS_WRITE ? "wb" : "rb");
+        FILE *f = std::fopen(path, mode == MH_VFS_WRITE ? (save_output ? "w+b" : "wb") : "rb");
         if (f == nullptr) return 0;
+        if (mode != MH_VFS_WRITE && !storage::preflight_open(f, path)) {
+            std::fclose(f);
+            return 0;
+        }
         g_files[i] = f;
         return i + 1;
     }
@@ -318,10 +332,6 @@ bool load_absent_list(const char *path) {
     }
     return true;
 }
-
-// The fixture's replay_contract flag, reproduced -- see the arming site in main() for why this host
-// carries it and why it was absent until 2026-09-11. Set from the command line before anything runs.
-bool g_suppress_enqueue = true;
 
 // ---- LIB-REF-LIVE: THE CARRIED-POINTER RE-STAMP ------------------------------------------------
 //
@@ -668,33 +678,75 @@ void *h_media_diag_block(void) {
 // entry to do, and it reads no device, which is the property that matters.
 void h_apply_frame_input(void) {}
 
+mh::participant_boundary::authority g_participant;
+mh::participant_boundary::view      participant_world(void *) {
+    using namespace mh::state;
+    if (!is_bound(RID_STRAT_GAME_CLOCK) || !is_bound(RID_STRAT_SIM_STEP_INTERVAL) ||
+        !is_bound(RID_GAME_SESSION_MODE) || !live_base(RID_STRAT_GAME_CLOCK) ||
+        !live_base(RID_STRAT_SIM_STEP_INTERVAL) || !live_base(RID_GAME_SESSION_MODE) ||
+        live_size(RID_STRAT_GAME_CLOCK) < sizeof(double) ||
+        live_size(RID_STRAT_SIM_STEP_INTERVAL) < sizeof(double) || live_size(RID_GAME_SESSION_MODE) < 1)
+        return {0, 0, false, false};
+    return {*ptr<const double>(RID_STRAT_GAME_CLOCK), *ptr<const double>(RID_STRAT_SIM_STEP_INTERVAL),
+                 *ptr<const uint8_t>(RID_GAME_SESSION_MODE) == 3, true};
+}
+uint64_t participant_body_boundary(uint32_t op, uint64_t argument) {
+    return g_participant.boundary(op, argument);
+}
+int32_t participant_removal_admit(const void *data, uint32_t size) {
+    using namespace mh::participant_boundary;
+    if (!data || size != sizeof(request)) return int32_t(admission::invalid);
+    request r;
+    std::memcpy(&r, data, sizeof(r));
+    return int32_t(g_participant.admit(r));
+}
+
 const libmh_host_api &sim_host_table() {
-    static const libmh_host_api api = {
-        h_apply_frame_input,
-        h_asset_read,
-        h_asset_size,
-        h_vfs_close,
-        h_vfs_open,
-        h_vfs_read,
-        h_vfs_seek,
-        h_vfs_tell,
-        h_vfs_write,
-        h_cfg_ReadMapFile,
-        h_map_ReadMap_pre,
-        h_map_load_regions,
-        h_map_save_regions,
-        h_planet_tlo_load,
-        h_save_player_data,
-        h_transport_recv,
-        h_transport_send,
-        h_ansi_to_wide,
-        h_ansi_to_wide_scratch,
-        h_wide_to_local,
-        h_wide_to_local_bytes,
-        h_ticks_ms,
-        h_fatal,
-        h_media_diag_block,
-    };
+    static const bool initialized = g_participant.initialize(participant_world, nullptr);
+    if (!initialized) h_fatal(3);
+    static const libmh_host_api api = [] {
+        libmh_host_api table{};
+        table.apply_frame_input           = h_apply_frame_input;
+        table.asset_read                  = h_asset_read;
+        table.asset_size                  = h_asset_size;
+        table.vfs_close                   = h_vfs_close;
+        table.vfs_open                    = h_vfs_open;
+        table.vfs_read                    = h_vfs_read;
+        table.vfs_seek                    = h_vfs_seek;
+        table.vfs_tell                    = h_vfs_tell;
+        table.vfs_write                   = h_vfs_write;
+        table.cfg_ReadMapFile             = h_cfg_ReadMapFile;
+        table.map_ReadMap_pre             = h_map_ReadMap_pre;
+        table.map_load_regions            = h_map_load_regions;
+        table.map_save_regions            = h_map_save_regions;
+        table.planet_tlo_load             = h_planet_tlo_load;
+        table.save_player_data            = h_save_player_data;
+        table.transport_recv              = h_transport_recv;
+        table.transport_send              = h_transport_send;
+        table.ansi_to_wide                = h_ansi_to_wide;
+        table.ansi_to_wide_scratch        = h_ansi_to_wide_scratch;
+        table.wide_to_local               = h_wide_to_local;
+        table.wide_to_local_bytes         = h_wide_to_local_bytes;
+        table.ticks_ms                    = h_ticks_ms;
+        table.fatal                       = h_fatal;
+        table.media_diag_block            = h_media_diag_block;
+        table.participant_body_boundary   = participant_body_boundary;
+        table.participant_removal_admit   = participant_removal_admit;
+        table.storage_policy              = libmh_storage_policy_invoke;
+        table.order_tasks                 = libmh_order_tasks_invoke;
+        table.storage_write_planet        = mh::refhost::storage_save::write_planet;
+        table.storage_preflight_planet    = mh::refhost::storage_save::preflight_planet;
+        table.storage_load_planet         = mh::refhost::storage_save::load_planet;
+        table.storage_begin_load          = mh::refhost::storage_save::begin_load;
+        table.storage_load_container      = mh::refhost::storage_save::load_container;
+        table.storage_preflight_container = mh::refhost::storage_save::preflight_container;
+        table.storage_finish_container    = mh::refhost::storage_save::finish_container;
+        table.storage_normalize_version   = mh::refhost::storage_save::normalize_version;
+        table.planet_save_prepare         = mh::refhost::storage_save::planet_save_prepare;
+        table.planet_load_extensions      = mh::refhost::storage_save::planet_load_extensions;
+        table.planet_save_restore         = mh::refhost::storage_save::planet_save_restore;
+        return table;
+    }();
     return api;
 }
 
@@ -810,22 +862,103 @@ int g_arena_poison = 0xCD;
 uint32_t g_arena_pad = 0;
 
 struct arena {
-    uint8_t *mem = nullptr;
-    size_t   len = 0;
-    int      n   = 0;
+    uint8_t *mem                              = nullptr;
+    size_t   len                              = 0;
+    int      n                                = 0;
+    uint32_t native_len[mh::state::RID_COUNT] = {};
 
-    static uint32_t extent_of(int rid) {
-        const uint32_t r = mh::state::reach_of(static_cast<mh::state::region_id>(rid));
+    // No binding exists yet, so runtime canonical lengths cannot answer this question. Validate
+    // the complete ordered world framing, then trust a native length ONLY after its pure codec
+    // validates every canonical record. No world block is applied during this preflight.
+    bool preflight(const void *world, size_t bytes, mh::storage_policy::dimensions &shape) {
+        namespace st = mh::state;
+        namespace w  = mh::state::world;
+        if (world == nullptr || bytes < sizeof(w::blob_header)) return false;
+        w::blob_header h;
+        std::memcpy(&h, world, sizeof(h));
+        if (std::memcmp(h.base.magic, w::MAGIC, sizeof(h.base.magic)) != 0 ||
+            h.base.format != w::FORMAT || h.base.schema != w::schema_fingerprint() ||
+            h.base.block_count != static_cast<uint32_t>(st::WORLD_SNAPSHOT_BLOCK_COUNT) ||
+            h.base.payload_len > bytes - sizeof(h))
+            return false;
+        const uint8_t                  *payload = static_cast<const uint8_t *>(world) + sizeof(h);
+        size_t                          off     = 0;
+        uint32_t                        width = 0, height = 0;
+        bool                            have_width = false, have_height = false, have_storage = false;
+        mh::order_tasks::state          tasks;
+        mh::order_tasks::campaign_state campaign;
+        for (int i = 0; i < st::WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+            const auto &b = st::WORLD_SNAPSHOT_BLOCKS[i];
+            if (uint64_t(off) + 8u > h.base.payload_len) return false;
+            uint32_t rid = 0, len = 0;
+            std::memcpy(&rid, payload + off, sizeof(rid));
+            std::memcpy(&len, payload + off + 4u, sizeof(len));
+            if (rid != static_cast<uint32_t>(b.rid) ||
+                uint64_t(off) + 8u + len > h.base.payload_len)
+                return false;
+            const uint8_t *src = payload + off + 8u;
+            if (st::REGIONS[b.rid].host_native) {
+                if (len < b.len) return false;
+                switch (b.rid) {
+                    case st::RID_STORAGE_POLICY: {
+                        mh::storage_policy::state incoming;
+                        if (!incoming.bind(const_cast<uint8_t *>(src), len)) return false;
+                        shape        = incoming.shape();
+                        have_storage = true;
+                        break;
+                    }
+                    case st::RID_ORDER_TASKS:
+                        if (!tasks.bind(const_cast<uint8_t *>(src), len)) return false;
+                        break;
+                    case st::RID_ORDER_CAMPAIGN:
+                        if (!campaign.bind(const_cast<uint8_t *>(src), len)) return false;
+                        break;
+                    default: return false;
+                }
+                native_len[b.rid] = len;
+            } else {
+                if (len != b.len) return false;
+                if (b.rid == st::RID_WIDTH) {
+                    std::memcpy(&width, src, sizeof(width));
+                    have_width = true;
+                } else if (b.rid == st::RID_HEIGHT) {
+                    std::memcpy(&height, src, sizeof(height));
+                    have_height = true;
+                }
+            }
+            off += 8u + len;
+        }
+        if (off != h.base.payload_len || !have_storage || !have_width || !have_height ||
+            !tasks.valid() || !campaign.valid()) return false;
+        const auto d   = tasks.shape();
+        const auto key = tasks.world();
+        return d.players == shape.players && d.units == shape.units && d.buildings == shape.buildings &&
+               d.width == shape.width && d.height == shape.height &&
+               (!shape.width || (shape.width == width && shape.height == height &&
+                                 campaign.world_inc(key.planet) == key.incarnation));
+    }
+
+    uint32_t extent_of(int rid) const {
+        const auto id = static_cast<mh::state::region_id>(rid);
+        if (mh::state::REGIONS[id].host_native) return native_len[id];
+        const uint32_t r = mh::state::reach_of(id);
         if (rid == static_cast<int>(mh::state::RID_STRAT_MOVE_MICROSTEPS) &&
             g_microsteps_extent > r)
             return g_microsteps_extent;
         return r;
     }
 
-    bool bind_all_regions() {
+    bool bind_all_regions(const void *world, size_t world_bytes) {
+        mh::storage_policy::dimensions shape{};
+        if (!preflight(world, world_bytes, shape)) return false;
         const int count = static_cast<int>(libmh_region_count());
-        for (int i = 0; i < count; ++i)
-            len += ((extent_of(i) + 15u) & ~15u) + g_arena_pad;
+        uint64_t  total = 0;
+        for (int i = 0; i < count; ++i) {
+            if (mh::state::REGIONS[i].host_native && native_len[i] == 0) return false;
+            total += ((uint64_t(extent_of(i)) + 15u) & ~uint64_t(15u)) + g_arena_pad;
+        }
+        if (total > static_cast<uint64_t>(static_cast<size_t>(-1))) return false;
+        len = static_cast<size_t>(total);
         mem = static_cast<uint8_t *>(std::malloc(len));
         if (mem == nullptr) return false;
         std::memset(mem, g_arena_poison, len);
@@ -840,12 +973,51 @@ struct arena {
             binds[i].base      = sz ? (mem + off) : nullptr;
             binds[i].size      = sz;
             binds[i].count     = 0;
-            off += ((sz + 15u) & ~15u) + g_arena_pad;
+            if (mh::state::REGIONS[i].host_native) {
+                // Reserve incoming roster rows but publish no world/identity early. Map extents
+                // do not affect allocation sizes. The atomic importer installs all three owners
+                // together after validation; neither callback executes during allocation.
+                bool initialized = false;
+                switch (static_cast<mh::state::region_id>(i)) {
+                    case mh::state::RID_STORAGE_POLICY: {
+                        mh::storage_policy::state initial;
+                        initialized = initial.initialize(binds[i].base, sz,
+                                                         {shape.players, shape.buildings, shape.units, 0, 0});
+                        break;
+                    }
+                    case mh::state::RID_ORDER_TASKS: {
+                        mh::order_tasks::state initial;
+                        initialized = initial.initialize(binds[i].base, sz,
+                                                         {shape.players, shape.units, 0, 0, shape.buildings}, {});
+                        break;
+                    }
+                    case mh::state::RID_ORDER_CAMPAIGN: {
+                        mh::order_tasks::campaign_state initial;
+                        initialized = initial.initialize(binds[i].base, sz);
+                        break;
+                    }
+                    default: break;
+                }
+                if (!initialized) {
+                    std::free(binds);
+                    return false;
+                }
+            }
+            off += ((static_cast<size_t>(sz) + 15u) & ~size_t(15u)) + g_arena_pad;
         }
         const int rc = libmh_bind_regions(binds, static_cast<size_t>(count));
         std::free(binds);
         n = count;
-        return rc == count;
+        if (rc != count) return false;
+        const auto policy   = mh::state::storage_policy_region();
+        const auto tasks    = mh::state::order_tasks_region();
+        const auto campaign = mh::state::order_campaign_region();
+        if (libmh_storage_policy_bind(policy.data, policy.bytes) != 1 ||
+            libmh_order_tasks_bind(tasks.data, tasks.bytes, campaign.data, campaign.bytes) != 1) return false;
+        // Binding alone deliberately does not authorize execution. Publish this coherent empty
+        // allocation; the incoming full-world importer separately quarantines/publishes its copy.
+        libmh_order_tasks_published();
+        return true;
     }
     ~arena() { std::free(mem); }
 };
@@ -877,120 +1049,32 @@ bool slurp(const char *path, blob *out) {
     return r == static_cast<size_t>(n);
 }
 
-// The recording: a 4-byte header (magic 'MHOR' + version) then N records of {uint32 step, 68-byte
-// order}. Read as raw bytes -- see libmh_submit_order's note on why this is a copy and not a decode.
-constexpr uint32_t ORDERS_MAGIC = 0x524f484du; // 'MHOR'
-constexpr size_t   ORDER_BYTES  = 0x44;
-constexpr size_t   REC_BYTES    = 4 + ORDER_BYTES;
-constexpr int      QUEUE_CAP_   = 300; // llm_strat_order[300] -- CMP [QUEUE_COUNT],0x12c
+namespace os                   = mh::order_stream;
+constexpr size_t   ORDER_BYTES = os::RECORD_BYTES;
+constexpr uint32_t QUEUE_CAP_  = 300;
 
-// THE TAIL-CLEAR, hoisted out of the injector for LIB-REF-LIVE (2026-09-11).
-//
-// NOW REDUNDANT (2026-09-25, mp:D33 follow-up): the hash treats the dead slots as zeros itself
-// (mh::orders::emit_region via local()), and harness.cpp's clear is gone. Kept only because this
-// host owns its own memory, not the game's, so it is harmless; the history below is why it existed.
-//
-// It is harness.cpp's `order_queue_tail_clear()`, and the reason it is a free function here is the
-// reason it is an UNCONDITIONAL step-level call there: the clear runs in BOTH arms of every harnessed
-// run, not only the ones that inject. `order_queue` is hashed whole -- 300 slots of 0x44 -- while only
-// [0, count) is live, so leaving the dead slots as process history let two arms that agreed on every
-// live order disagree on the hash the moment `count` dipped below an earlier high-water mark. A LIVE
-// replay injects nothing at all, so had this stayed inside inject() the standalone live mode would
-// have been the ONLY arm in either host that never cleared -- exactly the asymmetry that made the
-// fourth fixture's record-vs-replay residue go broad.
-//
-// FROM THE EFFECTIVE COUNT, not from `injected`: the injector sets the count only when it wrote
-// something, so a step that injects nothing still owes dispatch the previous records. CLAMPED,
-// because the count has been MEASURED above 300 and an unclamped length would be negative.
 // HASH-INPUT BEGIN libref_prehash_writes (tools/data/hash_input_epoch.json)
-void order_queue_tail_clear(int injected) {
-    uint8_t *const q = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE);
-    int32_t *const c = mh::state::ptr<int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
-    if (q == nullptr || c == nullptr) return;
-    int live = *c;
-    if (live < 0) live = 0;
-    if (live > QUEUE_CAP_) live = QUEUE_CAP_;
-    std::memset(q + static_cast<size_t>(live) * ORDER_BYTES, 0,
-                (static_cast<size_t>(QUEUE_CAP_) - static_cast<size_t>(live)) * ORDER_BYTES);
-    // LIB-REF step-5000, count-ledger tag 16: the count this step BEGINS with, at the same point in
-    // the step as the hosted arm's note (after inject + tail-clear, before the hash). It is the
-    // ledger's per-step opening balance -- everything the body then does to the count is a tag 10..15
-    // entry, and the two must add up to the next step's opening balance. In LIVE mode `injected` is
-    // always 0, which is itself the reading: every order in that queue was put there by the sim.
-    mh::sim::rng_trace_add_note(16u, (uint32_t)injected, 0u, 0u, 0u, (uint32_t)*c, 0u);
-}
-
 struct recording {
-    const uint8_t *recs = nullptr;
-    uint32_t       n    = 0;
-    uint32_t       cur  = 0;
-    // LIB-REF-SOAK: the injector's own evidence -- see the readback in inject().
-    int arrivals = 0, set_ok = 0, no_set = 0;
-
-    bool open(const blob &b) {
-        if (b.n < 8) return false;
-        uint32_t magic = 0;
-        std::memcpy(&magic, b.p, 4);
-        if (magic != ORDERS_MAGIC) return false;
-        recs = b.p + 8;
-        n    = static_cast<uint32_t>((b.n - 8) / REC_BYTES);
-        return true;
-    }
-    uint32_t step_of(uint32_t i) const {
-        uint32_t s = 0;
-        std::memcpy(&s, recs + static_cast<size_t>(i) * REC_BYTES, 4);
-        return s;
-    }
-    // harness.cpp's order_replay_inject, reproduced STATEMENT FOR STATEMENT over the host's own
-    // bound pointers. Three details are load-bearing and all three come from reading that function,
-    // not from reasoning about it:
-    //
-    //   1. IT OVERWRITES FROM INDEX 0 AND SETS THE COUNT. It does not append. `order_queue` is a
-    //      NON-EXCLUDED hashed region, 20400 bytes, hashed whole -- so the queue's tail matters, and
-    //      the tail is whatever earlier steps left there. The step-0 blob seeds it.
-    //   2. THE COUNT IS WRITTEN ONLY WHEN n > 0. A step with no records leaves the count exactly as
-    //      the previous step's dispatch left it.
-    //   3. IT CAPS AT QUEUE_CAP records and drops the rest.
-    //
-    // THIS REPLACED AN APPEND-AT-THE-COUNT VERSION, and the reason is worth keeping. That version
-    // was justified by "the dispatcher is count-gated and zeroes the count, so a step always begins
-    // at 0, so appending writes the same bytes". MEASURED FALSE: from step ~392 the count climbed
-    // past QUEUE_CAP and every further submit was refused. The premise was never checked, and the
-    // fix is not to check it -- it is to stop depending on it, because the harness does not.
-    //
-    // libmh_submit_order is deliberately NOT used here. Its declared contract is "feed one record
-    // into the pending set", which is a different operation from what the recording replays; the
-    // entry stays implemented and exercised by the selftest, and the replay reproduces the
-    // instrument it is replaying.
-    static constexpr int QUEUE_CAP = 300; // llm_strat_order[300] -- CMP [QUEUE_COUNT],0x12c
-
-    int inject(uint32_t step) {
-        while (cur < n && step_of(cur) < step) ++cur;
-        uint8_t *const q = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE);
-        int32_t *const c = mh::state::ptr<int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
-        if (q == nullptr || c == nullptr) {
-            fail("step %u: the order queue regions are unbound", step);
-            return 0;
+    os::reader reader;
+    uint32_t   hashes = 0, entries = 0;
+    bool       open(const blob &b) { return reader.reset(b.p, b.n, QUEUE_CAP_); }
+    int        inject(uint32_t step, os::phase phase) {
+        os::view sample;
+        if (!reader.next(step, phase, sample)) {
+            fail("MHOR v2 step %u phase %u: %s", step, uint32_t(phase), reader.error());
+            std::exit(3);
         }
-        int k = 0;
-        for (uint32_t j = cur; j < n && step_of(j) == step && k < QUEUE_CAP; ++j, ++k)
-            std::memcpy(q + static_cast<size_t>(k) * ORDER_BYTES,
-                        recs + static_cast<size_t>(j) * REC_BYTES + 4, ORDER_BYTES);
-        if (k > 0) {
-            *c = k;
-            ++arrivals;
-            // THE READBACK, the same measurement harness.cpp's injector makes and for the same
-            // reason: fixture_replay's recorder guard admits a `0 -> n` fixture only against
-            // evidence that the count was actually SET, never against a comment claiming it. A
-            // tally of intentions would not notice a write to the wrong address or an unbound
-            // region; reading the count back does.
-            if (*c == k)
-                ++set_ok;
-            else
-                ++no_set;
+        uint8_t *q = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE);
+        int32_t *c = mh::state::ptr<int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
+        if (!q || !c) {
+            fail("order queue regions are unbound");
+            std::exit(3);
         }
-        order_queue_tail_clear(k);
-        return k;
+        if (sample.count) std::memcpy(q, sample.records, size_t(sample.count) * ORDER_BYTES);
+        *c = int32_t(sample.count);
+        if (phase == os::phase::hash) ++hashes;
+        else ++entries;
+        return int(sample.count);
     }
 };
 // HASH-INPUT END libref_prehash_writes
@@ -1136,6 +1220,11 @@ struct replay_ctx {
 };
 
 replay_ctx g_rp;
+void       replay_post_ai() {
+    if (!g_rp.live && g_rp.rec && g_rp.step <= g_rp.limit)
+        g_rp.rec->inject(g_rp.step, os::phase::entry);
+}
+
 
 // The C6 hook's job, verbatim: pin TOTAL_GAME_TIME to the RECORDED clock for the step about to run.
 // `g_step` is steps COMPLETED, so clocks[g_step] is the next step's clock and clocks[0] is step 1's
@@ -1169,15 +1258,7 @@ void replay_sim_step() {
         if (dlt) std::memcpy(dlt, &g_rp.resume_delta, sizeof(double));
     }
 
-    // LIB-REF-LIVE: the ONE structural difference between the two modes, and it is a subtraction.
-    // A replay injects the recording's orders at the top of every step; a LIVE run injects nothing,
-    // because the in-sim AI is the sole order source and reproducing that loop is the whole proof.
-    // The tail-clear still runs -- it is unconditional in BOTH arms of the hosted harness, so a live
-    // mode that skipped it would be the only arm anywhere that never cleared.
-    if (g_rp.live)
-        order_queue_tail_clear(0);
-    else
-        g_rp.rec->inject(step);
+    if (!g_rp.live) g_rp.rec->inject(step, os::phase::hash);
 
     // The one-byte mutation arm. Poked AFTER the injection and BEFORE the hash, inside the region's
     // own live extent, so the poke is in exactly the bytes the comparison walks. A described
@@ -1204,7 +1285,7 @@ void replay_sim_step() {
     // decision that shows up in a hashed region a step later. Same RX format.
     if (g_rp.dump_rid >= 0 && g_rp.dump_step == step && g_rp.dump_to != nullptr) {
         const auto     r   = static_cast<mh::state::region_id>(g_rp.dump_rid);
-        const uint32_t len = mh::state::reach_of(r);
+        const uint32_t len = mh::state::canonical_region_len(r);
         const uint8_t *b   = mh::state::ptr<const uint8_t>(r);
         FILE          *f   = std::fopen(g_rp.dump_to, "wb");
         if (f != nullptr && b != nullptr) {
@@ -1225,13 +1306,14 @@ void replay_sim_step() {
     }
 
     if (g_rp.dump_col >= 0 && g_rp.dump_step == step && g_rp.dump_to != nullptr) {
-        const mh::state::hash_region &r = mh::state::HASH_REGIONS[g_rp.dump_col];
-        const uint8_t *const          b = mh::state::ptr<const uint8_t>(r.rid);
-        FILE                         *f = std::fopen(g_rp.dump_to, "wb");
+        const mh::state::hash_region &r   = mh::state::HASH_REGIONS[g_rp.dump_col];
+        const uint32_t                len = mh::state::hash_len(g_rp.dump_col);
+        const uint8_t *const          b   = mh::state::ptr<const uint8_t>(r.rid);
+        FILE                         *f   = std::fopen(g_rp.dump_to, "wb");
         if (f != nullptr && b != nullptr) {
             static const char HEX[] = "0123456789ABCDEF";
-            for (uint32_t off = 0; off < r.len; off += 64) {
-                const uint32_t m = (r.len - off) < 64u ? (r.len - off) : 64u;
+            for (uint32_t off = 0; off < len; off += 64) {
+                const uint32_t m = (len - off) < 64u ? (len - off) : 64u;
                 std::fprintf(f, "RX %u %d %u ", step, g_rp.dump_col, off);
                 for (uint32_t j = 0; j < m; ++j) {
                     std::fputc(HEX[b[off + r.offset + j] >> 4], f);
@@ -1241,7 +1323,7 @@ void replay_sim_step() {
             }
             std::fclose(f);
             std::printf("  [dump] step %u region %s -> %s (%u bytes)\n", step, r.name,
-                        g_rp.dump_to, r.len);
+                        g_rp.dump_to, len);
         }
     }
 
@@ -1374,11 +1456,17 @@ int main(int argc, char **argv) {
     const char *absent_list  = nullptr;
     const char *input_epoch  = nullptr; // TL-GATE8: the fixture's stamped hash-input epoch
     uint32_t    rng_lo = 1u, rng_hi = 0u;
-    // Default ON: the fixture's replay_contract says replay_suppress_enqueue=1, and reproducing the
-    // contract is this host's job. See the arming site for the negative arm's purpose.
-    g_suppress_enqueue = true;
+    bool        order_v2 = false, replay_phases = false;
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--fixture") == 0 && i + 1 < argc) dir = argv[++i];
+        if (std::strcmp(argv[i], "--order-stream-version") == 0 && i + 1 < argc) {
+            if (std::strcmp(argv[++i], "2") != 0) {
+                fail("only MHOR v2 is supported");
+                return 2;
+            }
+            order_v2 = true;
+        } else if (std::strcmp(argv[i], "--replay-dispatch-inject") == 0)
+            replay_phases = true;
+        else if (std::strcmp(argv[i], "--fixture") == 0 && i + 1 < argc) dir = argv[++i];
         else if (std::strcmp(argv[i], "--steps") == 0 && i + 1 < argc)
             steps = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         else if (std::strcmp(argv[i], "--poke-step") == 0 && i + 1 < argc)
@@ -1391,9 +1479,10 @@ int main(int argc, char **argv) {
             g_microsteps_fill = static_cast<int>(std::strtoul(argv[++i], nullptr, 0));
         else if (std::strcmp(argv[i], "--no-time-tick") == 0)
             g_no_time_tick = true;
-        else if (std::strcmp(argv[i], "--no-suppress-enqueue") == 0)
-            g_suppress_enqueue = false;
-        else if (std::strcmp(argv[i], "--no-restamp-text-ptrs") == 0)
+        else if (std::strcmp(argv[i], "--no-suppress-enqueue") == 0) {
+            fail("obsolete flag --no-suppress-enqueue; MHOR v2 always runs real enqueues");
+            return 2;
+        } else if (std::strcmp(argv[i], "--no-restamp-text-ptrs") == 0)
             g_restamp_text_ptrs = false;
         else if (std::strcmp(argv[i], "--live") == 0) {
             // LIB-REF-LIVE. The two halves of the live contract are set TOGETHER, from one flag,
@@ -1401,8 +1490,7 @@ int main(int argc, char **argv) {
             // the sole order source" means. Letting them be armed separately would allow a run that
             // injects nothing yet still suppresses -- a sim with no orders at all, which would look
             // deterministic and prove nothing.
-            g_rp.live          = true;
-            g_suppress_enqueue = false;
+            g_rp.live = true;
         } else if (std::strcmp(argv[i], "--trace") == 0)
             g_rp.trace = true;
         else if (std::strcmp(argv[i], "--dump-rid") == 0 && i + 1 < argc)
@@ -1431,6 +1519,10 @@ int main(int argc, char **argv) {
             rng_trace_to = argv[++i];
         }
     }
+    if (dir && !g_rp.live && (!order_v2 || !replay_phases)) {
+        fail("replay requires --order-stream-version 2 --replay-dispatch-inject");
+        return 2;
+    }
     if (dir == nullptr) {
         std::printf("usage: libref_host --fixture <unpacked dir> --input-epoch <E> [--steps N]\n"
                     "                   [--poke-step N --poke-region <name>]\n"
@@ -1438,7 +1530,7 @@ int main(int argc, char **argv) {
                     "                   [--dump-to <file>] [--nav-report <file>]\n"
                     "                   [--arena-poison 0xNN] [--arena-pad N]\n"
                     "                   [--assets <dir>] [--assets-absent <file>]\n"
-                    "                   [--no-suppress-enqueue] [--live]\n"
+                    "                   [--live | --order-stream-version 2 --replay-dispatch-inject]\n"
                     "                   [--no-restamp-text-ptrs]\n"
                     "\n"
                     "  --no-restamp-text-ptrs\n"
@@ -1456,11 +1548,8 @@ int main(int argc, char **argv) {
                     "                 and the enqueue/issue/dispatch loop runs for real. Needs a lane\n"
                     "                 unpacked from libref-live-aisoak-v1 (clock + world + streams,\n"
                     "                 NO mh_orders.bin); refuses a lane that has an order stream.\n"
-                    "  --no-suppress-enqueue\n"
-                    "                 let the sim's OWN enqueues reach the order queue. The fixture's\n"
-                    "                 replay_contract sets replay_suppress_enqueue=1, so this host\n"
-                    "                 suppresses by default and this flag is the negative arm: against\n"
-                    "                 the committed fixture it is EXPECTED to diverge.\n"
+                    "  --order-stream-version 2 --replay-dispatch-inject\n"
+                    "                 exact MHOR v2 HASH/ENTRY, real AI and source enqueues.\n"
                     "  --nav-report   after import, write the rebuilt map-region pool POINTER-FREE:\n"
                     "                 both list orders by region index, BY_INDEX, and every grid cell\n"
                     "                 as a region index + its terrain_flags. Directly comparable with\n"
@@ -1539,9 +1628,17 @@ int main(int argc, char **argv) {
                 (unsigned)mh::fp::raw_mxcsr());
 
     // ---- the arena
+    char path[1024];
+    blob world, orders, clocks, steps_txt, regions_txt;
+    std::snprintf(path, sizeof(path), "%s/mh_world.bin", dir);
+    if (!slurp(path, &world)) return 1;
     arena a;
-    if (!a.bind_all_regions()) {
-        fail("could not bind all %d regions", (int)libmh_region_count());
+    if (!a.bind_all_regions(world.p, world.n)) {
+        fail("world framing/native policy invalid, or could not bind all %d regions", (int)libmh_region_count());
+        return 1;
+    }
+    if (!mh::refhost::storage_save::initialize(file_of)) {
+        fail("portable storage save adapter refused the bound policy region/file resolver");
         return 1;
     }
     std::printf("  bound %d/%d region(s), %.2f MB of arena (poisoned 0x%02X)\n", libmh_bound_count(),
@@ -1558,25 +1655,9 @@ int main(int argc, char **argv) {
     if (libmh_in_open(LIBMH_HOST_IN_VERSION) != 0)
         fail("libmh_in_open refused (host 0x%08X)", (unsigned)LIBMH_HOST_IN_VERSION);
 
-    // THE REPLAY CONTRACT'S ENQUEUE SUPPRESSION, reproduced (2026-09-11). manifest.json's
-    // replay_contract sets `replay_suppress_enqueue=1`, and a standalone host that replays the
-    // fixture must reproduce that flag's SEMANTICS, not merely read the same bytes: with it set,
-    // nothing the sim itself enqueues reaches the order queue, so the injected recording is the only
-    // thing that does. Until today this line was deliberately absent, and correctly so -- the check
-    // then lived in the PROMOTION WRAPPER behind the game's entry, which this host does not have, so
-    // setting the flag here changed nothing and would have been dead code implying a reproduction it
-    // did not provide. The check now lives in the SINK (mh::orders::detail::enqueue), which IS the
-    // path this host's sim_step takes, so the flag is live here and the two arms suppress the same
-    // calls at the same point.
-    //
-    // THE NEGATIVE ARM IS REAL, not decorative: `--no-suppress-enqueue` leaves the sim's own enqueues
-    // running. Against the fixture that is expected to DIVERGE (the recording was made under
-    // suppression), which is what makes it a falsifier for this line rather than a switch nobody
-    // turns; it is also the configuration LIB-REF-LIVE's no-injection live-loop proof needs.
-    if (g_suppress_enqueue) mh::orders::set_suppress_enqueue(true);
-    std::printf("  enqueue suppression: %s\n",
-                g_suppress_enqueue ? "ON (the replay contract's replay_suppress_enqueue=1)"
-                                   : "OFF (--no-suppress-enqueue: the sim's own enqueues RUN)");
+    mh::orders::set_suppress_enqueue(false);
+    mh::sim::set_sim_step_post_ai_observer(&replay_post_ai);
+    std::printf("  enqueue suppression: OFF (MHOR v2 runs real AI and source enqueues)\n");
 
     // The BASELINE for the refusal counter below. mh::libmh_in::trap() has counted closed-default
     // refusals since the module loaded and nothing has ever ASKED it -- which is precisely how the
@@ -1586,10 +1667,6 @@ int main(int argc, char **argv) {
     const int in_traps_at_open = mh::libmh_in::trap_count();
 
     // ---- the fixture
-    char path[1024];
-    blob world, orders, clocks, steps_txt, regions_txt;
-    std::snprintf(path, sizeof(path), "%s/mh_world.bin", dir);
-    if (!slurp(path, &world)) return 1;
     // THE ORDER STREAM IS OPTIONAL, AND ONLY IN LIVE MODE -- checked BOTH WAYS rather than merely
     // skipped. A live fixture has no mh_orders.bin by construction (its absence is the artifact's
     // claim), but "the file is missing" and "this is a live fixture" must never be the same
@@ -1649,11 +1726,10 @@ int main(int argc, char **argv) {
         std::printf("  clock track: %u step(s); running %u\n", total, steps);
     } else {
         if (!rec.open(orders)) {
-            fail("mh_orders.bin is not a recording (bad magic)");
+            fail("mh_orders.bin REFUSED: %s", rec.reader.error());
             return 1;
         }
-        std::printf("  recording: %u order record(s); clock track: %u step(s); replaying %u\n",
-                    rec.n, total, steps);
+        std::printf("  MHOR v2 exact HASH/ENTRY; clock track: %u step(s); replaying %u\n", total, steps);
     }
 
     // ---- the poison must not already agree ------------------------------------------------------
@@ -1777,7 +1853,19 @@ int main(int argc, char **argv) {
     // this project keeps paying for. Valid exactly when step 1 injects nothing: then the replay's
     // step-1 sample is the pre-injection world, which is what the blob holds.
     {
-        const bool step1_injects = !g_rp.live && rec.n > 0 && rec.step_of(0) == 1u;
+        recording check;
+        bool      step1_injects = false;
+        if (!g_rp.live) {
+            os::view first;
+            if (!check.open(orders) || !check.reader.next(1u, os::phase::hash, first)) {
+                fail("MHOR v2 requires HASH step 1");
+                return 1;
+            }
+            const int32_t *c = mh::state::ptr<int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
+            const uint8_t *q = mh::state::ptr<uint8_t>(mh::state::RID_STRAT_ORDER_QUEUE);
+            step1_injects    = !c || !q || *c != int32_t(first.count) ||
+                            (first.count && std::memcmp(q, first.records, size_t(first.count) * ORDER_BYTES) != 0);
+        }
         if (step1_injects) {
             std::printf("  same-run cross-check: SKIPPED ON A MEASURED PRECONDITION -- the "
                         "recording carries record(s) at step 1, so the stream's step-1 line was "
@@ -1892,8 +1980,8 @@ int main(int argc, char **argv) {
     // The injector's evidence line, in the same wording the hosted harness emits so one parser reads
     // both and the two arms are comparable at a glance. Unconditional in replay mode.
     if (!g_rp.live)
-        std::printf("  injector: count SET at %d of %d arrival step(s), %d append-without-set\n",
-                    rec.set_ok, rec.arrivals, rec.no_set);
+        std::printf("  order replay v2: HASH=%u ENTRY=%u missed=%u ai_off=0 suppress_enqueue=0\n",
+                    rec.hashes, rec.entries, rec.hashes - rec.entries);
     std::printf("  CP_ACP codec calls: ansi_to_wide %ld, scratch %ld, wide_to_local %ld, bytes %ld\n",
                 g_codec_calls[0], g_codec_calls[1], g_codec_calls[2], g_codec_calls[3]);
     // Reported unconditionally, including the 0/0 case: "the declaration was never needed" and "the

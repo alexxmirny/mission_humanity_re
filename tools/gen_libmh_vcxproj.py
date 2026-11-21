@@ -215,7 +215,7 @@ FOOTER = """  </ItemGroup>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;MH_WORLD_LIVE_OWNER;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>..\\libmh;..\\mh;..\\mh\\include;..\\mh_common;..\\mh_common\\include;..\\..\\mh_net_proto\\include</AdditionalIncludeDirectories>
@@ -338,7 +338,7 @@ DLL_FOOTER = """  </ItemGroup>
       <WarningLevel>Level3</WarningLevel>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;MH_WORLD_LIVE_OWNER;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\\libmh;$(ProjectDir)..\\mh;$(ProjectDir)..\\mh\\include;$(ProjectDir)..\\mh_common;$(ProjectDir)..\\mh_common\\include;$(ProjectDir)..\\..\\mh_net_proto\\include;%%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Precise</FloatingPointModel>
@@ -346,6 +346,7 @@ DLL_FOOTER = """  </ItemGroup>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateMapFile>true</GenerateMapFile>
       <ModuleDefinitionFile>libmh.def</ModuleDefinitionFile>
       <!-- mh_common.lib carries the buffer codecs the save modules use (mh::lzw, mh::lzss): the
            `common` bucket check_libmh_outbound.py rules. It is a STATIC library, so only the
@@ -468,7 +469,7 @@ STD_TEMPLATE = """﻿<?xml version="1.0" encoding="utf-8"?>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;MH_WORLD_LIVE_OWNER;%%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)..\\libmh;$(ProjectDir)..\\mh;$(ProjectDir)..\\mh\\include;$(ProjectDir)..\\mh_common;$(ProjectDir)..\\mh_common\\include;$(ProjectDir)..\\..\\mh_net_proto\\include;%%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -671,6 +672,13 @@ TEST_EXTRA = (
     "..\\mh_nettest\\mh_hostapi_selftest.gen.cpp",
     "..\\mh_nettest\\hostapi_trap.cpp",
     "..\\mh_common\\lzw.cpp",
+    "..\\mh_common\\storage_policy.cpp",
+    "..\\mh_common\\order_tasks.cpp",
+    "..\\mh_common\\air_patrol.cpp",
+    "..\\mh_common\\order_tasks_reservations.cpp",
+    "..\\mh_common\\mh_order_tasks_dispatch.cpp",
+    "..\\mh_common\\storage_policy_save.cpp",
+    "..\\mh_common\\order_witness.cpp",
 )
 
 

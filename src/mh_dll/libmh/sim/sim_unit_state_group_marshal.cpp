@@ -1,4 +1,5 @@
 #include "sim/sim_unit_state_group_marshal.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -142,6 +143,7 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                 const cfg_unit &proto = v.cfg_units[u.unit_proto_id];
                 c.unit_set_state_order(proto.default_op_code, proto.default_op_code);
                 c.unit_notify_status(player, index, GM_NOTIFY_STATUS_TARGET_LOST);
+                order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
                 return;
             }
 
@@ -192,8 +194,14 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
 
     // ---- 0x00482876-0x00482f24: commit each wave, settle its members, compact the next wave --------
     for (;;) {
+        for (int32_t i = 0; i < leg_count; ++i) {
+            const int32_t slot = v.group_move_scratch[i].unit_idx;
+            if (slot > 0 && uint32_t(slot) < uint32_t(v.caps.units))
+                order_tasks_adapter::begin_planning(own, player, uint32_t(slot), v.units[player * v.caps.units + slot]);
+        }
         c.group_move_order_commit(static_cast<int32_t>(ref_x), static_cast<int32_t>(ref_y), player,
                                   leg_count, move_group_id, is_move_flag, attack_class);
+        order_tasks_adapter::succeeded_wave(own, player, v, leg_count);
 
         // mods:M1H lane C [net] move_group_speed (retail carrier: the splice at 0x00482897, right after the commit call): a mixed-speed
         // move wave walks at its slowest member's speed. Off = nothing runs.
@@ -248,7 +256,9 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                     handled2 = mvc::mk_decide(mw, nk, player, static_cast<uint32_t>(unit_idx));
                 }
 
-                bool redirected = handled2;
+                mvc::ne_stop task_stop     = mvc::ne_stop::no;
+                bool         task_accepted = false;
+                bool         redirected    = handled2;
                 if (!handled2 && (member.order == GM_ORDER_ATTACK_BUILDING || member.order == GM_ORDER_ATTACK_UNIT_RETURN ||
                                   member.order == GM_ORDER_ATTACK_UNIT)) {
                     // 0x00482a48-0x00482b45: still in weapon range of its own target -> just re-issue
@@ -272,10 +282,20 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                     if (mf.distinct_goals || mf.near_enough > 0 || mf.formation_click > 0) { // mods:M1G 4b: kept members have an empty path and stop here
                         mvc::twin_hit(mvc::TS_ARR_RETRY);
                         mvc::libmh_world<unit_state_group_marshal_calls> mw{v, own, c};
-                        const int                                        r  = mf.near_enough > 10 ? 10 : mf.near_enough;
-                        const mvc::ne_stop                               st = mvc::near_enough_check(mw, player, unit_idx, r);
-                        if (st != mvc::ne_stop::no) {
-                            member.path_blocked_retry_count = 4; // the retail give-up branch runs now
+                        const int                                        r            = mf.near_enough > 10 ? 10 : mf.near_enough;
+                        const auto                                       patrol       = member.order == 16
+                                                                                            ? order_tasks_adapter::placement_patrol(own, player, uint32_t(unit_idx))
+                                                                                            : order_tasks_adapter::ground_patrol_placement{};
+                        const bool                                       owned_patrol = patrol.eligible && patrol.group == uint32_t(member.move_group_id);
+                        const mvc::ne_stop                               st           = mvc::near_enough_check(mw, player, unit_idx, r, owned_patrol);
+                        task_stop                                                     = st;
+                        if (st != mvc::ne_stop::no && owned_patrol) {
+                            const auto task = order_tasks_adapter::capture(own, player, uint32_t(unit_idx));
+                            task_accepted   = order_tasks_adapter::accepted_near(own, task, member, st == mvc::ne_stop::on_goal);
+                            if (!task_accepted) task_stop = mvc::ne_stop::no;
+                        }
+                        if (task_stop != mvc::ne_stop::no) {
+                            member.path_blocked_retry_count = 4; // Only positive patrol completion may force this branch.
                             mh::ai::ai_say("; arrival (mods:M1X) p%u u%u stops at (%d,%d), goal (%d,%d): %s (libmh twin)\n", static_cast<unsigned>(player),
                                            static_cast<unsigned>(unit_idx), static_cast<int>(member.x), static_cast<int>(member.y),
                                            static_cast<int>(member.goal_x), static_cast<int>(member.goal_y),
@@ -285,12 +305,18 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                     if (member.path_blocked_retry_count < 4) {
                         member.activity_clock += 2.0; // _DAT_00501462, read-memory-confirmed 2.0
                     } else {
+                        const auto task     = order_tasks_adapter::capture(own, player, uint32_t(unit_idx));
+                        const bool accepted = task_accepted || (task_stop != mvc::ne_stop::no &&
+                                                                order_tasks_adapter::accepted_near(own, task, member, task_stop == mvc::ne_stop::on_goal));
+                        if (!accepted)
+                            order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::give_up, member);
                         if (member.target_ref != 0) {
                             c.target_release_ref(player, unit_idx, 1u);
                             member.target_ref   = 0;
                             member.target_index = 0;
                         }
-                        if (member.order == GM_ORDER_ATTACK_UNIT_RETURN) {
+                        if (member.order == GM_ORDER_ATTACK_UNIT_RETURN &&
+                            !order_tasks_adapter::suppress_home(own, player, uint32_t(unit_idx))) {
                             c.unit_order_move_auto(player, unit_idx, member.home_x, member.home_y);
                         } else {
                             c.unit_notify_status(player, unit_idx, GM_NOTIFY_STATUS_TARGET_LOST);
@@ -328,6 +354,13 @@ void unit_state_group_marshal(const sim_view &v, sim_store &own,
                 }
                 member.path_cursor              = 0;
                 member.path_blocked_retry_count = 0;
+                const auto task                 = order_tasks_adapter::capture(own, player, uint32_t(unit_idx));
+                if (task.family == mh::order_tasks::executor::ground_run &&
+                    (member.state == member_proto.move_op_code || member.state == GM_STATE_MOVE_PATH_12))
+                    order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::preparation_finished, member);
+                if (task.phase != mh::order_tasks::phase::blocked)
+                    order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::assigned, member,
+                                                 {member.goal_x, member.goal_y}, order_tasks_adapter::assignment_for(task, {member.goal_x, member.goal_y}));
                 c.unit_notify_status(player, unit_idx, GM_NOTIFY_STATUS_WAVE_READY);
             }
         }

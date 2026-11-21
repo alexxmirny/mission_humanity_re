@@ -58,9 +58,9 @@ PROBE = os.path.join(HERE, "udp_rtt_probe.py")  # mp:T3b's independent RTT probe
 #   6500-6799     the FIXED range: 6501 ui_test/mp_run/det3 default ([net] port), 6502 the RTT probe,
 #                 6633 fixture_replay, 6698/6699 the relay shim / hand-run shim control defaults. This
 #                 was the whole rule (6500-6799) until 2026-09-29, when it also held the lane bands.
-#   RIG_PORT_LO..RIG_PORT_HI  (tools/lane_alloc.py, 10000-10999 today) the harness bands: the per-row
+#   RIG_PORT_LO..RIG_PORT_HI  (tools/lane_alloc.py, 10000-11223 today) the harness bands: the per-row
 #                 game / shim / host2 / shim-control ports (base + row index, PORT_BAND wide) and
-#                 the port-derived single-lane runners (PORT_BASE + lane, lanes 800..999).
+#                 the port-derived single-lane runners (lane_port(lane), lanes 800..999).
 # DERIVED from lane_alloc rather than restated, so moving a band moves the rule with it; lane_alloc
 # --check also asserts the containment. ONE rule per protocol with both ranges, under a stable name:
 # a range change UPDATES it in place (Set-NetFirewallRule -LocalPort), and any older "MH rig lanes *"

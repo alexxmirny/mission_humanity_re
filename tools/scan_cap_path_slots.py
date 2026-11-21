@@ -37,6 +37,7 @@ usage:
   python tools/scan_cap_path_slots.py --report
 """
 
+from bisect import bisect_left
 import argparse
 import glob
 import hashlib
@@ -190,7 +191,7 @@ def decode_all(img, funcs):
                     cover[a + k] = a
             out.extend((ins, name) for ins in rd.values())
             lin = []
-            _linear(md, code, entry, name, lin)
+            _linear(md, code, entry, name, lin, rd)
             out.extend(
                 (i, n)
                 for i, n in lin
@@ -203,14 +204,22 @@ def decode_all(img, funcs):
     return out
 
 
-def _linear(md, code, start, name, out):
+def _linear(md, code, start, name, out, known=None):
     off = 0
     while off < len(code):
+        if known is not None and (cached := known.get(start + off)) is not None:
+            out.append((cached, name))
+            off += cached.size
+            continue
         progressed = False
-        for ins in md.disasm(code[off:], start + off):
+        # Reuse only an exact cursor hit decoded from this same image/function.
+        # Interior hits still follow the original linear alignment and invalid-byte resync.
+        for ins in scan._decode_run(md, code, start, off, len(code)):
             progressed = True
             off = ins.address - start + ins.size
             out.append((ins, name))
+            if known is not None and start + off in known:
+                break
         if not progressed:
             off += 1
 
@@ -244,13 +253,13 @@ def _row(ins, fn, foff, w, cls, role):
     return r
 
 
-def _id_cls(ins, op):
+def _id_cls(op, operands, mnemonic):
     """-> (cls, role-suffix) for one memory operand that addresses unit +0xaa."""
     from capstone import CS_AC_WRITE
 
-    m = ins.mnemonic
-    if m == "cmp" and len(ins.operands) == 2 and ins.operands[1].type == 2:  # X86_OP_IMM
-        return ("id_check" if (ins.operands[1].imm & 0xFF) == 0xFF else "id_other"), ""
+    m = mnemonic
+    if m == "cmp" and len(operands) == 2 and operands[1].type == 2:  # X86_OP_IMM
+        return ("id_check" if (operands[1].imm & 0xFF) == 0xFF else "id_other"), ""
     if m == "lea":
         return "id_other", ""
     if op.access & CS_AC_WRITE and m in ("mov",):
@@ -279,58 +288,44 @@ def find_sites(img, decoded=None, funcs=None):
         return r
 
     unit_fns = set()
-    for ins, fn in dec:
-        for op in ins.operands:
-            if op.type == X86_OP_MEM:
-                d = op.mem.disp & 0xFFFFFFFF
-                if _in(d, UNITS_BASE, UNITS_END - UNITS_BASE) or (
-                    d == ID_OFF and op.mem.base and ins.disp_size == 4
-                ):
-                    if fn:
-                        unit_fns.add(fn)
-
+    trusted = []
     hole, overlap, imuls_flags, probe = [], [], [], []
     flag_mem = []  # (ins, fn) for IMUL pairing
     for ins, fn in dec:
-        for op in ins.operands:
+        operands = ins.operands
+        mnemonic = ins.mnemonic
+        for op in operands:
             if op.type == X86_OP_MEM:
-                d = op.mem.disp & 0xFFFFFFFF
+                mem = op.mem
+                d, base, size = mem.disp & 0xFFFFFFFF, mem.base, op.size
                 dsz = ins.disp_size
-                # ---- path_slot_id: unit +0xaa, pointer form [reg+0xaa] or direct form [units+0xaa (+ index regs)]
-                if d == UNITS_BASE + ID_OFF or (
-                    d == ID_OFF and op.mem.base and op.mem.base not in STACK_REGS
+                if fn and (
+                    _in(d, UNITS_BASE, UNITS_END - UNITS_BASE)
+                    or (d == ID_OFF and base and dsz == 4)
                 ):
-                    cls, _ = _id_cls(ins, op)
+                    unit_fns.add(fn)
+                # ---- path_slot_id: unit +0xaa, pointer form or direct first-record field
+                if d == UNITS_BASE + ID_OFF or (d == ID_OFF and base and base not in STACK_REGS):
+                    cls, _ = _id_cls(op, operands, mnemonic)
                     role = "direct" if d == UNITS_BASE + ID_OFF else "ptr"
                     add(ins, fn, ins.disp_offset, dsz, cls, role)
-                # field offset inside a unit record: direct form = disp - units base; pointer form = disp itself,
-                # only trusted in functions that touch the units array / the id (other structs share small offsets)
+                requires_unit = False
                 if _in(d, UNITS_BASE, 0xE9):
                     off = d - UNITS_BASE
-                elif (
-                    op.mem.base
-                    and op.mem.base not in STACK_REGS
-                    and fn in unit_fns
-                    and 0 <= d < 0x100
-                ):
+                elif base and base not in STACK_REGS and 0 <= d < 0x100:
                     off = d
+                    requires_unit = True
                 else:
                     off = None
-                # unrestricted probe (informational): any non-stack [reg+d] covering the hole, in any function
-                if (
-                    op.mem.base
-                    and op.mem.base not in STACK_REGS
-                    and d <= HOLE[1]
-                    and d + max(op.size, 1) > HOLE[0]
+                # This unrestricted probe must retain wide FPU-state operands too.
+                if base and base not in STACK_REGS and d <= HOLE[1] and d + max(size, 1) > HOLE[0]:
+                    probe.append(_cand(ins, fn, d, size))
+                if off is not None and (
+                    (size > 1 and off < ID_OFF < off + size)
+                    or (off <= HOLE[1] and off + max(size, 1) > HOLE[0])
                 ):
-                    probe.append(_cand(ins, fn, d, op.size))
-                if off is not None:
-                    # a WIDER neighbour access that also covers the id byte (dword at +0xa7..+0xaa, word at +0xa9)
-                    if op.size > 1 and off < ID_OFF < off + op.size:
-                        overlap.append(_cand(ins, fn, off, op.size))
-                    # the hole: any access whose extent covers +0xda or +0xdb
-                    if off <= HOLE[1] and off + max(op.size, 1) > HOLE[0]:
-                        hole.append(_cand(ins, fn, off, op.size))
+                    # A qualifying unit reference can occur later in this same function.
+                    trusted.append((ins, fn, off, size, requires_unit))
                 # ---- buffer / flags / count (memory forms)
                 if _in(d, BUF_LO, BUF_SPAN):
                     off = d - BUF[0]
@@ -356,29 +351,36 @@ def find_sites(img, decoded=None, funcs=None):
                         add(ins, fn, ins.imm_offset, 4, "flags_base", "imm")
                     if _in(v, *COUNT):
                         add(ins, fn, ins.imm_offset, 4, "count_base", "imm")
-                    if v == BUF_STRIDE and ins.mnemonic == "imul":
+                    if v == BUF_STRIDE and mnemonic == "imul":
                         add(ins, fn, ins.imm_offset, 4, "buf_stride", "player")
                     if v == BUF_SIZE:
                         add(ins, fn, ins.imm_offset, 4, "buf_size", "bytes")
                 if fn in SAVE_LOAD and v == FLAGS_SIZE and ins.imm_size == 4:
                     add(ins, fn, ins.imm_offset, 4, "flags_size", "bytes")
-                if ins.mnemonic == "imul" and v == FLAGS_STRIDE:
+                if mnemonic == "imul" and v == FLAGS_STRIDE:
                     imuls_flags.append((ins, fn))
         # the free-count start value: `mov dword ptr [reg+0xb63bc0], 100`
-        if ins.mnemonic == "mov" and len(ins.operands) == 2 and ins.operands[0].type == X86_OP_MEM:
-            d = ins.operands[0].mem.disp & 0xFFFFFFFF
-            if _in(d, *COUNT) and ins.operands[1].type == X86_OP_IMM and ins.imm_size == 4:
+        if mnemonic == "mov" and len(operands) == 2 and operands[0].type == X86_OP_MEM:
+            d = operands[0].mem.disp & 0xFFFFFFFF
+            if _in(d, *COUNT) and operands[1].type == X86_OP_IMM and ins.imm_size == 4:
                 add(
                     ins,
                     fn,
                     ins.imm_offset,
                     4,
                     "count_init",
-                    "start=%d" % (ins.operands[1].imm & 0xFFFFFFFF),
+                    "start=%d" % (operands[1].imm & 0xFFFFFFFF),
                 )
 
+    for ins, fn, off, size, requires_unit in trusted:
+        if requires_unit and fn not in unit_fns:
+            continue
+        if size > 1 and off < ID_OFF < off + size:
+            overlap.append(_cand(ins, fn, off, size))
+        if off <= HOLE[1] and off + max(size, 1) > HOLE[0]:
+            hole.append(_cand(ins, fn, off, size))
+
     # flags stride: the IMUL ,0x64 that builds the row index within 24 bytes before a flags access, same function
-    by_addr = {i.address: (i, f) for i, f in dec}
     unpaired_flag_sites = []
     paired = set()
     for ins, fn in flag_mem:
@@ -396,10 +398,9 @@ def find_sites(img, decoded=None, funcs=None):
         paired.add(got.address)
         foff = got.imm_offset
         add(got, fn, foff, got.imm_size, "flags_stride", "player")
+    flag_functions = {fn for _, fn in flag_mem}
     unpaired_imuls = [
-        (im.address, f)
-        for im, f in imuls_flags
-        if im.address not in paired and f in {x[1] for x in flag_mem}
+        (im.address, f) for im, f in imuls_flags if im.address not in paired and f in flag_functions
     ]
 
     # loop bounds
@@ -495,7 +496,8 @@ def branch_targets(dec):
 
     out = set()
     for ins, _fn in dec:
-        if (X86_GRP_JUMP in ins.groups or X86_GRP_CALL in ins.groups) and ins.operands:
+        groups = ins.groups
+        if (X86_GRP_JUMP in groups or X86_GRP_CALL in groups) and ins.operands:
             if ins.operands[0].type == X86_OP_IMM:
                 out.add(ins.operands[0].imm & 0xFFFFFFFF)
     return out
@@ -619,15 +621,9 @@ def args_verdict():
 # ---- the hook-overlap check (ported from tmp/capraise/u4/overlap.py) -----------------------------------------
 
 
-def hook_overlaps(rows, repo=REPO, windows=None):
-    """-> (overlaps, allowed): mh.dll source literals 0x4xxxxx that fall inside a U4 site's reach window
-    [va - HOOK_REACH, va + len). A literal in HOOK_OK is reported as allowed with its reason. `windows` (the census'
-    cave windows) widen the question: a cave overwrites the WHOLE window, not just the field."""
-    sv = sorted((r["va"], r["len"], r["cls"], r["fn"]) for r in rows if r["va"] >= 0x410000)
-    for k, w in (windows or {}).items():
-        sv.append((int(k, 16), len(w["hex"]) // 2, "cave_window", None))
-    sv.sort(key=lambda x: (x[0], x[1], x[2], x[3] or ""))
-    bad, ok = set(), set()
+def _hook_source_facts(repo=REPO):
+    """Immutable source literals; mutation arms change census rows, not this source corpus."""
+    facts = []
     files = []
     for g in HOOK_SRC_GLOBS:
         files += glob.glob(os.path.join(repo, g), recursive=True)
@@ -639,12 +635,34 @@ def hook_overlaps(rows, repo=REPO, windows=None):
             t = open(f, encoding="utf-8", errors="ignore").read()
         except OSError:
             continue
-        for m in re.finditer(r"0x(?:00)?(4[0-9a-fA-F]{5})(?![0-9a-fA-F])", t):
-            v = int(m.group(1), 16)
-            for a, ln, cls, fn in sv:
-                if a - HOOK_REACH <= v < a + ln:
-                    k = (rel, "0x%x" % v, "0x%x" % a, cls, fn)
-                    (ok if v in HOOK_OK else bad).add(k)
+        literals = tuple(
+            sorted(
+                {
+                    int(m.group(1), 16)
+                    for m in re.finditer(r"0x(?:00)?(4[0-9a-fA-F]{5})(?![0-9a-fA-F])", t)
+                }
+            )
+        )
+        facts.append((rel, literals))
+    return tuple(facts)
+
+
+def hook_overlaps(rows, repo=REPO, windows=None, *, source_facts=None):
+    """Find source literals inside each current site's reach or complete cave window."""
+    sv = sorted((r["va"], r["len"], r["cls"], r["fn"]) for r in rows if r["va"] >= 0x410000)
+    for k, w in (windows or {}).items():
+        sv.append((int(k, 16), len(w["hex"]) // 2, "cave_window", None))
+    sv.sort(key=lambda x: (x[0], x[1], x[2], x[3] or ""))
+    bad, ok = set(), set()
+    if source_facts is None:
+        source_facts = _hook_source_facts(repo)
+    for rel, literals in source_facts:
+        for a, ln, cls, fn in sv:
+            lo = bisect_left(literals, a - HOOK_REACH)
+            hi = bisect_left(literals, a + ln, lo)
+            for v in literals[lo:hi]:
+                k = (rel, "0x%x" % v, "0x%x" % a, cls, fn)
+                (ok if v in HOOK_OK else bad).add(k)
     return sorted(bad), sorted(ok)
 
 
@@ -804,7 +822,7 @@ def print_counts(doc):
 # ---- validation ----------------------------------------------------------------------------------------------
 
 
-def validate(doc):
+def validate(doc, *, hook_facts=None):
     """Hermetic invariants over a census document. -> list of problems (empty = green)."""
     bad = []
     rows = unpack(doc["sites"])
@@ -903,7 +921,7 @@ def validate(doc):
             if b2 < a + len(wins[hex(a)]["hex"]) // 2:
                 bad.append("windows 0x%x and 0x%x overlap" % (a, b2))
     # hook overlap
-    over, _ok = hook_overlaps(rows, windows=doc.get("windows"))
+    over, _ok = hook_overlaps(rows, windows=doc.get("windows"), source_facts=hook_facts)
     if over:
         bad.append("mh.dll hook literal(s) overlap a U4 site: %s" % over[:3])
     return bad
@@ -957,9 +975,7 @@ def residual(exe_path):
     """Scan an IMAGE for pool sites still at their STOCK value and report every one whose policy is always_on.
     Clean exe: all of them. A correctly U4b-patched image: none."""
     raw = open(exe_path, "rb").read()
-    rows, _extra = find_sites(scan.Image(raw))
-    left = [r for r in rows if r["policy"] == "always_on"]
-    return left
+    return residual_bytes(raw)
 
 
 def cmd_residual(exe):
@@ -999,6 +1015,7 @@ def selftest():
     import copy
 
     doc = load()
+    hook_facts = _hook_source_facts()
     fails = 0
 
     def expect_red(name, mutate, recount=False):
@@ -1009,15 +1026,16 @@ def selftest():
             recount
         ):  # a careful editor fixes the counts block too: the design floors must still catch it
             d["counts"] = counts(unpack(d["sites"]))
-        bad = validate(d)
+        bad = validate(d, hook_facts=hook_facts)
         if not bad:
             print("SELFTEST FAIL: %s stayed green" % name)
             fails += 1
         else:
             print("selftest ok: %s -> red (%s)" % (name, bad[0][:90]))
 
-    if validate(doc):
-        print("SELFTEST FAIL: the committed census is not green: %s" % validate(doc)[:2])
+    problems = validate(doc, hook_facts=hook_facts)
+    if problems:
+        print("SELFTEST FAIL: the committed census is not green: %s" % problems[:2])
         return 1
 
     def drop(d):
@@ -1134,7 +1152,7 @@ def selftest():
                 "selftest ok: one left-behind stock site (0x%x) -> the residual names exactly it"
                 % keep["va"]
             )
-        full = [r for r in residual(exe)]
+        full = residual_bytes(raw, decoded=dec, funcs=funcs)
         if len(full) != len(always):
             print(
                 "SELFTEST FAIL: clean-exe residual %d != always_on rows %d"
@@ -1152,8 +1170,8 @@ def selftest():
     return 0
 
 
-def residual_bytes(raw):
-    rows, _ = find_sites(scan.Image(raw))
+def residual_bytes(raw, *, decoded=None, funcs=None):
+    rows, _ = find_sites(scan.Image(raw), decoded, funcs)
     return [r for r in rows if r["policy"] == "always_on"]
 
 

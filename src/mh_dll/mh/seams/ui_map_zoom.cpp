@@ -141,10 +141,13 @@ int cur_filter() {
 }
 
 void reset(const char *why) {
-    if (g_user_z != 1.0 || g_cur_z0 != 1.0 || g_left || g_top) zlog("; [zoom] reset (%s)", why);
+    const bool changed = g_user_z != 1.0 || g_cur_z0 != 1.0 || g_left || g_top;
+    if (changed) zlog("; [zoom] reset (%s)", why);
     g_user_z = g_cur_z0 = 1.0;
     g_left = g_top = 0;
     g_acc          = mz::wheel_acc();
+    // The retained ground may still be stretched even when the camera did not move.
+    if (changed) mh::call::llm_map_cam_mark_viewport_dirty();
 }
 
 // Move the camera by whole tiles (the strategic camera has no sub-tile offset). The same three calls the
@@ -199,6 +202,9 @@ void retarget(int cx, int cy, const char *why) {
     g_top    = nt;
     g_cur_z0 = z0;
     move_camera(dcol, drow);
+    // A zoom change with zero whole-tile camera delta still replaces the projection.
+    // move_camera deliberately skips its repaint in that case; do not retain stretched tiles.
+    if (!dcol && !drow) mh::call::llm_map_cam_mark_viewport_dirty();
 }
 
 int cursor_menu_x() { return rd<int32_t>(ADDR_CUR_MENU_X); }
@@ -429,6 +435,18 @@ extern "C" void MH_MapZoom_Get(int *z100, int *left, int *top, int *cw, int *ch)
     if (top) *top = g_armed ? g_top : 0;
     if (cw) *cw = g_armed && W > 0 ? mz::crop_dim(W, z) : 0;
     if (ch) *ch = g_armed && H > 0 ? mz::crop_dim(H, z) : 0;
+}
+
+extern "C" int MH_MapZoom_ReadCrop(int *left, int *top, int *width, int *height) {
+    if (!g_armed) return 0;
+    const int W = rd<int32_t>(ADDR_WIN_W), H = rd<int32_t>(ADDR_WIN_H);
+    if (W <= 0 || H <= 0) return 0;
+    const frame_crop c = current_crop(W, H);
+    if (left) *left = c.active ? c.L : 0;
+    if (top) *top = c.active ? c.T : 0;
+    if (width) *width = c.active ? c.cw : W;
+    if (height) *height = c.active ? c.ch : H;
+    return 1;
 }
 
 extern "C" void MH_MapZoom_ReseedWheel(void) {

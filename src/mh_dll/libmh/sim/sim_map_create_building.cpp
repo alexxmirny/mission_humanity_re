@@ -323,6 +323,7 @@ void create_building(const sim_view &v, sim_store &own, const create_building_ca
         c.set_staffed_flag(player, (int32_t)index);
     }
     c.refresh_building(player, (int32_t)index);
+    own.storage_policy(mh::storage_policy::operation::birth_building, player, index);
 }
 
 } // namespace detail

@@ -3953,6 +3953,213 @@ void test_tk_peer_timeout() {
     }
 }
 
+// Real completed-body authority around the existing whole-operation fixtures.
+namespace pb = mh::participant_boundary;
+struct participant_fixture;
+participant_fixture *g_participant_fixture = nullptr;
+struct participant_fixture {
+    world        &roster;
+    pb::view      clock{99.0, 1.0, true, true};
+    pb::authority authority;
+    explicit participant_fixture(world &w) : roster(w) {
+        g_participant_fixture = this;
+        authority.initialize([](void *p) { return static_cast<participant_fixture *>(p)->clock; }, this);
+        authority.new_match();
+    }
+    ~participant_fixture() { g_participant_fixture = nullptr; }
+    static int32_t admit(const void *bytes, uint32_t size) {
+        if (!bytes || size != sizeof(pb::request)) return int32_t(pb::admission::invalid);
+        pb::request r;
+        std::memcpy(&r, bytes, sizeof(r));
+        return int32_t(g_participant_fixture->authority.admit(r));
+    }
+    static mh::lockstep::participant_view participants() {
+        auto &w = g_participant_fixture->roster;
+        return {w.players.data(), w.peer_horizon, &w.side};
+    }
+    dispatch_calls dispatch() {
+        auto c                     = recording_dispatch_calls();
+        c.participant_admit        = admit;
+        c.participant_continuation = [] { return g_participant_fixture->authority.receive_continuation(); };
+        return c;
+    }
+    timekeeper_calls timekeeper() {
+        auto c              = recording_tk_calls();
+        c.participant_admit = admit;
+        c.participants      = participants;
+        return c;
+    }
+    void complete() {
+        const auto token = authority.body_begin();
+        clock.clock      = 100.0;
+        authority.body_complete(token);
+        authority.poll();
+    }
+};
+
+void test_transport_death_drain() {
+    world w = mp_world();
+    w.human(2);
+    w.human(3);
+    w.horizon         = 102.0;
+    w.peer_horizon[1] = w.peer_horizon[2] = 101.0;
+    w.peer_horizon[3]                     = 100.0;
+    participant_fixture  f(w);
+    std::vector<int32_t> removed;
+    const auto           inspect = [&](uint32_t index, int32_t) {
+        if (!(w.players[index].status_flags & HUMAN)) return pb::transport_decision::cancel;
+        return f.authority.can_apply(pb::bits(w.peer_horizon[index]))
+                             ? pb::transport_decision::apply
+                             : pb::transport_decision::wait;
+    };
+    const auto execute = [&](uint32_t index, int32_t side, uint32_t) {
+        check("a removal retains the import exclusion through its callback", f.authority.pending());
+        w.players[index].status_flags &= ~HUMAN;
+        removed.push_back(side);
+        mh::lockstep::detail::commit_horizon(w.st());
+        f.authority.drain_transport_deaths(false, inspect, [](uint32_t, int32_t, uint32_t) {
+            check("recursive transport polling cannot steal another removal", false);
+        });
+    };
+    const auto generation = f.authority.admission_generation();
+    f.authority.admit_transport_death(1, 101);
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("a high-H death waits without changing the roster", removed.empty() && (w.players[1].status_flags & HUMAN));
+    f.authority.admit_transport_death(2, 102);
+    f.authority.admit_transport_death(3, 103);
+    check("all accepted transport deaths fence import and advance admission",
+          f.authority.pending() && f.authority.admission_generation() == generation + 3);
+    check("duplicate transport death shares one pending operation",
+          f.authority.admit_transport_death(1, 101) == pb::admission::duplicate &&
+              f.authority.admission_generation() == generation + 3);
+    f.complete();
+    f.authority.drain_transport_deaths(true, inspect, execute);
+    check("reconciliation holds removals without losing later deaths", removed.empty());
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("lower-H death behind two blocked deaths funds their next actual body",
+          removed == std::vector<int32_t>{103} && w.committed == 101.0 &&
+              f.authority.transport_deaths_pending());
+    const auto token = f.authority.body_begin();
+    f.clock.clock    = 101.0;
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("funding the next body does not release the higher-H deaths", removed.size() == 1);
+    f.authority.body_complete(token);
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("all deaths apply once after their completed body", removed == std::vector<int32_t>({103, 101, 102}) && !f.authority.pending());
+
+    f.authority.admit_transport_death(1, 101);
+    f.authority.admit_transport_death(2, 102);
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("already-removed deaths cancel without repeating removal", removed.size() == 3 && !f.authority.pending());
+    f.authority.admit_transport_death(1, 101);
+    f.authority.admit_transport_death(2, 102);
+    unsigned ended = 0;
+    f.authority.drain_transport_deaths(false, [](uint32_t, int32_t) { return pb::transport_decision::apply; }, [&](uint32_t, int32_t, uint32_t) { ++ended; f.authority.end_match(); });
+    check("ending a match during a removal discards old-match deaths", ended == 1 && !f.authority.pending());
+    f.authority.new_match();
+    f.authority.drain_transport_deaths(false, inspect, execute);
+    check("old deaths cannot leak into the next match", removed.size() == 3 && !f.authority.pending());
+}
+
+void test_completed_body_removals() {
+    {
+        world roster = mp_world();
+        roster.human(2);
+        roster.human(3);
+        roster.peer_horizon[3] = 100.0;
+        participant_fixture f(roster);
+        g_tk.reset();
+        tk_world w;
+        w.total = w.committed = 100.0; // funded, not completed
+        w.timeout_elapsed     = 4.95;
+        w.flags               = mh::lockstep::LS_HORIZON_PENDING;
+        g_tk.match_side       = 103;
+        auto s                = w.s();
+        auto c                = f.timekeeper();
+        mh::lockstep::detail::time_tick(s, c, {}, 100.1);
+        const auto untouched = [&] {
+            return w.ls_count == 4 && w.lobby_count == 4 && (w.flags & 0x80) != 0 &&
+                   g_tk.removed_timeout.empty() && g_tk.alerts.empty() && g_tk.resyncs == 0;
+        };
+        check("funding the horizon cannot execute any part of timeout removal", untouched());
+        const auto token = f.authority.body_begin();
+        f.clock.clock    = 100.0;
+        f.authority.poll();
+        check("the whole timeout operation stays deferred inside its final body", untouched());
+        f.authority.body_complete(token);
+        f.authority.poll();
+        check("completed timeout decrements both counts and emits its complete suffix once",
+              w.ls_count == 3 && w.lobby_count == 3 && (w.flags & 0x80) == 0 &&
+                  g_tk.removed_timeout == std::vector<int32_t>{103} &&
+                  g_tk.alerts == std::vector<int32_t>{3} && g_tk.resyncs == 1);
+    }
+    for (const bool veto : {false, true}) {
+        world w = mp_world();
+        w.human(2);
+        w.peer_horizon[1] = 100.0;
+        w.status          = mh::lockstep::LS_HORIZON_PENDING;
+        participant_fixture f(w);
+        auto                c = f.dispatch();
+        packet              p;
+        p.ctl(mh::lockstep::CTL_LEAVE_CONSENSUS).i32(101);
+        std::memcpy(w.buf, p.b.data(), p.b.size());
+        mh::lockstep::detail::dispatch_packet(w.st(), w.ds(), c, {}, 102, uint32_t(p.b.size()));
+        check("consensus records its vote without publishing removal or counts",
+              w.peer_state[N + 2] == mh::lockstep::PEER_STATE_LEAVING &&
+                  w.ls_players == 2 && w.lobby_hosts == 2 && g_rx.removed.empty() &&
+                  g_rx.busywaits == 0 && g_rx.time_resyncs == 0 && (w.status & 0x80) != 0);
+        if (veto) w.peer_state[N + 2] = mh::lockstep::PEER_STATE_PRESENT;
+        f.complete();
+        check(veto ? "a new PRESENT vote cancels the complete pending consensus operation"
+                   : "completed consensus publishes both counts and its complete suffix once",
+              w.ls_players == (veto ? 2 : 1) && w.lobby_hosts == (veto ? 2 : 1) &&
+                  g_rx.removed.size() == (veto ? 0u : 1u) &&
+                  g_rx.busywaits == (veto ? 0 : 1) && g_rx.time_resyncs == (veto ? 0 : 1) &&
+                  ((w.status & 0x80) != 0) == veto && !f.authority.pending());
+    }
+    {
+        world w = mp_world();
+        w.human(2);
+        w.peer_horizon[1] = 100.0;
+        participant_fixture f(w);
+        auto                c = f.dispatch();
+        packet              p;
+        p.ctl(mh::lockstep::CTL_DROP_SYNCED).i32(101).f64(100.0);
+        p.u8(mh::lockstep::MSG_HORIZON).f64(321.5);
+        std::memcpy(w.buf, p.b.data(), p.b.size());
+        mh::lockstep::detail::dispatch_packet(w.st(), w.ds(), c, {}, 102, uint32_t(p.b.size()));
+        std::memset(w.buf, 0xcd, sizeof(w.buf));
+        w.peer_horizon[1] = 101.0; // a later advert must not overturn agreement frozen at RX
+        check("accepted drop retains old flags and holds only its producing sender",
+              (w.players[1].status_flags & HUMAN) != 0 && f.authority.blocks_sender(102) &&
+                  !f.authority.blocks_sender(101));
+        const auto outer = f.authority.body_begin();
+        f.authority.invalidate_world();
+        f.clock.clock    = 100.0;
+        const auto inner = f.authority.body_begin();
+        f.authority.body_complete(inner);
+        f.authority.poll();
+        check("an imported nested body cannot certify an unfinished physical outer body",
+              f.authority.body_active() && (w.players[1].status_flags & HUMAN) != 0);
+        f.authority.body_complete(outer);
+        f.authority.poll();
+        check("a stale outer token cannot certify the imported world",
+              (w.players[1].status_flags & HUMAN) != 0 && f.authority.pending());
+        f.complete();
+        check("accepted RX agreement survives later adverts without mismatch teardown",
+              (w.players[1].status_flags & HUMAN) == 0 && g_rx.presence_lost.empty() &&
+                  g_rx.time_resyncs == 1 && w.ls_players == 1 && w.lobby_hosts == 1);
+        int32_t    sender = -1, len = sizeof(w.buf);
+        const bool tail = f.authority.receive(&sender, w.buf, &len);
+        check("copied producer tail survives buffer reuse and is delivered to its original sender",
+              tail && sender == 102 && len == 9);
+        if (tail) mh::lockstep::detail::dispatch_packet(w.st(), w.ds(), c, {}, sender, uint32_t(len));
+        check("saved tail executes once after removal, preserving its horizon and stream order",
+              w.peer_horizon[2] == 321.5 && !f.authority.pending() &&
+                  !f.authority.blocks_sender(102));
+    }
+}
+
 // ---- the parked/stalled machine: arming, the retry pacer, the overlay, the reset ----
 void test_tk_parked_machine() {
     { // first entry: arm, advertise a fresh horizon
@@ -4866,6 +5073,8 @@ int run_lockstest() {
     test_tk_singleplayer_skips_lockstep();
     test_tk_clamp_and_standdown();
     test_tk_peer_timeout();
+    test_completed_body_removals();
+    test_transport_death_drain();
     test_tk_parked_machine();
     test_tk_retry_reset();
     test_tk_stall_nag();

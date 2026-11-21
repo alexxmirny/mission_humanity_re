@@ -224,8 +224,9 @@ def tokens_in(line, include_bare):
     """[(token, kind)] for one line. URLs are stripped first; a bare basename lying inside an
     already-matched path token is not re-reported."""
     clean = URL_RE.sub(" ", line)
-    spans = [m.span(1) for m in PATH_RE.finditer(clean)]
-    out = [(m.group(1), "path") for m in PATH_RE.finditer(clean)]
+    matches = list(PATH_RE.finditer(clean))
+    spans = [m.span(1) for m in matches]
+    out = [(m.group(1), "path") for m in matches]
     out += [(m.group(1), "root") for m in ROOT_RE.finditer(clean)]
     if include_bare:
         for m in BARE_RE.finditer(clean):
@@ -340,73 +341,90 @@ def md_links(src, line, tracked):
             yield tgt
 
 
-def scan(published, idx, root=REPO, files=None, include_bare=True, check_disk=True):
-    """-> (violations, visited). A violation is a dict: file, line, token, status, target, kind."""
+def _file_candidates(p, idx, root, include_bare):
+    full = os.path.join(root, p.replace("/", os.sep))
+    if not os.path.isfile(full):
+        return None
+    try:
+        with open(full, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return None
+    out = []
+    prose = p.lower().endswith(PROSE_EXT)
+    for n, line in enumerate(lines, 1):
+        if ESCAPE in line:
+            continue
+        if prose:
+            out.extend((n, tgt, "mdlink", None) for tgt in md_links(p, line, idx.tracked))
+        for tok, kind in tokens_in(line, include_bare):
+            t = norm(tok)
+            if t:
+                out.append((n, tok, kind, idx.resolve(t)))
+    return out
+
+
+def scan(
+    published, idx, root=REPO, files=None, include_bare=True, check_disk=True, *, _source_facts=None
+):
+    """Classify candidates; an explicit snapshot is valid only for the same immutable source/index/options."""
     files = sorted(published) if files is None else list(files)
     raw = []
     visited = 0
     for p in files:
         if not p.lower().endswith(TEXT_EXT):
             continue
-        full = os.path.join(root, p.replace("/", os.sep))
-        if not os.path.isfile(full):
-            continue
-        try:
-            with open(full, encoding="utf-8", errors="replace") as fh:
-                lines = fh.readlines()
-        except OSError:
+        facts = (
+            _file_candidates(p, idx, root, include_bare)
+            if _source_facts is None
+            else _source_facts[p]
+        )
+        if facts is None:
             continue
         visited += 1
-        for n, line in enumerate(lines, 1):
-            if ESCAPE in line:  # rule 1
-                continue
-            if p.lower().endswith(PROSE_EXT):
-                for tgt in md_links(p, line, idx.tracked):  # rule 2b
-                    if tgt in published:
-                        continue
+        for n, tok, kind, resolved in facts:
+            if kind == "mdlink":
+                if tok not in published:
                     raw.append(
                         {
                             "file": p,
                             "line": n,
-                            "token": tgt,
+                            "token": tok,
                             "status": PRIVATE,
-                            "target": tgt,
-                            "kind": "mdlink",
+                            "target": tok,
+                            "kind": kind,
                         }
                     )
-            for tok, kind in tokens_in(line, include_bare):  # rule 2
-                t = norm(tok)
-                if not t:
+                continue
+            for cand, k, targets in resolved:
+                if k == "noext":
                     continue
-                for cand, k, targets in idx.resolve(t):
-                    if k == "noext":
-                        continue
-                    if k == "none":
-                        if kind == "bare":
-                            continue  # an unresolvable bare basename is PROSE, never dangling
-                        raw.append(
-                            {
-                                "file": p,
-                                "line": n,
-                                "token": cand,
-                                "status": DANGLING,
-                                "target": "",
-                                "kind": kind,
-                            }
-                        )
-                        continue
-                    if any(x in published for x in targets):
-                        continue
+                if k == "none":
+                    if kind == "bare":
+                        continue  # an unresolvable bare basename is PROSE, never dangling
                     raw.append(
                         {
                             "file": p,
                             "line": n,
                             "token": cand,
-                            "status": PRIVATE,
-                            "target": sorted(targets)[0] if targets else "",
+                            "status": DANGLING,
+                            "target": "",
                             "kind": kind,
                         }
                     )
+                    continue
+                if any(x in published for x in targets):
+                    continue
+                raw.append(
+                    {
+                        "file": p,
+                        "line": n,
+                        "token": cand,
+                        "status": PRIVATE,
+                        "target": sorted(targets)[0] if targets else "",
+                        "kind": kind,
+                    }
+                )
 
     # rule 9's downgrade, batched.
     if check_disk:
@@ -961,7 +979,14 @@ def selftest():
     paths = cp.tracked_paths()
     idx = Index(paths)
     real_pub = set(cp.publish_list(paths, led))
-    real_v, real_visited = scan(real_pub, idx, include_bare=True, check_disk=False)
+    source_facts = {
+        p: _file_candidates(p, idx, REPO, True)
+        for p in sorted(real_pub)
+        if p.lower().endswith(TEXT_EXT)
+    }
+    real_v, real_visited = scan(
+        real_pub, idx, include_bare=True, check_disk=False, _source_facts=source_facts
+    )
     expect(
         "(11) walker liveness: >100 published text files visited in the real tree",
         real_visited > 100,
@@ -981,7 +1006,9 @@ def selftest():
     probe_led = dict(led)
     probe_led["rules"] = [probe] + list(led["rules"])
     probe_pub = set(cp.publish_list(paths, probe_led))
-    probe_v, _ = scan(probe_pub, idx, include_bare=True, check_disk=False)
+    probe_v, _ = scan(
+        probe_pub, idx, include_bare=True, check_disk=False, _source_facts=source_facts
+    )
     hits = [v for v in probe_v if v["target"] == "docs/architecture.md"]
     expect(
         "(10b) KNOWN-POSITIVE (real tree, synthetic withhold): the real citations of "

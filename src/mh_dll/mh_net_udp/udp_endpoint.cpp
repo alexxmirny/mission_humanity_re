@@ -30,6 +30,7 @@
 #include "mh_net_queue_policy.h"   // D24: WHICH inbound frame a full queue may destroy
 #include "mh_net_watchdog.h"       // D16: the watchdog's timing decisions, reused untouched
 #include "mh_net_proto/net_wire.h" // the 12-byte routing header, shared with the TCP module
+#include "mh_net_proto/lobby_speed.h"
 
 // mp:T3 -- the RTT stopwatch. GetTickCount (which everything else in this file times with, because
 // everything else in this file is a multi-second timeout) has a ~15.6 ms quantum, and the latency
@@ -134,9 +135,8 @@ static_assert(osq::ORIGINS == MH_NET_MAX_PEERS, "one retention ring per player s
 // =================================================================================================
 Endpoint::Endpoint() {
     memset(this, 0, sizeof(*this));
-    m_sock      = INVALID_SOCKET;
-    m_dead_peer = -1;
-    m_my_id     = -1;
+    m_sock          = INVALID_SOCKET;
+    m_my_id         = -1;
     m_fo_test_first = -1; // mp:U63
     m_spectators    = 0;
 }
@@ -294,10 +294,10 @@ bool Endpoint::start(const Config &cfg, const uint8_t psk[KEY_LEN], bool secure)
         // mp:U63 -- ...and no failover history. (The fo test knobs are set once and stay.)
         memset(&m_fo, 0, sizeof(m_fo));
         m_fo.hub_id = m_fo.cand = m_fo.forced = -1;
-        m_dead_extra = 0;
+        InterlockedExchange(&m_dead_mask, 0);
         m_spectators = 0;
     }
-    m_K           = cfg.redundancy;
+    m_K = cfg.redundancy;
     if (m_K < K_MIN) m_K = K_DEFAULT;
     if (m_K > K_MAX) m_K = K_MAX;
     // R-live, and the SAME three-state convention mh_net.dll's InitEx uses, because net_seams.cpp's
@@ -528,11 +528,9 @@ bool Endpoint::stop() {
     }
     m_qhigh_band  = 0;
     m_q_rollup_at = 0;
-    // U17: a dead-peer latch minted by the OLD link is not the new one's news, and `id_assigned` is
-    // not gated on m_started -- left set, a relinking host-assign client would report "my id is
-    // settled" before the new host had said anything, and the WELCOME check above it would be
-    // vacuous.
-    InterlockedExchange(&m_dead_peer, -1);
+    // A death declaration from the old transport is not the new link's news.
+    // Clear identity too: a relinking assigned-ID client must wait for WELCOME.
+    InterlockedExchange(&m_dead_mask, 0);
     InterlockedExchange(&m_id_assigned, 0);
     m_my_id   = -1;
     m_started = false;
@@ -562,19 +560,12 @@ void Endpoint::drop_conn(int idx, const char *why) {
     if (InterlockedExchange(&m_conns[idx].tx_dead, 1) != 0) return;
     m_conns[idx].bound = 0; // no more datagrams for this conn_id are ours to open
     InterlockedExchange(&m_conns[idx].active, 0);
-    // U17: latch the dropped peer's id for the main thread's in-order removal. The host learns real
-    // client ids (>= 1); a client's only conn carries -1, so a host death is not fast-dropped here,
-    // which is the same boundary the TCP module draws.
-    // mp:U62 -- a hub that is HANDING OVER retires its conns on purpose: those are not peers dying, and
-    // the game's fast-drop (U17) would otherwise remove every survivor the hub itself just let go.
-    // mp:U64 (HM-M6): the latch is ONE slot, and a hub that loses several clients in the same watchdog pass (its own
-    // partition from all of them, found by the 4-peer arm) overwrote the earlier ids, so only the last was ever removed
-    // from the roster and the sim stalled on a human that nobody ever dropped. The displaced id waits in m_dead_extra,
-    // which take_dead_peer pops once the slot is empty (every caller holds m_conn_cs).
-    if (!m_hl.leaving) {
-        const LONG prev = InterlockedExchange(&m_dead_peer, m_conns[idx].player_id);
-        if (prev >= 0 && prev < 8 && prev != m_conns[idx].player_id) m_dead_extra |= 1u << prev;
-    }
+    // Publish explicit deaths, not an absence-of-sockets guess. Keep every side
+    // visible while its final funded body waits; accepted HELLO clears its bit.
+    // Our planned handover retires links deliberately, not surviving players.
+    const int side = m_conns[idx].player_id;
+    if (!m_hl.leaving && side >= 0 && side < 8)
+        InterlockedOr(&m_dead_mask, LONG(1u << side));
     logf("net: udp conn %d dropped -- %s (keepalives: sent %ld, received %ld)", idx, why,
          (long)m_conns[idx].ping_tx, (long)m_conns[idx].ping_rx);
     // mp:X2f -- every caller holds m_conn_cs (the watchdog pass, the recv path, send/send_ctrl), so
@@ -612,13 +603,13 @@ void Endpoint::drop_conn(int idx, const char *why) {
 //      and slot).
 //
 //   3. C -> H   PKT_TOKEN, conn=<token conn_id>, seq=0.., sealed with the SESSION keys
-//               body = token(TOKEN_WIRE) | response(HS_RESPONSE_LEN)
+//               body = token(TOKEN_WIRE) | response(HS_RESPONSE_LEN) | capability(1)
 //
 //      The host opens the echoed token, requires it to be the one it minted for this peer, and
 //      checks the response (the CLIENT has now proved it holds the PSK -- the proof is mutual, as
 //      on TCP). It admits the peer: the slot goes live and the stream starts at segment 0.
 //
-//   4. H -> C   PKT_TOKEN_ACK, conn=<conn_id>, seq=0.., empty body, sealed with the session keys
+//   4. H -> C   PKT_TOKEN_ACK, conn=<conn_id>, seq=0.., capability(1), sealed with the session keys
 //
 //      Admitted. The client then sends FLAG_HELLO as ordinary stream traffic, exactly as on TCP.
 //
@@ -663,12 +654,17 @@ void Endpoint::client_handshake_tick(DWORD now) {
     }
     // datagram 3, on the conn slot the token named
     EnterCriticalSection(&m_conn_cs);
-    Conn   &c = m_conns[0];
-    uint8_t body[U::TOKEN_WIRE + HS_RESPONSE_LEN];
+    Conn   &c                                         = m_conns[0];
+    uint8_t body[U::TOKEN_WIRE + HS_RESPONSE_LEN + 2] = {};
     memcpy(body, p.token, U::TOKEN_WIRE);
     hs_build_response(m_psk, p.cn, p.sn, body + U::TOKEN_WIRE);
-    send_sealed(p.addr, U::PKT_TOKEN, c.conn_id, c.tx_seq++, c.keys.enc_c2s, c.keys.mac_c2s, body,
-                sizeof(body));
+    body[U::TOKEN_WIRE + HS_RESPONSE_LEN] = cap_byte();
+    const LONG   shape                    = m_test_game_shape;
+    const size_t wire_len                 = U::TOKEN_WIRE + HS_RESPONSE_LEN + (shape == 1 ? 0 : shape == 2 ? 2
+                                                                                                           : 1);
+    if (shape != 3)
+        send_sealed(p.addr, U::PKT_TOKEN, c.conn_id, c.tx_seq++, c.keys.enc_c2s, c.keys.mac_c2s, body,
+                    wire_len);
     LeaveCriticalSection(&m_conn_cs);
 }
 
@@ -844,8 +840,23 @@ void Endpoint::client_on_boot(const sockaddr_in &from, const uint8_t *body, size
 
 void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const uint8_t *body,
                              size_t len, DWORD now) {
-    if (len != U::TOKEN_WIRE + HS_RESPONSE_LEN) {
-        ++m_c.malformed;
+    // Enforce feature generation BEFORE allocating an active peer or assigning
+    // an ID. HELLO alone was too late and WELCOME is absent in force-entry mode.
+    if (len != U::TOKEN_WIRE + HS_RESPONSE_LEN + 1 ||
+        body[U::TOKEN_WIRE + HS_RESPONSE_LEN] != osq::CAP_VERSION) {
+        ++m_osq.c.legacy_refused;
+        // This authenticated presentation owns a pending slot, not a live peer.
+        EnterCriticalSection(&m_conn_cs);
+        for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
+            if (m_pend[i].used && memcmp(m_pend[i].conn_id, h.conn_id, CONN_ID_BYTES) == 0) {
+                const Pending &pending = m_pend[i];
+                send_sealed(from, U::PKT_DISCONNECT, pending.conn_id, 0,
+                            pending.keys.enc_s2c, pending.keys.mac_s2c, nullptr, 0);
+                m_pend[i].used = false;
+            }
+        LeaveCriticalSection(&m_conn_cs);
+        logf("net: udp token refused -- missing or incompatible game capability (need %u)",
+             (unsigned)osq::CAP_VERSION);
         return;
     }
     EnterCriticalSection(&m_conn_cs);
@@ -903,8 +914,8 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
                     c.player_id = k;
                     break;
                 }
-            InterlockedCompareExchange(&m_dead_peer, -1, c.player_id);
-            if (c.player_id >= 0 && c.player_id < 8) m_dead_extra &= ~(1u << c.player_id); // mp:U64: a rejoiner is not dead
+            if (c.player_id >= 0 && c.player_id < 8)
+                InterlockedAnd(&m_dead_mask, LONG(~(1u << c.player_id)));
         } else {
             c.player_id = -1; // learned from the client's FLAG_HELLO
         }
@@ -941,11 +952,29 @@ void Endpoint::host_on_token(const sockaddr_in &from, const U::Header &h, const 
                    m_test_legacy ? 0 : 1);
     }
     LeaveCriticalSection(&m_conn_cs);
-    send_sealed(to, U::PKT_TOKEN_ACK, cid, seq, keys.enc_s2c, keys.mac_s2c, nullptr, 0);
+    send_token_ack(to, cid, seq, keys);
 }
 
-void Endpoint::client_on_token_ack(const U::Header &h, DWORD now) {
+void Endpoint::send_token_ack(const sockaddr_in &to, const uint8_t *cid, uint64_t seq,
+                              const SessionKeys &keys) {
+    const LONG    shape    = m_test_game_shape;
+    const uint8_t bytes[2] = {cap_byte(), 0};
+    if (shape != 3)
+        send_sealed(to, U::PKT_TOKEN_ACK, cid, seq, keys.enc_s2c, keys.mac_s2c,
+                    bytes, shape == 1 ? 0 : shape == 2 ? 2
+                                                       : 1);
+}
+
+void Endpoint::client_on_token_ack(const U::Header &h, const uint8_t *body, size_t len, DWORD now) {
     (void)h;
+    if (len != 1 || body[0] != osq::CAP_VERSION) {
+        ++m_osq.c.legacy_refused;
+        EnterCriticalSection(&m_conn_cs);
+        m_pend[0].used = false;
+        refuse_conn(0, "the host token ACK has an incompatible game capability");
+        LeaveCriticalSection(&m_conn_cs);
+        return;
+    }
     Pending &p = m_pend[0];
     if (!p.used) return;
     EnterCriticalSection(&m_conn_cs);
@@ -1480,10 +1509,9 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
         // mp:U59 (user decision Q5): a client without the exactly-once layer is REFUSED at join. Its
         // HELLO carries no capability byte (or an older one); admitting it would put frames on the
         // wire that cannot be sequenced, deduped or reconciled.
-        if (m_role == 0 && (len < 1 || payload[0] != osq::CAP_VERSION)) {
+        if (m_role == 0 && (len != 1 || payload[0] != osq::CAP_VERSION)) {
             ++m_osq.c.legacy_refused;
-            drop_conn(idx, "the peer's HELLO lacks the exactly-once frame layer capability -- an older "
-                           "build (mp:U59, refused at join)");
+            drop_conn(idx, "the peer's HELLO has an incompatible game capability (ORDERSEQ)");
             return;
         }
         // mp:U60 -- a REHOMED hub seats only the survivors it was told about, under the ids they already
@@ -1510,17 +1538,16 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
                  c.player_id);
         } else {
             c.player_id = h.src;
-            InterlockedCompareExchange(&m_dead_peer, -1, h.src);
-            if (h.src >= 0 && h.src < 8) m_dead_extra &= ~(1u << h.src); // mp:U64: a rejoiner is not dead
+            if (h.src >= 0 && h.src < 8)
+                InterlockedAnd(&m_dead_mask, LONG(~(1u << h.src)));
             logf("net: udp conn %d is player %d", idx, (int)h.src);
         }
         return;
     }
-    if (h.flags == FLAG_WELCOME) { // N1: the host assigned US an id (client side)
-        if (len < 1 || payload[0] != osq::CAP_VERSION) { // mp:U59: an older host (Q5: refuse)
+    if (h.flags == FLAG_WELCOME) {                        // N1: the host assigned US an id (client side)
+        if (len != 1 || payload[0] != osq::CAP_VERSION) { // mp:U59: an older host (Q5: refuse)
             ++m_osq.c.legacy_refused;
-            drop_conn(idx, "the host's WELCOME lacks the exactly-once frame layer capability -- an older "
-                           "build (mp:U59, refused at join)");
+            drop_conn(idx, "the host's WELCOME has an incompatible game capability (ORDERSEQ)");
             return;
         }
         InterlockedIncrement(&m_welcome_rx);
@@ -1529,6 +1556,13 @@ void Endpoint::deliver_frame(int idx, const WireHdr &h, const uint8_t *payload, 
         InterlockedExchange(&m_id_assigned, 1);
         logf("net: udp WELCOME -- host assigned us player %d", m_my_id);
         return;
+    }
+    if (h.flags == FLAG_ANNOUNCE && len > 0 && payload[0] == mh_net_proto::ANNOUNCE_LOBBY_SPEED) {
+        // idx identifies the authenticated connection. Only the client upstream (conn0) may
+        // supply host lobby speed; an untrusted header src is not proof of that connection.
+        if (m_role != 1 || idx != 0) return;
+        mh_net_proto::LobbySpeed speed;
+        if (!mh_net_proto::lobby_speed_decode(payload, len, speed)) return;
     }
     if (h.flags == FLAG_SESSION_INFO || h.flags == FLAG_JOIN || h.flags == FLAG_START ||
         h.flags == FLAG_LEAVE || h.flags == FLAG_ANNOUNCE || h.flags == FLAG_HASH) {
@@ -1737,8 +1771,8 @@ void Endpoint::recv_loop() {
             continue;
         }
         {
-            bool blocked = false;
-            const unsigned short sp = ntohs(from.sin_port);
+            bool                 blocked = false;
+            const unsigned short sp      = ntohs(from.sin_port);
             for (int i = 0; i < 8; ++i)
                 if (m_block_port[i] == (LONG)sp) blocked = true;
             if (blocked) {
@@ -1807,18 +1841,26 @@ void Endpoint::on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD
             return; // the arrival is the whole content
         }
         if (h.type == U::PKT_DISCONNECT) {
+            if (!c.active && m_role == 1) m_pend[0].used = false;
             drop_conn(idx, "the peer said it was leaving");
             LeaveCriticalSection(&m_conn_cs);
             return;
         }
         if (h.type == U::PKT_TOKEN) { // a client retransmit of handshake datagram 3: re-ack it
+            if (m_role != 0 || blen != U::TOKEN_WIRE + HS_RESPONSE_LEN + 1 ||
+                pkt[U::HDR_SIZE + U::TOKEN_WIRE + HS_RESPONSE_LEN] != osq::CAP_VERSION) {
+                ++m_osq.c.legacy_refused;
+                drop_conn(idx, "an incompatible token retransmit");
+                LeaveCriticalSection(&m_conn_cs);
+                return;
+            }
             const sockaddr_in to  = c.addr;
             const uint64_t    seq = c.tx_seq++;
             uint8_t           cid[CONN_ID_BYTES];
             memcpy(cid, c.conn_id, CONN_ID_BYTES);
             const SessionKeys keys = c.keys;
             LeaveCriticalSection(&m_conn_cs);
-            send_sealed(to, U::PKT_TOKEN_ACK, cid, seq, keys.enc_s2c, keys.mac_s2c, nullptr, 0);
+            send_token_ack(to, cid, seq, keys);
             return;
         }
         if (h.type == U::PKT_TOKEN_ACK) {
@@ -1829,7 +1871,14 @@ void Endpoint::on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD
             // broadcast, and the host received nothing from either.)
             const bool admit = (m_role == 1 && !c.active);
             LeaveCriticalSection(&m_conn_cs);
-            if (admit) client_on_token_ack(h, now);
+            if (admit) client_on_token_ack(h, pkt + U::HDR_SIZE, blen, now);
+            return;
+        }
+        // A bound client can decrypt before TOKEN_ACK, but may not expose a
+        // control, command or snapshot yet. Do not ACK these stream/bulk bytes:
+        // the existing reliable sender retransmits them after admission.
+        if (!c.active) {
+            LeaveCriticalSection(&m_conn_cs);
             return;
         }
         // PKT_DATA: walk the channel mux.
@@ -1901,7 +1950,7 @@ void Endpoint::on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD
             else ++m_c.malformed;
             return;
         }
-        client_on_token_ack(h, now);
+        client_on_token_ack(h, pkt + U::HDR_SIZE, blen, now);
         return;
     }
     ++m_c.wrong_conn;
@@ -2058,7 +2107,7 @@ void Endpoint::timer_loop() {
                      "(%ld total) -- nothing filled them within %u ms (last: origin %ld seq %ld..%ld)",
                      m_osq.c.gap_skipped - skipped, m_osq.c.gap_skipped, (unsigned)m_osq.gap_force_ms,
                      m_osq.c.skip_origin, m_osq.c.skip_from, m_osq.c.skip_to - 1);
-            rc_tick(now); // mp:U60 -- the hub-change reconcile (a no-op until rehome() ran)
+            rc_tick(now);   // mp:U60 -- the hub-change reconcile (a no-op until rehome() ran)
             mesh_tick(now); // mp:U61 -- probes, brokering, the matrix, succession epochs
             fo_tick(now);   // mp:U63 -- hub-loss detection, corroboration, the failover's choice
         }
@@ -2219,14 +2268,23 @@ void Endpoint::send_ctrl(uint16_t flags, const unsigned char *buf, int len) {
     LeaveCriticalSection(&m_conn_cs);
 }
 
-int Endpoint::recv(int *out_sender, void *buf, int *inout_len) {
-    if (!m_started || !buf || !inout_len) return 0;
+int Endpoint::recv(int *out_sender, void *buf, int *inout_len,
+                   const int *blocked_senders, int blocked_count) {
+    if (!m_started || !buf || !inout_len || blocked_count < 0 ||
+        (blocked_count && !blocked_senders)) return 0;
     const int cap = *inout_len;
     int       got = 0;
     EnterCriticalSection(&m_q_cs);
-    // mp:U41e -- THE MERGE. `pop()` returns whichever lane's head arrived first, so what comes out of
-    // here is the arrival order the single ring used to deliver, minus only what lane H evicted.
-    const mh::net::queue_policy::pop_result r = m_lanes.pop();
+    const auto eligible = [&](mh::net::queue_policy::lane lane, int pos) {
+        const int from = lane == mh::net::queue_policy::lane::supersedable
+                             ? m_qh[pos].src
+                             : m_qm[pos].src;
+        for (int i = 0; i < blocked_count; ++i)
+            if (blocked_senders[i] == from) return false;
+        return true;
+    };
+    const mh::net::queue_policy::pop_result r =
+        blocked_count ? m_lanes.pop_eligible(eligible) : m_lanes.pop();
     if (r.ok) {
         const uint8_t *src_bytes;
         int            src_len, src_from;
@@ -2340,21 +2398,8 @@ int Endpoint::active_peer_ids(int *out, int cap) {
     return n;
 }
 
-// U17's latch is ONE slot. mp:U63 queues more than one dead peer at a time (the old hub AND a survivor that never
-// re-dialled), so the extras wait in a mask and are popped lowest id first once the slot is empty.
-int Endpoint::take_dead_peer() {
-    const int v = (int)InterlockedExchange(&m_dead_peer, -1);
-    if (v >= 0 || !m_cs_ready) return v;
-    EnterCriticalSection(&m_conn_cs);
-    int r = -1;
-    for (int i = 0; i < 8; ++i)
-        if (m_dead_extra >> i & 1u) {
-            m_dead_extra &= ~(1u << i);
-            r = i;
-            break;
-        }
-    LeaveCriticalSection(&m_conn_cs);
-    return r;
+int Endpoint::dead_peer_mask() {
+    return m_started ? int(InterlockedCompareExchange(&m_dead_mask, 0, 0)) : 0;
 }
 
 // mp:R3e. `tx_dead` rather than `active` for the conn half: drop_conn sets both, but a conn is
@@ -2638,8 +2683,7 @@ bool Endpoint::rehome(const RehomeSpec &sp) {
     if (m_conns[0].bound || m_conns[0].active)
         drop_conn(0, "re-homing: the old hub connection is retired in place (mp:U60)");
     memset(m_pend, 0, sizeof(m_pend)); // any handshake still in flight was toward the OLD hub
-    InterlockedExchange(&m_dead_peer, -1);
-    m_host_assign = false; // ids are KEPT: no WELCOME is ever sent or expected from here on
+    m_host_assign = false;             // ids are KEPT: no WELCOME is ever sent or expected from here on
     m_rehomed     = true;
 
     // 3 (state). The reconcile: M1's note -- never skip a hole while migrating.
@@ -2898,7 +2942,7 @@ void Endpoint::rc_repair_holes(DWORD now) {
     for (int o = 0; o < osq::ORIGINS; ++o) {
         const osq::Layer::Origin &g = m_osq.o[o];
         if (g.ahead_n == 0 || (DWORD)(now - g.ahead_t) < 300) continue;
-        any = true;
+        any             = true;
         uint32_t lowest = 0xffffffffu;
         for (int s = 0; s < osq::AHEAD_SLOTS; ++s)
             if (g.ahead[s].used && g.ahead[s].lo < lowest) lowest = g.ahead[s].lo;
@@ -2928,7 +2972,7 @@ void Endpoint::rc_tick(DWORD now) {
     if (!m_rehomed || m_rc.skip) return;
     rc_repair_holes(now);
     if (m_role == 0) {
-        int expected = 0, have = 0;
+        int        expected = 0, have = 0;
         const bool waited = (int32_t)(now - m_rc.deadline_ms) >= 0;
         for (int id = 0; id < osq::ORIGINS; ++id)
             if (m_roster[id]) {

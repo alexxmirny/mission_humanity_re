@@ -2,10 +2,11 @@
 # another. Folds the old map_refuse_tcp and map_have_tcp rows.
 #
 #   segment 1  map_refuse_tcp  the joiner holds DIFFERENT bytes of the map (map_test_pretend=other): the host CLICKS Start --
-#                              the forbidden act -- and it is refused by name. A click and not `disabled Start`, because retail
-#                              re-derives Start's 0x40 bit every lobby frame so the greyed look never holds long enough for a
-#                              predicate (dead-ends G291); an absolute `click` is used, not `clickl`, which skips a widget whose
-#                              bit happens to be set that frame. The runner then ends that client.
+#                              the attempt must not slip through. The late widget constraint now keeps Start disabled after
+#                              retail dispatch: assert it before and after a real held click, then let the matching second
+#                              joiner launch normally. G291's activation guard remains independently covered by maptest;
+#                              this UI walk must not force a bypass or require a lower-layer callback rejected earlier.
+#
 #   segment 2  map_have_tcp    a joiner holding the SAME map starts normally: no refusal, nothing armed (mp_host_start.txt's
 #                              walk, with mp_client_start.txt as the joiner).
 #
@@ -33,9 +34,12 @@ present Network players
 peers 1
 occ 2
 settled Start
-click 501 294
+disabled Start
+# Start sits at y=304 since mods:MAPGEN2 (was 294: the description box grew 120 -> 130 px, the page spinner took the Mode slot)
+simclick 501 304
 cursorhold 10 10 120
 present Network players
+disabled Start
 capture map_refuse_tcp__x1_start_refused
 log HOST: Start REFUSED -- the joiner holds a different copy of the map and TCP cannot carry it
 

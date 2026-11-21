@@ -1,0 +1,14 @@
+{
+  "_why": "DATAEXT2 asserts the rendered Soldier info text and values, including its patched cost and name, in exact RGB. Measured full-frame drift is outside this region: 423 pixels in transient completion messages and 220 in the minimap; both info text regions remain identical. Full-world behavior and complete MP state hashes are checked separately; no tolerance is raised.",
+  "_only": {
+    "capture_cfg_soldier_info_campaign.png": {
+      "mode": "rgb",
+      "rect": [
+        198,
+        460,
+        442,
+        121
+      ]
+    }
+  }
+}

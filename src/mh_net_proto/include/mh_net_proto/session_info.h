@@ -58,6 +58,14 @@ constexpr std::size_t MAP_STORED_NAME_CAP = SESSION_MAP_MAX + 1 + (MAP_HASH_BYTE
 // impossible. Refusing the advert is the honest answer.
 constexpr std::uint8_t SESSION_INFO_FORMAT = 5;
 
+// ---- DATAEXT1: THE MOD-CONTENT DIGEST (JOIN v8; HOST-LOCAL on the advert) ------------------------
+// SHA-256 over the ordered active-mod payload snapshot (the canonical stock bytes when no mod is
+// active) -- the same bytes every peer will load the game from. The runtime ALWAYS supplies a real
+// digest, so unlike map_hash there is no "no claim" value: the JOIN comparison is an unconditional
+// 32-byte equality and an all-zero digest is just one more value, never a bypass.
+constexpr int         CONTENT_DIGEST_BYTES   = 32;
+constexpr std::size_t CONTENT_DIGEST_HEX_CAP = CONTENT_DIGEST_BYTES * 2 + 1; // 64 hex + NUL
+
 struct SessionInfo {
     std::uint32_t tag                         = 0;     // host-generated random -> disambiguates same-named games (dedup key)
     std::uint16_t host_version                = 0;     // host build version (compat gate / display)
@@ -103,6 +111,11 @@ struct SessionInfo {
     // `build`: NOT on the SESSION_INFO wire. 0 = "no claim" (selftest hosts, builds with no synced
     // keys), which skips the check in join_admit().
     std::uint32_t gameplay_digest = 0;
+    // DATAEXT1 (JOIN v8): the host's OWN mod-content digest, HOST-LOCAL like `build` and
+    // `gameplay_digest`: NOT on the SESSION_INFO wire (format 5 and the encoded size are unchanged).
+    // Stamped by mp_build_host_session_info; join_admit() compares it with the joiner's stated
+    // digest UNCONDITIONALLY (all 32 bytes; no zero bypass).
+    std::uint8_t content_digest[CONTENT_DIGEST_BYTES] = {0};
 };
 
 // Worst-case encoded size: 11 scalar bytes + two length-prefixed strings + the fixed 0x17c map header
@@ -191,7 +204,30 @@ const char           *session_match_id_log_line(const std::uint8_t match_id[UUID
 // request frame would be a second thing that can be lost, a second thing to retry, and a second
 // piece of state to reconcile with the join; carrying the answer in the message that already asks
 // to be admitted means a peer that joined has, by construction, already said what it holds.
-constexpr std::uint8_t JOIN_REQUEST_FORMAT = 7;
+// v13 retains JOIN fields but requires completed-body participant removal and owned continuations.
+// Equal release/content cannot substitute for compatible simulation admission semantics.
+constexpr std::uint8_t  JOIN_REQUEST_FORMAT = 13;
+constexpr std::uint16_t GAME_GENERATION     = JOIN_REQUEST_FORMAT;
+constexpr std::uint16_t HOST_GENERATION     = 11;
+constexpr std::uint16_t HOST_MIN_GENERATION = 11;
+
+constexpr bool host_generation_supported(std::uint16_t version) noexcept {
+    return version >= HOST_MIN_GENERATION;
+}
+
+// Mandatory TCP feature exchange, over the existing HELLO/WELCOME control frames,
+// AFTER optional encryption setup, BEFORE publishing a peer or delivering any
+// control/game payload. This is independent of HS_VERSION and relay framing.
+// Eight bytes: 'QGEN' | LE u16 generation | stage | zero reserved byte.
+// HELLO(offer), WELCOME(ack), HELLO(confirm). A missing/malformed/wrong-generation
+// stage fails the link; an old empty HELLO/WELCOME never grants admission.
+enum class GameFeatureStage : std::uint8_t { Offer   = 1,
+                                             Ack     = 2,
+                                             Confirm = 3 };
+constexpr std::size_t GAME_FEATURE_BYTES = 8;
+void                  game_feature_encode(GameFeatureStage stage, std::uint8_t *out) noexcept;
+bool                  game_feature_accept(std::uint16_t flags, const std::uint8_t *in, std::size_t len,
+                                          GameFeatureStage expected) noexcept;
 
 // The oldest JOIN a SES0 host admits. A v1/v2 client carries no match_id, so admitting it would seat a
 // peer whose logs can never be correlated with the host's -- the whole point of SES0. It is refused by
@@ -220,7 +256,17 @@ constexpr std::uint8_t JOIN_REQUEST_FORMAT = 7;
 // gameplay values in FLAG_START, so a joiner whose build syncs a different KEY SET would silently
 // adopt a partial set; the digest is load-bearing for admission. A v6 client cannot state one, so it
 // is refused as an old protocol ("protocol 6 < 7").
-constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = 7;
+//
+// RAISED TO 8 BY DATAEXT1 (v8: + the joiner's 32-byte mod-content digest). The digest is
+// load-bearing for admission -- it names the exact bytes the peer will load -- and the comparison is
+// UNCONDITIONAL: there is no "no claim" digest, so a client that cannot state one has nothing to
+// agree WITH and is refused as an old protocol ("protocol 7 < 8").
+// RAISED TO 9 BY ORDERSEQ: task edits and queue snapshots are mandatory even
+// when all release, gameplay-key and mod-content claims agree. No fields added.
+// RAISED TO 10: QORD2 aircraft guidance/origins and order-host operations25..27.
+// RAISED TO 11: logical move-prefix origin/witness semantics and ground placement.
+// RAISED TO 12: Start atomically binds slots/settings/selected map; previews are not authority.
+constexpr std::uint8_t JOIN_REQUEST_MIN_FORMAT = JOIN_REQUEST_FORMAT;
 
 struct JoinRequest {
     std::uint32_t tag                              = 0;   // lobby-id tag (must equal the host's SessionInfo.tag)
@@ -241,16 +287,23 @@ struct JoinRequest {
     // PT-SET1 (v7): gameplay_set_digest of the key set THIS joiner syncs (0 = no claim). Its own
     // measurement, never an echo of the host's. 0 for v1..v6.
     std::uint32_t gameplay_digest = 0;
-    std::uint8_t format               = JOIN_REQUEST_FORMAT; // the format byte DECODE actually read (not sent; see below)
+    // DATAEXT1 (v8): the JOINER'S OWN mod-content digest -- its own measurement of the bytes it
+    // will load, passed to join_request_for as an explicit argument like every other joiner-owned
+    // field. REQUIRED at v8; there is no "none" encoding, so an all-zero value is a real claim that
+    // must equal the host's real claim.
+    std::uint8_t content_digest[CONTENT_DIGEST_BYTES] = {0};
+    std::uint8_t format                               = JOIN_REQUEST_FORMAT; // the format byte DECODE actually read (not sent; see below)
 };
 
 // Worst-case encoded size: format byte + tag + length-prefixed name + length-prefixed player_name +
-// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5) + the length-prefixed build (v6) + the u32 gameplay digest (v7). `format` is NOT a wire
-// field of its own -- encode always writes JOIN_REQUEST_FORMAT, and decode reports what it read
-// there so the admit policy can act on it.
+// the 16-byte match_id (v3) + the codepage (v4) + the 8-byte map hash (v5) + the length-prefixed
+// build (v6) + the u32 gameplay digest (v7) + the 32-byte content digest (v8). `format` is NOT a
+// wire field of its own -- encode always writes JOIN_REQUEST_FORMAT, and decode reports what it
+// read there so the admit policy can act on it.
 constexpr std::size_t JOIN_REQUEST_MAX_ENCODED = 1 + 4 + (1 + SESSION_NAME_MAX) +
                                                  (1 + PLAYER_NAME_MAX) + UUID7_BYTES + 2 +
-                                                 MAP_HASH_BYTES + (1 + BUILD_MAX) + 4;
+                                                 MAP_HASH_BYTES + (1 + BUILD_MAX) + 4 +
+                                                 CONTENT_DIGEST_BYTES; // 115 + 32 = 147
 
 // Serialize `jr` little-endian into `out` (must hold >= JOIN_REQUEST_MAX_ENCODED bytes). Returns bytes written.
 std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexcept;
@@ -261,22 +314,15 @@ bool join_request_decode(const std::uint8_t *in, std::size_t len, JoinRequest &o
 
 // Build a JOIN request naming the same lobby (name + tag) as `si`, echoing its match_id.
 //
-// `my_codepage` is the JOINER'S OWN pin, not the advert's. Echoing the host's value back would make
-// every mismatch look like agreement, which is the one way this field could be worse than not having
-// it; the one-argument form therefore means "this peer declares no pin" (0) rather than "whatever the
-// host said". Callers that have a pin pass it.
-JoinRequest join_request_for(const SessionInfo &si) noexcept;
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage) noexcept;
-// X2: ...and the three-argument form that also states which map bytes this joiner holds. `my_map_hash`
-// may be null for "I hold nothing", which encodes as the all-zero claim.
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage,
-                             const std::uint8_t *my_map_hash) noexcept;
-// RL11: ...and the four-argument form that also states this joiner's release version (null/empty = none).
+// EVERY joiner-owned quantity is an explicit argument -- the joiner's pin, its map hash, its build,
+// its gameplay digest and (v8) its mod-content digest -- because a value copied out of `si` instead
+// of measured on this side would make every disagreement look like agreement. There is ONE form, no
+// defaults and no shorter overloads: a caller that wants a weak claim writes it explicitly at the
+// call site. `my_map_hash` may be null (the all-zero claim); `my_content_digest` is a bound
+// fixed-size array reference, so a null or a wrong length cannot compile.
 JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
-                             const char *my_build) noexcept;
-// PT-SET1: ...and the five-argument form that also states this joiner's gameplay key-set digest (0 = none).
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
-                             const char *my_build, std::uint32_t my_gameplay_digest) noexcept;
+                             const char *my_build, std::uint32_t my_gameplay_digest,
+                             const std::uint8_t (&my_content_digest)[CONTENT_DIGEST_BYTES]) noexcept;
 
 // True iff `jr` names the same lobby (name AND tag) as host session `si` -- the host's LOBBY test.
 // Deliberately still name+tag only: the tag is already re-minted on every lobby re-create, so adding
@@ -292,12 +338,13 @@ bool join_matches_session(const JoinRequest &jr, const SessionInfo &si) noexcept
 enum class JoinAdmit : std::uint8_t {
     Admit = 0,            // this JOIN names our lobby and is new enough -- open the slot/map gate
     RefusedMalformed,     // truncated, over-long field, or a format byte of 0
-    RefusedOldProtocol,   // format < JOIN_REQUEST_MIN_FORMAT: a pre-match_id client
+    RefusedOldProtocol,   // format < JOIN_REQUEST_MIN_FORMAT: an unsupported game generation
     RefusedNewerProtocol, // format > JOIN_REQUEST_FORMAT: a client newer than this host
     RefusedWrongLobby,    // parsed fine, but names a different name#tag
     RefusedCodepage,      // F3: parsed fine, our lobby, but the joiner pins a DIFFERENT input codepage
     RefusedBuild,         // RL11: parsed fine, our lobby, but the joiner runs a DIFFERENT release version
     RefusedGameplay,      // PT-SET1: both sides state a gameplay key-set digest and they differ
+    RefusedContent,       // DATAEXT1: the joiner's 32-byte mod-content digest differs from the host's (unconditional)
 };
 
 // A short, stable, greppable reason string for the log line. Never null.
@@ -420,6 +467,11 @@ bool announce_refused_decode(const std::uint8_t *in, std::size_t len, std::uint8
 constexpr std::size_t JOIN_REFUSAL_TEXT_MAX = 20; // 32 on screen minus the 9-char "Refused: " prefix, 3 spare
 const char           *join_refusal_text(JoinAdmit a, const SessionInfo &mine, const JoinRequest &theirs, char *out,
                                         std::size_t cap) noexcept;
+
+// DATAEXT1: 64 lowercase hex + NUL into `out` (>= CONTENT_DIGEST_HEX_CAP). Same spelling as
+// map_hash_hex so the host log's expected/local pair is greppable against any other printed
+// content digest. Returns `out`.
+const char *content_digest_hex(const std::uint8_t d[CONTENT_DIGEST_BYTES], char *out, std::size_t cap) noexcept;
 
 // ---- mp:X2 -- the map-identity helpers ------------------------------------------------------------
 //

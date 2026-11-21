@@ -3,7 +3,7 @@
 // mh_harness_module.h -- THE mh.dll <-> mh_harness.dll CONTRACT (fork F4E).
 //
 // mh_harness_export.h declares WHAT the determinism harness does. This header declares HOW it is
-// reached once it stops being compiled into mh.dll: the thirteen symbols mh.dll resolves with
+// reached once it stops being compiled into mh.dll: the symbols mh.dll resolves with
 // GetProcAddress, the value each answers when the instrument is not there, and the two module-level
 // entries (init + probe) that are not part of the harness API at all.
 //
@@ -63,16 +63,18 @@
 //                                  zero is a legitimate step count (a peer still in the menu), so a
 //                                  zero absent value would read as "armed, at step 0" and ui_drive's
 //                                  `simstep` would wait out its watchdog instead of refusing by name.
-//                                  This is the one row whose absent value is a SENTINEL rather than
-//                                  the quiet answer, and it is because the caller is a test script
-//                                  whose whole failure mode is a predicate nothing can satisfy.
+//                                  A sentinel refuses a test that has no producer.
+//   MH_Harness_SoaComplete    -1   no hooked, configured shot-origin probe. Zero means pending;
+//                                  one means the probe's output ticket is on disk, not that its
+//                                  samples passed. The checker still judges the samples.
+//   MH_Harness_RecordFailoverCleanup -1   no certified match/hash boundary; never a guessed step.
 //
 // NOT A ROW, AND THE REASON IS THE FILE CUT: MH_Harness_ReportRelocation. It reports the relocating
 // state bind, which happens inside MH_Core_Arm_Early and therefore inside mh.dll -- so at F4E it
 // moved to mh/seams/core_arm.cpp with the arena and the report it reads, and stopped crossing the
 // boundary. F4E's surface measurement predicted thirteen crossing rows and it was TWELVE, because
-// one piece of code went to the side that owns its data (R9). The list is thirteen again today for
-// an unrelated reason -- F5J's MH_Harness_StepFence -- so do not read the count as that finding.
+// one piece of code went to the side that owns its data (R9). Later exports such as F5J's
+// MH_Harness_StepFence are independent crossings; the current count is derived below.
 //
 #ifndef MH_HARNESS_MODULE_H
 #define MH_HARNESS_MODULE_H
@@ -85,7 +87,8 @@ extern "C" {
 // module whose ABI disagrees rather than calling into it: two DLLs that ship separately can be
 // mismatched by a player copying one file, and a silent mismatch is a crash in somebody else's
 // stack frame. Same discipline as MH_NET_MODULE_ABI and LIBMH_MODULE_ABI.
-#define MH_HARNESS_MODULE_ABI 0xF4E00002u
+// Scene import and seed verification share one overflow-safe publication owner.
+#define MH_HARNESS_MODULE_ABI 0xF4E00007u
 
 // What mh.dll hands the instrument at bind time. THREE FIELDS BESIDES THE HANDSHAKE, and the last
 // two are the whole of Q4's refusal.
@@ -164,6 +167,14 @@ void MH_HarnessModule_Probe(MH_HarnessModuleProbe *out);
         (void)target;                                                                                     \
         return -1;                                                                                        \
     })                                                                                                    \
+    X(int, MH_Harness_SoaComplete, (void), (), { return -1; })                                            \
+    X(int, MH_Harness_RecordFailoverCleanup, (int phase, int local_id, int removed_side),                 \
+      (phase, local_id, removed_side), {                                                                  \
+          (void)phase;                                                                                    \
+          (void)local_id;                                                                                 \
+          (void)removed_side;                                                                             \
+          return -1;                                                                                      \
+      })                                                                                                  \
     X(int, MH_Harness_RebindSimTick, (void *ours), (ours), {                                              \
         (void)ours;                                                                                       \
         return 0;                                                                                         \

@@ -373,6 +373,7 @@
     <ClCompile Include="..\libmh\sim\sim_order_dispatch_bldg.cpp" />
     <ClCompile Include="..\libmh\sim\sim_order_enqueue.cpp" />
     <ClCompile Include="..\libmh\sim\sim_order_issue_0xf_adjacent.cpp" />
+    <ClCompile Include="..\libmh\sim\sim_order_tasks.cpp" />
     <ClCompile Include="..\libmh\sim\sim_path_alloc_slot.cpp" />
     <ClCompile Include="..\libmh\sim\sim_path_attach_slot.cpp" />
     <ClCompile Include="..\libmh\sim\sim_path_group_steps.cpp" />
@@ -428,6 +429,7 @@
     <ClCompile Include="..\libmh\sim\sim_state.cpp" />
     <ClCompile Include="..\libmh\sim\sim_step.cpp" />
     <ClCompile Include="..\libmh\sim\sim_storage_accepts_unit_type.cpp" />
+    <ClCompile Include="..\libmh\sim\sim_storage_bulk_rally.cpp" />
     <ClCompile Include="..\libmh\sim\sim_storage_can.cpp" />
     <ClCompile Include="..\libmh\sim\sim_storage_cancel_pending_docked.cpp" />
     <ClCompile Include="..\libmh\sim\sim_storage_dock.cpp" />
@@ -554,18 +556,22 @@
     <ClCompile Include="..\libmh\sim\sim_weapon_projectile_spawn.cpp" />
     <ClCompile Include="..\libmh\sim\sim_xtl_promote.cpp" />
     <ClCompile Include="..\libmh\state\boot_snapshot.cpp" />
+    <ClCompile Include="..\libmh\state\boot_snapshot_export.cpp" />
     <ClCompile Include="..\libmh\state\hook_api.cpp" />
     <ClCompile Include="..\libmh\state\host_api.cpp" />
     <ClCompile Include="..\libmh\state\host_bind.cpp" />
     <ClCompile Include="..\libmh\state\host_events.cpp" />
     <ClCompile Include="..\libmh\state\host_in.cpp" />
     <ClCompile Include="..\libmh\state\nav_trailer.cpp" />
+    <ClCompile Include="..\libmh\state\order_tasks_origin.cpp" />
+    <ClCompile Include="..\libmh\state\order_tasks_runtime.cpp" />
     <ClCompile Include="..\libmh\state\rebind_arming.cpp" />
     <ClCompile Include="..\libmh\state\rebind_shims.cpp" />
     <ClCompile Include="..\libmh\state\rebind_traps.gen.cpp" />
     <ClCompile Include="..\libmh\state\rebind_verify.gen.cpp" />
     <ClCompile Include="..\libmh\state\spine.cpp" />
     <ClCompile Include="..\libmh\state\spine_exports.cpp" />
+    <ClCompile Include="..\libmh\state\storage_policy_runtime.cpp" />
     <ClCompile Include="..\libmh\state\world_fixup.cpp" />
     <ClCompile Include="..\libmh\state\world_snapshot.cpp" />
     <ClCompile Include="..\libmh\tact\tact_active_unit_count_hud_draw.cpp" />
@@ -662,6 +668,7 @@
     <ClCompile Include="lockstep_selftest.cpp" />
     <ClCompile Include="nav_trailer_selftest.cpp" />
     <ClCompile Include="net_session_selftest.cpp" />
+    <ClCompile Include="order_tasks_selftest.cpp" />
     <ClCompile Include="orders_selftest.cpp" />
     <ClCompile Include="resync_selftest.cpp" />
     <ClCompile Include="save_selftest.cpp" />
@@ -936,6 +943,7 @@
     <ClCompile Include="sim_unit_update_anim_selftest.cpp" />
     <ClCompile Include="sim_weapon_damage_selftest.cpp" />
     <ClCompile Include="sim_weapon_scatter_offset_selftest.cpp" />
+    <ClCompile Include="storage_policy_selftest.cpp" />
     <ClCompile Include="tact_active_unit_count_hud_draw_selftest.cpp" />
     <ClCompile Include="tact_ambient_sound_selftest.cpp" />
     <ClCompile Include="tact_calc_dir24_selftest.cpp" />
@@ -996,6 +1004,13 @@
     <ClCompile Include="..\mh_nettest\mh_hostapi_selftest.gen.cpp" />
     <ClCompile Include="..\mh_nettest\hostapi_trap.cpp" />
     <ClCompile Include="..\mh_common\lzw.cpp" />
+    <ClCompile Include="..\mh_common\storage_policy.cpp" />
+    <ClCompile Include="..\mh_common\order_tasks.cpp" />
+    <ClCompile Include="..\mh_common\air_patrol.cpp" />
+    <ClCompile Include="..\mh_common\order_tasks_reservations.cpp" />
+    <ClCompile Include="..\mh_common\mh_order_tasks_dispatch.cpp" />
+    <ClCompile Include="..\mh_common\storage_policy_save.cpp" />
+    <ClCompile Include="..\mh_common\order_witness.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

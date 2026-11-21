@@ -15,6 +15,7 @@
 #include "include/mh_net_export.h" // MH_Net_IsStarted (PT-CAP8: the MP warning)
 #include "lockstep/turn_engine.h"
 #include "seams/net_internal.h"
+#include "seams/lobby_speed.h"
 #include "sim/move/stream_heat.h" // mods:M1WL v3: sh_legal_cost / sh_params_clamped, the clamps of the tuning keys
 
 namespace mh::gameplay {
@@ -44,6 +45,9 @@ static int  cb(const mh_gameplay::value &v, int preset, int retail) { return v.i
 static bool g_raise_refused = false; // PT-CAP8 S5: the last [caps] raise apply asked for ON and set_limits(true) said no
 
 static const hook_row k_hooks[] = {
+    // Start/replay validates and seals the value only at its successful barrier.
+    // Generic local apply must not freeze campaign pacing; reapply preserves a live match owner.
+    {"net", "lobby_speed_pct", [](const mh_gameplay::value &, mh::lockstep::reimpl_fixes &) { mh::seams::lobby_speed::enforce(); }},
     {"net", "turret_reload_realtime_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) { fx.turret_reload_realtime_fix = mh_set_turret_reload_realtime(v.i) != 0 && v.i != 0; }},
     {"net", "turret_fire_rate_mult", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) { mh_set_turret_fire_rate_mult(v.f); fx.turret_fire_rate_mult = v.f; }},
     {"net", "turret_clip_fix", [](const mh_gameplay::value &v, mh::lockstep::reimpl_fixes &fx) { fx.turret_clip_fix = mh_set_turret_clip_fix(v.i) != 0 && v.i != 0; }},

@@ -1,0 +1,20 @@
+# TILESET1: tilesetproof is the lane's only save; load it through the real menu.
+# This step must follow create and precede the resave step on the same isolated lane.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+# Select first/newest row explicitly: split MOVE/DOWN/UP so retail sees the correct hover.
+cursor 310 132
+cursor 310 132
+press 310 132
+release 310 132
+settled Load game
+clickl Load game
+present This save needs
+present Ok
+settled Ok
+screensettled
+capture tileset_save_missing_libmh
+log TILESET1 missing custom tileset refused at the load dialog
+end

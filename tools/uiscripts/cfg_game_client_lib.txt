@@ -1,0 +1,35 @@
+# DATAEXT2 joining peer: stay running while the host produces, moves and builds.
+settled value:110
+capture cfg_client_ready_lib
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+signal lobby
+absent Network players
+gamemode 2
+gameclock 6000
+logcfg client_locale
+# Each marker follows a real host-side readiness predicate; no simulated state changes.
+awaitsignal cfg_mother
+awaitsignal cfg_academy
+awaitsignal cfg_barracks
+awaitsignal cfg_prod_started
+awaitsignal cfg_prod_finished
+awaitsignal cfg_prod_moved
+awaitsignal cfg_reactor
+awaitsignal cfg_done
+log cfg peer workload complete
+simstep 12000
+gzdone 1
+end

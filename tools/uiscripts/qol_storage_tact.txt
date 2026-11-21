@@ -1,0 +1,119 @@
+# STORAGEPOL1/TARGETVIS1: real ayy30 storage settings across a real tactical excursion.
+# The explicit zero-unit PATH tactical excursion does not spawn or order any units.
+rawfocus 1
+layout 00000409
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+key 0x1c shift
+chatready
+type HSTOP
+field chat HSTOP
+key 0x1c
+gameclock +300
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+camto 54 4
+gameclock +100
+simclick 208 176
+retry 1500 1 1 selectedtype 39
+bldgsel 30
+capture qol_tact__default
+simclick 997 285
+gameclock +300
+simrclick 500 400
+gameclock +300
+logsel qol_tact_before
+capture qol_tact__before
+gameclock +200
+capture qol_tact__before_phase
+key 0x1c shift
+chatready
+type HRESET
+field chat HRESET
+key 0x1c
+key 0x1c shift
+chatready
+type HGO
+field chat HGO
+key 0x1c
+gamemode 6
+capture qol_tact__mission
+gamemode 2
+gameclock +100
+logsel qol_tact_returned
+# The native tactical return must retain its receiver before view normalization.
+bldgsel 30
+# Normalize the native return's zoom before the strict preserved-state captures;
+# its transient return zoom is not the storage-policy/target preservation contract.
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+camto 54 4
+gameclock +100
+simclick 208 176
+retry 1500 1 1 selectedtype 39
+bldgsel 30
+logsel qol_tact_reselected
+capture qol_tact__preserved
+gameclock +200
+capture qol_tact__preserved_phase
+simclick 650 650
+gameclock +100
+bldgsel none
+capture qol_tact__deselected
+
+# The same process now proves high-index cleanup, including the native carrier.
+key 0x01
+present &Options
+clickv 111
+present Screen size
+settled Ok
+click 490 381
+clickl Ok
+absent Screen size
+present &Options
+key 0x01
+gamemode 2
+gameclock +300
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+mark qol_targets_highindex
+camto 54 4
+gameclock +100
+simclick 208 176
+retry 1500 1 1 selectedtype 39
+logsel qol_highindex_selected
+cursorhold 2200 1300 6
+capture qol_highindex__before
+simrclick 800 900
+gameclock +100
+cursorhold 2200 1300 6
+capture qol_highindex__rally
+gameclock +200
+cursorhold 2200 1300 6
+capture qol_highindex__phase
+simclick 650 650
+gameclock +100
+logsel qol_highindex_deselected
+cursorhold 2200 1300 6
+capture qol_highindex__deselected
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+layout default
+end

@@ -35,6 +35,10 @@ int MH_MapZoom_Install(void);
 // *left / *top = the crop origin, *cw / *ch = the crop. All zero/100 when not armed.
 void MH_MapZoom_Get(int *z100, int *left, int *top, int *cw, int *ch);
 
+// Actual crop used by this frame's renderer, including screen shake. Returns 0 when the zoom
+// module is unarmed or viewport geometry is unavailable; callers then use the native crop.
+int MH_MapZoom_ReadCrop(int *left, int *top, int *width, int *height);
+
 // A display-size round trip (the galaxy screen's switch to 1024x768 and back) re-initialises the wheel counter the
 // zoom reads its movement from; the next strategic frame must take it as the new baseline instead of a wheel
 // delta. The zoom itself is kept: the viewport is the same size again, so the crop is still valid.

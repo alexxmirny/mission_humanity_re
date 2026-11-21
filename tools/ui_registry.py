@@ -40,12 +40,15 @@ RECORDS = {
         "optional": {
             "extra_ini": "str|list[str]",
             "harness_extra": "str",
+            "lane_maps": "list[str]",  # mods:MAPGEN1: swap the lane's Maps folder to these files before the step ("stock" = the install's own maps)
             "net_extra": "str",
             "omit_satellite": "list[str]",
             "tol": "float",
             "post_check": "list[str]|list[list[str]]",
             "post_check_session": "bool",
             "deploy_save": "str",
+            "save_outputs": "list[str]",
+            "save_inputs": "dict[str,str]",
             "launch_args": "str",
             "requires": "str",
             "timeout": "int",
@@ -118,15 +121,21 @@ SCHEMA = {
             "extra_ini_client": "str",
             "extra_ini_host": "str",
             "harness_extra": "str",
+            "independent_steps": "bool",
             "harness_extra_client": "str",
             "harness_extra_host": "str",
             "host": "str",
             "host_lanes": "list[int]",
             "lane_src": "str",
+            "lane_maps": "list[str]",
+            "lane_mods_client": "str",  # DATAEXT1: 'match'|'variant' -- the CLIENT lanes' mods fixture mode (make_lane --mods-fixture)
+            "lane_mods_empty_maps": "bool",  # DATAEXT1: empty local Maps so the mod-only row is selected
+            "lane_mods_host": "str",  # DATAEXT1: 'match'|'variant' -- the HOST lane's mods fixture mode
             "lane_src_client": "str",
             "launch_args": "str",
             "long_why": "str",
             "budget_evidence": "str",  # log path / run id proving a budget_s raise (--check-budgets)
+            "gate_credits": "int",  # default-local full-row CPU estimate; one core == 3
             "net_extra": "str",
             "net_extra_client": "str",
             "no_client_ip": "bool",
@@ -194,6 +203,12 @@ NON_REGISTRY_KEYS = ("anchors",)
 # declared key that no row uses any more (a stale entry, once its row is deleted or reworked).
 RARE_KEY_THRESHOLD = 2
 RARE_KEYS = {
+    "gate_credits": "audited root-row CPU allocations/estimates for default-local full runs (tooling:TL-GATE12)",
+    "independent_steps": "screen_seq: fresh-process solo steps own private lanes and may overlap; no cross-step saves or lane borrowers",
+    "lane_maps": "mapgen_solo / mapgen_ai rows: the lane's Maps folder holds only these generated maps (make_lane --maps-only), so the lobby default map is ours (mods:MAPGEN1)",
+    "lane_mods_host": "DATAEXT1 content rows: the host lane's mods fixture, built per lane at provisioning from an ordinary info\\*.txt member unpacked out of its own install packs (tools/mods_fixture.py)",
+    "lane_mods_client": "DATAEXT1 content rows: the client lanes' fixture mode -- 'match' = byte-identical text payload, 'variant' = last ASCII letter changed, text encoding preserved, unset = no mods dir at all (the stock snapshot, the missing-mod arm)",
+    "lane_mods_empty_maps": "DATAEXT1: provision an empty private Maps folder to select the fixture mod map (tools/mods_fixture.py)",
     # R2b (done): browser_two_rows is two relay-hosted lobbies, one browser -- the second lobby
     # needs its own advertised name and its own bound port (a client that also hosts).
     "client_game_name": "browser_two_rows' second lobby needs a distinct name (mp:R2b, done)",
@@ -481,6 +496,19 @@ def validate(data, refs=None, lint=True):
                         raise RegistryError(
                             "%s: %s=%s needs key %r" % (where, key, row.get(key), need)
                         )
+            if reg == "tests" and type(row.get("gate_credits")) is int and row["gate_credits"] <= 0:
+                raise RegistryError("%s: gate_credits must be positive" % where)
+            if reg == "tests" and row.get("independent_steps"):
+                if row.get("kind") != "solo" or not row.get("solo_steps"):
+                    raise RegistryError("%s: independent_steps needs solo_steps" % where)
+                if row.get("share_lanes") or row.get("expect_red"):
+                    raise RegistryError(
+                        "%s: independent steps cannot share lanes or expect a red" % where
+                    )
+                if any(s.get("save_inputs") or s.get("save_outputs") for s in row["solo_steps"]):
+                    raise RegistryError(
+                        "%s: independent steps cannot exchange generated saves" % where
+                    )
             if reg == "tests" and "solo_steps" in row:
                 steps = row["solo_steps"]
                 names_ = [s["name"] for s in steps]
@@ -494,6 +522,37 @@ def validate(data, refs=None, lint=True):
                     raise RegistryError("%s: solo_steps with one step is just a script" % where)
                 if len(set(names_)) != len(names_):
                     raise RegistryError("%s: duplicate solo_steps name" % where)
+                producers = {}
+                for step in steps:
+                    inputs = step.get("save_inputs", {})
+                    outputs = step.get("save_outputs", [])
+                    save_names = [*inputs, *outputs]
+                    if any(
+                        not name
+                        or not all(c.isascii() and (c.isalnum() or c in "_-") for c in name)
+                        for name in save_names
+                    ):
+                        raise RegistryError(
+                            "%s/%s: generated saves need extensionless safe basenames"
+                            % (where, step["name"])
+                        )
+                    if len({n.lower() for n in save_names}) != len(save_names):
+                        raise RegistryError(
+                            "%s/%s: duplicate or overlapping save inputs/outputs"
+                            % (where, step["name"])
+                        )
+                    if inputs and step.get("deploy_save", row.get("deploy_save")):
+                        raise RegistryError(
+                            "%s/%s: generated save inputs cannot mix with fixture deployment"
+                            % (where, step["name"])
+                        )
+                    for name, producer in inputs.items():
+                        if name.lower() not in producers.get(producer, set()):
+                            raise RegistryError(
+                                "%s/%s: input %s needs an earlier declared producer %s"
+                                % (where, step["name"], name, producer)
+                            )
+                    producers[step["name"]] = {n.lower() for n in outputs}
             if reg == "tests" and "multi_steps" in row:
                 steps = row["multi_steps"]
                 names_ = [s_["name"] for s_ in steps]
@@ -529,6 +588,12 @@ def validate(data, refs=None, lint=True):
                 if probs:
                     raise RegistryError("%s: %s" % (where, "; ".join(probs)))
         out[reg] = rows
+    independent = {r["name"] for r in out.get("tests", []) if r.get("independent_steps")}
+    for row in out.get("tests", []):
+        targets = row.get("share_lanes") or []
+        targets = [targets] if isinstance(targets, str) else targets
+        if independent.intersection(targets):
+            raise RegistryError("%s: cannot borrow lanes from independent steps" % row["name"])
     return out
 
 
@@ -849,6 +914,31 @@ _NEGATIVES = [
         "hash: reason on a solo row",
         _plant("    tol: 0.0\n", "    tol: 0.0\n    no_hash_why: x\n"),
         ["'ok_solo'", "solo row"],
+    ),
+]
+_NEGATIVES += [
+    (
+        "gate credits " + value,
+        _plant("    tol: 0.0\n", "    tol: 0.0\n    gate_credits: " + value + "\n"),
+        ["'ok_solo'", "gate_credits"],
+    )
+    for value in ("true", "'1'", "1.0", "null", "0", "-1")
+]
+_NEGATIVES += [
+    (
+        "gate credits cannot hide in a solo step",
+        _plant(
+            "    script: s.txt\n", "    solo_steps: [{name: a, script: a.txt, gate_credits: 1}]\n"
+        ),
+        ["'ok_solo'", "'solo_steps'"],
+    ),
+    (
+        "gate credits cannot hide in a multi step",
+        _plant(
+            "    host: h.txt\n    clients: [c.txt]\n",
+            "    multi_steps: [{name: a, host: h.txt, clients: [c.txt], gate_credits: 1}]\n",
+        ),
+        ["'ok_multi'", "'multi_steps'"],
     ),
 ]
 

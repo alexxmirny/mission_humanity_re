@@ -5,10 +5,9 @@ gives through control groups.
 
 The stimulus is tools/uiscripts/cap_ctrlgrp_solo.txt. The harness unit-fill fixture (`capu_*`) gives player 0 490 units round the mother; then the script does
 what a player does, through the game's own input path (no harness-issued order):
-  1. three box selects (each at most 200 ids, the U6 selection cap), each followed by `key <digit> ctrl` -- Ctrl+1 / Ctrl+2 / Ctrl+3: the selection becomes control
-     group N and every member gets a status-bit order (0x34, bit N of its ai_group_index) + its 0xfb echo, ~160 replicated orders in ONE keystroke;
-  2. per group: its digit recalls it (the group is the selection again: more status-bit orders), then ONE right-click on the ground gives the selection a move
-     order (a move order per unit + echo; the goal fields +0x86/+0x87 take the target).
+  1. three frozen-world box selects (each at most200ids, the U6 selection cap), each transferred through temporary group4 into group1/2/3; the final assignment
+     emits old-group flash plus new-group selection notifications, exceeding the vanilla300-record queue for a sufficiently large group;
+  2. per group: its digit recalls it, then ONE right-click on the ground gives the selection a move order. No echo-count assumption is needed.
 The harness watch (`capg_*`) is passive: every capg_every steps it logs `; CAPG step=.. groups=n0..n9 bits=B goal_changed=G tracked=T q=.. p=.. s=..` -- per
 group the member count, B = the members of groups 1..3 whose ai_group_index carries their group's bit (a status-bit order APPLIED), G = the members whose goal
 fields moved since the snapshot taken before any click (a move order APPLIED), T = the distinct members of groups 1..3. The order layer's own census
@@ -17,8 +16,8 @@ fields moved since the snapshot taken before any click (a move order APPLIED), T
 Clauses, ON arm (the order layer ON, libmh.dll absent):
   1  mh_net.log: `orders layer STAGED` + `orders layer ON`, no `[caps] ... REFUSED`; mh_harness.log: `; CAPU ... TARGET MET` with >= --units units, no `; CAPU FAIL` / `; CAPG FAIL`.
   2  the last `; CAPG` line: groups 1..3 hold T units in total, T >= --units (default 450), each group <= 200, and no other group (4..9) is used.
-  3  APPLIED, not displacement: bits == the sum of the three group counts (every member carries its group's status bit) and goal_changed == T (every member's goal fields hold
-     the move order's target, not just displaced).
+  3  APPLIED: bits == the sum of the three group counts and goal_changed == T. This counter proves changed goals since the initial snapshot;
+     exact clicked destinations are recorded separately by the script's loggoal observations.
   4  the last order census: hw q > 300 (past the vanilla queue [300]), ovf q=p=s=quota=0, guard=0x0.
   5  no `*** DESYNC`, no `ORDERS GUARD HIT`, the game kept stepping after the last click (>= --after steps).
 Clauses, OFF arm (--negative, `[caps] orders_layer=0`, the retail queue [300] on the raised roster):

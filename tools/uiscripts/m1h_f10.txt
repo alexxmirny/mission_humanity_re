@@ -1,8 +1,9 @@
 # mods:M1H F10 -- the big-map flood fixture, solo: a 1-human + 1-AI skirmish on the lobby's default map (256x256), reached through the real menu;
-# the mother is landed with a shift+right-click and the rest is the harness's pf_* probe (create a ground group of 8, give it the player's group
+# the mother is landed with a Ctrl+right-click and the rest is the harness's pf_* probe (create a ground group of 8, give it the player's group
 # move across the map, trace it). The verdict is NOT a frame: tools/check_m1h.py --case f10 reads the `; PF ...` lines and the hit counters.
-# One capture right after the landing (identical in every arm). The lobby start is the first thing in the file because a campaign save has no
-# 256x256 map: the flood (llm_map_region_flood_reachable) only gets a front big enough to matter on a big map.
+# One capture right after landing. Ship/lib/off include the intended selected connector;
+# m1h_f10_orig.txt keeps the original arm's distinct reference with the same executable walk.
+# The lobby start is first because only a 256x256 skirmish gives the flood a large enough front.
 settled value:110
 clickv 110
 present Player name
@@ -27,9 +28,11 @@ clickl Start
 absent Network players
 gamemode 2
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 6000
 capture m1h_f10
-gameclock +30000
+# Fence by actual sim bodies: the PF verdict follows its issued order by1500
+# steps; a game-clock duration can finish before that tail has executed.
+simstep 2500
 log m1h_f10: probe finished
 end

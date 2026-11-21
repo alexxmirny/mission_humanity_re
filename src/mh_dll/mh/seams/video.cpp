@@ -42,6 +42,7 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <cstring>
+#include <cstdlib>
 
 #include "include/mh_video_export.h"
 #include "include/mh_run_context.h"    // MH_RunDir
@@ -63,6 +64,10 @@
 #include "include/mh_mapzoom_export.h" // MH_MapZoom_ReseedWheel
 #include "include/mh_uiwheel_export.h" // MH_UiWheel_Reseed
 #include "addr/mh_calls.gen.h"         // RES6: llm_view_set_size_mode / llm_map_cam_set_col
+#include "ui/selected_targets.h"
+#include "include/mh_unitselect_export.h"
+#include "addr/mh_regions.gen.h" // publish actual video-owned dirty-map bindings
+#include "seams/avi_lifecycle.h"
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -149,13 +154,11 @@ __declspec(naked) void menu_load_detour() {
 //     them, so anything larger overflows into neighbouring globals. relocate_view_arrays() moves them
 //     into one VirtualAlloc'd block sized for MAX_TILES.
 //
-//     The rewrite is a self-verifying PATTERN scan rather than a hardcoded site table: every one of the
-//     47 refsites encodes the array base as a plain 32-bit displacement/immediate (never base+offset),
-//     and a full byte scan of every initialized block found ZERO occurrences outside those 47 (verified
-//     2026-07-25 -- .bss is uninitialized so it cannot hold baked-in pointers either). So we scan the
-//     one executable section for each base and require the EXACT expected hit count before writing
-//     anything; a count mismatch means a different build or an already-relocated image, and we abort the
-//     whole relocation rather than half-patch it.
+//     The rewrite is a self-verifying PATTERN scan: 47 exact-base operands plus 39 tactical
+//     indexed stores whose encoded displacements are VIS_MAP - 1 through VIS_MAP - 6.
+//     Require every measured count before writing anything. The six folded operands still
+//     address cells inside VIS after their index is added; they are not independent arrays.
+//     Publish the shared region bindings only after every guarded rewrite has succeeded.
 // =================================================================================================
 
 constexpr uintptr_t TEXT_LO = 0x00410000; // BEGTEXT -- the only executable block
@@ -186,10 +189,27 @@ ViewArray g_arrays[] = {
     {0x0070fc50u, MAX_TILES, 4, "LOS_CACHE", 0},
     {0x00712120u, PANEL_COLS *MAX_PANEL_ROW * 4, 6, "SURFACE_ROW_PTRS", 0},
     {0x00712920u, MAX_TILES * 4, 6, "FB_ROW_PTRS", 0},
-    {0x00713920u, MAX_TILES, 12, "DRAWN_MAP", 0},
-    {0x00713d20u, MAX_TILES, 19, "VIS_MAP", 0},
+    // Preserve six distinct prefix cells before VIS, outside DRAWN's logical MAX_TILES extent.
+    {0x00713920u, MAX_TILES + 6, 12, "DRAWN_MAP", 0},
+    // Native ground redraw tests a dword at the final logical visibility cell.
+    {0x00713d20u, MAX_TILES + 3, 19, "VIS_MAP", 0},
 };
 constexpr int N_ARRAYS = (int)(sizeof(g_arrays) / sizeof(g_arrays[0]));
+
+struct ViewAlias {
+    uint32_t             delta;
+    int                  expect;
+    mh::state::region_id rid;
+};
+constexpr ViewAlias VIS_ALIASES[] = {
+    {6, 9, mh::state::RID_TILE_VIS_MAP_M6},
+    {5, 10, mh::state::RID_TILE_VIS_MAP_M5},
+    {4, 8, mh::state::RID_TILE_VIS_MAP_M4},
+    {3, 4, mh::state::RID_TILE_VIS_MAP_M3},
+    {2, 4, mh::state::RID_TILE_VIS_MAP_M2},
+    {1, 4, mh::state::RID_TILE_VIS_MAP_M1},
+};
+constexpr int N_VIS_ALIASES = static_cast<int>(sizeof(VIS_ALIASES) / sizeof(VIS_ALIASES[0]));
 
 // Count every 4-byte little-endian occurrence of `val` in the executable section, recording the sites.
 int scan_text(uint32_t val, uintptr_t *out, int cap) {
@@ -206,6 +226,8 @@ int scan_text(uint32_t val, uintptr_t *out, int cap) {
 bool relocate_view_arrays() {
     uintptr_t sites[N_ARRAYS][32];
     int       counts[N_ARRAYS];
+    uintptr_t alias_sites[N_VIS_ALIASES][16];
+    int       alias_counts[N_VIS_ALIASES];
 
     // Pass 1: locate + verify EVERYTHING before writing a single byte.
     for (int i = 0; i < N_ARRAYS; ++i) {
@@ -213,6 +235,15 @@ bool relocate_view_arrays() {
         if (counts[i] != g_arrays[i].expect) {
             vid_log("; [video] view-array reloc ABORTED -- %s: found %d refsites, expected %d", g_arrays[i].name,
                     counts[i], g_arrays[i].expect);
+            return false;
+        }
+    }
+    for (int i = 0; i < N_VIS_ALIASES; ++i) {
+        const ViewAlias &alias = VIS_ALIASES[i];
+        alias_counts[i]        = scan_text(static_cast<uint32_t>(g_arrays[4].base) - alias.delta, alias_sites[i], 16);
+        if (alias_counts[i] != alias.expect) {
+            vid_log("; [video] view-array reloc ABORTED -- %s: found %d refsites, expected %d",
+                    mh::state::REGIONS[alias.rid].name, alias_counts[i], alias.expect);
             return false;
         }
     }
@@ -242,6 +273,26 @@ bool relocate_view_arrays() {
             return false;
         }
     }
+    const uint32_t vis_base = static_cast<uint32_t>(g_arrays[4].relocated);
+    for (int i = 0; i < N_VIS_ALIASES; ++i) {
+        const ViewAlias &alias = VIS_ALIASES[i];
+        const uint32_t   oldv  = static_cast<uint32_t>(g_arrays[4].base) - alias.delta;
+        const uint32_t   newv  = vis_base - alias.delta;
+        int              done  = 0;
+        for (int k = 0; k < alias_counts[i]; ++k)
+            if (mh::hook::patch_bytes_guarded(alias_sites[i][k], reinterpret_cast<const uint8_t *>(&oldv),
+                                              reinterpret_cast<const uint8_t *>(&newv), sizeof(oldv))) ++done;
+        vid_log("; [video]   %-18s %08x -> %08x  (%d/%d folded refsites)",
+                mh::state::REGIONS[alias.rid].name, oldv, newv, done, alias_counts[i]);
+        if (done != alias_counts[i]) {
+            vid_log("; [video] view-array reloc INCOMPLETE for %s", mh::state::REGIONS[alias.rid].name);
+            return false;
+        }
+    }
+    mh::state::bind(mh::state::RID_TILE_DRAWN_MAP, static_cast<uint32_t>(g_arrays[3].relocated), MAX_TILES);
+    mh::state::bind(mh::state::RID_TILE_VIS_MAP, vis_base, MAX_TILES);
+    for (const ViewAlias &alias : VIS_ALIASES)
+        mh::state::bind(alias.rid, vis_base - alias.delta, 1);
     vid_log("; [video] view-array reloc OK: %d arrays, %u bytes, ceiling now %d tiles", N_ARRAYS, total, MAX_TILES);
     return true;
 }
@@ -421,8 +472,8 @@ void __cdecl on_suppressed_frame(HWND h) {
     // an armed guard that never fired and an armed guard doing its job produced identical logs -- the
     // vacuity shape the seam-arming lines exist to close. One line, not one per frame.
     if (++g_frames_suppressed == 1)
-        vid_log("; [video] re-entrancy guard LIVE -- first WM_PAINT frame suppressed while the display "
-                "surfaces were released (this is the crash it prevents, happening and being caught)");
+        vid_log("; [video] re-entrancy guard LIVE -- first WM_PAINT frame suppressed during display/AVI "
+                "resource rundown");
     if (h) {
         PAINTSTRUCT ps;
         if (BeginPaint(h, &ps)) EndPaint(h, &ps);
@@ -1143,6 +1194,8 @@ bool repoke_runtime(const ResMode &r) {
 // pass 2 through; the cache is cleared first or the `cache == param` early-out would skip the apply
 // entirely when switching between two custom entries.
 extern "C" int __cdecl on_view_set_mode_pre(int m) {
+    mh::ui::selected_targets::invalidate_view();
+    MH_UnitSelect_Reset();
     g_pending_ix = -1;
     if (!g_imm_seeded || m < 2 || m >= g_nmodes) return m < 0 ? 0 : m;
     if (!repoke_runtime(g_modes[m])) {
@@ -1927,6 +1980,11 @@ void *iat_replace(const char *dll_name, const char *fn_name, void *repl) {
 }
 } // namespace
 
+void mh::avi_lifecycle::suppress_frames(bool enter) {
+    if (enter) ++g_in_mode_change;
+    else --g_in_mode_change;
+}
+
 // PT-GFX2: the owned device's null backend keeps the window unmapped through the same exe-IAT
 // instrument (gfx/ddraw_own.cpp headless_window_hooks). Exposed rather than copied.
 namespace mh::gfx {
@@ -2225,9 +2283,11 @@ extern "C" int MH_Video_Install(void) {
         }
     }
 
-    // RES7: the side-panel lists fill the panel at every size the session can reach: their tables are grown for
-    // the tallest one (the picker list is final now; the custom size counts too). Nothing taller than 768: no-op.
-    mh::video::install_panel_rows(ini, picker_maxh > g_custom_h ? picker_maxh : g_custom_h);
+    // The required compact storage controls share these relocated tables even at stock height.
+    if (!mh::video::install_panel_rows(ini, picker_maxh > g_custom_h ? picker_maxh : g_custom_h)) {
+        vid_log("; [video] required storage control tables refused");
+        std::abort();
+    }
 
     // The upper bound depends on whether the picker widened the list: with it armed, size_mode selects
     // any entry (which is also how a resolution is pinned for a test without clicking through the menu).

@@ -3,7 +3,7 @@
  "_program": "mh.exe",
  "_what": "Function entries whose address is materialised as a literal little-endian dword anywhere in the image (function-pointer table, vtable, callback argument, `MOV reg,<fn>` immediate), plus the PE entry point and exports. Consumed by gen_migration.py to EXEMPT indirectly-entered functions from its orphan verdict. Presence here is not evidence of liveness -- see the module docstring.",
  "_bytes_scanned": 2892288,
- "_function_count": 2894,
+ "_function_count": 2895,
  "entry_roots": [
   "0x004ddef8"
  ],

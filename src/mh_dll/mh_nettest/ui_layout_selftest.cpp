@@ -631,6 +631,7 @@ void test_gdi_presenter(const ul::layout &lay, const std::vector<uint16_t> &fram
     HBITMAP bmp                = CreateDIBSection(wdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
     HGDIOBJ old                = SelectObject(mdc, bmp);
     BitBlt(mdc, 0, 0, sw, sh, wdc, 0, 0, SRCCOPY);
+    GdiFlush();                                     // DIB bits are CPU-readable only after queued GDI writes finish.
     if (const char *dump = getenv("MH_UIL_DUMP")) { // debugging aid: the raw read-back (BGRA, sw x sh) for an outside diff
         char path[MAX_PATH];
         snprintf(path, sizeof path, "%s\\uil_gdi_%dx%d.bgra", dump, sw, sh);
@@ -679,6 +680,7 @@ void test_gdi_presenter(const ul::layout &lay, const std::vector<uint16_t> &fram
         const bool shown2 = b->present(fc);
         Sleep(50);
         BitBlt(mdc, 0, 0, sw, sh, wdc, 0, 0, SRCCOPY);
+        GdiFlush();
         const uint32_t red = px[(size_t)210 * sw + 110] & 0xFFFFFFu, half = px[(size_t)210 * sw + 130], keep = px[(size_t)210 * sw + 100];
         const uint32_t was  = before[(size_t)210 * sw + 130];
         auto           chan = [](uint32_t v, int sh_) { return (int)((v >> sh_) & 0xff); };

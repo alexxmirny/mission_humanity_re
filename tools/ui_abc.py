@@ -20,22 +20,24 @@ import subprocess
 import sys
 import time
 
+import tmp_runs
+import tool_paths
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import desktop  # noqa: E402  the raw CreateProcessW launch that honours lpDesktop
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
-import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
-from ui_suite_common import (  # noqa: E402
-    LOCAL_PORT_BASE,
+import desktop
+import lane_alloc
+import make_lane
+import ui_test
+from ui_suite_common import (
     REPO,
-    RunnerConfig,
     TACT_PLAY_MOUSE_DIV,
     UIREC_SCENARIOS,
-    play_mouse_div,
+    RunnerConfig,
     _tact_pid_handle,
     add_extra_ini_arg,
     add_runner_args,
     parse_mode_args,
+    play_mouse_div,
     print_desktop_banner,
     tact_apply_extra_ini,
     write_all_original_ini,
@@ -61,7 +63,7 @@ UI_LANE = "ui_play"
 UI_LANE_NO = lane_alloc.lane("ui_play", 0)
 # Kept OUT of the lane, for run_tact_play's reason: the next lane provision deletes logs/, and a
 # human session is the most expensive artifact this rig produces.
-UI_SESSION_ARCHIVE = os.path.join(REPO, "tmp", "ui_sessions")
+UI_SESSION_ARCHIVE = str(tool_paths.evidence_path("recordings"))
 
 
 def ui_lane_dir(slot=0):
@@ -85,7 +87,7 @@ def ui_provision_lane(args, visible, slot=0):
             "--lane",
             str(lane_alloc.lane("ui_play", slot)),
             "--port",
-            str(LOCAL_PORT_BASE + lane_alloc.lane("ui_play", slot)),
+            str(lane_alloc.lane_port(lane_alloc.lane("ui_play", slot))),
         ]
         + (["--visible"] if visible else ["--headless"])
         # The frame cap. Only meaningful with a present -- headless has none to pace --
@@ -360,6 +362,7 @@ def ui_journal_extract(run_dir, dst, meta):
     outside mode 6). Same one-file, comment-header convention, so the DLL parser reads both.
     Returns (path, n_input) or (None, 0)."""
     inputs = []
+    profile = None
     log = os.path.join(run_dir, "mh_harness.log")
     if not os.path.isfile(log):
         return None, 0
@@ -371,9 +374,17 @@ def ui_journal_extract(run_dir, dst, meta):
         # `P ` (step barriers) joins `S ` for the same reason `S ` is here and for the half of the
         # problem `S ` cannot reach: a screen barrier synchronises the MENU, a step barrier the
         # in-game half, where the journal is a present schedule and the world runs on sim steps.
+        if line.startswith("TJ B "):
+            if profile is not None:
+                print("FAIL: duplicate effective-profile metadata in UI recording")
+                return None, 0
+            profile = line[3:].rstrip()
         if line.startswith("TJ ") and line[3:5] in ("M ", "K ", "C ", "S ", "P "):
             inputs.append(line[3:].rstrip())
     if not inputs:
+        return None, 0
+    if profile is None or not profile.startswith("B 2 "):
+        print("FAIL: recording lacks version2 effective bindings; recapture it")
         return None, 0
     # Stable sort on the frame column only: the recorder emits M, K and C in a fixed order within a
     # frame and that order is the one the game produced them in.
@@ -382,11 +393,10 @@ def ui_journal_extract(run_dir, dst, meta):
     with open(dst, "w", newline="\n") as f:
         f.write("; UI-REC game-start input journal -- presents-indexed, INPUT ONLY.\n")
         f.write("; Replay: python tools/test_ui.py --ui-replay <this file>\n")
-        for k in sorted(meta):
-            f.write("; %s: %s\n" % (k, meta[k]))
+        f.writelines("; %s: %s\n" % (k, meta[k]) for k in sorted(meta))
         f.write("; records: %d\n" % len(inputs))
-        for b in inputs:
-            f.write(b + "\n")
+        f.write(profile + "\n")
+        f.writelines(b + "\n" for b in inputs)
     return dst, len(inputs)
 
 
@@ -435,7 +445,7 @@ def run_ui_play(args):
     # per-section readback reports how many keys are LIVE IN THE LANE -- read that line before playing,
     # because an appended duplicate section is present and unreachable (its own documented trap).
     if getattr(args, "ui_all_original", False):
-        orig = os.path.join(REPO, "tmp", "ui_all_original.ini")
+        orig = os.path.join(tmp_runs.current_output("ini"), "ui_all_original.ini")
         os.makedirs(os.path.dirname(orig), exist_ok=True)
         mode = write_all_original_ini(orig)
         args.extra_ini = [orig] + list(getattr(args, "extra_ini", None) or [])
@@ -460,9 +470,9 @@ def run_ui_play(args):
         print("            the whole session, from the first present at the menu")
     else:
         print("  NOT RECORDING -- pass --ui-record to journal this session")
-    print("")
+    print()
     print("  Navigate the menu and start a game. Close the game window when you are done.")
-    print("")
+    print()
     exe = os.path.join(lane_dir, "mh.focus.exe")
     before = set(glob.glob(os.path.join(lane_dir, "logs", "*_solo")))
     proc = subprocess.Popen([exe, "--skip-intro"], cwd=lane_dir)
@@ -502,11 +512,11 @@ def run_ui_play(args):
     print("  journal   %s" % jpath)
     print("            %d input record(s), %s sim step(s) reached" % (n_input, steps))
     if steps == 0:
-        print("")
+        print()
         print("  *** THIS SESSION NEVER REACHED A LIVE GAME (no sim step logged). The journal is")
         print("  *** intact and will replay, but the A/B has nothing to compare: its oracle is the")
         print("  *** per-step hash stream, which only exists once a game is running.")
-    print("")
+    print()
     print(
         "  Replay it:  python tools/ui_abc.py --ui-replay %s"
         % os.path.relpath(jpath, REPO).replace(chr(92), "/")
@@ -834,7 +844,7 @@ UI_ORACLE_REGIONS = ("total_game_time", "sim_step_interval", "game_time_delta", 
 
 def ui_oracle_path(journal):
     """The oracle that belongs to `journal`: same path, `.oracle.gz` instead of `.journal`."""
-    base = journal[: -len(".journal")] if journal.endswith(".journal") else journal
+    base = journal.removesuffix(".journal")
     return base + ".oracle.gz"
 
 
@@ -1316,7 +1326,7 @@ def run_ui_replay(args, cfg):
     # rollback fragment belongs -- it is how you ask "is this regression ours?" of a recorded session.
     extra = list(getattr(args, "extra_ini", None) or [])
     if getattr(args, "ui_all_original", False):
-        orig = os.path.join(REPO, "tmp", "ui_all_original.ini")
+        orig = os.path.join(tmp_runs.current_output("ini"), "ui_all_original.ini")
         os.makedirs(os.path.dirname(orig), exist_ok=True)
         extra.insert(0, orig)
         print("  ALL-ORIGINAL replay: [config] mode=%s" % write_all_original_ini(orig))
@@ -1485,7 +1495,7 @@ def run_ui_equiv(args, cfg):
         print("      compare past the start sequence.")
         return 1
     print("UI-REC equivalence: %s (%d in-game steps per arm)" % (journal, args.ui_steps))
-    orig = os.path.join(REPO, "tmp", "ui_all_original.ini")
+    orig = os.path.join(tmp_runs.current_output("ini"), "ui_all_original.ini")
     os.makedirs(os.path.dirname(orig), exist_ok=True)
     write_all_original_ini(orig)
     gored = getattr(args, "ui_gored", 0)
@@ -1711,7 +1721,7 @@ def run_ui_abc(args, cfg):
             "if the comparison goes RED at that step." % gored
         )
 
-    orig = os.path.join(REPO, "tmp", "ui_all_original.ini")
+    orig = os.path.join(tmp_runs.current_output("ini"), "ui_all_original.ini")
     if two:
         os.makedirs(os.path.dirname(orig), exist_ok=True)
         print("  arm B runs the ORIGINAL binary: [config] mode=%s" % write_all_original_ini(orig))
@@ -1784,10 +1794,13 @@ def run_ui_abc(args, cfg):
         arm_futs = {arm: ex.submit(_run_one_arm, arm, extra) for arm, extra in arm_specs}
         arm_dirs = {arm: f.result() for arm, f in arm_futs.items()}
 
+    automated_archive = tmp_runs.current_output("ui_sessions")
     for arm, _extra in arm_specs:
         rd = arm_dirs[arm]
         if rd is None:
-            return 1
+            ok = False
+            continue
+        tmp_runs.register(rd, role="source")
         # ARCHIVE THE ARM BEFORE ANYTHING ELSE RUNS. A lane provision DELETES logs/, so the next
         # invocation of anything that uses slot 0 destroys this arm's evidence -- and the first thing
         # anyone does with a red A/B/C is run a rollback probe, which is exactly that. Measured the
@@ -1796,13 +1809,15 @@ def run_ui_abc(args, cfg):
         # The scenario name is part of the archive key: two concurrent --ui-abc units (run_gate)
         # can produce same-second run dirs, and a timestamp+arm key would merge their trees.
         keep = os.path.join(
-            UI_SESSION_ARCHIVE, "%s_%s_%s" % (os.path.basename(rd), os.path.basename(name), arm)
+            automated_archive, "%s_%s_%s" % (os.path.basename(rd), os.path.basename(name), arm)
         )
         try:
-            os.makedirs(UI_SESSION_ARCHIVE, exist_ok=True)
+            os.makedirs(keep, exist_ok=True)
+            tmp_runs.register(keep)
             shutil.copytree(rd, keep, dirs_exist_ok=True)
             rd = keep
         except OSError as e:
+            ok = False
             print("  arm %-10s NOT archived (%s) -- a later run may delete it" % (arm, e))
         print("  arm %-10s -> %s" % (arm, rd))
         dirs[arm] = rd
@@ -1823,6 +1838,9 @@ def run_ui_abc(args, cfg):
                 "a run that ends when the journal ends; this one ended when the runner gave up, and "
                 "every number read off it describes a truncated run." % (arm, args.ui_timeout)
             )
+    if len(dirs) != len(arm_specs):
+        print("FAIL: one or more arms produced no run; available arms were retained")
+        return 1
     runs["recording"] = ui_oracle_load(oracle)
     # TL-GATE8: the arms' OWN build, not the source header, must be of the oracle's epoch.
     for arm in [a for a in runs if a != "recording"]:
@@ -2428,4 +2446,14 @@ def main(argv=None, lenient=False):
 if __name__ == "__main__":
     import hostlock
 
-    raise SystemExit(hostlock.run_rig_tool(main, "ui_abc"))
+    raise SystemExit(
+        hostlock.run_rig_tool(
+            lambda: tmp_runs.run_cli(
+                main,
+                "ui-abc",
+                adjudicator=True,
+                human_flags=("--ui-play", "--ui-oracle", "--ui-selftest"),
+            ),
+            "ui_abc",
+        )
+    )

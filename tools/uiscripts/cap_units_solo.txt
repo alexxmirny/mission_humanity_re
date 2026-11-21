@@ -1,5 +1,5 @@
 # patching:PT-CAP9-U1/U2 -- the unit-fill smoke of the v0.2.3 units + soldiers raise. Same walk as cap_fill_solo.txt (1 human + 1 AI skirmish, mother
-# landed with a shift+right-click); the harness unit-fill fixture (capu_* keys) then creates units through the game's debug order 0xeb until the player
+# landed with a Ctrl+right-click); the harness unit-fill fixture (capu_* keys) then creates units through the game's debug order 0xeb until the player
 # owns 490, the harness saves + reloads the world (cap_save_at), and the match runs to 5 game minutes. The verdict is tools/check_cap_units.py over
 # mh_net.log / mh_harness.log, not a frame. Run with libmh.dll absent and `[caps] raise=1` (ini/caps_raise.ini).
 settled value:110
@@ -26,7 +26,7 @@ clickl Start
 absent Network players
 gamemode 2
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 6000
 log capu: mother landing ordered, handing the run to the harness fixture
 gameclock 300000

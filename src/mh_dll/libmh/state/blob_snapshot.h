@@ -54,7 +54,7 @@ namespace mh::state::blob {
 // through live_base(), which is the stock .bss hosted and the host's own allocation standalone.
 struct snapshot_block {
     region_id   rid;
-    uint32_t    len;  // the region's REACH -- what a host binds (host_bind.cpp note 2)
+    uint32_t    len;  // schema extent: stock REACH, host-native minimum canonical header
     const char *name; // the Ghidra symbol, for the capture/import log and the arms
 };
 
@@ -112,9 +112,10 @@ struct buf_sink final : state_sink {
 
 // ---- the schema fingerprint ------------------------------------------------------------------
 //
-// (rid, canonical length, NAME) of every block, in order, plus the format and the count. The NAME is
-// in it so a registry renumbering that happens to preserve every id still trips it: an id is a
-// position, a name is what the position meant.
+// (rid, schema length, NAME) of every block, in order, plus the format and the count. Native
+// runtime allocations do not change the schema: their descriptor's minimum length is mixed here.
+// Stock policies retain their canonical length (including LIB-BOOT's derived TLO representation).
+// The NAME also catches a registry renumbering that happens to preserve every id.
 template <class P>
 uint32_t schema_fingerprint() {
     uint32_t h   = 2166136261u;
@@ -129,7 +130,7 @@ uint32_t schema_fingerprint() {
     for (int i = 0; i < P::count(); ++i) {
         const snapshot_block &b = P::at(i);
         mix(static_cast<uint32_t>(b.rid));
-        mix(P::canonical_len(b));
+        mix(REGIONS[b.rid].host_native ? b.len : P::canonical_len(b));
         for (const char *c = b.name; *c; ++c) {
             h ^= static_cast<uint8_t>(*c);
             h *= 16777619u;
@@ -216,6 +217,12 @@ int capture(void *buf, size_t cap, size_t *out_len, HDR *hdr, capture_stats *sta
 // refusal (magic, schema, truncation, unbound) stays. Default false == every existing caller unchanged.
 struct import_policy {
     bool allow_session_begun = false;
+    // Pure content admission, after ALL block framing/binding checks and before the first apply.
+    // Null preserves the existing LIB-BOOT/default import path.
+    bool (*validate_payload)(const uint8_t *, uint32_t) = nullptr;
+    // Non-reentrant lifecycle notice after all validation and before the first store.
+    // It must not resize/rebind regions, pump input, or mutate the validated world.
+    void (*before_apply)() = nullptr;
 };
 
 template <class P, class HDR>
@@ -230,7 +237,7 @@ int import(const void *blob, size_t n, import_policy pol = {}) {
     if (h.schema != schema_fingerprint<P>()) return ERR_SCHEMA;
     if (h.block_count != static_cast<uint32_t>(P::count())) return ERR_SCHEMA;
     if (!pol.allow_session_begun && P::refuse_import()) return ERR_SESSION_BEGUN;
-    if (static_cast<size_t>(h.payload_len) + sizeof(HDR) > n) return ERR_TRUNCATED;
+    if (h.payload_len > n - sizeof(HDR)) return ERR_TRUNCATED;
 
     {
         size_t off = 0;
@@ -241,16 +248,26 @@ int import(const void *blob, size_t n, import_policy pol = {}) {
             std::memcpy(&rid, d + sizeof(HDR) + off, 4);
             std::memcpy(&len, d + sizeof(HDR) + off + 4, 4);
             if (rid >= static_cast<uint32_t>(RID_COUNT)) return ERR_UNKNOWN_RID;
-            if (rid != static_cast<uint32_t>(b.rid) || len != P::canonical_len(b)) return ERR_SCHEMA;
-            if (off + 8u + len > h.payload_len) return ERR_TRUNCATED;
+            if (rid != static_cast<uint32_t>(b.rid)) return ERR_SCHEMA;
+            // canonical_len() deliberately fails fast on an invalid native binding. Imports have
+            // an error channel, so refuse that binding before asking for its runtime extent.
+            if (REGIONS[b.rid].host_native &&
+                (!is_bound(b.rid) || live_base(b.rid) == 0 || live_size(b.rid) < REGIONS[b.rid].size))
+                return ERR_UNBOUND;
+            if (len != P::canonical_len(b)) return ERR_SCHEMA;
+            if (uint64_t(off) + 8u + len > h.payload_len) return ERR_TRUNCATED;
             if (!P::unbound_ok(b)) {
                 if (live_base(b.rid) == 0) return ERR_UNBOUND;
-                if (live_size(b.rid) < b.len) return ERR_UNBOUND;
+                const uint32_t required = REGIONS[b.rid].host_native ? len : b.len;
+                if (live_size(b.rid) < required) return ERR_UNBOUND;
             }
             off += 8u + len;
         }
         if (off != h.payload_len) return ERR_TRUNCATED;
     }
+    if (pol.validate_payload && !pol.validate_payload(d + sizeof(HDR), h.payload_len))
+        return ERR_POLICY;
+    if (pol.before_apply) pol.before_apply();
 
     size_t off = 0;
     for (int i = 0; i < P::count(); ++i) {

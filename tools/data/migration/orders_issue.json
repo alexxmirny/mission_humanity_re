@@ -84,7 +84,7 @@
   "paths": {
     "manifest": "tools/data/orders_issue_migration.json",
     "ready_report": "tmp/orders_issue_ready",
-    "export_dir": "tmp/decomp_orders_issue",
+    "export_dir": "input:decomp_orders_issue",
     "closure_doc": "docs/orders-issue-closure.md",
     "effect_classes": "tools/data/orders_issue_effect_classes.json",
     "ready_acks": "tools/data/orders_issue_ready_ack.json",

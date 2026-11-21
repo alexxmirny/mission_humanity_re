@@ -9609,7 +9609,7 @@
   },
   {
    "id": "0046e76c",
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -9622,7 +9622,7 @@
   },
   {
    "id": "0046e7d6",
-   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "name": "llm_unit_order_squad_split_enqueue",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -12529,7 +12529,7 @@
   },
   {
    "id": "00488a8b",
-   "name": "llm_unit_transport_unload_field",
+   "name": "llm_unit_squad_split_field",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -12568,7 +12568,7 @@
   },
   {
    "id": "004891d8",
-   "name": "llm_unit_transport_unload_docked",
+   "name": "llm_unit_squad_split_docked",
    "namespace": "Global",
    "external": false,
    "thunk": false,
@@ -25214,6 +25214,7 @@
    "thunk": false,
    "inline": false,
    "tags": [
+    "bug:retail",
     "patch:base",
     "patch:row",
     "sub:units"
@@ -26167,7 +26168,9 @@
    "external": false,
    "thunk": false,
    "inline": false,
-   "tags": []
+   "tags": [
+    "bug:retail"
+   ]
   },
   {
    "id": "004dd91d",

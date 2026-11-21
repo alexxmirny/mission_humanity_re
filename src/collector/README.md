@@ -183,7 +183,7 @@ Windows-specific rsync/ssh transport gotchas this needed).
 
 ```sh
 export MH_DRAIN_KEY=/path/to/drain_key      # the READ-ONLY key, never VPS_SSH_KEY
-python tools/drain_reports.py                # -> tmp/drained_reports (gitignored)
+python tools/drain_reports.py                # -> configured private evidence root / reports (outside tmp)
 python tools/drain_reports.py --json
 python tools/drain_reports.py --selftest      # hermetic, no VPS needed
 ```

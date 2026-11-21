@@ -23,7 +23,7 @@ constexpr uint16_t PLAYER       = 2;
 constexpr uint16_t PLAYER_LOCAL = 7; // == sim_fixture::reset()'s player_side default
 
 // ---- recorders -----------------------------------------------------------------------------------
-// unit_transport_unload_calls is the ONE struct type both llm_unit_transport_unload_field and
+// unit_transport_unload_calls is the ONE struct type both llm_unit_squad_split_field and
 // _docked take (field uses all ten members, docked uses five -- see the header's calling-convention
 // note) -- two separate recorders / two separate rec_*_calls() functions feed it, one per target
 // function, same "one recorder struct per function" shape sim_prod_completion_selftest.cpp's pc_
@@ -38,7 +38,7 @@ struct ev4 {
     int32_t a, b, c, d;
 };
 
-// ==== llm_unit_transport_unload_field's own calls ==================================================
+// ==== llm_unit_squad_split_field's own calls ==================================================
 struct uf_recorder {
     std::vector<ev4> spawn_on_tile_calls;           // (tile_x, tile_y, soldier_proto_id, player)
     std::vector<ev4> dir_from_to_calls;             // (origin_x<<5, origin_y<<5, tile_x<<5, tile_y<<5)
@@ -115,7 +115,7 @@ const unit_transport_unload_calls &rec_uf_calls() {
     return c;
 }
 
-// ==== llm_unit_transport_unload_docked's own calls ==================================================
+// ==== llm_unit_squad_split_docked's own calls ==================================================
 struct ud_recorder {
     std::vector<ev4> spawn_docked_calls;   // (soldier_proto_id, player, probe_slot, returned_id)
     std::vector<ev3> soldier_unlink_calls; // (player, tidx, unit_above word of transport)
@@ -190,7 +190,7 @@ const unit_transport_unload_calls &rec_ud_calls() {
     return c;
 }
 
-// ==== llm_unit_transport_unload_field @0x00488a8b ===================================================
+// ==== llm_unit_squad_split_field @0x00488a8b ===================================================
 // From the header banner: remaining-seed + soldier_proto_id read BEFORE any decrement (HAZARD 1),
 // origin snapshot read once, energy/experience share computed ONCE off the INITIAL capacity and
 // REUSED every iteration, `while (dir<8 && remaining>1)` with the 8-direction terrain search
@@ -585,7 +585,7 @@ void test_field_player_high_bits_masked_unit_index_used_at_full_width() {
        "low 16 bits), not the dirty 0x50002 input");
 }
 
-// ==== llm_unit_transport_unload_docked @0x004891d8 ==================================================
+// ==== llm_unit_squad_split_docked @0x004891d8 ==================================================
 // From the header banner: NO terrain/direction search at all (always uses the transport's OWN
 // home_storage_slot as spawn_docked's probe), always detaches the HEAD of the transport's own chain
 // (not a "picked lead in a direction"), the energy share is RECOMPUTED every iteration off the

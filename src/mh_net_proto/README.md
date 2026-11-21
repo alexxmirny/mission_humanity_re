@@ -30,6 +30,13 @@ both sides need must be platform-neutral. The **MP-DISCOVERY** work (S0–S6) is
   reusing the crypto in `net_crypto.h` rather than adding any. Full layout:
   [docs/mp-wire-udp.md](../../docs/mp-wire-udp.md).
 - `src/byteio.h` — private little-endian read/write helpers.
+- `start_map.h` — the versioned selected-map suffix of the existing Start trailer.
+  Slots, gameplay settings and the380-byte native map header arrive in one reliable
+  message (maximum1680 of2048 payload bytes). Missing/unknown suffixes are refused;
+  an older host's independent lobby preview is not a substitute. The DLL validates
+  native header contents and mounted tilesets on its main-thread admission path.
+  Requires JOIN/game generation12, host generation10 and UDP capability8;
+  matching release strings alone do not establish compatible admission.
 - *(next: join-by-lobby-id (S4), player identity (S6).)*
 
 ## Tests

@@ -655,12 +655,12 @@ def _replace(members, base, blob, report, why):
 FONT_FILES = ("FONTLAY.TXT",) + tuple(fnt.PFMENU)
 
 
-def write_pack_ini(out_dir, codepage):
+def write_pack_ini(out_dir, codepage, locale):
     with open(os.path.join(out_dir, PACK_INI), "w", encoding="ascii", newline="\n") as f:
         f.write(
             f"; written by {TOOL}: the 8-bit codepage of this pack's Msgs.dat and typed text.\n"
             "; mh.dll uses it when [input] codepage is not pinned in mh_net.ini.\n"
-            f"[pack]\ncodepage={codepage}\n"
+            f"[pack]\ncodepage={codepage}\nlocale={locale}\n"
         )
 
 
@@ -695,7 +695,7 @@ def build_plain(src, en_src, out_dir, lang_id, quiet=False, common_ru=None):
     if msgs is not None:
         with open(os.path.join(out_dir, "Msgs.dat"), "wb") as f:
             f.write(msgs)
-    write_pack_ini(out_dir, spec["codepage"])
+    write_pack_ini(out_dir, spec["codepage"], pack_spec(lang_id)[0])
     lines = [
         f"language pack built by {TOOL} (format {FORMAT_VERSION}); retail game data -- never commit",
         f"{lang} source: {os.path.basename(src.path)}  mh_ex.rsr md5 {md5(src._read('mh_ex', '.rsr'))}",
@@ -780,7 +780,7 @@ def build(ru_src, en_src, out_dir, art=True, quiet=False, lang_id="ru", common_r
     if msgs is not None:
         with open(os.path.join(out_dir, "Msgs.dat"), "wb") as f:
             f.write(msgs)
-    write_pack_ini(out_dir, spec["codepage"])
+    write_pack_ini(out_dir, spec["codepage"], pack_spec(lang_id)[0])
     lines = [
         f"language pack built by {TOOL} (format {FORMAT_VERSION}); retail game data -- never commit",
         f"ru source: {os.path.basename(ru_src.path)}  mh_ex.rsr md5 {md5(ru_src._read('mh_ex', '.rsr'))}",

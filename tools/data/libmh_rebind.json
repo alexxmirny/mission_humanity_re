@@ -9142,6 +9142,32 @@
    "addr": 4745583
   },
   {
+   "name": "llm_unit_squad_split_docked",
+   "target": "mh::sim::unload_docked",
+   "rule": "derived",
+   "class": "wrapper",
+   "why": "frozen seam -- mh::sim::unload_docked matched the committed callee",
+   "seam": "mh::sim::unload_docked",
+   "seam_kind": "FROZEN",
+   "domain": "sim",
+   "header": "sim/sim_unit_transport_unload.h",
+   "sites": 1,
+   "addr": 4755928
+  },
+  {
+   "name": "llm_unit_squad_split_field",
+   "target": "mh::sim::unload_field",
+   "rule": "derived",
+   "class": "wrapper",
+   "why": "frozen seam -- mh::sim::unload_field matched the committed callee",
+   "seam": "mh::sim::unload_field",
+   "seam_kind": "FROZEN",
+   "domain": "sim",
+   "header": "sim/sim_unit_transport_unload.h",
+   "sites": 1,
+   "addr": 4754059
+  },
+  {
    "name": "llm_unit_state_is_boarding",
    "target": "mh::sim::promoted_arm::hr_llm_unit_state_is_boarding",
    "rule": "derived",
@@ -9179,32 +9205,6 @@
    "header": "sim/sim_unit_status_bits.h",
    "sites": 1,
    "addr": 4501662
-  },
-  {
-   "name": "llm_unit_transport_unload_docked",
-   "target": "mh::sim::unload_docked",
-   "rule": "derived",
-   "class": "wrapper",
-   "why": "frozen seam -- mh::sim::unload_docked matched the committed callee",
-   "seam": "mh::sim::unload_docked",
-   "seam_kind": "FROZEN",
-   "domain": "sim",
-   "header": "sim/sim_unit_transport_unload.h",
-   "sites": 1,
-   "addr": 4755928
-  },
-  {
-   "name": "llm_unit_transport_unload_field",
-   "target": "mh::sim::unload_field",
-   "rule": "derived",
-   "class": "wrapper",
-   "why": "frozen seam -- mh::sim::unload_field matched the committed callee",
-   "seam": "mh::sim::unload_field",
-   "seam_kind": "FROZEN",
-   "domain": "sim",
-   "header": "sim/sim_unit_transport_unload.h",
-   "sites": 1,
-   "addr": 4754059
   },
   {
    "name": "map_CreateBuilding",

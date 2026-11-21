@@ -145,6 +145,7 @@ void init_record(const sim_view &v, sim_store &own, const init_record_calls &c, 
     prof.units_built_total[*v.planet_index] += 1;
 
     c.set_event(MAP_OBJECTS_REFRESH);
+    own.storage_policy(mh::storage_policy::operation::birth_unit, player16, unit_idx);
 }
 
 } // namespace detail

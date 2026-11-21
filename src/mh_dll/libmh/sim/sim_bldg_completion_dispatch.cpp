@@ -347,6 +347,8 @@ void bldg_completion_dispatch(const sim_view &v, sim_store &own, const bldg_comp
                 c.unit_apply_production_completion(player, static_cast<int32_t>(active_unit_type));
                 c.ai_notify_unit_lifecycle(player, static_cast<uint16_t>(active_unit_type), 0, 2);
             } else {
+                own.storage_policy(mh::storage_policy::operation::production, player,
+                                   static_cast<uint32_t>(spawned));
                 c.ai_notify_unit_lifecycle(player, static_cast<uint16_t>(active_unit_type),
                                            static_cast<uint32_t>(spawned), 1);
             }

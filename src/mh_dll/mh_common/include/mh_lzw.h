@@ -29,6 +29,7 @@
 //
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace mh::lzw {
 
@@ -114,6 +115,9 @@ inline constexpr uint32_t SIZE_NOT_LZW = 0xFFFFFFFFu;
 // time and zero-fills past that point rather than over-reading a caller's buffer.
 void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_size,
                 uint32_t dst_limit = 0);
+// Strict input framing, complete-code and dictionary validation.
+bool decompress_bounded(decoder_state &st, const void *payload, std::size_t payload_size,
+                        void *dst, std::size_t dst_size);
 
 // ---------------------------------------------------------------------------- encoder
 
@@ -191,5 +195,7 @@ namespace mh::lzss {
 // back-reference token writes up to 9 bytes with one byte of room left. The original does this into
 // the game's arrays; give `dst` 8 bytes of slack.
 void decompress_block(const void *block, void *dst);
+// Strict framing and output bounds for untrusted input.
+bool decompress_block_bounded(const void *block, std::size_t block_size, void *dst, std::size_t dst_size);
 
 } // namespace mh::lzss

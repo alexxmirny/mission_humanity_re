@@ -7,6 +7,7 @@
 // .asm is still what every branch/store below cites). Addresses are EN /eng/mh.exe.
 //
 #include "orders/issue/issue_group_orders.h"
+#include "state/host_events.h"
 
 namespace mh::orders::issue {
 
@@ -136,10 +137,12 @@ void group_order_ack_voice() {
     detail::group_order_ack_voice(live_view(), live_sink(), live_calls());
 }
 void group_issue_move_order_deferred(int32_t op_code, int32_t op_arg, int32_t modifier) {
+    mh::order_witness::move_group group(mh::state::order_witnesses());
     detail::group_issue_move_order_deferred(live_view(), live_sink(), live_calls(), op_code, op_arg,
                                             modifier);
 }
 void group_issue_move_order_confirmed(int32_t dst_x, int32_t dst_y) {
+    mh::order_witness::move_group group(mh::state::order_witnesses());
     detail::group_issue_move_order_confirmed(live_view(), live_sink(), live_calls(), dst_x, dst_y);
 }
 

@@ -1,7 +1,7 @@
 # bigmap_orders_ship -- mods:MM4C, a satellite_seq step in the SHIPPED configuration (libmh.dll absent for the whole process: the
 # retail issuers and tile finders are what the overlay calls). The first arms of bigmap_orders on 2-almost: unit 5 drag-selected,
 # Tab held, the overlay right clicked on a visible tile (a), on an unexplored one (b), the control click on the bare world at the
-# screen position of (a)'s tile (c), a Shift click (e). The verdict is tools/check_bigmap.py --orders-ship (the `order at` lines and
+# screen position of (a)'s tile (c), a Ctrl-confirm click (e). The verdict is tools/check_bigmap.py --orders-ship (the `order at` lines and
 # the unit's goals); the one frame is the unit arrived at (a)'s tile, the same pixels the libmh-bound step bigmap_orders shows.
 rawfocus 1
 settled value:108
@@ -23,23 +23,23 @@ cursorhold 790 520 12
 release 790 520
 gameclock +100
 loggoal selected
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 407 357 10
 screensettled
 simrclick 407 357
 cursorhold 407 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +8000
 loggoal a_overlay
 screensettled
 capture bigmap_orders_ship__a_arrived
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 230 170 10
 screensettled
 simrclick 230 170
 cursorhold 230 170 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
 loggoal b_far
@@ -47,13 +47,73 @@ simrclick 304 304
 cursorhold 600 400 10
 gameclock +3000
 loggoal c_control
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 414 357 10
 screensettled
-simrclick 414 357 shift
+simrclick 414 357 ctrl
 cursorhold 414 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
-loggoal e_shift
+loggoal e_ctrl
+# Preserve the old order/capture timing; the new rosters use a second fresh saved world.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +600
+camto 45 53
+mark qol_selection
+# Same roster/modifier proof as the bound counterpart, in the fresh saved world.
+simclick 735 445
+logsel qol_single5
+simdoubleclick 735 445
+logsel qol_plain
+simclick 727 622
+logsel qol_seed2
+camto 45 47
+cursorhold 600 400 6
+logsel qol_shift_before
+simdoubleclick 735 637 shift
+logsel qol_shift_union
+simdoubleclick 735 637
+logsel qol_replace_offscreen
+camto 45 53
+cursorhold 600 400 6
+simclick 727 622
+logsel qol_ctrl_seed2
+rawkey 0x1d down
+keystate 0x1d 1
+simclick 735 445
+logsel qol_ctrl_add5
+simclick 735 445
+logsel qol_ctrl_remove5
+simdoubleclick 735 445
+logsel qol_ctrl_double
+rawkey 0x1d up
+keystate 0x1d 0
+simclick 735 445
+logsel selected
+simrclick 304 304
+gameclock +400
+loggoal qol_ground_normalized @0:5
+capture qol_ground_normalized
+gameclock +200
+capture qol_ground_phase
+simclick 300 300
+logsel qol_ground_deselected
+capture qol_ground_cleared
 end

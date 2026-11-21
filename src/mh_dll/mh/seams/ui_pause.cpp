@@ -25,6 +25,7 @@
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "addr/mh_structs.gen.h"    // mh::game::mh_llm_input_key_event (0x38 stride)
 #include "strat_pre_input.h"        // the shared run-before detour on llm_strat_input_update
+#include "strategic_input_native.h" // ring erasure moves input sidecar identities too
 #include "en_guard.h"               // EN-only build gate
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetPrivateProfile*
@@ -82,18 +83,6 @@ mh_llm_input_key_event *slot(uint32_t i) {
     return (mh_llm_input_key_event *)(KEVENTS + (size_t)i * sizeof(mh_llm_input_key_event));
 }
 
-// Delete the event at `i` from the ring by shifting every later entry one slot down and retreating
-// the WRITE index -- the mirror of the producers' `write = (write + 1) & 0x7f`. Consuming rather
-// than peeking is what keeps the bound key from ALSO firing whatever the stock ladder does with it.
-// Returns the index to re-examine (the entry that moved into `i`).
-uint32_t ring_erase(uint32_t i) {
-    uint32_t w = *(volatile uint32_t *)KWRITEIDX;
-    for (uint32_t j = i; j != ((w + RING_MASK) & RING_MASK); j = (j + 1) & RING_MASK)
-        *slot(j) = *slot((j + 1) & RING_MASK);
-    *(volatile uint32_t *)KWRITEIDX = (w + RING_MASK) & RING_MASK; // == (w - 1) & 0x7f
-    return i;
-}
-
 // Run-before body: called at every llm_strat_input_update entry, i.e. once per strategic frame and
 // again whenever a UI screen redraws the world behind a dialog. Cheap: it walks only the events
 // pending this frame (usually none).
@@ -113,7 +102,9 @@ void on_strat_input() {
             continue;
         }
         if (ev->event_type & EV_DOWN) enter = true;
-        i = ring_erase(i); // both the down and its up: the ladder must not see this key at all
+        // Both pause edges leave the raw ring; move existing per-record proof
+        // with every shifted entry, even when only UP is removed (no mode5).
+        i = mh::seams::strategic_input_native::erase_key_record(i);
     }
 
     if (!enter) return;

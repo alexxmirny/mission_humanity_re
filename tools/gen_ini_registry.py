@@ -33,6 +33,7 @@ import os
 import re
 import sys
 import tempfile
+from pathlib import Path
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DEF = os.path.join(REPO, "src", "mh_dll", "mh", "config", "ini_keys.def")
@@ -109,6 +110,11 @@ DYNAMIC_OK = {
     ("mh/seams/launch.cpp", "section", "key"),  # ini_int body
     ("mh/seams/launch.cpp", '"net"', "key"),  # net_ini_str body
     ("mh/config/ini_read.h", "section", "key"),  # read_ini_string body
+    (
+        "mh/seams/strategic_input.cpp",
+        "section",
+        "key",
+    ),  # local profile reader; catalog-expanded below
     ("mh_common/include/mh_ini_gate.h", "section", "key"),  # the gate's own reads (RL2)
     ("mh_common/include/mh_gameplay.h", "r.sec", "r.key"),  # PT-SET1: X-macro over F_HOSTSYNC rows
     ("mh_common/include/mh_log_rotate.h", "section", "key"),  # mh_log_cap_bytes body
@@ -122,6 +128,7 @@ DYNAMIC_OK = {
 # (file suffix, section, key).
 OTHER_FILE_OK = {
     ("mh/seams/lang_pack.cpp", "pack", "codepage"),  # lang\<id>\pack.ini, written by langpack.py
+    ("mh/seams/lang_pack.cpp", "pack", "locale"),  # same external pack.ini, not mh_net.ini
 }
 
 
@@ -221,6 +228,12 @@ def parse_def(path):
     errors, rows, seen = [], [], {}
     with open(path, encoding="utf-8") as fh:
         text = _strip_comments(fh.read())
+    if os.path.normcase(os.path.abspath(path)) == os.path.normcase(DEFAULT_DEF):
+        supplemental = os.path.join(
+            REPO, "src", "mh_dll", "mh_common", "include", "mh_strategic_ini.gen.def"
+        )
+        with open(supplemental, encoding="utf-8") as fh:
+            text += "\n" + _strip_comments(fh.read())
     for m in re.finditer(r"\bMH_INI_KEY\s*\(", text):
         line = text.count("\n", 0, m.start()) + 1
         args, _ = split_args(text, m.end())
@@ -358,6 +371,25 @@ def scan_reads(src_dir):
                     rel.endswith(a) and sec_a == b and key_a == c for a, b, c in DYNAMIC_OK
                 ):
                     unresolved.append((rel, line, sec_a, key_a))
+    catalog = os.path.join(src_dir, "mh_common", "include", "mh_strategic_bindings.def")
+    consumer = os.path.join(src_dir, "mh", "seams", "strategic_input.cpp")
+    if os.path.isfile(catalog) and os.path.isfile(consumer):
+        from gen_strategic_bindings import read_catalog
+
+        bindings = read_catalog(Path(catalog))
+        for action in bindings["actions"]:
+            if not action["editable"]:
+                continue
+            for binding in action["bindings"]:
+                ident = (binding["section"], binding["key"])
+                reads.setdefault(ident, []).append(("mh/seams/strategic_input.cpp", 1))
+        reads.setdefault(("keys", "bindings_version"), []).append(
+            ("mh/seams/strategic_input.cpp", 1)
+        )
+        for role in bindings["roles"]:
+            reads.setdefault((role["section"], role["key"]), []).append(
+                ("mh/seams/strategic_input.cpp", 1)
+            )
     return reads, unresolved
 
 
@@ -509,6 +541,14 @@ def check(def_path, src_dir, ini_path, schema_path, say=print):
 
     if os.path.exists(ini_path):
         named = ini_keys(ini_path)
+        if os.path.normcase(os.path.abspath(def_path)) == os.path.normcase(DEFAULT_DEF):
+            named.update(
+                ini_keys(
+                    os.path.join(
+                        REPO, "src", "mh_dll", "mh", "config", "strategic_keys.example.gen.ini"
+                    )
+                )
+            )
         for (sec, key), line in sorted(named.items(), key=lambda kv: kv[1]):
             if (sec, key) not in reg and not any(
                 s == sec and rx.match(key) for s, rx in INI_DYNAMIC

@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "hook/host_event_sink.h"
+#include "seams/tileset_runtime.h"
 
 #include "state/region_runtime.h" // mh::state::ptr<> -- the palette cells are RELOCATABLE regions
 #include "addr/mh_calls.gen.h"
@@ -18,6 +19,8 @@
 #include "state/host_events.h"
 #include "lockstep/turn_engine.h" // U44: fixes().overlay_dialog_guard
 #include "tact/tact_state.h"      // the two composite draw scopes read the surface/icon state host-side
+#include "ui/target_line_intents.h"
+#include "ui/target_line_attack_provenance.h"
 
 namespace {
 
@@ -94,85 +97,15 @@ void draw_active_count_hud(int32_t active, int32_t cached) {
                                      (char *)mh::call::llm_str_ansi_to_wide_scratch(buf), color);
 }
 
-// ---- LIFT-TABLE S3: the per-planet GRAPHICS tail of cfg_final_planet_Construct -----------------
-//
-// Verbatim relocation of 0x0045b8fe..0x0045ba1c, the contiguous graphics tail that used to sit at
-// the end of sim/libtrans/sim_lt_cfg_planet.cpp. libmh keeps the sim half of that body and resolves
-// tlo_index (cfg_GetTloIndex reads a stack local of ITS frame, so the index crosses and the pointer
-// does not); everything below -- the 8-way switch, the `SHL AL,6`, the two Planets[] byte stores
-// and the eight FillBankData calls -- is the host's, and after LIFT-TABLE S2 none of those bytes is
-// in the determinism hash.
-//
-// The switch mapping is the RAW TABLE DECODE recorded in the original translation: the 8 dwords at
-// switchdataD_0045b6d5 are 0x45b94b/0x45b9be/0x45b97e/0x45b9ae/0x45b99e/0x45b98e/0x45b96e/0x45b95e
-// for slots 0..7 (= tlo 1..8), and tlo_index==2 shares its body with the out-of-range default.
-void planet_gfx_setup(int32_t planet_index, int32_t tlo_index) {
-    // Through the region runtime like the palette below. RID_PLANETS is not declared relocatable
-    // today, so a constant address would pass check_movable_addresses -- which is exactly why it is
-    // not spelled that way: the declaration is the thing that could change.
-    auto *const planets = mh::state::ptr<mh::game::mh_cfg_final_struct_Planet>(
-        mh::state::RID_PLANETS);
-    // A slot outside cfg::final::data::Planets[32] is a contract breach, not something to store
-    // through -- the same posture draw_order_button takes for an out-of-table button id.
-    if (planet_index < 0 || planet_index >= 32) {
-        ++g_unknown;
-        return;
-    }
-    mh::game::mh_cfg_final_struct_Planet &planet = planets[planet_index];
-
-    planet.tlo_index = static_cast<uint8_t>(tlo_index); // 0x0045b912
-
-    int32_t bank_count, bank_id; // [EBP-0xc] / [EBP-0x10]
-    switch (tlo_index) {
-        case 1:
-            bank_count = 2;
-            bank_id    = 0x33;
-            break; // caseD_1 @0x0045b94b
-        case 3:
-            bank_count = 1;
-            bank_id    = 0x34;
-            break; // caseD_3 @0x0045b97e
-        case 4:
-            bank_count = 2;
-            bank_id    = 0x35;
-            break; // caseD_4 @0x0045b9ae
-        case 5:
-            bank_count = 2;
-            bank_id    = 0x37;
-            break; // caseD_5 @0x0045b99e
-        case 6:
-            bank_count = 1;
-            bank_id    = 0x36;
-            break; // caseD_6 @0x0045b98e
-        case 7:
-            bank_count = 1;
-            bank_id    = 0x38;
-            break; // caseD_7 @0x0045b96e
-        case 8:
-            bank_count = 3;
-            bank_id    = 0x32;
-            break; // caseD_8 @0x0045b95e
-        case 2:
-        default:
-            bank_count = 1;
-            bank_id    = 0x00;
-            break; // caseD_2 @0x0045b9be, shared with JA (>7)
-    }
-
-    // 0x0045b9cc-0x0045b9dd: BYTE-WIDTH `DEC AL / SHL AL,6`.
-    planet.soldier_sprite_bank_offset =
-        static_cast<uint8_t>((static_cast<uint8_t>(bank_count) - 1) << 6); // 0x0045b9d1
-
-    // 0x0045b9e3-0x0045ba1c: planet 0x1f only (the injected/tutorial map slot) -- clear soldier
-    // sprite banks 0x32..0x38 (used=0), then load the switch-selected bank_id (used=1).
-    if (planet_index == 0x1f) {
-        for (uint32_t bank = 0x32; bank < 0x39; ++bank) {
-            mh::call::cfg_final_planet_FillBankData(0, bank,
-                                                    static_cast<uint32_t>(planet_index)); // x7
-        }
-        mh::call::cfg_final_planet_FillBankData(1, static_cast<uint32_t>(bank_id),
-                                                static_cast<uint32_t>(planet_index));
-    }
+// The graphics event carries an owned twelve-byte filename, not a borrowed
+// pointer or catalog index. Resolve it with the same host path as the retail tail.
+void planet_gfx_setup(const libmh_event &event) {
+    const uint32_t words[]   = {static_cast<uint32_t>(event.b), static_cast<uint32_t>(event.c),
+                                static_cast<uint32_t>(event.d)};
+    char           token[13] = {};
+    for (unsigned i = 0; i < 12; ++i)
+        token[i] = static_cast<char>((words[i / 4] >> ((i % 4) * 8)) & 0xff);
+    mh::tileset_runtime::require_planet_graphics(event.a, token);
 }
 
 // ---- LIFT-TABLE S4: the planet-map palette block (llm_strat_planet_map_session_init's tail) -----
@@ -402,18 +335,18 @@ void run_blast_transition() {
 void (*g_logger)(const char *) = nullptr;
 bool g_seen[4][64]; // [channel][kind] first-dispatch latch; larger values just skip the line
 
-void log_first_dispatch(const libmh_event *e) {
-    if (g_logger == nullptr || e->channel >= 4 || e->kind >= 64 || g_seen[e->channel][e->kind])
+void log_first_dispatch(uint16_t channel, uint16_t kind) {
+    if (g_logger == nullptr || channel >= 4 || kind >= 64 || g_seen[channel][kind])
         return;
-    g_seen[e->channel][e->kind] = true;
+    g_seen[channel][kind] = true;
     char m[96];
     // wsprintfA-free: hook/ must not pull user32; small manual format.
     int n = 0;
     for (const char *s = "; [hostevt] first dispatch: channel "; *s; ++s) m[n++] = *s;
-    m[n++] = static_cast<char>('0' + e->channel);
+    m[n++] = static_cast<char>('0' + channel);
     for (const char *s = ", kind "; *s; ++s) m[n++] = *s;
-    if (e->kind >= 10) m[n++] = static_cast<char>('0' + e->kind / 10);
-    m[n++] = static_cast<char>('0' + e->kind % 10);
+    if (kind >= 10) m[n++] = static_cast<char>('0' + kind / 10);
+    m[n++] = static_cast<char>('0' + kind % 10);
     m[n++] = '\n';
     m[n]   = '\0';
     g_logger(m);
@@ -449,8 +382,42 @@ void route_text(uint16_t kind, const uint16_t *text) {
     ++g_unknown;
 }
 
+void route_order_observation(const libmh_order_observation *observation) {
+    log_first_dispatch(LIBMH_EVC_EVENT, observation->kind);
+    switch (observation->kind) {
+        case LIBMH_EVK_UNIT_ORDER_COMMITTED:
+            mh::ui::selected_targets::detail::observe_deferred_commit(*observation);
+            return;
+        case LIBMH_EVK_ATTACK_GROUP_BEGIN:
+            mh::ui::selected_targets::detail::begin_attack_group(
+                observation->unit_index, observation->owner_and_kind, observation->order_code);
+            return;
+        case LIBMH_EVK_ATTACK_GROUP_END:
+            mh::ui::selected_targets::detail::end_attack_group();
+            return;
+        case LIBMH_EVK_ORDER_ADMITTED:
+            mh::ui::selected_targets::detail::admit_attack_order(*observation);
+            mh::ui::selected_targets::detail::observe_order_lifecycle(*observation);
+            return;
+        case LIBMH_EVK_ORDER_APPLIED:
+        case LIBMH_EVK_ORDER_DISCARDED:
+        case LIBMH_EVK_ORDER_WORLD_RESET:
+        case LIBMH_EVK_UNIT_PRIMARY_TERMINAL:
+        case LIBMH_EVK_MOVE_GROUP_REVOKED:
+        case LIBMH_EVK_ORDER_METADATA_BEFORE:
+        case LIBMH_EVK_ORDER_METADATA_AFTER:
+            mh::ui::selected_targets::detail::observe_order_lifecycle(*observation);
+            return;
+        case LIBMH_EVK_ATTACK_TARGET_ASSIGNED:
+            mh::ui::selected_targets::detail::observe_attack_assignment(*observation);
+            return;
+        default: break;
+    }
+    ++g_unknown;
+}
+
 void route(const libmh_event *e) {
-    log_first_dispatch(e);
+    log_first_dispatch(e->channel, e->kind);
     switch (e->channel) {
         case LIBMH_EVC_INVALIDATE:
             switch (e->kind) {
@@ -528,7 +495,7 @@ void route(const libmh_event *e) {
                 case LIBMH_EVK_INV_SPRITE_PIX_OFFSETS:
                     mh::call::llm_gfx_sprite_pix_offsets_init();
                     return;
-                case LIBMH_EVK_INV_PLANET_GFX_SETUP: planet_gfx_setup(e->a, e->b); return;
+                case LIBMH_EVK_INV_PLANET_GFX_SETUP: planet_gfx_setup(*e); return;
                 case LIBMH_EVK_INV_PLANET_MAP_PALETTE: planet_map_palette(); return;
                 // ---- SIMABI-NOTIFY: the sim table's two no-payload invalidates ---------------
                 case LIBMH_EVK_INV_PLAYER_COLOR_LUT:
@@ -595,6 +562,11 @@ void route(const libmh_event *e) {
                     return;
                 }
                 case LIBMH_EVK_SCREENSHOT_SAVE: mh::call::llm_tact_save_screenshot(); return;
+                case LIBMH_EVK_UNIT_WEAPON_FIRED:
+                    mh::ui::selected_targets::detail::observe_weapon_fired(
+                        static_cast<unsigned>(e->a), static_cast<unsigned>(e->b),
+                        static_cast<uint16_t>(e->c), static_cast<uint16_t>(e->d));
+                    return;
                 default: break;
             }
             break;
@@ -755,7 +727,12 @@ namespace mh::hook {
 int bind_host_event_sink() {
     const int rc_records = libmh_set_event_sink(route, LIBMH_HOST_EVENTS_VERSION);
     const int rc_texts   = libmh_set_text_sink(route_text, LIBMH_HOST_EVENTS_VERSION);
-    return rc_records != 0 ? rc_records : rc_texts; // one rc: both surfaces bind or the seam is red
+    auto     *witnesses  = mh::ui::selected_targets::detail::selected_targets_order_witness_store();
+    if (!witnesses) return -2;
+    const int rc_orders =
+        libmh_set_order_observation_sink(route_order_observation, LIBMH_HOST_EVENTS_VERSION, witnesses);
+    if (rc_records != 0) return rc_records;
+    return rc_texts != 0 ? rc_texts : rc_orders;
 }
 
 uint32_t host_event_sink_unknown_count() { return g_unknown; }

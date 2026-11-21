@@ -1,0 +1,9 @@
+{
+  "_why": "The 200% scaling and modal rows share one load. Preserve the former scaling row's 1.0 tolerance for its four semantic-check captures; modal captures retain the registry's 0.0005. No pixels are masked and no former tolerance is raised.",
+  "_tol": {
+    "capture_res_notice_before.png": 1.0,
+    "capture_res_notice_after.png": 1.0,
+    "capture_res_notice_frame_before.png": 1.0,
+    "capture_res_notice_frame_after.png": 1.0
+  }
+}

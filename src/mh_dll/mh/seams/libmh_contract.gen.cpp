@@ -72,6 +72,7 @@ const char *const g_libmh_fn_name[MH_LIBMH_CONTRACT_COUNT] = {
     "?set_dispatch_observer@sim@mh@@YAXP6AXXZ@Z",
     "?set_extend_floor@lockstep@mh@@YAXP6ANN@Z@Z",
     "?set_fixes@lockstep@mh@@YAXABUreimpl_fixes@12@@Z",
+    "?set_game_speed_recompute_observer@sim@mh@@YAXP6AXXZ@Z",
     "?set_icon_counters@lockstep@mh@@YAXP6AXXZ0@Z",
     "?set_land_players_observer@sim@mh@@YAXP6AXXZ@Z",
     "?set_logger@ai@mh@@YAXP6AXPBD@Z@Z",
@@ -80,6 +81,7 @@ const char *const g_libmh_fn_name[MH_LIBMH_CONTRACT_COUNT] = {
     "?set_logger@save@mh@@YAXP6AXPBD@Z@Z",
     "?set_new_game_init_observer@sim@mh@@YAXP6AXXZ@Z",
     "?set_session_begin_multi_observer@sim@mh@@YAXP6AXXZ@Z",
+    "?set_sim_step_post_ai_observer@sim@mh@@YAXP6AXXZ@Z",
     "?set_sim_step_pre_hook@sim@mh@@YAHP6AXXZ@Z",
     "?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z",
     "?sim_step_entry_thunk@sim@mh@@YAPAXXZ",
@@ -97,14 +99,21 @@ const char *const g_libmh_fn_name[MH_LIBMH_CONTRACT_COUNT] = {
     "libmh_bound_count",
     "libmh_hook_api_unbound",
     "libmh_host_api_unbound",
+    "libmh_import_world",
     "libmh_import_world_resync",
     "libmh_in_is_open",
     "libmh_in_open",
     "libmh_in_unbound",
+    "libmh_order_tasks_abort_load",
+    "libmh_order_tasks_begin_load",
+    "libmh_order_tasks_bind",
+    "libmh_order_tasks_enqueue_suppressed",
+    "libmh_order_tasks_published",
     "libmh_region_count",
     "libmh_set_event_sink",
     "libmh_set_hook_api",
     "libmh_set_host_api",
+    "libmh_set_order_observation_sink",
     "libmh_set_session_seed",
     "libmh_set_tact_host_api",
     "libmh_set_text_sink",
@@ -960,7 +969,7 @@ extern "C" __declspec(naked) void mh_libmh_thunk_57(void) {
 }
 #pragma comment(linker, "/alternatename:?set_fixes@lockstep@mh@@YAXABUreimpl_fixes@12@@Z=_mh_libmh_thunk_57")
 
-// void __cdecl mh::lockstep::set_icon_counters(void (__cdecl*)(void),void (__cdecl*)(void))
+// void __cdecl mh::sim::set_game_speed_recompute_observer(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_58(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 232]
@@ -974,9 +983,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_58(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_icon_counters@lockstep@mh@@YAXP6AXXZ0@Z=_mh_libmh_thunk_58")
+#pragma comment(linker, "/alternatename:?set_game_speed_recompute_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_58")
 
-// void __cdecl mh::sim::set_land_players_observer(void (__cdecl*)(void))
+// void __cdecl mh::lockstep::set_icon_counters(void (__cdecl*)(void),void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_59(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 236]
@@ -990,9 +999,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_59(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_land_players_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_59")
+#pragma comment(linker, "/alternatename:?set_icon_counters@lockstep@mh@@YAXP6AXXZ0@Z=_mh_libmh_thunk_59")
 
-// void __cdecl mh::ai::set_logger(void (__cdecl*)(char const *))
+// void __cdecl mh::sim::set_land_players_observer(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_60(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 240]
@@ -1006,9 +1015,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_60(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_logger@ai@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_60")
+#pragma comment(linker, "/alternatename:?set_land_players_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_60")
 
-// void __cdecl mh::lockstep::set_logger(void (__cdecl*)(char const *))
+// void __cdecl mh::ai::set_logger(void (__cdecl*)(char const *))
 extern "C" __declspec(naked) void mh_libmh_thunk_61(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 244]
@@ -1022,9 +1031,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_61(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_logger@lockstep@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_61")
+#pragma comment(linker, "/alternatename:?set_logger@ai@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_61")
 
-// void __cdecl mh::orders::set_logger(void (__cdecl*)(char const *))
+// void __cdecl mh::lockstep::set_logger(void (__cdecl*)(char const *))
 extern "C" __declspec(naked) void mh_libmh_thunk_62(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 248]
@@ -1038,9 +1047,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_62(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_logger@orders@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_62")
+#pragma comment(linker, "/alternatename:?set_logger@lockstep@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_62")
 
-// void __cdecl mh::save::set_logger(void (__cdecl*)(char const *))
+// void __cdecl mh::orders::set_logger(void (__cdecl*)(char const *))
 extern "C" __declspec(naked) void mh_libmh_thunk_63(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 252]
@@ -1054,9 +1063,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_63(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_logger@save@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_63")
+#pragma comment(linker, "/alternatename:?set_logger@orders@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_63")
 
-// void __cdecl mh::sim::set_new_game_init_observer(void (__cdecl*)(void))
+// void __cdecl mh::save::set_logger(void (__cdecl*)(char const *))
 extern "C" __declspec(naked) void mh_libmh_thunk_64(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 256]
@@ -1070,9 +1079,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_64(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_new_game_init_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_64")
+#pragma comment(linker, "/alternatename:?set_logger@save@mh@@YAXP6AXPBD@Z@Z=_mh_libmh_thunk_64")
 
-// void __cdecl mh::sim::set_session_begin_multi_observer(void (__cdecl*)(void))
+// void __cdecl mh::sim::set_new_game_init_observer(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_65(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 260]
@@ -1086,9 +1095,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_65(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_session_begin_multi_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_65")
+#pragma comment(linker, "/alternatename:?set_new_game_init_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_65")
 
-// int __cdecl mh::sim::set_sim_step_pre_hook(void (__cdecl*)(void))
+// void __cdecl mh::sim::set_session_begin_multi_observer(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_66(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 264]
@@ -1102,9 +1111,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_66(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_sim_step_pre_hook@sim@mh@@YAHP6AXXZ@Z=_mh_libmh_thunk_66")
+#pragma comment(linker, "/alternatename:?set_session_begin_multi_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_66")
 
-// void __cdecl mh::sim::set_time_resync_instrument_hooks(void (__cdecl*)(void))
+// void __cdecl mh::sim::set_sim_step_post_ai_observer(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_67(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 268]
@@ -1118,9 +1127,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_67(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_67")
+#pragma comment(linker, "/alternatename:?set_sim_step_post_ai_observer@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_67")
 
-// void * __cdecl mh::sim::sim_step_entry_thunk(void)
+// int __cdecl mh::sim::set_sim_step_pre_hook(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_68(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 272]
@@ -1134,9 +1143,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_68(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?sim_step_entry_thunk@sim@mh@@YAPAXXZ=_mh_libmh_thunk_68")
+#pragma comment(linker, "/alternatename:?set_sim_step_pre_hook@sim@mh@@YAHP6AXXZ@Z=_mh_libmh_thunk_68")
 
-// bool __cdecl mh::sim::sim_step_promoted(void)
+// void __cdecl mh::sim::set_time_resync_instrument_hooks(void (__cdecl*)(void))
 extern "C" __declspec(naked) void mh_libmh_thunk_69(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 276]
@@ -1150,9 +1159,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_69(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?sim_step_promoted@sim@mh@@YA_NXZ=_mh_libmh_thunk_69")
+#pragma comment(linker, "/alternatename:?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z=_mh_libmh_thunk_69")
 
-// bool __cdecl mh::sim::sim_step_promoted_via_rebind(void)
+// void * __cdecl mh::sim::sim_step_entry_thunk(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_70(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 280]
@@ -1166,9 +1175,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_70(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?sim_step_promoted_via_rebind@sim@mh@@YA_NXZ=_mh_libmh_thunk_70")
+#pragma comment(linker, "/alternatename:?sim_step_entry_thunk@sim@mh@@YAPAXXZ=_mh_libmh_thunk_70")
 
-// void * __cdecl mh::lockstep::sim_tick_entry_thunk(void)
+// bool __cdecl mh::sim::sim_step_promoted(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_71(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 284]
@@ -1182,9 +1191,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_71(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?sim_tick_entry_thunk@lockstep@mh@@YAPAXXZ=_mh_libmh_thunk_71")
+#pragma comment(linker, "/alternatename:?sim_step_promoted@sim@mh@@YA_NXZ=_mh_libmh_thunk_71")
 
-// bool __cdecl mh::lockstep::sim_tick_requested(void)
+// bool __cdecl mh::sim::sim_step_promoted_via_rebind(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_72(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 288]
@@ -1198,9 +1207,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_72(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?sim_tick_requested@lockstep@mh@@YA_NXZ=_mh_libmh_thunk_72")
+#pragma comment(linker, "/alternatename:?sim_step_promoted_via_rebind@sim@mh@@YA_NXZ=_mh_libmh_thunk_72")
 
-// bool __cdecl mh::orders::admission::stage_active(void)
+// void * __cdecl mh::lockstep::sim_tick_entry_thunk(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_73(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 292]
@@ -1214,9 +1223,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_73(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?stage_active@admission@orders@mh@@YA_NXZ=_mh_libmh_thunk_73")
+#pragma comment(linker, "/alternatename:?sim_tick_entry_thunk@lockstep@mh@@YAPAXXZ=_mh_libmh_thunk_73")
 
-// void __cdecl mh::orders::admission::stage_cancel(void)
+// bool __cdecl mh::lockstep::sim_tick_requested(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_74(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 296]
@@ -1230,9 +1239,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_74(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?stage_cancel@admission@orders@mh@@YAXXZ=_mh_libmh_thunk_74")
+#pragma comment(linker, "/alternatename:?sim_tick_requested@lockstep@mh@@YA_NXZ=_mh_libmh_thunk_74")
 
-// int __cdecl mh::orders::admission::stage_feed(double,struct mh::orders::admission::stage_report *)
+// bool __cdecl mh::orders::admission::stage_active(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_75(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 300]
@@ -1246,9 +1255,25 @@ extern "C" __declspec(naked) void mh_libmh_thunk_75(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?stage_feed@admission@orders@mh@@YAHNPAUstage_report@123@@Z=_mh_libmh_thunk_75")
+#pragma comment(linker, "/alternatename:?stage_active@admission@orders@mh@@YA_NXZ=_mh_libmh_thunk_75")
 
-// void * __cdecl mh::lockstep::time_tick_entry_thunk(void)
+// void __cdecl mh::orders::admission::stage_cancel(void)
+extern "C" __declspec(naked) void mh_libmh_thunk_76(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 304]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:?stage_cancel@admission@orders@mh@@YAXXZ=_mh_libmh_thunk_76")
+
+// int __cdecl mh::orders::admission::stage_feed(double,struct mh::orders::admission::stage_report *)
 extern "C" __declspec(naked) void mh_libmh_thunk_77(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 308]
@@ -1262,25 +1287,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_77(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?time_tick_entry_thunk@lockstep@mh@@YAPAXXZ=_mh_libmh_thunk_77")
+#pragma comment(linker, "/alternatename:?stage_feed@admission@orders@mh@@YAHNPAUstage_report@123@@Z=_mh_libmh_thunk_77")
 
-// bool __cdecl mh::lockstep::time_tick_requested(void)
-extern "C" __declspec(naked) void mh_libmh_thunk_78(void) {
-    __asm {
-        mov eax, dword ptr [g_libmh_fn + 312]
-        test eax, eax
-        jz absent
-        inc dword ptr [g_libmh_crossings]
-        jmp eax
-    absent:
-        inc dword ptr [g_libmh_absent_calls]
-        xor eax, eax
-        ret
-    }
-}
-#pragma comment(linker, "/alternatename:?time_tick_requested@lockstep@mh@@YA_NXZ=_mh_libmh_thunk_78")
-
-// int __cdecl mh::libmh_in::trap_count(void)
+// void * __cdecl mh::lockstep::time_tick_entry_thunk(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_79(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 316]
@@ -1294,9 +1303,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_79(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:?trap_count@libmh_in@mh@@YAHXZ=_mh_libmh_thunk_79")
+#pragma comment(linker, "/alternatename:?time_tick_entry_thunk@lockstep@mh@@YAPAXXZ=_mh_libmh_thunk_79")
 
-// _libmh_bound_count
+// bool __cdecl mh::lockstep::time_tick_requested(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_80(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 320]
@@ -1310,9 +1319,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_80(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_bound_count=_mh_libmh_thunk_80")
+#pragma comment(linker, "/alternatename:?time_tick_requested@lockstep@mh@@YA_NXZ=_mh_libmh_thunk_80")
 
-// _libmh_hook_api_unbound
+// int __cdecl mh::libmh_in::trap_count(void)
 extern "C" __declspec(naked) void mh_libmh_thunk_81(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 324]
@@ -1326,9 +1335,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_81(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_hook_api_unbound=_mh_libmh_thunk_81")
+#pragma comment(linker, "/alternatename:?trap_count@libmh_in@mh@@YAHXZ=_mh_libmh_thunk_81")
 
-// _libmh_host_api_unbound
+// _libmh_bound_count
 extern "C" __declspec(naked) void mh_libmh_thunk_82(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 328]
@@ -1342,9 +1351,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_82(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_host_api_unbound=_mh_libmh_thunk_82")
+#pragma comment(linker, "/alternatename:_libmh_bound_count=_mh_libmh_thunk_82")
 
-// _libmh_import_world_resync
+// _libmh_hook_api_unbound
 extern "C" __declspec(naked) void mh_libmh_thunk_83(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 332]
@@ -1358,9 +1367,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_83(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_import_world_resync=_mh_libmh_thunk_83")
+#pragma comment(linker, "/alternatename:_libmh_hook_api_unbound=_mh_libmh_thunk_83")
 
-// _libmh_in_is_open
+// _libmh_host_api_unbound
 extern "C" __declspec(naked) void mh_libmh_thunk_84(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 336]
@@ -1374,9 +1383,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_84(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_in_is_open=_mh_libmh_thunk_84")
+#pragma comment(linker, "/alternatename:_libmh_host_api_unbound=_mh_libmh_thunk_84")
 
-// _libmh_in_open
+// _libmh_import_world
 extern "C" __declspec(naked) void mh_libmh_thunk_85(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 340]
@@ -1390,9 +1399,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_85(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_in_open=_mh_libmh_thunk_85")
+#pragma comment(linker, "/alternatename:_libmh_import_world=_mh_libmh_thunk_85")
 
-// _libmh_in_unbound
+// _libmh_import_world_resync
 extern "C" __declspec(naked) void mh_libmh_thunk_86(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 344]
@@ -1406,9 +1415,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_86(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_in_unbound=_mh_libmh_thunk_86")
+#pragma comment(linker, "/alternatename:_libmh_import_world_resync=_mh_libmh_thunk_86")
 
-// _libmh_region_count
+// _libmh_in_is_open
 extern "C" __declspec(naked) void mh_libmh_thunk_87(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 348]
@@ -1422,9 +1431,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_87(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_region_count=_mh_libmh_thunk_87")
+#pragma comment(linker, "/alternatename:_libmh_in_is_open=_mh_libmh_thunk_87")
 
-// _libmh_set_event_sink
+// _libmh_in_open
 extern "C" __declspec(naked) void mh_libmh_thunk_88(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 352]
@@ -1438,9 +1447,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_88(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_event_sink=_mh_libmh_thunk_88")
+#pragma comment(linker, "/alternatename:_libmh_in_open=_mh_libmh_thunk_88")
 
-// _libmh_set_hook_api
+// _libmh_in_unbound
 extern "C" __declspec(naked) void mh_libmh_thunk_89(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 356]
@@ -1454,9 +1463,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_89(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_hook_api=_mh_libmh_thunk_89")
+#pragma comment(linker, "/alternatename:_libmh_in_unbound=_mh_libmh_thunk_89")
 
-// _libmh_set_host_api
+// _libmh_order_tasks_abort_load
 extern "C" __declspec(naked) void mh_libmh_thunk_90(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 360]
@@ -1470,9 +1479,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_90(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_host_api=_mh_libmh_thunk_90")
+#pragma comment(linker, "/alternatename:_libmh_order_tasks_abort_load=_mh_libmh_thunk_90")
 
-// _libmh_set_session_seed
+// _libmh_order_tasks_begin_load
 extern "C" __declspec(naked) void mh_libmh_thunk_91(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 364]
@@ -1486,9 +1495,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_91(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_session_seed=_mh_libmh_thunk_91")
+#pragma comment(linker, "/alternatename:_libmh_order_tasks_begin_load=_mh_libmh_thunk_91")
 
-// _libmh_set_tact_host_api
+// _libmh_order_tasks_bind
 extern "C" __declspec(naked) void mh_libmh_thunk_92(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 368]
@@ -1502,9 +1511,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_92(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_tact_host_api=_mh_libmh_thunk_92")
+#pragma comment(linker, "/alternatename:_libmh_order_tasks_bind=_mh_libmh_thunk_92")
 
-// _libmh_set_text_sink
+// _libmh_order_tasks_enqueue_suppressed
 extern "C" __declspec(naked) void mh_libmh_thunk_93(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 372]
@@ -1518,9 +1527,9 @@ extern "C" __declspec(naked) void mh_libmh_thunk_93(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_set_text_sink=_mh_libmh_thunk_93")
+#pragma comment(linker, "/alternatename:_libmh_order_tasks_enqueue_suppressed=_mh_libmh_thunk_93")
 
-// _libmh_tact_host_api_unbound
+// _libmh_order_tasks_published
 extern "C" __declspec(naked) void mh_libmh_thunk_94(void) {
     __asm {
         mov eax, dword ptr [g_libmh_fn + 376]
@@ -1534,7 +1543,151 @@ extern "C" __declspec(naked) void mh_libmh_thunk_94(void) {
         ret
     }
 }
-#pragma comment(linker, "/alternatename:_libmh_tact_host_api_unbound=_mh_libmh_thunk_94")
+#pragma comment(linker, "/alternatename:_libmh_order_tasks_published=_mh_libmh_thunk_94")
+
+// _libmh_region_count
+extern "C" __declspec(naked) void mh_libmh_thunk_95(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 380]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_region_count=_mh_libmh_thunk_95")
+
+// _libmh_set_event_sink
+extern "C" __declspec(naked) void mh_libmh_thunk_96(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 384]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_event_sink=_mh_libmh_thunk_96")
+
+// _libmh_set_hook_api
+extern "C" __declspec(naked) void mh_libmh_thunk_97(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 388]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_hook_api=_mh_libmh_thunk_97")
+
+// _libmh_set_host_api
+extern "C" __declspec(naked) void mh_libmh_thunk_98(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 392]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_host_api=_mh_libmh_thunk_98")
+
+// _libmh_set_order_observation_sink
+extern "C" __declspec(naked) void mh_libmh_thunk_99(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 396]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_order_observation_sink=_mh_libmh_thunk_99")
+
+// _libmh_set_session_seed
+extern "C" __declspec(naked) void mh_libmh_thunk_100(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 400]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_session_seed=_mh_libmh_thunk_100")
+
+// _libmh_set_tact_host_api
+extern "C" __declspec(naked) void mh_libmh_thunk_101(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 404]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_tact_host_api=_mh_libmh_thunk_101")
+
+// _libmh_set_text_sink
+extern "C" __declspec(naked) void mh_libmh_thunk_102(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 408]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_set_text_sink=_mh_libmh_thunk_102")
+
+// _libmh_tact_host_api_unbound
+extern "C" __declspec(naked) void mh_libmh_thunk_103(void) {
+    __asm {
+        mov eax, dword ptr [g_libmh_fn + 412]
+        test eax, eax
+        jz absent
+        inc dword ptr [g_libmh_crossings]
+        jmp eax
+    absent:
+        inc dword ptr [g_libmh_absent_calls]
+        xor eax, eax
+        ret
+    }
+}
+#pragma comment(linker, "/alternatename:_libmh_tact_host_api_unbound=_mh_libmh_thunk_103")
 
 // ---- defined by hand in mh/seams/libmh_bind.cpp (6 rows) -----------
 //   [12] struct mh::lockstep::reimpl_fixes const & __cdecl mh::lockstep::fixes(void)   (return-type)
@@ -1542,4 +1695,4 @@ extern "C" __declspec(naked) void mh_libmh_thunk_94(void) {
 //   [36] struct mh::state::live_table & __cdecl mh::state::live(void)   (semantic)
 //   [44] int & __cdecl mh::state::owner_count(void)   (semantic)
 //   [45] struct mh::state::owner_slot * __cdecl mh::state::owner_table(void)   (semantic)
-//   [76] struct mh::tact::tact_state __cdecl mh::tact::state(void)   (return-type)
+//   [78] struct mh::tact::tact_state __cdecl mh::tact::state(void)   (return-type)

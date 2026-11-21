@@ -22,10 +22,10 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: land the mothership (shift+right-click), then run. The fixture acts once the mother has landed
+# in the match: land the mothership (Ctrl+right-click), then run. The fixture acts once the mother has landed
 absent Network players
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 150000
 log capo mp done
 capture cap_orders_mp_done

@@ -28,7 +28,7 @@ Clauses (all must hold):
      overflow byte on either peer would be a mismatch.)
   8  (`--ovf-desync STEP:IDX`, the negative row) one peer's harness poked overflow record IDX of player 0's buildings at STEP
      (`; CAP POKE`): both peers log `overflow hash ARMED`, a `*** DESYNC step=S` with 0 <= S - STEP <= 2 whose first_region is
-     the first overflow slice (63 ovf_buildings_p0_3), and a `LOCALISED ... region=63 ovf_buildings_p0_3 ... = buildings p0
+     the expected named overflow slice, and a matching `LOCALISED ... ovf_buildings_p0_3 ... = buildings p0
      #IDX` line. With `--blind` (the fix-off twin, `[caps] hash_overflow=0` on both peers) the same poke must be INVISIBLE:
      no `overflow hash ARMED`, no `*** DESYNC` -- which is the proof the row sees what S1 could not.
 
@@ -153,29 +153,27 @@ POKE_RE = re.compile(
     r"; CAP POKE step=(?P<step>\d+) arr=(?P<arr>\d+) p=(?P<p>\d+) idx=(?P<idx>\d+)"
 )
 # PT-CAP9-U7d: 11 roster slices (2,690,052 B) + 10 path / order slices (2,666,936 B: tails 1,924,800 + flags 4,008 + windows 480,000 + queue 258,128).
-# Pending / staging are NOT hashed (peer-local; see mh/caps/ovf.h). Region ids are N (63 manifest regions) + the slice index.
-OVF_SLICES, OVF_BYTES, OVF_REGION, OVF_NAME = 21, 5356988, 63, "ovf_buildings_p0_3"
-N_MANIFEST = 63
+# Pending / staging are NOT hashed (peer-local; see mh/caps/ovf.h). Manifest growth moves
+# numeric ordinals; the named slice and described record are the consumer contract.
+OVF_SLICES, OVF_BYTES = 21, 5356988
 
 
 def poke_target(target, idx):
-    """(region id, slice name, describe prefix) of the overflow slice a poke of `target` at record/slot `idx` lands in.
+    """(slice name, describe prefix) of the overflow slice a poke at record/slot `idx` lands in.
     target: buildings (player 0, the S2 row) | queue | pathN (player N, slot idx; N defaults to 0)."""
     if target == "buildings":
-        return OVF_REGION, OVF_NAME, "buildings p0 #%d" % idx
+        return "ovf_buildings_p0_3", "buildings p0 #%d" % idx
     if target == "queue":
-        return N_MANIFEST + 20, "ovf_order_queue", "order queue #%d" % idx
+        return "ovf_order_queue", "order queue #%d" % idx
     if target.startswith("path"):
         pl = int(target[4:] or 0)
         lo, hi = 2 * (pl // 2), 2 * (pl // 2) + 1
         if idx < 100:
             return (
-                N_MANIFEST + 16 + pl // 2,
                 "ovf_path_window_p%d_%d" % (lo, hi),
                 "path pool p%d slot %d" % (pl, idx),
             )
         return (
-            N_MANIFEST + 11 + pl // 2,
             "ovf_path_tail_p%d_%d" % (lo, hi),
             "path pool p%d slot %d" % (pl, idx),
         )
@@ -243,11 +241,12 @@ def ovf_desync_problems(net, harness, poke_step, idx, blind, target="buildings")
             "clause 8: the first DESYNC is at step %s, %d step(s) from the poke at %d (want 0..2)"
             % (first.group("step"), d, poke_step)
         )
-    region, rname, want = poke_target(target, idx)
-    if int(first.group("fr")) != region or first.group("name") != rname:
+    rname, want = poke_target(target, idx)
+    region = int(first.group("fr"))
+    if first.group("name") != rname:
         bad.append(
-            "clause 8: first_region=%s %s, expected %d %s"
-            % (first.group("fr"), first.group("name"), region, rname)
+            "clause 8: first_region=%s %s, expected named slice %s"
+            % (first.group("fr"), first.group("name"), rname)
         )
     loc = [m for m in (LOCALISED_RE.search(ln) for ln in net) if m]
     if not any(
@@ -594,25 +593,27 @@ def selftest():
             "LOCALISED",
         ),
     )
-    for tgt, ix, (reg, nm, pre) in (
-        ("queue", 350, (83, "ovf_order_queue", "order queue #350")),
-        ("path", 50, (79, "ovf_path_window_p0_1", "path pool p0 slot 50")),
-        ("path5", 300, (76, "ovf_path_tail_p4_5", "path pool p5 slot 300")),
+    for tgt, ix, (nm, pre) in (
+        ("queue", 350, ("ovf_order_queue", "order queue #350")),
+        ("path", 50, ("ovf_path_window_p0_1", "path pool p0 slot 50")),
+        ("path5", 300, ("ovf_path_tail_p4_5", "path pool p5 slot 300")),
     ):
+        # A synthetic ordinal deliberately independent of the current manifest.
+        # Both records must still agree with each other and name the right slice.
         d2 = (
-            "; [desync] *** DESYNC step=901 peer=1 mine=1 theirs=2 first_region=%d %s (mismatch #1)"
-            % (reg, nm)
+            "; [desync] *** DESYNC step=901 peer=1 mine=1 theirs=2 first_region=501 %s (mismatch #1)"
+            % nm
         )
         l2 = (
-            "; [desync] LOCALISED step=901 peer=1 region=%d %s +0x6B85 = %s +0x5: 1 byte(s) differ in its 64-byte block 9"
-            % (reg, nm, pre)
+            "; [desync] LOCALISED step=901 peer=1 region=501 %s +0x6B85 = %s +0x5: 1 byte(s) differ in its 64-byte block 9"
+            % (nm, pre)
         )
         expect(
             "ovf-desync %s: the right region + describe is green, another region is RED" % tgt,
             ovf_desync_problems([armed, d2, l2], [], 900, ix, False, tgt) == []
             and has(
                 ovf_desync_problems([armed, dline, lline], [], 900, ix, False, tgt),
-                "expected %d" % reg,
+                "expected named slice %s" % nm,
             ),
         )
     expect(

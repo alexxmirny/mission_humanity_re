@@ -24,7 +24,7 @@ namespace libref {
 
 // One entry per mh::state::region_id. 0 == the registry records no original-image base for
 // that region, and a re-stamp keyed on one MUST refuse rather than treat 0 as an answer.
-inline constexpr uint32_t STOCK_BASE[845] = {
+inline constexpr uint32_t STOCK_BASE[848] = {
     0x00453e2du, //    0 STRAT_DEPLOY_FORMATION_STENCIL
     0x004bc30eu, //    1 LLM_UI_MENU_SCREEN_SLIDE_TRANSITION
     0x004bd856u, //    2 NETSETUP_IP_CANCEL_INTRO_WAIT_RET
@@ -870,14 +870,17 @@ inline constexpr uint32_t STOCK_BASE[845] = {
     0x01022b1cu, //  842 STRAT_AI_ATTACK_CANDIDATE_COUNT
     0x01022b20u, //  843 STRAT_AI_SCAN_TARGET_COUNT
     0x01070414u, //  844 IAT_GETTICKCOUNT
+    0x00000000u, //  845 STORAGE_POLICY
+    0x00000000u, //  846 ORDER_TASKS
+    0x00000000u, //  847 ORDER_CAMPAIGN
 };
 
 // .rdata string constants that carried pointer tables point AT rather than into. A .rdata
 // address is not a bound region, so arithmetic cannot retarget it -- the host needs the
 // CONTENT, and these are the REAL bytes, read out of the frozen EN image at generation time.
 struct rdata_constant {
-    uint32_t       va;    // the original-image address the carried pointer holds
-    const wchar_t *text;  // the bytes that lived there, verbatim
+    uint32_t       va;   // the original-image address the carried pointer holds
+    const wchar_t *text; // the bytes that lived there, verbatim
     const char    *why;
 };
 

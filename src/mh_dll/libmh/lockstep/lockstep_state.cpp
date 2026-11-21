@@ -121,6 +121,13 @@ MH_BINDER engine_state state() {
     return st;
 }
 
+MH_BINDER participant_view live_participant_view() {
+    using namespace mh::state;
+    return {ptr<const player_profile>(RID_STRAT_PLAYERS),
+            ptr<const double>(RID_NET_PEER_HORIZON),
+            ptr<const uint16_t>(RID_PLAYERSIDE)};
+}
+
 MH_BINDER dispatch_state dstate() {
     const dispatch_state ds = {
         mh::net::packet_buffer{mh::state::ptr<uint8_t>(RID_NET_SEND_BUF),

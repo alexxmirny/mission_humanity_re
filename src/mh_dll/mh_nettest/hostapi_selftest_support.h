@@ -17,6 +17,11 @@
 const libmh_host_api      &mh_hostapi_selftest_table();
 const libmh_tact_host_api &mh_hostapi_selftest_tact_table();
 
+// Real executable-owned boundary ports; initialization never reads an unbound world.
+void     mh_hostapi_participant_initialize();
+uint64_t mh_hostapi_participant_body_boundary(uint32_t operation, uint64_t argument);
+int32_t  mh_hostapi_participant_removal_admit(const void *request, uint32_t request_size);
+
 // Prints "[hostapi] REQUIRED entry <name> called with no host impl", records it below.
 // OUTSIDE capture mode the trap is FATAL (exit 1) -- a suite that reaches a required entry
 // without a real host impl fails at that moment, named. hostapitest turns capture on to

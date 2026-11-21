@@ -55,6 +55,8 @@
 #include "include/mh_log_sink.h"         // LOG1: the async log sink client (header-only)
 #include "mh_net_proto/net_crypto.h"     // handshake + record encryption (portable, shared with the relay)
 #include "mh_net_proto/net_wire.h"       // portable wire framing shared with the relay (S0)
+#include "mh_net_proto/lobby_speed.h"
+#include "mh_net_proto/session_info.h"
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "user32.lib") // wsprintfA
@@ -170,7 +172,7 @@ int g_rx_timeout_ms = 10000;
 
 CRITICAL_SECTION g_conn_cs;
 Conn             g_conns[MH_NET_MAX_PEERS];
-volatile LONG    g_dead_peer = -1; // U17: last-dropped peer's player_id (== side_id); one-shot, drained by MH_Net_TakeDeadPeer
+volatile LONG    g_dead_mask = 0; // current explicit deaths; accepted connections cancel their side
 
 CRITICAL_SECTION g_q_cs;
 // U41: two storages, one decision-maker. `g_lanes` is pure index+sequence bookkeeping; `g_qm` and
@@ -391,8 +393,7 @@ void drop_conn(int idx, RxFail why, int err) {
 // than at a dozen call sites. Every caller used to discard the bool: the host in the 2026-07-26
 // internet game pushed an advertisement into a dead socket every 50 ms for 90 s, learned nothing, and
 // went on to start the match. A send that fails means the peer is gone -- treat it as such.
-bool send_frame(int idx, uint16_t flags, int16_t src, int16_t dst, const void *payload, int len) {
-    Conn   &c = g_conns[idx];
+bool send_record(Conn &c, uint16_t flags, int16_t src, int16_t dst, const void *payload, int len) {
     WireHdr h;
     h.magic = MAGIC;
     h.flags = flags;
@@ -404,7 +405,6 @@ bool send_frame(int idx, uint16_t flags, int16_t src, int16_t dst, const void *p
 
     if (!c.secure) { // open mode: the historic two-part write, byte-identical to the old format
         if (!send_all(c.sock, hdr, sizeof(hdr)) || (len > 0 && !send_all(c.sock, payload, len))) {
-            drop_conn(idx, RXF_SOCKET, WSAGetLastError());
             return false;
         }
         return true;
@@ -422,10 +422,15 @@ bool send_frame(int idx, uint16_t flags, int16_t src, int16_t dst, const void *p
     const uint8_t *mk = (g_role == ROLE_HOST) ? c.keys.mac_s2c : c.keys.mac_c2s;
     size_t         n  = mh_net_proto::rec_seal(ek, mk, c.tx_seq++, plain, plen, rec);
     if (!send_all(c.sock, rec, (int)n)) {
-        drop_conn(idx, RXF_SOCKET, WSAGetLastError());
         return false;
     }
     return true;
+}
+
+bool send_frame(int idx, uint16_t flags, int16_t src, int16_t dst, const void *payload, int len) {
+    if (send_record(g_conns[idx], flags, src, dst, payload, len)) return true;
+    drop_conn(idx, RXF_SOCKET, WSAGetLastError());
+    return false;
 }
 
 // Receive one record into (h, payload). Mirrors send_frame; returns false on a dead socket, a
@@ -465,6 +470,48 @@ bool recv_frame(Conn &c, WireHdr &h, uint8_t *payload, uint32_t &out_len, RxFail
     if (plen) memcpy(payload, body + mh_net_proto::WIRE_HDR_SIZE, plen);
     out_len = plen;
     return true;
+}
+
+// No peer slot, ID, callback or game queue is published until this succeeds.
+// Both open and secure links use the SAME control exchange. Local Conn sequence
+// counters are transferred to the published slot, never reset after sealed records.
+bool game_feature_handshake(Conn &c, bool host, int &peer_id) {
+    using namespace mh_net_proto;
+    DWORD tmo = host ? HANDSHAKE_MS : HANDSHAKE_CLIENT_MS;
+    setsockopt(c.sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tmo, sizeof(tmo));
+    uint8_t  bytes[MH_NET_MAX_PAYLOAD];
+    WireHdr  h{};
+    uint32_t len     = 0;
+    RxFail   why     = RXF_OK;
+    int      err     = 0;
+    auto     receive = [&](GameFeatureStage stage) {
+        return recv_frame(c, h, bytes, len, why, err) &&
+               h.src >= 0 && h.src < 8 && h.src != g_my_id && h.dst == MH_NET_BROADCAST &&
+               game_feature_accept(h.flags, bytes, len, stage);
+    };
+    auto transmit = [&](GameFeatureStage stage) {
+        game_feature_encode(stage, bytes);
+        return send_record(c, stage == GameFeatureStage::Ack ? FLAG_WELCOME : FLAG_HELLO,
+                           (int16_t)g_my_id, MH_NET_BROADCAST, bytes, (int)GAME_FEATURE_BYTES);
+    };
+    bool ok = false;
+    if (host) {
+        if (receive(GameFeatureStage::Offer)) {
+            const int offered_id = h.src;
+            if (transmit(GameFeatureStage::Ack) && receive(GameFeatureStage::Confirm) && h.src == offered_id) {
+                peer_id = offered_id;
+                ok      = true;
+            }
+        }
+    } else if (transmit(GameFeatureStage::Offer) && receive(GameFeatureStage::Ack)) {
+        peer_id = h.src;
+        ok      = transmit(GameFeatureStage::Confirm);
+    }
+    if (!ok) logf("net: game generation refused (need %u; missing, malformed or incompatible feature hello/ack)",
+                  (unsigned)GAME_GENERATION);
+    tmo = 0;
+    setsockopt(c.sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tmo, sizeof(tmo));
+    return ok;
 }
 
 // ---- inbound queue ------------------------------------------------------------------------------
@@ -637,19 +684,13 @@ DWORD WINAPI conn_recv_thread(LPVOID param) {
             continue;
         }
 
-        if (h.flags == FLAG_HELLO) {
-            EnterCriticalSection(&g_conn_cs);
-            if (g_host_assign) { // N1: the host already assigned this conn its id --
-                logf("net: conn %d HELLO claims player %d (ignored; assigned %d)", idx, h.src, g_conns[idx].player_id);
-            } else {
-                g_conns[idx].player_id = h.src;                      // declared-id mode: the client's claim is authoritative
-                InterlockedCompareExchange(&g_dead_peer, -1, h.src); // back: cancel a pending fast-drop
-                logf("net: conn %d is player %d", idx, h.src);
-            }
-            LeaveCriticalSection(&g_conn_cs);
-            continue;
-        }
-        if (h.flags == FLAG_WELCOME) { // N1: host assigned US an id (client side)
+        // Feature HELLO/WELCOME was consumed before publication. The only later
+        // WELCOME is the host's assigned ID; it is neither a feature ACK nor a
+        // licence for a client to rewrite routing after admission.
+        if (h.flags == FLAG_HELLO) break;
+        if (h.flags == FLAG_WELCOME) {
+            if (g_role != ROLE_CLIENT || !g_host_assign || len != 0 || h.src < 0 || h.src >= 8 ||
+                h.dst < 0 || h.dst >= 8 || InterlockedCompareExchange(&g_id_assigned, 0, 0) != 0) break;
             g_my_id = h.dst;
             InterlockedExchange(&g_id_assigned, 1);
             logf("net: WELCOME -- host assigned us player %d", g_my_id);
@@ -678,6 +719,13 @@ DWORD WINAPI conn_recv_thread(LPVOID param) {
             continue;
         }
         if (h.flags == FLAG_ANNOUNCE) { // host's join/left announce -> handler, NOT the game queue (U16)
+            if (len > 0 && payload[0] == mh_net_proto::ANNOUNCE_LOBBY_SPEED) {
+                // The client's actual upstream socket is conn0. A host's connections are clients,
+                // even when they forge src=0; never deliver their speed announcement or relay it.
+                if (g_role != ROLE_CLIENT || idx != 0) continue;
+                mh_net_proto::LobbySpeed speed;
+                if (!mh_net_proto::lobby_speed_decode(payload, len, speed)) continue;
+            }
             MH_AnnounceCb cb = g_announce_cb;
             if (cb) cb(h.src, payload, (int)len);
             continue;
@@ -709,16 +757,19 @@ DWORD WINAPI conn_recv_thread(LPVOID param) {
         if (g_role == ROLE_HOST) host_dispatch(idx, &h, payload, len);
         else enqueue(h.src, payload, len); // client: host already routed it
     }
+    const int dead = g_conns[idx].player_id;
+    if (dead >= 0 && dead < 8) InterlockedOr(&g_dead_mask, LONG(1u << dead));
+    // Publish death before freeing the slot; its replacement must clear, not
+    // race a late write from this old receive thread after it reuses the slot.
     InterlockedExchange(&g_conns[idx].active, 0);
-    InterlockedExchange(&g_dead_peer, g_conns[idx].player_id); // U17: latch the dropped peer's id (>=1 on host; -1 for the client's host-conn) for the main-thread fast-drop
     closesocket(s);
     logf("net: conn %d closed", idx);
     return 0;
 }
 
-// U17: taken + cleared by the game's main thread (net_lockstep on_time_tick) to broadcast an immediate
-// in-order removal of a dropped CLIENT (host-conn from a client latches -1 -> host death is not fast-dropped).
-extern "C" int MH_Net_TakeDeadPeer(void) { return (int)InterlockedExchange(&g_dead_peer, -1); }
+extern "C" int MH_Net_DeadPeerMask(void) {
+    return g_started ? int(InterlockedCompareExchange(&g_dead_mask, 0, 0)) : 0;
+}
 
 // ---- host: per-connection handshake ------------------------------------------------------------
 // Runs on a short-lived thread, BEFORE the connection is given a peer slot. That ordering is the
@@ -786,6 +837,17 @@ DWORD WINAPI pending_thread(LPVOID param) {
         return 0;
     }
 
+    Conn pending{};
+    pending.sock    = s;
+    pending.secure  = g_secure;
+    pending.keys    = keys;
+    int declared_id = -1;
+    if (!game_feature_handshake(pending, true, declared_id)) {
+        closesocket(s);
+        InterlockedDecrement(&g_pending);
+        return 0;
+    }
+
     EnterCriticalSection(&g_conn_cs);
     int idx = -1;
     for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
@@ -799,8 +861,8 @@ DWORD WINAPI pending_thread(LPVOID param) {
         c.sock    = s;
         c.secure  = g_secure;
         c.keys    = keys;
-        c.tx_seq  = 0;
-        c.rx_seq  = 0;
+        c.tx_seq  = pending.tx_seq;
+        c.rx_seq  = pending.rx_seq;
         c.last_rx = GetTickCount(); // the handshake counts as life; start the watchdog clock here
         c.tx_dead = 0;
         if (g_host_assign) {
@@ -819,14 +881,11 @@ DWORD WINAPI pending_thread(LPVOID param) {
                     break;
                 }
             c.player_id = assigned; // authoritative (HELLO won't override it below)
-            // This id is BACK, so cancel any pending U17 fast-drop for it. The latch is only drained
-            // in-game (SESSION_MODE 3), so one set during the lobby survives until the match starts --
-            // and would then remove a player who had merely reconnected. Cheap now that R-live makes
-            // lobby-phase transport drops something that actually happens.
-            InterlockedCompareExchange(&g_dead_peer, -1, assigned);
         } else {
-            c.player_id = -1; // learned from HELLO (declared-id mode)
+            c.player_id = declared_id; // validated by the mandatory feature HELLO
         }
+        if (c.player_id >= 0 && c.player_id < 8)
+            InterlockedAnd(&g_dead_mask, LONG(~(1u << c.player_id)));
         InterlockedExchange(&c.active, 1);
         c.thread = CreateThread(nullptr, 0, conn_recv_thread, (LPVOID)(intptr_t)idx, 0, nullptr);
     }
@@ -1215,19 +1274,26 @@ bool start_client(const MH_NetConfig *cfg) {
         logf("net: handshake OK (authenticated + encrypted)");
     }
 
+    Conn pending{};
+    pending.sock   = s;
+    pending.secure = g_secure;
+    pending.keys   = keys;
+    int host_id    = -1;
+    if (!game_feature_handshake(pending, false, host_id)) {
+        closesocket(s);
+        return false;
+    }
+
     EnterCriticalSection(&g_conn_cs);
     g_conns[0].sock      = s;
-    g_conns[0].player_id = -1; // host id unknown/irrelevant to the client
+    g_conns[0].player_id = -1; // preserve the client host-link/dead-peer convention
     g_conns[0].secure    = g_secure;
     g_conns[0].keys      = keys;
-    g_conns[0].tx_seq    = 0;
-    g_conns[0].rx_seq    = 0;
+    g_conns[0].tx_seq    = pending.tx_seq;
+    g_conns[0].rx_seq    = pending.rx_seq;
     g_conns[0].last_rx   = GetTickCount();
     g_conns[0].tx_dead   = 0;
     InterlockedExchange(&g_conns[0].active, 1);
-    // Announce our player id so the host can route unicasts/broadcasts to us before we send data.
-    // Inside the lock: on a secure link this is record #0 and must not race another sender's seq.
-    send_frame(0, FLAG_HELLO, (int16_t)g_my_id, MH_NET_BROADCAST, nullptr, 0);
     LeaveCriticalSection(&g_conn_cs);
 
     InterlockedExchange(&g_running, 1);
@@ -1328,7 +1394,7 @@ bool net_reset() {
     queue_rollup_line(q_depth, q_dh, q_dm, q_high, q_hh, q_hm, q_ev, q_ref);
     g_qhigh_band  = 0;
     g_q_rollup_at = 0;
-    InterlockedExchange(&g_dead_peer, -1); // U17: a latch from the old link is not the new one's news
+    InterlockedExchange(&g_dead_mask, 0);
     g_started = false;
     logf("net: transport stopped -- ready to dial again");
     return true;
@@ -1550,14 +1616,23 @@ void mh_net_queue_counters_for_test(int *depth, int *high, long *evicted, long *
     LeaveCriticalSection(&g_q_cs);
 }
 
-extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
-    if (!g_started || !buf || !inout_len) return 0;
+extern "C" int MH_Net_RecvExcept(int *out_sender, void *buf, int *inout_len,
+                                 const int *blocked_senders, int blocked_count) {
+    if (!g_started || !buf || !inout_len || blocked_count < 0 ||
+        (blocked_count && !blocked_senders)) return 0;
     int cap = *inout_len;
     int got = 0;
     EnterCriticalSection(&g_q_cs);
-    // U41: the MERGE. `pop()` returns whichever lane's head arrived first, so what comes out of here
-    // is the arrival order the single ring used to deliver, minus only what lane H explicitly evicted.
-    const mh::net::queue_policy::pop_result r = g_lanes.pop();
+    const auto eligible = [&](mh::net::queue_policy::lane lane, int pos) {
+        const int from = lane == mh::net::queue_policy::lane::supersedable
+                             ? g_qh[pos].src
+                             : g_qm[pos].src;
+        for (int i = 0; i < blocked_count; ++i)
+            if (blocked_senders[i] == from) return false;
+        return true;
+    };
+    const mh::net::queue_policy::pop_result r =
+        blocked_count ? g_lanes.pop_eligible(eligible) : g_lanes.pop();
     if (r.ok) {
         const uint8_t *src_bytes;
         int            src_len, src_from;
@@ -1578,6 +1653,10 @@ extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
     }
     LeaveCriticalSection(&g_q_cs);
     return got;
+}
+
+extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
+    return MH_Net_RecvExcept(out_sender, buf, inout_len, nullptr, 0);
 }
 
 extern "C" int MH_Net_IsStarted(void) { return g_started ? 1 : 0; }

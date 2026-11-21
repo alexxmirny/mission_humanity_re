@@ -6,13 +6,13 @@
 
 namespace mh::sim {
 
-// The outward calls, indirected (like every sim/ TU) so detail:: stays testable under simtest. All
-// four are frontier originals (none of them are among the ten sim_resid sibling translations).
+// Outward calls, indirected so detail:: remains testable without a live host.
 struct session_state_reset_calls {
     double (*time_get_current_time)();  // time_GetCurrentTime @0x00427616
     void (*cam_jump_queue_clear)();     // llm_cam_jump_queue_clear @0x0044dd11
     void (*invasion_alert_reset_all)(); // llm_strat_invasion_alert_reset_all @0x0049b447
     void (*prod_reset_system)();        // llm_strat_prod_reset_system @0x0048ffe9
+    void (*participant_reset)(bool new_session) = nullptr;
 };
 
 const session_state_reset_calls &live_session_state_reset_calls();

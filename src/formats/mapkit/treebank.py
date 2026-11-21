@@ -12,6 +12,10 @@ import os
 
 from .common import BANKI as UNPACK_ROOT
 
+# Descriptor trees= profiles; none has no decoration bank.
+PROFILE_BANKS = {"diuna256": 50, "jungle": 51, "ksie256": 52, "lod256": 53,
+                 "ruins256": 54, "metal256": 55, "skaly256": 56, "none": None}
+
 _bankmap_cache = {}
 
 

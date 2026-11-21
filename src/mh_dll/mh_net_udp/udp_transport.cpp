@@ -450,13 +450,17 @@ extern "C" int MH_Net_Send(int dst_player, const void *buf, int len) {
 extern "C" int MH_Net_Recv(int *out_sender, void *buf, int *inout_len) {
     return g_started ? g_ep.recv(out_sender, buf, inout_len) : 0;
 }
+extern "C" int MH_Net_RecvExcept(int *out_sender, void *buf, int *inout_len,
+                                 const int *blocked_senders, int blocked_count) {
+    return g_started ? g_ep.recv(out_sender, buf, inout_len, blocked_senders, blocked_count) : 0;
+}
 extern "C" int MH_Net_PeerCount(void) { return g_started ? g_ep.peer_count() : 0; }
 extern "C" int MH_Net_LocalPlayerId(void) { return g_started ? g_ep.local_player_id() : -1; }
 extern "C" int MH_Net_IdAssigned(void) { return g_started ? g_ep.id_assigned() : 1; }
 extern "C" int MH_Net_ActivePeerIds(int *out, int cap) {
     return g_started ? g_ep.active_peer_ids(out, cap) : 0;
 }
-extern "C" int  MH_Net_TakeDeadPeer(void) { return g_started ? g_ep.take_dead_peer() : -1; }
+extern "C" int  MH_Net_DeadPeerMask(void) { return g_started ? g_ep.dead_peer_mask() : 0; }
 extern "C" int  MH_Net_IsStarted(void) { return g_started ? 1 : 0; }
 extern "C" void MH_Net_GetStats(MH_NetStats *out) {
     if (!out) return;

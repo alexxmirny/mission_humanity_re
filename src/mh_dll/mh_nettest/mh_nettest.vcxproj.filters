@@ -72,6 +72,9 @@
     <Filter Include="mh\input">
       <UniqueIdentifier>{4D12461D-4E21-5F75-9B05-EA167A2CE496}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mh\mods">
+      <UniqueIdentifier>{13E93D7A-6114-53D9-BF84-9942636B031F}</UniqueIdentifier>
+    </Filter>
     <Filter Include="mh\patch">
       <UniqueIdentifier>{2343EB51-C141-5692-91C0-A47AA13BEB5B}</UniqueIdentifier>
     </Filter>
@@ -86,6 +89,12 @@
     </Filter>
     <Filter Include="mh_harness">
       <UniqueIdentifier>{EA6D0FB4-705F-58D8-9253-4ACF198F9050}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mh_mapgen">
+      <UniqueIdentifier>{77DF7D9F-46C9-5DFE-A862-77844C0ACFC0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mh_mapgen\src">
+      <UniqueIdentifier>{8D02E651-F94D-5535-8DEC-B43FD55AF26C}</UniqueIdentifier>
     </Filter>
     <Filter Include="mh_net">
       <UniqueIdentifier>{213AE69C-210D-54BF-9C5D-9644D6B5EA69}</UniqueIdentifier>
@@ -102,6 +111,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="net_selftest.cpp" />
+    <ClCompile Include="game_generation_selftest.cpp" />
     <ClCompile Include="mh_calls_selftest.gen.cpp" />
     <ClCompile Include="mh_export_selftest.gen.cpp" />
     <ClCompile Include="watchdog_selftest.cpp" />
@@ -117,6 +127,8 @@
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="log_sink_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="mod_catalog_selftest.cpp" />
+    <ClCompile Include="cfg_patch_selftest.cpp" />
     <ClCompile Include="gameplay_selftest.cpp" />
     <ClCompile Include="info_avi_selftest.cpp" />
     <ClCompile Include="info_guard_selftest.cpp" />
@@ -330,6 +342,30 @@
     <ClCompile Include="..\mh_common\lzw.cpp">
       <Filter>mh_common</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh_common\storage_policy.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\strategic_bindings.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_tasks.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\air_patrol.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_tasks_reservations.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\mh_order_tasks_dispatch.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_witness.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\storage_policy_save.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh_net\net_key.cpp">
       <Filter>mh_net</Filter>
     </ClCompile>
@@ -340,6 +376,18 @@
       <Filter>mh_common</Filter>
     </ClCompile>
     <ClCompile Include="..\mh_common\mh_log_sink.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\mod_catalog.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\tileset_catalog.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\cfg_patch.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\bnk.cpp">
       <Filter>mh_common</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\en_guard.cpp">
@@ -370,6 +418,9 @@
     <ClCompile Include="..\mh\caps\ovf_save.cpp">
       <Filter>mh\caps</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\mods\save_meta.cpp">
+      <Filter>mh\mods</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\caps\path_pool.cpp">
       <Filter>mh\caps</Filter>
     </ClCompile>
@@ -385,6 +436,7 @@
     <ClCompile Include="inmem_patch_selftest.cpp" />
     <ClCompile Include="caps_selftest.cpp" />
     <ClCompile Include="ovf_selftest.cpp" />
+    <ClCompile Include="mods_save_selftest.cpp" />
     <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
@@ -422,6 +474,9 @@
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\host_events.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\storage_policy_runtime.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\host_in.cpp">
@@ -1365,6 +1420,9 @@
     <ClCompile Include="..\libmh\sim\sim_storage_cancel_pending_docked.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_bulk_rally.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_prod_shuttle_complete.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
@@ -2211,6 +2269,51 @@
     <ClCompile Include="..\mh\ui\lobby_widgets.cpp">
       <Filter>mh\ui</Filter>
     </ClCompile>
+    <ClCompile Include="..\mh\ui\map_preview.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\lobby_speed_widget.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\selected_targets.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_painter.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_routes.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_debug.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_intents.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_order_events.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_weapon_events.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_deferred_events.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_attack_events.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\ui\target_line_attack_provenance.cpp">
+      <Filter>mh\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_mapgen\src\mpm_io.cpp">
+      <Filter>mh_mapgen\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_mapgen\src\preview.cpp">
+      <Filter>mh_mapgen\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_mapgen\src\rules_io.cpp">
+      <Filter>mh_mapgen\src</Filter>
+    </ClCompile>
     <ClCompile Include="..\mh\ui\lobby_ping.cpp">
       <Filter>mh\ui</Filter>
     </ClCompile>
@@ -2230,6 +2333,12 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\net_lockstep.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\participant_boundary_hosted.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\participant_boundary_native.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\gameplay_hooks.cpp">
@@ -2254,6 +2363,15 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\lang_pack.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\mod_resource_overlay.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\tileset_runtime.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\tileset_save_preflight.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_options_scale.cpp">
@@ -2360,6 +2478,60 @@
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_map_zoom.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_unit_double_select.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\gfx\strat_world_view.cpp">
+      <Filter>mh\gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\storage_policy_hosted.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\order_tasks_hosted.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\order_tasks_native.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\strategic_input.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\strategic_keyboard_native.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\strategic_input_native.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\strategic_mouse_native.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\strategic_input_hooks.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_runtime.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_origin.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_tasks.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\storage_policy_save_hosted.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\ui_storage_controls.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\storage_bulk_rally.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\lobby_speed.cpp">
+      <Filter>mh\seams</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\avi_lifecycle.cpp">
       <Filter>mh\seams</Filter>
     </ClCompile>
     <ClCompile Include="..\mh\seams\ui_wheel.cpp">

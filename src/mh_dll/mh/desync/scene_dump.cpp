@@ -19,6 +19,16 @@
 #include "state/region_runtime.h"
 #include "state/world_fixup.h"
 #include "state/world_snapshot.h"
+#include "ui/selected_targets.h"
+#include "seams/lobby_speed.h"
+#include "seams/participant_boundary_hosted.h"
+#include "include/mh_unitselect_export.h"
+#ifdef MH_NAV_CAPTURE_ONLY
+#pragma push_macro("world")
+#undef world
+#include "seams/order_tasks_hosted.h"
+#pragma pop_macro("world")
+#endif
 
 namespace {
 mh::desync::scene::nav_views g_views = {};
@@ -64,11 +74,19 @@ void set_nav_views(const nav_views &v) { g_views = v; }
 
 uint8_t *capture(double game_clock, uint32_t step, size_t *len, int *rc) {
     namespace w = mh::state::world;
+    *len        = 0;
+    *rc         = -1;
+#ifdef MH_NAV_CAPTURE_ONLY
+    // The private snapshot has no sim owner. Its native host must reject lifecycle
+    // quarantine before reading/hash-capturing any of the canonical carriers.
+    if (!mh::order_tasks::hosted::checkpoint_ready()) {
+        *rc = w::WORLD_ERR_NATIVE_STATE;
+        return nullptr;
+    }
+#endif
     // PT-CAP8 S2: with the raise ON the overflow records ride behind the fixup trailer (OFF: not a byte more).
     const size_t need = w::capture_capacity() + (mh::caps::raised() ? mh::caps::ovf::max_bytes_world() : 0);
     uint8_t     *blob = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, need));
-    *len              = 0;
-    *rc               = -1;
     if (!blob) return nullptr;
     w::capture_params p;
     p.step = step;
@@ -172,7 +190,9 @@ void live_handles_restore(const handle_set &saved) {
 } // namespace
 
 int import_world(const void *blob, size_t n, const import_ops &ops) {
-    namespace w = mh::state::world;
+    namespace w    = mh::state::world;
+    auto &boundary = mh::participant_boundary::hosted::owner();
+    if (boundary.pending() || boundary.body_active()) return w::WORLD_ERR_NATIVE_STATE;
     if (!g_views.list_head || !ops.alloc || !ops.release || !ops.pathfinder_init || !ops.setup_dimensions ||
         !ops.pool_reset || !ops.route_step_deltas)
         return w::WORLD_ERR_ARG;
@@ -226,12 +246,16 @@ int import_world(const void *blob, size_t n, const import_ops &ops) {
     int             widened = 0;
     for (int i = 0; i < st::WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
         const auto &b = st::WORLD_SNAPSHOT_BLOCKS[i];
-        if (st::is_rebased(b.rid) || st::live_size(b.rid) >= b.len) continue;
+        // Native memory must already have its real allocation. Only stock-image symbols may
+        // declare a larger reachable image span without allocating anything here.
+        if (st::REGIONS[b.rid].host_native) continue;
+        const uint32_t len = st::canonical_region_len(b.rid);
+        if (st::is_rebased(b.rid) || st::live_size(b.rid) >= len) continue;
         widened_rid[widened]    = (uint32_t)b.rid;
         widened_size[widened++] = st::live_size(b.rid);
-        st::live().size[b.rid]  = b.len;
+        st::live().size[b.rid]  = len;
     }
-    const int rc = w::import(blob, n); // the byte engine (this copy's session latch is never set)
+    const int rc = w::import(blob, n, mh::participant_boundary::hosted::invalidate_world);
     for (int k = 0; k < widened; ++k) st::live().size[widened_rid[k]] = widened_size[k];
     say("regions widened for the import", widened, 0);
     if (rc != w::WORLD_OK) {
@@ -239,16 +263,27 @@ int import_world(const void *blob, size_t n, const import_ops &ops) {
         if (ops.log) { // name what the registry could not host: the first few carried regions without a base / room
             int shown = 0;
             for (int i = 0; i < st::WORLD_SNAPSHOT_BLOCK_COUNT && shown < 8; ++i) {
-                const auto &b = st::WORLD_SNAPSHOT_BLOCKS[i];
-                if (st::live_base(b.rid) != 0 && st::live_size(b.rid) >= b.len) continue;
-                ops.log("; [scene_in]   region %s: live base %08X size %u, the dump carries %u\n",
+                const auto    &b      = st::WORLD_SNAPSHOT_BLOCKS[i];
+                const bool     native = st::REGIONS[b.rid].host_native;
+                const bool     bound  = st::live_base(b.rid) != 0 && (!native || st::is_bound(b.rid));
+                const uint32_t len    = native && (!bound || st::live_size(b.rid) < st::REGIONS[b.rid].size)
+                                            ? b.len
+                                            : st::canonical_region_len(b.rid);
+                if (bound && st::live_size(b.rid) >= len) continue;
+                ops.log("; [scene_in]   region %s: live base %08X size %u, canonical extent %u (schema %u)\n",
                         st::REGIONS[b.rid].name, (unsigned)st::live_base(b.rid), (unsigned)st::live_size(b.rid),
-                        (unsigned)b.len);
+                        (unsigned)len, (unsigned)b.len);
                 ++shown;
             }
         }
         return rc;
     }
+#ifdef MH_NAV_CAPTURE_ONLY
+    // The byte import validated before its first write. Keep both carriers inactive until
+    // pointer fixups, navigation and raised-capacity tails are also published successfully.
+    if (mh::order_tasks::hosted::begin_load(mh::order_tasks::host_protocol::begin_load_reason::snapshot_input_ring_replaced) == UINT32_MAX)
+        return w::WORLD_ERR_NATIVE_STATE;
+#endif
     // (2) FIRST statement after the byte engine: put every process-local dword where THIS process needs it.
     w::fixup_stats fs;
     w::fixup_apply(plan, &fs);
@@ -286,10 +321,21 @@ int import_world(const void *blob, size_t n, const import_ops &ops) {
         const int orc = mh::caps::ovf::apply(ovf_tr, ovf_len);
         say("overflow records applied rc", orc, mh::caps::ovf::record_count(ovf_tr, ovf_len));
         mh::caps::orders::finish_scatter(); // PT-CAP9-U7c: the order counts the stock import carried come back with their tail records, or stay clamped (logged)
-        if (orc != mh::caps::ovf::OVF_OK) return mh::caps::ovf::world_rc_refused(orc);
+        if (orc != mh::caps::ovf::OVF_OK) {
+            MH_UnitSelect_Reset();
+            mh::ui::selected_targets::reset();
+            mh::seams::lobby_speed::enforce();
+            return mh::caps::ovf::world_rc_refused(orc);
+        }
     } else {
         mh::caps::orders::finish_scatter();
     }
+#ifdef MH_NAV_CAPTURE_ONLY
+    if (nrc == w::WORLD_OK && !mh::order_tasks::hosted::bind_published()) return w::WORLD_ERR_NATIVE_STATE;
+#endif
+    MH_UnitSelect_Reset();
+    mh::ui::selected_targets::reset();
+    mh::seams::lobby_speed::enforce();
     return nrc;
 }
 

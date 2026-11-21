@@ -5,6 +5,7 @@
 // both agree with the assembly byte-for-byte, no draft/asm disagreement found in either function.
 //
 #include "sim/sim_bldg_state_dismantle.h"
+#include "sim/sim_order_tasks.h"
 
 #include <cstring>
 
@@ -95,6 +96,7 @@ void bldg_state_dismantle_finish(const sim_view &v, sim_store &own,
     const uint16_t cur_index  = *v.cur_index;
 
     // ---- unconditional prologue (0x004736ba-0x004736e9) --------------------------------------------
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::building, uint32_t(cur_player), uint32_t(cur_index), false);
     c.ai_notify_object_removed(static_cast<uint32_t>(cur_player) | AI_NOTIFY_OBJECT_REMOVED_HARD_REMOVE_FLAG,
                                static_cast<uint32_t>(cur_index), /*hard_remove=*/1);
     c.bldg_refund_resources_scaled_by_energy(cur_player, cur_index);

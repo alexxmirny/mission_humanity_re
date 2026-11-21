@@ -93,6 +93,11 @@ def load_regions():
             "base": r["base"],
             "extent": int(r.get("extent") or 0),
             "size": int(r.get("size") or 0),
+            **(
+                {"host_native": True, "pointer_free": r["pointer_free"]}
+                if r.get("host_native")
+                else {}
+            ),
         }
         for i, r in enumerate(regs)
     ]
@@ -190,7 +195,7 @@ def overlaps(carried):
     carry the same value and import order cannot matter -- but that is an argument, and an argument
     about a file format belongs in the report where it can be re-checked when the count moves."""
     out = []
-    ordered = sorted(carried, key=lambda r: r["base"])
+    ordered = sorted((r for r in carried if not r.get("host_native")), key=lambda r: r["base"])
     for a, b in zip(ordered, ordered[1:]):
         if a["base"] + a["extent"] > b["base"]:
             out.append(
@@ -221,7 +226,14 @@ def build_schema(regions=None, disp=None):
         "hash_backed_regions": len(hash_backed_ids()),
         "overlapping_blocks": overlaps(carried),
         "blocks": [
-            {"rid": r["rid"], "id": r["id"], "name": r["name"], "len": r["extent"]} for r in carried
+            {
+                "rid": r["rid"],
+                "id": r["id"],
+                "name": r["name"],
+                "len": r["extent"],
+                **({"host_native": True, "pointer_free": True} if r.get("host_native") else {}),
+            }
+            for r in carried
         ],
         "exclusions": [
             {"id": r["id"], "name": r["name"], "verdict": r["verdict"], "why": r["why"]}
@@ -272,6 +284,9 @@ def emit_header(schema):
     b = schema["blocks"]
     out = [BANNER]
     out.append("inline constexpr int WORLD_SNAPSHOT_BLOCK_COUNT = %d;\n\n" % len(b))
+    out.append(
+        "// Descriptor lengths are schema minima; host-native payloads carry the whole bound span.\n"
+    )
     out.append(
         "// %d bytes of carried world, %d regions excluded (all with a stated why), 0 unaccounted.\n"
         % (schema["carried_bytes"], schema["excluded"])

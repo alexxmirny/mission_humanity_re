@@ -5,7 +5,7 @@
  "_why_members_and_not_roots": [
   "Exactly SIM1-H's shape and for exactly SIM1-H's reason. All three sit ABOVE the sim closure's",
   "root -- llm_strat_bldg_init_all is boot stage 7, llm_strat_bldg_instant_construct_find_slot hangs",
-  "off llm_strat_input_update's build-placement click-confirm, llm_unit_order_disembark_soldiers off",
+  "off llm_strat_input_update's build-placement click-confirm, llm_unit_order_squad_split off",
   "the unit-state handler table -- so a forward walk from the root cannot reach them. Seeding them as",
   "ROOTS would drag session entry, the input dispatcher and the boot stage list into a domain that has",
   "closed twelve batches. Injected as members and nothing else: no walk, no descent, no widening.",
@@ -52,10 +52,10 @@
    ]
   },
   {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "addr": "0x0046e76c",
    "size_bytes": 105,
-   "why": "the unit-side 'let the soldiers out' order wrapper; the second caller of llm_strat_order_dispatch. Its dead _enqueue sibling (llm_unit_order_disembark_soldiers_enqueue, 0x0046e7d6) is on reconciliation_pruned_roots.json instead -- the pair is the clearest example in this batch of a live wrapper beside a dead twin.",
+   "why": "the unit-side 'let the soldiers out' order wrapper; the second caller of llm_strat_order_dispatch. Its dead _enqueue sibling (llm_unit_order_squad_split_enqueue, 0x0046e7d6) is on reconciliation_pruned_roots.json instead -- the pair is the clearest example in this batch of a live wrapper beside a dead twin.",
    "callers_up": [
     "llm_strat_input_update"
    ]

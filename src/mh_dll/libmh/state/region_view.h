@@ -132,28 +132,44 @@ inline void emit_planets(const uint8_t *p, uint32_t len, state_sink &s) {
     }
 }
 
+// One VERDICT record, in the arbitrary byte order frozen by the canonical stream.
+// Visibility (+7) is omitted; PERSIST callers retain their original flat writes.
+inline void pack_tile_object_verdict(const uint8_t *p, uint8_t *out) {
+    const uint16_t flags = uint16_t(p[0] | (uint16_t(p[1]) << 8));
+    const uint16_t keep  = flags & TILE_FLAGS_KEEP;
+    out[0]               = uint8_t(keep);
+    out[1]               = uint8_t(keep >> 8);
+    out[2]               = p[2]; // building lo
+    out[3]               = p[4]; // unit lo
+    out[4]               = p[6]; // class_owner
+    out[5]               = p[3]; // building hi
+    out[6]               = p[5]; // unit hi
+}
+
 inline void emit_tile_objects(const uint8_t *p, uint32_t len, state_sink &s) {
     if (s.mode == sink_mode::PERSIST) { // the seed blob has always written this flat
         s.bytes(p, len);
         return;
     }
-    for (uint32_t i = 0; i + 8 <= len; i += 8) {
-        s.masked((uint16_t)(p[i] | (p[i + 1] << 8)), TILE_FLAGS_KEEP);
-        s.bytes(&p[i + 2], 1); // building lo
-        s.bytes(&p[i + 4], 1); // unit     lo
-        s.bytes(&p[i + 6], 1); // class_owner
-        s.bytes(&p[i + 3], 1); // building hi   <- the order is arbitrary and frozen by the golden
-        s.bytes(&p[i + 5], 1); // unit     hi
-        // p[i + 7] (visibility) deliberately not emitted -- per-frame fog
+    // Eight records make 56 canonical bytes: whole hash words, no per-field virtual calls.
+    uint8_t  packed[8 * 7];
+    uint32_t record = 0, remaining = len / 8;
+    while (remaining) {
+        const uint32_t count = remaining > 8 ? 8 : remaining;
+        for (uint32_t j = 0; j < count; ++j)
+            pack_tile_object_verdict(p + (record + j) * 8, packed + j * 7);
+        s.bytes(packed, count * 7);
+        record += count;
+        remaining -= count;
     }
 }
 
 // ---- the TACTICAL tile_objects window (2026-08-25) ----------------------------------------------
 //
 // The plane is `map::tile_object_data[256][256]`, 8 bytes an element, 512 KB -- and it was the
-// single largest item in the tactical per-frame hash: 48.4% of 1.03 MB, and 393,216 sink calls a
-// frame on its own, since VERDICT mode emits SIX fields per element. Measured cost of the whole
-// oracle was +3,966 us/frame against a game that simulates in 945 (the tactical-probe work 9q).
+// single largest item in the tactical per-frame hash: 48.4% of 1.03 MB. Before packing,
+// its six writes per element made 393,216 sink calls over the full plane.
+// Measured whole-oracle overhead was +3,966 us/frame for 945 us of simulation (tactical-probe 9q).
 //
 // A MISSION USES ONE SIXTEENTH OF IT. `llm_tact_mission_start` sets width = height = 0x80 and
 // `llm_tact_map_reset` (0x0042e713) wipes `tile_objects[col][row]` over 0..0x7f -- the 128x128
@@ -175,16 +191,8 @@ inline constexpr uint32_t TACT_TILE_DIM     = 128u; // llm_tact_mission_start: w
 inline constexpr uint32_t TILE_PLANE_STRIDE = 256u; // the DECLARED grid the sub-block is indexed in
 inline constexpr uint32_t TILE_ELEM         = 8u;
 
-// TEMPLATED ON THE SINK, and the point is the call it does NOT make. `state_sink::raw` is virtual,
-// so every field emitted through a `state_sink&` costs an indirect call that cannot inline -- and
-// this function emits SIX per 8-byte element, 98,304 of them per frame over the 128x128 window. With
-// a concrete `hash_sink` (a `final` class) the call resolves statically and the FNV step inlines
-// into the loop.
-//
-// The generic `state_sink&` path still exists and still works: passing one instantiates the same
-// body with virtual dispatch, so PERSIST/seed callers are unaffected. This is a dispatch change, not
-// a semantic one -- the emitted BYTES are identical, which is what tacttest T12 and the A/B arms
-// check.
+// A concrete hash_sink resolves raw() statically. Generic PERSIST callers retain their
+// flat write; VERDICT shares the strategic byte packing but keeps the tactical window.
 template <class S>
 inline void emit_tile_objects_tactical(const uint8_t *p, uint32_t len, S &s) {
     if (s.mode == sink_mode::PERSIST) { // the seed blob has always written this flat -- keep it so
@@ -198,35 +206,9 @@ inline void emit_tile_objects_tactical(const uint8_t *p, uint32_t len, S &s) {
         for (uint32_t inner = 0; inner < TACT_TILE_DIM; ++inner) {
             const uint32_t i = row + inner * TILE_ELEM;
             if (i + TILE_ELEM > len) return; // a short region is a bug elsewhere, not a read here
-            // ONE call per element instead of six, and the BYTE SEQUENCE IS UNCHANGED -- that is
-            // the whole reason this is safe. The six calls emitted, in order: the masked flags word
-            // little-endian, then +2, +4, +6, +3, +5. Packing them into a buffer in that same order
-            // and hashing it once feeds the sink exactly the same stream (tacttest T13 asserts this
-            // shape explicitly), so no hash value moves.
-            //
-            // MEASURED TWICE, AND THE ANSWER CHANGED IN BETWEEN. Against the byte-serial hash this
-            // was worth NOTHING -- 352 vs 349 frames/s, inside the noise -- because devirtualising
-            // had already inlined the six calls into the loop. Against the WIDE hash it is worth
-            // ~8% (497 -> 538 frames/s), because that sink carries a partial block between calls,
-            // so each call now has real per-call work rather than none. An optimisation's value is
-            // a property of the code around it, not of the optimisation; this one was correctly
-            // rejected on its first measurement and correctly kept on its second.
-            //
-            // (The field order is odd -- +6 before +3 -- and is noted in the strategic walker as
-            // "arbitrary and frozen by the golden". It is preserved here precisely BECAUSE it is
-            // arbitrary: a rational-looking reordering would be a silent hash change.)
-            const uint16_t flags     = (uint16_t)(p[i] | (p[i + 1] << 8));
-            const uint16_t keep      = (s.mode == sink_mode::PERSIST) ? flags : (flags & TILE_FLAGS_KEEP);
-            const uint8_t  packed[7] = {
-                (uint8_t)(keep & 0xff), (uint8_t)(keep >> 8),
-                p[i + 2], // building lo
-                p[i + 4], // unit     lo
-                p[i + 6], // class_owner
-                p[i + 3], // building hi
-                p[i + 5], // unit     hi
-            };
+            uint8_t packed[7];
+            pack_tile_object_verdict(p + i, packed);
             sink_bytes(s, packed, sizeof(packed));
-            // p[i + 7] (visibility) deliberately not emitted -- per-frame fog
         }
     }
 }
@@ -260,12 +242,13 @@ inline void emit_rng_state(const uint8_t *p, uint32_t len, state_sink &s) {
 // By HASH_REGIONS[] index. Phase 2 replaces the three-way branch with an owner lookup that falls
 // back to the raw block; the signature is what matters now, not the body.
 inline void emit_slice(int i, state_sink &s) {
-    const hash_region &r = HASH_REGIONS[i];
+    const hash_region &r   = HASH_REGIONS[i];
+    const uint32_t     len = hash_len(i);
     // ST4: an OWNED region answers for itself. `owner_serves` also requires the slice to be the
     // WHOLE region -- a sub-window (one player's interior slot in player_data, say) has no meaning
     // in terms of a module's canonical stream, so it falls back to raw rather than being served a
     // stream that does not line up.
-    if (owner_serves(r.rid, r.offset, r.len)) {
+    if (owner_serves(r.rid, r.offset, len)) {
         owner_of(r.rid)->emit(r.rid, s);
         return;
     }
@@ -274,13 +257,13 @@ inline void emit_slice(int i, state_sink &s) {
     // rebases and is the whole difference afterwards.
     const uint8_t *p = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(hash_base(i)));
     switch (i) {
-        case HIDX_UNITS: emit_units(p, r.len, s); return;
-        case HIDX_TILE_OBJECTS: emit_tile_objects(p, r.len, s); return;
-        case HIDX_RNG_STATE: emit_rng_state(p, r.len, s); return;
-        case HIDX_SOLDIERS: emit_soldiers(p, r.len, s); return;
-        case HIDX_PLANETS: emit_planets(p, r.len, s); return;
-        case HIDX_ORDER_QUEUE: emit_order_queue(p, r.len, s); return;
-        default: s.bytes(p, r.len); return;
+        case HIDX_UNITS: emit_units(p, len, s); return;
+        case HIDX_TILE_OBJECTS: emit_tile_objects(p, len, s); return;
+        case HIDX_RNG_STATE: emit_rng_state(p, len, s); return;
+        case HIDX_SOLDIERS: emit_soldiers(p, len, s); return;
+        case HIDX_PLANETS: emit_planets(p, len, s); return;
+        case HIDX_ORDER_QUEUE: emit_order_queue(p, len, s); return;
+        default: s.bytes(p, len); return;
     }
 }
 
@@ -433,12 +416,13 @@ inline uint8_t *tact_mutate_target(int i) {
 // region is exactly what emit_slice(PERSIST) wrote -- which is what keeps existing seed blobs
 // injectable. Phase 2 routes an owned slice to its module's load_state instead.
 inline void fill_slice(int i, state_source &src) {
-    const hash_region &r = HASH_REGIONS[i];
-    if (owner_serves(r.rid, r.offset, r.len)) {
+    const hash_region &r   = HASH_REGIONS[i];
+    const uint32_t     len = hash_len(i);
+    if (owner_serves(r.rid, r.offset, len)) {
         owner_of(r.rid)->load(r.rid, src);
         return;
     }
-    src.bytes(reinterpret_cast<void *>(static_cast<uintptr_t>(hash_base(i))), r.len);
+    src.bytes(reinterpret_cast<void *>(static_cast<uintptr_t>(hash_base(i))), len);
 }
 
 // ---- the mutation hook ------------------------------------------------------------------------
@@ -455,8 +439,8 @@ inline void fill_slice(int i, state_source &src) {
 // the ORACLE's coverage and not a second-order behaviour change. Clamped, so a mistyped offset pokes
 // the region's last byte rather than the next region's first.
 inline uint8_t *mutate_target(int i, uint32_t off = 0) {
-    const hash_region &r = HASH_REGIONS[i];
-    if (r.len && off >= r.len) off = r.len - 1;
+    const uint32_t len = hash_len(i);
+    if (len && off >= len) off = len - 1;
     return reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(hash_base(i))) + off;
 }
 
@@ -508,6 +492,6 @@ inline constexpr uint32_t HASH_MANIFEST_FP = hash_manifest_fp();
 // under and every consumer refuses a mismatch. tools/lint_hash_epoch.py ties the value to the
 // watched files in tools/data/hash_input_epoch.json; tools/mp_analyze.py hash_input_epoch() is the
 // Python mirror (it parses this line).
-inline constexpr uint32_t HASH_INPUT_EPOCH = 1u;
+inline constexpr uint32_t HASH_INPUT_EPOCH = 2u;
 
 } // namespace mh::state

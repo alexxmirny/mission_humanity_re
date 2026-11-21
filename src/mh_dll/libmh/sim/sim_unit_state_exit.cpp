@@ -15,6 +15,7 @@
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "mh_storage_policy.h"
 
 namespace mh::sim {
 
@@ -219,7 +220,11 @@ void unit_state_exit_walk_out(const sim_view &v, sim_store &own, const unit_stat
         // asm -- not modeled further, "callees stay original" (see header banner).
         c.ai_group_member_count_adjust(player, static_cast<uint32_t>(unit_index),
                                        static_cast<uint32_t>(storage_slot), 0u);
-        c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+        const auto &cfg = v.cfg_units[u.unit_proto_id];
+        if (mh::storage_policy::is_rally_departure(u.order, cfg.move_op_arg, cfg.default_op_code))
+            c.unit_set_state_order(cfg.move_op_arg, cfg.move_op_code);
+        else
+            c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
         return;
     }
 

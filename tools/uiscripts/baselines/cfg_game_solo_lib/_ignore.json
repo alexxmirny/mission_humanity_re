@@ -1,0 +1,16 @@
+{
+  "_why": "Soldier info compares exact RGB text/cost/name. Auto Off/On compare the complete approved native 160x18 action row in exact RGB. Measured drift is outside those claims: transient completion messages, resource/minimap strips and animated world connectors. Real production/repair/rally assertions remain mandatory in check_cfg_gameplay; no tolerance change.",
+  "_only": {
+    "capture_cfg_soldier_info_lib.png": {
+      "mode": "rgb",
+      "rect": [
+        198,
+        460,
+        442,
+        121
+      ]
+    },
+    "capture_cfg_storage_auto_off.png": {"mode": "rgb", "rect": [864, 276, 160, 18]},
+    "capture_cfg_storage_auto_on.png": {"mode": "rgb", "rect": [864, 276, 160, 18]}
+  }
+}

@@ -128,5 +128,90 @@
       908,
       252
     ]
-  ]
+  ],
+  "_why": "Minimap/HUD captures assert the entire actual sidebar in exact RGB; measured drift is outside it in world connectors. High-index live target frames are structural inputs to the mandatory check_storage_qol target judge, which asserts endpoint/corridor pixels, phase changes and exact stroke/shadow cleanup. Before/deselected whole-frame comparisons stay unchanged; no single presentation-clock dash phase is the contract.",
+  "_only": {
+    "capture_res_panel_rows_ayy30_1440__a_sel.png": {
+      "mode": "rgb",
+      "rect": [1760, 0, 160, 1440]
+    },
+    "capture_res_panel_rows_ayy30_1440__b_group51.png": {
+      "mode": "rgb",
+      "rect": [1760, 0, 160, 1440]
+    },
+    "capture_res_panel_rows_ayy30_1440__c_hover45.png": {
+      "mode": "rgb",
+      "rect": [1760, 0, 160, 1440]
+    },
+    "capture_res_panel_rows_ayy30_960__b_arrow.png": {
+      "mode": "rgb",
+      "rect": [1120, 0, 160, 960]
+    },
+    "capture_minimap_plus__a_128_z1.png": {
+      "mode": "rgb",
+      "rect": [
+        1888,
+        0,
+        160,
+        1120
+      ]
+    },
+    "capture_minimap_plus__b_128_z2.png": {
+      "mode": "rgb",
+      "rect": [
+        1888,
+        0,
+        160,
+        1120
+      ]
+    },
+    "capture_res_hud__w3_hud.png": {
+      "mode": "rgb",
+      "rect": [
+        864,
+        0,
+        160,
+        736
+      ]
+    }
+  },
+  "_why_panel_rows": "The four ayy30 panel-row images assert their complete sidebars, not incidental combat-world connectors. Exact threshold maps in tmp/orderseq2/runtime/res_connector_thresholds.json place all1816/2016/2218/2153 changed pixels in the world, with zero sidebar or status-line changes. All four unchanged check_panel_rows judges pass, including row45 status and actual detachment, scroll identity and row12 placement. Dedicated route/control and high-index target judges retain strict waypoint/endpoint/animation claims. References, feature pixels and tolerances are unchanged.",
+  "_structural": {
+    "capture_qol_highindex__rally.png": {
+      "ref": "capture_qol_highindex__before.png",
+      "view_rect": [
+        0,
+        0,
+        2400,
+        1408
+      ],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [
+        2400,
+        276,
+        160,
+        18
+      ],
+      "hud_tol": 0.0
+    },
+    "capture_qol_highindex__phase.png": {
+      "ref": "capture_qol_highindex__before.png",
+      "view_rect": [
+        0,
+        0,
+        2400,
+        1408
+      ],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [
+        2400,
+        276,
+        160,
+        18
+      ],
+      "hud_tol": 0.0
+    }
+  }
 }

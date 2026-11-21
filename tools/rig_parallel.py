@@ -12,7 +12,7 @@ port and dir machinery is the existing one, parameterised by the slot):
 
   lanes     lane_alloc block `par`: slot K owns 4 lane numbers (= 4 single-instance mutexes), provisioned as
             workdir/mh_lanes/par<K>_{host,c1,c2} by make_lane.py (links, not copies, when the junction fallback holds)
-  ports     the slot's game port is PORT_BASE + its first lane (all peers of one match share it, as the VM topology
+  ports     the slot's game port is lane_alloc.lane_port of its first lane (all peers of one match share it, as the VM topology
             does with 6501); a relayed arm's mh_relay binds an EPHEMERAL port and logs under the slot's scratch
   dirs      $MH_RIG_SCRATCH = tmp/rig_par/slot<K>: pulled logs (<scratch>/determinism), red copies, poll dirs,
             relay log -- ui_test.py and det_arms.py both read the variable (rig_phases.scratch_dir)
@@ -42,9 +42,11 @@ import sys
 import threading
 import time
 
+import tmp_runs
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lane_alloc  # noqa: E402
+import lane_alloc
 
 PRESETS = {
     # mp:U63 -- 4 crash shapes + the negative control (done_when of TL-RIG-PARALLEL)
@@ -67,7 +69,7 @@ PRESETS = {
         "--u62-neg",
         "--u62-host-exit",
         "--u62-host-quit",
-        "--u63-crash --u55-relay --u53-config1",
+        "--u63-crash --u55-relay --u53-config1 --record 1",
         "--u63-crash --u55-relay",
         "--u63-crash --u53-config1",
         "--u53-host-elim",
@@ -77,7 +79,7 @@ PRESETS = {
 VERDICT_RE = re.compile(r"\[det\] U\d\d (\S+): (PASS|FAIL)")
 PHASE_RE = re.compile(
     r"^\[phase\] (provision|boot|menu_walk|clients|lobby|match|pull|analyze|TOTAL)\s+([0-9.]+)",
-    re.M,
+    re.MULTILINE,
 )
 # a failed arm is labelled LOAD-SUSPECT when its log carries the signatures a starved box produces (a peer that
 # never presented a frame, the boot lock queue, a watchdog timeout) -- the judgment stays with the reader.
@@ -108,6 +110,14 @@ def kill_tree(proc):
 
 
 def run_arm(idx, spec, slot, topology, out_dir, timeout, py):
+    with tmp_runs.run_scope("rig-arm", task="arm-%d" % idx, adjudicator=True) as owned:
+        result = _run_arm(idx, spec, slot, topology, out_dir, timeout, py)
+        owned.register(os.path.join(REPO, result["log"]))
+        owned.finish(result["verdict"])
+        return result
+
+
+def _run_arm(idx, spec, slot, topology, out_dir, timeout, py):
     """Run one arm child to completion. Returns the result dict."""
     vm = topology == "vm"
     flags = spec.split()
@@ -120,7 +130,9 @@ def run_arm(idx, spec, slot, topology, out_dir, timeout, py):
     with open(log, "w", encoding="utf-8", errors="replace") as fh:
         fh.write("$ %s\n" % " ".join(cmd))
         fh.flush()
-        proc = subprocess.Popen(cmd, cwd=REPO, stdout=fh, stderr=subprocess.STDOUT)
+        env = tmp_runs.child_env()
+        env.setdefault("MH_RIG_SCRATCH", tmp_runs.current_output("rig_scratch"))
+        proc = subprocess.Popen(cmd, cwd=REPO, stdout=fh, stderr=subprocess.STDOUT, env=env)
         with _procs_lock:
             _procs[idx] = proc
         try:
@@ -314,11 +326,7 @@ def main(argv=None):
         if args.topology == "vm" and not any(s.startswith("vm:") for s in specs)
         else args.parallel
     )
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    out_dir = os.path.join(
-        REPO, "tmp", "rig_par", "run_%s%s" % (stamp, "_" + args.tag if args.tag else "")
-    )
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = tmp_runs.current_output("rig_logs")
     print(
         "[par] %d arm(s), %d-wide, topology %s, logs in %s"
         % (len(specs), n, args.topology, os.path.relpath(out_dir, REPO)),
@@ -342,7 +350,7 @@ def main(argv=None):
             f,
             indent=1,
         )
-    with open(os.path.join(REPO, "tmp", "rig_par", "last_run.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "last_run.json"), "w", encoding="utf-8") as f:
         json.dump(
             dict(
                 parallel=n,
@@ -354,7 +362,7 @@ def main(argv=None):
             f,
             indent=1,
         )
-    ok = all(r["verdict"] == "PASS" for r in results)
+    ok = len(results) == len(specs) and all(r["verdict"] == "PASS" for r in results)
     print("[par] %s" % ("ALL PASS" if ok else "NOT ALL PASS"))
     return 0 if ok else 1
 
@@ -364,4 +372,8 @@ if __name__ == "__main__":
 
     if {"--list", "-h", "--help"} & set(sys.argv[1:]):
         raise SystemExit(main())
-    raise SystemExit(hostlock.run_rig_tool(main, "rig_parallel"))
+    raise SystemExit(
+        hostlock.run_rig_tool(
+            lambda: tmp_runs.run_cli(main, "rig-parallel", adjudicator=True), "rig_parallel"
+        )
+    )

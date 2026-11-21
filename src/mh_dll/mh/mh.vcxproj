@@ -13,6 +13,7 @@
   <ItemGroup>
     <ClCompile Include="seams\libmh_bind.cpp" />
     <ClCompile Include="seams\libmh_contract.gen.cpp" />
+    <ClCompile Include="seams\avi_lifecycle.cpp" />
     <ClCompile Include="addr\mh_calls.gen.cpp" />
     <ClCompile Include="addr\mh_hostapi_bind.gen.cpp" />
     <ClCompile Include="en_guard.cpp" />
@@ -23,6 +24,7 @@
     <ClCompile Include="caps\orders.cpp" />
     <ClCompile Include="caps\ovf.cpp" />
     <ClCompile Include="caps\ovf_save.cpp" />
+    <ClCompile Include="mods\save_meta.cpp" />
     <ClCompile Include="caps\path_pool.cpp" />
     <ClCompile Include="patch\inmem_patch.cpp" />
     <ClCompile Include="patch\inmem_install.cpp" />
@@ -39,6 +41,11 @@
     <ClCompile Include="seams\gfx_overlay.cpp" />
     <ClCompile Include="seams\gfx_font_guard.cpp" />
     <ClCompile Include="seams\ui_chat_input.cpp" />
+    <ClCompile Include="seams\strategic_input.cpp" />
+    <ClCompile Include="seams\strategic_keyboard_native.cpp" />
+    <ClCompile Include="seams\strategic_input_native.cpp" />
+    <ClCompile Include="seams\strategic_mouse_native.cpp" />
+    <ClCompile Include="seams\strategic_input_hooks.cpp" />
     <ClCompile Include="seams\ui_cheat_gate.cpp" />
     <ClCompile Include="seams\ui_diplomacy_echo.cpp" />
     <ClCompile Include="seams\ui_bldg_cancel_task.cpp" />
@@ -72,20 +79,45 @@
     <ClCompile Include="seams\ui_pause.cpp" />
     <ClCompile Include="seams\strat_pre_input.cpp" />
     <ClCompile Include="seams\ui_map_zoom.cpp" />
+    <ClCompile Include="seams\ui_unit_double_select.cpp" />
+    <ClCompile Include="gfx\strat_world_view.cpp" />
+    <ClCompile Include="seams\storage_policy_hosted.cpp" />
+    <ClCompile Include="seams\order_tasks_hosted.cpp" />
+    <ClCompile Include="seams\order_tasks_native.cpp" />
+    <ClCompile Include="seams\storage_policy_save_hosted.cpp" />
+    <ClCompile Include="seams\ui_storage_controls.cpp" />
+    <ClCompile Include="seams\storage_bulk_rally.cpp" />
+    <ClCompile Include="seams\lobby_speed.cpp" />
+    <ClCompile Include="ui\lobby_speed_widget.cpp" />
+    <ClCompile Include="ui\selected_targets.cpp" />
+    <ClCompile Include="ui\target_line_painter.cpp" />
+    <ClCompile Include="ui\target_line_routes.cpp" />
+    <ClCompile Include="ui\target_line_debug.cpp" />
+    <ClCompile Include="ui\target_line_intents.cpp" />
+    <ClCompile Include="ui\target_line_order_events.cpp" />
+    <ClCompile Include="ui\target_line_weapon_events.cpp" />
+    <ClCompile Include="ui\target_line_deferred_events.cpp" />
+    <ClCompile Include="ui\target_line_attack_events.cpp" />
+    <ClCompile Include="ui\target_line_attack_provenance.cpp" />
     <ClCompile Include="seams\ui_wheel.cpp" />
     <ClCompile Include="seams\view_wrap.cpp" />
     <ClCompile Include="seams\launch.cpp" />
     <ClCompile Include="seams\mp_menu.cpp" />
     <ClCompile Include="seams\lang_pack.cpp" />
+    <ClCompile Include="seams\mod_resource_overlay.cpp" />
     <ClCompile Include="seams\ui_options_scale.cpp" />
     <ClCompile Include="seams\standalone.cpp" />
     <ClCompile Include="seams\net_diag.cpp" />
     <ClCompile Include="seams\net_discovery.cpp" />
     <ClCompile Include="seams\map_transfer.cpp" />
     <ClCompile Include="seams\net_lockstep.cpp" />
+    <ClCompile Include="seams\participant_boundary_hosted.cpp" />
+    <ClCompile Include="seams\participant_boundary_native.cpp" />
     <ClCompile Include="seams\gameplay_hooks.cpp" />
     <ClCompile Include="config\gameplay.cpp" />
     <ClCompile Include="seams\net_seams.cpp" />
+    <ClCompile Include="seams\tileset_runtime.cpp" />
+    <ClCompile Include="seams\tileset_save_preflight.cpp" />
     <ClCompile Include="seams\reimpl_probe.cpp" />
     <ClCompile Include="ui\ui_runtime.cpp" />
     <ClCompile Include="ui\lobby_slide.cpp" />
@@ -93,6 +125,9 @@
     <ClCompile Include="ui\player_strings.cpp" />
     <ClCompile Include="ui\text_wrap.cpp" />
     <ClCompile Include="ui\lobby_widgets.cpp" />
+    <ClCompile Include="ui\map_preview.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\mpm_io.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\preview.cpp" />
     <ClCompile Include="ui\lobby_ping.cpp" />
     <ClCompile Include="ui\lobby_announce.cpp" />
     <ClCompile Include="hook\export.cpp" />
@@ -176,6 +211,28 @@
     <ClInclude Include="gfx\map_zoom.h" />
     <ClInclude Include="gfx\ui_layout.h" />
     <ClInclude Include="seams\strat_pre_input.h" />
+    <ClInclude Include="gfx\strat_world_view.h" />
+    <ClInclude Include="seams\storage_policy.h" />
+    <ClInclude Include="seams\order_tasks_hosted.h" />
+    <ClInclude Include="seams\order_tasks_native.h" />
+    <ClInclude Include="seams\storage_policy_save.h" />
+    <ClInclude Include="seams\ui_storage_controls.h" />
+    <ClInclude Include="seams\storage_bulk_rally.h" />
+    <ClInclude Include="seams\lobby_speed.h" />
+    <ClInclude Include="ui\lobby_speed.h" />
+    <ClInclude Include="caps\save_host.h" />
+    <ClInclude Include="ui\selected_targets.h" />
+    <ClInclude Include="ui\target_line_painter.h" />
+    <ClInclude Include="ui\target_line_routes.h" />
+    <ClInclude Include="ui\target_line_route_adapter.h" />
+    <ClInclude Include="ui\target_line_debug.h" />
+    <ClInclude Include="ui\target_line_intents.h" />
+    <ClInclude Include="ui\target_line_order_events.h" />
+    <ClInclude Include="ui\target_line_weapon_events.h" />
+    <ClInclude Include="ui\target_line_deferred_events.h" />
+    <ClInclude Include="ui\target_line_attack_events.h" />
+    <ClInclude Include="ui\target_line_attack_provenance.h" />
+    <ClInclude Include="include\mh_unitselect_export.h" />
     <ClInclude Include="seams\video_mode_guards.h" />
     <ClInclude Include="seams\ui_panel_rows.h" />
     <ClInclude Include="input\dinput_own.h" />
@@ -218,6 +275,9 @@
     <ClInclude Include="seams\order_wide_index.h" />
     <ClInclude Include="desync\seed_sanity.h" />
     <ClInclude Include="seams\replay_boundary.h" />
+    <ClInclude Include="seams\tileset_runtime.h" />
+    <ClInclude Include="seams\tileset_summary.h" />
+    <ClInclude Include="seams\tileset_save_preflight.h" />
     <ClInclude Include="desync\state_miniz_config.h" />
     <ClInclude Include="desync\state_ring.h" />
     <ClInclude Include="desync\state_ring_core.h" />
@@ -241,6 +301,7 @@
     <ClInclude Include="include\mh_seam_export.h" />
     <ClInclude Include="include\projectile.h" />
     <ClInclude Include="seams\net_internal.h" />
+    <ClInclude Include="seams\avi_lifecycle.h" />
     <ClInclude Include="ui\lobby_ui.h" />
     <ClInclude Include="ui\lobby_ping.h" />
     <ClInclude Include="ui\ui_internal.h" />
@@ -307,7 +368,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)mh_mapgen\include;$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
       <WholeProgramOptimization>false</WholeProgramOptimization>
@@ -337,7 +398,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)mh_mapgen\include;$(SolutionDir)libmh;$(ProjectDir)include;$(SolutionDir)mh_common;$(SolutionDir)mh_common\include;$(SolutionDir)..\mh_net_proto\include</AdditionalIncludeDirectories>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>

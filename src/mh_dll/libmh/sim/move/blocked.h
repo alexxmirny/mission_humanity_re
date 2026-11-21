@@ -9,7 +9,7 @@
 //   move_keep_sidestep (3c)       a detour request that spliced a sidestep into THIS unit's own path (the heading at the path cursor no
 //                                 longer equals facing_target, the blocked leg's heading) does NOT force the replan: the path is ended
 //                                 right after the sidestep, and a keep adds 0x40 to the retry byte (refused once it is >= 0xc0).
-//                                 Not applied to attack (0x1a/0x1b/0x1c), patrol (0x10) and squad merge (0x33) orders.
+//                                 Not applied to attack (0x1a/0x1b/0x1c), unowned patrol (0x10), or squad merge (0x33).
 //   move_repath_cooldown_ms (3d)  when the block sends the unit to replan, activity_clock += ms / 1000 s.
 //   move_enter_queue (mods:M1BE)  a unit with ORDER 0x24 (enter a storage) is EXEMPT from the three keys above: retail wait limit (201), no
 //                                 kept sidestep, no cooldown (enter_queue.h; the walker's nudge site makes it wait behind an entering friend).
@@ -26,13 +26,15 @@
 namespace mh::sim::mvc {
 
 struct blocked_params {
-    int    wait_limit   = 201;   // retry limit; 201 = retail
-    bool   keep         = false; // move_keep_sidestep
-    bool   cd_on        = false; // move_repath_cooldown_ms != 0
-    double cd_s         = 0.0;   // the cooldown in seconds
-    bool   reset_moving = false; // move_block_reset_moving (mods:M1DT): the wait budget restarts when the blocker changes to a walking friend
-    int    detour_cap   = 0;     // move_replan_detour_cap (mods:M1DT): percent, 0 = off; the block replan is tagged for the marshal check
-    bool   enter_queue  = false; // move_enter_queue (mods:M1BE): ORDER 0x24 units ignore wait_limit / keep / cd_on
+    int    wait_limit     = 201;   // retry limit; 201 = retail
+    bool   keep           = false; // move_keep_sidestep
+    bool   cd_on          = false; // move_repath_cooldown_ms != 0
+    double cd_s           = 0.0;   // the cooldown in seconds
+    bool   reset_moving   = false; // move_block_reset_moving (mods:M1DT): the wait budget restarts when the blocker changes to a walking friend
+    int    detour_cap     = 0;     // move_replan_detour_cap (mods:M1DT): percent, 0 = off; the block replan is tagged for the marshal check
+    bool   enter_queue    = false; // move_enter_queue (mods:M1BE): ORDER 0x24 units ignore wait_limit / keep / cd_on
+    bool   owned_patrol   = false; // ORDERSEQ1: query28-verified current ground patrol; off-goal terminal replans
+    bool   patrol_yielded = false; // only the free own one-step path; never an unchecked native detour
     // Does the decision path differ from retail at all? (off = the retail block runs)
     bool active() const { return wait_limit != 201 || keep || cd_on || reset_moving || detour_cap > 0; }
 };
@@ -90,7 +92,7 @@ inline blocked_next blocked_decide_impl(mh::game::mh_map_object_unit &u, bool de
         if (!p.keep || retry >= 0xc0) return blocked_next::replan;
         const uint16_t order = u.order;
         if (order == BLOCKED_ORDER_ATTACK_UNIT || order == BLOCKED_ORDER_ATTACK_UNIT_RETURN || order == BLOCKED_ORDER_ATTACK_BUILDING ||
-            order == BLOCKED_ORDER_PATROL || order == BLOCKED_ORDER_SQUAD_MERGE)
+            (order == BLOCKED_ORDER_PATROL && (!p.owned_patrol || !p.patrol_yielded)) || order == BLOCKED_ORDER_SQUAD_MERGE)
             return blocked_next::replan;
         const uint8_t slot = u.path_slot_id;
         if (slot >= 100) return blocked_next::replan;

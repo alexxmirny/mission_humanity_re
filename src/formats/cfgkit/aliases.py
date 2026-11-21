@@ -68,7 +68,7 @@ def _name_fields(cls):
     rev = _reverse_map(cls)
     out = {}
     for field, (kind, _kw) in rev.items():
-        if (cls, field) in G.REF or kind == G.RES:
+        if (cls, field) in G.REF or kind in (G.RES, G.CAP):
             out[field] = kind
     return out
 
@@ -136,6 +136,8 @@ def model_names(model):
                     continue
                 if kind == G.RES:
                     u["resources"].update(n for n, _ in rec[field])
+                elif kind == G.CAP:
+                    u["resources"].update(n for n, _ in rec[field].values() if n)
                 # ref names into other namespaces are captured at their
                 # definition site above; RES ore names have no def site, so we
                 # harvest them here.

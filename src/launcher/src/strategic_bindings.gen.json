@@ -1,0 +1,3125 @@
+{
+  "schema": 2,
+  "actions": [
+    {
+      "id": "camera_up",
+      "label_en": "Scroll up",
+      "label_ru": "Камера вверх",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "Up",
+      "alternate": "Numpad8",
+      "section": "keys",
+      "key": "camera_up",
+      "alt_key": "camera_up_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 72,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "camera_up",
+          "default": "Up"
+        },
+        {
+          "section": "keys",
+          "key": "camera_up_alt",
+          "default": "Numpad8"
+        }
+      ]
+    },
+    {
+      "id": "camera_down",
+      "label_en": "Scroll down",
+      "label_ru": "Камера вниз",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "Down",
+      "alternate": "Numpad2",
+      "section": "keys",
+      "key": "camera_down",
+      "alt_key": "camera_down_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 80,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "camera_down",
+          "default": "Down"
+        },
+        {
+          "section": "keys",
+          "key": "camera_down_alt",
+          "default": "Numpad2"
+        }
+      ]
+    },
+    {
+      "id": "camera_left",
+      "label_en": "Scroll left",
+      "label_ru": "Камера влево",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "Left",
+      "alternate": "Numpad4",
+      "section": "keys",
+      "key": "camera_left",
+      "alt_key": "camera_left_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 75,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "camera_left",
+          "default": "Left"
+        },
+        {
+          "section": "keys",
+          "key": "camera_left_alt",
+          "default": "Numpad4"
+        }
+      ]
+    },
+    {
+      "id": "camera_right",
+      "label_en": "Scroll right",
+      "label_ru": "Камера вправо",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "Right",
+      "alternate": "Numpad6",
+      "section": "keys",
+      "key": "camera_right",
+      "alt_key": "camera_right_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 77,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "camera_right",
+          "default": "Right"
+        },
+        {
+          "section": "keys",
+          "key": "camera_right_alt",
+          "default": "Numpad6"
+        }
+      ]
+    },
+    {
+      "id": "zoom_in",
+      "label_en": "Zoom in",
+      "label_ru": "Приблизить",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "F8",
+      "alternate": "none",
+      "section": "keys",
+      "key": "zoom_in",
+      "alt_key": "zoom_in_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 66,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "zoom_in",
+          "default": "F8"
+        },
+        {
+          "section": "keys",
+          "key": "zoom_in_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "zoom_out",
+      "label_en": "Zoom out",
+      "label_ru": "Отдалить",
+      "category": "camera",
+      "context": "main",
+      "kind": "held",
+      "primary": "F9",
+      "alternate": "none",
+      "section": "keys",
+      "key": "zoom_out",
+      "alt_key": "zoom_out_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 67,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "zoom_out",
+          "default": "F9"
+        },
+        {
+          "section": "keys",
+          "key": "zoom_out_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "follow_selection",
+      "label_en": "Follow selection",
+      "label_ru": "Следовать за выбранными",
+      "category": "camera",
+      "context": "main",
+      "kind": "event",
+      "primary": "S",
+      "alternate": "none",
+      "section": "keys",
+      "key": "follow_selection",
+      "alt_key": "follow_selection_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 31,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "follow_selection",
+          "default": "S"
+        },
+        {
+          "section": "keys",
+          "key": "follow_selection_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "pan_notification",
+      "label_en": "Pan to notification target",
+      "label_ru": "Перейти к цели сообщения",
+      "category": "camera",
+      "context": "main",
+      "kind": "event",
+      "primary": "Space",
+      "alternate": "none",
+      "section": "keys",
+      "key": "pan_notification",
+      "alt_key": "pan_notification_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 57,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "pan_notification",
+          "default": "Space"
+        },
+        {
+          "section": "keys",
+          "key": "pan_notification_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "build_panel",
+      "label_en": "Toggle build panel",
+      "label_ru": "Панель строительства",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "Q",
+      "alternate": "none",
+      "section": "keys",
+      "key": "build_panel",
+      "alt_key": "build_panel_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 16,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "build_panel",
+          "default": "Q"
+        },
+        {
+          "section": "keys",
+          "key": "build_panel_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "info_panel",
+      "label_en": "Toggle units tab",
+      "label_ru": "Вкладка юнитов",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "W",
+      "alternate": "none",
+      "section": "keys",
+      "key": "info_panel",
+      "alt_key": "info_panel_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 17,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "info_panel",
+          "default": "W"
+        },
+        {
+          "section": "keys",
+          "key": "info_panel_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "minimap_panel",
+      "label_en": "Toggle planets tab",
+      "label_ru": "Вкладка планет",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "E",
+      "alternate": "none",
+      "section": "keys",
+      "key": "minimap_panel",
+      "alt_key": "minimap_panel_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 18,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "minimap_panel",
+          "default": "E"
+        },
+        {
+          "section": "keys",
+          "key": "minimap_panel_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "health_bars",
+      "label_en": "Toggle health bars",
+      "label_ru": "Полосы здоровья",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "R",
+      "alternate": "none",
+      "section": "keys",
+      "key": "health_bars",
+      "alt_key": "health_bars_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 19,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "health_bars",
+          "default": "R"
+        },
+        {
+          "section": "keys",
+          "key": "health_bars_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "minimap_colors",
+      "label_en": "Toggle minimap terrain colors",
+      "label_ru": "Цвета местности миникарты",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "M",
+      "alternate": "none",
+      "section": "keys",
+      "key": "minimap_colors",
+      "alt_key": "minimap_colors_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 50,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "minimap_colors",
+          "default": "M"
+        },
+        {
+          "section": "keys",
+          "key": "minimap_colors_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "game_menu",
+      "label_en": "Open game menu",
+      "label_ru": "Игровое меню",
+      "category": "menus",
+      "context": "main",
+      "kind": "event",
+      "primary": "Escape",
+      "alternate": "F10",
+      "section": "keys",
+      "key": "game_menu",
+      "alt_key": "game_menu_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 1,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "game_menu",
+          "default": "Escape"
+        },
+        {
+          "section": "keys",
+          "key": "game_menu_alt",
+          "default": "F10"
+        }
+      ]
+    },
+    {
+      "id": "gameplay_options",
+      "label_en": "Open game settings",
+      "label_ru": "Открыть настройки игры",
+      "category": "menus",
+      "context": "main",
+      "kind": "event",
+      "primary": "F1",
+      "alternate": "none",
+      "section": "keys",
+      "key": "gameplay_options",
+      "alt_key": "gameplay_options_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 59,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "gameplay_options",
+          "default": "F1"
+        },
+        {
+          "section": "keys",
+          "key": "gameplay_options_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "view_size_0",
+      "label_en": "View size 640×480",
+      "label_ru": "Размер вида 640×480",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "F5",
+      "alternate": "none",
+      "section": "keys",
+      "key": "view_size_0",
+      "alt_key": "view_size_0_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 63,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "view_size_0",
+          "default": "F5"
+        },
+        {
+          "section": "keys",
+          "key": "view_size_0_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "view_size_1",
+      "label_en": "View size 800×600",
+      "label_ru": "Размер вида 800×600",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "F6",
+      "alternate": "none",
+      "section": "keys",
+      "key": "view_size_1",
+      "alt_key": "view_size_1_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 64,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "view_size_1",
+          "default": "F6"
+        },
+        {
+          "section": "keys",
+          "key": "view_size_1_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "view_size_2",
+      "label_en": "View size 1024×768",
+      "label_ru": "Размер вида 1024×768",
+      "category": "display",
+      "context": "main",
+      "kind": "event",
+      "primary": "F7",
+      "alternate": "none",
+      "section": "keys",
+      "key": "view_size_2",
+      "alt_key": "view_size_2_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 65,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "view_size_2",
+          "default": "F7"
+        },
+        {
+          "section": "keys",
+          "key": "view_size_2_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_1",
+      "label_en": "Recall group 1",
+      "label_ru": "Выбрать группу 1",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "1",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_1",
+      "alt_key": "group_recall_1_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 2,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_1",
+          "default": "1"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_1_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_1",
+      "label_en": "Assign group 1",
+      "label_ru": "Назначить группу 1",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+1",
+      "alternate": "Shift+1",
+      "section": "keys",
+      "key": "group_assign_1",
+      "alt_key": "group_assign_1_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 2,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_1",
+          "default": "Ctrl+1"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_1_alt",
+          "default": "Shift+1"
+        }
+      ]
+    },
+    {
+      "id": "group_center_1",
+      "label_en": "Recall and center group 1",
+      "label_ru": "Выбрать группу и центрировать 1",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+1",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_1",
+      "alt_key": "group_center_1_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 2,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_1",
+          "default": "Alt+1"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_1_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_2",
+      "label_en": "Recall group 2",
+      "label_ru": "Выбрать группу 2",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "2",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_2",
+      "alt_key": "group_recall_2_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 3,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_2",
+          "default": "2"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_2_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_2",
+      "label_en": "Assign group 2",
+      "label_ru": "Назначить группу 2",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+2",
+      "alternate": "Shift+2",
+      "section": "keys",
+      "key": "group_assign_2",
+      "alt_key": "group_assign_2_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 3,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_2",
+          "default": "Ctrl+2"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_2_alt",
+          "default": "Shift+2"
+        }
+      ]
+    },
+    {
+      "id": "group_center_2",
+      "label_en": "Recall and center group 2",
+      "label_ru": "Выбрать группу и центрировать 2",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+2",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_2",
+      "alt_key": "group_center_2_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 3,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_2",
+          "default": "Alt+2"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_2_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_3",
+      "label_en": "Recall group 3",
+      "label_ru": "Выбрать группу 3",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "3",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_3",
+      "alt_key": "group_recall_3_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 4,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_3",
+          "default": "3"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_3_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_3",
+      "label_en": "Assign group 3",
+      "label_ru": "Назначить группу 3",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+3",
+      "alternate": "Shift+3",
+      "section": "keys",
+      "key": "group_assign_3",
+      "alt_key": "group_assign_3_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 4,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_3",
+          "default": "Ctrl+3"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_3_alt",
+          "default": "Shift+3"
+        }
+      ]
+    },
+    {
+      "id": "group_center_3",
+      "label_en": "Recall and center group 3",
+      "label_ru": "Выбрать группу и центрировать 3",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+3",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_3",
+      "alt_key": "group_center_3_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 4,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_3",
+          "default": "Alt+3"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_3_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_4",
+      "label_en": "Recall group 4",
+      "label_ru": "Выбрать группу 4",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "4",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_4",
+      "alt_key": "group_recall_4_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 5,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_4",
+          "default": "4"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_4_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_4",
+      "label_en": "Assign group 4",
+      "label_ru": "Назначить группу 4",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+4",
+      "alternate": "Shift+4",
+      "section": "keys",
+      "key": "group_assign_4",
+      "alt_key": "group_assign_4_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 5,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_4",
+          "default": "Ctrl+4"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_4_alt",
+          "default": "Shift+4"
+        }
+      ]
+    },
+    {
+      "id": "group_center_4",
+      "label_en": "Recall and center group 4",
+      "label_ru": "Выбрать группу и центрировать 4",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+4",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_4",
+      "alt_key": "group_center_4_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 5,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_4",
+          "default": "Alt+4"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_4_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_5",
+      "label_en": "Recall group 5",
+      "label_ru": "Выбрать группу 5",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "5",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_5",
+      "alt_key": "group_recall_5_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 6,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_5",
+          "default": "5"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_5_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_5",
+      "label_en": "Assign group 5",
+      "label_ru": "Назначить группу 5",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+5",
+      "alternate": "Shift+5",
+      "section": "keys",
+      "key": "group_assign_5",
+      "alt_key": "group_assign_5_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 6,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_5",
+          "default": "Ctrl+5"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_5_alt",
+          "default": "Shift+5"
+        }
+      ]
+    },
+    {
+      "id": "group_center_5",
+      "label_en": "Recall and center group 5",
+      "label_ru": "Выбрать группу и центрировать 5",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+5",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_5",
+      "alt_key": "group_center_5_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 6,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_5",
+          "default": "Alt+5"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_5_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_6",
+      "label_en": "Recall group 6",
+      "label_ru": "Выбрать группу 6",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "6",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_6",
+      "alt_key": "group_recall_6_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 7,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_6",
+          "default": "6"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_6_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_6",
+      "label_en": "Assign group 6",
+      "label_ru": "Назначить группу 6",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+6",
+      "alternate": "Shift+6",
+      "section": "keys",
+      "key": "group_assign_6",
+      "alt_key": "group_assign_6_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 7,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_6",
+          "default": "Ctrl+6"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_6_alt",
+          "default": "Shift+6"
+        }
+      ]
+    },
+    {
+      "id": "group_center_6",
+      "label_en": "Recall and center group 6",
+      "label_ru": "Выбрать группу и центрировать 6",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+6",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_6",
+      "alt_key": "group_center_6_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 7,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_6",
+          "default": "Alt+6"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_6_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_7",
+      "label_en": "Recall group 7",
+      "label_ru": "Выбрать группу 7",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "7",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_7",
+      "alt_key": "group_recall_7_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 8,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_7",
+          "default": "7"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_7_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_7",
+      "label_en": "Assign group 7",
+      "label_ru": "Назначить группу 7",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+7",
+      "alternate": "Shift+7",
+      "section": "keys",
+      "key": "group_assign_7",
+      "alt_key": "group_assign_7_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 8,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_7",
+          "default": "Ctrl+7"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_7_alt",
+          "default": "Shift+7"
+        }
+      ]
+    },
+    {
+      "id": "group_center_7",
+      "label_en": "Recall and center group 7",
+      "label_ru": "Выбрать группу и центрировать 7",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+7",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_7",
+      "alt_key": "group_center_7_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 8,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_7",
+          "default": "Alt+7"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_7_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_recall_8",
+      "label_en": "Recall group 8",
+      "label_ru": "Выбрать группу 8",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "8",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_recall_8",
+      "alt_key": "group_recall_8_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 9,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_recall_8",
+          "default": "8"
+        },
+        {
+          "section": "keys",
+          "key": "group_recall_8_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "group_assign_8",
+      "label_en": "Assign group 8",
+      "label_ru": "Назначить группу 8",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+8",
+      "alternate": "Shift+8",
+      "section": "keys",
+      "key": "group_assign_8",
+      "alt_key": "group_assign_8_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 9,
+      "native_modifiers": 1,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_assign_8",
+          "default": "Ctrl+8"
+        },
+        {
+          "section": "keys",
+          "key": "group_assign_8_alt",
+          "default": "Shift+8"
+        }
+      ]
+    },
+    {
+      "id": "group_center_8",
+      "label_en": "Recall and center group 8",
+      "label_ru": "Выбрать группу и центрировать 8",
+      "category": "groups",
+      "context": "main",
+      "kind": "event",
+      "primary": "Alt+8",
+      "alternate": "none",
+      "section": "keys",
+      "key": "group_center_8",
+      "alt_key": "group_center_8_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 9,
+      "native_modifiers": 2,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "group_center_8",
+          "default": "Alt+8"
+        },
+        {
+          "section": "keys",
+          "key": "group_center_8_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "split_squad",
+      "label_en": "Split squad",
+      "label_ru": "Разделить отряд",
+      "category": "units",
+      "context": "main",
+      "kind": "event",
+      "primary": "Z",
+      "alternate": "none",
+      "section": "keys",
+      "key": "split_squad",
+      "alt_key": "split_squad_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 44,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "split_squad",
+          "default": "Z"
+        },
+        {
+          "section": "keys",
+          "key": "split_squad_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "workers_max",
+      "label_en": "Assign maximum workers",
+      "label_ru": "Назначить максимум рабочих",
+      "category": "workers",
+      "context": "main",
+      "kind": "event",
+      "primary": "Home",
+      "alternate": "Numpad7",
+      "section": "keys",
+      "key": "workers_max",
+      "alt_key": "workers_max_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 71,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "workers_max",
+          "default": "Home"
+        },
+        {
+          "section": "keys",
+          "key": "workers_max_alt",
+          "default": "Numpad7"
+        }
+      ]
+    },
+    {
+      "id": "workers_none",
+      "label_en": "Unassign all workers",
+      "label_ru": "Убрать всех рабочих",
+      "category": "workers",
+      "context": "main",
+      "kind": "event",
+      "primary": "End",
+      "alternate": "Numpad1",
+      "section": "keys",
+      "key": "workers_none",
+      "alt_key": "workers_none_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 79,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "workers_none",
+          "default": "End"
+        },
+        {
+          "section": "keys",
+          "key": "workers_none_alt",
+          "default": "Numpad1"
+        }
+      ]
+    },
+    {
+      "id": "workers_add",
+      "label_en": "Assign one worker",
+      "label_ru": "Добавить рабочего",
+      "category": "workers",
+      "context": "main",
+      "kind": "event",
+      "primary": "Insert",
+      "alternate": "Numpad0",
+      "section": "keys",
+      "key": "workers_add",
+      "alt_key": "workers_add_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 82,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "workers_add",
+          "default": "Insert"
+        },
+        {
+          "section": "keys",
+          "key": "workers_add_alt",
+          "default": "Numpad0"
+        }
+      ]
+    },
+    {
+      "id": "workers_remove",
+      "label_en": "Unassign one worker",
+      "label_ru": "Убрать рабочего",
+      "category": "workers",
+      "context": "main",
+      "kind": "event",
+      "primary": "Delete",
+      "alternate": "NumpadDecimal",
+      "section": "keys",
+      "key": "workers_remove",
+      "alt_key": "workers_remove_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 83,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "workers_remove",
+          "default": "Delete"
+        },
+        {
+          "section": "keys",
+          "key": "workers_remove_alt",
+          "default": "NumpadDecimal"
+        }
+      ]
+    },
+    {
+      "id": "speed_down",
+      "label_en": "Decrease speed (single player)",
+      "label_ru": "Замедлить (одиночная игра)",
+      "category": "time",
+      "context": "main",
+      "kind": "event",
+      "primary": "-",
+      "alternate": "none",
+      "section": "keys",
+      "key": "speed_down",
+      "alt_key": "speed_down_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 12,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "speed_down",
+          "default": "-"
+        },
+        {
+          "section": "keys",
+          "key": "speed_down_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "speed_up",
+      "label_en": "Increase speed (single player)",
+      "label_ru": "Ускорить (одиночная игра)",
+      "category": "time",
+      "context": "main",
+      "kind": "event",
+      "primary": "=",
+      "alternate": "none",
+      "section": "keys",
+      "key": "speed_up",
+      "alt_key": "speed_up_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 13,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "speed_up",
+          "default": "="
+        },
+        {
+          "section": "keys",
+          "key": "speed_up_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "age_messages",
+      "label_en": "Age floating messages",
+      "label_ru": "Состарить сообщения",
+      "category": "messages",
+      "context": "main",
+      "kind": "event",
+      "primary": "K",
+      "alternate": "none",
+      "section": "keys",
+      "key": "age_messages",
+      "alt_key": "age_messages_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 37,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "age_messages",
+          "default": "K"
+        },
+        {
+          "section": "keys",
+          "key": "age_messages_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "dismiss_messages",
+      "label_en": "Dismiss floating messages",
+      "label_ru": "Убрать сообщения",
+      "category": "messages",
+      "context": "main",
+      "kind": "event",
+      "primary": "Shift+K",
+      "alternate": "none",
+      "section": "keys",
+      "key": "dismiss_messages",
+      "alt_key": "dismiss_messages_alt",
+      "ignored_modifiers": 3,
+      "native_scan": 37,
+      "native_modifiers": 4,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "dismiss_messages",
+          "default": "Shift+K"
+        },
+        {
+          "section": "keys",
+          "key": "dismiss_messages_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "chat_team",
+      "label_en": "Open team chat",
+      "label_ru": "Командный чат",
+      "category": "communication",
+      "context": "main",
+      "kind": "event",
+      "primary": "Enter",
+      "alternate": "none",
+      "section": "keys",
+      "key": "chat_team",
+      "alt_key": "chat_team_alt",
+      "ignored_modifiers": 0,
+      "native_scan": 28,
+      "native_modifiers": 0,
+      "repeat": false,
+      "third": "NumpadEnter",
+      "fourth": "none",
+      "third_key": "chat_team_2",
+      "fourth_key": "chat_team_3",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "chat_team",
+          "default": "Enter"
+        },
+        {
+          "section": "keys",
+          "key": "chat_team_alt",
+          "default": "none"
+        },
+        {
+          "section": "keys",
+          "key": "chat_team_2",
+          "default": "NumpadEnter"
+        },
+        {
+          "section": "keys",
+          "key": "chat_team_3",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "chat_all",
+      "label_en": "Open all-player chat",
+      "label_ru": "Общий чат",
+      "category": "communication",
+      "context": "main",
+      "kind": "event",
+      "primary": "Ctrl+Enter",
+      "alternate": "Alt+Enter",
+      "section": "keys",
+      "key": "chat_all",
+      "alt_key": "chat_all_alt",
+      "ignored_modifiers": 3,
+      "native_scan": 28,
+      "native_modifiers": 1,
+      "repeat": false,
+      "third": "Ctrl+NumpadEnter",
+      "fourth": "Alt+NumpadEnter",
+      "third_key": "chat_all_2",
+      "fourth_key": "chat_all_3",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "keys",
+          "key": "chat_all",
+          "default": "Ctrl+Enter"
+        },
+        {
+          "section": "keys",
+          "key": "chat_all_alt",
+          "default": "Alt+Enter"
+        },
+        {
+          "section": "keys",
+          "key": "chat_all_2",
+          "default": "Ctrl+NumpadEnter"
+        },
+        {
+          "section": "keys",
+          "key": "chat_all_3",
+          "default": "Alt+NumpadEnter"
+        }
+      ]
+    },
+    {
+      "id": "expanded_map",
+      "label_en": "Hold expanded map",
+      "label_ru": "Удерживать большую карту",
+      "category": "mods",
+      "context": "main",
+      "kind": "held",
+      "primary": "Tab",
+      "alternate": "none",
+      "section": "ui",
+      "key": "bigmap_key",
+      "alt_key": "bigmap_key_alt",
+      "ignored_modifiers": 7,
+      "native_scan": 0,
+      "native_modifiers": 0,
+      "repeat": false,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "ui",
+          "key": "bigmap_key",
+          "default": "Tab"
+        },
+        {
+          "section": "keys",
+          "key": "bigmap_key_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "network_indicator",
+      "label_en": "Toggle network indicator",
+      "label_ru": "Индикатор сети",
+      "category": "mods",
+      "context": "main|game_menu|options|info|planet|saveload|diplomacy|tutorial|outcome|wait",
+      "kind": "event",
+      "primary": "Ctrl+Alt+N",
+      "alternate": "none",
+      "section": "hud",
+      "key": "net_indicator_key",
+      "alt_key": "net_indicator_key_alt",
+      "ignored_modifiers": 4,
+      "native_scan": 0,
+      "native_modifiers": 0,
+      "repeat": false,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": true,
+      "bindings": [
+        {
+          "section": "hud",
+          "key": "net_indicator_key",
+          "default": "Ctrl+Alt+N"
+        },
+        {
+          "section": "keys",
+          "key": "net_indicator_key_alt",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "nav_confirm",
+      "label_en": "Confirm",
+      "label_ru": "Подтвердить",
+      "category": "navigation",
+      "context": "options|info|saveload|diplomacy|tutorial|outcome",
+      "kind": "fixed",
+      "primary": "Enter",
+      "alternate": "NumpadEnter",
+      "section": "",
+      "key": "",
+      "alt_key": "",
+      "ignored_modifiers": 7,
+      "native_scan": 28,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": false,
+      "bindings": [
+        {
+          "section": "",
+          "key": "",
+          "default": "Enter"
+        },
+        {
+          "section": "keys",
+          "key": "",
+          "default": "NumpadEnter"
+        }
+      ]
+    },
+    {
+      "id": "nav_cancel",
+      "label_en": "Back / cancel",
+      "label_ru": "Назад / отменить",
+      "category": "navigation",
+      "context": "game_menu|options|info|planet|saveload|diplomacy|tutorial",
+      "kind": "fixed",
+      "primary": "Escape",
+      "alternate": "none",
+      "section": "",
+      "key": "",
+      "alt_key": "",
+      "ignored_modifiers": 7,
+      "native_scan": 1,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": false,
+      "bindings": [
+        {
+          "section": "",
+          "key": "",
+          "default": "Escape"
+        },
+        {
+          "section": "keys",
+          "key": "",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "nav_previous",
+      "label_en": "Previous item",
+      "label_ru": "Предыдущий пункт",
+      "category": "navigation",
+      "context": "info|saveload",
+      "kind": "fixed",
+      "primary": "Up",
+      "alternate": "none",
+      "section": "",
+      "key": "",
+      "alt_key": "",
+      "ignored_modifiers": 7,
+      "native_scan": 200,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": false,
+      "bindings": [
+        {
+          "section": "",
+          "key": "",
+          "default": "Up"
+        },
+        {
+          "section": "keys",
+          "key": "",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "nav_next",
+      "label_en": "Next item",
+      "label_ru": "Следующий пункт",
+      "category": "navigation",
+      "context": "info|saveload",
+      "kind": "fixed",
+      "primary": "Down",
+      "alternate": "none",
+      "section": "",
+      "key": "",
+      "alt_key": "",
+      "ignored_modifiers": 7,
+      "native_scan": 208,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": false,
+      "bindings": [
+        {
+          "section": "",
+          "key": "",
+          "default": "Down"
+        },
+        {
+          "section": "keys",
+          "key": "",
+          "default": "none"
+        }
+      ]
+    },
+    {
+      "id": "nav_delete",
+      "label_en": "Delete selected save",
+      "label_ru": "Удалить сохранение",
+      "category": "navigation",
+      "context": "saveload",
+      "kind": "fixed",
+      "primary": "Delete",
+      "alternate": "none",
+      "section": "",
+      "key": "",
+      "alt_key": "",
+      "ignored_modifiers": 7,
+      "native_scan": 211,
+      "native_modifiers": 0,
+      "repeat": true,
+      "third": "none",
+      "fourth": "none",
+      "third_key": "",
+      "fourth_key": "",
+      "alt_section": "keys",
+      "editable": false,
+      "bindings": [
+        {
+          "section": "",
+          "key": "",
+          "default": "Delete"
+        },
+        {
+          "section": "keys",
+          "key": "",
+          "default": "none"
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "id": "shift_modifier",
+      "label_en": "Shift modifier",
+      "label_ru": "Модификатор Shift",
+      "default": "Shift",
+      "section": "keys",
+      "key": "role_shift_modifier",
+      "kind": "modifier"
+    },
+    {
+      "id": "patrol",
+      "label_en": "Patrol",
+      "label_ru": "Патруль",
+      "default": "Alt",
+      "section": "keys",
+      "key": "role_patrol",
+      "kind": "modifier"
+    },
+    {
+      "id": "confirm",
+      "label_en": "Confirm landing/merge/storage/tactical",
+      "label_ru": "Подтверждать посадку/слияние/ангар/тактику",
+      "default": "Ctrl",
+      "section": "keys",
+      "key": "role_confirm",
+      "kind": "modifier"
+    },
+    {
+      "id": "toggle_selection",
+      "label_en": "Add/remove from selection",
+      "label_ru": "Добавить/убрать из выбора",
+      "default": "Ctrl",
+      "section": "keys",
+      "key": "role_toggle_selection",
+      "kind": "modifier"
+    },
+    {
+      "id": "select_button",
+      "label_en": "Select / place / map pan",
+      "label_ru": "Выбор / размещение / камера карты",
+      "default": "MouseLeft",
+      "section": "keys",
+      "key": "role_select_button",
+      "kind": "button"
+    },
+    {
+      "id": "command_button",
+      "label_en": "Attack/move",
+      "label_ru": "Атака/движение",
+      "default": "MouseRight",
+      "section": "keys",
+      "key": "role_command_button",
+      "kind": "button"
+    }
+  ],
+  "keys": [
+    {
+      "token": "Escape",
+      "scan": 1,
+      "e0": false,
+      "vk": 27
+    },
+    {
+      "token": "Esc",
+      "scan": 1,
+      "e0": false,
+      "vk": 27
+    },
+    {
+      "token": "Backspace",
+      "scan": 14,
+      "e0": false,
+      "vk": 8
+    },
+    {
+      "token": "Tab",
+      "scan": 15,
+      "e0": false,
+      "vk": 9
+    },
+    {
+      "token": "Enter",
+      "scan": 28,
+      "e0": false,
+      "vk": 13
+    },
+    {
+      "token": "Space",
+      "scan": 57,
+      "e0": false,
+      "vk": 32
+    },
+    {
+      "token": "Home",
+      "scan": 71,
+      "e0": true,
+      "vk": 36
+    },
+    {
+      "token": "End",
+      "scan": 79,
+      "e0": true,
+      "vk": 35
+    },
+    {
+      "token": "Insert",
+      "scan": 82,
+      "e0": true,
+      "vk": 45
+    },
+    {
+      "token": "Ins",
+      "scan": 82,
+      "e0": true,
+      "vk": 45
+    },
+    {
+      "token": "Delete",
+      "scan": 83,
+      "e0": true,
+      "vk": 46
+    },
+    {
+      "token": "Del",
+      "scan": 83,
+      "e0": true,
+      "vk": 46
+    },
+    {
+      "token": "Up",
+      "scan": 72,
+      "e0": true,
+      "vk": 38
+    },
+    {
+      "token": "Down",
+      "scan": 80,
+      "e0": true,
+      "vk": 40
+    },
+    {
+      "token": "Left",
+      "scan": 75,
+      "e0": true,
+      "vk": 37
+    },
+    {
+      "token": "Right",
+      "scan": 77,
+      "e0": true,
+      "vk": 39
+    },
+    {
+      "token": "PageUp",
+      "scan": 73,
+      "e0": true,
+      "vk": 33
+    },
+    {
+      "token": "PgUp",
+      "scan": 73,
+      "e0": true,
+      "vk": 33
+    },
+    {
+      "token": "Prior",
+      "scan": 73,
+      "e0": true,
+      "vk": 33
+    },
+    {
+      "token": "PageDown",
+      "scan": 81,
+      "e0": true,
+      "vk": 34
+    },
+    {
+      "token": "PgDn",
+      "scan": 81,
+      "e0": true,
+      "vk": 34
+    },
+    {
+      "token": "Next",
+      "scan": 81,
+      "e0": true,
+      "vk": 34
+    },
+    {
+      "token": "CapsLock",
+      "scan": 58,
+      "e0": false,
+      "vk": 20
+    },
+    {
+      "token": "Caps",
+      "scan": 58,
+      "e0": false,
+      "vk": 20
+    },
+    {
+      "token": "1",
+      "scan": 2,
+      "e0": false,
+      "vk": 49
+    },
+    {
+      "token": "2",
+      "scan": 3,
+      "e0": false,
+      "vk": 50
+    },
+    {
+      "token": "3",
+      "scan": 4,
+      "e0": false,
+      "vk": 51
+    },
+    {
+      "token": "4",
+      "scan": 5,
+      "e0": false,
+      "vk": 52
+    },
+    {
+      "token": "5",
+      "scan": 6,
+      "e0": false,
+      "vk": 53
+    },
+    {
+      "token": "6",
+      "scan": 7,
+      "e0": false,
+      "vk": 54
+    },
+    {
+      "token": "7",
+      "scan": 8,
+      "e0": false,
+      "vk": 55
+    },
+    {
+      "token": "8",
+      "scan": 9,
+      "e0": false,
+      "vk": 56
+    },
+    {
+      "token": "9",
+      "scan": 10,
+      "e0": false,
+      "vk": 57
+    },
+    {
+      "token": "0",
+      "scan": 11,
+      "e0": false,
+      "vk": 48
+    },
+    {
+      "token": "Q",
+      "scan": 16,
+      "e0": false,
+      "vk": 81
+    },
+    {
+      "token": "W",
+      "scan": 17,
+      "e0": false,
+      "vk": 87
+    },
+    {
+      "token": "E",
+      "scan": 18,
+      "e0": false,
+      "vk": 69
+    },
+    {
+      "token": "R",
+      "scan": 19,
+      "e0": false,
+      "vk": 82
+    },
+    {
+      "token": "T",
+      "scan": 20,
+      "e0": false,
+      "vk": 84
+    },
+    {
+      "token": "Y",
+      "scan": 21,
+      "e0": false,
+      "vk": 89
+    },
+    {
+      "token": "U",
+      "scan": 22,
+      "e0": false,
+      "vk": 85
+    },
+    {
+      "token": "I",
+      "scan": 23,
+      "e0": false,
+      "vk": 73
+    },
+    {
+      "token": "O",
+      "scan": 24,
+      "e0": false,
+      "vk": 79
+    },
+    {
+      "token": "P",
+      "scan": 25,
+      "e0": false,
+      "vk": 80
+    },
+    {
+      "token": "A",
+      "scan": 30,
+      "e0": false,
+      "vk": 65
+    },
+    {
+      "token": "S",
+      "scan": 31,
+      "e0": false,
+      "vk": 83
+    },
+    {
+      "token": "D",
+      "scan": 32,
+      "e0": false,
+      "vk": 68
+    },
+    {
+      "token": "F",
+      "scan": 33,
+      "e0": false,
+      "vk": 70
+    },
+    {
+      "token": "G",
+      "scan": 34,
+      "e0": false,
+      "vk": 71
+    },
+    {
+      "token": "H",
+      "scan": 35,
+      "e0": false,
+      "vk": 72
+    },
+    {
+      "token": "J",
+      "scan": 36,
+      "e0": false,
+      "vk": 74
+    },
+    {
+      "token": "K",
+      "scan": 37,
+      "e0": false,
+      "vk": 75
+    },
+    {
+      "token": "L",
+      "scan": 38,
+      "e0": false,
+      "vk": 76
+    },
+    {
+      "token": "Z",
+      "scan": 44,
+      "e0": false,
+      "vk": 90
+    },
+    {
+      "token": "X",
+      "scan": 45,
+      "e0": false,
+      "vk": 88
+    },
+    {
+      "token": "C",
+      "scan": 46,
+      "e0": false,
+      "vk": 67
+    },
+    {
+      "token": "V",
+      "scan": 47,
+      "e0": false,
+      "vk": 86
+    },
+    {
+      "token": "B",
+      "scan": 48,
+      "e0": false,
+      "vk": 66
+    },
+    {
+      "token": "N",
+      "scan": 49,
+      "e0": false,
+      "vk": 78
+    },
+    {
+      "token": "M",
+      "scan": 50,
+      "e0": false,
+      "vk": 77
+    },
+    {
+      "token": "-",
+      "scan": 12,
+      "e0": false,
+      "vk": 189
+    },
+    {
+      "token": "=",
+      "scan": 13,
+      "e0": false,
+      "vk": 187
+    },
+    {
+      "token": "[",
+      "scan": 26,
+      "e0": false,
+      "vk": 219
+    },
+    {
+      "token": "]",
+      "scan": 27,
+      "e0": false,
+      "vk": 221
+    },
+    {
+      "token": "Semicolon",
+      "scan": 39,
+      "e0": false,
+      "vk": 186
+    },
+    {
+      "token": "'",
+      "scan": 40,
+      "e0": false,
+      "vk": 222
+    },
+    {
+      "token": "`",
+      "scan": 41,
+      "e0": false,
+      "vk": 192
+    },
+    {
+      "token": "\\",
+      "scan": 43,
+      "e0": false,
+      "vk": 220
+    },
+    {
+      "token": ",",
+      "scan": 51,
+      "e0": false,
+      "vk": 188
+    },
+    {
+      "token": ".",
+      "scan": 52,
+      "e0": false,
+      "vk": 190
+    },
+    {
+      "token": "/",
+      "scan": 53,
+      "e0": false,
+      "vk": 191
+    },
+    {
+      "token": "NumpadDecimal",
+      "scan": 83,
+      "e0": false,
+      "vk": 110
+    },
+    {
+      "token": "NumpadEnter",
+      "scan": 28,
+      "e0": true,
+      "vk": 0
+    },
+    {
+      "token": "NumpadAdd",
+      "scan": 78,
+      "e0": false,
+      "vk": 107
+    },
+    {
+      "token": "NumpadSubtract",
+      "scan": 74,
+      "e0": false,
+      "vk": 109
+    },
+    {
+      "token": "NumpadMultiply",
+      "scan": 55,
+      "e0": false,
+      "vk": 106
+    },
+    {
+      "token": "NumpadDivide",
+      "scan": 53,
+      "e0": true,
+      "vk": 111
+    },
+    {
+      "token": "NumLock",
+      "scan": 69,
+      "e0": false,
+      "vk": 144
+    },
+    {
+      "token": "ScrollLock",
+      "scan": 70,
+      "e0": false,
+      "vk": 145
+    },
+    {
+      "token": "Numpad0",
+      "scan": 82,
+      "e0": false,
+      "vk": 96
+    },
+    {
+      "token": "Numpad1",
+      "scan": 79,
+      "e0": false,
+      "vk": 97
+    },
+    {
+      "token": "Numpad2",
+      "scan": 80,
+      "e0": false,
+      "vk": 98
+    },
+    {
+      "token": "Numpad3",
+      "scan": 81,
+      "e0": false,
+      "vk": 99
+    },
+    {
+      "token": "Numpad4",
+      "scan": 75,
+      "e0": false,
+      "vk": 100
+    },
+    {
+      "token": "Numpad5",
+      "scan": 76,
+      "e0": false,
+      "vk": 101
+    },
+    {
+      "token": "Numpad6",
+      "scan": 77,
+      "e0": false,
+      "vk": 102
+    },
+    {
+      "token": "Numpad7",
+      "scan": 71,
+      "e0": false,
+      "vk": 103
+    },
+    {
+      "token": "Numpad8",
+      "scan": 72,
+      "e0": false,
+      "vk": 104
+    },
+    {
+      "token": "Numpad9",
+      "scan": 73,
+      "e0": false,
+      "vk": 105
+    },
+    {
+      "token": "F1",
+      "scan": 59,
+      "e0": false,
+      "vk": 112
+    },
+    {
+      "token": "F2",
+      "scan": 60,
+      "e0": false,
+      "vk": 113
+    },
+    {
+      "token": "F3",
+      "scan": 61,
+      "e0": false,
+      "vk": 114
+    },
+    {
+      "token": "F4",
+      "scan": 62,
+      "e0": false,
+      "vk": 115
+    },
+    {
+      "token": "F5",
+      "scan": 63,
+      "e0": false,
+      "vk": 116
+    },
+    {
+      "token": "F6",
+      "scan": 64,
+      "e0": false,
+      "vk": 117
+    },
+    {
+      "token": "F7",
+      "scan": 65,
+      "e0": false,
+      "vk": 118
+    },
+    {
+      "token": "F8",
+      "scan": 66,
+      "e0": false,
+      "vk": 119
+    },
+    {
+      "token": "F9",
+      "scan": 67,
+      "e0": false,
+      "vk": 120
+    },
+    {
+      "token": "F10",
+      "scan": 68,
+      "e0": false,
+      "vk": 121
+    },
+    {
+      "token": "F11",
+      "scan": 87,
+      "e0": false,
+      "vk": 122
+    },
+    {
+      "token": "F12",
+      "scan": 88,
+      "e0": false,
+      "vk": 123
+    },
+    {
+      "token": "F13",
+      "scan": 100,
+      "e0": false,
+      "vk": 124
+    },
+    {
+      "token": "F14",
+      "scan": 101,
+      "e0": false,
+      "vk": 125
+    },
+    {
+      "token": "F15",
+      "scan": 102,
+      "e0": false,
+      "vk": 126
+    },
+    {
+      "token": "F16",
+      "scan": 103,
+      "e0": false,
+      "vk": 127
+    },
+    {
+      "token": "F17",
+      "scan": 104,
+      "e0": false,
+      "vk": 128
+    },
+    {
+      "token": "F18",
+      "scan": 105,
+      "e0": false,
+      "vk": 129
+    },
+    {
+      "token": "F19",
+      "scan": 106,
+      "e0": false,
+      "vk": 130
+    },
+    {
+      "token": "F20",
+      "scan": 107,
+      "e0": false,
+      "vk": 131
+    },
+    {
+      "token": "F21",
+      "scan": 108,
+      "e0": false,
+      "vk": 132
+    },
+    {
+      "token": "F22",
+      "scan": 109,
+      "e0": false,
+      "vk": 133
+    },
+    {
+      "token": "F23",
+      "scan": 110,
+      "e0": false,
+      "vk": 134
+    },
+    {
+      "token": "F24",
+      "scan": 118,
+      "e0": false,
+      "vk": 135
+    }
+  ],
+  "reserved": [
+    {
+      "key": "F11",
+      "context": "*",
+      "reason": "overlay"
+    },
+    {
+      "key": "F12",
+      "context": "*",
+      "reason": "capture"
+    },
+    {
+      "key": "Alt+Tab",
+      "context": "*",
+      "reason": "system"
+    },
+    {
+      "key": "Alt+F4",
+      "context": "*",
+      "reason": "system"
+    },
+    {
+      "key": "Ctrl+Escape",
+      "context": "*",
+      "reason": "system"
+    },
+    {
+      "key": "Ctrl+Alt+Delete",
+      "context": "*",
+      "reason": "system"
+    },
+    {
+      "key": "Shift+Enter",
+      "context": "main",
+      "reason": "console"
+    },
+    {
+      "key": "Ctrl+Alt+D",
+      "context": "*",
+      "reason": "diagnostics"
+    },
+    {
+      "key": "Ctrl+Alt+PageUp",
+      "context": "*",
+      "reason": "diagnostics"
+    },
+    {
+      "key": "Ctrl+Alt+PageDown",
+      "context": "*",
+      "reason": "diagnostics"
+    },
+    {
+      "key": "Shift+NumpadEnter",
+      "context": "main",
+      "reason": "console"
+    }
+  ],
+  "exclusive_roles": [
+    [
+      "shift_modifier",
+      "patrol"
+    ],
+    [
+      "shift_modifier",
+      "confirm"
+    ],
+    [
+      "shift_modifier",
+      "toggle_selection"
+    ],
+    [
+      "patrol",
+      "confirm"
+    ],
+    [
+      "select_button",
+      "command_button"
+    ]
+  ],
+  "legacy_navigation": [
+    {
+      "key": "menu_resume",
+      "default": "Escape"
+    },
+    {
+      "key": "menu_resume_alt",
+      "default": "none"
+    },
+    {
+      "key": "options_apply",
+      "default": "Enter"
+    },
+    {
+      "key": "options_apply_alt",
+      "default": "none"
+    },
+    {
+      "key": "options_apply_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "options_apply_numpad_alt",
+      "default": "none"
+    },
+    {
+      "key": "options_cancel",
+      "default": "Escape"
+    },
+    {
+      "key": "options_cancel_alt",
+      "default": "none"
+    },
+    {
+      "key": "info_previous",
+      "default": "Up"
+    },
+    {
+      "key": "info_previous_alt",
+      "default": "none"
+    },
+    {
+      "key": "info_next",
+      "default": "Down"
+    },
+    {
+      "key": "info_next_alt",
+      "default": "none"
+    },
+    {
+      "key": "info_close",
+      "default": "Enter"
+    },
+    {
+      "key": "info_close_alt",
+      "default": "Escape"
+    },
+    {
+      "key": "info_close_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "info_close_numpad_alt",
+      "default": "none"
+    },
+    {
+      "key": "planet_cancel",
+      "default": "Escape"
+    },
+    {
+      "key": "planet_cancel_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_previous",
+      "default": "Up"
+    },
+    {
+      "key": "save_previous_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_next",
+      "default": "Down"
+    },
+    {
+      "key": "save_next_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_confirm",
+      "default": "Enter"
+    },
+    {
+      "key": "save_confirm_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_confirm_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "save_confirm_numpad_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_cancel",
+      "default": "Escape"
+    },
+    {
+      "key": "save_cancel_alt",
+      "default": "none"
+    },
+    {
+      "key": "save_delete",
+      "default": "Delete"
+    },
+    {
+      "key": "save_delete_alt",
+      "default": "none"
+    },
+    {
+      "key": "diplomacy_apply",
+      "default": "Enter"
+    },
+    {
+      "key": "diplomacy_apply_alt",
+      "default": "none"
+    },
+    {
+      "key": "diplomacy_apply_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "diplomacy_apply_numpad_alt",
+      "default": "none"
+    },
+    {
+      "key": "diplomacy_cancel",
+      "default": "Escape"
+    },
+    {
+      "key": "diplomacy_cancel_alt",
+      "default": "none"
+    },
+    {
+      "key": "tutorial_continue",
+      "default": "Enter"
+    },
+    {
+      "key": "tutorial_continue_alt",
+      "default": "Escape"
+    },
+    {
+      "key": "tutorial_continue_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "tutorial_continue_numpad_alt",
+      "default": "none"
+    },
+    {
+      "key": "outcome_continue",
+      "default": "Enter"
+    },
+    {
+      "key": "outcome_continue_alt",
+      "default": "none"
+    },
+    {
+      "key": "outcome_continue_numpad",
+      "default": "NumpadEnter"
+    },
+    {
+      "key": "outcome_continue_numpad_alt",
+      "default": "none"
+    }
+  ],
+  "legacy_shift_keys": [
+    "role_queue",
+    "role_reveal",
+    "role_build_repeat",
+    "role_add_selection"
+  ],
+  "catalog_identity": 4182103019
+}

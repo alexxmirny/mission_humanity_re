@@ -1,0 +1,30 @@
+# TILESET1: Unmodified Kam256 art on a pixel-inferred ordinary map.
+# The parent must review each capture and calibrate against the real rig before registration.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture kam_picker
+clickl Ok
+present Network players
+settled Start
+capture kam_label
+click 70 132
+present Computer
+enabled Start
+clickl Start
+absent Network players
+gamemode 2
+simstep 300
+capture kam_art
+log TILESET1 Kam256 generated map entered
+end

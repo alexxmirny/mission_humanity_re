@@ -1,0 +1,26 @@
+{
+  "capture_tileset_latch_alpha_client.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_tileset_latch_beta_client.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ],
+  "capture_tileset_latch_rejoin_client.png": [
+    [
+      388,
+      46,
+      226,
+      48
+    ]
+  ]
+}

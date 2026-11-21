@@ -26,6 +26,7 @@
 //
 #pragma once
 #include "fix/resync_clamp.h" // MP D14/D24: the resync-order clamp + barrier (R4 -- shared with the net seam)
+#include "../../mh_common/participant_boundary.h"
 #include <cstdint>
 
 #include "addr/mh_structs.gen.h"
@@ -88,6 +89,13 @@ struct engine_state {
     void          *text_tmp;            // G_TEXT_TMP -- the wide buffer the alert line is built in
 };
 
+struct participant_view {
+    const player_profile *players;
+    const double         *horizons;
+    const uint16_t       *local_side;
+};
+participant_view live_participant_view();
+
 inline constexpr int32_t SESSION_MP_LOCKSTEP = 3; // CMP [_G_LLM_GAME_SESSION_MODE],0x3
 
 // Outward calls. Batch A contributed one; batch B contributes the rest, and the split between "run
@@ -130,6 +138,8 @@ struct game_calls {
     void (*dispatch)();
     // the pump's own first statement, kept OUT of pump_after_schedule; see the wrapper
     int32_t (*order_schedule)();
+    // Pure detail fixtures have no deferred host work; the live driver must drain before its next clock advance.
+    void (*participant_poll)() = nullptr;
 };
 
 // llm_strat_sim_clock_advance's constants, both read off the disassembly at 0x0044d238.
@@ -325,6 +335,8 @@ struct dispatch_calls {
     // the NUL). Tail member like `hoist`: every offline suite leaves it null, and a null keeps the
     // original ansi_to_wide_scratch widen of the body (rx_dispatch.cpp handle_chat).
     void (*chat_to_wide)(const char *utf8, void *dst, uint32_t cap_units);
+    mh::participant_boundary::admit_fn participant_admit = mh::participant_boundary::synchronous;
+    bool (*participant_continuation)()                   = nullptr;
 };
 
 dispatch_state        dstate();
@@ -481,7 +493,9 @@ struct timekeeper_calls {
     // LIB-ABI stage E: the hoisted GAME_MODE/overlay-latch writes (overlay_hoist.h). TAIL member
     // on purpose -- a suite's aggregate initializer zero-fills it and the null-tolerant wrappers
     // skip the hoist, matching how the suites already stub these host callees.
-    const struct overlay_hoist_ops *hoist;
+    const struct overlay_hoist_ops    *hoist;
+    mh::participant_boundary::admit_fn participant_admit = mh::participant_boundary::synchronous;
+    participant_view (*participants)()                   = nullptr;
 };
 
 timekeeper_state        timekeeper();
@@ -897,6 +911,7 @@ bool participates(const engine_state &st, int32_t i);
 // shared by tags 8 and 9. And only TWO jumps target 0x0049d31e, both from the drain loop itself, so
 // there is no third exit hiding in a case body.
 enum class packet_result { drain_again,
+                           next_packet,
                            stop };
 
 

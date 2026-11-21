@@ -3,8 +3,7 @@
 # 2 peers. Lobby: the host sets TEAM mode and T1 for itself; the client sets T1 for its own row (mp_client_u52_diplo.txt),
 # so the two are allied from the first step and the match is in Team mode (ally-victory flag set). In the match the host
 # opens ESC -> Diplomacy, captures the dialog (the client's ALLIED checkbox must be disabled), clicks it anyway and presses
-# Ok -- nothing may change -- and reopens the dialog once more. Frames: tools/uiscripts/baselines are NOT recorded for this
-# script yet (pending the user's review of the frames, mp:U52).
+# Ok -- nothing may change -- and reopens the dialog once more.
 
 settled value:110
 clickv 110
@@ -26,7 +25,15 @@ occ 2
 awaitsignal lobby
 click 221 115
 team 0 1
-click 501 370
+# Mode lives on the lobby's Settings page since mods:MAPGEN2: page there (one click per page, each gated on the page --
+# the 0x32 input-lock timer swallows back-to-back synthetic clicks), then click Mode inside the description box.
+settled Cancel
+click 501 380
+lobbypage 1
+settled Cancel
+click 501 380
+lobbypage 2
+click 501 184
 lobbymode 1
 awaitsignal clientteam
 team 1 1

@@ -7,6 +7,7 @@
 // IMUL/MOVZX/CMP/JL/JNZ opcodes per house rules.
 //
 #include "sim/sim_storage_cancel_pending_docked.h"
+#include "sim/sim_storage_bulk_rally.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -30,7 +31,8 @@ constexpr uint16_t UNIT_STATE_PARKED = 0x1f;
 
 namespace detail {
 
-void storage_cancel_pending_docked(const sim_view &v, const storage_cancel_pending_docked_calls &c,
+void storage_cancel_pending_docked(const sim_view &v, sim_store &own,
+                                   const storage_cancel_pending_docked_calls &c,
                                    uint32_t player, int32_t building_index) {
     // The asm narrows `player` to its low 16 bits before every row-index multiply (buildings row
     // 0x0046cab6, unit_storage row 0x0046cada/0x0046cb02, units row 0x0046cb26) -- cached once here,
@@ -50,9 +52,9 @@ void storage_cancel_pending_docked(const sim_view &v, const storage_cancel_pendi
         // 0x0046cb39-0x0046cb41: gate on the unit's OWN state (a WORD compare), not on anything about
         // the storage slot itself.
         if (unit_of(v, p, unit_index).state == UNIT_STATE_PARKED) {
-            // 0x0046cb4a: force the unit out. Original callee -- see header on why this runs through
-            // the `_calls` indirection rather than a bare `mh::call::`.
-            c.unit_force_disembark(p, unit_index);
+            // Decorate only this accepted manual-bulk transition; generic force/orbit callers
+            // retain native door/default behavior.
+            storage_bulk_force_disembark(v, own, c, p, building_index, unit_index);
         }
     }
 }
@@ -62,9 +64,9 @@ void storage_cancel_pending_docked(const sim_view &v, const storage_cancel_pendi
 // ---- the public wrapper --------------------------------------------------------------------------
 
 void storage_cancel_pending_docked(uint32_t player, int32_t building_index) {
-    const sim_view v = state().read;
-    detail::storage_cancel_pending_docked(v, live_storage_cancel_pending_docked_calls(), player,
-                                          building_index);
+    sim_state st = state();
+    detail::storage_cancel_pending_docked(st.read, st.own, live_storage_cancel_pending_docked_calls(),
+                                          player, building_index);
 }
 
 

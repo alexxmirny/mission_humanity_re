@@ -56,7 +56,7 @@ Usage:
   python tools/crash_report.py                       # everything from the last 30 minutes
   python tools/crash_report.py --since-min 5
   python tools/crash_report.py --lane F:\\games\\mh_lanes\\ui_sp_det
-  python tools/crash_report.py --report tmp/drained_reports/2026-09/01ULID...   # a drained report
+  python tools/crash_report.py --report <private-store>/2026-09/01ULID...   # a drained report
   python tools/crash_report.py --json
 """
 
@@ -1401,7 +1401,7 @@ def main():
         "--report",
         help="read a DRAINED report (dist:RP3's tools/drain_reports.py layout) instead of "
         "scanning WER -- a single <ulid> directory, or a store root walked for every report "
-        "under it (e.g. tmp/drained_reports)",
+        "under it (the configured private report store)",
     )
     ap.add_argument("--selftest", action="store_true", help="prove the scanner + its filters work")
     a = ap.parse_args()

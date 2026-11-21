@@ -2,7 +2,7 @@
 # (tooling:TL-SUITE-FOLD step 3). Pair with mp_client_idle.txt. Segments open with `mark <old row>`, captures are <old row>__<name>:
 #
 #   segment                 old row               what it does here
-#   landing                 -                     land the mothership (shift+right-click)
+#   landing                 -                     land the mothership (Ctrl+right-click)
 #   info_avi_absent         info_avi_absent       (mp:X2g) the place-building tab, a right-click on the Academy row with the clip made
 #                                                 absent ([net] info_avi_test_absent=*): the info screen opens WITHOUT video, Esc closes it
 #   d37a_relanding_c2       d37a_relanding_c2     (mp:D37a) the pioneer lifts off EMPTY and re-lands (libmh's promoted body is under test)
@@ -39,11 +39,11 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: land the airborne mothership (shift+right-click; order 0x10 move + 0x18 deploy); it lands well before 20000.
+# in the match: land the airborne mothership (Ctrl+right-click; order 0x10 move + 0x18 deploy); it lands well before 20000.
 absent Network players
 gameclock 3000
 mark landing
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 20000
 capture d37a_relanding_c2__landed
 capture info_avi_absent__landed
@@ -97,7 +97,7 @@ cursorhold 100 100 6
 cursorhold 800 700 12
 release 800 700
 gameclock 47000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 83000
 capture d37a_relanding_c2__relanded
 # prove it is really back on the ground: the landing spot selects a building again

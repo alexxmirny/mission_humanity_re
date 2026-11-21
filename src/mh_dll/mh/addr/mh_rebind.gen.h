@@ -716,11 +716,11 @@ enum row : int {
     ROW_llm_unit_force_disembark,
     ROW_llm_unit_recruit,
     ROW_llm_unit_set_order_param,
+    ROW_llm_unit_squad_split_docked,
+    ROW_llm_unit_squad_split_field,
     ROW_llm_unit_state_is_boarding,
     ROW_llm_unit_status_bit_clear,
     ROW_llm_unit_status_bit_set,
-    ROW_llm_unit_transport_unload_docked,
-    ROW_llm_unit_transport_unload_field,
     ROW_map_CreateBuilding,
     ROW_map_LoadPlanetFromDisk,
     ROW_map_SavePlanetToDisk,
@@ -1474,11 +1474,11 @@ inline constexpr const char *const row_names[] = {
     "llm_unit_force_disembark",
     "llm_unit_recruit",
     "llm_unit_set_order_param",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "llm_unit_state_is_boarding",
     "llm_unit_status_bit_clear",
     "llm_unit_status_bit_set",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
     "map_CreateBuilding",
     "map_LoadPlanetFromDisk",
     "map_SavePlanetToDisk",
@@ -2198,11 +2198,11 @@ inline constexpr uintptr_t row_addr[] = {
     0x0046d0cdu,
     0x00463ec8u,
     0x0048696fu,
+    0x004891d8u,
+    0x00488a8bu,
     0x004967ceu,
     0x0044b0ecu,
     0x0044b09eu,
-    0x004891d8u,
-    0x00488a8bu,
     0x004622cbu,
     0x00448107u,
     0x00447bb3u,
@@ -2935,11 +2935,11 @@ inline constexpr int TRAP_UNBINDABLE_COUNT = 0;
 #define MH_REBIND_TARGET_llm_unit_force_disembark ::mh::sim::unit_force_disembark
 #define MH_REBIND_TARGET_llm_unit_recruit ::mh::sim::unit_recruit
 #define MH_REBIND_TARGET_llm_unit_set_order_param ::mh::sim::unit_set_order_param
+#define MH_REBIND_TARGET_llm_unit_squad_split_docked ::mh::sim::unload_docked
+#define MH_REBIND_TARGET_llm_unit_squad_split_field ::mh::sim::unload_field
 #define MH_REBIND_TARGET_llm_unit_state_is_boarding ::mh::sim::promoted_arm::hr_llm_unit_state_is_boarding
 #define MH_REBIND_TARGET_llm_unit_status_bit_clear ::mh::sim::unit_status_bit_clear
 #define MH_REBIND_TARGET_llm_unit_status_bit_set ::mh::sim::unit_status_bit_set
-#define MH_REBIND_TARGET_llm_unit_transport_unload_docked ::mh::sim::unload_docked
-#define MH_REBIND_TARGET_llm_unit_transport_unload_field ::mh::sim::unload_field
 #define MH_REBIND_TARGET_map_CreateBuilding ::mh::sim::create_building
 #define MH_REBIND_TARGET_map_LoadPlanetFromDisk ::mh::save::promoted_load_planet
 #define MH_REBIND_TARGET_map_SavePlanetToDisk ::mh::save::promoted_save_planet
@@ -3668,11 +3668,11 @@ inline constexpr int TRAP_UNBINDABLE_COUNT = 0;
 #define MH_LIBMH_BIND_llm_unit_force_disembark (&MH_REBIND_TARGET_llm_unit_force_disembark)
 #define MH_LIBMH_BIND_llm_unit_recruit (&MH_REBIND_TARGET_llm_unit_recruit)
 #define MH_LIBMH_BIND_llm_unit_set_order_param (&MH_REBIND_TARGET_llm_unit_set_order_param)
+#define MH_LIBMH_BIND_llm_unit_squad_split_docked (&MH_REBIND_TARGET_llm_unit_squad_split_docked)
+#define MH_LIBMH_BIND_llm_unit_squad_split_field (&MH_REBIND_TARGET_llm_unit_squad_split_field)
 #define MH_LIBMH_BIND_llm_unit_state_is_boarding (&MH_REBIND_TARGET_llm_unit_state_is_boarding)
 #define MH_LIBMH_BIND_llm_unit_status_bit_clear (&MH_REBIND_TARGET_llm_unit_status_bit_clear)
 #define MH_LIBMH_BIND_llm_unit_status_bit_set (&MH_REBIND_TARGET_llm_unit_status_bit_set)
-#define MH_LIBMH_BIND_llm_unit_transport_unload_docked (&MH_REBIND_TARGET_llm_unit_transport_unload_docked)
-#define MH_LIBMH_BIND_llm_unit_transport_unload_field (&MH_REBIND_TARGET_llm_unit_transport_unload_field)
 #define MH_LIBMH_BIND_map_CreateBuilding (&MH_REBIND_TARGET_map_CreateBuilding)
 #define MH_LIBMH_BIND_map_LoadPlanetFromDisk (&MH_REBIND_TARGET_map_LoadPlanetFromDisk)
 #define MH_LIBMH_BIND_map_SavePlanetToDisk (&MH_REBIND_TARGET_map_SavePlanetToDisk)
@@ -4388,11 +4388,11 @@ inline constexpr int TRAP_UNBINDABLE_COUNT = 0;
 #define MH_LIBMH_BIND_llm_unit_force_disembark (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_force_disembark) ? &MH_REBIND_TARGET_llm_unit_force_disembark : &::mh::call::llm_unit_force_disembark)
 #define MH_LIBMH_BIND_llm_unit_recruit (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_recruit) ? &MH_REBIND_TARGET_llm_unit_recruit : &::mh::call::llm_unit_recruit)
 #define MH_LIBMH_BIND_llm_unit_set_order_param (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_set_order_param) ? &MH_REBIND_TARGET_llm_unit_set_order_param : &::mh::call::llm_unit_set_order_param)
+#define MH_LIBMH_BIND_llm_unit_squad_split_docked (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_squad_split_docked) ? &MH_REBIND_TARGET_llm_unit_squad_split_docked : &::mh::call::llm_unit_squad_split_docked)
+#define MH_LIBMH_BIND_llm_unit_squad_split_field (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_squad_split_field) ? &MH_REBIND_TARGET_llm_unit_squad_split_field : &::mh::call::llm_unit_squad_split_field)
 #define MH_LIBMH_BIND_llm_unit_state_is_boarding (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_state_is_boarding) ? &MH_REBIND_TARGET_llm_unit_state_is_boarding : &::mh::call::llm_unit_state_is_boarding)
 #define MH_LIBMH_BIND_llm_unit_status_bit_clear (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_status_bit_clear) ? &MH_REBIND_TARGET_llm_unit_status_bit_clear : &::mh::call::llm_unit_status_bit_clear)
 #define MH_LIBMH_BIND_llm_unit_status_bit_set (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_status_bit_set) ? &MH_REBIND_TARGET_llm_unit_status_bit_set : &::mh::call::llm_unit_status_bit_set)
-#define MH_LIBMH_BIND_llm_unit_transport_unload_docked (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_transport_unload_docked) ? &MH_REBIND_TARGET_llm_unit_transport_unload_docked : &::mh::call::llm_unit_transport_unload_docked)
-#define MH_LIBMH_BIND_llm_unit_transport_unload_field (::mh::rebind::armed(::mh::rebind::ROW_llm_unit_transport_unload_field) ? &MH_REBIND_TARGET_llm_unit_transport_unload_field : &::mh::call::llm_unit_transport_unload_field)
 #define MH_LIBMH_BIND_map_CreateBuilding (::mh::rebind::armed(::mh::rebind::ROW_map_CreateBuilding) ? &MH_REBIND_TARGET_map_CreateBuilding : &::mh::call::map_CreateBuilding)
 #define MH_LIBMH_BIND_map_LoadPlanetFromDisk (::mh::rebind::armed(::mh::rebind::ROW_map_LoadPlanetFromDisk) ? &MH_REBIND_TARGET_map_LoadPlanetFromDisk : &::mh::call::map_LoadPlanetFromDisk)
 #define MH_LIBMH_BIND_map_SavePlanetToDisk (::mh::rebind::armed(::mh::rebind::ROW_map_SavePlanetToDisk) ? &MH_REBIND_TARGET_map_SavePlanetToDisk : &::mh::call::map_SavePlanetToDisk)

@@ -6,6 +6,7 @@
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "state/order_tasks_runtime.h"
 #include "crt/crt_select.h" // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
 
 namespace mh::sim {
@@ -95,6 +96,7 @@ int32_t handle_invasion(const sim_view &v, sim_store &own, const invasion_calls 
             c.revoke_invention(static_cast<uint16_t>(*v.player_side),
                                static_cast<uint16_t>(v.cfg_planets[planet].invention_index));
             // DECLARED NEED 3: sim_store::planet_status_at() does not exist yet.
+            mh::order_tasks::runtime::ensure_known_planet(own, uint32_t(planet));
             own.planet_status_at(planet) = PLANET_STATUS_INVASION;
         }
     } else {
@@ -110,6 +112,7 @@ int32_t handle_invasion(const sim_view &v, sim_store &own, const invasion_calls 
         c.revoke_invention(static_cast<uint16_t>(*v.player_side),
                            static_cast<uint16_t>(v.cfg_planets[planet].invention_index));
         // DECLARED NEED 3: same missing accessor as the own-planet arm above.
+        mh::order_tasks::runtime::ensure_known_planet(own, uint32_t(planet));
         own.planet_status_at(planet) = PLANET_STATUS_INVASION;
         c.invasion_alert_arm(planet, *v.game_clock);
     }

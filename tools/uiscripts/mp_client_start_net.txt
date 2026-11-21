@@ -21,9 +21,17 @@ clickl Join game
 
 # joined lobby: tell the host we are really here, then wait for its Start
 present Network players
-signal lobby
 settled Cancel
+occ 2
+click 501 366
+lobbypage 1
+settled Cancel
+click 501 366
+lobbypage 2
+lobbyspeed 200
 capture m2_lobby
+# Host Start is held until this stable Settings capture really exists.
+signal lobby
 absent Network players
 # gated on the SIM exactly as mp_client_start.txt gates it (gameclock 6000, past the reveal)
 gameclock 6000

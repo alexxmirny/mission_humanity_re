@@ -73,6 +73,17 @@ inline bool is_os_handle_region(mh::state::region_id r) {
     return false;
 }
 
+// Complete scalar record arrays: packed dwords can resemble addresses without being pointers.
+inline constexpr mh::state::region_id POINTER_FREE_REGIONS[] = {
+    mh::state::RID_STRAT_FX_ANIMS,
+    mh::state::RID_ANIM,
+};
+inline bool is_pointer_free_region(mh::state::region_id r) {
+    for (const mh::state::region_id p : POINTER_FREE_REGIONS)
+        if (p == r) return true;
+    return false;
+}
+
 inline bool is_zeroed_on_import(mh::state::region_id r) {
     if (r == mh::state::RID_MAP_REGION_GRID) return true;
     for (const mh::state::region_id z : ZEROED_ON_IMPORT)

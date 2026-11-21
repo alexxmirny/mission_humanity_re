@@ -13,6 +13,8 @@ Layout (all sizes byte-validated across the 31 shipped maps):
         f2 objects      f2 * 28  (u32 slot, i32 kind, px_x, px_y, next_on_tile, x, y)
         resource plane  (w/4)*(h/4) * 16
         tail            f3 * 12   (landing spots)
+        .mpm only:      u32 id (CRC-32/zlib of every preceding byte) + description
+                        (<= 254 ASCII bytes, CRLF lines, no NUL).  .MP has neither.
 
 The Model stores every plane as literal on-disk values (flags/building/passable
 parsed; the rest opaque bytes), so emit(parse(f)) == f is a pure reshape.
@@ -20,23 +22,45 @@ parsed; the rest opaque bytes), so emit(parse(f)) == f is a pure reshape.
 Ground-layer fact (Phase-0 RE, 2026-07-05): main-plane `flags & 0x1FFF` is the
 visual tile index into the planet's .TLO (blitted by llm_strat_render_ground_tile);
 `flags & ~0x1FFF` are per-tile flags (only 0x8000 seen on disk)."""
+
 from __future__ import annotations
 
 import struct
+import zlib
 
 HEADER_LEN = 0x61
 GROUND_MASK = 0x1FFF
 
 
 class MpModel:
-    __slots__ = ("header_raw", "width", "height", "tlo_name", "f1", "f2", "f3",
-                 "flags", "building", "passable",
-                 "f1_raw", "halfres_raw", "objects", "resources_raw", "tail_raw")
+    __slots__ = (
+        "building",
+        "f1",
+        "f1_raw",
+        "f2",
+        "f3",
+        "flags",
+        "halfres_raw",
+        "header_raw",
+        "height",
+        "mpm_desc",
+        "mpm_id",
+        "objects",
+        "passable",
+        "resources_raw",
+        "tail_raw",
+        "tlo_name",
+        "width",
+    )
 
 
 def _plane_bytes(w, h):
-    return dict(main=w * h * 4, passable=w * h,
-                halfres=(w // 2) * (h // 2) * 4, resources=(w // 4) * (h // 4) * 16)
+    return dict(
+        main=w * h * 4,
+        passable=w * h,
+        halfres=(w // 2) * (h // 2) * 4,
+        resources=(w // 4) * (h // 4) * 16,
+    )
 
 
 def parse(path: str) -> MpModel:
@@ -48,7 +72,7 @@ def parse(path: str) -> MpModel:
     m.header_raw = buf[0:HEADER_LEN]
     m.width = struct.unpack_from("<I", buf, 0x05)[0]
     m.height = struct.unpack_from("<I", buf, 0x09)[0]
-    m.tlo_name = buf[0x0d:0x0d + 12]
+    m.tlo_name = buf[0x0D : 0x0D + 12]
     m.f1 = struct.unpack_from("<I", buf, 0x35)[0]
     m.f2 = struct.unpack_from("<I", buf, 0x39)[0]
     m.f3 = struct.unpack_from("<i", buf, 0x41)[0]
@@ -61,18 +85,30 @@ def parse(path: str) -> MpModel:
     m.building = list(inter[1::2])
     off += pb["main"]
 
-    m.passable = list(buf[off:off + n]); off += n
-    m.f1_raw = buf[off:off + m.f1 * 28]; off += m.f1 * 28
-    m.halfres_raw = buf[off:off + pb["halfres"]]; off += pb["halfres"]
+    m.passable = list(buf[off : off + n])
+    off += n
+    m.f1_raw = buf[off : off + m.f1 * 28]
+    off += m.f1 * 28
+    m.halfres_raw = buf[off : off + pb["halfres"]]
+    off += pb["halfres"]
 
     m.objects = []
     for _ in range(m.f2):
-        s, kind, px, py, nxt, x, y = struct.unpack_from("<Iiiiiii", buf, off); off += 28
-        m.objects.append(dict(slot=s, kind=kind, px_x=px, px_y=py,
-                              next_on_tile=nxt, x=x, y=y))
+        s, kind, px, py, nxt, x, y = struct.unpack_from("<Iiiiiii", buf, off)
+        off += 28
+        m.objects.append(dict(slot=s, kind=kind, px_x=px, px_y=py, next_on_tile=nxt, x=x, y=y))
 
-    m.resources_raw = buf[off:off + pb["resources"]]; off += pb["resources"]
-    m.tail_raw = buf[off:off + 12 * m.f3]; off += 12 * m.f3
+    m.resources_raw = buf[off : off + pb["resources"]]
+    off += pb["resources"]
+    m.tail_raw = buf[off : off + 12 * m.f3]
+    off += 12 * m.f3
+
+    # .mpm files carry u32 id + description after the landing spots; .MP ends here.
+    m.mpm_id, m.mpm_desc = None, b""
+    if len(buf) - off >= 4:
+        m.mpm_id = struct.unpack_from("<I", buf, off)[0]
+        m.mpm_desc = buf[off + 4 :]
+        off = len(buf)
 
     if off != len(buf):
         raise ValueError(f"{path}: consumed {off} != file size {len(buf)} (format drift)")
@@ -105,6 +141,7 @@ def colocated_tiles(objects):
     """Objects sharing a tile that are NOT linked into one next_on_tile chain -> the game
     stamps only one chain-head per tile, so extra unchained ones won't render."""
     from collections import defaultdict
+
     by_tile = defaultdict(list)
     for o in objects:
         by_tile[(o["x"], o["y"])].append(o)
@@ -126,7 +163,7 @@ def emit(m: MpModel) -> bytes:
     hdr = bytearray(m.header_raw)
     struct.pack_into("<I", hdr, 0x05, m.width)
     struct.pack_into("<I", hdr, 0x09, m.height)
-    hdr[0x0d:0x0d + 12] = m.tlo_name
+    hdr[0x0D : 0x0D + 12] = m.tlo_name
     struct.pack_into("<I", hdr, 0x35, m.f1)
     struct.pack_into("<I", hdr, 0x39, len(m.objects))
     struct.pack_into("<i", hdr, 0x41, m.f3)
@@ -139,11 +176,30 @@ def emit(m: MpModel) -> bytes:
     out += m.f1_raw
     out += m.halfres_raw
     for i, o in enumerate(m.objects):
-        out += struct.pack("<Iiiiiii", slots[i], o["kind"], o["px_x"], o["px_y"],
-                           o["next_on_tile"], o["x"], o["y"])
+        out += struct.pack(
+            "<Iiiiiii", slots[i], o["kind"], o["px_x"], o["px_y"], o["next_on_tile"], o["x"], o["y"]
+        )
     out += m.resources_raw
     out += m.tail_raw
+    mid = getattr(m, "mpm_id", None)  # absent on models built by tiled_strat
+    if mid is not None:
+        out += struct.pack("<I", mid) + getattr(m, "mpm_desc", b"")
     return bytes(out)
+
+
+def mpm_id_of(prefix: bytes) -> int:
+    """The .mpm id: CRC-32 (zlib) of every byte before the id field.  Verified on all 14
+    stock .mpm (the design's FNV-1a-32 guess did NOT hold)."""
+    return zlib.crc32(prefix) & 0xFFFFFFFF
+
+
+def finalize_mpm(m: MpModel, desc: bytes | None = None) -> None:
+    """Make `m` a well-formed .mpm: set the description and recompute mpm_id."""
+    if desc is not None:
+        m.mpm_desc = desc
+    m.mpm_id = None
+    prefix = emit(m)
+    m.mpm_id = mpm_id_of(prefix)
 
 
 def write_file(m: MpModel, path: str) -> None:

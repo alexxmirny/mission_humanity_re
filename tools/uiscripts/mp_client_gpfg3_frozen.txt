@@ -6,9 +6,9 @@
 # so after the survivors' data_timeout_ms removal it keeps sending 9-byte type-0x02 adverts to a
 # host that has already flagged it AI. Those adverts are the frames the gone-peer branch needs.
 #
-# `end` does not kill this process: ui_test collects peers only once EVERY script has finished, so
-# this peer keeps running (fenced, heartbeating) until the host's own script has played ~7 s past the
-# drop.
+# `end` does not kill this process: ui_test collects peers only once EVERY script has finished.
+# It keeps heartbeating until the guarded survivors prove continued play or both negative
+# survivors observe their actual native outcome dialogs.
 #
 # G271: `signal seated2` after `settled Cancel` is the host's barrier before it clicks Start.
 

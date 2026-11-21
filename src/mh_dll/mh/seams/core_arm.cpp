@@ -1,3 +1,4 @@
+#include "seams/strategic_input.h"
 //
 // mh/seams/core_arm.cpp -- THE CORE ARM'S PHASE 1, and mh.dll's own half of what used to be
 // harness.cpp's preamble (fork F4E -- the FILE cut F3B named and could not make).
@@ -36,9 +37,11 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 
 #include "include/mh_core_arm_export.h"
-#include "include/mh_core_arm_paths.h"  // F4E: the paths the harness copies at MH_Harness_Init
-#include "include/mh_harness_export.h"  // MH_Harness_ReportRelocation lives here now
-#include "include/mh_hostapi_bind.h"    // LIB-ABI: the thunk-backed host-callback table
+#include "include/mh_core_arm_paths.h" // F4E: the paths the harness copies at MH_Harness_Init
+#include "include/mh_harness_export.h" // MH_Harness_ReportRelocation lives here now
+#include "include/mh_hostapi_bind.h"   // LIB-ABI: the thunk-backed host-callback table
+#include "include/mh_module_bind.h"
+#include "seams/participant_boundary_hosted.h"
 #include "include/mh_libmh_hook_bind.h" // F4D-PRE: the hook-service table -- libmh's outbound edge
 #include "include/mh_run_context.h"     // MH_RunDir (per-run log folder)
 #include "include/mh_log_sink.h"        // LOG1: async log sink
@@ -52,6 +55,8 @@
 #include "config/ini_read.h"            // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "save/save_live.h"             // the four save-walker promotion predicates
 #include "seams/net_internal.h"         // SHIP_REBIND_DEFAULT -- the R11 gate policy load_gates takes
+#include "seams/storage_policy.h"       // single host-native canonical owner, bound before any consumer
+#include "seams/order_tasks_hosted.h"
 
 namespace {
 
@@ -348,10 +353,9 @@ extern "C" void MH_Harness_ReportRelocation(void) {
 extern "C" void MH_Core_Arm_Early(void) {
     // SB-BIND T1: the STATE bind comes first, ahead of even the host-callback table, because it is
     // the more fundamental answer -- "where does the state live" precedes "who do I call". mh.dll
-    // is the host here and its answer is the stock .bss, so this is a no-op BY CONSTRUCTION
-    // (mh::state::bind derives `moved` from whether the base actually differs, so every flag stays
-    // false and translate() never leaves its identity path). It runs anyway, in the shipping
-    // configuration, so the entry point a standalone host will use cannot rot unexercised.
+    // supplies the original .bss for stock regions (identity bindings keep translate() on its
+    // native path). The appended host-native policy has no original address and is bound to its
+    // actual canonical EMPTY header below, before any module or instrument can hash it.
     // The same G104 earliest-common-point reasoning as the two binds below applies with more force:
     // a module binder that resolved a region before the host answered would be reading an
     // unanswered registry. Report line lives beside [hostapi]'s, where the logger exists.
@@ -362,12 +366,37 @@ extern "C" void MH_Core_Arm_Early(void) {
     // reading the relocation keys after the bind, would relocate AFTER the module binders that
     // resolve on first use, which is the exact G104 ordering hazard this comment block is about.
     build_paths();
+    mh::strategic_bindings::error binding_error;
+    if (!mh::seams::strategic_input::initialize(g_ini_path, nullptr, 0, binding_error)) {
+        char what[240];
+        // Migration errors name the original managed setting.
+        const char *id = binding_error.setting
+                             ? binding_error.setting
+                         : binding_error.action < mh::strategic_bindings::action_count
+                             ? mh::strategic_bindings::actions()[binding_error.action].id
+                         : binding_error.slot < mh::strategic_bindings::role_count
+                             ? mh::strategic_bindings::roles()[binding_error.slot].id
+                             : "profile";
+        wsprintfA(what, "Invalid strategic binding '%s' (code %u; slot %u; conflict %u).", id,
+                  unsigned(binding_error.code), unsigned(binding_error.slot), unsigned(binding_error.other));
+        mh::config::detail::refuse(mh::cfgdir::config_dir(), what,
+                                   "Open launcher Settings > Key bindings and resolve the named invalid value or conflict. "
+                                   "For retired navigation settings, choose Use fixed navigation. "
+                                   "No partial or fallback input profile is installed.");
+    }
     // RL2/RL6: the ship gate's logger. build_paths() has just filled g_log, so seam_log works from here;
     // everything the gate had to say before this point (the early [config]/[net] module reads in
     // DllMain) is flushed now, behind the start banner: `DEV UNLOCKED` when [dev] unlock=1, and the
     // effective [log] level set on ONE line. Silent on a ship run with a clean ini.
     mh_ini_attach_logger(seam_log, g_ini_path);
     if (bind_relocated_from_ini() == 0) mh::state::bind_stock();
+    mh::state::bind(mh::state::RID_STORAGE_POLICY,
+                    static_cast<uint32_t>(reinterpret_cast<uintptr_t>(
+                        mh::storage_policy::hosted::region_data_mut())),
+                    mh::storage_policy::hosted::region_bytes());
+    if (!mh::order_tasks::hosted::bind_regions())
+        mh::config::detail::refuse(mh::cfgdir::config_dir(), "Cannot bind canonical strategic order state.",
+                                   "The native and promoted route owners must share valid canonical regions.");
     // LIB-ABI: bind the host-callback table BEFORE anything else in the arm sequence. Module
     // code runs in EVERY config (ship defaults promote translated bodies with no ini), and its
     // calls-struct binders read mh::host() on first use -- which fail-fast aborts unbound. The
@@ -377,8 +406,19 @@ extern "C" void MH_Core_Arm_Early(void) {
     // the earliest common point: DllMain calls it before MH_Seam_Init, ahead of the no-ini
     // early-return so the ship config is covered too. The [hostapi] report line stays at the
     // end of MH_Seam_Init, where the logger exists.
-    libmh_set_host_api(&mh::hostapi::mhdll_table(), LIBMH_HOST_API_VERSION);
-    libmh_set_tact_host_api(&mh::hostapi::mhdll_tact_table(), LIBMH_TACT_HOST_API_VERSION);
+    const auto &sim_host = mh::hostapi::mhdll_table();
+    if (!sim_host.participant_body_boundary || !sim_host.participant_removal_admit ||
+        sim_host.participant_body_boundary(uint32_t(mh::participant_boundary::operation::probe), 0) !=
+            mh::participant_boundary::READY)
+        mh::config::detail::refuse(mh::cfgdir::config_dir(), "Participant authority is not initialized.",
+                                   "Native and promoted simulation must share a completed-body boundary.");
+    const int sim_host_rc  = libmh_set_host_api(&sim_host, LIBMH_HOST_API_VERSION);
+    const int tact_host_rc = libmh_set_tact_host_api(&mh::hostapi::mhdll_tact_table(), LIBMH_TACT_HOST_API_VERSION);
+    if (MH_LibmhModule_IsBound() &&
+        (sim_host_rc != 0 || tact_host_rc != 0 || libmh_host_api_unbound(nullptr) != 0 ||
+         libmh_tact_host_api_unbound(nullptr) != 0))
+        mh::config::detail::refuse(mh::cfgdir::config_dir(), "Required host callbacks are not bound.",
+                                   "No promotion is published against an incomplete or incompatible host table.");
     // F4D-PRE: the HOOK-SERVICE table, beside the two above and for the same G104 reason one level
     // over. These five rows are what the 627-TU spine calls OUT through -- entry ownership, the two
     // entry installers, and the two determinism-harness questions -- and every [promote] installer

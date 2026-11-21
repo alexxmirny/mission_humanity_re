@@ -1,5 +1,5 @@
 //
-// caps/ovf_save.cpp -- the raised-caps save: planet-file trailer, container stamp (patching:PT-CAP8 S3, slice G).
+// caps/ovf_save.cpp -- sparse planet overflow tail IO (patching:PT-CAP8 S3).
 // Contract and rationale: caps/ovf_save.h. Pure: no game address is touched here.
 //
 #ifndef WIN32_LEAN_AND_MEAN
@@ -137,50 +137,5 @@ int load_tail(const file_io &io, void *f, int32_t *fail) {
     return rc;
 }
 
-bool file_has_footer(const file_io &io, void *f) {
-    const int32_t pos = io.tell(f);
-    if (pos < 0) return false;
-    uint32_t   len  = 0;
-    int32_t    from = 0;
-    const bool ok   = read_footer(io, f, &len, &from) && len >= sizeof(ovf_header) && len <= max_bytes_save() && from >= 0;
-    io.seek(f, pos, 0);
-    return ok;
-}
-
-// ---- the container stamp ----------------------------------------------------------------------------------
-void make_stamp(const uint8_t *slot, uint8_t *out) {
-    memcpy(out, slot, VERSION_BYTES);
-    memcpy(out + STAMP_OFFSET, "MHC1", 4);
-}
-
-bool is_stamp(const uint8_t *hdr, const uint8_t *slot) {
-    uint8_t s[VERSION_BYTES];
-    make_stamp(slot, s);
-    return memcmp(hdr, s, VERSION_BYTES) == 0;
-}
-
-bool member_included(const member_probe &mp, int i) {
-    return mp.system_of(mp.ctx, i) == mp.current_system && (mp.status_of(mp.ctx, i) != 0 || mp.current_planet == i);
-}
-
-bool stamp_needed(const member_probe &mp) {
-    if (!raised()) return false;
-    for (int i = FIRST_MEMBER; i <= LAST_MEMBER; ++i)
-        if (member_included(mp, i) && mp.footer_of(mp.ctx, i)) return true;
-    return false;
-}
-
-int version_check(uint8_t *hdr, const uint8_t *slot) {
-    g_refused = false;
-    if (!is_stamp(hdr, slot)) return VC_PASS;
-    if (raised()) {
-        memcpy(hdr, slot, VERSION_BYTES);
-        say("; [caps] load: raised save accepted\n");
-        return VC_ACCEPTED;
-    }
-    g_refused = true;
-    say("; [caps] load REFUSED: the save is a raised-caps save and [caps] raise is OFF\n");
-    return VC_REFUSED;
-}
 
 } // namespace mh::caps::ovf

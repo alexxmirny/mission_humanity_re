@@ -17,7 +17,7 @@ gameclock +100
 cursorhold 600 400 6
 screensettled
 logsel before
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 300 200 10
 screensettled
 capture bigmap_click__a_held_cursor
@@ -31,7 +31,7 @@ cursorhold 500 500 10
 screensettled
 logsel after_rclick
 capture bigmap_click__c_rclicked
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 screensettled
 logsel released
@@ -41,7 +41,7 @@ camto 2 2
 gameclock +100
 cursorhold 600 400 6
 screensettled
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 215 400 10
 screensettled
 capture bigmap_click__e_wrapped_held
@@ -59,7 +59,7 @@ cursorhold 500 450 10
 screensettled
 logsel after_drag
 capture bigmap_click__g_dragged
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 screensettled
 logsel released_end

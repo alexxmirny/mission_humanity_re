@@ -5,6 +5,7 @@
 // derivation.
 //
 #include "sim/sim_unit_state_attack_unit.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -62,6 +63,7 @@ void unit_state_attack_unit(const sim_view &v, sim_store &own, const unit_state_
     // 0x00485020-0x0048502a: this state handler consumes the WHOLE tick budget unconditionally -- no
     // incremental spend/carryover the way move_walker's microstep gate has.
     own.tick_budget() = 0.0;
+    if (!order_tasks_adapter::primary_access(v, own)) return;
 
     // 0x00485034-0x00485054: snapshot the primary target's (owner, slot) ONCE, before either cleanup
     // arm below zeroes target_ref/target_index -- the weapon-pick elevation check far below reuses
@@ -77,10 +79,12 @@ void unit_state_attack_unit(const sim_view &v, sim_store &own, const unit_state_
         u.target_ref   = 0;
         u.target_index = 0;
         c.unit_notify_status(player, unit_index, NOTIFY_STILL_CHASING);
-        if (u.state == STATE_ATTACK_UNIT_RETURN && (u.x != u.home_x || u.y != u.home_y)) {
+        if (u.state == STATE_ATTACK_UNIT_RETURN && (u.x != u.home_x || u.y != u.home_y) &&
+            !order_tasks_adapter::suppress_home(own, player, uint32_t(unit_index))) {
             c.unit_order_move_auto(player, unit_index, u.home_x, u.home_y);
         }
         c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+        order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
         return;
     }
 
@@ -99,10 +103,12 @@ void unit_state_attack_unit(const sim_view &v, sim_store &own, const unit_state_
             c.target_release_ref(player, unit_index, 1u);
             u.target_ref   = 0;
             u.target_index = 0;
-            if (u.x != u.home_x || u.y != u.home_y) {
+            if ((u.x != u.home_x || u.y != u.home_y) &&
+                !order_tasks_adapter::suppress_home(own, player, uint32_t(unit_index))) {
                 c.unit_order_move_auto(player, unit_index, u.home_x, u.home_y);
             }
             c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+            order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
         } else {
             // 0x0048526f-0x00485295: still chasing -- re-plan via GROUP_MARSHAL; `state` STAYS
             // ATTACK_UNIT (only `order` changes -- see llm_strat_unit_set_state_order's field comment).

@@ -56,6 +56,7 @@ void storage_remove_docked_unit(const sim_view &v, sim_store &own,
     // 0x00489f2a-0x00489f4c: unconditional notify. b_index is read after the compaction loop, but
     // nothing in this function writes it, so the value is the same either way.
     c.notify_ui(player, static_cast<uint32_t>(st.b_index));
+    own.storage_policy(mh::storage_policy::operation::cancel, player, unit_index);
 }
 
 } // namespace detail

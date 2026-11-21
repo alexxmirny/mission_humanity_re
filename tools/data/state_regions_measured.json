@@ -8054,7 +8054,7 @@
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "addr": "0x00713d20",
-   "size": 300
+   "size": 1024
   },
   {
    "name": "_G_LLM_TACT_FOV_STENCIL",
@@ -8154,7 +8154,7 @@
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "addr": "0x00713d20",
-   "size": 300
+   "size": 1024
   },
   {
    "name": "_G_LLM_TACT_FOV_STENCIL",
@@ -8204,7 +8204,7 @@
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "addr": "0x00713d20",
-   "size": 300
+   "size": 1024
   },
   {
    "name": "_G_LLM_TACT_DOOR_TABLE",
@@ -8224,7 +8224,7 @@
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "addr": "0x00713d20",
-   "size": 300
+   "size": 1024
   },
   {
    "name": "tile_objects",
@@ -9049,12 +9049,12 @@
   {
    "name": "_G_LLM_TILE_DRAWN_MAP",
    "addr": "0x00713920",
-   "size": 300
+   "size": 1018
   },
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "addr": "0x00713d20",
-   "size": 300
+   "size": 1024
   },
   {
    "name": "_G_LLM_MOUSE_BUTTONS_CUR",

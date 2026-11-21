@@ -183,6 +183,7 @@ struct emit_calls {
                                                               // @0x0049e653
 
     void (*force_resync)(); // llm_net_lockstep_force_resync @0x0049d9d6
+    mh::participant_boundary::admit_fn participant_admit = mh::participant_boundary::synchronous;
 };
 
 emit_state        estate();

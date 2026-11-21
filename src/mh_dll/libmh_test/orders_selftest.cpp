@@ -23,6 +23,8 @@
 #include "lockstep/tx_emit_order.h" // ST5: the WIRE half of the one-codec claim
 #include "orders/order_codec.h"
 #include "orders/order_index_codec.h" // O1c
+#include "include/mh_order_witness.h"
+#include "state/host_events.h"
 
 #include <cstdio>
 #include <cstring>
@@ -164,6 +166,108 @@ order make_order(double t, uint16_t unit, uint16_t owner, int16_t p0, uint16_t c
     return o;
 }
 
+void test_pending_without_alive_players() {
+    namespace W = mh::order_witness;
+    fixture f;
+    for (auto &player : f.players) player.status_flags = 0;
+    auto &owner = mh::state::order_witnesses();
+    W::reset_world(owner);
+    order command = make_order(0, 9, 0x80, 1, 10);
+    mh::orders::detail::pending_enqueue(f.st, &command);
+    const auto before = W::pin(owner, W::container::pending, 0);
+    mh::orders::detail::release_due(f.st, 10);
+    const auto after = W::pin(owner, W::container::pending, 0);
+    check("witness: inactive players retain both physical pending order and its display lineage",
+          f.pending_count == 1 && f.queue_count == 0 && before != 0 && after == before);
+    W::unpin(owner, before);
+    W::unpin(owner, after);
+    W::reset_world(owner);
+}
+void test_order_witness_lifetime() {
+    namespace W = mh::order_witness;
+    struct observations {
+        uint32_t                             life = 7;
+        std::vector<libmh_order_observation> values;
+    } observed;
+    constexpr uint32_t capacities[3] = {4, 4, 4};
+    alignas(8) uint8_t slab[W::fixed_slab_bytes(4, 4, 4)];
+    auto              *owner = W::initialize(
+        slab, sizeof slab, capacities,
+        [](void *context, uint32_t, uint32_t) {
+            return static_cast<observations *>(context)->life;
+        },
+        &observed,
+        [](void *context, const libmh_order_observation *value) {
+            static_cast<observations *>(context)->values.push_back(*value);
+        },
+        &observed);
+    const auto count = [&](uint16_t kind, uint64_t admission) {
+        unsigned n = 0;
+        for (const auto &value : observed.values)
+            n += value.kind == kind && value.admission_id == admission;
+        return n;
+    };
+    auto     command = W::canonical(make_order(0, 9, 0x80, 1, 10));
+    uint64_t first, second, group;
+    {
+        W::move_group invocation(*owner);
+        W::admit(*owner, W::container::queue, 0, command, false);
+        first = observed.values.back().admission_id;
+        group = observed.values.back().command_id;
+        W::admit(*owner, W::container::queue, 1, command, false);
+        second = observed.values.back().admission_id;
+        check("witness: identical reissues have distinct admissions but one actual issuer group",
+              first != second && group != 0 && observed.values.back().command_id == group &&
+                  observed.values.back().actor_incarnation == 7);
+    }
+    const auto pin = W::pin(*owner, W::container::queue, 0);
+    W::copy(*owner, W::container::pending, 0, pin);
+    W::clear(*owner, W::container::queue, 0);
+    W::clear(*owner, W::container::pending, 0);
+    check("witness: container compaction cannot discard a still-pinned logical source",
+          count(LIBMH_EVK_ORDER_DISCARDED, first) == 0);
+    W::unpin(*owner, pin);
+    check("witness: final source removal discards exactly its admission, not a newer identical one",
+          count(LIBMH_EVK_ORDER_DISCARDED, first) == 1 &&
+              count(LIBMH_EVK_ORDER_DISCARDED, second) == 0);
+    const auto applied = W::pin(*owner, W::container::queue, 1);
+    W::applied(*owner, applied);
+    W::clear(*owner, W::container::queue, 1);
+    W::unpin(*owner, applied);
+    check("witness: an applied command is not later reported rejected by tail cleanup",
+          count(LIBMH_EVK_ORDER_APPLIED, second) == 1 &&
+              count(LIBMH_EVK_ORDER_DISCARDED, second) == 0);
+    W::admit(*owner, W::container::queue, 0, command, false);
+    const auto old_admission  = observed.values.back().admission_id;
+    const auto old_generation = W::generation(*owner);
+    {
+        W::pinned old(*owner, W::container::queue, 0);
+        W::reset_world(*owner);
+        ++observed.life;
+        W::admit(*owner, W::container::queue, 0, command, false);
+        W::applied(*owner, old.get());
+        check("witness: restored actor slots cannot receive an old-world outcome",
+              !old.current() && W::generation(*owner) != old_generation &&
+                  observed.values.back().admission_id > old_admission &&
+                  observed.values.back().actor_incarnation == 8 &&
+                  count(LIBMH_EVK_ORDER_APPLIED, old_admission) == 0 &&
+                  count(LIBMH_EVK_ORDER_DISCARDED, old_admission) == 0);
+    }
+    W::reset_world(*owner);
+    W::begin_move_group(*owner);
+    W::admit(*owner, W::container::queue, 0, command, false);
+    group = observed.values.back().command_id;
+    W::begin_move_group(*owner);
+    const bool revoked = observed.values.back().kind == LIBMH_EVK_MOVE_GROUP_REVOKED &&
+                         observed.values.back().command_id == group;
+    W::admit(*owner, W::container::queue, 1, command, false);
+    check("witness: nested issuer ambiguity revokes grouping, not admitted destinations",
+          revoked && observed.values.back().command_id == 0 &&
+              observed.values.back().args[0] == command.args[0]);
+    W::end_move_group(*owner);
+    W::end_move_group(*owner);
+    W::reset_world(*owner);
+}
 } // namespace
 
 // ---- mp:U59 (HM-M1) (d): CROSS-ORIGIN ARRIVAL INTERLEAVING DOES NOT CHANGE THE SIM ------------------
@@ -298,9 +402,14 @@ static void test_cross_origin_interleaving() {
           swapped.hash != ref.hash);
 }
 
+int run_storagepolicytest();
+int run_ordertaskstest();
+
 int run_orderstest() {
     printf("=== orderstest (order container logic, no game) ===\n");
     namespace od = mh::orders::detail;
+    test_order_witness_lifetime();
+    test_pending_without_alive_players();
 
     // ---- scratch_reset: every slot to the sentinel ----
     {
@@ -617,6 +726,20 @@ int run_orderstest() {
             check("U45 fix on: an admin order vs an ordinary one keeps the retail rule", f.queue_count == 1);
             mh::orders::set_admin_dedup_exempt(false);
         }
+    }
+
+    // Independent building settings and native admin/echo traffic share a scheduler identity.
+    {
+        fixture f;
+        mh::orders::set_admin_dedup_exempt(false);
+        const uint16_t codes[] = {0xfc, 0xfd, 0xfb};
+        for (int i = 0; i < 3; ++i)
+            f.pending[i] = make_order(10.0, 3, 2, static_cast<int16_t>(codes[i]), codes[i]);
+        f.pending_count = 3;
+        od::release_due(f.st, 100.0);
+        check("rally, Auto and independent native admin orders survive one equal-clock release",
+              f.queue_count == 3 && f.queue[0].order_code == 0xfc && f.queue[1].order_code == 0xfd &&
+                  f.queue[2].order_code == 0xfb);
     }
 
     // ---- release_due: an UNORDERED (NaN) exec_time releases, because JBE does ----
@@ -1542,6 +1665,9 @@ int run_orderstest() {
                       !adm::stage_active() && adm::stage_remaining() == 0);
             check("stage: the imported PENDING prefix is untouched and the tap did not log",
                   reinterpret_cast<const unsigned char *>(&g.pending[0])[0] == 0xAA && adm::current().total == 7);
+            adm::counts(ns);
+            check("stage: a snapshot covering the entire log is already drained",
+                  adm::stage_begin(ns, nullptr) == 0 && adm::stage_remaining() == 0 && !adm::stage_active());
         }
         {
             // The point of staging: a 3000-record backlog (3x PENDING_CAP) flows through a PENDING that
@@ -1664,6 +1790,8 @@ int run_orderstest() {
 
     test_cross_origin_interleaving(); // mp:U59 (d)
 
+    g_fails += run_storagepolicytest();
+    g_fails += run_ordertaskstest();
     printf("%d checks, %d failures\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

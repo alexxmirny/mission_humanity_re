@@ -1069,6 +1069,39 @@ void test_hash_split_invariance() {
 
     uint8_t buf[173];
     for (uint32_t i = 0; i < sizeof(buf); ++i) buf[i] = (uint8_t)(i * 37 + 11);
+#if MH_HASH_WIDE
+    // Pre-word-load hashes of the asymmetric byte stream above. Independently pin
+    // little-endian word order and every tail length, including unaligned input.
+    static constexpr uint64_t expected[] = {
+        0x14650fb0739d0383ULL,
+        0xf7bd30d473cd0018ULL,
+        0xaaed30d4741e9018ULL,
+        0x88ed30d4bd2f9018ULL,
+        0xa3ed30209f2f9018ULL,
+        0x56ec54ed9f2f9018ULL,
+        0x0b2bc8ed9f2f9018ULL,
+        0x0070c8ed9f2f9018ULL,
+        0xe570c8ed9f2f9018ULL,
+        0x5b3596c57dd1f911ULL,
+        0x746d96c57e312111ULL,
+        0xe46d96c5b9aa2111ULL,
+        0x656d961f33aa2111ULL,
+        0xb26c4ac633aa2111ULL,
+        0xca559ec633aa2111ULL,
+        0xfdd89ec633aa2111ULL,
+        0x80d89ec633aa2111ULL,
+        0x4d3714c9ca1690beULL,
+    };
+    alignas(uint64_t) uint8_t positioned[24];
+    for (uint32_t offset = 0; offset < 8; ++offset) {
+        for (uint32_t i = 0; i < 17; ++i) positioned[offset + i] = buf[i];
+        for (uint32_t n = 0; n < 18; ++n) {
+            hash_sink h;
+            h.raw(positioned + offset, n);
+            ck(h.finish() == expected[n], "unaligned word and tail hashes preserve canonical values");
+        }
+    }
+#endif
 
     hash_sink one(sink_mode::VERDICT);
     one.raw(buf, sizeof(buf));
@@ -1096,6 +1129,54 @@ void test_hash_split_invariance() {
         packed.raw(&buf[0], 7);
         ck(six.finish() == packed.finish(),
            "the six-call and packed tile_objects shapes agree (the refactor that could have broken)");
+    }
+    {
+        // Freeze the former scalar stream independently of the shared tile packer.
+        // Full/partial batches, ignored record tails and every incoming carry must agree.
+        struct byte_sink final : state_sink {
+            std::vector<uint8_t> captured;
+            byte_sink(sink_mode m, uint32_t capacity) : state_sink(m) { captured.reserve(capacity); }
+            void raw(const void *p, uint32_t n) override {
+                const auto *b = static_cast<const uint8_t *>(p);
+                captured.insert(captured.end(), b, b + n);
+            }
+        };
+        auto former_tiles = [](const uint8_t *p, uint32_t n, state_sink &s) {
+            if (s.mode == sink_mode::PERSIST) {
+                s.raw(p, n);
+                return;
+            }
+            for (uint32_t i = 0; i + 8 <= n; i += 8) {
+                const uint8_t flags[] = {p[i], uint8_t(p[i + 1] & 0x3f)};
+                s.raw(flags, sizeof(flags));
+                for (uint32_t offset : {2u, 4u, 6u, 3u, 5u}) s.raw(p + i + offset, 1);
+            }
+        };
+        uint8_t tiles[17 * 8 + 7];
+        for (uint32_t i = 0; i < sizeof(tiles); ++i) tiles[i] = uint8_t(i * 29u + 31u);
+        for (sink_mode mode : {sink_mode::VERDICT, sink_mode::PERSIST}) {
+            for (uint32_t n = 0; n <= sizeof(tiles); ++n) {
+                byte_sink before(mode, n), after(mode, n);
+                former_tiles(tiles, n, before);
+                emit_tile_objects(tiles, n, after);
+                ck(before.captured == after.captured, "batched tiles preserve every canonical byte in both modes");
+                for (uint32_t prefix = 0; prefix < 8; ++prefix) {
+                    hash_sink scalar(mode), batched(mode);
+                    scalar.raw(buf, prefix);
+                    batched.raw(buf, prefix);
+                    former_tiles(tiles, n, scalar);
+                    emit_tile_objects(tiles, n, batched);
+#if MH_HASH_WIDE
+                    ck(scalar.h == batched.h && scalar.block == batched.block &&
+                           scalar.filled == batched.filled,
+                       "batched tile boundaries preserve the full carried hash state");
+#else
+                    ck(scalar.h == batched.h, "batched tiles preserve narrow hash state");
+#endif
+                    ck(scalar.finish() == batched.finish(), "batched tiles preserve the finalized hash");
+                }
+            }
+        }
     }
     {
         hash_sink h(sink_mode::VERDICT);

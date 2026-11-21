@@ -1,0 +1,61 @@
+# mods:MAPGEN2 -- the map picker's PREVIEW page and the lobby's three pages, on the STOCK maps (row 0 = Blue Monday, 256 tiles;
+# Cold War, 128 tiles). The right panel's description box carries a "View: <page>" spinner under Cancel (y=380 on the host):
+#   picker  Description | Preview   (default Preview)        lobby  Description | Preview | Settings   (default Description)
+# Each click is gated on the page it should have produced (`pickpage` / `lobbypage`): the 0x32 input-lock timer swallows a
+# click that follows another too closely, and a page the click did not turn is a timeout rather than a guess.
+# Captures are the user's to review (baselines/mappreview/_ignore.json marks them _unjudged); the checker reads the log.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+
+# --- the picker opens on Preview: the first map, a 256 map drawn 2:1 ---
+pickpage 1
+capture mp_default
+# --- a second map (row 2, Cold War, 128 tiles drawn 1:1) ---
+click 120 120
+settled Ok
+capture mp_second
+# --- Description page: the box shows the map's own text; page back to Preview ---
+settled Cancel
+click 501 380
+pickpage 0
+capture mp_desc
+settled Cancel
+click 501 380
+pickpage 1
+
+# --- the lobby: Description (status) first, then Preview, then Settings ---
+clickl Ok
+present Network players
+settled Start
+lobbypage 0
+capture lb_desc
+# Mode is HIDDEN and DISABLED off its page: a click where it will sit on Settings does nothing on Description or Preview.
+# (the click is queued before the pager click that follows, so `lobbymode 0` after it is a real "it did not toggle")
+click 501 184
+settled Cancel
+click 501 380
+lobbypage 1
+lobbymode 0
+capture lb_preview
+click 501 184
+settled Cancel
+click 501 380
+lobbypage 2
+lobbymode 0
+capture lb_settings
+# ... and on Settings it is the host's selector, inside the box
+click 501 184
+lobbymode 1
+capture lb_settings_team
+log mappreview: picker + lobby pages walked
+end

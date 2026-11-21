@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define LIBMH_HOST_IN_VERSION 0x8777535Eu
+#define LIBMH_HOST_IN_VERSION 0x8B172D81u
 
 /* ---- order ids (libmh_issue_order) ---------------------------------------------- */
 /* Each id names an owned order-issuing body; argv carries that body's committed
@@ -74,7 +74,7 @@ extern "C" {
 #define LIBMH_ORD_UNIT_ORDER_EXIT_STORAGE                          43u /* llm_strat_unit_order_exit_storage, arity 5 */
 #define LIBMH_ORD_UNIT_ORDER_MOVE                                  44u /* llm_strat_unit_order_move, arity 5 */
 #define LIBMH_ORD_UNIT_ORDER_MOVE_RELATIVE                         45u /* llm_strat_unit_order_move_relative, arity 4 */
-#define LIBMH_ORD_UNIT_ORDER_DISEMBARK_SOLDIERS                    46u /* llm_unit_order_disembark_soldiers, arity 2 */
+#define LIBMH_ORD_UNIT_ORDER_SQUAD_SPLIT                           46u /* llm_unit_order_squad_split, arity 2 */
 #define LIBMH_ORD_COUNT                                            47u
 
 /* ---- entry ids (libmh_in_unbound / the trap) ------------------------------------ */

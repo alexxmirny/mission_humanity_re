@@ -1,0 +1,33 @@
+# mods:M1H F10 original-arm reference. Same executable walk, inputs and timing as m1h_f10.txt.
+# Separate basename preserves the genuine original start frame without hiding selected connectors in the other arms.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 ctrl
+gameclock 6000
+capture m1h_f10
+# Same body-count tail as the other arms, not an elapsed-clock approximation.
+simstep 2500
+log m1h_f10: probe finished
+end

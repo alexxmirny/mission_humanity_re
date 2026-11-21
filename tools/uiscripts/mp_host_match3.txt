@@ -40,6 +40,7 @@ log HOST launched with MIXED races (host Human, client A Alien) and client B's s
 gamemode 2
 key 0x1c
 layout 00000419
+chatready
 type Привет
 field chat hex:d09fd180d0b8d0b2d0b5d182
 key 0x1c

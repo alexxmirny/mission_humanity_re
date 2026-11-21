@@ -57,6 +57,7 @@
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
 #include "crt/crt_select.h" // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
+#include "lockstep/participant_removal.h"
 
 namespace mh::lockstep {
 
@@ -150,6 +151,60 @@ void set_icon_counters(void (*wanted)(), void (*shown)()) {
     g_note_shown  = shown;
 }
 
+namespace {
+struct timeout_removal {
+    timekeeper_state state;
+    timekeeper_calls calls;
+    participant_view roster;
+    int32_t          side, index;
+    uint64_t         horizon;
+};
+void complete_timeout(const timekeeper_state &s, const timekeeper_calls &c, int32_t side, int32_t index) {
+    c.player_remove_timeout(side);
+    c.print_player_left_alert(index);
+    *s.status_flags &= static_cast<uint8_t>(~LS_HORIZON_PENDING);
+    --*s.lockstep_player_count;
+    --*s.lobby_scan_host_count;
+    c.time_resync_and_tick();
+}
+bool timeout_valid(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<timeout_removal>(bytes, size);
+    return p.calls.player_by_side_id(p.side) == p.index &&
+           participant::human(p.roster.players, p.index) &&
+           participant::pb::bits(p.roster.horizons[p.index]) == p.horizon &&
+           (*p.state.status_flags & LS_HORIZON_PENDING) != 0 &&
+           p.state.peer_state[p.index * MAX_PLAYERS + *p.state.player_side] == PEER_STATE_NONE;
+}
+bool timeout_terminal(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<timeout_removal>(bytes, size);
+    return participant::survivors(p.roster.players, p.index) <= 1;
+}
+bool timeout_execute(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<timeout_removal>(bytes, size);
+    complete_timeout(p.state, p.calls, p.side, p.index);
+    return true;
+}
+void timeout_at_boundary(const timekeeper_state &s, const timekeeper_calls &c,
+                         int32_t side, int32_t index) {
+    if (c.participant_admit == participant::pb::synchronous) {
+        complete_timeout(s, c, side, index);
+        return;
+    }
+    if (!c.participants) participant::fail("timeout admission has no roster view");
+    const auto roster = c.participants();
+    if (!participant::continuing(roster.players, index, *s.player_side)) {
+        complete_timeout(s, c, side, index);
+        return;
+    }
+    const timeout_removal p{s, c, roster, side, index,
+                            participant::pb::bits(roster.horizons[index])};
+    const auto            r = participant::request_for(index, roster.horizons[index], p, timeout_execute,
+                                                       timeout_valid, timeout_terminal);
+    if (participant::submit(c.participant_admit, r) == participant::pb::admission::execute_now)
+        complete_timeout(s, c, side, index);
+}
+} // namespace
+
 const timekeeper_calls &timekeeper_live_calls() {
     static const timekeeper_calls tc = {
         // NOT MH_INTERNAL_CALL, DELIBERATELY, and this is the one edge in the closure that must
@@ -193,6 +248,8 @@ const timekeeper_calls &timekeeper_live_calls() {
                          mh::lockstep::lockstep_broadcast_player_leave),
         live_print_player_left_alert,
         &live_overlay_hoist_ops(), // LIB-ABI stage E
+        participant::live_admit,
+        live_participant_view,
     };
     return tc;
 }
@@ -250,12 +307,7 @@ int32_t time_tick(const timekeeper_state &s, const timekeeper_calls &c, const re
                     // think of that peer".
                     const uint8_t st = s.peer_state[pidx * MAX_PLAYERS + *s.player_side];
                     if (st == PEER_STATE_NONE && (*s.status_flags & LS_HORIZON_PENDING) != 0) {
-                        c.player_remove_timeout(side);
-                        c.print_player_left_alert(pidx);
-                        *s.status_flags          = static_cast<uint8_t>(*s.status_flags & ~LS_HORIZON_PENDING);
-                        *s.lockstep_player_count = *s.lockstep_player_count - 1;
-                        *s.lobby_scan_host_count = *s.lobby_scan_host_count - 1;
-                        c.time_resync_and_tick();
+                        timeout_at_boundary(s, c, side, pidx);
                     }
                 }
             }

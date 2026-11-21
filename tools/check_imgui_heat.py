@@ -50,15 +50,11 @@ def judge(net):
     if len(live) != 1:
         f.append("expected exactly one `; [heat] live set` line (one click), found %d" % len(live))
     else:
-        cost, window, mates, scale, retrace, turn, cap, margin, step, on = (
-            int(x) for x in live[0].groups()
-        )
-        # the click on `scale by mates` switches the default (1, since mods:M1WL v5) OFF; the other keys are the v5 defaults (+ the row's min mates 3)
-        if (cost, window, mates, scale, retrace, cap, margin, on) != (2, 120, 3, 0, 1, 16, 50, 1):
-            f.append(
-                "the live set line says cost=%d window=%d mates=%d scale=%d retrace=%d cap=%d margin=%d on=%d, wanted 2 / 120 / 3 / 0 / 1 / 16 / 50 / 1"
-                % (cost, window, mates, scale, retrace, cap, margin, on)
-            )
+        scale, on = int(live[0].group(4)), int(live[0].group(10))
+        # The fixture explicitly starts enabled/scaled; the real click must
+        # disable scaling without disabling the heat map.
+        if scale != 0 or on != 1:
+            f.append("the live click must leave scale=0 and on=1, got %d / %d" % (scale, on))
     if not any(FIRED.search(x) for x in net):
         f.append(
             "no `; M1WL heat` line: the stream heat never priced a plan, so the map had nothing to show"
@@ -82,7 +78,9 @@ def selftest():
     case("good run is green", good_net, False)
     case("no live line is red", good_net[1:], True)
     case("two live lines is red", good_net[:1] * 2 + good_net[1:], True)
-    case("wrong values are red", [good_net[0].replace("scale=0", "scale=1")] + good_net[1:], True)
+    case(
+        "scale did not switch off", [good_net[0].replace("scale=0", "scale=1")] + good_net[1:], True
+    )
     case("heat off is red", [good_net[0].replace("on=1", "on=0")] + good_net[1:], True)
     case("no plan priced is red", good_net[:1], True)
     print("check_imgui_heat --selftest: %s" % ("PASS" if not bad else "FAIL (%d)" % bad))

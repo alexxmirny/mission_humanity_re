@@ -20,6 +20,7 @@
 #define LIBMH_TACT_HOST_API_GEN_H
 
 #include <stdint.h>
+#include "include/mh_storage_policy.h"
 
 /* FNV-1a over the ABI-relevant text (categories, names, signatures). Pass to
  * libmh_set_tact_host_api(); the implementation refuses a value it was not compiled with. */

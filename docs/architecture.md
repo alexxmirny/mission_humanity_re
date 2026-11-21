@@ -292,15 +292,35 @@ skips players by, that the AI tick chain gates on, and that
 call is **conditional** on `count_active_players() < 2` (the game-over path), so an ordinary
 3+-survivor drop flips only b2/b3/b4.
 
-**Retail is nonetheless ordered — by a barrier, not by the order stream.** The removal is applied
-local-immediately and on arrival, never scheduled; what makes it safe is that a silent peer's
-`PEER_HORIZON` freezes, `llm_net_lockstep_commit_horizon` (`0x49c189`) mins over it, and
-`llm_strat_time_tick` clamps the sim clock to the result — so every peer is *parked at the dead peer's
-last horizon* when the leader-gated drop fires, with a receiver-side fail-stop on horizon mismatch.
-The coupling is therefore latent in retail. **Our injected `graceful_drop` fast-drop (always on) removes that
-precondition** by firing the same function on transport-death instead of while parked (MP D5). This is
-why RI-LOCKSTEP must turn peer-drop into an ordered order rather than a direct write: the current
-safety is emergent and easy to break from outside.
+**Retail relies on a horizon barrier, not the order stream; that barrier does not certify body completion.**
+The removal is applied local-immediately and on arrival. A silent peer's `PEER_HORIZON`
+freezes, `llm_net_lockstep_commit_horizon` (`0x49c189`) mins over it, and the time driver clamps
+the accumulator to that result. But the driver advances `GAME_CLOCK` before releasing orders
+and entering the step's pre-body hash/work. Thus `TOTAL >= COMMITTED`, or even a clock equal
+to the dead peer's horizon, is not proof that its final funded body ran.
+RELEASE15 elect4 demonstrates the distinction: one survivor clears HUMAN before body/hash602,
+while two do so afterward; changing only that status byte reproduces their exact region hash.
+The injected fix uses one initialized host-owned completed-prefix authority.
+Native and translated **actual bodies** bracket its clock witness; all driver paths poll
+afterward, before the next increment. Continuing sender, consensus and timeout operations
+are deferred whole; accepted receiver drops retain their immediate notice/network-progress
+clear but defer roster/count/commit/resync. Only that datagram's producing sender waits;
+owned tails survive shared-buffer reuse while other origins can fund the last body.
+Self/last-peer/terminal cleanup keeps its original immediate behavior. The
+[shared authority](../src/mh_dll/mh_common/participant_boundary.h),
+[time driver](../src/mh_dll/libmh/lockstep/turn_engine.cpp) and
+[native carriers](../src/mh_dll/mh/seams/participant_boundary_native.cpp)
+implement the same completed-prefix contract.
+
+Transport deaths use fixed per-slot intents in that same owner, not a single
+head-of-line latch. All declared deaths are admitted before eligibility polling;
+a higher-horizon death cannot hide a lower-horizon death needed to fund a body.
+The net module's current `MH_Net_DeadPeerMask()` declarations persist until an
+accepted reconnect clears the corresponding ID. The owner revalidates them
+before application, includes them in pending-import exclusion and retires each
+intent once. Zero transport sockets do not close/reset this authority while
+canonical remote humans remain. This changes neither quorum nor horizon rules.
+
 
 ## Data & configuration
 

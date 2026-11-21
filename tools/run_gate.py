@@ -57,13 +57,18 @@ import sys
 import threading
 import time
 
+import tmp_lifecycle
+import tmp_runs
+import tool_paths
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import hostlock  # noqa: E402
-import machine_config as machine  # noqa: E402
+import gate_admission
+import hostlock
+import machine_config as machine
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
-LOG_DIR = os.path.join(REPO, "tmp", "gate")
+LOG_DIR = None  # Assigned only by an executing owned run; --plan remains read-only.
 
 
 # tooling:TL-RELGATE-FOLD (1): every `vm` unit is `first` so the VM chain is dispatched ahead of the local units the
@@ -179,27 +184,21 @@ def units(args):
                 # promoted-vs-original unit was), so what this costs in suite wall is mostly
                 # absorbed by the overlap.
                 #
-                # GATE DIET BLOCK 3 (2026-09-24): the multi-peer pool is now its OWN knob
-                # (--suite-net-jobs) and is PRICED as what it is -- wait-bound. A capped multi-peer
-                # lane sleeps between frames (gate_timeline measured avg 0.11 CPU-busy games across
-                # the suite), so one net job costs NET_JOB_WEIGHT of a core, not two. Pinning it to
-                # --suite-jobs (2) had the suite's 60-odd multi rows queue behind a CPU budget they
-                # barely use.
+                # Multi-peer rows have an independent concurrency knob. Their measured
+                # process-tree CPU includes helpers and offline evidence work, not just
+                # capped game frames; each row now reserves one estimated core.
                 "--net-jobs",
                 str(args.suite_net_jobs),
             ]
             # RELEASE TIER (user 2026-10-01, option 1): rows marked `tier: release` in the UI
             # registry are skipped by a bare suite run; --release puts them back.
             + (["--release-tier"] if getattr(args, "release", False) else []),
-            # = jobs (2), down from jobs+1: since the [pacing] fps_cap every multi-peer lane
-            # SLEEPS between frames instead of spinning a core, so the suite's real footprint is
-            # about its job count. It was set while the weight-3 promoted-vs-original unit still
-            # ran, and it is what let both A/B/C units start at t0 (3+2+2 = 7) instead of queueing
-            # behind the suite -- the run-3 late-start defect. That unit is gone (F5M S4b), so the
-            # budget it was competing for is slacker, not tighter; the figure stands unchanged
-            # because it is a statement about the SUITE's own footprint, not about the field.
+            # Whole-unit projection only. Runtime admission reserves actual child leaves,
+            # so configured pool slots cannot oversubscribe the gate's shared budget.
             "weight": args.suite_jobs + int(math.ceil(args.suite_net_jobs * NET_JOB_WEIGHT)),
-            "timeout": 2400,
+            # Complete RELEASE3 measured7489s after the safe admission folds.
+            # Keep an observer beyond the measured cost envelope, not a row waiver.
+            "timeout": 12000 if getattr(args, "release", False) else 2400,
         },
         # ---- THE `ab` UNIT DROPPED AT FORK F5M S4b (the archive-tool cut) ---------------------
         # It ran the promoted-vs-original A/B over the registered sim fixtures -- step 3b of the
@@ -236,10 +235,10 @@ def units(args):
             # selftest exes here, overlapped with the suite's live games -- cl.exe competing with
             # mh.exe for the same cores (user, 2026-09-27: build first, then play).
             # Under run_gate --no-build there was no step 1, so the unit builds its own exes as before.
-            "cmd": [PY, os.path.join(REPO, "tools", "run_selftests.py")]
+            "cmd": [PY, os.path.join(REPO, "tools", "run_selftests.py"), "--exe-jobs", "2"]
             + ([] if args.no_build else ["--no-build"]),
-            "weight": 3 if args.no_build else 1,  # without step 1 the ASan msbuild is back in here
-            "timeout": 1200,
+            "weight": 3 if args.no_build else 2,  # preparation or two audited executable lanes
+            "timeout": 2400 if getattr(args, "release", False) else 1200,
         },
         {
             "name": "abc_spcamp",
@@ -369,9 +368,9 @@ def units(args):
         {
             "name": "lint",
             "why": "step 5 -- lint_repo (clang-format, ruff, every drift gate)",
-            "cmd": [PY, os.path.join(REPO, "tools", "lint_repo.py")],
-            "weight": 2,
-            "timeout": 900,
+            "cmd": [PY, os.path.join(REPO, "tools", "lint_repo.py"), "--jobs", str(args.cores)],
+            "weight": args.cores,
+            "timeout": 3600 if getattr(args, "release", False) else 900,
         },
     ]
     if getattr(args, "release", False):
@@ -530,13 +529,13 @@ DUR_HINTS = {
     "selftests_smoke": 45,
     "ui_one": 45,
 }
-TIMINGS = os.path.join(LOG_DIR, "last_timings.json")
+TIMINGS = str(tool_paths.state_path("gate/last_timings.json", repo=REPO))
 # The comparison base for the growth figures on a red line: the last run that was GREEN on every
 # unit AND every rule below. Copied from TIMINGS only by a fully green run.
-GREEN_TIMINGS = os.path.join(LOG_DIR, "last_green_timings.json")
+GREEN_TIMINGS = str(tool_paths.state_path("gate/last_green_timings.json", repo=REPO))
 # test_ui.py's own record (per-scenario seconds, budget_s, lane-group chains) -- read after the
 # suite unit finishes. Written by every suite run, so it is only trusted when newer than the unit.
-SUITE_RECORD = os.path.join(REPO, "tmp", "ui_test", "last_suite_timing.json")
+SUITE_RECORD = str(tool_paths.state_path("ui_test/last_suite_timing.json", repo=REPO))
 
 # ---- THE ROUTINE (gate diet block 4, user-approved 2026-09-24) ---------------------------------
 # A gate that only says PASS/FAIL lets its cost grow unseen: the suite went from "a couple of
@@ -560,41 +559,44 @@ SUITE_WALL_MAX = int(23.5 * 60)
 # 25 min since 2026-09-29: the suite cap above plus the ~4 min the other units run after it (the
 # last two full gates: 1297 s, 1508 s wall).
 GATE_WALL_MAX = 25 * 60
-# 45 min for `--release` since 2026-10-18 (was 75, mp:U65): tooling:TL-RELGATE-FOLD moved most host-migration arms to the
-# all-local `hm_local` batch and put the VM chain first; the first quiet-box run measured 30.0 min (was 64.8). 1.5x it,
-# so a load-slow run still fits; each unit still answers to its budget_s.
-RELEASE_GATE_WALL_MAX = 45 * 60
-# What one --suite-net-jobs slot costs the core budget (block 3): two capped game processes that
-# sleep most of every frame. Measured: avg 0.11 CPU-busy games per game, i.e. ~0.22 of a core per
-# job; 1/3 keeps ~50 % headroom. It was 0.5 for the first diet gate (2026-09-24), which priced the
-# suite at 5 of 7 cores: with det's 2 nothing else fit at t0, selftests (w3, 312 s) could only start
-# when the suite ended at 556 s, and the gate wall was 867 s against the 900 s cap. At 1/3 the suite
-# is 4, so selftests starts when det frees its 2 cores.
-NET_JOB_WEIGHT = 1.0 / 3.0
+# Complete RELEASE3 after folding: suite7489s / gate7585s. User-authorized
+# measured x1.3, rounded up to150s/300s. Ordinary full/light caps stay unchanged.
+RELEASE_SUITE_WALL_MAX = 9750
+RELEASE_GATE_WALL_MAX = 9900
+# Actual descendant-Job CPU on 2026-11-05 measured 0.44/0.71/0.73 core for 2/3/5-game
+# rows after early rundown. The old 1/3 estimate classified FPS, not actual CPU.
+NET_JOB_WEIGHT = 1.0
 
 # ---- THE LIGHT PROFILE (tooling:TL-GATE12, user 2026-09-29) ------------------------------------
 # "We run selftests with ASan and the full UI suite every time, but we barely change the code they
 # test." The light gate keeps the oracles that catch what an iteration usually breaks (determinism,
 # the recorded play sessions, the patch parity, lint) and buys back the rest per CHANGED FILE rather
 # than per run. Its own wall cap, its own timing record, and it never writes the full green record.
-LIGHT_GATE_WALL_MAX = 9 * 60
-LIGHT_TIMINGS = os.path.join(LOG_DIR, "last_light_timings.json")
-LIGHT_GREEN_TIMINGS = os.path.join(LOG_DIR, "last_light_green_timings.json")
+# User-approved 2026-11-06: rc15 final light measured707.7s;
+# preserve its failed receipt and allow a thirteen-minute commit checkpoint.
+LIGHT_GATE_WALL_MAX = 13 * 60
+# Explicit user-approved expanded checkpoint: the previous 2400s UI coordinator
+# completed only60/93 rows, including a1955s twelve-map sequence. Finite policy
+# ceilings, not measured greens; ordinary/full/release caps remain independent.
+WIDE_LIGHT_GATE_WALL_MAX = 90 * 60
+WIDE_LIGHT_COORD_TIMEOUT = 80 * 60
+LIGHT_TIMINGS = str(tool_paths.state_path("gate/last_light_timings.json", repo=REPO))
+LIGHT_GREEN_TIMINGS = str(tool_paths.state_path("gate/last_light_green_timings.json", repo=REPO))
 # ---- THE SMOKE PROFILE (tooling:TL-LIGHT-WALL-CAP, user 2026-10-03) ---------------------------------
 # For ITERATING on code, between commits: build, the plain selftest suites of the domains the change
 # touches, lint, and at most ONE change-aware UI row. No ASan, no VMs, no replays, no base UI rows.
 # NOT a commit gate -- the commit gate is --light; merges/releases are the full gate / --release.
 # Its own cap and its own records, so it neither reds on nor pollutes the light/full history.
 SMOKE_GATE_WALL_MAX = 4 * 60
-SMOKE_TIMINGS = os.path.join(LOG_DIR, "last_smoke_timings.json")
-SMOKE_GREEN_TIMINGS = os.path.join(LOG_DIR, "last_smoke_green_timings.json")
+SMOKE_TIMINGS = str(tool_paths.state_path("gate/last_smoke_timings.json", repo=REPO))
+SMOKE_GREEN_TIMINGS = str(tool_paths.state_path("gate/last_smoke_green_timings.json", repo=REPO))
 SMOKE_NOT_A_GATE = (
     "SMOKE IS NOT A COMMIT GATE -- no ASan, no determinism, no replays, no VM units. It answers "
     "'did my last edit break the domain I touched'. Commit on `--light`; merge/release on the full gate."
 )
 # The one record the light gate reads and never writes: the commit the last FULL, un-skipped, green
 # gate ran on. Its distance from HEAD is the escalation signal.
-FULL_GREEN = os.path.join(LOG_DIR, "last_full_green.json")
+FULL_GREEN = str(tool_paths.state_path("gate/last_full_green.json", repo=REPO))
 # ~30 commits/day on master in late 2026-09 (git rev-list --since), so 60 commits is ~2 working days.
 FULL_DUE_COMMITS = 60
 FULL_DUE_DAYS = 3
@@ -625,7 +627,11 @@ _GFX_ROWS = ("overlay_seq", "res_walk")
 _INPUT_ROWS = ("ship_walk", "overlay_seq")
 _UI_ROWS = ("overlay_seq", "screen_seq", "no_net_walk")
 # Rows of several processes (solo_steps) whose smoke run is ONE cheap step (test_ui.py --step), not the whole sequence.
-SMOKE_STEPS = {"overlay_seq": "win_resize", "screen_seq": "tact_panel"}
+SMOKE_STEPS = {
+    "overlay_seq": "win_resize",
+    "screen_seq": "tact_panel",
+    "res_notice_seq": "res_notice_100",
+}
 _NET_ROWS = ("lobby_seq", "relay_xfer", "graceful_quit", "link_death_seq", "net_hud_scroll")
 _MAP_ROWS = ("map_xfer",)
 _CXX = r"\.(c|cc|cpp|cxx|h|hpp|inl)$"
@@ -663,7 +669,7 @@ LIGHT_RULES = (
         "ini key registry ([video] keys the UI rows read)",
         r"^src/mh_dll/mh/config/ini_keys\.def$",
         (),
-        _GFX_ROWS + ("res4_s150", "res_notice_100"),
+        _GFX_ROWS + ("res4_s150", "res_notice_seq", "lang_seq"),
     ),
     (
         "input",
@@ -743,7 +749,7 @@ def _registry_rows_touched(base):
         return set()
     starts = [(i + 1, m.group(1)) for i, ln in enumerate(lines) for m in [NAME_RE.match(ln)] if m]
     out = set()
-    for m in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", diff, re.M):
+    for m in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", diff, re.MULTILINE):
         a = int(m.group(1))
         n = int(m.group(2)) if m.group(2) is not None else 1
         for ln in range(a, a + max(n, 1)):
@@ -756,7 +762,7 @@ def _registry_rows_touched(base):
 NAME_RE = re.compile(r"^  - name:\s*(\S+)")
 
 
-def light_selection(files, tests=None, registry_rows=()):
+def light_selection(files, tests=None, registry_rows=(), ini_delta=None):
     """PURE: the change-aware additions for a list of repo-relative changed paths.
 
     tests = the UI registry rows (dicts, test_ui.TESTS) -- used to map an edited uiscripts file to
@@ -785,8 +791,12 @@ def light_selection(files, tests=None, registry_rows=()):
                         sel[u] = True
                     else:
                         sel["units"].add(u)
-                sel["rows"].update(rows_)
-                by_label.setdefault(label, []).append(f)
+                if label.startswith("ini key registry") and ini_delta == "lang":
+                    sel["rows"].add("lang_seq")
+                    by_label.setdefault("ini key registry (language changes)", []).append(f)
+                else:
+                    sel["rows"].update(rows_)
+                    by_label.setdefault(label, []).append(f)
         if f.startswith("tools/uiscripts/"):
             hit = True
             parts = f.split("/")
@@ -868,19 +878,72 @@ def changed_files(args, default_base):
         fs = [x.strip().replace("\\", "/") for x in args.files.split(",") if x.strip()]
         return fs, "(--files)"
     base = getattr(args, "diff_base", "") or default_base
-    files = (_git("diff", "--name-only", base) or "").split()
-    files += (_git("ls-files", "--others", "--exclude-standard") or "").split()
-    return files, base
+    if _git("merge-base", "--is-ancestor", base, "HEAD") is None:
+        raise SystemExit("[gate] invalid or non-ancestor diff base: %s" % base)
+    tracked = _git("diff", "--name-only", "-z", base, "--")
+    untracked = _git("ls-files", "--others", "--exclude-standard", "-z")
+    if tracked is None or untracked is None:
+        raise SystemExit("[gate] cannot determine changed files against %s" % base)
+    return [f for f in (tracked + untracked).split("\0") if f], base
 
 
 def _registry_tests():
     try:
-        import test_ui  # noqa: PLC0415 -- the registry, only when a plan is asked for
+        import test_ui
 
         return list(test_ui.TESTS)
     except Exception as e:  # noqa: BLE001 -- a broken registry must not hide the base gate
         print("[gate] WARNING: could not load the UI registry (%s) -- no row mapping" % e)
         return []
+
+
+_INI_KEYS_PATH = "src/mh_dll/mh/config/ini_keys.def"
+
+
+def _ini_key_delta(diff):
+    """Return 'lang' only for an entirely understood language-key diff; otherwise None.
+
+    Inspect both deleted and added lines. Comments, preprocessor edits, malformed rows,
+    other sections, missing hunks and failed diffs retain broad registry coverage.
+    """
+    from gen_ini_registry import CLASSES, FLAGS, SUBTABS, TYPES, _unquote, split_args
+
+    if not diff:
+        return None
+    in_hunk = False
+    sections = set()
+    for line in diff.splitlines():
+        if line.startswith("@@ "):
+            in_hunk = True
+        elif in_hunk and line.startswith(("+", "-")):
+            row = line[1:].strip()
+            match = re.match(r"MH_INI_KEY\s*\(", row)
+            if not match:
+                return None
+            args, end = split_args(row, match.end())
+            if args is None or len(args) != 9 or row[end:].strip():
+                return None
+            sec, key, typ, default, cls, label, sub, options, flags = args
+            if (
+                not re.fullmatch(r'"[a-zA-Z0-9_]+"', sec)
+                or not re.fullmatch(r'"[a-zA-Z0-9_.-]+"', key)
+                or any(not re.fullmatch(r'"(?:[^"\\]|\\.)*"', x) for x in (default, label, options))
+                or typ not in TYPES
+                or cls not in CLASSES
+                or sub not in SUBTABS
+                or any(f.strip() not in FLAGS for f in flags.split("|"))
+            ):
+                return None
+            sections.add(_unquote(sec))
+        elif in_hunk and not line.startswith(" "):
+            return None
+    return "lang" if sections == {"lang"} else None
+
+
+def _ini_delta_for_base(files, base, trusted):
+    if not trusted or _INI_KEYS_PATH not in files:
+        return None
+    return _ini_key_delta(_git("diff", "--no-ext-diff", "-U0", base, "--", _INI_KEYS_PATH))
 
 
 def light_plan(args):
@@ -892,7 +955,9 @@ def light_plan(args):
         base = "HEAD~%d" % min(FALLBACK_DEPTH, max(depth - 1, 0)) if depth > 1 else "HEAD"
     files, base = changed_files(args, default_base=base)
     tests = _registry_tests()
-    sel = light_selection(files, tests, _registry_rows_touched(base))
+    trusted = base != "(--files)" and (not st["due"] or getattr(args, "diff_base", "") == "HEAD")
+    ini_delta = _ini_delta_for_base(files, base, trusted)
+    sel = light_selection(files, tests, _registry_rows_touched(base), ini_delta)
     return light_units(args, sel, tests), sel, base, files, st
 
 
@@ -904,7 +969,7 @@ def release_rows():
     """[(name, budget_s)] of the UI registry's `tier: release` rows ([] if the registry won't load)."""
     try:
         sys.path.insert(0, os.path.join(REPO, "tools"))
-        import test_ui  # noqa: PLC0415
+        import test_ui
 
         return [
             (t["name"], t.get("budget_s") or 0) for t in test_ui.TESTS if t.get("tier") == "release"
@@ -948,10 +1013,12 @@ def light_units(args, sel, tests=()):
     # so A-vs-C detects what A-vs-B + B-vs-C detect; it gives up only ATTRIBUTION (promotion bug vs
     # replay drift), which the full profile's three arms still provide. One game, so weight 1.
     for r in rows:
-        if r["name"] in LIGHT_ABC_UNITS and not sel.get("abc3"):
-            r["cmd"] = r["cmd"] + ["--ui-abc-arms", "A,C"]
-            r["weight"] = 1
-            r["why"] = r["why"].split(",")[0] + ", SHIP ARM ONLY (A vs the recording oracle C)"
+        if r["name"] in LIGHT_ABC_UNITS:
+            # All requested arms remain; a real one-core Job cap bounds their shared execution.
+            r["weight"], r["cpu_bound"] = 1, True
+            if not sel.get("abc3"):
+                r["cmd"] = r["cmd"] + ["--ui-abc-arms", "A,C"]
+                r["why"] = r["why"].split(",")[0] + ", SHIP ARM ONLY (A vs the recording oracle C)"
     skip_suites = [] if sel.get("loopback") else ["--skip-suites", ",".join(LOOPBACK_SUITES)]
     loop_note = "" if sel.get("loopback") else "; loopback transport suites skipped (no net change)"
     if sel["asan"]:
@@ -977,10 +1044,16 @@ def light_units(args, sel, tests=()):
                 "why": "step 2, PLAIN only (--no-asan): no spine/common C++ changed since the last "
                 "full green -- the ASan pass is the full gate's (G32 forces it back when one does)"
                 + loop_note,
-                "cmd": [PY, os.path.join(REPO, "tools", "run_selftests.py"), "--no-asan"]
+                "cmd": [
+                    PY,
+                    os.path.join(REPO, "tools", "run_selftests.py"),
+                    "--no-asan",
+                    "--exe-jobs",
+                    "2",
+                ]
                 + ([] if args.no_build else ["--no-build"])
                 + skip_suites,
-                "weight": 1,
+                "weight": 3 if args.no_build else 2,
                 "timeout": 900,
             }
         )
@@ -991,7 +1064,7 @@ def light_units(args, sel, tests=()):
         solo = {t["name"] for t in tests if t.get("kind") == "solo"} if tests else set()
         n_solo = sum(1 for r in ui if r in solo) or 1
         n_multi = max(1, len(ui) - n_solo)
-        jobs, net_jobs = min(2, n_solo), min(3, n_multi)
+        jobs, net_jobs = min(4, n_solo), min(3, n_multi)
         rows.append(
             {
                 "name": "smoke",
@@ -1000,6 +1073,7 @@ def light_units(args, sel, tests=()):
                 "cmd": [
                     PY,
                     os.path.join(REPO, "tools", "test_ui.py"),
+                    "--longest-first",
                     "--jobs",
                     str(jobs),
                     "--net-jobs",
@@ -1170,7 +1244,8 @@ def smoke_plan(args):
     uncommitted edit under iteration) unless --diff-base / --files say otherwise."""
     files, base = changed_files(args, default_base="HEAD")
     tests = _registry_tests()
-    sel = light_selection(files, tests, _registry_rows_touched(base))
+    ini_delta = _ini_delta_for_base(files, base, base == "HEAD")
+    sel = light_selection(files, tests, _registry_rows_touched(base), ini_delta)
     return smoke_units(args, sel, files, tests), sel, base, files
 
 
@@ -1188,7 +1263,15 @@ def _growth(now, then):
     return "last green %.0fs, %+.0f%%" % (then, (now - then) * 100.0 / then)
 
 
-def diet_reds(unit_secs, gate_wall, suite_rec, green, gate_cap=GATE_WALL_MAX, unit_budgets=None):
+def diet_reds(
+    unit_secs,
+    gate_wall,
+    suite_rec,
+    green,
+    gate_cap=GATE_WALL_MAX,
+    unit_budgets=None,
+    suite_cap=SUITE_WALL_MAX,
+):
     """The routine's red lines (block 4b). unit_secs = {unit: seconds}; suite_rec = test_ui's
     record ({"per_test": {name: {"secs", "budget_s", "verdict"}}, ...}) or {}; green = the last
     green run's timings (of the SAME profile); gate_cap = the profile's wall cap (the light
@@ -1237,10 +1320,10 @@ def diet_reds(unit_secs, gate_wall, suite_rec, green, gate_cap=GATE_WALL_MAX, un
                 "unit %s ran %.0fs > %.1fx its budget_s %ds (%s)"
                 % (name, secs, SCENARIO_OVER, b, _growth(secs, green.get(name)))
             )
-    if unit_secs.get("suite", 0) > SUITE_WALL_MAX:
+    if unit_secs.get("suite", 0) > suite_cap:
         reds.append(
             "suite wall %.0fs > %ds critical-path cap (%s)"
-            % (unit_secs["suite"], SUITE_WALL_MAX, _growth(unit_secs["suite"], green.get("suite")))
+            % (unit_secs["suite"], suite_cap, _growth(unit_secs["suite"], green.get("suite")))
         )
     if gate_wall > gate_cap:
         reds.append(
@@ -1320,6 +1403,31 @@ def selftest():
     )
     print("  %-26s %s" % ("the light profile's own wall cap", "ok" if hit else "XX"))
     ok = ok and hit
+    release_boundary = {"suite": RELEASE_SUITE_WALL_MAX}
+    hit = (
+        not diet_reds(
+            release_boundary,
+            RELEASE_GATE_WALL_MAX,
+            {},
+            {},
+            gate_cap=RELEASE_GATE_WALL_MAX,
+            suite_cap=RELEASE_SUITE_WALL_MAX,
+        )
+        and len(
+            diet_reds(
+                {"suite": RELEASE_SUITE_WALL_MAX + 1},
+                RELEASE_GATE_WALL_MAX + 1,
+                {},
+                {},
+                gate_cap=RELEASE_GATE_WALL_MAX,
+                suite_cap=RELEASE_SUITE_WALL_MAX,
+            )
+        )
+        == 2
+        and bool(diet_reds(release_boundary, 0, {}, {}))
+    )
+    print("  %-26s %s" % ("release bounds keep ordinary isolation", "ok" if hit else "XX"))
+    ok = ok and hit
     ok = _selftest_light() and ok
     print("run_gate selftest: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
@@ -1352,7 +1460,9 @@ def _selftest_light():
         "cpp": "src/mh_dll/libmh/sim/a.cpp",  # CITATION-OK -- selftest fixture
         "hdr": "src/mh_dll/mh_common/include/x.h",  # CITATION-OK -- selftest fixture
         "md": "src/mh_dll/libmh/README.md",  # CITATION-OK -- selftest fixture
-        "proj": "src/mh_dll/mh/mh.vcxproj",
+        "proj": "src/mh_dll/mh_common/mh_common.vcxproj",
+        "proj2": "src/mh_dll/mh_nettest/mh_nettest.vcxproj",
+        "keys": _INI_KEYS_PATH,
         "gfx": "src/mh_dll/mh/gfx/p.cpp",  # CITATION-OK -- selftest fixture
         "txt": "tools/uiscripts/imgui_hover.txt",
         "ini": "tools/uiscripts/ini/imgui_hover.ini",
@@ -1371,7 +1481,8 @@ def _selftest_light():
         ("libmh C++ forces ASan", ["cpp"], True, {"libref"}, set()),
         ("mh_common header forces ASan", ["hdr"], True, set(), set()),
         ("a libmh .md does not", ["md"], False, {"libref"}, set()),
-        ("vcxproj forces ASan", ["proj"], True, {"libref"}, set()),
+        ("common project forces ASan", ["proj"], True, {"libref"}, set()),
+        ("nettest project forces ASan", ["proj2"], True, {"libref"}, set()),
         ("gfx -> gfx rows", ["gfx"], False, set(), {"overlay_seq"}),
         ("uiscript -> its row", ["txt"], False, set(), {"overlay_seq"}),
         ("ini -> its row", ["ini"], False, set(), {"overlay_seq"}),
@@ -1391,6 +1502,41 @@ def _selftest_light():
         hit = s["asan"] == asan and s["units"] == units_ and s["rows"] == rows_
         ok = ok and hit
         print("  %-34s %s  %s" % (label, "ok" if hit else "XX", (s["asan"], s["units"], s["rows"])))
+
+    def key_row(section, key, default=""):
+        return (
+            'MH_INI_KEY("%s", "%s", T_STRING, "%s", C_USER, "%s.%s", S_DISPLAY, "", F_RESTART)'
+            % (section, key, default, section, key)
+        )
+
+    def hunk(*lines):
+        return "@@ -1 +1 @@\n" + "\n".join(lines) + "\n"
+
+    lang = key_row("lang", "pack")
+    lang_new = key_row("lang", "locale")
+    video = key_row("video", "scale")
+    for label, diff, expected in (
+        ("language key added", hunk("+" + lang_new), "lang"),
+        ("language key removed", hunk("-" + lang), "lang"),
+        ("language key modified", hunk("-" + lang, "+" + key_row("lang", "pack", "ru")), "lang"),
+        ("video key changed", hunk("-" + video, "+" + video), None),
+        ("mixed sections", hunk("+" + lang_new, "-" + video), None),
+        ("unknown line", hunk("+" + lang_new, "+#define X 1"), None),
+        ("malformed key", hunk('+MH_INI_KEY("lang", "bad")'), None),
+        ("missing diff", None, None),
+    ):
+        delta = _ini_key_delta(diff)
+        rows = light_selection([fx["keys"]], ini_delta=delta)["rows"]
+        hit = (
+            delta == expected
+            and "lang_seq" in rows
+            and ("res_notice_seq" in rows) == (expected is None)
+        )
+        ok = ok and hit
+        print("  %-34s %s" % (label, "ok" if hit else "XX"))
+    hit = _ini_delta_for_base([fx["keys"]], "HEAD", False) is None
+    ok = ok and hit
+    print("  %-34s %s" % ("untrusted base stays broad", "ok" if hit else "XX"))
     s = light_selection([fx["new"]], tests)
     hit = s["unmapped"] == [fx["new"]]
     print("  %-34s %s" % ("an unmapped source is NAMED", "ok" if hit else "XX"))
@@ -1417,6 +1563,65 @@ def _selftest_light():
     ok = ok and hit
     hit = [r["name"] for r in priority(rs)][:2] == ["det", "long"]
     print("  %-34s %s" % ("priority: `first`, then longest", "ok" if hit else "XX"))
+    ok = ok and hit
+    measured = {
+        "unit_verdicts": {"good": "PASS", "failed": "FAIL"},
+        "requests": [
+            dict(owner="good", label="tiny", queued=0, started=1000, ended=1000.2),
+            dict(owner="good", label="repeat", started=10, ended=12),
+            dict(owner="good", label="repeat", started=20, ended=26.25),
+            dict(owner="good", label="cancelled", started=0, ended=5, error="cancelled"),
+            dict(owner="good", label="unfinished", started=0, ended=None),
+            dict(owner="good", label="root", root=True, started=0, ended=1000),
+            dict(owner="good", label="backwards", started=10, ended=9),
+            dict(owner="good", label="nonfinite", started=0, ended=float("nan")),
+            dict(owner="failed", label="truncated", started=0, ended=1),
+        ],
+    }
+    hints = gate_admission.leaf_duration_hints(measured)
+    hit = hints == {("good", "tiny"): 1.0, ("good", "repeat"): 6.25}
+    print(
+        "  %-34s %s"
+        % ("leaf hints: work only, complete PASS, longest repeat", "ok" if hit else "XX")
+    )
+    ok = ok and hit
+    arrivals = [
+        row("older-wide", 2, 3, queued=1),
+        row("later-long", 100, 1, queued=2),
+        row("later-short", 1, 1, queued=3),
+    ]
+    starts = pick_units(priority(arrivals), 1, 1, [(5, 2, False)], 3, 3)
+    hit = [r["name"] for r in starts] == ["later-short"]
+    print(
+        "  %-34s %s"
+        % ("late long arrivals cannot steal an older reservation", "ok" if hit else "XX")
+    )
+    ok = ok and hit
+    bands = arrivals + [
+        row("later-VM", 10, 1, queued=4, first=1, vm=True),
+        row("later-bootstrap", 1, 1, queued=5, bootstrap=True),
+    ]
+    hit = [r["name"] for r in priority(bands)][:2] == ["later-VM", "later-bootstrap"]
+    print("  %-34s %s" % ("FIFO preserves VM and bootstrap priority bands", "ok" if hit else "XX"))
+    ok = ok and hit
+    urgent = row("short-cost-window", 20, 1, queued=6, deadline=60)
+    bulk = row("older-bulk", 100, 1, queued=1, deadline=540)
+    hit = priority([bulk, urgent])[0] is urgent
+    # An elapsed cost window changes priority, never removes required work.
+    expired = row("expired-required", 2, 1, queued=7, deadline=1)
+    hit = hit and pick_units(priority([bulk, expired]), 1, 1, [], 10, 1) == [expired]
+    hit = hit and [r["name"] for r in priority(bands + [urgent])][:2] == [
+        "later-VM",
+        "later-bootstrap",
+    ]
+    print(
+        "  %-34s %s" % ("existing deadlines order work without dropping it", "ok" if hit else "XX")
+    )
+    ok = ok and hit
+    critical = row("long-critical-phase", 90, 1, deadline=500)
+    brief = row("brief-earlier-deadline", 5, 1, deadline=450)
+    hit = priority([brief, critical])[0] is critical
+    print("  %-34s %s" % ("latest safe start accounts for execution work", "ok" if hit else "XX"))
     ok = ok and hit
     vm2 = [row("a", 50, 1, vm=True), row("b", 50, 1, vm=True)]
     sp, wall = simulate(vm2, 7)
@@ -1460,6 +1665,55 @@ def _selftest_light():
     hit = [r["name"] for r in priority(chain(1))][:3] == ["det", "chainA", "chainB"]
     print("  %-34s %s" % ("priority: det, then the VM chain", "ok" if hit else "XX"))
     ok = ok and hit
+
+    # Real release starvation: a stream of short-deadline leaves must not steal
+    # the credits needed by an eligible older, wider reservation.
+    age = gate_admission.MAX_PRIORITY_WAIT_S
+    pending = [
+        row("old-three", 2, 3, queued=0, deadline=10000),
+        row("old-nine", 2, 9, queued=1, deadline=10000),
+    ]
+    active = [(age + 10, 6, False), (age + 12, 6, False), (age + 14, 6, False)]
+    free, admitted, bounded = 3, {}, True
+    for tick in range(age, age + 20):
+        remaining = []
+        for end, weight, vm in active:
+            if end <= tick:
+                free += weight
+            else:
+                remaining.append((end, weight, vm))
+        active = remaining
+        pending.append(row("stream-%d" % tick, 20, 2, queued=tick, deadline=tick + 1))
+        chosen = gate_admission.pick_fair_units(
+            priority(pending), free, 1, active, tick, 21, pick_units
+        )
+        for r in chosen:
+            pending.remove(r)
+            free -= r["weight"]
+            active.append((tick + r["dur"], r["weight"], False))
+            admitted[r["name"]] = tick
+        bounded &= 0 <= free <= 21 and free + sum(r[1] for r in active) == 21
+    hit = bounded and admitted.get("old-three") == age and admitted.get("old-nine") == age + 10
+    print("  %-34s %s" % ("aged requests beat an endless urgent stream", "ok" if hit else "XX"))
+    ok = ok and hit
+    waiting_vm = row("waiting-VM", 2, 9, queued=0, first=1, vm=True)
+    waiting_lint = row("waiting-lint", 2, 3, queued=0.45, deadline=900)
+    gate_admission.pick_fair_units(
+        priority([waiting_vm, waiting_lint]), 0, 0, [(100, 21, True)], 40, 21, pick_units
+    )
+    chosen = gate_admission.pick_fair_units(
+        priority([waiting_vm, waiting_lint]), 21, 1, [], 100, 21, pick_units
+    )
+    hit = chosen == [waiting_lint] and waiting_vm["eligible_since"] == 100
+    follower = row("after-cancel", 1, 3, queued=1)
+    hit &= not gate_admission.pick_fair_units(
+        [follower], 0, 1, [(200, 21, False)], 100, 21, pick_units
+    )
+    hit &= gate_admission.pick_fair_units(
+        [follower], 3, 1, [(200, 18, False)], 101, 21, pick_units
+    ) == [follower]
+    print("  %-34s %s" % ("VM eligibility and held credits stay fenced", "ok" if hit else "XX"))
+    ok = ok and hit
     # the shipped release roster really carries the marker (a unit that lost it would silently queue behind cores)
     rel = [
         r
@@ -1485,9 +1739,7 @@ def _selftest_light():
     # the light replays are ship-only, and ui_abc refuses every arm set but A,B,C / A,C
     lrows = light_units(_selftest_args(), light_selection([], []), [])
     abc = [r for r in lrows if r["name"] in LIGHT_ABC_UNITS]
-    hit = len(abc) == 2 and all(
-        r["cmd"][-2:] == ["--ui-abc-arms", "A,C"] and r["weight"] == 1 for r in abc
-    )
+    hit = len(abc) == 2 and all(r["cmd"][-2:] == ["--ui-abc-arms", "A,C"] for r in abc)
     full_abc = [r for r in units(_selftest_args()) if r["name"] in LIGHT_ABC_UNITS]
     hit = hit and not any("--ui-abc-arms" in r["cmd"] for r in full_abc)
     # PT-CAP8 slice D: a change under the cap-raise layer puts the two recorded sessions back on A,B,C (no --ui-abc-arms, weight 2)
@@ -1503,7 +1755,7 @@ def _selftest_light():
         ]  # PT-CAP8 S2: the hash wiring is part of the layer
         and not light_selection(["src/mh_dll/mh/ui/ui_runtime.cpp"], [])["abc3"]
         and len(cap_abc) == 2
-        and all("--ui-abc-arms" not in r["cmd"] and r["weight"] == 2 for r in cap_abc)
+        and all("--ui-abc-arms" not in r["cmd"] for r in cap_abc)
     )
     print("  %-34s %s" % ("light abc = A,C; full keeps A,B,C", "ok" if hit else "XX"))
     ok = ok and hit
@@ -1521,7 +1773,7 @@ def _selftest_light():
     print("  %-34s %s" % ("--release adds --release-tier only", "ok" if hit else "XX"))
     ok = ok and hit
     try:
-        import ui_abc  # noqa: PLC0415
+        import ui_abc
 
         good = [ui_abc.parse_abc_arms(v)[0] for v in ("A,B,C", "c,a,b", None, "A,C", "C,A")]
         bad = [ui_abc.parse_abc_arms(v)[0] for v in ("A", "A,B", "B,C", "C", "A,C,D", "")]
@@ -1558,7 +1810,7 @@ def _selftest_light():
     ok = ok and hit
     # every name the rules promise must exist in the LIVE registry and roster, or the map has rotted
     try:
-        import test_ui  # noqa: PLC0415
+        import test_ui
 
         live = {t["name"] for t in test_ui.TESTS}
         promised = set(SMOKE_ROWS).union(*(set(r[3]) for r in LIGHT_RULES))
@@ -1679,7 +1931,7 @@ def _selftest_smoke(fx, tests):
 
 def _selftest_args():
     return argparse.Namespace(
-        steps=3000, suite_jobs=2, suite_net_jobs=6, no_build=False, skip=set()
+        cores=7, steps=3000, suite_jobs=2, suite_net_jobs=6, no_build=False, skip=set()
     )
 
 
@@ -1712,8 +1964,18 @@ def load_durations(rows, records=(TIMINGS,)):
 # when det finished. The live dispatcher and `--plan`'s simulated timeline call the SAME function,
 # so the plan is the schedule the run would take if every unit ran its recorded duration.
 def priority(rows):
-    """`first` rows (a higher `first` value leads: det=2, the VM chain=1), then longest expected wall, then widest."""
-    return sorted(rows, key=lambda r: (-int(r.get("first") or 0), -r["dur"], -r["weight"]))
+    """VM/boot bands, then least slack to existing deadlines; FIFO/LPT ties."""
+    return sorted(
+        rows,
+        key=lambda r: (
+            -int(r.get("first") or 0),
+            -bool(r.get("bootstrap")),
+            r["deadline"] - r["dur"] if r.get("deadline") is not None else float("inf"),
+            r.get("queued", 0),
+            -r["dur"],
+            -r["weight"],
+        ),
+    )
 
 
 def pick_units(pending, free, free_vm, running, now, cores):
@@ -1800,7 +2062,7 @@ def kill_tree(pid):
     )
 
 
-def build(asan=True):
+def build(asan=True, cores=1):
     """Step 1, serial: everything else executes this build's output. Mirrors the README recipe
     (/m /nodeReuse:false -- node reuse leaves workers holding our stdout handle for ~15 min).
     asan=False (the light profile with no spine/common C++ changed) stages the PLAIN selftest exes
@@ -1915,88 +2177,56 @@ def build(asan=True):
     # It guards a one-instruction htons() anchor in module_bind.cpp that looks exactly like dead
     # code: mh.dll imported WS2_32 only because the transport used to be compiled into it, and
     # without the anchor the rule breaks on the very satellite it was written for.
-    rc = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(REPO, "tools", "check_module_bind.py"),
-            "--subset",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if rc.returncode != 0:
-        print("[gate] SUBSET RULE FAILED -- aborting")
-        for ln in (rc.stdout + rc.stderr).strip().splitlines()[-12:]:
-            print("    " + ln)
+    # These read only the completed build. Export contracts intersect host,
+    # harness and standalone objects; none regenerates another check's input.
+    # Run all four, even if one fails, and report in the established order.
+    from concurrent.futures import ThreadPoolExecutor
+
+    checks = [
+        ("subset rule", "SUBSET RULE FAILED", "check_module_bind.py", ["--subset"], 12),
+        (
+            "libmh export contract",
+            "LIBMH EXPORT CONTRACT STALE",
+            "gen_libmh_contract.py",
+            ["--rederive", "--check"],
+            14,
+        ),
+        (
+            "harness contract",
+            "HARNESS CONTRACT STALE",
+            "gen_harness_contract.py",
+            ["--rederive", "--check"],
+            14,
+        ),
+        (
+            "standalone libmh export contract",
+            "STANDALONE LIBMH EXPORT CONTRACT STALE",
+            "gen_libmh_std_contract.py",
+            ["--rederive", "--check"],
+            14,
+        ),
+    ]
+
+    def verify(check):
+        return subprocess.run(
+            [PY, os.path.join(REPO, "tools", check[2]), *check[3]],
+            capture_output=True,
+            text=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=min(4, cores)) as pool:
+        results = list(pool.map(verify, checks))
+    ok = True
+    for (label, failure, _, _, lines), result in zip(checks, results):
+        if result.returncode:
+            print("[gate] %s -- aborting" % failure)
+            for line in (result.stdout + result.stderr).strip().splitlines()[-lines:]:
+                print("    " + line)
+            ok = False
+        else:
+            print("[gate] %s ok" % label)
+    if not ok:
         return False
-    print("[gate] subset rule ok")
-    # THE EXPORT CONTRACT'S OBJECT HALF (fork F4D), here for exactly the reason above: it reads the
-    # two images' OBJECTS, so it needs a build and cannot be a lint row. lint already checks that the
-    # three emitted files re-render from the committed list; this checks the committed list against
-    # what the tree actually says -- a symbol mh.dll started needing, or one libmh stopped exporting.
-    #
-    # The failure it stops is not subtle at runtime and is invisible at build time: a row missing
-    # from libmh.def resolves to nothing at bind, the bind REFUSES the whole module by name, and the
-    # game silently runs configuration (1). Everything still boots.
-    rc = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(REPO, "tools", "gen_libmh_contract.py"),
-            "--rederive",
-            "--check",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if rc.returncode != 0:
-        print("[gate] LIBMH EXPORT CONTRACT STALE -- aborting")
-        for ln in (rc.stdout + rc.stderr).strip().splitlines()[-14:]:
-            print("    " + ln)
-        return False
-    print("[gate] libmh export contract ok")
-    # THE HARNESS CONTRACTS' OBJECT HALF (fork F4E), here for the same reason: it intersects
-    # mh_harness.dll's undefined externals with what mh.dll and libmh.dll define, so it needs the
-    # Debug objects and cannot be a lint row. The failure it stops is the mirror of the one above,
-    # one image over: a host row mh.dll stopped exporting makes the instrument REFUSE TO ARM, the
-    # boot continues, and the only sign is that mh_harness.log was never written.
-    rc = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(REPO, "tools", "gen_harness_contract.py"),
-            "--rederive",
-            "--check",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if rc.returncode != 0:
-        print("[gate] HARNESS CONTRACT STALE -- aborting")
-        for ln in (rc.stdout + rc.stderr).strip().splitlines()[-14:]:
-            print("    " + ln)
-        return False
-    print("[gate] harness contract ok")
-    # THE STANDALONE ARM'S EXPORT CONTRACT (fork F4G), here for the third time for the same reason:
-    # it intersects libref_host's objects with the libmh ARCHIVE's, so it needs a build. What it
-    # stops is a DIFFERENT failure from the two above, and a milder one -- the standalone host
-    # IMPORTS its spine statically, so a missing row is a LINK error naming the symbol rather than a
-    # silent degradation. This row is what says "the committed list drifted" instead of leaving the
-    # next reader to interpret a linker diagnostic.
-    rc = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(REPO, "tools", "gen_libmh_std_contract.py"),
-            "--rederive",
-            "--check",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if rc.returncode != 0:
-        print("[gate] STANDALONE LIBMH EXPORT CONTRACT STALE -- aborting")
-        for ln in (rc.stdout + rc.stderr).strip().splitlines()[-14:]:
-            print("    " + ln)
-        return False
-    print("[gate] standalone libmh export contract ok")
     return True
 
 
@@ -2023,8 +2253,8 @@ def main():
         "--suite-net-jobs",
         type=int,
         default=6,
-        help="--net-jobs handed to the UI suite: the WAIT-BOUND multi-peer pool (default "
-        "%(default)d; priced at NET_JOB_WEIGHT cores each -- gate diet block 3)",
+        help="--net-jobs handed to the UI suite: the independent multi-peer pool (default "
+        "%(default)d; each active row reserves one estimated CPU core)",
     )
     ap.add_argument("--selftest", action="store_true", help="the cost rules' negative cases")
     ap.add_argument(
@@ -2042,6 +2272,13 @@ def main():
         "iteration checkpoint + change-aware additions (tooling:TL-GATE12)",
     )
     ap.add_argument("--light", action="store_true", help="alias for --profile light")
+    ap.add_argument(
+        "--wide-light",
+        action="store_true",
+        help=f"light profile only, with expanded UI coverage: allow {WIDE_LIGHT_GATE_WALL_MAX} s gate wall and "
+        f"{WIDE_LIGHT_COORD_TIMEOUT} s lint/UI coordinator timeouts; scenario assertions stay unchanged. "
+        "Does not replace the ordinary light green cost baseline.",
+    )
     ap.add_argument(
         "--smoke",
         action="store_true",
@@ -2086,6 +2323,8 @@ def main():
         args.profile = "smoke"
     if args.release and args.profile != "full":
         ap.error("--release is a full-profile flag (light/smoke run their own row subsets)")
+    if args.wide_light and args.profile != "light":
+        ap.error("--wide-light requires the light profile")
     if args.selftest:
         return selftest()
     if args.full_status:
@@ -2156,6 +2395,22 @@ def main():
         print("[gate]   ui row: %s" % (sel["smoke_ui_row"] or "(none -- no rule named one)"))
     else:
         rows = full_rows
+    gate_cap = profile_wall_cap(args.profile, getattr(args, "release", False))
+    cost_mode = "ordinary"
+    if args.wide_light:
+        expanded_ui = any(
+            r["name"] == "smoke" and set(r.get("ui_rows", ())) - set(SMOKE_ROWS) for r in rows
+        )
+        if not expanded_ui:
+            ap.error("--wide-light requires selected UI coverage beyond the base smoke rows")
+        # Explicit bounded allowance for a suite-sized light selection, not a measured cost.
+        # Keep CPU admission, all scenario budgets, watchdogs and correctness verdicts intact.
+        gate_cap = WIDE_LIGHT_GATE_WALL_MAX
+        cost_mode = "wide-light"
+        for r in rows:
+            if r["name"] in ("lint", "smoke"):
+                r["timeout"] = WIDE_LIGHT_COORD_TIMEOUT
+    print("[gate] cost mode %s -- gate wall cap %d s" % (cost_mode, gate_cap))
     if args.plan:
         for r in rows:
             print("  %-16s w=%d  t<=%ds  %s" % (r["name"], r["weight"], r["timeout"], r["why"]))
@@ -2163,21 +2418,21 @@ def main():
         records = RECORDS[args.profile]
         spans, wall = simulate(load_durations([dict(r) for r in rows], records), args.cores)
         print(
-            "  simulated schedule (%d cores, recorded durations; the dispatcher's own rule):"
+            "  legacy whole-unit reservation projection (%d cores, recorded durations; NOT a leaf-admission forecast):"
             % args.cores
         )
         for n, (a, b) in sorted(spans.items(), key=lambda kv: kv[1]):
             print("    %-16s %6.0f -> %6.0f s" % (n, a, b))
-        print("    expected wall %.0f s (%.1f min)" % (wall, wall / 60))
+        print("    legacy reservation wall %.0f s (%.1f min)" % (wall, wall / 60))
         if args.profile == "full":
             print("  " + format_full_status(full_green_status()))
         else:
             # + the serial build step, which the simulated schedule does not include
             print(
                 "    wall cap %d s (%s profile); build is serial before the units (~%d s measured), "
-                "so expected total ~%.0f s"
+                "legacy reservation total ~%.0f s (actual shared admission is measured, not predicted)"
                 % (
-                    profile_wall_cap(args.profile, getattr(args, "release", False)),
+                    gate_cap,
                     args.profile,
                     BUILD_HINT_S,
                     wall + BUILD_HINT_S,
@@ -2187,10 +2442,34 @@ def main():
             print("  " + SMOKE_NOT_A_GATE)
         return 0
 
-    os.makedirs(LOG_DIR, exist_ok=True)
+    tmp_lifecycle.pre_gate_cleanup(args.profile)
+    global LOG_DIR
+    LOG_DIR = tmp_runs.current_output("gate")
+    if args.profile == "full":
+        tmp_runs.register(LOG_DIR, role="evidence")
+
     t0 = time.time()
+    # Reject stale patch contracts before compiling or launching long-lived units.
+    # Registering a call site alone does not refresh either derived artifact.
+    for label, script, options in (
+        ("DLL patch ownership", "lint_dll_patches.py", []),
+        ("generated patch table", "gen_dll_patches.py", ["--check"]),
+        ("in-memory composition", "check_inmem_composition.py", ["--check"]),
+    ):
+        checked = subprocess.run(
+            [PY, os.path.join(REPO, "tools", script), *options],
+            capture_output=True,
+            text=True,
+        )
+        if checked.returncode:
+            print("[gate] %s preflight FAILED -- no build or runtime units started" % label)
+            print((checked.stdout + checked.stderr).strip())
+            return 1
+    print("[gate] static patch contracts ok")
+
+    os.makedirs(LOG_DIR, exist_ok=True)
     need_asan = args.profile == "full" or (args.profile == "light" and bool(sel and sel["asan"]))
-    if not args.no_build and not build(asan=need_asan):
+    if not args.no_build and not build(asan=need_asan, cores=args.cores):
         return 1
 
     records = RECORDS[args.profile]
@@ -2207,53 +2486,74 @@ def main():
         )
     )
 
-    # LONGEST-FIRST WITH BACKFILL (user, 2026-09-10 -- the first run started units in roster
-    # order and finished with one unit holding 2 of 7 cores while 5 idled). The dispatcher scans
-    # PENDING in descending expected duration and starts every unit that fits the free budget;
-    # when the longest does not fit, a shorter one backfills. Durations come from the last run's
-    # own record, so the order corrects itself as the units' costs drift.
-    sched = threading.Condition()
-    free = [args.cores]
-    # THE VM SLOT (gate diet block 5b, mp:U19j/X2a into the gate): a SECOND, disjoint budget beside
-    # `free`. `free` prices THIS box's cores; it says nothing about the two rig VMs, and until now
-    # that was safe because exactly one roster row ever touched them (`det`; the roster's other
-    # configuration-(1) row, `det_c1`, ran on LOCAL lanes only and was folded into match_launch_net's
-    # own post_check, tooling:TL-SUITE-FOLD-DETC1) so the roster never had two VM-driving units in
-    # flight together. mp:U19j's rig proof and mp:X2a's
-    # both need the REAL vms[0]/vms[1] pair (independent installs / a 3rd peer past a drop -- neither
-    # is expressible on a local lane, see their rows), so the roster now has three. Two rig tools
-    # deploying to the SAME VM directory at once (remote_launch's fixed `args.vm_dir`, one scheduled
-    # task name) is not a load number -- it is file-copy and schtasks corruption -- so this is a
-    # second free-slot count (capacity 1: the VMs are ONE shared pair), not a bigger weight. A row
-    # opts in with `"vm": True`; everything else is unaffected (free_vm starts at 1 and no non-VM
-    # row ever touches it).
-    free_vm = [1]
-    # `first` before longest-first (fork F4H): a unit whose peers are not on this box's scheduler
-    # cannot be ordered by its local core cost, and det is the one that has to hold its vCPUs while
-    # the box is least busy -- see its row for why. Everything else keeps the longest-first rule.
-    pending = priority(rows)
-    running = set()
-    ends = {}  # unit -> (expected end from gate t0, weight): pick_units' reservation input
+    # A single owner admits actual work across coordinators. CPU prices remain estimates;
+    # the VM pair is an additional exclusive resource. Startup/preflight is charged too.
+    selftest_roots = {
+        r["name"]
+        for r in rows
+        if len(r["cmd"]) > 1 and os.path.basename(r["cmd"][1]) == "run_selftests.py"
+    }
+    controllers = {
+        r["name"]: (2 if r["name"] in selftest_roots else 1)
+        for r in rows
+        if r["name"] in selftest_roots
+        or r["name"] in ("lint", "smoke", "suite", "ui_one", "spdet_fixed")
+    }
+    broker = None
+    accounting = {}
     spans = {}  # unit -> (start, end) seconds from gate t0, for gate_timeline's critical path
 
-    def run_unit(r, w):
+    def run_unit(r):
         name = r["name"]
         log = os.path.join(LOG_DIR, name + ".log")
-        t1 = time.time()
-        print("[gate] %-12s START  (w=%d, log %s)" % (name, w, os.path.relpath(log, REPO)))
+        t1 = None
+        child = None
+        verdict = "FAIL"
+        empty = True
+        timed_out = False
         try:
+            broker.await_root(name)
+            t1 = time.time()
+            print("[gate] %-12s START  (log %s)" % (name, os.path.relpath(log, REPO)))
             with open(log, "w", encoding="utf-8") as fh:
-                proc = subprocess.Popen(r["cmd"], stdout=fh, stderr=subprocess.STDOUT, cwd=REPO)
+                child = gate_admission.ContainedProcess(
+                    r["cmd"], env=tmp_runs.child_env(broker.child_env(name)), stdout=fh, cwd=REPO
+                )
+                empty = False
+                broker.process_ready(name, child.cancel, child.limit_cpu)
                 try:
-                    rc = proc.wait(timeout=r["timeout"])
+                    rc = child.proc.wait(timeout=r["timeout"])
                     verdict = "PASS" if rc == 0 else "FAIL"
                 except subprocess.TimeoutExpired:
-                    kill_tree(proc.pid)
-                    proc.wait()
+                    timed_out = True
+                    child.cancel()
+                    child.proc.wait()
                     verdict = "TIMEOUT"
-        except OSError as e:
-            verdict = "FAIL"
-            print("[gate] %-12s could not launch: %s" % (name, e))
+        except (OSError, RuntimeError) as e:
+            print("[gate] %-12s could not run: %s" % (name, e))
+            broker.cancel_owner(name, str(e))
+        finally:
+            if child is not None:
+                try:
+                    accounting[name] = child.finish()
+                    accounting[name].update(
+                        wrapper_pid=child.proc.pid,
+                        wrapper_returncode=child.proc.returncode,
+                        timed_out=timed_out,
+                    )
+                    empty = True
+                    if accounting[name]["reaped_after_exit"]:
+                        print(
+                            "[gate] %-12s reaped %d owned tool worker(s) after command exit"
+                            % (name, accounting[name]["reaped_after_exit"])
+                        )
+                except (OSError, RuntimeError) as exc:
+                    verdict = "FAIL"
+                    print("[gate] %-12s rundown failed: %s" % (name, exc))
+                    broker.abort("contained rundown failed for " + name)
+            if empty and broker.complete_root(name):
+                verdict = "FAIL"
+        t1 = t1 if t1 is not None else time.time()
         secs = time.time() - t1
         results[name] = (verdict, secs, log)
         spans[name] = (t1 - t0, time.time() - t0)
@@ -2265,13 +2565,6 @@ def main():
                     print("    " + ln.rstrip())
             except OSError:
                 pass
-        with sched:
-            free[0] += w
-            if r.get("vm"):
-                free_vm[0] += 1
-            running.discard(name)
-            ends.pop(name, None)
-            sched.notify_all()
 
     holder = "run_gate:%d" % os.getpid()
     cur = hostlock.held_by("rig")
@@ -2282,26 +2575,42 @@ def main():
         # exported, every child test_ui/mp_run runs inside OUR lease instead of queueing on it.
         os.environ[hostlock.RIG_LEASE_ENV] = str(os.getpid())
         try:
-            with sched:
-                while pending or running:
-                    now = time.time() - t0
-                    for r in pick_units(
-                        pending, free[0], free_vm[0], list(ends.values()), now, args.cores
-                    ):
-                        w = min(r["weight"], args.cores)
-                        free[0] -= w
-                        if r.get("vm"):
-                            free_vm[0] -= 1
-                        pending.remove(r)
-                        running.add(r["name"])
-                        ends[r["name"]] = (now + r["dur"], w, bool(r.get("vm")))
-                        threading.Thread(target=run_unit, args=(r, w), daemon=True).start()
-                    if pending or running:
-                        # a timed wait: an over-running unit moves the reservation, and the
-                        # dispatcher must re-plan even when nothing finished
-                        sched.wait(timeout=5)
+            broker = gate_admission.Broker(
+                rows,
+                args.cores,
+                priority,
+                pick_units,
+                controllers,
+                cpu_bounded=(({"smoke", "suite", "ui_one"} | selftest_roots) & controllers.keys())
+                | {r["name"] for r in rows if r.get("cpu_bound")},
+                duration_hints=gate_admission.leaf_duration_hints(
+                    _load_json(str(tool_paths.state_path("gate/last_admission.json", repo=REPO)))
+                ),
+                deadline=time.monotonic() + gate_cap - (time.time() - t0),
+            )
+            workers = [threading.Thread(target=run_unit, args=(r,)) for r in rows]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
         finally:
             os.environ.pop(hostlock.RIG_LEASE_ENV, None)
+            if broker is not None:
+                broker.close()
+                with open(
+                    str(tool_paths.state_path("gate/last_admission.json", repo=REPO)),
+                    "w",
+                    encoding="utf-8",
+                ) as fh:
+                    json.dump(
+                        dict(
+                            broker.snapshot(),
+                            jobs=accounting,
+                            unit_verdicts={name: result[0] for name, result in results.items()},
+                        ),
+                        fh,
+                        indent=2,
+                    )
 
     gate_wall = time.time() - t0
     suite_rec = {}
@@ -2318,14 +2627,18 @@ def main():
     green_path = {"light": LIGHT_GREEN_TIMINGS, "smoke": SMOKE_GREEN_TIMINGS}.get(
         args.profile, GREEN_TIMINGS
     )
-    green = _load_json(green_path)
+    # A different cost envelope must not compare against the ordinary profile's green costs.
+    green = {} if args.wide_light else _load_json(green_path)
+    if green and green.get("_tier", "default") != ("release" if args.release else "default"):
+        green = {}
     reds = diet_reds(
         {n: v[1] for n, v in results.items()},
         gate_wall,
         suite_rec,
         green,
-        gate_cap=profile_wall_cap(args.profile, getattr(args, "release", False)),
+        gate_cap=gate_cap,
         unit_budgets={r["name"]: r["budget_s"] for r in rows if r.get("budget_s")},
+        suite_cap=RELEASE_SUITE_WALL_MAX if args.release else SUITE_WALL_MAX,
     )
     all_pass = len(results) == len(rows) and all(v[0] == "PASS" for v in results.values())
 
@@ -2361,6 +2674,9 @@ def main():
     rec["_verdict"] = "PASS" if all_pass and not reds else "FAIL"
     rec["_profile"] = args.profile
     rec["_tier"] = "release" if args.release else "default"
+    rec["_cost_mode"] = cost_mode
+    rec["_gate_cap"] = gate_cap
+    rec["_suite_cap"] = RELEASE_SUITE_WALL_MAX if args.release else SUITE_WALL_MAX
     rec["_skip"] = sorted(args.skip)
     head = (_git("rev-parse", "HEAD") or "").strip()
     rec["_commit"] = head
@@ -2376,10 +2692,12 @@ def main():
             "skipped_vs_full": skipped,
         }
     try:
+        os.makedirs(os.path.dirname(timings_path), exist_ok=True)
         with open(timings_path, "w", encoding="utf-8") as fh:
             json.dump(rec, fh, indent=1)
         # a --skip run proves less than its profile, so it never becomes that profile's green base
-        if rec["_verdict"] == "PASS" and not args.skip:
+        # A wide-light run also leaves the ordinary light green cost baseline untouched.
+        if rec["_verdict"] == "PASS" and not args.skip and not args.wide_light:
             shutil.copyfile(timings_path, green_path)
         if should_record_full_green(args.profile, args.skip, rec["_verdict"]) and head:
             with open(FULL_GREEN, "w", encoding="utf-8") as fh:
@@ -2428,9 +2746,9 @@ def main():
         if st["due"]:
             print("  -> run the FULL gate (`python tools/run_gate.py`) before a merge or release")
     elif should_record_full_green(args.profile, args.skip, rec["_verdict"]):
-        print("  recorded FULL green at %s (tmp/gate/last_full_green.json)" % head[:10])
+        print("  recorded FULL green at %s (%s)" % (head[:10], FULL_GREEN))
     return 1 if bad or reds else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(tmp_runs.run_cli(main, "gate", adjudicator=True))

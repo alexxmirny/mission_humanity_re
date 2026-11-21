@@ -50,7 +50,7 @@ STAMPED_MARK = re.compile(r"^\[[0-9:.]+\] (; \[mark\] )", re.M)
 
 
 def read_logs(run_dir):
-    """The menu dir's mh_net.log and every later run dir's, up to the next process's menu dir."""
+    """Read this process's logs in timestamp order, across menu and session streams."""
     run_dir = os.path.normpath(run_dir)
     logs_dir = os.path.dirname(run_dir)
     me = os.path.basename(run_dir)
@@ -64,7 +64,24 @@ def read_logs(run_dir):
         if os.path.isfile(p):
             with open(p, encoding="utf-8", errors="replace") as f:
                 out.append(f.read())
-    return "\n".join(out)
+    # Marks remain in the process stream while in-match observations use the session
+    # stream. File concatenation puts a later mark ahead of an earlier observation.
+    stamp = re.compile(r"^\[(\d+):(\d+):(\d+)\.(\d{3})\]")
+    origin = None
+    ordered = []
+    for text in out:
+        moment = 0
+        for line in text.splitlines():
+            match = stamp.match(line)
+            if match:
+                hour, minute, second, millis = map(int, match.groups())
+                tick = ((hour * 60 + minute) * 60 + second) * 1000 + millis
+                if origin is None:
+                    origin = tick
+                # File order is causal even when a clock is coarse or moves back.
+                moment = max(moment, (tick - origin) % 86_400_000)
+            ordered.append((moment, len(ordered), line))
+    return "\n".join(line for _, _, line in sorted(ordered))
 
 
 def problems(run_dir, segment=None):

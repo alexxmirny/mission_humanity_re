@@ -1,3 +1,4 @@
+#include "seams/strategic_input_native.h"
 //
 // overlay_imgui.cpp -- PT-GFX4: Dear ImGui (vendored, src/mh_dll/include/imgui) over the d3d11
 // presenter. See overlay_imgui.h for the arming contract.
@@ -107,6 +108,7 @@
 #include "addr/mh_structs.gen.h"       // mh_llm_strat_map_geom (the camera wrap masks)
 #include "state/region_runtime.h"      // mh::state::ptr / RID_GENERAL / RID_MAP_CAM_COL / ROW
 #include "seams/heat_ui.h"             // mods:M1WL v3: the Stream heat section's reads and the live setter
+#include "ui/target_line_debug.h"
 
 #pragma comment(lib, "user32.lib")
 
@@ -122,18 +124,18 @@ constexpr uintptr_t ADDR_DI_MOUSE    = mh::addr::_G_LLM_DI_MOUSE_DEVICE; // IDir
 constexpr uintptr_t ADDR_DI_KEYBOARD = 0x0066155cu;                      // _G_LLM_DI_KEYBOARD_DEVICE -- literal for the
                                                                          // same fixture-fingerprint reason as ui_drive.cpp
 constexpr uintptr_t ADDR_KEYSTATE = mh::addr::_G_LLM_INPUT_KEYSTATE;     // byte[128], bit0/bit1 = held
-// The game's cursor (see "THE CURSOR" below). CURSOR_X/Y: the drawn sprite's hotspot, game pixels.
-// LAST_X/Y: the DirectInput accumulator llm_input_di_mouse_poll integrates each count into -- delta =
-// dwData / DIVISOR (signed IDIV), doubled when |delta| > THRESHOLD, clamped to [0, W) x [0, H) with W/H
-// at 0xe69da4/0xe69da8 (literals: _DAT_ in the DB, same fixture-fingerprint reason as the keyboard slot).
-constexpr uintptr_t ADDR_CURSOR_X   = mh::addr::_G_LLM_CURSOR_X;
-constexpr uintptr_t ADDR_CURSOR_Y   = mh::addr::_G_LLM_CURSOR_Y;
-constexpr uintptr_t ADDR_DI_LAST_X  = mh::addr::_G_LLM_INPUT_MOUSE_LAST_X;
-constexpr uintptr_t ADDR_DI_LAST_Y  = mh::addr::_G_LLM_INPUT_MOUSE_LAST_Y;
-constexpr uintptr_t ADDR_DI_DIV     = mh::addr::_G_LLM_INPUT_DI_MOUSE_DIVISOR;
-constexpr uintptr_t ADDR_DI_THRESH  = mh::addr::_G_LLM_INPUT_DI_MOUSE_ACCEL_THRESHOLD;
-constexpr uintptr_t ADDR_DI_BOUND_W = 0x00e69da4u;
-constexpr uintptr_t ADDR_DI_BOUND_H = 0x00e69da8u;
+// MENU_X/Y are the visible hotspot before zoom/shake transforms CURSOR_X/Y for world hit-testing.
+// LAST_X/Y are the native DirectInput accumulator, advanced by every device poll before the input
+// pump publishes the next visible hotspot. Keep frame presentation and per-record prediction separate.
+constexpr uintptr_t ADDR_CURSOR_X       = 0x00e58cccu; // _G_LLM_CURSOR_MENU_X; non-sim UI address, like ui_drive.cpp
+constexpr uintptr_t ADDR_CURSOR_Y       = 0x00e58cc8u; // _G_LLM_CURSOR_MENU_Y
+constexpr uintptr_t ADDR_CURSOR_VISIBLE = mh::addr::_G_LLM_CURSOR_VISIBLE;
+constexpr uintptr_t ADDR_DI_LAST_X      = mh::addr::_G_LLM_INPUT_MOUSE_LAST_X;
+constexpr uintptr_t ADDR_DI_LAST_Y      = mh::addr::_G_LLM_INPUT_MOUSE_LAST_Y;
+constexpr uintptr_t ADDR_DI_DIV         = mh::addr::_G_LLM_INPUT_DI_MOUSE_DIVISOR;
+constexpr uintptr_t ADDR_DI_THRESH      = mh::addr::_G_LLM_INPUT_DI_MOUSE_ACCEL_THRESHOLD;
+constexpr uintptr_t ADDR_DI_BOUND_W     = 0x00e69da4u;
+constexpr uintptr_t ADDR_DI_BOUND_H     = 0x00e69da8u;
 
 template <class T>
 T rd(uintptr_t a) {
@@ -362,13 +364,15 @@ void drain_keyboard() {
         // A key-UP: release it the way llm_input_di_keyboard_poll would, so it cannot stick.
         volatile uint8_t *ks = (volatile uint8_t *)ADDR_KEYSTATE;
         ks[d.ofs & 0x7f] &= (d.ofs & 0x80) ? 0xfd : 0xfe;
+        mh::seams::strategic_input_native::discarded_key_release(
+            d.ofs & 0x7fu, 0x80u | ((d.ofs & 0x80u) ? 0x200u : 0u));
     });
 }
 
 // ---- THE CURSOR -----------------------------------------------------------------------------------
-// The cursor the player SEES is the game's own sprite, drawn at _G_LLM_CURSOR_X/Y (game pixels) inside
-// the scaled image. With the default DirectInput mouse that point is the integral of relative counts
-// (1 count = 1 game px, the game's divisor/threshold/clamp) and has nothing to do with the hidden OS
+// The cursor the player SEES is the game's sprite at _G_LLM_CURSOR_MENU_X/Y (frame pixels), not
+// _G_LLM_CURSOR_X/Y after the world zoom/shake transform. With the default DirectInput mouse that
+// visible point is the integral of relative counts and has nothing to do with the hidden OS
 // pointer, which Windows moves with its own ballistics in SCREEN pixels. Feeding ImGui the OS pointer
 // (imgui_impl_win32's WM_MOUSEMOVE) therefore put ImGui's hover somewhere the player could not see --
 // the 2026-09-28 report: "the cursor enters the widget not at its borderline but somewhere else". So:
@@ -455,22 +459,18 @@ int di_step(uintptr_t div_addr, uintptr_t thr_addr, int data) { // llm_input_di_
 }
 
 void filter_mouse_records(di_object_data *rg, DWORD *inout) {
+    if (rg && inout && *inout) mh::seams::strategic_input::note_input_record();
     if (!g_open && !g_di_swallowed) return; // closed and nothing owed: untouched
     const bool feed = g_open && g_ctx;
     if (feed) ImGui::SetCurrentContext(g_ctx);
-    // M1WL v6: the position is the DRAWN cursor (the game's screen cursor), not the DirectInput accumulator: once the pointer is over the ui_scale HUD
-    // panel the two differ (rc11 trace: 4441 of 8271 rows, e.g. 1759,332 against 1526,459), so clicks and the panel hit-test followed the wrong point.
-    // The batch's motion records are added on top (the game integrates them after this filter runs), clamped to the mode box.
-    int x = rd<int>(ADDR_CURSOR_X), y = rd<int>(ADDR_CURSOR_Y);
-    int bw = rd<int>(ADDR_DI_BOUND_W), bh = rd<int>(ADDR_DI_BOUND_H);
-    {
-        int mw = 0, mh = 0;
-        if (mh::gfx::owned_mode_size(&mw, &mh) && mw > 0 && mh > 0) {
-            bw = mw;
-            bh = mh;
-        }
-    }
-    auto pos_event = [&]() {
+    // Match the native poll's accumulator and clamp box, not the previous frame's world-translated
+    // cursor. Several device polls can precede the next input pump. The hidden/warp arm keeps its
+    // visible anchor stationary even while motion records advance the accumulator.
+    const bool moving = rd<int>(ADDR_CURSOR_VISIBLE) != 0;
+    int        x      = rd<int>(moving ? ADDR_DI_LAST_X : ADDR_CURSOR_X);
+    int        y      = rd<int>(moving ? ADDR_DI_LAST_Y : ADDR_CURSOR_Y);
+    const int  bw = rd<int>(ADDR_DI_BOUND_W), bh = rd<int>(ADDR_DI_BOUND_H);
+    auto       pos_event = [&]() {
         float cx = (float)x, cy = (float)y;
         if (feed && cursor_client(&cx, &cy)) ImGui::GetIO().AddMousePosEvent(cx, cy);
     };
@@ -483,11 +483,11 @@ void filter_mouse_records(di_object_data *rg, DWORD *inout) {
         const di_object_data d    = rg[i];
         bool                 keep = true;
         if (d.ofs == 0 || d.ofs == 4) { // DIMOFS_X / DIMOFS_Y: always the game's; track it for ImGui
-            if (d.ofs == 0) {
+            if (moving && d.ofs == 0) {
                 x += di_step(ADDR_DI_DIV, ADDR_DI_THRESH, (int)d.data);
                 x = x >= bw ? bw - 1 : x < 0 ? 0
                                              : x;
-            } else {
+            } else if (moving) {
                 y += di_step(ADDR_DI_DIV, ADDR_DI_THRESH, (int)d.data);
                 y = y >= bh ? bh - 1 : y < 0 ? 0
                                              : y;
@@ -648,6 +648,9 @@ LRESULT CALLBACK subclass_proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     const WNDPROC prev = row->prev;
     const bool    uni  = row->unicode;
     if (h == g_hwnd) {
+        // ImGui may consume before native normalization/pop; close journal adoption without dispatch.
+        if (is_mouse_msg(m) || m == WM_KEYDOWN || m == WM_KEYUP || m == WM_SYSKEYDOWN || m == WM_SYSKEYUP)
+            mh::seams::strategic_input::note_input_record();
         note_key_msg(m, w, l); // observe only: the key itself still reaches the game either way
         if (g_open && g_ctx && g_win32_init) {
             // DI filter live: the mouse reaches ImGui (and is withheld from the game) through the DI
@@ -1107,6 +1110,8 @@ void draw_panel() {
         ImGui::Separator();
         draw_heat_section();
         ImGui::Separator();
+        mh::ui::selected_targets::detail::draw_target_line_controls();
+        ImGui::Separator();
         // The same readouts the framebuffer debug overlay can page through ([debug] pages), every one
         // of them -- built-in first, then the families other seams registered (net.*).
         if (ImGui::BeginTable("readouts", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
@@ -1218,7 +1223,8 @@ void on_frame(ID3D11Device *device, ID3D11DeviceContext *context, HWND hwnd) {
     const bool     was_mouse = g_want_mouse, was_kbd = g_want_kbd;
     g_want_mouse = io.WantCaptureMouse;
     g_mouse_pos  = io.MousePos;
-    g_want_kbd   = io.WantCaptureKeyboard;
+    if (!g_want_kbd && io.WantCaptureKeyboard) mh::seams::strategic_input_native::focus_lost();
+    g_want_kbd = io.WantCaptureKeyboard;
     { // M1WL v6 evidence: where ImGui's pointer is for a game cursor (tools/check_imgui_heat.py maps the game point through the logged layout independently)
         static int s_gx = -9999, s_gy = -9999, s_n = 0;
         const int  gx = rd<int>(ADDR_CURSOR_X), gy = rd<int>(ADDR_CURSOR_Y);

@@ -1,0 +1,27 @@
+# mods:MAPGEN2 -- the OFF arm (`[ui] map_preview=0`, ini/map_preview_off.ini): the picker and the lobby are exactly the stock
+# screens -- no page spinner, the box at its original height, Mode back under Cancel (host y=370). The page predicates can
+# never hold (the feature does not exist), so this script asserts the stock Mode selector WORKS where it always did.
+# Captures are the user's to review (baselines/mappreview_off/_ignore.json marks them _unjudged).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+capture mpo_picker
+clickl Ok
+present Network players
+settled Start
+lobbymode 0
+capture mpo_lobby
+click 501 370
+lobbymode 1
+capture mpo_lobby_team
+log mappreview_off: stock picker + lobby, stock Mode selector
+end

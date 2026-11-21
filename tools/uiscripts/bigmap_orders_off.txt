@@ -23,13 +23,13 @@ release 790 520
 gameclock +100
 logsel selected
 loggoal selected
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 407 357 10
 screensettled
 simrclick 407 357
 cursorhold 407 357 10
 capture bigmap_orders_off__a_held
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +6000
 logsel after

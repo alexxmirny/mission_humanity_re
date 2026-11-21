@@ -700,6 +700,7 @@ int read_sliced_block(const driver_env &env, uint32_t addr, uint32_t size) {
 int load_container(const driver_env &env, container_image *img) {
     std::memset(img, 0, sizeof *img);
     if (!read_exact(env.io, img->header, VERSION_STRING_LEN)) return 1;
+    if (env.normalize_header && !env.normalize_header(img->header)) return 1;
     img->version = detect_version(env.vt, img->header);
     if (env.stats != nullptr) env.stats->version = img->version;
     // The load-bearing refusal: a header the table does not contain closes the file and returns 0.

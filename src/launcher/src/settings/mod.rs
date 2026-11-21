@@ -16,6 +16,9 @@
 //! (`dead_code` is allowed because a schema field is read only by the rows that use it.)
 #![allow(dead_code)]
 
+pub mod binding_capture;
+pub mod binding_editor;
+pub mod bindings;
 pub mod ini_io;
 pub mod model;
 pub mod providers;

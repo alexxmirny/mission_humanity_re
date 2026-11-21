@@ -40,6 +40,7 @@ use crate::install;
 use crate::launch::{self, Finished};
 use crate::log;
 use crate::migrate; // RL4
+use crate::mods;
 use crate::paths::{self, Layout};
 use crate::procs; // RL9
 use crate::relay::{self, Relay};
@@ -57,6 +58,7 @@ use crate::upload::{self, Outbox, Prepared};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
     Play,
+    Mods,
     Settings,
     Report,
     About,
@@ -68,9 +70,11 @@ pub enum Page {
 pub type View = Page;
 
 impl Page {
-    /// Menu order. Play first: it is the front page (dist LA6).
-    pub const ALL: [Page; 5] = [
+    /// Menu order. Play first: it is the front page (dist LA6); Mods sits next to it, the
+    /// pre-game levers before the options.
+    pub const ALL: [Page; 6] = [
         Page::Play,
+        Page::Mods,
         Page::Settings,
         Page::Report,
         Page::About,
@@ -87,6 +91,7 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Play => "Play",
+            Page::Mods => "Mods",
             Page::Settings => "Settings",
             Page::Report => "Report",
             Page::About => "About",
@@ -99,6 +104,7 @@ impl Page {
     pub fn parse(s: &str) -> Option<Page> {
         match s.trim().to_ascii_lowercase().as_str() {
             "play" | "launch" | "status" | "update" | "home" => Some(Page::Play),
+            "mods" => Some(Page::Mods),
             "settings" | "options" => Some(Page::Settings),
             "report" | "reports" => Some(Page::Report),
             "about" => Some(Page::About),
@@ -111,6 +117,7 @@ impl Page {
     pub fn menu_key(self) -> &'static str {
         match self {
             Page::Play => "menu.play",
+            Page::Mods => "menu.mods",
             Page::Settings => "menu.settings",
             Page::Report => "menu.report",
             Page::About => "menu.about",
@@ -122,6 +129,7 @@ impl Page {
     pub fn title_key(self) -> &'static str {
         match self {
             Page::Play => "page.play.title",
+            Page::Mods => "page.mods.title",
             Page::Settings => "page.settings.title",
             Page::Report => "page.report.title",
             Page::About => "page.about.title",
@@ -358,6 +366,11 @@ pub struct App {
     model: Model,
     settings_state: RenderState,
     model_for: Option<PathBuf>,
+    /// DATAEXT1: the Mods page -- the last scan (`Mods`), the scan in flight, and the game
+    /// directory the current state belongs to (`None` = the page starts one on its next show).
+    mods: mods::Mods,
+    mods_job: Option<ModJob>,
+    mods_scanned_for: Option<PathBuf>,
     /// What the last Apply said (`true` = it failed).
     settings_note: Option<(String, bool)>,
     /// Start was pressed with unsaved settings: the Apply / Discard / Cancel prompt is up.
@@ -391,6 +404,12 @@ struct UploadJob {
     zip: PathBuf,
     rx: Receiver<Result<upload::Accepted, String>>,
     done: bool,
+}
+
+/// One mods-folder scan, on its own thread (DATAEXT1): the page must stay responsive over a
+/// large `mods\` tree, so no frame waits on it -- `poll_mods` takes the result when it lands.
+struct ModJob {
+    rx: Receiver<mods::Catalog>,
 }
 
 // ================================================================================================
@@ -748,6 +767,9 @@ impl App {
                 ..RenderState::default()
             },
             model_for: None,
+            mods: mods::Mods::default(),
+            mods_job: None,
+            mods_scanned_for: None,
             settings_note: None,
             start_prompt: false,
             close_prompt: false,
@@ -2088,13 +2110,21 @@ impl App {
             let _p = crate::watchdog::phase("poll_job / poll_startup_report / poll_report");
             self.poll_job() || self.poll_startup_report() || self.poll_report()
         };
+        {
+            let _p = crate::watchdog::phase("poll_mods");
+            // Every frame, not only when the page is up: a game-directory change must reset
+            // the pending selection (and drop the old directory's scan) BEFORE anything
+            // could apply it to the new game's ini.
+            self.ensure_mods();
+            self.poll_mods();
+        }
         if close {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         // Closing the window with unsaved settings asks first (Apply / Discard / Cancel) instead of
         // dropping the edits silently. Scripted runs never have a dirty model, so their own closes pass.
         if ctx.input(|i| i.viewport().close_requested())
-            && self.model.is_dirty()
+            && (self.model.is_dirty() || self.mods.is_dirty())
             && !self.close_confirmed
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -2110,6 +2140,10 @@ impl App {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
         if self.upload_job.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+        if self.mods_job.is_some() {
+            // A folder scan is a thread away; keep frames coming so its result is noticed.
             ctx.request_repaint_after(Duration::from_millis(100));
         }
         if self.job.is_some() {
@@ -2144,7 +2178,9 @@ impl App {
 
     /// Why Start game cannot be pressed right now, in the player's language. Unsaved settings are
     /// NOT a reason by themselves -- pressing Start then asks (Apply / Discard / Cancel) -- unless
-    /// they hold values that cannot be applied, which leaves only Revert.
+    /// they hold values that cannot be applied, which leaves only Revert. A pending mod selection
+    /// is never a blocker either: the game boots whatever is listed, and an unresolvable entry is
+    /// the DLL's stock-fallback-plus-reason at boot, not a launcher error.
     fn start_blocked(&self) -> Option<&'static str> {
         if self.session.is_some() {
             Some(tr("start.running"))
@@ -2160,7 +2196,9 @@ impl App {
     }
 
     fn press_start(&mut self) {
-        if self.model.is_dirty() {
+        self.settings_state.bindings.cancel();
+        // Settings edits and a pending mod selection ask the same question (DATAEXT1).
+        if self.model.is_dirty() || self.mods.is_dirty() {
             self.start_prompt = true;
         } else {
             self.do_launch("Start game pressed");
@@ -2173,6 +2211,7 @@ impl App {
             StartAnswer::Cancel => self.start_prompt = false,
             StartAnswer::Discard => {
                 self.model.revert();
+                self.mods.revert();
                 self.start_prompt = false;
                 self.do_launch("Start game pressed (settings discarded)");
             }
@@ -2191,6 +2230,7 @@ impl App {
             StartAnswer::Cancel => self.close_prompt = false,
             StartAnswer::Discard => {
                 self.model.revert();
+                self.mods.revert();
                 self.close_prompt = false;
                 self.close_confirmed = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -2220,6 +2260,7 @@ impl App {
         if self.model_for == dir {
             return;
         }
+        self.settings_state.bindings.cancel();
         let Some(dir) = dir else {
             self.model_for = None;
             return;
@@ -2257,8 +2298,12 @@ impl App {
         }
     }
 
-    /// Apply the pending edits: splice the ini, write `launcher.toml`, reload. `true` when it worked.
+    /// Apply the pending edits: splice the ini (settings rows AND the `[mods] enabled=` list),
+    /// write `launcher.toml`, reload. `true` when everything landed. A mods failure does not
+    /// roll the settings rows back (they are already on disk), and it is not reported as
+    /// success either: the note says what failed and the dirty part stays dirty.
     fn apply_settings(&mut self) -> bool {
+        self.settings_state.bindings.cancel();
         let Some((ini, _)) = self.settings_ini() else {
             return false;
         };
@@ -2268,18 +2313,37 @@ impl App {
             let mut store = ConfigStore::new(&mut self.config, path);
             self.model.apply(&ini, &mut store)
         };
+        let result = match result {
+            Ok(report) => self
+                .apply_mods(&ini)
+                .map(|mods_changed| (report, mods_changed)),
+            Err(e) => Err(e),
+        };
         match result {
-            Ok(report) => {
+            Ok((report, mods_changed)) => {
                 self.persist();
                 i18n::set_locale(Locale::from_code(&self.config.ui_lang_code()));
                 log::line(format!(
-                    "settings: applied -- ini {:?}, launcher fields {:?}, restart needed {}",
-                    report.ini, report.launcher_fields, report.restart_needed
+                    "settings: applied -- ini {:?}, launcher fields {:?}, restart needed {}, \
+                     mods list {}",
+                    report.ini,
+                    report.launcher_fields,
+                    report.restart_needed,
+                    if mods_changed {
+                        "rewritten"
+                    } else {
+                        "unchanged"
+                    }
                 ));
                 if self.config.channel() != old_channel {
                     self.channel_changed();
                 }
-                self.settings_note = Some((tr("settings.applied").to_string(), false));
+                let note = if mods_changed {
+                    tr("mods.applied")
+                } else {
+                    tr("settings.applied")
+                };
+                self.settings_note = Some((note.to_string(), false));
                 true
             }
             Err(e) => {
@@ -2288,6 +2352,97 @@ impl App {
                 false
             }
         }
+    }
+
+    // ---- mods (DATAEXT1) ----------------------------------------------------------------------
+
+    /// Sync the Mods page's state with the current game directory -- every frame, not only
+    /// when the page is up, so a directory change resets the pending selection and drops the
+    /// old directory's scan BEFORE anything could apply it to the new game's ini. The ini read
+    /// is one small file; the folder scan runs on a worker thread, so no frame ever
+    /// enumerates a large `mods\` tree. Pending edits are never dropped by a repaint, only
+    /// by a different game.
+    fn ensure_mods(&mut self) {
+        let dir = self.game_dir();
+        if self.mods_scanned_for == dir {
+            return;
+        }
+        self.mods_scanned_for = dir.clone();
+        self.mods_job = None; // a result for the old directory must never land
+        self.mods = mods::Mods::default();
+        let Some(dir) = dir else {
+            return;
+        };
+        let (ini, _) = cfgdir::ini_path(&self.layout, &dir);
+        match ini_io::read_file(&ini) {
+            Ok(bytes) => self.mods.reloaded(bytes.as_deref()),
+            Err(e) => {
+                log::line(format!("mods: {e}"));
+                self.mods.reloaded(None);
+            }
+        }
+        self.start_mods_scan(dir);
+    }
+
+    /// The Refresh button: re-read the list (unsaved edits are kept) and rescan the folder.
+    fn refresh_mods(&mut self) {
+        let Some(dir) = self.game_dir() else {
+            return;
+        };
+        let (ini, _) = cfgdir::ini_path(&self.layout, &dir);
+        match ini_io::read_file(&ini) {
+            Ok(bytes) if !self.mods.is_dirty() => self.mods.reloaded(bytes.as_deref()),
+            Ok(_) => {}
+            Err(e) => log::line(format!("mods: {e}")),
+        }
+        self.start_mods_scan(dir);
+    }
+
+    fn start_mods_scan(&mut self, dir: PathBuf) {
+        let (tx, rx) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("mods-scan".into())
+            .spawn(move || {
+                let _ = tx.send(mods::scan(&dir));
+            });
+        match spawned {
+            Ok(_) => self.mods_job = Some(ModJob { rx }),
+            Err(e) => log::line(format!("mods: scan did not start: {e}")),
+        }
+    }
+
+    /// Take a finished scan. Never waits: the result lands on the frame after the thread's.
+    fn poll_mods(&mut self) {
+        let Some(job) = self.mods_job.as_mut() else {
+            return;
+        };
+        let landed = match job.rx.try_recv() {
+            Ok(catalog) => Some(catalog),
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => None,
+        };
+        self.mods_job = None;
+        match landed {
+            Some(catalog) => self.mods.catalog = catalog,
+            None => log::line("mods: scan thread ended without a result"),
+        }
+    }
+
+    /// Write the pending `[mods] enabled=` list (`Ok(false)` = it was not dirty). Re-reads the
+    /// file afterwards, so the page's baseline is what is really on disk -- the roundtrip the
+    /// next game boot reads back. The guard keeps a selection read from one game directory
+    /// from ever landing in another one's ini.
+    fn apply_mods(&mut self, ini: &Path) -> Result<bool, String> {
+        if self.mods_scanned_for.as_ref() != self.game_dir().as_ref() {
+            return Err("the game directory changed -- reopen the Mods page".to_string());
+        }
+        let Some(edit) = self.mods.edit() else {
+            return Ok(false);
+        };
+        ini_io::apply_file(ini, &[edit])?;
+        let bytes = ini_io::read_file(ini)?;
+        self.mods.reloaded(bytes.as_deref());
+        Ok(true)
     }
 
     // ---- shared by the pages -----------------------------------------------------------------

@@ -79,13 +79,18 @@ struct arr_unit {
     uint8_t  goal_x, goal_y;
     int32_t  group; // move_group_id
     // mods:M1G 4b (move/formation.h) also reads these two; arrival.h itself does not
-    uint8_t x = 0, y = 0;
-    uint8_t path_slot = 0xff; // path_slot_id
+    uint8_t  x = 0, y = 0;
+    uint8_t  path_slot       = 0xff; // path_slot_id
+    bool     owned_patrol    = false;
+    uint32_t patrol_sequence = 0;
 };
 
 namespace arrival_detail {
 
-inline bool     is_plain_move(uint16_t order) { return order == ARR_ORDER_MOVE || order == ARR_ORDER_STOP_TO_DEFAULT; }
+inline bool is_plain_move(uint16_t order) { return order == ARR_ORDER_MOVE || order == ARR_ORDER_STOP_TO_DEFAULT; }
+inline bool is_placement_move(const arr_unit &u) {
+    return is_plain_move(u.order) || (u.order == 16 && u.owned_patrol);
+}
 inline uint32_t tidx(uint32_t x, uint32_t y) { return ((x & 0xffu) << 8) | (y & 0xffu); }
 
 // One commit's view: what makes a tile acceptable as a member's goal.
@@ -185,7 +190,7 @@ inline void arrival_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint32
     if (n == 1) {
         const uint32_t ui = w.member_handle(0);
         arr_unit       u;
-        if (ui >= static_cast<uint32_t>(unit_cap) || !w.unit(owner, ui, &u) || !is_plain_move(u.order)) return;
+        if (ui >= static_cast<uint32_t>(unit_cap) || !w.unit(owner, ui, &u) || !is_placement_move(u)) return;
         if (tile_free(w, c, g)) return; // the route's goal is free: retail
         const uint32_t t = search_near(w, c, gx, gy);
         if (t == ARR_NONE) {
@@ -210,7 +215,7 @@ inline void arrival_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint32
         const uint8_t  dr = static_cast<uint8_t>(static_cast<uint8_t>(cy) - w.member_row(m));
         form[m]           = tidx(static_cast<uint8_t>(static_cast<uint8_t>(gx) - dc) & c.mask, static_cast<uint8_t>(static_cast<uint8_t>(gy) - dr) & c.mask);
         arr_unit u;
-        state[m] = (ui < static_cast<uint32_t>(unit_cap) && w.unit(owner, ui, &u) && is_plain_move(u.order)) ? 1 : 0;
+        state[m] = (ui < static_cast<uint32_t>(unit_cap) && w.unit(owner, ui, &u) && is_placement_move(u)) ? 1 : 0;
         if (state[m] == 0) c.taken[c.n_taken++] = tidx(w.tile_byte(m, 0), w.tile_byte(m, 1));
     }
     for (int32_t m = 0; m < n; ++m) { // pass 1: formation tiles that are free

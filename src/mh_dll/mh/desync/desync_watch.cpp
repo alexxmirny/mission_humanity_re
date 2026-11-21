@@ -66,6 +66,8 @@
 #include "caps/ovf.h"    // PT-CAP8 S2: the overflow extension (8 slices, incremental sums)
 #include "en_guard.h"
 #include "include/mh_net_export.h"
+#include "include/mh_module_bind.h"
+#include "../../libmh/include/libmh.h"
 #include "include/mh_run_context.h"       // MH_RunDir (the snapshot lands next to the run's logs)
 #include "desync/order_capture.h"         // mp:Q3: the order recording rides this module's step hook
 #include "desync/replay_record.h"         // the field-report replay inputs (seed + hash checkpoints)
@@ -83,6 +85,10 @@
 #include "state/inc_state.h"
 #include "state/region_view.h"
 #include "state/host_api.h"
+#include "state/world_snapshot.h"
+#include "ui/selected_targets.h"
+#include "include/mh_unitselect_export.h"
+#include "seams/lobby_speed.h"
 #include "state/host_events.h"
 #include "ui/player_strings.h" // mods:LANG4: the on-screen alert is a table row
 
@@ -261,14 +267,16 @@ sample_wire g_out;
 // The v2 path reads the per-region hashes of the ONE shared per-step tracker (state_tracker.h) every
 // step, so the walk above only runs for a v1 peer (the FALLBACK) or with per_step=0.
 static_assert(N <= 255, "a REGIONS frame carries the region count in one byte");
-constexpr bool all_regions_fit_v2() {
-    for (int i = 0; i < N; ++i)
-        if (mh::state::HASH_REGIONS[i].len > v2::MAX_BLOCKS * 64u) return false;
-    return true;
-}
-static_assert(all_regions_fit_v2(), "a hash slice outgrew the v2 localisation's 128 x 64 blocks (512 KB)");
 
-uint64_t g_fp2      = 0;     // v2::fp_v2(g_manifest_fp, inc::HASH_KIND) -- folded with the overflow kind while g_ovf_on
+// These extents are finalized after caps reservation, before ANY detector arena is attached.
+// Descriptor minima establish the schema, not the runtime localisation capacity.
+uint32_t g_attached_lens[N];
+void     require_detector_extents() {
+    for (int i = 0; i < N; ++i)
+        if (g_attached_lens[i] != mh::state::hash_len(i)) std::abort();
+}
+
+uint64_t g_fp2      = 0;     // wire-only layout/hash kind/actual active geometry fingerprint
 bool     g_v2_armed = false; // per_step=1 and the tracker + journal are allocated
 
 // ---- PT-CAP8 S2: the overflow hash (mh/caps/ovf.h) --------------------------------------------------------
@@ -298,6 +306,10 @@ uint32_t               g_ev_oq_live = 0;
 
 v2::ticker       g_tick;
 v2::localiser    g_loc;
+void            *g_loc_mem = nullptr;
+uint32_t         g_loc_lens[NX];
+DWORD            g_loc_last_service_ms = 0;
+bool             g_loc_service_started = false;
 v2::undo_journal g_jr;
 
 // The peers' wire versions, as their frames reveal them (recv thread writes, main thread reads).
@@ -1016,7 +1028,7 @@ const mh::state::inc::tracker &dp_inc() { return mh::desync::state_hub::tracker(
 
 void dirty_probe_arm() {
     uint32_t total = 0;
-    for (int i = 0; i < N; ++i) total += mh::state::HASH_REGIONS[i].len;
+    for (int i = 0; i < N; ++i) total += mh::state::hash_len(i);
     if (!mh::desync::state_hub::enable("the dirty probe", &say)) {
         say("; [desync] DIRTY PROBE NOT armed: no shared state tracker\n");
         return;
@@ -1134,7 +1146,7 @@ void dirty_probe_account() {
     LARGE_INTEGER c0, c1;
     QueryPerformanceCounter(&c0);
     for (int i = 0; i < N; ++i) {
-        const uint32_t len = mh::state::HASH_REGIONS[i].len;
+        const uint32_t len = mh::state::hash_len(i);
         if (g_dp_first[i] >= len) continue;
         const uint32_t       from = g_dp_first[i] & ~63u;
         mh::state::hash_sink hs;
@@ -1155,7 +1167,7 @@ void dirty_probe_account() {
         QueryPerformanceCounter(&f0);
         for (int i = 0; i < N; ++i) {
             mh::state::hash_sink hs;
-            hs.raw(reinterpret_cast<const uint8_t *>(mh::state::hash_base(i)), mh::state::HASH_REGIONS[i].len);
+            hs.raw(reinterpret_cast<const uint8_t *>(mh::state::hash_base(i)), mh::state::hash_len(i));
             g_dp_sink ^= hs.finish();
         }
         QueryPerformanceCounter(&f1);
@@ -1228,7 +1240,7 @@ void dirty_probe_report() {
         const DirtyRegion &r = g_dp_reg[i];
         say("; [desync] DIRTY region %-18s len=%7lu dirty %lu/%lu steps | mean exact %.0f B, 256B-grain "
             "%.0f B, 4K pages %.2f | max exact %lu B | chained re-hash %.0f B/step\n",
-            mh::state::HASH_REGIONS[i].name, (unsigned long)mh::state::HASH_REGIONS[i].len,
+            mh::state::HASH_REGIONS[i].name, (unsigned long)mh::state::hash_len(i),
             (unsigned long)r.steps_dirty, (unsigned long)g_dp_steps, (double)r.bytes / steps,
             (double)r.grains[1] * 256.0 / steps, (double)r.grains[3] / steps, (unsigned long)r.max_bytes,
             (double)r.tail / steps);
@@ -1335,6 +1347,22 @@ int install(const char *ini_path) {
         return 0;
     }
 
+    uint32_t max_localization_len = 0;
+    for (int i = 0; i < NX; ++i) {
+        const uint32_t len = i < N ? mh::state::hash_len(i) : mh::caps::ovf::slice(i - N).len;
+        g_loc_lens[i]      = len;
+        if (i < N) g_attached_lens[i] = len;
+        if (len > max_localization_len) max_localization_len = len;
+    }
+    if (g_cfg.per_step && mh::net::transport_present()) {
+        const size_t bytes = v2::localiser::scratch_bytes(max_localization_len);
+        g_loc_mem          = VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!g_loc_mem || !g_loc.attach(g_loc_mem, bytes, max_localization_len)) {
+            say("; [desync] NOT armed: cannot allocate %lu bytes of localization scratch\n", (unsigned long)bytes);
+            return 0;
+        }
+    }
+
     int n_excluded = 0;
     for (int i = 0; i < N; ++i) {
         g_excluded[i] = mh::state::HASH_REGIONS[i].excluded;
@@ -1360,6 +1388,7 @@ int install(const char *ini_path) {
         // views on the stack -- this runs once.
         const char *names[N];
         uint32_t    lens[N];
+        // Schema fingerprint stays descriptor-based; recording headers carry actual runtime extents.
         for (int i = 0; i < N; ++i) {
             names[i] = mh::state::HASH_REGIONS[i].name;
             lens[i]  = mh::state::HASH_REGIONS[i].len;
@@ -1387,7 +1416,7 @@ int install(const char *ini_path) {
     if (mh::net::transport_present()) MH_Net_SetHashHandler(on_hash_frame_rx);
     g_armed = true;
 
-    g_fp2_off = v2::fp_v2(g_manifest_fp, mh::state::inc::HASH_KIND);
+    g_fp2_off = v2::fp_v2(g_manifest_fp, mh::state::inc::HASH_KIND, g_loc_lens, N);
     g_fp2     = g_fp2_off;
     say("; [desync] ARMED: every=%d steps, %d regions (%d excluded from the verdict), manifest "
         "fp=%08X%08X, %d wire bytes/sample, action=%d, snapshot=%d (max %d), per_step=%d\n",
@@ -1562,6 +1591,7 @@ void session_reset() {
     // mp:D44: a new match's peers announce their wire versions afresh.
     g_tick.clear(N);
     g_loc.reset(LOCALISE_MAX);
+    g_loc_service_started = false;
     for (int i = 0; i < VPEERS; ++i) {
         InterlockedExchange(&g_peer_v1[i], 0);
         InterlockedExchange(&g_peer_v2[i], 0);
@@ -1784,8 +1814,24 @@ void describe_offset(int r, uint32_t off, char *out, size_t cap) {
 void tick_flush();
 
 struct LiveLocHost final : v2::loc_host {
-    int         nregions() const override { return (int)g_nreg; }
-    uint32_t    region_len(int r) const override { return r < N ? mh::state::HASH_REGIONS[r].len : mh::caps::ovf::slice(r - N).len; }
+    int      nregions() const override { return (int)g_nreg; }
+    uint32_t peers_present() const override {
+        if (!MH_Net_IsStarted()) return 0;
+        uint32_t human_alive = 0;
+        for (int p = 0; p < v2::MAX_SENDERS; ++p) {
+            const uint8_t flags = player_flags_now(p);
+            if ((flags & 0x06u) == 0x06u && !(flags & 0x18u)) human_alive |= 1u << p;
+        }
+        // A client has only the host connection; relayed peer departure is known through the roster.
+        if (!is_host_now()) return MH_Net_PeerCount() > 0 ? human_alive : 0;
+        int       ids[v2::MAX_SENDERS];
+        const int n         = MH_Net_ActivePeerIds(ids, v2::MAX_SENDERS);
+        uint32_t  connected = 0;
+        for (int i = 0; i < n && i < v2::MAX_SENDERS; ++i)
+            if (ids[i] >= 0 && ids[i] < v2::MAX_SENDERS) connected |= 1u << ids[i];
+        return human_alive & connected;
+    }
+    uint32_t    region_len(int r) const override { return r < N ? mh::state::hash_len(r) : mh::caps::ovf::slice(r - N).len; }
     const char *region_name(int r) const override { return region_label(r); }
     bool        excluded(int r) const override { return r < N && g_excluded[r]; }
     uint64_t    fp() const override { return g_fp2; }
@@ -1798,6 +1844,7 @@ struct LiveLocHost final : v2::loc_host {
     // The state at step s: the tracker's shadow (the state at THIS step, updated a moment ago) with the
     // journal's entries for the steps after s replayed backwards over it.
     bool materialize(uint32_t s) override {
+        require_detector_extents(); // cached evidence offsets must still describe this allocation
         if (!g_jr.covers(s) || s > g_step || g_jr_last != g_step) return false;
         if (g_ev && g_ovf_on && !g_ev_has_ovf) { // a match that armed the extension after an OFF one sized the buffer
             VirtualFree(g_ev, 0, MEM_RELEASE);
@@ -1807,7 +1854,7 @@ struct LiveLocHost final : v2::loc_host {
             uint32_t total = 0;
             for (int i = 0; i < N; ++i) {
                 g_ev_off[i] = total;
-                total += (mh::state::HASH_REGIONS[i].len + 63u) & ~63u;
+                total += (mh::state::hash_len(i) + 63u) & ~63u;
             }
             if (g_ovf_on)
                 for (int e = 0; e < mh::caps::ovf::SLICES; ++e) {
@@ -1824,7 +1871,7 @@ struct LiveLocHost final : v2::loc_host {
             }
         }
         const mh::state::inc::tracker &tr = mh::desync::state_hub::tracker();
-        for (int i = 0; i < N; ++i) memcpy(g_ev + g_ev_off[i], tr.shadow(i), mh::state::HASH_REGIONS[i].len);
+        for (int i = 0; i < N; ++i) memcpy(g_ev + g_ev_off[i], tr.shadow(i), mh::state::hash_len(i));
         if (g_ovf_on)
             for (int e = 0; e < mh::caps::ovf::SLICES; ++e) memcpy(g_ev + g_ev_off[N + e], g_ovf.shadow(e), mh::caps::ovf::slice(e).len);
         g_jr.undo_to(s, [](int r, uint32_t b, const uint8_t *bytes, uint32_t n) {
@@ -1832,7 +1879,7 @@ struct LiveLocHost final : v2::loc_host {
         });
         int32_t c;
         memcpy(&c, g_ev + g_ev_off[mh::state::HIDX_ORDER_QUEUE_COUNT], sizeof(c));
-        g_ev_oq_live = mh::state::inc::order_queue_live_bytes(c, mh::state::HASH_REGIONS[mh::state::HIDX_ORDER_QUEUE].len);
+        g_ev_oq_live = mh::state::inc::order_queue_live_bytes(c, mh::state::hash_len(mh::state::HIDX_ORDER_QUEUE));
         return true;
     }
     const uint8_t *evidence(int r) override { return g_ev + g_ev_off[r]; }
@@ -1842,13 +1889,13 @@ struct LiveLocHost final : v2::loc_host {
             const uint32_t n   = (len - b * 64u) < 64u ? (len - b * 64u) : 64u;
             return mh::caps::ovf::block_hash(r - N, b, evidence(r) + b * 64u, n);
         }
-        return mh::state::inc::block_hash_masked(r, b, evidence(r), mh::state::HASH_REGIONS[r].len,
+        return mh::state::inc::block_hash_masked(r, b, evidence(r), mh::state::hash_len(r),
                                                        mh::desync::state_hub::tracker().mask_knobs(),
                                                  r == mh::state::HIDX_ORDER_QUEUE ? g_ev_oq_live : 0);
     }
     uint8_t keep(int r, uint32_t off) override {
         if (r >= N) return 0xff;
-        return mh::state::inc::keep_byte(r, off, mh::state::HASH_REGIONS[r].len,
+        return mh::state::inc::keep_byte(r, off, mh::state::hash_len(r),
                                          mh::desync::state_hub::tracker().mask_knobs(), g_ev_oq_live);
     }
     void send(const uint8_t *f, int len) override {
@@ -1994,7 +2041,10 @@ bool v2_frame_rx(int sender, const unsigned char *buf, int len) {
 
 void v2_drain() {
     static v2_frame f; // main thread only; ~1 KB kept off the stack
-    for (int guard = V2Q_CAP + 1; guard-- > 0;) {
+    EnterCriticalSection(&g_cs);
+    const int available = g_v2q_count;
+    LeaveCriticalSection(&g_cs);
+    for (int guard = available; guard-- > 0;) {
         EnterCriticalSection(&g_cs);
         const bool got = g_v2q_count > 0;
         if (got) {
@@ -2034,17 +2084,16 @@ void v2_drain() {
             g_tick.put_theirs(f.sender, h.step, (int)h.count, st, od, on_tick_verdict);
             continue;
         }
-        // An incident frame for a step we have not reached cannot be answered yet (a third peer ahead of
-        // us): put it back and look again next step. Everything behind it waits one step.
+        // Future incidents wait at the tail, not ahead of pages/control for a parked current incident.
+        // The bounded drain below cannot emit, and the service pump remains one frame per opportunity.
         if (h.step > g_tick.newest) {
             EnterCriticalSection(&g_cs);
             if (g_v2q_count < V2Q_CAP) {
-                g_v2q_head        = (g_v2q_head + V2Q_CAP - 1) % V2Q_CAP;
-                g_v2q[g_v2q_head] = f;
+                g_v2q[(g_v2q_head + g_v2q_count) % V2Q_CAP] = f;
                 ++g_v2q_count;
             }
             LeaveCriticalSection(&g_cs);
-            break;
+            continue;
         }
         g_loc.on_frame(g_host, f.sender, h, body);
     }
@@ -2110,7 +2159,7 @@ bool ovf_latch() {
     }
     g_ovf_on = true;
     InterlockedExchange(&g_nreg, NX);
-    g_fp2 = mh::caps::ovf::fp_on(g_fp2_off);
+    g_fp2 = v2::fp_v2(mh::caps::ovf::fp_on(g_manifest_fp), mh::state::inc::HASH_KIND, g_loc_lens, NX);
     world_sync::set_fp2(g_fp2);
     g_tick.clear(NX); // step 0 of the extended vector has no history
     g_jr.clear(g_step);
@@ -2152,7 +2201,7 @@ void v2_step() {
     }
     tick_add(st); // before judging: an incident frame this step triggers must follow our TICK for it
     g_tick.put_mine(g_step, st, g_order_digest, per, on_tick_verdict);
-    v2_drain();
+    service_localization();
     pend_tick();
     QueryPerformanceCounter(&t1);
     const int64_t dt = (t1.QuadPart - t0.QuadPart) + mh::desync::state_hub::last_ticks();
@@ -2179,6 +2228,19 @@ void fallback_check() {
 
 } // namespace
 
+// Main-thread network service, also callable while a lockstep/resync wait is parked.
+// Drain once per opportunity and emit at most one incident frame per 20 ms, independent of RX count.
+void service_localization() {
+    if (!g_armed || !g_running || !g_v2_armed) return;
+    v2_drain();
+    const DWORD now = GetTickCount();
+    world_sync::service_frame(now, g_step);
+    if (g_loc_service_started && now - g_loc_last_service_ms < 20u) return;
+    g_loc_service_started = true;
+    g_loc_last_service_ms = now;
+    g_loc.pump(g_host);
+}
+
 // mp:RM1 -- WHY an armed detector is not sampling, said ONCE per match at the first cadence step.
 // "Armed and sampling nothing" is the shape this repo keeps mistaking for a clean verdict (G68/U30,
 // and the install_desync_watch branches name it explicitly), and until this line existed the only
@@ -2197,10 +2259,17 @@ void say_gate_once() {
 
 namespace {
 
+void record_order_hash() {
+    if (!g_armed || !mh::desync::orders::enabled()) return;
+    const int32_t n = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
+    mh::desync::orders::hash(mh::caps::orders::base(mh::caps::orders::QUEUE), int(n), game_clock_bits_now());
+}
+
 // The per-step body both hooks share. `offered` is the caller's already-computed v1 hash set (the
 // harness, kind 1) or null.
 void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool hashed_caller) {
     hitch::scope hs(hitch::STEP_TOTAL); // mp:Q4: the whole per-step hook, every step
+    if (g_armed) require_detector_extents();
     if (g_armed && mh::desync::recorder::enabled()) axis_tick();
     const bool ord = g_armed && mh::desync::orders::enabled();
     const bool rr  = g_armed; // the replay record's axis: always (the door watch reads it), writes only when on
@@ -2214,7 +2283,7 @@ void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool ha
         char                dir[MAX_PATH];
         if (act) lstrcpynA(dir, MH_RunDir(), MAX_PATH);
         const bool settled = MH_RunDirGeneration() == g1;
-        if (ord) mh::desync::orders::step(act ? dir : nullptr, g1, settled, game_clock_bits_now());
+        if (ord) mh::desync::orders::step(act ? dir : nullptr, g1, settled);
         if (rr) {
             hitch::scope hr(hitch::REPLAY_REC);
             replay_rec::step(act ? dir : nullptr, g1, settled);
@@ -2225,10 +2294,14 @@ void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool ha
         // mp:Q2: the solo session's own step counter, and the tracker asked ONLY for the recorder (the
         // v2 compare, the ring and the digest are lockstep instruments). state_hub::step consults every
         // listener's wants_step(), so once the recorder has stopped this is a branch.
+        record_order_hash();
         mh::desync::state_hub::step(++g_solo_step);
         return;
     }
-    if (!g_armed || !g_running) return;
+    if (!g_armed || !g_running) {
+        record_order_hash();
+        return;
+    }
     // mp:X3c: the world resync's per-step hook -- BEFORE the step counter advances and before this step's
     // digest fold, so a host capture and a minority import both sit at the pre-body point of step g_step+1.
     // An import rewinds g_step / the digest (rewind_for_world_sync), so the ++ below then yields S.
@@ -2237,6 +2310,7 @@ void step_common(const uint64_t *offered, int n, uint64_t offered_state, bool ha
         n             = 0;
         hashed_caller = false;
     }
+    record_order_hash(); // after any world import, at the actual hash-input boundary
     ++g_step;
     order_digest_tick(); // D31 clause C: every step, unconditionally -- see the function's own comment
     snapshot_tick();
@@ -2328,20 +2402,43 @@ bool configure_order_record(int enabled, const char *refused) {
     return mh::desync::orders::configure(enabled, refused, &say);
 }
 
-void on_order_dispatch() {
+void on_order_phase_entry() {
     const int32_t n = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_ORDER_QUEUE_COUNT);
     // PT-CAP9-U5: the queue the GAME is dispatching (the wide array with the order layer ON), not the registry's stock mirror.
-    mh::desync::orders::dispatch(mh::caps::orders::base(mh::caps::orders::QUEUE), (int)n);
+    mh::desync::orders::entry(mh::caps::orders::base(mh::caps::orders::QUEUE), (int)n);
 }
 
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state) { step_common(per, n, state, true); }
 
 bool detected() { return g_mismatches > 0 || g2_mismatches > 0; }
 
-// The scene REPLAY entry (mh_harness.dll's `world_in` in configuration (1), where libmh_import_world does not
-// exist): import a scene dump through this image's private copy of libmh's import, re-deriving with the
-// game's own functions. See desync/scene_dump.h.
+// Scene replay has one publication owner in both configurations: validate MHOV,
+// import the stock world, scatter once, then restore raised tails.
 int import_scene(const void *blob, unsigned n) {
+    if (MH_LibmhModule_IsBound()) {
+        namespace w = mh::state::world;
+        if (!blob || n < sizeof(w::blob_header)) return w::WORLD_ERR_ARG;
+        const auto *header         = static_cast<const w::blob_header *>(blob);
+        size_t      overflow_bytes = 0;
+        const auto *overflow       = mh::caps::ovf::world_trailer(
+            blob, n, header->nav_offset, header->nav_len, header->fixup_len, &overflow_bytes);
+        if (overflow) {
+            if (!mh::caps::raised()) return mh::caps::ovf::WORLD_ERR_CAPS_OVF;
+            const int rc = mh::caps::ovf::check(overflow, overflow_bytes);
+            if (rc != mh::caps::ovf::OVF_OK) return mh::caps::ovf::world_rc_refused(rc);
+        }
+        const int rc = libmh_import_world(blob, n);
+        if (rc != w::WORLD_OK) return rc;
+        mh::caps::canon_scatter();
+        const int overflow_rc = overflow ? mh::caps::ovf::apply(overflow, overflow_bytes)
+                                         : mh::caps::ovf::OVF_OK;
+        mh::caps::orders::finish_scatter();
+        MH_UnitSelect_Reset();
+        mh::ui::selected_targets::reset();
+        mh::seams::lobby_speed::enforce();
+        return overflow_rc == mh::caps::ovf::OVF_OK ? w::WORLD_OK
+                                                    : mh::caps::ovf::world_rc_refused(overflow_rc);
+    }
     bind_scene_views();
     scene::import_ops ops = {};
     ops.pathfinder_init   = +[]() { mh::call::llm_strat_pathfinder_init(); };

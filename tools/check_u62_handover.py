@@ -19,6 +19,7 @@ outcome (`on_gameover ... outcome=8`); the timeline (seconds from the first stal
 and must be inside 30..90 s (U55 measured ~58 s).
 
   python tools/check_u62_handover.py <det_dir> [--negative] [--exit-step N] [--min-post N]
+  python tools/check_u62_handover.py --selftest  # outcome deadlines and stitched-log midnight boundaries
 """
 
 import argparse
@@ -116,13 +117,10 @@ def check(det_dir, negative=False, exit_step=None, min_post=MIN_POST):
             )
         found = False
         for sv in SURVIVORS:
-            tl = u53.timeline(logs[sv][0], sv)
-            out += tl
-            for t in tl:
-                m = re.search(r"timeline \+\s*([\d.]+)s\s+on_gameover outcome=(\d+)", t)
-                if m and m.group(2) == "8":
+            out += u53.timeline(logs[sv][0], sv)
+            for secs, name, text in u53.timeline_events(logs[sv][0]):
+                if name == "on_gameover" and re.search(r"\boutcome=8\b", text):
                     found = True
-                    secs = float(m.group(1))
                     if not 30.0 <= secs <= 90.0:
                         bad.append(
                             "%s reached outcome 8 at +%.1fs (expected ~58 s, window 30..90)"
@@ -178,13 +176,59 @@ def check(det_dir, negative=False, exit_step=None, min_post=MIN_POST):
     return (not bad), out + ["FAIL: " + b for b in bad]
 
 
+def selftest():
+    import tempfile
+    from pathlib import Path
+
+    cases = [
+        ("same-day lower boundary", "12:00:00.000", "12:00:30.000", 8, True),
+        ("midnight outcome", "23:59:30.490", "00:00:24.022", 8, True),
+        ("upper boundary", "12:00:00.000", "12:01:30.000", 8, True),
+        ("too early across midnight", "23:59:50.000", "00:00:19.999", 8, False),
+        ("too late", "12:00:00.000", "12:01:30.001", 8, False),
+        ("missing required outcome", "23:59:30.000", "00:00:28.000", 3, False),
+    ]
+    failed = 0
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        for peer in u53.PEERS:
+            (root / peer).mkdir()
+            (root / peer / "mh_harness.log").write_text("1 3FF0000000000000 hash\n")
+        (root / "host" / "mh_net.log").write_text("; hub-leave -- nothing to hand over\n")
+        for label, start, end, outcome, expected in cases:
+            text = (
+                f"[{start}] ; [netind] stall waiting_for=host\n"
+                f"[{end}] ; on_gameover ENTER outcome={outcome} gclk=6000\n"
+            )
+            for peer in SURVIVORS:
+                (root / peer / "mh_net.log").write_text(text)
+            actual, _ = check(str(root), negative=True)
+            failed += actual != expected
+            print(("ok " if actual == expected else "BAD "), label)
+    stitched = (
+        "[00:00:30.000] net: udp conn 0 dropped\n"
+        "[23:59:40.000] ; [netind] stall waiting_for=host\n"
+        "[00:00:35.000] ; on_gameover ENTER outcome=8 gclk=6000\n"
+    )
+    delays = {name: elapsed for elapsed, name, _ in u53.timeline_events(stitched)}
+    ordered = delays.get("link silent/dropped") == 50 and delays.get("on_gameover") == 55
+    failed += not ordered
+    print(("ok " if ordered else "BAD "), "overlapping process/session chunks across midnight")
+    return int(bool(failed))
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("det_dir")
+    ap.add_argument("det_dir", nargs="?")
+    ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--negative", action="store_true")
     ap.add_argument("--exit-step", type=int, default=None)
     ap.add_argument("--min-post", type=int, default=MIN_POST)
     a = ap.parse_args()
+    if a.selftest:
+        return selftest()
+    if not a.det_dir:
+        ap.error("det_dir is required unless --selftest is used")
     try:
         ok, lines = check(a.det_dir, a.negative, a.exit_step, a.min_post)
     except u53.Refusal as e:

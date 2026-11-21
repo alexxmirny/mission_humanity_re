@@ -45,7 +45,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
@@ -53,6 +52,8 @@ import struct
 import subprocess
 import sys
 import time
+
+import tmp_runs
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -62,7 +63,7 @@ DISPOSITIONS = os.path.join(REPO, "tools", "data", "libref_asset_dispositions.js
 STANDALONE = os.path.join(REPO, "src", "mh_dll", "Release", "standalone")
 HOST_EXE = os.path.join(STANDALONE, "libref_host.exe")
 SPINE_DLL = os.path.join(STANDALONE, "libmh.dll")
-WORK = os.path.join(REPO, "tmp", "libref")
+WORK = None  # Assigned by the executing owned invocation, not while importing.
 
 # The manifest's artifact keys -> the file name the host reads them back from. The host resolves all
 # five beside the --fixture directory (see libref_host/main.cpp), which is why this tool materialises
@@ -94,7 +95,7 @@ class Refusal(Exception):
 # the declaration, and its falsifier
 # ---------------------------------------------------------------------------------------------
 def load_dispositions():
-    d = json.load(io.open(DISPOSITIONS, encoding="utf-8"))
+    d = json.load(open(DISPOSITIONS, encoding="utf-8"))
     names = [r["name"] for r in d["absent_from_bank"]]
     if not names:
         raise Refusal(
@@ -187,9 +188,9 @@ def materialise(name, out_dir):
     import fixture_replay as fr
 
     src = os.path.join(FIXTURE_ROOT, name)
-    man = fr.load_manifest(src)
-    if ("replay_contract" in man) == ("live_contract" in man):
-        raise Refusal("%s declares both contracts or neither -- it describes no arrangement" % name)
+    man, problems = fr.integrity(src)
+    if problems:
+        raise Refusal("%s: %s" % (name, "; ".join(problems)))
     os.makedirs(out_dir, exist_ok=True)
     for key, a in man["artifacts"].items():
         if key not in LANE_FILES:
@@ -212,7 +213,9 @@ def imports_of(pe):
     if not db:
         raise Refusal("no dumpbin.exe under machine_config.VS_INSTALL_ROOT")
     r = subprocess.run([db, "/imports", pe], capture_output=True, text=True)
-    return {m.group(1).lower() for m in re.finditer(r"^\s{4}(\S+\.dll)\s*$", r.stdout, re.M)}
+    return {
+        m.group(1).lower() for m in re.finditer(r"^\s{4}(\S+\.dll)\s*$", r.stdout, re.MULTILINE)
+    }
 
 
 def check_build():
@@ -318,6 +321,9 @@ def run_one(name, absent_file, timeout):
     ]
     if live:
         argv.append("--live")
+    else:
+        # Explicitly carry the admitted manifest semantics to the standalone host.
+        argv.extend(["--order-stream-version", "2", "--replay-dispatch-inject"])
     log = os.path.join(WORK, name + ".log")
     t0 = time.time()
     # KILLED AT THE BOUND, NEVER WAITED OUT PAST IT -- run_gate's own rule one level up. A replay
@@ -333,7 +339,7 @@ def run_one(name, absent_file, timeout):
             proc.wait()
             rc, timed_out = -1, True
     secs = time.time() - t0
-    text = io.open(log, encoding="utf-8", errors="replace").read()
+    text = open(log, encoding="utf-8", errors="replace").read()
 
     problems = []
     if timed_out:
@@ -358,6 +364,12 @@ def run_one(name, absent_file, timeout):
     m_ep = EPOCH_RE.search(text)
     if m_ep:
         problems.append("REFUSED by the host: %s" % m_ep.group(0))
+    if not live:
+        import mh_order_stream as order_stream
+
+        refusal = order_stream.receipt_refusal(text, steps)
+        if refusal:
+            problems.append("REFUSED: " + refusal)
     if not IDENTICAL_RE.search(text):
         problems.append("no ALL STEPS IDENTICAL line")
     m = REPLAYED_RE.search(text)
@@ -475,6 +487,23 @@ def selftest():
         "an unstamped or kind-1 fixture is not",
         kind_refusal({"step0": {}}) is None and kind_refusal({"step0": {"hash_kind": 1}}) is None,
     )
+    import mh_order_stream as order_stream
+
+    case("portable MHOR v2 framing and real native payload vectors", order_stream.selftest() == 0)
+    good_contract = {
+        "replay_contract": {
+            "flags": dict(order_stream.FAITHFUL_FLAGS),
+            "order_stream": dict(order_stream.CONTRACT),
+        }
+    }
+    case("faithful phase contract admitted", order_stream.contract_refusal(good_contract) is None)
+    old_contract = {
+        "replay_contract": {"flags": dict(order_stream.FAITHFUL_FLAGS, replay_suppress_enqueue=1)}
+    }
+    case(
+        "old top-step suppression contract refused",
+        order_stream.contract_refusal(old_contract) is not None,
+    )
     case("every committed fixture is discoverable", len(fixtures()) >= 1)
     print("[replay_libref] selftest: %s" % ("PASS" if not bad else "%d FAILED" % bad))
     return 1 if bad else 0
@@ -491,6 +520,8 @@ def main():
 
     if args.selftest:
         return selftest()
+    global WORK
+    WORK = tmp_runs.current_output("libref")
 
     try:
         os.makedirs(WORK, exist_ok=True)
@@ -498,7 +529,7 @@ def main():
         d, names = load_dispositions()
         print("[libref] %s" % verify_dispositions(names))
         absent_file = os.path.join(WORK, "assets_absent.txt")
-        io.open(absent_file, "w", encoding="utf-8", newline="\n").write(
+        open(absent_file, "w", encoding="utf-8", newline="\n").write(
             "# GENERATED by tools/replay_libref.py from tools/data/libref_asset_dispositions.json\n"
             + "".join(n + "\n" for n in names)
         )
@@ -539,4 +570,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(tmp_runs.run_cli(main, "libref", adjudicator=True))

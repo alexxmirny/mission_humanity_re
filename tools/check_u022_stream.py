@@ -34,8 +34,10 @@ import os
 import re
 import sys
 
+import tmp_runs
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(REPO, "tmp", "u022")
+OUT = None  # Bound after offline arguments, shared by this row's ordered steps.
 
 ST_TOTAL = re.compile(r"; ST TOTAL (.*)$")
 HITS = re.compile(r"; move hits (.*)$")
@@ -350,6 +352,11 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser()
+    global OUT
+    ap.add_argument(
+        "--work-dir",
+        help="Explicit shared directory for manual comparisons; defaults to the owned row",
+    )
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--key", type=int, choices=[0, 1, 2])
     ap.add_argument("--arm", choices=["ship", "lib"])
@@ -358,6 +365,7 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    OUT = a.work_dir or tmp_runs.current_output("u022")
     if a.key is None or not a.arm or not a.run_dir:
         ap.error("usage: check_u022_stream.py --key 0|1|2 --arm ship|lib <session-run-dir>")
     h = read(os.path.join(a.run_dir, "mh_match_harness.log"))

@@ -28,9 +28,11 @@
 //
 #include "sim/rng_trace.h" // C-prime level 2: the defer-verdict note
 #include "sim/sim_order_dispatch.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/move/respond.h" // mods:M1G 4c: move_reverse_now (the retain path), shared with the retail splice
 #include "sim/move/world_c.h"
 #include "sim/sim_move_fixes.h" // mods:M1H lane A: the key values the twins read
+#include "state/host_events.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "addr/mh_export.gen.h" // the entry thunk that REPLACES the original when promoted
@@ -140,8 +142,8 @@ const dispatch_calls &live_dispatch_calls() {
         MH_LIBMH_BIND(llm_unit_state_is_boarding),
         MH_LIBMH_BIND(llm_unit_status_bit_clear),
         MH_LIBMH_BIND(llm_unit_status_bit_set),
-        MH_LIBMH_BIND(llm_unit_transport_unload_docked),
-        MH_LIBMH_BIND(llm_unit_transport_unload_field),
+        MH_LIBMH_BIND(llm_unit_squad_split_docked),
+        MH_LIBMH_BIND(llm_unit_squad_split_field),
         // Hand-appended, below the generated block -- see sim_order_dispatch.h. The generator reads
         // mh_calls.gen.h and refuses a varargs name, which is right; this is one measured SHAPE.
         MH_CRT(w_sprintf__vss),
@@ -203,7 +205,8 @@ inline constexpr uint16_t UNIT_STATE_EXIT_CANCEL = 0x23;
 // order_code is the unit-state code fed to llm_strat_unit_set_state_of, so these are state ids used
 // as order ids. 0x1d/0x1e are proven by sim_order_enqueue.h's attack_building/attack_unit handlers,
 // which enqueue exactly those codes; 0x23 is proven here (it sets state EXIT_CANCEL); 0x32 is proven
-// here (it unloads a transport). 0x20 is NOT named -- it gates three separate branches and no site in
+// here (it SPLITS a squad into 1-soldier units -- llm_unit_squad_split_field/_docked; the constant
+// below keeps its historical UNLOAD_TRANSPORT name, re:RE-DB37). 0x20 is NOT named -- it gates three separate branches and no site in
 // this closure pins its meaning, so it keeps its number rather than a guess.
 inline constexpr uint16_t ORDER_CODE_ATTACK_BUILDING  = 0x1d;
 inline constexpr uint16_t ORDER_CODE_ATTACK_UNIT      = 0x1e;
@@ -265,6 +268,9 @@ namespace detail {
 
 // ---- the whole function -------------------------------------------------------------------------
 void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_calls &c) {
+    namespace W                       = mh::order_witness;
+    auto          &w                  = mh::state::order_witnesses();
+    const uint32_t witness_generation = W::generation(w);
     // 0x004668aa / 0x004668b1. `kept` is the compaction cursor; `slot` is the walk cursor.
     int32_t kept = 0;
 
@@ -278,6 +284,8 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
     // 0x004668c8: the loop tail is just `++slot` -- the `MOV EAX,[EBP-0x24]` immediately before the
     // INC is DEAD (EAX is reloaded before any use on every path out of 0x004668b8).
     for (int32_t slot = 0; slot < own.order_count(); ++slot) {
+        W::pinned witness(
+            w, W::container::queue, static_cast<uint32_t>(slot));
         order &q = own.order_at(slot);
         // C-prime level 2, tag 2: EVERY record the loop touches, logged BEFORE any `continue`. The
         // tag-1 note further down sits after the defer decision and is therefore blind to records
@@ -295,6 +303,7 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
         x.player       = (uint32_t)q.owner_and_kind & ORDER_OWNER_MASK;
         x.kind         = (uint32_t)q.owner_and_kind & ORDER_KIND_MASK;
         x.object_index = (int32_t)(uint32_t)q.unit_index; // MOVZX: 0..0xffff, never negative
+        if (order_tasks_adapter::due_edit(own, q, uint32_t(kept))) continue;
 
         // ---- THE ROUTER, 0x0046690a-0x00466947 ---------------------------------------------------
         //
@@ -355,6 +364,23 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
         // exactly; the .c draft's `if (0.0 < energy)` does not, and NaN is the one input the two
         // readings differ on.
         if (u.energy <= 0.0) continue;
+        if (!order_tasks_adapter::admit_primary(own, q)) {
+            u.order_queued = 0;
+            // Only the already retained prefix survives this source position. Later valid
+            // commands will set/clear their own flag when processed, preserving newer work.
+            for (int32_t i = 0; i < kept; ++i) {
+                const auto &earlier = own.order_at(i);
+                if (earlier.unit_index == q.unit_index && earlier.owner_and_kind == q.owner_and_kind &&
+                    order_tasks_adapter::admit_primary(own, earlier, nullptr, true)) {
+                    u.order_queued = 1;
+                    break;
+                }
+            }
+            order_tasks_adapter::record_discarded(own, x.player, uint32_t(x.object_index), q.owner_and_kind, q.order_code, q.param0, q.args);
+            continue;
+        }
+        // Cancel at due admission, including secondary-target and native deferred commands.
+        own.storage_policy(mh::storage_policy::operation::cancel, x.player, x.object_index);
 
         // 0x0046696e-0x00466988: the DUAL-TARGET orders bypass everything below, including the
         // retention branch -- they can never defer.
@@ -386,6 +412,11 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             if (u.target2_ref != 0) // 0x0046728d
                 c.llm_strat_target_release_ref(x.player, x.object_index,
                                                RELEASE_MODE_SECONDARY_BIND);
+            if (u.target2_ref != 0)
+                mh::state::emit_order_observation(
+                    LIBMH_EVK_ATTACK_TARGET_ASSIGNED,
+                    LIBMH_ORDER_OBSERVATION_QUEUE | LIBMH_ORDER_OBSERVATION_SECONDARY,
+                    q.unit_index, q.owner_and_kind, q.param0, q.order_code, q.args);
             continue; // 0x004672a7 -> case_0
         }
 
@@ -454,7 +485,10 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             if (q.order_code == ORDER_CODE_EXIT_CANCEL) {
                 // 0x00466bbc-0x00466bf9. Promotes a waiting unit's state and DROPS the record --
                 // this arm does NOT retain, which is why the cursor is untouched here.
-                if (u.state == UNIT_STATE_EXIT_WAIT) u.state = UNIT_STATE_EXIT_CANCEL;
+                if (u.state == UNIT_STATE_EXIT_WAIT) {
+                    u.state = UNIT_STATE_EXIT_CANCEL;
+                    W::applied(w, witness.get());
+                }
                 continue;
             }
 
@@ -477,6 +511,9 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             // SKIPPED when kept == slot (a self-copy the original refuses to make). `kept <= slot`
             // always holds, so this never clobbers a record the walk has not reached yet.
             if (kept != slot) own.order_at(kept) = own.order_at(slot);
+            if (witness.current())
+                W::copy(w, W::container::queue,
+                        static_cast<uint32_t>(kept), witness.get());
 
             // 0x00466c38/0x00466c3b: the `MOV EAX,[EBP-0x20]` before the INC is DEAD (EAX is
             // reloaded on every path out of here).
@@ -491,9 +528,9 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
         // ---- D @0x00466c48: EXECUTE ---------------------------------------------------------------
         if (q.order_code == ORDER_CODE_UNLOAD_TRANSPORT) { // 0x00466c4c
             if (u.state == UNIT_STATE_PARKED)              // 0x00466c66
-                c.llm_unit_transport_unload_docked(x.player, (uint32_t)x.object_index);
+                c.llm_unit_squad_split_docked(x.player, (uint32_t)x.object_index);
             else
-                c.llm_unit_transport_unload_field(x.player, (uint32_t)x.object_index);
+                c.llm_unit_squad_split_field(x.player, (uint32_t)x.object_index);
             continue; // 0x00466c8a
         }
 
@@ -520,6 +557,12 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             u.state != UNIT_STATE_PARKED && u.state != UNIT_STATE_EXIT_BEGIN)
             continue;
 
+        mh::order_tasks::tile autonomous_anchor{};
+        if (!order_tasks_adapter::admit_primary(own, q, &autonomous_anchor)) {
+            order_tasks_adapter::record_discarded(own, x.player, uint32_t(x.object_index), q.owner_and_kind, q.order_code, q.param0, q.args);
+            u.order_queued = 0;
+            continue;
+        }
         // ---- F @0x00466ce1: apply the order to the unit -------------------------------------------
         if (u.target_ref != 0) { // 0x00466cf1
             c.llm_strat_target_release_ref(x.player, x.object_index, RELEASE_MODE_PRIMARY_CLEAR);
@@ -544,6 +587,26 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
         // two agree", which is true but incidental -- it would stop being true if the container ever
         // carried a high order code, and the code would still be correct. Corrected after
         // reimpl-verify decompiled both callees, 2026-08-08.)
+        // Snapshot at the actual parked -> exit-begin executor, never at UI issue time.
+        // Boarding may already have compacted a retained COPY of this record before applying it.
+        if (q.order_code == 0x20 && u.state == UNIT_STATE_PARKED) {
+            const auto rally = own.storage_policy(mh::storage_policy::operation::manual_rally,
+                                                  x.player, x.object_index);
+            if (rally.values[0]) {
+                const bool retained_copy = kept > 0 && kept <= slot &&
+                                           std::memcmp(&own.order_at(kept - 1), &q, sizeof q) == 0;
+                q.args[ARG_GOAL_X]     = static_cast<int32_t>(rally.values[1]);
+                q.args[ARG_GOAL_Y]     = static_cast<int32_t>(rally.values[2]);
+                q.param0               = v.cfg_units[u.unit_proto_id].move_op_arg;
+                q.args[ARG_MOVE_GROUP] = 0;
+                if (retained_copy) {
+                    own.order_at(kept - 1).param0               = q.param0;
+                    own.order_at(kept - 1).args[ARG_GOAL_X]     = q.args[ARG_GOAL_X];
+                    own.order_at(kept - 1).args[ARG_GOAL_Y]     = q.args[ARG_GOAL_Y];
+                    own.order_at(kept - 1).args[ARG_MOVE_GROUP] = q.args[ARG_MOVE_GROUP];
+                }
+            }
+        }
         c.llm_unit_set_order_param((int32_t)x.player, x.object_index, q.param0);
         c.llm_strat_unit_set_state_of((int32_t)x.player, x.object_index, (int16_t)q.order_code);
 
@@ -579,6 +642,9 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
         // 0x00467072-0x0046710d: target_ref re-read after the args[] copies may have SET it.
         if (u.target_ref != 0) {
             c.llm_strat_target_release_ref(x.player, x.object_index, RELEASE_MODE_PRIMARY_REBOUND);
+            mh::state::emit_order_observation(
+                LIBMH_EVK_ATTACK_TARGET_ASSIGNED, LIBMH_ORDER_OBSERVATION_QUEUE,
+                q.unit_index, q.owner_and_kind, q.param0, q.order_code, q.args);
             // 0x004670aa/0x004670d0: planes skip the activity-clock nudge entirely.
             if (v.cfg_units[u.unit_proto_id].type != UNIT_TYPE_A_PLANE &&
                 v.cfg_units[u.unit_proto_id].type != UNIT_TYPE_H_PLANE) {
@@ -591,11 +657,16 @@ void order_queue_dispatch(const sim_view &v, sim_store &own, const dispatch_call
             }
         }
         // 0x00467113 -> 0x004672a7 -> case_0: end of iteration.
+        order_tasks_adapter::record_applied(own, x.player, uint32_t(x.object_index), q.owner_and_kind, q.order_code, q.param0, q.args, autonomous_anchor);
+        W::applied(w, witness.get());
     }
 
     // ---- THE TAIL @0x00469984 -------------------------------------------------------------------
     // The COMPACTION CURSOR becomes the new count -- not zero, and not the count we walked.
     own.order_count() = kept;
+    if (witness_generation == W::generation(w))
+        W::clear_from(w, W::container::queue,
+                      static_cast<uint32_t>(kept));
     mh::sim::rng_trace_add_note(14u, (uint32_t)ledger_entry_count, 0u, 0u, 0u, (uint32_t)kept, 0u);
 }
 

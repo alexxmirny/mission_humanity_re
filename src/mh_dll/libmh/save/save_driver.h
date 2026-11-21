@@ -289,6 +289,8 @@ struct driver_env {
     // there anyway, and a null hook on a gate that DID select is a hard failure rather than a silent
     // skip (a reader that quietly drops a compat path is the exact bug this struct exists to prevent).
     const legacy_hooks *legacy;
+    // Live required-feature normalization after preflight, before any container block is read.
+    bool (*normalize_header)(char *header40) = nullptr;
 };
 
 // ---------------------------------------------------------------------------------------------

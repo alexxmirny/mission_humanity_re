@@ -26,6 +26,7 @@
 //
 #pragma once
 #include <cstdint>
+#include "include/mh_order_tasks_host.h"
 
 #include "addr/mh_structs.gen.h"
 #include "state/roster_caps.h" // SB-BIND T2: derived per-player row capacities
@@ -113,6 +114,7 @@ struct container_state {
     // orderstest fixture, so a member inserted mid-struct silently re-pairs every initializer after
     // it. Stock default, so a fixture that does not name it is unchanged.
     mh::state::roster_caps caps{mh::state::STOCK_ROSTER_CAPS};
+    int32_t (*order_tasks_observer)(const mh_order_tasks_request *, mh_order_tasks_result *) = nullptr;
 };
 
 // The four original functions this container calls OUT to. Indirected for the same reason the state

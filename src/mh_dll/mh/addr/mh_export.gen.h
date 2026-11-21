@@ -4525,12 +4525,12 @@ using sig_llm_strat_bldg_order_purge_dead_docked = void(__cdecl *)(uint32_t play
 inline constexpr uintptr_t addr_llm_strat_bldg_order_purge_dead_docked_enqueue = 0x0046e72bu;
 inline constexpr uint64_t  entry_llm_strat_bldg_order_purge_dead_docked_enqueue = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_bldg_order_purge_dead_docked_enqueue = void(__cdecl *)(uint16_t target_id, uint16_t player);  // __watcall callee
-inline constexpr uintptr_t addr_llm_unit_order_disembark_soldiers = 0x0046e76cu;
-inline constexpr uint64_t  entry_llm_unit_order_disembark_soldiers = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_unit_order_disembark_soldiers = void(__cdecl *)(uint32_t player, int32_t unit_idx);  // __watcall callee
-inline constexpr uintptr_t addr_llm_unit_order_disembark_soldiers_enqueue = 0x0046e7d6u;
-inline constexpr uint64_t  entry_llm_unit_order_disembark_soldiers_enqueue = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_unit_order_disembark_soldiers_enqueue = void(__cdecl *)(uint32_t player_idx, int32_t unit_idx);  // __watcall callee
+inline constexpr uintptr_t addr_llm_unit_order_squad_split = 0x0046e76cu;
+inline constexpr uint64_t  entry_llm_unit_order_squad_split = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_unit_order_squad_split = void(__cdecl *)(uint32_t player, int32_t unit_idx);  // __watcall callee
+inline constexpr uintptr_t addr_llm_unit_order_squad_split_enqueue = 0x0046e7d6u;
+inline constexpr uint64_t  entry_llm_unit_order_squad_split_enqueue = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_unit_order_squad_split_enqueue = void(__cdecl *)(uint32_t player_idx, int32_t unit_idx);  // __watcall callee
 inline constexpr uintptr_t addr_llm_strat_bldg_order_shuttle_depart = 0x0046e840u;
 inline constexpr uint64_t  entry_llm_strat_bldg_order_shuttle_depart = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_bldg_order_shuttle_depart = void(__cdecl *)(uint32_t param_1, uint16_t param_2, uint32_t a2);  // __mh_watcall_ebx_volatile callee
@@ -5272,18 +5272,18 @@ using sig_llm_strat_unit_release_path_and_targets = void(__cdecl *)(uint16_t pla
 inline constexpr uintptr_t addr_llm_strat_unit_notify_ui = 0x00488a22u;
 inline constexpr uint64_t  entry_llm_strat_unit_notify_ui = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_unit_notify_ui = void(__cdecl *)(uint32_t side, uint32_t unit_index);  // __watcall callee
-inline constexpr uintptr_t addr_llm_unit_transport_unload_field = 0x00488a8bu;
-inline constexpr uint64_t  entry_llm_unit_transport_unload_field = 0x0000005c68e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_unit_transport_unload_field = void(__cdecl *)(uint32_t transport_player, uint32_t transport_unit_index);  // __watcall callee
+inline constexpr uintptr_t addr_llm_unit_squad_split_field = 0x00488a8bu;
+inline constexpr uint64_t  entry_llm_unit_squad_split_field = 0x0000005c68e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_unit_squad_split_field = void(__cdecl *)(uint32_t squad_player, uint32_t squad_unit_index);  // __watcall callee
 inline constexpr uintptr_t addr_llm_strat_unit_squad_pick_lead_soldier_in_direction = 0x0048905eu;
 inline constexpr uint64_t  entry_llm_strat_unit_squad_pick_lead_soldier_in_direction = 0x0000003868e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_unit_squad_pick_lead_soldier_in_direction = uint32_t(__cdecl *)(int32_t param_1, uint32_t param_2, uint32_t a2);  // __mh_watcall_ebx_volatile callee
 inline constexpr uintptr_t addr_llm_math_manhattan_dist = 0x00489164u;
 inline constexpr uint64_t  entry_llm_math_manhattan_dist = 0x0000003468e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_math_manhattan_dist = int32_t(__cdecl *)(int32_t x0, int32_t y0, int32_t x1, int32_t y1);  // __watcall callee
-inline constexpr uintptr_t addr_llm_unit_transport_unload_docked = 0x004891d8u;
-inline constexpr uint64_t  entry_llm_unit_transport_unload_docked = 0x0000004868e58955ull;  // arm guard: the 8 bytes we generated against
-using sig_llm_unit_transport_unload_docked = void(__cdecl *)(uint32_t player, uint32_t unit_index);  // __watcall callee
+inline constexpr uintptr_t addr_llm_unit_squad_split_docked = 0x004891d8u;
+inline constexpr uint64_t  entry_llm_unit_squad_split_docked = 0x0000004868e58955ull;  // arm guard: the 8 bytes we generated against
+using sig_llm_unit_squad_split_docked = void(__cdecl *)(uint32_t player, uint32_t unit_index);  // __watcall callee
 inline constexpr uintptr_t addr_llm_strat_unit_change_proto_and_energy = 0x00489521u;
 inline constexpr uint64_t  entry_llm_strat_unit_change_proto_and_energy = 0x0000002068e58955ull;  // arm guard: the 8 bytes we generated against
 using sig_llm_strat_unit_change_proto_and_energy = void(__cdecl *)(uint16_t player, int32_t unit_idx, int16_t proto_delta, int32_t unused, double energy_delta);  // __watcall callee
@@ -13096,17 +13096,17 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_strat_bldg_order_purge_dead_docked_enqueue() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_strat_bldg_order_purge_dead_docked_enqueue, (void *)mh_export_thunk_llm_strat_bldg_order_purge_dead_docked_enqueue, "llm_strat_bldg_order_purge_dead_docked_enqueue", ::mh::exp::entry_llm_strat_bldg_order_purge_dead_docked_enqueue); \
     }
-#define MH_EXPORT_REPLACE_llm_unit_order_disembark_soldiers(IMPL) \
-    static ::mh::exp::sig_llm_unit_order_disembark_soldiers mh_export_impl_llm_unit_order_disembark_soldiers = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_order_disembark_soldiers, mh_export_impl_llm_unit_order_disembark_soldiers) \
-    static bool mh_export_install_llm_unit_order_disembark_soldiers() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_order_disembark_soldiers, (void *)mh_export_thunk_llm_unit_order_disembark_soldiers, "llm_unit_order_disembark_soldiers", ::mh::exp::entry_llm_unit_order_disembark_soldiers); \
+#define MH_EXPORT_REPLACE_llm_unit_order_squad_split(IMPL) \
+    static ::mh::exp::sig_llm_unit_order_squad_split mh_export_impl_llm_unit_order_squad_split = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_order_squad_split, mh_export_impl_llm_unit_order_squad_split) \
+    static bool mh_export_install_llm_unit_order_squad_split() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_order_squad_split, (void *)mh_export_thunk_llm_unit_order_squad_split, "llm_unit_order_squad_split", ::mh::exp::entry_llm_unit_order_squad_split); \
     }
-#define MH_EXPORT_REPLACE_llm_unit_order_disembark_soldiers_enqueue(IMPL) \
-    static ::mh::exp::sig_llm_unit_order_disembark_soldiers_enqueue mh_export_impl_llm_unit_order_disembark_soldiers_enqueue = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_order_disembark_soldiers_enqueue, mh_export_impl_llm_unit_order_disembark_soldiers_enqueue) \
-    static bool mh_export_install_llm_unit_order_disembark_soldiers_enqueue() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_order_disembark_soldiers_enqueue, (void *)mh_export_thunk_llm_unit_order_disembark_soldiers_enqueue, "llm_unit_order_disembark_soldiers_enqueue", ::mh::exp::entry_llm_unit_order_disembark_soldiers_enqueue); \
+#define MH_EXPORT_REPLACE_llm_unit_order_squad_split_enqueue(IMPL) \
+    static ::mh::exp::sig_llm_unit_order_squad_split_enqueue mh_export_impl_llm_unit_order_squad_split_enqueue = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_order_squad_split_enqueue, mh_export_impl_llm_unit_order_squad_split_enqueue) \
+    static bool mh_export_install_llm_unit_order_squad_split_enqueue() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_order_squad_split_enqueue, (void *)mh_export_thunk_llm_unit_order_squad_split_enqueue, "llm_unit_order_squad_split_enqueue", ::mh::exp::entry_llm_unit_order_squad_split_enqueue); \
     }
 #define MH_EXPORT_REPLACE_llm_strat_bldg_order_shuttle_depart(IMPL) \
     static ::mh::exp::sig_llm_strat_bldg_order_shuttle_depart mh_export_impl_llm_strat_bldg_order_shuttle_depart = IMPL; \
@@ -14590,11 +14590,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_strat_unit_notify_ui() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_strat_unit_notify_ui, (void *)mh_export_thunk_llm_strat_unit_notify_ui, "llm_strat_unit_notify_ui", ::mh::exp::entry_llm_strat_unit_notify_ui); \
     }
-#define MH_EXPORT_REPLACE_llm_unit_transport_unload_field(IMPL) \
-    static ::mh::exp::sig_llm_unit_transport_unload_field mh_export_impl_llm_unit_transport_unload_field = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_transport_unload_field, mh_export_impl_llm_unit_transport_unload_field) \
-    static bool mh_export_install_llm_unit_transport_unload_field() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_transport_unload_field, (void *)mh_export_thunk_llm_unit_transport_unload_field, "llm_unit_transport_unload_field", ::mh::exp::entry_llm_unit_transport_unload_field); \
+#define MH_EXPORT_REPLACE_llm_unit_squad_split_field(IMPL) \
+    static ::mh::exp::sig_llm_unit_squad_split_field mh_export_impl_llm_unit_squad_split_field = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_squad_split_field, mh_export_impl_llm_unit_squad_split_field) \
+    static bool mh_export_install_llm_unit_squad_split_field() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_squad_split_field, (void *)mh_export_thunk_llm_unit_squad_split_field, "llm_unit_squad_split_field", ::mh::exp::entry_llm_unit_squad_split_field); \
     }
 #define MH_EXPORT_REPLACE_llm_strat_unit_squad_pick_lead_soldier_in_direction(IMPL) \
     static ::mh::exp::sig_llm_strat_unit_squad_pick_lead_soldier_in_direction mh_export_impl_llm_strat_unit_squad_pick_lead_soldier_in_direction = IMPL; \
@@ -14608,11 +14608,11 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_math_manhattan_dist() { \
         return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_math_manhattan_dist, (void *)mh_export_thunk_llm_math_manhattan_dist, "llm_math_manhattan_dist", ::mh::exp::entry_llm_math_manhattan_dist); \
     }
-#define MH_EXPORT_REPLACE_llm_unit_transport_unload_docked(IMPL) \
-    static ::mh::exp::sig_llm_unit_transport_unload_docked mh_export_impl_llm_unit_transport_unload_docked = IMPL; \
-    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_transport_unload_docked, mh_export_impl_llm_unit_transport_unload_docked) \
-    static bool mh_export_install_llm_unit_transport_unload_docked() { \
-        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_transport_unload_docked, (void *)mh_export_thunk_llm_unit_transport_unload_docked, "llm_unit_transport_unload_docked", ::mh::exp::entry_llm_unit_transport_unload_docked); \
+#define MH_EXPORT_REPLACE_llm_unit_squad_split_docked(IMPL) \
+    static ::mh::exp::sig_llm_unit_squad_split_docked mh_export_impl_llm_unit_squad_split_docked = IMPL; \
+    MH_EXPORT_THUNK_e_void_EAX_EDX__callee(mh_export_thunk_llm_unit_squad_split_docked, mh_export_impl_llm_unit_squad_split_docked) \
+    static bool mh_export_install_llm_unit_squad_split_docked() { \
+        return ::mh::hosthook::install_export_ok(::mh::exp::addr_llm_unit_squad_split_docked, (void *)mh_export_thunk_llm_unit_squad_split_docked, "llm_unit_squad_split_docked", ::mh::exp::entry_llm_unit_squad_split_docked); \
     }
 #define MH_EXPORT_REPLACE_llm_strat_unit_change_proto_and_energy(IMPL) \
     static ::mh::exp::sig_llm_strat_unit_change_proto_and_energy mh_export_impl_llm_strat_unit_change_proto_and_energy = IMPL; \
@@ -24973,15 +24973,15 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_strat_bldg_order_purge_dead_docked_enqueue() { \
         (void)mh_export_impl_llm_strat_bldg_order_purge_dead_docked_enqueue; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_unit_order_disembark_soldiers(IMPL) \
-    static ::mh::exp::sig_llm_unit_order_disembark_soldiers mh_export_impl_llm_unit_order_disembark_soldiers = IMPL; \
-    static bool mh_export_install_llm_unit_order_disembark_soldiers() { \
-        (void)mh_export_impl_llm_unit_order_disembark_soldiers; return false; \
+#define MH_EXPORT_REPLACE_llm_unit_order_squad_split(IMPL) \
+    static ::mh::exp::sig_llm_unit_order_squad_split mh_export_impl_llm_unit_order_squad_split = IMPL; \
+    static bool mh_export_install_llm_unit_order_squad_split() { \
+        (void)mh_export_impl_llm_unit_order_squad_split; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_unit_order_disembark_soldiers_enqueue(IMPL) \
-    static ::mh::exp::sig_llm_unit_order_disembark_soldiers_enqueue mh_export_impl_llm_unit_order_disembark_soldiers_enqueue = IMPL; \
-    static bool mh_export_install_llm_unit_order_disembark_soldiers_enqueue() { \
-        (void)mh_export_impl_llm_unit_order_disembark_soldiers_enqueue; return false; \
+#define MH_EXPORT_REPLACE_llm_unit_order_squad_split_enqueue(IMPL) \
+    static ::mh::exp::sig_llm_unit_order_squad_split_enqueue mh_export_impl_llm_unit_order_squad_split_enqueue = IMPL; \
+    static bool mh_export_install_llm_unit_order_squad_split_enqueue() { \
+        (void)mh_export_impl_llm_unit_order_squad_split_enqueue; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_strat_bldg_order_shuttle_depart(IMPL) \
     static ::mh::exp::sig_llm_strat_bldg_order_shuttle_depart mh_export_impl_llm_strat_bldg_order_shuttle_depart = IMPL; \
@@ -26218,10 +26218,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_strat_unit_notify_ui() { \
         (void)mh_export_impl_llm_strat_unit_notify_ui; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_unit_transport_unload_field(IMPL) \
-    static ::mh::exp::sig_llm_unit_transport_unload_field mh_export_impl_llm_unit_transport_unload_field = IMPL; \
-    static bool mh_export_install_llm_unit_transport_unload_field() { \
-        (void)mh_export_impl_llm_unit_transport_unload_field; return false; \
+#define MH_EXPORT_REPLACE_llm_unit_squad_split_field(IMPL) \
+    static ::mh::exp::sig_llm_unit_squad_split_field mh_export_impl_llm_unit_squad_split_field = IMPL; \
+    static bool mh_export_install_llm_unit_squad_split_field() { \
+        (void)mh_export_impl_llm_unit_squad_split_field; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_strat_unit_squad_pick_lead_soldier_in_direction(IMPL) \
     static ::mh::exp::sig_llm_strat_unit_squad_pick_lead_soldier_in_direction mh_export_impl_llm_strat_unit_squad_pick_lead_soldier_in_direction = IMPL; \
@@ -26233,10 +26233,10 @@ using sig_llm_strat_pathtrace_normalize_repeat_dir_table = void(__cdecl *)(void)
     static bool mh_export_install_llm_math_manhattan_dist() { \
         (void)mh_export_impl_llm_math_manhattan_dist; return false; \
     }
-#define MH_EXPORT_REPLACE_llm_unit_transport_unload_docked(IMPL) \
-    static ::mh::exp::sig_llm_unit_transport_unload_docked mh_export_impl_llm_unit_transport_unload_docked = IMPL; \
-    static bool mh_export_install_llm_unit_transport_unload_docked() { \
-        (void)mh_export_impl_llm_unit_transport_unload_docked; return false; \
+#define MH_EXPORT_REPLACE_llm_unit_squad_split_docked(IMPL) \
+    static ::mh::exp::sig_llm_unit_squad_split_docked mh_export_impl_llm_unit_squad_split_docked = IMPL; \
+    static bool mh_export_install_llm_unit_squad_split_docked() { \
+        (void)mh_export_impl_llm_unit_squad_split_docked; return false; \
     }
 #define MH_EXPORT_REPLACE_llm_strat_unit_change_proto_and_energy(IMPL) \
     static ::mh::exp::sig_llm_strat_unit_change_proto_and_energy mh_export_impl_llm_strat_unit_change_proto_and_energy = IMPL; \

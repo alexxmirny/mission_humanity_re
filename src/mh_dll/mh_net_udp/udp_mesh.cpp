@@ -58,20 +58,20 @@ namespace U = mh_net_proto::udp;
 
 namespace {
 
-constexpr DWORD WARM_MS         = 3000;  // after brokering: probe every WARM_FAST_MS for this long
-constexpr DWORD WARM_FAST_MS    = 250;
-constexpr DWORD STEADY_MS       = 1000;  // plan Q6: 1 Hz
-constexpr DWORD ECHO_FRESH_MS   = 5000;  // an edge whose last echo is older than this reads as unmeasured
-constexpr DWORD BEST_FRESH_MS   = 3000;  // probe only the confirmed address while it answered this recently
-constexpr DWORD HEARD_FRESH_MS  = 3000;  // the lower id's own probes drive the pair while heard this recently
-constexpr DWORD ROW_WARM_MS     = 1000;
-constexpr DWORD ROW_STEADY_MS   = 2000;
-constexpr DWORD ROW_STALE_MS    = 6000;  // a client's row older than this is dropped from the host's snapshot
-constexpr DWORD EPOCH_SETTLE_MS = 1000;  // a roster change must hold this long before an epoch is published
+constexpr DWORD WARM_MS           = 3000; // after brokering: probe every WARM_FAST_MS for this long
+constexpr DWORD WARM_FAST_MS      = 250;
+constexpr DWORD STEADY_MS         = 1000; // plan Q6: 1 Hz
+constexpr DWORD ECHO_FRESH_MS     = 5000; // an edge whose last echo is older than this reads as unmeasured
+constexpr DWORD BEST_FRESH_MS     = 3000; // probe only the confirmed address while it answered this recently
+constexpr DWORD HEARD_FRESH_MS    = 3000; // the lower id's own probes drive the pair while heard this recently
+constexpr DWORD ROW_WARM_MS       = 1000;
+constexpr DWORD ROW_STEADY_MS     = 2000;
+constexpr DWORD ROW_STALE_MS      = 6000; // a client's row older than this is dropped from the host's snapshot
+constexpr DWORD EPOCH_SETTLE_MS   = 1000; // a roster change must hold this long before an epoch is published
 constexpr DWORD EPOCH_DEADLINE_MS = 4000; // ...and a first/changed epoch goes out by now even with a partial matrix
-constexpr DWORD EPOCH_RESEND_MS = 1000;
-constexpr DWORD BROKER_MIN_MS   = 200;
-constexpr DWORD STAT_LOG_MS     = 10000;
+constexpr DWORD EPOCH_RESEND_MS   = 1000;
+constexpr DWORD BROKER_MIN_MS     = 200;
+constexpr DWORD STAT_LOG_MS       = 10000;
 // mp:U62 -- the handover's clocks. SUCC_ACK_MS: how long the leaving hub waits for the FIRST successor to
 // acknowledge before it re-issues the list without it (an ack is one round trip; this is generous).
 // HL_TIMEOUT_DEFAULT: the whole wait for every acknowledgement when the caller names none.
@@ -172,15 +172,15 @@ void Endpoint::mesh_install_key(const uint8_t key[KEY_LEN]) {
 }
 
 void Endpoint::mesh_send_probe(int peer, const sockaddr_in &to, uint8_t kind, uint32_t nonce) {
-    Mesh   &m = m_mesh;
+    Mesh &m = m_mesh;
     if (m_cfg.mesh_test_delay_ms > 0 && !m.flushing) { // mp:U64: a slow peer, on purpose (Config::mesh_test_delay_ms)
         if (m.defer_n < 64) {
             Mesh::Deferred &d = m.defer[m.defer_n++];
-            d.due   = GetTickCount() + (DWORD)m_cfg.mesh_test_delay_ms;
-            d.peer  = peer;
-            d.to    = to;
-            d.kind  = kind;
-            d.nonce = nonce;
+            d.due             = GetTickCount() + (DWORD)m_cfg.mesh_test_delay_ms;
+            d.peer            = peer;
+            d.to              = to;
+            d.kind            = kind;
+            d.nonce           = nonce;
         }
         return;
     }
@@ -219,9 +219,9 @@ bool Endpoint::mesh_on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, 
     int        from_id = -1, to_id = -1;
     uint32_t   nonce = 0;
     // mp:U63 -- a FAILOVER datagram (13-byte body) rides the same sealed channel as a probe (8 bytes).
-    uint32_t fo_epoch = 0;
-    uint8_t  fo_arg   = 0;
-    const bool is_fo  = v == U::Verdict::Ok && blen == (size_t)mesh::FO_BODY &&
+    uint32_t   fo_epoch = 0;
+    uint8_t    fo_arg   = 0;
+    const bool is_fo    = v == U::Verdict::Ok && blen == (size_t)mesh::FO_BODY &&
                        mesh::fo_body_decode(pkt + U::HDR_SIZE, (int)blen, kind, from_id, to_id, nonce, flags, fo_epoch, fo_arg);
     if (v != U::Verdict::Ok ||
         (!is_fo && !mesh::probe_body_decode(pkt + U::HDR_SIZE, (int)blen, kind, from_id, to_id, nonce, flags)) ||
@@ -246,8 +246,8 @@ bool Endpoint::mesh_on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, 
         int64_t sent = 0;
         for (int i = 0; i < 8; ++i)
             if (q.ring_nonce[i] == nonce && q.ring_qpc[i] != 0) {
-                sent             = q.ring_qpc[i];
-                q.ring_qpc[i]    = 0; // an echo answers one probe
+                sent          = q.ring_qpc[i];
+                q.ring_qpc[i] = 0; // an echo answers one probe
                 break;
             }
         if (sent != 0) {
@@ -347,7 +347,7 @@ void Endpoint::mesh_on_frame(int idx, const WireHdr &h, const uint8_t *payload, 
             for (int i = 0; i < b.n; ++i) {
                 const int id = b.e[i].id;
                 if (id == m_my_id) continue;
-                MeshPeer &q  = m.peer[id];
+                MeshPeer  &q       = m.peer[id];
                 const bool changed = !q.known || q.relayed != b.e[i].relayed || q.cands.n != b.e[i].cands.n ||
                                      memcmp(q.cands.a, b.e[i].cands.a, sizeof(q.cands.a[0]) * q.cands.n) != 0;
                 if (changed) {
@@ -362,7 +362,7 @@ void Endpoint::mesh_on_frame(int idx, const WireHdr &h, const uint8_t *payload, 
             }
             for (int id = 0; id < 8; ++id)
                 if (!seen[id] && m.peer[id].known) {
-                    m.peer[id].known = false; // that client left
+                    m.peer[id].known    = false; // that client left
                     m.first_pair_ms[id] = 0;
                 }
             if (m.broker_ms == 0) m.broker_ms = now ? now : 1u;
@@ -428,19 +428,19 @@ void Endpoint::mesh_on_frame(int idx, const WireHdr &h, const uint8_t *payload, 
 
 // ---- the host ------------------------------------------------------------------------------------------
 void Endpoint::mesh_publish(DWORD now, uint32_t S, const mesh::Matrix &snap, const mesh::Election &el) {
-    Mesh        &m = m_mesh;
-    mesh::Epoch  e;
-    e.epoch  = m.cur.epoch + 1;
-    e.hub    = (uint8_t)m_my_id;
-    e.S      = (uint8_t)S;
-    e.tier   = el.tier;
-    e.n      = el.n;
-    e.M      = snap;
+    Mesh       &m = m_mesh;
+    mesh::Epoch e;
+    e.epoch = m.cur.epoch + 1;
+    e.hub   = (uint8_t)m_my_id;
+    e.S     = (uint8_t)S;
+    e.tier  = el.tier;
+    e.n     = el.n;
+    e.M     = snap;
     for (int i = 0; i < el.n; ++i) e.rank[i] = el.rank[i];
     e.digest = mesh::digest(snap, S);
     for (int id = 0; id < 8; ++id) {
         if (!(S >> id & 1u)) continue;
-        const int ci = conn_of_player(id);
+        const int  ci      = conn_of_player(id);
         const bool relayed = m.reported_relayed[id] || (m_leg_overhead > 0 && ci >= 0 && is_loopback(m_conns[ci].addr));
         if (!relayed) {
             if (ci >= 0) e.dial[id].add(to_addr4(m_conns[ci].addr));
@@ -457,18 +457,18 @@ void Endpoint::mesh_publish(DWORD now, uint32_t S, const mesh::Matrix &snap, con
             e.room[id]          = prev != 0 ? prev : m_mesh_hooks.mint_room(m_mesh_hooks.ctx);
         }
     }
-    uint8_t buf[mesh::MAX_FRAME];
+    uint8_t   buf[mesh::MAX_FRAME];
     const int n = mesh::epoch_encode(e, buf, (int)sizeof(buf));
     if (n == 0) {
         logf("net: mesh epoch=%u NOT published -- the frame does not fit", (unsigned)e.epoch);
         return;
     }
-    m.cur        = e;
+    m.cur                = e;
     m_hl.epoch_inherited = false; // mp:U62 -- this hub has published its own epoch now
-    m.acked_mask = 0;
-    m.pub_ms     = now ? now : 1u;
-    m.last_send_ms = m.pub_ms;
-    m.all_acked_ms = 0;
+    m.acked_mask         = 0;
+    m.pub_ms             = now ? now : 1u;
+    m.last_send_ms       = m.pub_ms;
+    m.all_acked_ms       = 0;
     if (m.first_epoch_ms == 0 && m.first_cand_ms != 0) m.first_epoch_ms = (DWORD)(now - m.first_cand_ms) | 1u;
     ++m.epochs_published;
     for (int id = 0; id < 8; ++id) {
@@ -512,9 +512,9 @@ void Endpoint::mesh_host_tick(DWORD now) {
         const uint32_t gone = m.S & ~S;
         for (int id = 0; id < 8; ++id)
             if (gone >> id & 1u) {
-                m.have_cand[id] = false;
-                m.have_row[id]  = false;
-                m.reported[id]  = mesh::CandList();
+                m.have_cand[id]        = false;
+                m.have_row[id]         = false;
+                m.reported[id]         = mesh::CandList();
                 m.reported_relayed[id] = false;
                 for (int j = 0; j < 8; ++j) {
                     m.M.rtt[id][j] = mesh::NONE;
@@ -553,16 +553,16 @@ void Endpoint::mesh_host_tick(DWORD now) {
             memcpy(b.key, m.key, KEY_LEN);
             for (int y = 0; y < 8; ++y) {
                 if (y == x || !(S >> y & 1u)) continue;
-                const int yi = conn_of_player(y);
-                mesh::BrokerEntry &e = b.e[b.n++];
-                e.id      = (uint8_t)y;
-                e.relayed = m.reported_relayed[y] || (m_leg_overhead > 0 && yi >= 0 && is_loopback(m_conns[yi].addr));
+                const int          yi = conn_of_player(y);
+                mesh::BrokerEntry &e  = b.e[b.n++];
+                e.id                  = (uint8_t)y;
+                e.relayed             = m.reported_relayed[y] || (m_leg_overhead > 0 && yi >= 0 && is_loopback(m_conns[yi].addr));
                 if (!e.relayed) {
                     if (yi >= 0) e.cands.add(to_addr4(m_conns[yi].addr)); // what the HOST observed: the public mapping
                     for (int k = 0; k < m.reported[y].n; ++k) e.cands.add(m.reported[y].a[k]);
                 }
             }
-            uint8_t buf[mesh::MAX_FRAME];
+            uint8_t   buf[mesh::MAX_FRAME];
             const int n = mesh::broker_encode(b, buf, (int)sizeof(buf));
             if (n) mesh_send(xi, buf, n, x);
         }
@@ -587,7 +587,7 @@ void Endpoint::mesh_host_tick(DWORD now) {
     const bool     outstanding = m.cur.epoch != 0 && (m.acked_mask & req) != req;
     if (outstanding) {
         if ((DWORD)(now - m.last_send_ms) >= mesh_t(EPOCH_RESEND_MS)) {
-            uint8_t buf[mesh::MAX_FRAME];
+            uint8_t   buf[mesh::MAX_FRAME];
             const int n = mesh::epoch_encode(m.cur, buf, (int)sizeof(buf));
             for (int id = 0; id < 8 && n; ++id)
                 if ((req >> id & 1u) && !(m.acked_mask >> id & 1u)) {
@@ -603,7 +603,7 @@ void Endpoint::mesh_host_tick(DWORD now) {
     }
     int have = 0, total = 0;
     mesh::coverage(snap, S, &have, &total);
-    const bool complete = have == total;
+    const bool     complete = have == total;
     mesh::Election el;
     mesh::elect(snap, S, el);
     const bool settled = (DWORD)(now - m.roster_ms) >= mesh_t(EPOCH_SETTLE_MS);
@@ -638,8 +638,8 @@ void Endpoint::mesh_client_tick(DWORD now) {
     if (!m.cand_sent) {
         mesh::CandList cl;
         if (!relayed && m_sock != INVALID_SOCKET) {
-            uint8_t buf[4096];
-            DWORD   got = 0;
+            uint8_t              buf[4096];
+            DWORD                got  = 0;
             const unsigned short port = bound_port();
             if (port != 0 && WSAIoctl(m_sock, SIO_ADDRESS_LIST_QUERY, nullptr, 0, buf, (DWORD)sizeof(buf), &got,
                                       nullptr, nullptr) == 0) {
@@ -668,15 +668,15 @@ void Endpoint::mesh_client_tick(DWORD now) {
         for (int p = 0; p < 8; ++p) {
             MeshPeer &q = m.peer[p];
             if (!q.known || q.relayed || p == m_my_id || q.cands.n == 0) continue;
-            const bool warm = q.first_probe_ms != 0 && (DWORD)(now - q.first_probe_ms) < mesh_t(WARM_MS);
+            const bool warm  = q.first_probe_ms != 0 && (DWORD)(now - q.first_probe_ms) < mesh_t(WARM_MS);
             const bool heard = q.heard_ms != 0 && (DWORD)(now - q.heard_ms) < mesh_t(HEARD_FRESH_MS);
             // Steady state: the lower id probes. The higher id echoes (which keeps its own pinhole warm) and
             // probes too only while it hears nothing from the lower (the path may be one-way broken).
             if (!(warm || m_my_id < p || !heard)) continue;
             const DWORD every = warm ? mesh_t(WARM_FAST_MS) : mesh_t(STEADY_MS);
             if (q.last_probe_ms != 0 && (DWORD)(now - q.last_probe_ms) < every) continue;
-            q.last_probe_ms = now ? now : 1u;
-            const uint32_t nonce = ++q.nonce;
+            q.last_probe_ms             = now ? now : 1u;
+            const uint32_t nonce        = ++q.nonce;
             q.ring_nonce[q.ring_at & 7] = nonce;
             q.ring_qpc[q.ring_at & 7]   = qpc_now_m();
             ++q.ring_at;
@@ -756,9 +756,9 @@ void Endpoint::mesh_status(MeshStatus &o) {
     o.M.clear();
     if (!m_cs_ready) return;
     EnterCriticalSection(&m_conn_cs);
-    const Mesh &m = m_mesh;
-    o.role        = (int)m_role;
-    o.key_valid   = m.key_valid;
+    const Mesh &m        = m_mesh;
+    o.role               = (int)m_role;
+    o.key_valid          = m.key_valid;
     const mesh::Epoch *e = nullptr;
     if (m_role == 0 && m.cur.epoch != 0) e = &m.cur;
     if (m_role == 1 && m.held_valid) e = &m.held;
@@ -791,25 +791,25 @@ void Endpoint::mesh_status(MeshStatus &o) {
     } else if (e) {
         mesh::coverage(e->M, e->S, &o.cov_have, &o.cov_total);
     }
-    o.probe_tx = m.probe_tx;
-    o.probe_rx = m.probe_rx;
-    o.echo_tx = m.echo_tx;
-    o.echo_rx = m.echo_rx;
-    o.probe_bytes_tx = m.probe_bytes_tx;
-    o.probe_bytes_rx = m.probe_bytes_rx;
-    o.frames_tx = m.frames_tx;
-    o.frames_rx = m.frames_rx;
-    o.frame_bytes_tx = m.frame_bytes_tx;
-    o.frame_bytes_rx = m.frame_bytes_rx;
-    o.bad_probe = m.bad_probe;
-    o.bad_frame = m.bad_frame;
-    o.rank_mismatch = m.rank_mismatch;
+    o.probe_tx         = m.probe_tx;
+    o.probe_rx         = m.probe_rx;
+    o.echo_tx          = m.echo_tx;
+    o.echo_rx          = m.echo_rx;
+    o.probe_bytes_tx   = m.probe_bytes_tx;
+    o.probe_bytes_rx   = m.probe_bytes_rx;
+    o.frames_tx        = m.frames_tx;
+    o.frames_rx        = m.frames_rx;
+    o.frame_bytes_tx   = m.frame_bytes_tx;
+    o.frame_bytes_rx   = m.frame_bytes_rx;
+    o.bad_probe        = m.bad_probe;
+    o.bad_frame        = m.bad_frame;
+    o.rank_mismatch    = m.rank_mismatch;
     o.epochs_published = m.epochs_published;
-    o.epochs_held = m.epochs_held;
-    o.ack_rx = m.ack_rx;
-    o.epoch_resends = m.epoch_resends;
-    o.all_acked_ms = m.all_acked_ms;
-    o.first_epoch_ms = m.first_epoch_ms;
+    o.epochs_held      = m.epochs_held;
+    o.ack_rx           = m.ack_rx;
+    o.epoch_resends    = m.epoch_resends;
+    o.all_acked_ms     = m.all_acked_ms;
+    o.first_epoch_ms   = m.first_epoch_ms;
     LeaveCriticalSection(&m_conn_cs);
 }
 
@@ -859,17 +859,17 @@ void list_text(const mesh::Leaving &L, char *out, int cap) {
 
 // The survivors in preference order, with dial info. Caller holds m_conn_cs.
 void Endpoint::hl_build_leaving(uint32_t S, mesh::Leaving &L, DWORD now) {
-    Mesh &m = m_mesh;
-    L       = mesh::Leaving();
-    L.hub   = (uint8_t)m_my_id;
-    L.gen   = 1;
+    Mesh &m               = m_mesh;
+    L                     = mesh::Leaving();
+    L.hub                 = (uint8_t)m_my_id;
+    L.gen                 = 1;
     const bool have_epoch = m.cur.epoch != 0;
     L.epoch               = have_epoch ? m.cur.epoch : 0;
     // The order: the published epoch's ranking restricted to who is still here (the survivors all hold that
     // epoch, so it is the order they already expect), then anyone it did not cover, ascending. With no epoch
     // yet, elect() over the matrix as it stands (a hub that has measured nothing answers the lowest id).
-    uint8_t order[mesh::MAXP];
-    int     n = 0;
+    uint8_t  order[mesh::MAXP];
+    int      n      = 0;
     uint32_t placed = 0;
     if (have_epoch) {
         for (int i = 0; i < m.cur.n; ++i) {
@@ -892,11 +892,11 @@ void Endpoint::hl_build_leaving(uint32_t S, mesh::Leaving &L, DWORD now) {
     for (int id = 0; id < mesh::MAXP; ++id)
         if ((S >> id & 1u) && !(placed >> id & 1u)) order[n++] = (uint8_t)id;
     for (int i = 0; i < n; ++i) {
-        const int  id  = order[i];
-        const int  ci  = conn_of_player(id);
-        mesh::LeaveEntry &e = L.e[L.n++];
-        e.id      = (uint8_t)id;
-        e.relayed = m.reported_relayed[id] || (m_leg_overhead > 0 && ci >= 0 && is_loopback(m_conns[ci].addr));
+        const int         id = order[i];
+        const int         ci = conn_of_player(id);
+        mesh::LeaveEntry &e  = L.e[L.n++];
+        e.id                 = (uint8_t)id;
+        e.relayed            = m.reported_relayed[id] || (m_leg_overhead > 0 && ci >= 0 && is_loopback(m_conns[ci].addr));
         if (!e.relayed) {
             if (ci >= 0) e.cands.add(to_addr4(m_conns[ci].addr)); // what the HUB observed: the public mapping
             for (int k = 0; k < m.reported[id].n; ++k) e.cands.add(m.reported[id].a[k]);
@@ -937,7 +937,7 @@ int Endpoint::hub_leave(int timeout_ms) {
     }
     mesh::Leaving L;
     hl_build_leaving(S, L, t0);
-    uint8_t buf[mesh::MAX_FRAME];
+    uint8_t   buf[mesh::MAX_FRAME];
     const int n = mesh::leaving_encode(L, buf, (int)sizeof(buf));
     if (n == 0) {
         h.state = HL_NOTHING;
@@ -993,7 +993,7 @@ int Endpoint::hub_leave(int timeout_ms) {
 void Endpoint::hl_finish_leave(const char *why) {
     for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
         if (m_conns[i].active && !m_conns[i].tx_dead) refuse_conn(i, "the hub left the match (planned handover, mp:U62)");
-    InterlockedExchange(&m_dead_peer, -1); // the departures above are OURS, not a peer dying
+    InterlockedExchange(&m_dead_mask, 0); // our planned departure is not a peer death
     m_hl.leaving = false;
     mesh_reset_hub_state(GetTickCount());
     logf("net: hub-leave -- connections retired (%s); this endpoint no longer carries the match (mp:U62)", why);
@@ -1002,26 +1002,26 @@ void Endpoint::hl_finish_leave(const char *why) {
 // A hub with no clients forgets its epoch/roster so a later lobby starts clean (a rematch on this endpoint must
 // not find "outstanding" acks from a match whose clients are gone). Caller holds m_conn_cs.
 void Endpoint::mesh_reset_hub_state(DWORD now) {
-    Mesh &m = m_mesh;
-    m.cur   = mesh::Epoch();
-    m.acked_mask = 0;
-    m.S          = 0;
-    m.roster_ms  = now ? now : 1u;
-    m.broker_dirty = false;
+    Mesh &m          = m_mesh;
+    m.cur            = mesh::Epoch();
+    m.acked_mask     = 0;
+    m.S              = 0;
+    m.roster_ms      = now ? now : 1u;
+    m.broker_dirty   = false;
     m.last_broker_ms = 0;
     m.pub_ms = m.last_send_ms = m.last_eval_ms = m.all_acked_ms = m.first_epoch_ms = m.first_cand_ms = 0;
     for (int i = 0; i < 8; ++i) {
         m.have_cand[i] = m.have_row[i] = m.reported_relayed[i] = false;
-        m.reported[i]  = mesh::CandList();
-        m.row_ms[i]    = 0;
+        m.reported[i]                                          = mesh::CandList();
+        m.row_ms[i]                                            = 0;
         m.last_acked_epoch[i] = m.last_acked_digest[i] = 0;
     }
     m.M.clear();
 }
 
 void Endpoint::hl_on_ack(int idx, const uint8_t *payload, uint32_t len) {
-    HubLeaveState &h = m_hl;
-    Conn          &c = m_conns[idx];
+    HubLeaveState &h     = m_hl;
+    Conn          &c     = m_conns[idx];
     uint32_t       epoch = 0;
     uint8_t        gen = 0, flags = 0;
     if (!mesh::leave_ack_decode(payload, (int)len, epoch, gen, flags)) {
@@ -1049,8 +1049,8 @@ void Endpoint::hl_on_ack(int idx, const uint8_t *payload, uint32_t len) {
 // generation they hold as "dial now"). Caller holds m_conn_cs.
 void Endpoint::hl_send_go() {
     HubLeaveState &h = m_hl;
-    uint8_t buf[mesh::MAX_FRAME];
-    const int n = mesh::leaving_encode(h.cur, buf, (int)sizeof(buf));
+    uint8_t        buf[mesh::MAX_FRAME];
+    const int      n = mesh::leaving_encode(h.cur, buf, (int)sizeof(buf));
     if (n == 0) return;
     h.go_sent = true;
     for (int id = 0; id < 8; ++id) {
@@ -1069,13 +1069,13 @@ void Endpoint::hl_leave_tick(DWORD now) {
     const int gone = h.cur.e[0].id;
     h.removed |= 1u << gone;
     h.want &= ~(1u << gone); // a client we gave up on is not waited for
-    h.ack = 0;
+    h.ack     = 0;
     h.go_sent = false;
     memset(h.ackc, 0, sizeof(h.ackc));
     for (int i = 1; i < h.cur.n; ++i) h.cur.e[i - 1] = h.cur.e[i];
     --h.cur.n;
     ++h.cur.gen;
-    uint8_t buf[mesh::MAX_FRAME];
+    uint8_t   buf[mesh::MAX_FRAME];
     const int n = mesh::leaving_encode(h.cur, buf, (int)sizeof(buf));
     if (n == 0) return;
     for (int id = 0; id < 8; ++id) {
@@ -1139,13 +1139,13 @@ void Endpoint::hl_on_leaving(int idx, const mesh::Leaving &L) {
 
 // After a rehome, the mesh state a survivor carries has to point at the new hub. Caller holds m_conn_cs.
 void Endpoint::hl_become_hub_state(const mesh::Leaving &L, DWORD now) {
-    Mesh &m = m_mesh;
+    Mesh          &m          = m_mesh;
     const uint32_t held_epoch = m.held_valid ? m.held.epoch : 0;
     m_hl.mesh_resume          = true;
     m_hl.epoch_inherited      = true;
     // The next epoch this hub publishes is numbered ABOVE every epoch any survivor can hold (the old hub sent
     // e+1 only after every ack of e, so a survivor holds the new hub's own held epoch or one above it).
-    m.cur = m.held_valid ? m.held : mesh::Epoch();
+    m.cur            = m.held_valid ? m.held : mesh::Epoch();
     m.cur.epoch      = mesh::successor_first_epoch(held_epoch) - 1; // mesh_publish adds one
     m.cur.hub        = (uint8_t)m_my_id;
     m.acked_mask     = 0xFFu; // nothing is outstanding: every survivor already holds what it holds
@@ -1158,8 +1158,8 @@ void Endpoint::hl_become_hub_state(const mesh::Leaving &L, DWORD now) {
     m.all_acked_ms = m.first_epoch_ms = m.first_cand_ms = 0;
     for (int i = 0; i < 8; ++i) {
         m.have_cand[i] = m.have_row[i] = m.reported_relayed[i] = false;
-        m.reported[i]  = mesh::CandList();
-        m.row_ms[i]    = 0;
+        m.reported[i]                                          = mesh::CandList();
+        m.row_ms[i]                                            = 0;
         for (int j = 0; j < 8; ++j) m.M.rtt[i][j] = mesh::NONE;
         m.M.leg[i] = mesh::NONE;
     }
@@ -1176,7 +1176,7 @@ void Endpoint::hl_become_hub_state(const mesh::Leaving &L, DWORD now) {
 // The unlocked half (timer thread). See the block comment above.
 void Endpoint::hl_service() {
     mesh::Leaving L;
-    int           me = -1;
+    int           me        = -1;
     bool          have_best = false;
     sockaddr_in   best;
     memset(&best, 0, sizeof(best));
@@ -1185,10 +1185,10 @@ void Endpoint::hl_service() {
         LeaveCriticalSection(&m_conn_cs);
         return;
     }
-    L                  = m_hl.todo;
-    m_hl.todo_valid    = false;
-    me                 = m_my_id;
-    const int succ_id  = L.e[0].id;
+    L                 = m_hl.todo;
+    m_hl.todo_valid   = false;
+    me                = m_my_id;
+    const int succ_id = L.e[0].id;
     if (m_role != 1) { // already the hub (a re-issue naming someone else): nothing to switch
         LeaveCriticalSection(&m_conn_cs);
         logf("net: HUB_LEAVING gen=%d: this endpoint is already the hub -- ignored (mp:U62)", (int)L.gen);
@@ -1203,9 +1203,9 @@ void Endpoint::hl_service() {
     }
     LeaveCriticalSection(&m_conn_cs);
 
-    const mesh::LeaveEntry &S      = L.e[0];
-    const bool              relay  = m_leg_overhead > 0;
-    const DWORD             t0     = GetTickCount();
+    const mesh::LeaveEntry &S     = L.e[0];
+    const bool              relay = m_leg_overhead > 0;
+    const DWORD             t0    = GetTickCount();
     if (S.id == me) {
         // ---- THIS PLAYER IS THE NEW HUB
         unsigned short dp = 0;
@@ -1258,7 +1258,7 @@ void Endpoint::hl_service() {
     }
     if (!rehome(sp)) return;
     EnterCriticalSection(&m_conn_cs);
-    m_hl.mesh_resume = true;
+    m_hl.mesh_resume   = true;
     m_mesh.cand_sent   = false; // the new hub has not seen our candidates
     m_mesh.last_row_ms = 0;     // ...nor our row
     ++m_hl.changes;
@@ -1313,16 +1313,16 @@ bool Endpoint::rehome_ex(const RehomeEx &x) {
 
 void Endpoint::hub_status(HubStatus &o) {
     memset(&o, 0, sizeof(o));
-    o.role = -1;
-    o.hub_id = -1;
+    o.role     = -1;
+    o.hub_id   = -1;
     o.local_id = -1;
     o.old_hub = o.new_hub = -1;
     if (!m_cs_ready) return;
     EnterCriticalSection(&m_conn_cs);
-    const Mesh &m = m_mesh;
-    o.enabled     = !m_cfg.no_hub_migration;
-    o.role        = (int)m_role;
-    o.local_id    = m_my_id;
+    const Mesh &m        = m_mesh;
+    o.enabled            = !m_cfg.no_hub_migration;
+    o.role               = (int)m_role;
+    o.local_id           = m_my_id;
     const mesh::Epoch *e = nullptr;
     if (m_role == 0) {
         if (m_hl.epoch_inherited) {
@@ -1356,10 +1356,10 @@ void Endpoint::hub_status(HubStatus &o) {
     }
     for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
         if (m_conns[i].active && !m_conns[i].tx_dead && m_conns[i].player_id != m_my_id) ++o.clients;
-    o.leaving_rx = m_hl.leaving_rx;
-    o.acks_tx    = m_hl.acks_tx;
-    o.acks_rx    = m_hl.acks_rx;
-    o.retargets  = m_hl.retargets;
+    o.leaving_rx      = m_hl.leaving_rx;
+    o.acks_tx         = m_hl.acks_tx;
+    o.acks_rx         = m_hl.acks_rx;
+    o.retargets       = m_hl.retargets;
     o.failover        = m_fo.phase;
     o.failover_active = m_fo.phase == FO_SUSPECT || m_fo.phase == FO_ELECT;
     o.failover_ms     = (m_fo.phase == FO_IDLE || m_fo.start_ms == 0)
@@ -1370,6 +1370,14 @@ void Endpoint::hub_status(HubStatus &o) {
     o.fo_redirects_tx = m_fo.redirects_tx;
     o.fo_group        = mesh::popcnt(m_fo.group);
     LeaveCriticalSection(&m_conn_cs);
+}
+
+bool Endpoint::fo_test_corroborated_from_hub(int id) {
+    if (id < 0 || id > 7 || !m_cs_ready) return false;
+    EnterCriticalSection(&m_conn_cs);
+    const bool found = (m_fo.corrob_hubs & (1u << id)) != 0;
+    LeaveCriticalSection(&m_conn_cs);
+    return found;
 }
 
 // =================================================================================================
@@ -1400,9 +1408,9 @@ void Endpoint::hub_status(HubStatus &o) {
 //   6. BOUND.    The whole failover is bounded (failover_budget_ms, 20 s): past it a true partition ends
 //                through U55's own path. The game suspends its silence timers while `failover_active` (SUSPECT/ELECT).
 //
-// WHAT IT DOES NOT DO: the dead hub is not removed from any ROSTER here. The new hub latches it dead (m_dead_peer,
-// U17's latch) and the game's pinned fast-drop removes it at the PARKED step (D5/G335) -- never at receive time. A
-// survivor that never re-dialled is latched the same way, after the quorum judgement.
+// The transport declares deaths but never mutates the native roster. The game
+// applies them after the actual final funded body; missing survivors are declared
+// only after the existing quorum judgement, and accepted re-dials cancel them.
 //
 // RISK, STATED: a relayed match with survivors at epochs e and e+1 would dial different pre-minted rooms (the rooms
 // belong to the epoch); the hub publishes e+1 only after every ack of e, so this needs the hub to die inside one ack
@@ -1469,10 +1477,13 @@ uint32_t Endpoint::fo_alive_mask(DWORD now) {
 
 void Endpoint::fo_send(int peer, uint8_t kind, uint8_t flags, uint8_t arg, DWORD now) {
     (void)now;
-    if (m_fo_test_mute || peer < 0 || peer >= 8 || peer == m_my_id || !m_mesh.key_valid) return;
-    Mesh   &m = m_mesh;
-    uint8_t body[mesh::FO_BODY];
-    mesh::fo_body(kind, m_my_id, peer, ++m_fo.seq, flags, m.held_valid ? m.held.epoch : m_fo.ep.epoch, arg, body);
+    if (fo_test_muted() || peer < 0 || peer >= 8 || peer == m_my_id || !m_mesh.key_valid) return;
+    Mesh    &m = m_mesh;
+    uint8_t  body[mesh::FO_BODY];
+    uint32_t epoch = m.held_valid ? m.held.epoch : m_fo.ep.epoch;
+    if ((flags & mesh::FOF_LOSS_TAG) && (!m.held_valid || m.held.hub != m_fo.ep.hub))
+        epoch = m_fo.ep.epoch; // a rehomed hub must still describe the old loss
+    mesh::fo_body(kind, m_my_id, peer, ++m_fo.seq, flags, epoch, arg, body);
     const FoPeer   &fp = m_fo.p[peer];
     const MeshPeer &q  = m.peer[peer];
     mesh::Addr4     a[8];
@@ -1491,8 +1502,8 @@ void Endpoint::fo_send(int peer, uint8_t kind, uint8_t flags, uint8_t arg, DWORD
 int Endpoint::fo_my_choice(DWORD now, bool *undecided) {
     Failover &f = m_fo;
     if (undecided) *undecided = false;
-    const mesh::Epoch &e = f.ep;
-    auto live = [&](int id) { return id >= 0 && id < 8 && (e.S >> id & 1u) && !(f.failed >> id & 1u); };
+    const mesh::Epoch &e    = f.ep;
+    auto               live = [&](int id) { return id >= 0 && id < 8 && (e.S >> id & 1u) && !(f.failed >> id & 1u); };
     if (f.forced >= 0 && live(f.forced)) return f.forced; // a REDIRECT (or a higher epoch's choice) outranks the list
     const int tf = (int)m_fo_test_first;
     if (tf >= 0 && live(tf)) return tf;
@@ -1514,9 +1525,10 @@ int Endpoint::fo_my_choice(DWORD now, bool *undecided) {
 void Endpoint::fo_broadcast_state(DWORD now) {
     Failover &f   = m_fo;
     f.state_tx_ms = now ? now : 1u;
-    if (f.relayed || m_fo_test_mute) return;
+    if (f.relayed || fo_test_muted()) return;
     uint8_t flags = 0;
-    if ((f.phase == FO_SUSPECT || f.phase == FO_ELECT) && m_role == 1) flags |= mesh::FOF_SUSPECT;
+    if ((m_role == 1 && (f.phase == FO_SUSPECT || f.phase == FO_ELECT)) || (f.hub_acted && f.corrob_ms))
+        flags |= mesh::fo_loss_flags(f.ep.hub);
     if (f.hub_acted) flags |= mesh::FOF_HUB;
     bool      u  = false;
     const int ch = f.phase == FO_ELECT && !f.hub_acted ? fo_my_choice(now, &u) : (f.hub_acted ? m_my_id : -1);
@@ -1531,11 +1543,11 @@ void Endpoint::fo_enter(DWORD now, const char *why) {
     memcpy(keep, f.p, sizeof(keep)); // what the others already said (they may have been first)
     memset(&f, 0, sizeof(f));
     memcpy(f.p, keep, sizeof(keep));
-    f.hub_id   = f.cand = f.forced = -1;
-    f.phase    = FO_SUSPECT;
-    f.start_ms = now ? now : 1u;
-    f.ep       = m_mesh.held;
-    f.relayed  = m_leg_overhead > 0 && is_loopback(m_conns[0].addr);
+    f.hub_id = f.cand = f.forced = -1;
+    f.phase                      = FO_SUSPECT;
+    f.start_ms                   = now ? now : 1u;
+    f.ep                         = m_mesh.held;
+    f.relayed                    = m_leg_overhead > 0 && is_loopback(m_conns[0].addr);
     char rk[24];
     rank_text(f.ep.rank, f.ep.n, rk, sizeof(rk));
     logf("net: failover SUSPECT -- %s; epoch=%u hub=%d rank=%s%s (mp:U63)", why, (unsigned)f.ep.epoch, (int)f.ep.hub, rk,
@@ -1552,7 +1564,9 @@ void Endpoint::fo_finish(int phase, const char *why) {
         for (int i = 0; i < MH_NET_MAX_PEERS; ++i)
             if (m_conns[i].active && !m_conns[i].tx_dead) refuse_conn(i, "minority group: this side ends (mp:U63)");
     }
-    const char *nm = phase == FO_DONE ? "DONE" : phase == FO_FAILED ? "FAILED" : phase == FO_MINORITY ? "MINORITY (ends)" : "IDLE";
+    const char *nm = phase == FO_DONE ? "DONE" : phase == FO_FAILED ? "FAILED"
+                                             : phase == FO_MINORITY ? "MINORITY (ends)"
+                                                                    : "IDLE";
     logf("net: failover %s -- %s (after %u ms) (mp:U63)", nm, why, (unsigned)(f.done_ms - f.start_ms));
 }
 
@@ -1609,10 +1623,11 @@ void Endpoint::fo_on_datagram(int from_id, uint8_t kind, uint8_t flags, uint32_t
     }
     if (flags & mesh::FOF_REPLY) return; // an answer: never answered in turn
     // ---- answer: always (a peer that has not noticed the loss yet is still alive and must be HEARD)
-    if (!m_fo_test_mute && (DWORD)(now - p.reply_ms) >= 200) {
+    if (!fo_test_muted() && (DWORD)(now - p.reply_ms) >= 200) {
         p.reply_ms = now ? now : 1u;
         uint8_t rf = mesh::FOF_REPLY;
-        if (m_role == 1 && (f.phase == FO_SUSPECT || f.phase == FO_ELECT)) rf |= mesh::FOF_SUSPECT;
+        if ((m_role == 1 && (f.phase == FO_SUSPECT || f.phase == FO_ELECT)) || (f.hub_acted && f.corrob_ms))
+            rf |= mesh::fo_loss_flags(f.ep.hub);
         if (f.hub_acted) rf |= mesh::FOF_HUB;
         bool      u  = false;
         const int ch = (f.phase == FO_ELECT && !f.hub_acted) ? fo_my_choice(now, &u) : (f.hub_acted ? m_my_id : -1);
@@ -1620,7 +1635,7 @@ void Endpoint::fo_on_datagram(int from_id, uint8_t kind, uint8_t flags, uint32_t
     }
     // ---- REDIRECT: it intends to dial ME as the hub; I am not the hub, and I can still reach a better candidate (or I
     // already follow a hub): tell it where to go instead (plan 5.3 rule 2).
-    if (arg == m_my_id && !f.hub_acted && !m_fo_test_mute && (DWORD)(now - p.redir_tx_ms) >= 250) {
+    if (arg == m_my_id && !f.hub_acted && !fo_test_muted() && (DWORD)(now - p.redir_tx_ms) >= 250) {
         int target = -1;
         if (f.phase == FO_DONE && f.hub_id >= 0 && f.hub_id != m_my_id) target = f.hub_id;
         else if (f.phase == FO_ELECT) {
@@ -1647,8 +1662,8 @@ void Endpoint::fo_tick(DWORD now) {
 
     if (f.phase == FO_DONE && m_role == 1 && (DWORD)(now - f.done_ms) > 3000 && m_conns[0].active &&
         !m_conns[0].tx_dead) {
-        f.phase = FO_IDLE; // the new hub carries us: armed again for the NEXT loss
-        f.ep    = mesh::Epoch();
+        f.phase  = FO_IDLE; // the new hub carries us: armed again for the NEXT loss
+        f.ep     = mesh::Epoch();
         f.failed = 0;
         f.forced = f.cand = -1;
         f.hub_acted = f.dialing = false;
@@ -1664,11 +1679,11 @@ void Endpoint::fo_tick(DWORD now) {
         if (!c.bound && !c.active && c.last_rx == 0) return;
         DWORD silent = (DWORD)(now - c.last_rx);
         if ((int32_t)silent < 0) silent = 0;
-        const DWORD T = mesh_t(mesh::fo_suspect_ms(c.stats.rtt.samples > 0 ? c.stats.rtt.srtt_ms : 0.0,
-                                                 c.stats.rtt.samples > 0 ? c.stats.rtt.rttvar_ms : 0.0));
-        bool others = false;
+        const DWORD T      = mesh_t(mesh::fo_suspect_ms(c.stats.rtt.samples > 0 ? c.stats.rtt.srtt_ms : 0.0,
+                                                   c.stats.rtt.samples > 0 ? c.stats.rtt.rttvar_ms : 0.0));
+        bool        others = false;
         for (int p = 0; p < 8; ++p)
-            if (p != m_my_id && (m.held.S >> p & 1u) && (f.p[p].flags & mesh::FOF_SUSPECT) && f.p[p].ms != 0 &&
+            if (p != m_my_id && (m.held.S >> p & 1u) && mesh::fo_loss_matches(f.p[p].flags, f.p[p].epoch, m.held) && f.p[p].ms != 0 &&
                 (DWORD)(now - f.p[p].ms) <= mesh_t(mesh::FO_FRESH_MS))
                 others = true;
         if (silent >= T) {
@@ -1695,8 +1710,8 @@ void Endpoint::fo_tick(DWORD now) {
 
     // ---- the hub came back? (only before corroboration; after it the walk is committed)
     if (f.phase == FO_SUSPECT && m_role == 1) {
-        const Conn &c = m_conns[0];
-        DWORD silent  = (DWORD)(now - c.last_rx);
+        const Conn &c      = m_conns[0];
+        DWORD       silent = (DWORD)(now - c.last_rx);
         if ((int32_t)silent < 0) silent = 0;
         if (c.active && !c.tx_dead && silent < mesh_t(mesh::FO_CORROB_MS)) {
             fo_finish(FO_IDLE, "the hub is heard again");
@@ -1706,17 +1721,19 @@ void Endpoint::fo_tick(DWORD now) {
 
     // ---- corroboration
     if (f.phase == FO_SUSPECT) {
-        bool ok       = false;
-        int  leg_age  = -1; // mp:U64: kept for the isolation verdict below
+        bool ok      = false;
+        int  leg_age = -1; // mp:U64: kept for the isolation verdict below
         if (f.relayed) {
             const int age = m_mesh_hooks.leg_age_ms ? m_mesh_hooks.leg_age_ms(m_mesh_hooks.ctx) : -1;
             leg_age       = age;
             ok            = age >= 0 && age < (int)mesh_t(mesh::FO_FRESH_MS);
         } else {
             for (int p = 0; p < 8; ++p)
-                if (p != m_my_id && (f.ep.S >> p & 1u) && (f.p[p].flags & mesh::FOF_SUSPECT) && f.p[p].ms != 0 &&
-                    (DWORD)(now - f.p[p].ms) <= mesh_t(mesh::FO_FRESH_MS))
+                if (p != m_my_id && (f.ep.S >> p & 1u) && mesh::fo_loss_matches(f.p[p].flags, f.p[p].epoch, f.ep) && f.p[p].ms != 0 &&
+                    (DWORD)(now - f.p[p].ms) <= mesh_t(mesh::FO_FRESH_MS)) {
                     ok = true;
+                    if (f.p[p].flags & mesh::FOF_HUB) f.corrob_hubs |= 1u << p;
+                }
         }
         if (!ok) {
             // mp:U64 (HM-M6): a RELAYED survivor whose own relay leg is dead cannot reach ANY peer: it is a group of one, a
@@ -1780,7 +1797,7 @@ void Endpoint::fo_tick(DWORD now) {
         }
         const uint32_t missing = roster & ~seated;
         if (missing) {
-            m_dead_extra |= missing; // never re-dialled: removed at a pinned step, like any dead client
+            InterlockedOr(&m_dead_mask, LONG(missing));
             logf("net: failover -- survivor(s) mask %02x never re-dialled: latched dead for the pinned removal (mp:U63)",
                  (unsigned)missing);
         }
@@ -1788,6 +1805,9 @@ void Endpoint::fo_tick(DWORD now) {
             ++m_hl.changes;
             f.change_pending = false;
         }
+        // Like client DONE, report the counted election only after the quorum succeeds.
+        logf("net: hub elected %d epoch %u -- crash failover after %u ms: this player is the hub now (quorum validated) (mp:U63)",
+             m_my_id, (unsigned)f.ep.epoch, (unsigned)(now - f.start_ms));
         fo_finish(FO_DONE, "the roster re-dialled; quorum ok");
         return;
     }
@@ -1904,7 +1924,7 @@ void Endpoint::fo_service() {
         bool           ok = true;
         if (relayed) {
             const uint32_t room = ep.room[me & 7];
-            ok = m_mesh_hooks.tunnel_rehome && room != 0 &&
+            ok                  = m_mesh_hooks.tunnel_rehome && room != 0 &&
                  m_mesh_hooks.tunnel_rehome(m_mesh_hooks.ctx, 0, room, bound_port(), &dp);
             if (!ok)
                 logf("net: failover -- the relay tunnel could not switch to hosting room %u: this player cannot become "
@@ -1917,7 +1937,7 @@ void Endpoint::fo_service() {
         for (int i = 0; i < 8; ++i)
             if ((ep.S >> i & 1u) && i != me && sp.roster_n < MH_NET_MAX_PEERS) sp.roster[sp.roster_n++] = i;
         sp.reconcile_wait_ms = (int)mesh_t(1500); // the survivors were corroborated alive already; a late report replans (rc_tick)
-        ok = ok && rehome(sp);
+        ok                   = ok && rehome(sp);
         EnterCriticalSection(&m_conn_cs);
         if (!ok) {
             m_fo.failed |= 1u << me;
@@ -1929,12 +1949,11 @@ void Endpoint::fo_service() {
             m_hl.change_crash = true;
             --m_hl.changes; // counted (and shown to the player) only once the quorum is judged: a minority is no hub change
             m_fo.change_pending = true;
-            InterlockedExchange(&m_dead_peer, (LONG)ep.hub); // the dead hub: U17's pinned fast-drop removes it at the parked step
+            InterlockedOr(&m_dead_mask, LONG(1u << ep.hub));
             m_fo.hub_acted       = true;
             m_fo.hub_id          = me;
             m_fo.quorum_deadline = GetTickCount() + mesh_t(mesh::FO_QUORUM_MS);
-            logf("net: hub elected %d epoch %u -- crash failover after %u ms: this player is the hub now (switched in "
-                 "%u ms) (mp:U63)",
+            logf("net: failover provisional hub %d epoch %u -- prepared after %u ms, quorum pending (switched in %u ms) (mp:U63)",
                  me, (unsigned)ep.epoch, (unsigned)(GetTickCount() - m_fo.start_ms), (unsigned)(GetTickCount() - t0));
             fo_broadcast_state(GetTickCount());
         }
@@ -1949,7 +1968,7 @@ void Endpoint::fo_service() {
     if (relayed) {
         unsigned short dp   = 0;
         const uint32_t room = ep.room[cand & 7];
-        ok = m_mesh_hooks.tunnel_rehome && room != 0 && m_mesh_hooks.tunnel_rehome(m_mesh_hooks.ctx, 1, room, 0, &dp) &&
+        ok                  = m_mesh_hooks.tunnel_rehome && room != 0 && m_mesh_hooks.tunnel_rehome(m_mesh_hooks.ctx, 1, room, 0, &dp) &&
              dp != 0;
         if (ok) {
             lstrcpynA(sp.host, "127.0.0.1", (int)sizeof(sp.host));

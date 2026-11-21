@@ -132,7 +132,7 @@ int stage_begin(const uint32_t n_src[SOURCES], plan_report *rep) {
         const entry &e = g_ring[seq % RING_CAP];
         if (e.idx > n_src[e.src]) ++g_stage.remaining;
     }
-    g_stage.active = true;
+    g_stage.active = g_stage.remaining != 0;
     // Skip the leading non-targets so low_seq sits on the first record still to feed.
     while (g_stage.low_seq < g_stage.end_seq && g_ring[g_stage.low_seq % RING_CAP].idx <= n_src[g_ring[g_stage.low_seq % RING_CAP].src])
         ++g_stage.low_seq;

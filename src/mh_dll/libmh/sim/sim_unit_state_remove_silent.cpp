@@ -4,6 +4,7 @@
 // banner for the units[player][0]-energy-write derivation and the field-offset cross-checks.
 //
 #include "sim/sim_unit_state_remove_silent.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -55,6 +56,7 @@ void unit_state_remove_silent(const sim_view &v, sim_store &own, const unit_stat
     // 0x00485945-0x00485959: UNCONDITIONAL notify. The `0` third argument is the same EBX the asm
     // zeroes at function entry (XOR EBX,EBX) and never rewrites before this call -- see the header
     // banner: NOT dead code, this call's own hard_remove argument.
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::unit, uint32_t(player), uint32_t(index), false);
     c.ai_notify_object_removed(static_cast<uint32_t>(player) | 0x80u, static_cast<uint32_t>(index), 0);
 
     // 0x0048595e-0x004859a1: energy ALWAYS zeroed (both dwords of the double in the asm; equivalent to

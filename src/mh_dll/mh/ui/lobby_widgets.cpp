@@ -13,7 +13,9 @@
 #include <string.h>
 
 #include "ui/ui_internal.h"
+#include "ui/map_info_latch.h"
 #include "ui/player_strings.h" // mp:U51: the TEAM / MODE option texts
+#include "ui/lobby_speed.h"
 #include "addr/mh_addrs.gen.h" // generated EN VAs (tools/gen_dll_addrs.py)
 #include "hook/detour.h"       // install_trampoline (shared inline-detour toolkit)
 #include "hook/patch.h"        // patch_bytes_guarded (S7 browser-row format string)
@@ -92,8 +94,9 @@ void lobby_frame_snap_on_screen() {
 //       current_map_data.field2_0x8, so a 2p stub yields 2 rows on an 8p map.
 // Re-run BOTH, ONCE per distinct map, on the main (frame) thread right before the retail dispatch
 // body renders. The caller gates on MH_MP_MapReceived (set with release AFTER the recv-thread copy
-// completes, so we never read a torn current_map_data); the player-count latch is here because it is
-// a property of what is DISPLAYED. Rebuild mirrors the retail dispatch's own pattern
+// completes, so we never read a torn current_map_data). The bounded identity tracks the map path,
+// checksum, metadata and footer; the count alone decides whether to rebuild slots. Rebuild mirrors
+// the retail dispatch's own pattern
 // (WIDGETS_BUILT=0 -> build -> =1); with =0 the build also re-resolves
 // _G_LLM_LOBBY_LOCAL_SLOT_INDEX from the slot player_ids. (U8 Gap 2)
 //
@@ -102,18 +105,21 @@ void lobby_frame_snap_on_screen() {
 // 0x0f/0x10/0x11) is dead-stubbed BY DESIGN (the MP bootstrap notes), so there is no reachable retail
 // path to ride here -- load-bearing, not fighting retail. See the MP seam audit.
 void lobby_refresh_for_map() {
-    constexpr uintptr_t A_MAP_PCOUNT    = mh::addr::current_map_player_count; // current_map_data.field2_0x8
-    constexpr uintptr_t A_WIDGETS_BUILT = mh::addr::_G_LLM_LOBBY_WIDGETS_BUILT;
-    const int           pcount          = *(const int *)A_MAP_PCOUNT;
-    static int          g_shown_pcount  = 0;
-    if (pcount < 1 || pcount == g_shown_pcount) return;
-    g_shown_pcount = pcount;
-    ((void(__stdcall *)())mh::addr::llm_lobby_map_transfer_finalize)(); // -> map-info panel
-    *(unsigned char *)A_WIDGETS_BUILT = 0;                              // rebuild the slot rows for the real count
-    ((void (*)())mh::addr::llm_lobby_build_slot_widgets)();             //   mirrors dispatch
-    *(unsigned char *)A_WIDGETS_BUILT = 1;
+    constexpr uintptr_t          A_WIDGETS_BUILT = mh::addr::_G_LLM_LOBBY_WIDGETS_BUILT;
+    static detail::MapInfoLatch  shown;
+    const auto                  &header  = *reinterpret_cast<const mh::game::mh_cfg_struct_map_header *>(mh::addr::current_map_data);
+    const detail::MapInfoRefresh refresh = shown.update(header);
+    if (refresh == detail::MapInfoRefresh::unchanged) return;
+    ((void(__stdcall *)())mh::addr::llm_lobby_map_transfer_finalize)(); // refresh map-info panel
+    if (refresh == detail::MapInfoRefresh::slots) {
+        *(unsigned char *)A_WIDGETS_BUILT = 0;
+        ((void (*)())mh::addr::llm_lobby_build_slot_widgets)();
+        *(unsigned char *)A_WIDGETS_BUILT = 1;
+    }
     if (ui_verbose())
-        ui_log("; U8-Gap2 refreshed lobby map-info + rebuilt slot rows for the real map\n");
+        ui_log(refresh == detail::MapInfoRefresh::slots
+                   ? "; U8-Gap2 refreshed lobby map-info + rebuilt slot rows for the real map\n"
+                   : "; U8-Gap2 refreshed lobby map-info for the changed map\n");
 }
 
 } // namespace ui
@@ -273,7 +279,7 @@ constexpr int32_t CB_KICK = 0x004be552, CB_STATE = 0x004bf65d, CB_RACE = 0x004bf
 alignas(4) uint8_t g_team_w[MAX_ROWS][W_STRIDE];
 alignas(4) uint8_t g_team_sp[MAX_ROWS][SP_STRIDE];
 alignas(4) uint8_t g_ping_w[MAX_ROWS][W_STRIDE];
-constexpr int EXTRA_CHILDREN = 1; // mp:U51: the MODE selector, right after the statics
+constexpr int EXTRA_CHILDREN = 3; // page spinner, Mode, then the host-owned Speed row
 uintptr_t     g_children[STATIC_CHILDREN + EXTRA_CHILDREN + MAX_ROWS * ROW_WIDGETS + 1];
 int           g_rows_built = 0;
 
@@ -400,13 +406,20 @@ void init_mode_widget() {
     wf(w, WO_W)        = wf(tmpl, WO_W);
     wf(w, WO_H)        = font_h;
     wf(w, WO_FLAGS)    = (wf(tmpl, WO_FLAGS) & ~0xc0) | 0x2; // 0x2 = takes input (Start/Cancel carry it)
-    wf(w, WO_ACTION)   = (int32_t)(uintptr_t)mode_cb_detour;
-    wf(w, WO_DRAW)     = DRAW_CONTENT;
-    wf(w, WO_SPIN)     = (int32_t)sp;
-    wf(sp, 0)          = (int32_t)(uintptr_t)g_mode_tbl_cells;
-    wf(sp, 4)          = 2;
-    wf(sp, 8)          = 0;
-    wf(sp, 0xc)        = 0;
+    if (mh::ui::map_preview_on()) {
+        // mods:MAPGEN2: Mode lives INSIDE the description box on the lobby's Settings page. It chains after the page
+        // spinner with keep-prev X/Y (no flow, 0x800000 off), so the spinner's draw can aim its x/y/width at the box
+        // every frame (map_preview.cpp pager_draw); the row widgets after it restart from the container origin.
+        wf(w, WO_FLAGS) &= ~0x800000;
+        wf(w, WO_FLAGS) |= 0xc0; // hidden + disabled until the Settings page shows it (lobby_team_tick)
+    }
+    wf(w, WO_ACTION) = (int32_t)(uintptr_t)mode_cb_detour;
+    wf(w, WO_DRAW)   = DRAW_CONTENT;
+    wf(w, WO_SPIN)   = (int32_t)sp;
+    wf(sp, 0)        = (int32_t)(uintptr_t)g_mode_tbl_cells;
+    wf(sp, 4)        = 2;
+    wf(sp, 8)        = 0;
+    wf(sp, 0xc)      = 0;
 }
 
 void build_slot_rows_impl() {
@@ -431,10 +444,13 @@ void build_slot_rows_impl() {
     int nc = 0;
     for (; nc < STATIC_CHILDREN; ++nc)
         g_children[nc] = *(const uintptr_t *)(ADDR_RETAIL_CH + (uintptr_t)nc * 4);
+    if (void *pager = mh::ui::map_preview_lobby_pager()) g_children[nc++] = (uintptr_t)pager; // mods:MAPGEN2: where Mode used to be
     g_children[nc++]     = (uintptr_t)g_mode_w;
     int32_t *retail_ptrs = (int32_t *)ADDR_RETAIL_PT;
     init_mode_widget();
     init_team_tables();
+    mh::ui::lobby_speed_widget_init(g_mode_w);
+    g_children[nc++] = (uintptr_t)mh::ui::lobby_speed_widget();
 
     const int font_h = *(const int *)ADDR_FONT_H;
     int       y      = 0x36;
@@ -624,9 +640,28 @@ void lobby_team_tick() {
         f                                = (host || (i == local && status == 1)) ? (f & ~0x40) : (f | 0x40);
         wf(wt, WO_FLAGS)                 = f;
     }
-    const uintptr_t wm            = (uintptr_t)g_mode_w;
     wf((uintptr_t)g_mode_sp, 0xc) = team_mode ? 1 : 0;
-    wf(wm, WO_FLAGS)              = host ? (wf(wm, WO_FLAGS) & ~0x40) : (wf(wm, WO_FLAGS) | 0x40);
+    lobby_mode_sync_flags();
+    lobby_speed_widget_tick();
+}
+
+// The Mode widget's enable/visibility: the HOST may click it, a client reads it (disabled); and (mods:MAPGEN2) it shows
+// only on the lobby's Settings page -- elsewhere hidden AND disabled, so it is neither drawn nor hit-tested over the
+// Description / Preview content. Also called straight from the page spinner's click, so the very next frame already
+// hit-tests the new state (the tick alone would leave one frame of the old one).
+void lobby_mode_sync_flags() {
+    const uintptr_t wm   = (uintptr_t)g_mode_w;
+    const bool      host = *(const int *)mh::addr::_G_LLM_NET_IS_HOST != 0;
+    wf(wm, WO_FLAGS)     = host ? (wf(wm, WO_FLAGS) & ~0x40) : (wf(wm, WO_FLAGS) | 0x40);
+    if (mh::ui::map_preview_on()) {
+        if (mh::ui::map_preview_lobby_settings_page()) wf(wm, WO_FLAGS) &= ~0x80;
+        else wf(wm, WO_FLAGS) |= 0xc0;
+    }
+    lobby_speed_widget_sync_flags();
+}
+
+void *lobby_mode_widget() {
+    return g_mode_w;
 }
 
 // ---- mp:U52: a NEW lobby starts with no teams and FFA mode ---------------------------------------------

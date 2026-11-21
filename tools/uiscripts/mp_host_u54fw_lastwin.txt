@@ -35,7 +35,15 @@ click 221 166
 team 3 2
 click 221 115
 team 0 1
-click 501 370
+# Mode lives on the lobby's Settings page since mods:MAPGEN2: page there (one click per page, each gated on the page --
+# the 0x32 input-lock timer swallows back-to-back synthetic clicks), then click Mode inside the description box.
+settled Cancel
+click 501 380
+lobbypage 1
+settled Cancel
+click 501 380
+lobbypage 2
+click 501 184
 lobbymode 1
 awaitsignal c1team
 team 1 1

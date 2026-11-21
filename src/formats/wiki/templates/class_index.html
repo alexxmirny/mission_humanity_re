@@ -1,0 +1,25 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import thumb %}
+{% block body %}
+<h1>{{ S.kinds_pl[kind] }}</h1>
+<p class="dim">{{ total }} {{ S.entries }}. {{ S.sort_hint }}</p>
+{% for sec in sections %}
+<section class="grp{% if sec.faction %} f-{{ sec.faction }}{% endif %}">
+<h2>{{ sec.title }} <span class="dim">({{ sec.ents|length }})</span></h2>
+<div class="grid">
+{%- for e in sec.ents %}
+  <a class="tile" href="{{ e.slug }}.html" title="{{ c.name(e) }}">{{ thumb(c, e) }}<span>{{ c.name(e) }}</span></a>
+{%- endfor %}
+</div>
+<div class="tscroll"><table class="sortable">
+<thead><tr><th>{{ S.name }}</th>{% if map_thumbs %}<th>{{ S.planet_map }}</th>{% endif %}{% for h in headers %}<th class="num">{{ h }}</th>{% endfor %}</tr></thead>
+<tbody>
+{%- for row in sec.rows %}
+<tr><td data-v="{{ row.name|lower }}"><a href="{{ row.slug }}.html">{{ row.name }}</a></td>
+{%- if map_thumbs %}<td>{% if row.thumb %}<a href="{{ row.slug }}.html"><img class="mapth" src="{{ row.thumb }}" alt="{{ S.planet_map }}" loading="lazy"></a>{% endif %}</td>{% endif %}
+{%- for txt, v in row.cells %}<td class="num" data-v="{{ v }}">{{ txt }}</td>{% endfor %}</tr>
+{%- endfor %}
+</tbody></table></div>
+</section>
+{% endfor %}
+{% endblock %}

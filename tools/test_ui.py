@@ -32,38 +32,46 @@ import concurrent.futures as cf
 import contextlib
 import glob
 import io as _io
-import queue
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import threading
 import time
 
+import tmp_runs
+import tool_paths
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import importlib
+import types
+
 import _rundir  # noqa: E402  SES8: run-dir names (the newest PROCESS dir across SES1/SES8)
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import ui_registry  # noqa: E402  TL-SUITE-REGDATA: the scenario registries (registry.yaml)
-import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
-import load_red_allow  # noqa: E402  tooling:TL-SUITE-LOADRED -- the solo-rerun allow-list
-import ui_suite_common  # noqa: E402  tooling:TL-HARN19 -- walk_watchdog_selftest drives _run_watched directly
-from tact_test import (  # noqa: E402
+import gate_admission
+import lane_alloc
+import load_red_allow
+import make_lane
+import tact_test
+import ui_registry
+import ui_suite_common
+from tact_test import (
     run_tact_equiv,
 )
-from ui_suite_common import (  # noqa: E402
+from ui_suite_common import (
     LOCAL_HOST2_PORT_BASE,
     LOCAL_PORT_BASE,
     LOCAL_SHIM_PORT_BASE,
     LOCAL_TIMEOUT_FRAMES,
     RELAY_PORT,
     REPO,
+    TACT_SCENARIOS,
+    TESTS,
     WALK_BACKSTOP_MULT,  # tooling:TL-HARN19 -- ui_test.py's own --timeout, raised for --local runs
     WALK_STALL_S,
     RelayProc,
     RunnerConfig,
-    TACT_SCENARIOS,
-    TESTS,
     add_extra_ini_arg,
     add_net_args,
     add_runner_args,
@@ -77,14 +85,11 @@ from ui_suite_common import (  # noqa: E402
     run_ui_test,
     run_ui_test_watched,  # tooling:TL-HARN19 -- the progress-watchdog sibling of run_ui_test
     share_targets,
-    sp_newest_run,
     sp_first_session_run,
+    sp_newest_run,
     sp_newest_session_run,
     vm_reachable,
 )
-import importlib  # noqa: E402
-import types  # noqa: E402
-import tact_test  # noqa: E402  the tactical tail
 
 # ---- TIMEOUT CLASSIFICATION (tooling:TL-SUITE-TIMEOUT-CLASS) ------------------------------------
 # A timeout used to read as a bare FAIL whether the scenario never booted, walked to its end and
@@ -294,6 +299,7 @@ def walk_watchdog_selftest():
     WALK-STALLED, its last step named), and must kill one that never writes at all within the
     backstop (classified NEVER-STARTED). Small numbers throughout so this runs in a few seconds."""
     import tempfile
+    import types
 
     ok = True
 
@@ -313,11 +319,11 @@ def walk_watchdog_selftest():
         "    time.sleep(0.4)\n"
         "    open(%r, 'a').write('; [script] %%d ok\\n' %% i)\n" % slow_log
     )
-    t0 = time.time()
+    t0 = time.monotonic()
     rc, _ = ui_suite_common._run_watched(
         slow_cmd, backstop=30, run_dirs_fn=lambda: [slow_dir], stall_s=1.2, capture=True, poll_s=0.2
     )
-    secs = time.time() - t0
+    secs = time.monotonic() - t0
     hit = (
         rc == 0 and secs > 2.0
     )  # ran the full ~2.4s (over 2x an "old" 1s flat bound) and exited clean
@@ -344,7 +350,7 @@ def walk_watchdog_selftest():
         "open(%r, 'a').write('; [script] 1 ok\\n')\n"
         "time.sleep(20)\n" % (stall_log, stall_log)
     )
-    t0 = time.time()
+    t0 = time.monotonic()
     rc, text = ui_suite_common._run_watched(
         stall_cmd,
         backstop=30,
@@ -353,7 +359,7 @@ def walk_watchdog_selftest():
         capture=True,
         poll_s=0.2,
     )
-    secs = time.time() - t0
+    secs = time.monotonic() - t0
     cap, harn, walk, pcs = run_artifacts(stall_dir)
     cls = classify_result(rc, True, secs, None, cap, harn, walk, pcs)
     hit = rc == 2 and cls == "WALK-STALLED" and secs < 10 and "advanced" in text
@@ -375,7 +381,7 @@ def walk_watchdog_selftest():
     silent_dir = os.path.join(tmp, "silent")
     os.makedirs(silent_dir)
     silent_cmd = _child("import time\ntime.sleep(20)\n")
-    t0 = time.time()
+    t0 = time.monotonic()
     rc, text = ui_suite_common._run_watched(
         silent_cmd,
         backstop=1.5,
@@ -384,7 +390,7 @@ def walk_watchdog_selftest():
         capture=True,
         poll_s=0.2,
     )
-    secs = time.time() - t0
+    secs = time.monotonic() - t0
     cap, harn, walk, pcs = run_artifacts(silent_dir)
     cls = classify_result(rc, True, secs, None, cap, harn, walk, pcs)
     hit = rc == 2 and cls == "NEVER-STARTED" and "backstop" in text
@@ -400,6 +406,210 @@ def walk_watchdog_selftest():
         )
     )
 
+    # Actual hash-format behavior: silent script, rewinds, churn and bounded I/O.
+    sim_dir = os.path.join(tmp, "sim")
+    os.makedirs(sim_dir)
+    sim_log = os.path.join(sim_dir, "mh_harness.log")
+
+    def sim_row(step, clock):
+        return "%d %016X %016X %016X\n" % (step, clock, 1, 2)
+
+    def append_sim(text):
+        with open(sim_log, "a") as f:
+            f.write(text)
+
+    append_sim(sim_row(1, 0x3FF0000000000000))
+    observer = ui_suite_common._WalkProgress()
+    first = observer.poll([sim_dir])
+    append_sim(sim_row(2, 0x4000000000000000))
+    moved = observer.poll([sim_dir])
+    append_sim("; render churn\n" + sim_row(2, 0x4000000000000000))
+    churn = observer.poll([sim_dir])
+    append_sim(sim_row(1, 0x3FF0000000000000))
+    rewound = observer.poll([sim_dir])
+    append_sim(sim_row(2, 0x4000000000000000))
+    resumed = observer.poll([sim_dir])
+    removed = observer.poll([])
+    rejoined = observer.poll([sim_dir])
+    hit = (
+        first == (False, True)
+        and moved == (True, True)
+        and churn == (False, True)
+        and rewound == (False, True)
+        and resumed == (True, True)
+        and removed == (False, False)
+        and rejoined == (False, True)
+    )
+    ok = ok and hit
+    print("  %-55s %s" % ("sim advances, churn/rewind/membership do not", "ok" if hit else "XX"))
+
+    process_dir = os.path.join(tmp, "2026-11-11T00-00-00Z_menu_solo")
+    owned = os.path.join(tmp, "2026-11-11T00-00-01Z_01234567_planet1_campaign")
+    foreign = os.path.join(tmp, "2026-11-11T00-00-02Z_89abcdef_planet1_campaign")
+    os.makedirs(process_dir)
+    for directory, owner in ((owned, os.path.basename(process_dir)), (foreign, "another_process")):
+        os.makedirs(directory)
+        with open(os.path.join(directory, "session.json"), "w") as f:
+            json.dump({"process_dir": owner}, f)
+        with open(os.path.join(directory, "mh_match_harness.log"), "w") as f:
+            f.write(sim_row(1, 0x3FF0000000000000))
+    owned_observer = ui_suite_common._WalkProgress()
+    historical = owned_observer.poll([process_dir])
+    with open(os.path.join(foreign, "mh_match_harness.log"), "a") as f:
+        f.write(sim_row(2, 0x4000000000000000))
+    unrelated = owned_observer.poll([process_dir])
+    with open(os.path.join(owned, "mh_match_harness.log"), "a") as f:
+        f.write(sim_row(2, 0x4000000000000000))
+    owned_advanced = owned_observer.poll([process_dir])
+    hit = (
+        historical == (False, True)
+        and unrelated == (False, True)
+        and owned_advanced == (True, True)
+    )
+    ok = ok and hit
+    print("  %-55s %s" % ("only owned match-log advances keep a walk live", "ok" if hit else "XX"))
+
+    append_sim(";" + "x" * 100000 + "\n" + sim_row(3, 0x4008000000000000))
+    bounded = observer.poll([sim_dir])
+    quiet = observer.poll([sim_dir])
+    with open(sim_log, "w") as f:
+        f.write(sim_row(1, 0x3FF0000000000000))
+    truncated = observer.poll([sim_dir])
+    append_sim(sim_row(2, 0x4000000000000000))
+    after_truncate = observer.poll([sim_dir])
+    hit = (
+        bounded == (True, True)
+        and quiet == (False, True)
+        and truncated == (False, True)
+        and after_truncate == (True, True)
+    )
+    ok = ok and hit
+    print("  %-55s %s" % ("tail skip, quiet cursor and truncation", "ok" if hit else "XX"))
+
+    # Existing fake-child convention: progress while the script is silent.
+    sim_cmd = _child(
+        "import time\n"
+        "for i in range(6):\n"
+        "    time.sleep(0.4)\n"
+        "    with open(%r, 'a') as f:\n"
+        "        f.write('%%d %%016X 0000000000000001 0000000000000002\\n' %% (i+3, 0x4000000000000000+(i+1)*0x10000000000000))\n"
+        % sim_log
+    )
+    rc, _ = ui_suite_common._run_watched(
+        sim_cmd, backstop=30, run_dirs_fn=lambda: [sim_dir], stall_s=1.2, capture=True, poll_s=0.2
+    )
+    hit = rc == 0
+    ok = ok and hit
+    print("  %-55s %s" % ("silent walk with real sim progress survives", "ok" if hit else "XX"))
+
+    # A frozen clock does not qualify, even with incrementing step/file size.
+    frozen_cmd = _child(
+        "import time\n"
+        "for i in range(50):\n"
+        "    with open(%r, 'a') as f:\n"
+        "        f.write('%%d 4010000000000000 0000000000000001 0000000000000002\\n' %% (i+20))\n"
+        "    time.sleep(0.1)\n" % sim_log
+    )
+    rc, text = ui_suite_common._run_watched(
+        frozen_cmd,
+        backstop=30,
+        run_dirs_fn=lambda: [sim_dir],
+        stall_s=0.6,
+        capture=True,
+        poll_s=0.1,
+    )
+    hit = rc == 2 and "advanced" in text
+    ok = ok and hit
+    print("  %-55s %s" % ("frozen sim with growing log still times out", "ok" if hit else "XX"))
+
+    # Completion and resumed progress during slow diagnostics are real outcomes.
+    original_evidence = ui_suite_common.stall_evidence
+    try:
+        race_dir = os.path.join(tmp, "race")
+        os.makedirs(race_dir)
+        race_log = os.path.join(race_dir, "mh_uidrive.log")
+        with open(race_log, "w") as f:
+            f.write("; [script] waiting\n")
+        ui_suite_common.stall_evidence = lambda dirs: time.sleep(0.8) or []
+        rc, text = ui_suite_common._run_watched(
+            _child("import time; time.sleep(0.65); print('finished')"),
+            backstop=10,
+            run_dirs_fn=lambda: [race_dir],
+            stall_s=0.2,
+            capture=True,
+            poll_s=0.05,
+        )
+        hit = rc == 0 and "finished" in text and "PROGRESS WATCHDOG" not in text
+        ok = ok and hit
+        print(
+            "  %-55s %s"
+            % ("child completes during evidence -> real verdict", "ok" if hit else "XX")
+        )
+
+        calls = []
+        race_sim = os.path.join(race_dir, "mh_harness.log")
+        with open(race_sim, "w") as f:
+            f.write(sim_row(1, 0x3FF0000000000000))
+
+        def resumed_evidence(dirs):
+            calls.append(1)
+            with open(race_sim, "a") as f:
+                f.write(sim_row(2, 0x4000000000000000))
+            time.sleep(0.15)
+            return []
+
+        ui_suite_common.stall_evidence = resumed_evidence
+        rc, text = ui_suite_common._run_watched(
+            _child("import time; time.sleep(0.5)"),
+            backstop=10,
+            run_dirs_fn=lambda: [race_dir],
+            stall_s=0.2,
+            capture=True,
+            poll_s=0.05,
+        )
+        hit = rc == 0 and len(calls) == 1 and "PROGRESS WATCHDOG" not in text
+        ok = ok and hit
+        print(
+            "  %-55s %s"
+            % ("sim resumes during evidence -> continue watching", "ok" if hit else "XX")
+        )
+    finally:
+        ui_suite_common.stall_evidence = original_evidence
+
+    ui_driver = ui_suite_common.ui_test
+    saved_time, saved_ready, saved_status = (
+        ui_driver.time,
+        ui_driver.peer_ready,
+        ui_driver.peer_status,
+    )
+    clock = {"tick": 0.0, "epoch": 100.0}
+
+    def clock_sleep(seconds):
+        clock["tick"] += seconds
+        clock["epoch"] += seconds + (5347.187 if clock["tick"] == 2 else 0)
+
+    try:
+        ui_driver.time = types.SimpleNamespace(
+            monotonic=lambda: clock["tick"], time=lambda: clock["epoch"], sleep=clock_sleep
+        )
+        ui_driver.peer_ready = lambda *args: clock["tick"] >= 4
+        ui_driver.peer_status = lambda *args: False
+        ready = ui_driver._wait_host_ready(
+            types.SimpleNamespace(timeout=10, port=6501), "clock-test-host", {"run": "unused"}
+        )
+        hit = ready and clock["tick"] == 4 and clock["epoch"] > 5400
+        ok = ok and hit
+        print(
+            "  %-55s %s"
+            % ("wall-clock jump cannot expire a live readiness wait", "ok" if hit else "XX")
+        )
+    finally:
+        ui_driver.time, ui_driver.peer_ready, ui_driver.peer_status = (
+            saved_time,
+            saved_ready,
+            saved_status,
+        )
+
     shutil.rmtree(tmp, ignore_errors=True)
     print("walk-watchdog-selftest: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
@@ -411,7 +621,7 @@ def walk_watchdog_selftest():
 # every `"shim": True` row into ONE serial worker (1536 s of a 1731 s suite wall, 2026-09-23 gate).
 # Derived from the row's shim port exactly as that is derived from its index (base + ti), in its own
 # band; lane_alloc.py --check proves no two registry rows can land on one port across all four bands.
-LOCAL_SHIM_CTL_PORT_BASE = 10600  # was 6900 until TL-BANDS200 (2026-09-29)
+LOCAL_SHIM_CTL_PORT_BASE = lane_alloc.SHIM_CTL_PORT_BASE
 
 
 def shim_control_port(shim_port):
@@ -457,7 +667,7 @@ def _committed_budgets():
     budget_s raise is checked against (TL-SUITE-TIMEOUT-CLASS). git is the record, so there is no
     baseline file to go stale. Returns {} on any git/parse failure -- a box with no history must not
     red every row."""
-    import ui_registry  # noqa: PLC0415
+    import ui_registry
 
     try:
         out = subprocess.run(
@@ -499,11 +709,8 @@ def budget_problems(tests, baseline=None):
                 "%s: budget_s %d > %d with no long_why -- say why this row needs it"
                 % (t["name"], b, BUDGET_LONG_S)
             )
-        if t.get("timeout") and b > t["timeout"]:
-            bad.append(
-                "%s: budget_s %d exceeds its own kill bound timeout %d"
-                % (t["name"], b, t["timeout"])
-            )
+        # Charged cost includes admission before the child starts. Its execution-only
+        # timeout cannot bound that wait or a folded row's aggregate cost.
         if baseline:
             old = baseline.get(t.get("name"))
             if old is not None and b > old and not (t.get("budget_evidence") or "").strip():
@@ -520,12 +727,6 @@ def check_budgets():
         ("a row with no budget_s", [{"name": "a"}], "no budget_s", None),
         ("budget_s > 120 without long_why", [{"name": "a", "budget_s": 200}], "no long_why", None),
         ("a non-int budget", [{"name": "a", "budget_s": "60"}], "positive int", None),
-        (
-            "budget over its own timeout",
-            [{"name": "a", "budget_s": 90, "timeout": 60}],
-            "kill bound",
-            None,
-        ),
         (
             "a budget raised with no evidence",
             [{"name": "a", "budget_s": 90}],
@@ -580,10 +781,66 @@ RED_VERDICTS = ("FAIL", *TIMEOUT_CLASSES)
 LOAD_RERUN_CAP = 3
 
 
+def timing_cost_history(record):
+    """Numeric scheduling history only; never turn an older verdict into current evidence."""
+    if "cost_history" in record:
+        return record["cost_history"]
+    return {
+        name: {
+            "child_work_s": row["child_work_s"],
+            "children": [
+                {"step": c["step"], "execution_s": c["execution_s"]}
+                for c in row.get("children", [])
+                if c.get("step")
+            ],
+        }
+        for name, row in record.get("per_test", {}).items()
+        if row.get("verdict") in ("PASS", "SLOW") and row.get("child_work_s", 0) > 0
+    }
+
+
+def schedule_work_hints(tests, previous):
+    return [
+        dict(
+            t,
+            _schedule_s=previous.get(t["name"], {}).get("child_work_s") or t.get("budget_s") or 30,
+            _step_hints={
+                c["step"]: c["execution_s"]
+                for c in previous.get(t["name"], {}).get("children", [])
+                if c.get("step")
+            },
+        )
+        for t in tests
+    ]
+
+
+def row_cpu_credits(test, args):
+    # Lower estimates apply only to default local topology; OS-bound owners can
+    # reserve two thirds of a core without pretending unbounded games are cheaper.
+    overrides = (
+        "visible",
+        "no_desktop",
+        "update_baselines",
+        "step",
+        "extra_ini_all",
+        "net_extra",
+        "net_extra_client",
+        "extra_ini",
+        "harness_extra",
+        "relay",
+        "patched_exe",
+        "plant_desync",
+    )
+    if not args.local or any(getattr(args, key, None) for key in overrides):
+        return gate_admission.CORE
+    cfg = gate_admission.configuration()
+    default = 2 if cfg is not None and cfg["cpu_bound"] else gate_admission.CORE
+    return test.get("gate_credits", default)
+
+
 def group_weight(grp):
-    """A scheduling group's expected wall seconds: its rows' budget_s summed (a share_lanes group
-    runs serially in one worker). `grp` is a list of (index, test)."""
-    return sum(t.get("budget_s") or 0 for _i, t in grp)
+    """Pool-only wall estimate, using observed row time with its budget as fallback."""
+    return sum(t.get("_schedule_s", t.get("budget_s") or 0) for _i, t in grp)
 
 
 def lpt_order(groups):
@@ -767,22 +1024,6 @@ def solo_requires(name, args):
     return fn(args)
 
 
-def solo_step_saves(row):
-    """Every save name (and its `name_NN` copies) any step or the row itself deploys: the files the
-    runner sweeps out of the lane between steps, so a step's Load list is what a fresh lane would
-    hold rather than what the previous step left (ui_test copies saves in, never out)."""
-    names = set()
-    for spec in [row.get("deploy_save")] + [
-        s.get("deploy_save") for s in row.get("solo_steps", ())
-    ]:
-        for tok in (spec or "").split(","):
-            base, _, count = tok.partition("*")
-            if base:
-                names.add(base)
-                names.update("%s_%02d" % (base, k + 1) for k in range(1, int(count or 1)))
-    return names
-
-
 def set_lane_satellites(lane_dir, omit):
     """Make the lane hold every default satellite DLL except `omit` (a step's own omit_satellite).
     A lane's satellite set is just which files sit beside mh.dll (make_lane copies them, ui_test's
@@ -802,10 +1043,67 @@ def set_lane_satellites(lane_dir, omit):
     return problems
 
 
-def sweep_lane_saves(lane_dir, names):
-    for nm in names:
-        with contextlib.suppress(OSError):
-            os.remove(os.path.join(lane_dir, "save", nm + ".sav"))
+def set_lane_maps(lane_dir, files, src=None):
+    """mods:MAPGEN1: make the lane's own `Maps` folder (provisioned by make_lane --maps-only) hold exactly `files`
+    (repository paths or input: specifications); "stock" means the install's Maps.
+    Returns the problems, [] when the lane is as asked."""
+    problems = []
+    d = os.path.join(lane_dir, "Maps")
+    try:
+        for f in os.listdir(d):
+            os.remove(os.path.join(d, f))
+        for f in files:
+            if f == "stock":
+                sd = os.path.join(src or make_lane.machine.POLYGON, "Maps")
+                for g in os.listdir(sd):
+                    shutil.copy2(os.path.join(sd, g), os.path.join(d, g))
+            else:
+                source = tool_paths.resolve_input(f, repo=REPO)
+                shutil.copy2(source, os.path.join(d, os.path.basename(source)))
+    except OSError as e:
+        problems.append(str(e))
+    return problems
+
+
+def sweep_lane_saves(lane_dir, keep=()):
+    """Restore a suite-owned step's fresh root Load list, including generated saves."""
+    save_dir = os.path.join(lane_dir, "save")
+    keep = {name.lower() + ".sav" for name in keep}
+    try:
+        names = os.listdir(save_dir)
+    except FileNotFoundError:
+        # First use of a lane: ui_test has not provisioned its save directory yet.
+        return
+    for name in names:
+        path = os.path.join(save_dir, name)
+        if name.lower().endswith(".sav") and name.lower() not in keep and not os.path.isdir(path):
+            os.remove(path)
+
+
+def prepare_solo_saves(lane_dir, step, produced):
+    """Retain only declared outputs of successful producers in this row invocation."""
+    inputs = step.get("save_inputs", {})
+    for name, producer in inputs.items():
+        path = os.path.join(lane_dir, "save", name + ".sav")
+        if produced.get(name.lower()) != producer:
+            raise ValueError(
+                "save input %s needs successful current-run producer %s" % (name, producer)
+            )
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            raise ValueError("save input %s from %s is missing or empty" % (name, producer))
+    sweep_lane_saves(lane_dir, inputs)
+    retained = {name.lower(): producer for name, producer in inputs.items()}
+    produced.clear()
+    produced.update(retained)
+
+
+def remember_solo_saves(lane_dir, step, produced):
+    outputs = step.get("save_outputs", ())
+    for name in outputs:
+        path = os.path.join(lane_dir, "save", name + ".sav")
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            raise ValueError("producer %s did not write nonempty save %s" % (step["name"], name))
+    produced.update((name.lower(), step["name"]) for name in outputs)
 
 
 def shim_spec(test, forward_to, shim_port=0):
@@ -1217,6 +1515,12 @@ def build_parser():
         "interleaved logs are hard to read.",
     )
     ap.add_argument(
+        "--longest-first",
+        action="store_true",
+        help="schedule parallel lane groups longest-first even when rows are explicitly named; "
+        "preserves lane-sharing chains and every selected row/step",
+    )
+    ap.add_argument(
         "--walk-stall-timeout",
         type=int,
         default=WALK_STALL_S,
@@ -1259,7 +1563,9 @@ def solo_steps_selftest():
     """`--solo-steps-selftest` (tooling:TL-SUITE-FOLD step 8): the pure parts of a `solo_steps` row, and the
     one thing a fold can silently break -- a step (or row) whose script file does not exist (the
     wheel_hud_lists_lib row sat dangling after step 2 folded its script away)."""
-    import tempfile  # noqa: PLC0415
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
 
     ok = True
 
@@ -1300,16 +1606,6 @@ def solo_steps_selftest():
         m["tol"] == 0.5 and m["harness_extra"] == "x=1;y=2",
     )
     chk("a step's net_extra replaces the row's", m["net_extra"] == "m=2")
-    chk(
-        "save names: copies expand like ui_test's, steps + row union",
-        solo_step_saves(
-            {
-                "deploy_save": "z",
-                "solo_steps": [{"deploy_save": "a*3,b"}, {}, {"deploy_save": "11"}],
-            }
-        )
-        == {"z", "a", "a_02", "a_03", "b", "11"},
-    )
     with tempfile.TemporaryDirectory() as td:
         src, lane = os.path.join(td, "src"), os.path.join(td, "lane")
         os.makedirs(os.path.join(lane, "save"))
@@ -1318,8 +1614,11 @@ def solo_steps_selftest():
         for f in sats:
             open(os.path.join(src, f), "w").close()
         open(os.path.join(lane, "two.dll"), "w").close()
-        for nm in ("a", "a_02", "keep"):
+        for nm in ("a", "a_02", "qolstorage"):
             open(os.path.join(lane, "save", nm + ".sav"), "w").close()
+        open(os.path.join(lane, "save", "keep.dat"), "w").close()
+        os.makedirs(os.path.join(lane, "save", "temp"))
+        open(os.path.join(lane, "save", "temp", "planet.sav"), "w").close()
         saved = (make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC)
         make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC = sats, src
         try:
@@ -1337,9 +1636,114 @@ def solo_steps_selftest():
             )
         finally:
             make_lane.DEFAULT_SATELLITES, make_lane.SATELLITE_SRC = saved
-        sweep_lane_saves(lane, {"a", "a_02", "absent"})
+        sweep_lane_saves(lane)
         left = sorted(os.listdir(os.path.join(lane, "save")))
-        chk("save sweep removes only the named saves", left == ["keep.sav"])
+        chk(
+            "save sweep removes deployed and generated root saves, preserving other artifacts",
+            left == ["keep.dat", "temp"]
+            and os.path.isfile(os.path.join(lane, "save", "temp", "planet.sav")),
+        )
+        produced = {}
+        producer = {"name": "a", "save_outputs": ["dxsavea"]}
+        consumer = {"name": "b", "save_inputs": {"dxsavea": "a"}}
+        a_path = os.path.join(lane, "save", "dxsavea.sav")
+        junk = os.path.join(lane, "save", "qolstorage.sav")
+        for path in (a_path, junk):
+            with open(path, "wb") as f:
+                f.write(b"stale")
+        prepare_solo_saves(lane, producer, produced)
+        chk(
+            "producer cannot inherit old root saves",
+            not os.path.exists(a_path) and not os.path.exists(junk),
+        )
+        with open(a_path, "wb") as f:
+            f.write(b"fresh current producer")
+        remember_solo_saves(lane, producer, produced)
+        with open(junk, "wb") as f:
+            f.write(b"unrelated generated save")
+        prepare_solo_saves(lane, consumer, produced)
+        with open(a_path, "rb") as f:
+            retained = f.read()
+        chk(
+            "consumer keeps only its successful current producer's exact file",
+            retained == b"fresh current producer"
+            and not os.path.exists(junk)
+            and os.path.isfile(os.path.join(lane, "save", "temp", "planet.sav")),
+        )
+        prepare_solo_saves(lane, {"name": "plain"}, produced)
+        chk(
+            "independent plain process drops the previous output and ownership",
+            not os.path.exists(a_path) and not produced,
+        )
+        with open(a_path, "wb") as f:
+            f.write(b"previous invocation")
+        rejected = False
+        try:
+            prepare_solo_saves(lane, consumer, {})
+        except ValueError:
+            rejected = True
+        chk("consumer-only invocation rejects a same-named stale file", rejected)
+    history = timing_cost_history(
+        {
+            "per_test": {
+                "queued": {"verdict": "PASS", "secs": 999, "child_work_s": 10},
+                "long": {"verdict": "PASS", "secs": 21, "child_work_s": 20},
+                "retry": {"verdict": "LOAD-RED", "child_work_s": 2},
+            }
+        }
+    )
+    scheduled = schedule_work_hints([{"name": "queued"}, {"name": "long"}], history)
+    chk(
+        "execution work, not queue delay, determines longest-first order",
+        [g[0][1]["name"] for g in lpt_order([[(i, t)] for i, t in enumerate(scheduled)])]
+        == ["long", "queued"],
+    )
+    chk("diagnostic retry never supplies successful cost history", "retry" not in history)
+    with tempfile.TemporaryDirectory() as td:
+        saved_repo = globals()["REPO"]
+        globals()["REPO"] = td
+        saved_state_root = os.environ.get("MH_TOOL_STATE_ROOT")
+        os.environ["MH_TOOL_STATE_ROOT"] = os.path.join(td, "tool_state")
+        try:
+            rec = str(tool_paths.state_path("ui_test/last_suite_timing.json", repo=td))
+            os.makedirs(os.path.dirname(rec))
+            with open(rec, "w", encoding="utf-8") as f:
+                json.dump({"cost_history": history, "per_test": {"old": {}}}, f)
+            rows = types.SimpleNamespace(
+                results={"fresh": "PASS"},
+                timings={"fresh": (33, 99)},
+                hashes={},
+                chains=[],
+                load_rerun={},
+                details={"fresh": [{"step": None, "execution_s": 30, "admission_wait_s": 3}]},
+                rerun_details={},
+            )
+            args = types.SimpleNamespace(step=[], net_jobs=1)
+            tests = [{"name": "fresh", "budget_s": 99}]
+            write_suite_timing(args, tests, 1, time.monotonic(), (1, 0, 0, 0), rows)
+            with open(rec, encoding="utf-8") as f:
+                receipt = json.load(f)
+            chk(
+                "focused run keeps numeric history but never old verdicts",
+                set(receipt["per_test"]) == {"fresh"}
+                and set(receipt["cost_history"]) == {"queued", "long", "fresh"},
+            )
+            args.step = ["one"]
+            rows.details["fresh"][0]["execution_s"] = 1
+            write_suite_timing(args, tests, 1, time.monotonic(), (1, 0, 0, 0), rows)
+            with open(rec, encoding="utf-8") as f:
+                receipt = json.load(f)
+            chk(
+                "partial step receipt cannot replace full-row work history",
+                receipt["per_test"]["fresh"]["child_work_s"] == 1
+                and receipt["cost_history"]["fresh"]["child_work_s"] == 30,
+            )
+        finally:
+            globals()["REPO"] = saved_repo
+            if saved_state_root is None:
+                os.environ.pop("MH_TOOL_STATE_ROOT", None)
+            else:
+                os.environ["MH_TOOL_STATE_ROOT"] = saved_state_root
     missing = []
     for t in TESTS:
         scripts = [t["script"]] if t.get("script") else []
@@ -1355,6 +1759,85 @@ def solo_steps_selftest():
             if st.get("requires") and not callable(getattr(ui_suite_common, st["requires"], None)):
                 missing.append("%s/%s: requires %s" % (t["name"], st["name"], st["requires"]))
     chk("every solo script + step precondition exists %s" % (missing[:3] or ""), not missing)
+    clock = {"tick": 100.0, "jump": 0.0}
+
+    @contextlib.contextmanager
+    def clock_lease(*_args, **_kwargs):
+        clock["tick"] += 1
+        yield types.SimpleNamespace(covered_env=dict)
+
+    def clock_invoke(argv, *_args, **_kwargs):
+        clock["tick"] += {"quick": 2, "medium": 8, "slow": 20}[argv[0]]
+        clock["jump"] += 5347
+        return 0, ""
+
+    def timed_row(name, script, count=0):
+        test = {"name": name, "kind": "solo", "desc": name, "budget_s": 10}
+        if count:
+            test.update(
+                independent_steps=True,
+                solo_steps=[{"name": str(i), "script": script} for i in range(count)],
+            )
+        else:
+            test["script"] = script
+        return test
+
+    clock_args = types.SimpleNamespace(
+        local=True,
+        step=[],
+        vms=[],
+        timeout=100,
+        per_test_timeout=100,
+        walk_stall_timeout=10,
+        plant_desync=False,
+        load_rerun=False,
+    )
+    clock_tests = [
+        timed_row("one", "quick"),
+        timed_row("one_slow", "slow"),
+        timed_row("fold", "quick", 2),
+        timed_row("fold_slow", "medium", 2),
+    ]
+    with (
+        tempfile.TemporaryDirectory(prefix="mh_suite_owner_") as owner_tmp,
+        patch.object(tmp_runs, "REPO", Path(owner_tmp) / "repo"),
+        patch.dict(
+            os.environ,
+            {
+                "MH_TOOL_STATE_ROOT": os.path.join(owner_tmp, "state"),
+                "MH_TOOL_INPUT_ROOT": os.path.join(owner_tmp, "inputs"),
+                "MH_EVIDENCE_ROOT": os.path.join(owner_tmp, "evidence"),
+                "MH_TMP_PARENT_ID": "",
+            },
+        ),
+        patch.object(time, "monotonic", side_effect=lambda: clock["tick"]),
+        patch.object(time, "time", side_effect=lambda: 100000 + clock["tick"] + clock["jump"]),
+        patch.object(gate_admission, "lease", side_effect=clock_lease),
+        patch.object(gate_admission, "configuration", return_value=None),
+        patch.dict(
+            globals(),
+            {
+                "build_argv": lambda t, *_args, **_kwargs: [t["script"]],
+                "run_ui_test_watched": clock_invoke,
+            },
+        ),
+    ):
+        clock_rows = run_rows(clock_args, None, clock_tests, {"timeout": 100}, {}, {}, 1)
+    chk(
+        "epoch jumps cannot inflate individual/folded costs; true slow stays slow",
+        clock_rows.results
+        == {"one": "PASS", "one_slow": "SLOW", "fold": "PASS", "fold_slow": "SLOW"}
+        and [clock_rows.timings[k][0] for k in ("one", "one_slow", "fold", "fold_slow")]
+        == [3, 21, 6, 18]
+        and all(
+            r["admission_wait_s"] == 1 for records in clock_rows.details.values() for r in records
+        )
+        and clock_rows.details["one"][0]["execution_s"] == 2
+        and clock_rows.details["one"][0]["finished"] - clock_rows.details["one"][0]["requested"]
+        == 5350
+        and clock_rows.details["fold"][1]["finished"] - clock_rows.details["fold"][0]["requested"]
+        == 10700,
+    )
     print("solo-steps-selftest: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
@@ -1362,7 +1845,7 @@ def solo_steps_selftest():
 def release_tier_selftest():
     """`--release-tier-selftest`: a release-tier row is skipped bare, run with the flag, run named."""
     rows = [{"name": "a"}, {"name": "r", "tier": "release"}, {"name": "o", "tier": "other"}]
-    names = lambda ts: [t["name"] for t in ts]  # noqa: E731
+    names = lambda ts: [t["name"] for t in ts]
     ap = argparse.ArgumentParser()
     ap.add_argument("only", nargs="*")
     saved = globals()["TESTS"]
@@ -1380,8 +1863,8 @@ def release_tier_selftest():
                 solo=False,
                 release_tier="--release-tier" in argv,
             )
-            import contextlib  # noqa: PLC0415
-            import io  # noqa: PLC0415
+            import contextlib
+            import io
 
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 got = names(select_tests(ap, a)[0])
@@ -1461,6 +1944,25 @@ def suite_options(args):
 def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
     """Run every row (two pools under --jobs > 1), then the solo rerun of the reds. Returns the
     verdicts, timings, hash verdicts, lane-share chains, abort cause and rerun record."""
+    try:
+        with open(
+            str(tool_paths.state_path("ui_test/last_suite_timing.json", repo=REPO)),
+            encoding="utf-8",
+        ) as fh:
+            previous = timing_cost_history(json.load(fh))
+    except (OSError, ValueError):
+        previous = {}
+    tests = schedule_work_hints(tests, previous)
+    physical = ui_suite_common.physical_tests(tests, args.step) if args.local else tests
+    children = {
+        t["name"]: [c for c in physical if c.get("_root") == t["name"]]
+        for t in tests
+        if any(c.get("_root") == t["name"] for c in physical)
+    }
+    roots = {t["name"]: t for t in tests}
+    measurements, physical_results, details, rerun_details = {}, {}, {}, {}
+    measurement_ticks = {}  # Internal monotonic endpoints; receipts retain human epoch timestamps.
+    deadlines = {}  # One existing cost window across all physical children of a root row.
 
     # ---- SHARED-CAUSE PREFLIGHT: an INSTALL-time entry loss, not 17 UI failures -----------------
     #
@@ -1515,7 +2017,9 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
     # The lane path is APPENDED rather than written into the entry: the runner is what knows which
     # lane a test got, and a hardcoded path in the registry would be a second answer that drifts.
     # Checkers take a lane folder and resolve its newest run themselves.
-    def post_check(test):
+    suite_owner = tmp_runs.child_env({})
+
+    def post_check(test, child_env=None):
         """(ok, text) for a test's `post_check`, or (True, "") when it has none / cannot run."""
         cmd = test.get("post_check")
         if not cmd:
@@ -1528,11 +2032,21 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         if len(cmds) > 1:
             ok_all, texts = True, []
             for c in cmds:
-                ok, text = post_check(dict(test, post_check=list(c)))
+                ok, text = post_check(dict(test, post_check=list(c)), child_env)
                 ok_all = ok_all and ok
                 texts.append(text)
             return ok_all, "\n".join(t for t in texts if t)
         cmd = list(cmds[0])
+        cmd = [
+            os.path.join(tmp_runs.current_output("relay"), "relay.log")
+            if item == "@relay-log"
+            else os.path.join(
+                tmp_runs.current_output("shared", run_id=suite_owner["MH_TMP_PARENT_ID"]), "u75"
+            )
+            if item == "@suite-u75"
+            else item
+            for item in cmd
+        ]
         if plan is None:
             # --no-local: the lane logs live on the VM and this box cannot read them. SKIPPED and
             # SAID SO -- a silent pass here would make the local and VM topologies disagree about
@@ -1585,7 +2099,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             except OSError:
                 pass
         argv = [sys.executable, os.path.join(REPO, *cmd[0].split("/"))] + list(cmd[1:]) + targets
-        r = subprocess.run(argv, capture_output=True, text=True)
+        r = subprocess.run(argv, capture_output=True, text=True, env=child_env)
         out = (r.stdout or "") + (r.stderr or "")
         head = "  post-check %s: %s" % ("PASS" if r.returncode == 0 else "FAILED", " ".join(cmd))
         return r.returncode == 0, head + "\n" + "\n".join("    " + ln for ln in out.splitlines())
@@ -1651,7 +2165,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             short = "IDENTICAL/%s" % line.split("over ")[1].split()[0]
         return ok, text, short
 
-    def run_solo_steps(t, invoke, stream):
+    def run_solo_steps(t, invoke, stream, child_env):
         """tooling:TL-SUITE-FOLD step 8: run a `solo_steps` row -- one ui_test.py process per step, in
         order, on the row's one lane. Each step is the old stand-alone row (merge_solo_step), so its
         own baseline label and its own post_check apply to ITS run (the lane's newest process dir is
@@ -1660,9 +2174,9 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         the row is a SKIP only when every step is."""
         out, verdicts = [], []
         lane_dir = None
+        produced = {}
         if plan is not None and plan.get(t["name"], (0, 0, []))[2]:
             lane_dir = os.path.join(make_lane.LANE_ROOT, plan[t["name"]][2][0])
-        saves = solo_step_saves(t)
 
         def say(msg):
             out.append(msg)
@@ -1681,24 +2195,41 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                     verdicts.append((nm, "SKIP", 0.0))
                     continue
             ts = merge_solo_step(t, step)
-            if lane_dir and saves:
-                sweep_lane_saves(lane_dir, saves)
+            if lane_dir:
+                try:
+                    prepare_solo_saves(lane_dir, step, produced)
+                except (OSError, ValueError) as exc:
+                    say("  step %s: FAIL -- %s" % (nm, exc))
+                    verdicts.append((nm, "FAIL", 0.0))
+                    continue
             if lane_dir and any(x.get("omit_satellite") for x in t["solo_steps"]):
                 bad_sat = set_lane_satellites(lane_dir, set(ts.get("omit_satellite") or ()))
                 if bad_sat:
                     say("  step %s: FAIL -- cannot set the lane's satellites: %s" % (nm, bad_sat))
                     verdicts.append((nm, "FAIL", 0.0))
                     continue
-            s0 = time.time()
+            if lane_dir and step.get("lane_maps"):
+                bad_maps = set_lane_maps(lane_dir, step["lane_maps"])
+                if bad_maps:
+                    say("  step %s: FAIL -- cannot set the lane's maps: %s" % (nm, bad_maps))
+                    verdicts.append((nm, "FAIL", 0.0))
+                    continue
+            s0 = time.monotonic()
             rc_s, text_s = invoke(ts)
             if text_s:
                 out.append(text_s)
             ok_s = rc_s == 0
             if ok_s:
-                ok_s, ptext = post_check(ts)
+                ok_s, ptext = post_check(ts, child_env)
                 if ptext:
                     say(ptext)
-            secs_s = time.time() - s0
+            if ok_s and lane_dir:
+                try:
+                    remember_solo_saves(lane_dir, step, produced)
+                except (OSError, ValueError) as exc:
+                    say("  step %s: FAIL -- %s" % (nm, exc))
+                    ok_s = False
+            secs_s = time.monotonic() - s0
             say("  step %s: %s  [%.0fs]" % (nm, "PASS" if ok_s else "FAIL", secs_s))
             verdicts.append((nm, "PASS" if ok_s else "FAIL", secs_s))
         if not verdicts:
@@ -1712,7 +2243,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         )
         return (1 if bad else 0), "\n".join(out), verdicts
 
-    def run_multi_steps(t, invoke, stream):
+    def run_multi_steps(t, invoke, stream, child_env):
         """tooling:TL-SUITE-FOLD step 9: run a `multi_steps` row -- one match per step, in order, on the
         row's lanes (both peers relaunch with that step's boot-time settings). Each step is the old
         stand-alone row (merge_multi_step): its own [net]/shim/harness knobs, its own baseline labels (the
@@ -1765,13 +2296,13 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                 verdicts.append((nm, "SKIP", 0.0))
                 continue
             ts = ui_registry.with_suite_hash_kind(ts)
-            s0 = time.time()
+            s0 = time.monotonic()
             rc_s, text_s = invoke(ts)
             if text_s:
                 out.append(text_s)
             ok_s = rc_s == 0
             if ok_s and not args.plant_desync:
-                ok_s, ptext = post_check(ts)
+                ok_s, ptext = post_check(ts, child_env)
                 if ptext:
                     say(ptext)
             if ok_s or args.plant_desync:
@@ -1783,7 +2314,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                 elif not hok:
                     ok_s = False
                 step_hashes.append("%s:%s" % (nm, short))
-            secs_s = time.time() - s0
+            secs_s = time.monotonic() - s0
             say("  step %s: %s  [%.0fs]" % (nm, "PASS" if ok_s else "FAIL", secs_s))
             verdicts.append((nm, "PASS" if ok_s else "FAIL", secs_s))
         if not verdicts:
@@ -1800,6 +2331,55 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         return (1 if bad else 0), "\n".join(out), verdicts
 
     def run_one(idx, t):
+        with tmp_runs.run_scope("ui-row", task=t["name"], adjudicator=True) as run:
+            result = _run_one(idx, t)
+            run.finish(result[1])
+            return result
+
+    def _run_one(idx, t):
+        requested_tick = time.monotonic()
+        requested = time.time()
+        root = roots.get(t.get("_root", t["name"]), t)
+        deadline = deadlines.setdefault(
+            root["name"],
+            requested_tick + SLOW_OVER_BUDGET * root["budget_s"] if root.get("budget_s") else None,
+        )
+        credits = row_cpu_credits(t, args)
+        with gate_admission.lease(
+            "ui:" + t["name"],
+            seconds=max(1, t.get("_schedule_s", t.get("budget_s") or 30)),
+            credits=credits,
+            deadline=deadline,
+        ) as held:
+            admitted_tick = time.monotonic()
+            admitted = time.time()
+            result = run_one_held(idx, t, tmp_runs.child_env(held.covered_env()))
+        finished_tick = time.monotonic()
+        finished = time.time()
+        name, verdict, text = result
+        elapsed = finished_tick - requested_tick
+        if verdict == "PASS" and t.get("budget_s") and elapsed > SLOW_OVER_BUDGET * t["budget_s"]:
+            verdict = "SLOW"
+            text += "\n  SLOW: admission plus execution %.1fs exceeds unchanged budget_s %d" % (
+                elapsed,
+                t["budget_s"],
+            )
+        measurements[name] = dict(
+            name=name,
+            step=t.get("_step"),
+            requested=requested,
+            admitted=admitted,
+            finished=finished,
+            admission_wait_s=admitted_tick - requested_tick,
+            execution_s=finished_tick - admitted_tick,
+            verdict=verdict,
+            gate_credits=credits,
+        )
+        measurement_ticks[name] = (requested_tick, finished_tick)
+        timings[name] = (elapsed, timings.get(name, (0, t.get("timeout") or args.timeout))[1])
+        return name, verdict, text
+
+    def run_one_held(idx, t, child_env):
         """Run one test. Returns (name, verdict, text-to-print). Safe to call from a worker thread."""
         head = (
             "\n"
@@ -1816,8 +2396,9 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         )
         if jobs == 1:
             print(head)
-        if t["name"] in precondition_skip:
-            msg = "  SKIP -- %s" % precondition_skip[t["name"]]
+        skip_name = t.get("_root", t["name"])
+        if skip_name in precondition_skip:
+            msg = "  SKIP -- %s" % precondition_skip[skip_name]
             if jobs == 1:
                 print(msg)
             return t["name"], "SKIP", head + "\n" + msg
@@ -1859,7 +2440,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             )  # tooling:TL-SUITE-HASHCOST: kind 2 unless the row says
         # The wrapper kill-timeout must outlast the test's OWN wall-clock budget, or it kills the run
         # before ui_test can report -- and a killed run has no verdict, only a missing one.
-        t0 = time.time()
+        t0 = time.monotonic()
         # mp:R2 -- a relayed scenario runs against a relay process started for it, here, and told
         # to the peers as a `[net] relay=` knob. Unconditional context manager so the cleanup path
         # is the same whether or not this test wants one.
@@ -1867,14 +2448,14 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         # mp:R4b -- `relay_restart_on: <signal>`: the relay is killed and respawned on the same port
         # when a peer's script emits that signal (ui_test's --signal-touch drops the request file).
         restart_req = (
-            os.path.join(REPO, "tmp", "relay_%s.restart" % t["name"])
+            os.path.join(tmp_runs.current_output("relay"), "relay.restart")
             if t.get("relay_restart_on")
             else None
         )
         with (
             RelayProc(
                 RELAY_PORT,
-                os.path.join(REPO, "tmp", "relay_%s.log" % t["name"]),
+                os.path.join(tmp_runs.current_output("relay"), "relay.log"),
                 restart_request=restart_req,
                 extra_args=t.get("relay_args"),
             )
@@ -1904,7 +2485,10 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                     )
                 if restart_req:
                     t["signal_touch"] = "%s=%s" % (t["relay_restart_on"], restart_req)
-                relay_note = "  [relay %s -> tmp/relay_%s.log]" % (relay.note, t["name"])
+                relay_note = "  [relay %s -> %s]" % (
+                    relay.note,
+                    os.path.join(tmp_runs.current_output("relay"), "relay.log"),
+                )
                 if jobs == 1:
                     print(relay_note)
 
@@ -1919,6 +2503,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                         lambda _t=tt: test_run_dirs(_t),
                         stall_s=args.walk_stall_timeout,
                         capture=jobs > 1,
+                        env=child_env,
                     )
                 return run_ui_test(
                     build_argv(tt, args.vms, suite, plan, cfg),
@@ -1926,17 +2511,28 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                     if tt.get("timeout")
                     else args.per_test_timeout,
                     capture=jobs > 1,
+                    env=child_env,
                 )
 
             if t.get("solo_steps"):
-                rc, text, step_verdicts = run_solo_steps(t, invoke, jobs == 1)
+                rc, text, step_verdicts = run_solo_steps(t, invoke, jobs == 1, child_env)
                 if all(v == "SKIP" for _n, v, _s in step_verdicts):
                     return t["name"], "SKIP", head + "\n" + text
             elif t.get("multi_steps"):
-                rc, text, step_verdicts = run_multi_steps(t, invoke, jobs == 1)
+                rc, text, step_verdicts = run_multi_steps(t, invoke, jobs == 1, child_env)
                 if all(v == "SKIP" for _n, v, _s in step_verdicts):
                     return t["name"], "SKIP", head + "\n" + text
             else:
+                if args.local and t["kind"] == "solo" and plan is not None:
+                    lanes = plan.get(t["name"], (0, 0, []))[2]
+                    if lanes:
+                        try:
+                            sweep_lane_saves(os.path.join(make_lane.LANE_ROOT, lanes[0]))
+                        except OSError as exc:
+                            msg = "  FAIL -- cannot isolate root saves: %s" % exc
+                            if jobs == 1:
+                                print(msg)
+                            return t["name"], "FAIL", head + "\n" + msg
                 rc, text = invoke(t)
         if relay_note:
             text = (text or "") + "\n" + relay_note
@@ -1950,7 +2546,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         # A test over WARN_FRAC of its budget is a NEAR-MISS: still green, already unsafe, and the
         # thing that turns red first when the machine is busier. Printing it is what makes the drift
         # visible BEFORE it is a failure, which is exactly what nobody had on 2026-08-06.
-        secs = time.time() - t0
+        secs = time.monotonic() - t0
         budget = t.get("timeout") or args.timeout
         # A row of several processes (solo_steps / multi_steps) has no single kill bound: ui_test.py's --timeout bounds each STEP, so the
         # row's wall is the sum of its steps and is bounded by budget_s (U4g: m1h_ship ran 223 s of 25 steps against the 200 s default
@@ -1993,7 +2589,7 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         if rc == 0:
             # Only on a green run: a failed scenario's lane has nothing worth asserting about, and a
             # post-check red on top of a scenario red would name the wrong cause.
-            ok, ptext = post_check(t)
+            ok, ptext = post_check(t, child_env)
             if ptext:
                 if jobs == 1:
                     print(ptext)
@@ -2022,6 +2618,11 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             c, h, w, p = run_artifacts(_rd)
             cap, harn, walk, pcs = cap or c, harn or h, walk or w, pcs or p
         verdict = classify_result(rc, timed_out, secs, t.get("budget_s"), cap, harn, walk, pcs)
+        if rc != 0 and not t.get("expect_red"):
+            for line in ui_suite_common.failure_evidence(test_run_dirs(t), t["name"]):
+                tail += "\n" + line
+                if jobs == 1:
+                    print(line)
         if verdict in TIMEOUT_CLASSES:
             tail += "\n  TIMEOUT-CLASS: %s -- %s" % (verdict, TIMEOUT_CLASSES[verdict])
             if verdict == "WALK-STALLED":
@@ -2060,10 +2661,49 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
     results = {}
     chains = []  # the serial share_lanes groups, recorded for run_gate / gate_timeline
     timings = {}  # name -> (elapsed_s, budget_s); feeds the summary table's budget column
+
+    def reduce_children(root):
+        name = root["name"]
+        records = [measurements[c["name"]] for c in children[name]]
+        verdicts = [physical_results[c["name"]] for c in children[name]]
+        elapsed = max(measurement_ticks[c["name"]][1] for c in children[name]) - min(
+            measurement_ticks[c["name"]][0] for c in children[name]
+        )
+        bad = next((v for v in verdicts if v not in ("PASS", "SKIP", "SLOW")), None)
+        verdict = bad or ("SKIP" if all(v == "SKIP" for v in verdicts) else "PASS")
+        if verdict == "PASS" and elapsed > SLOW_OVER_BUDGET * root["budget_s"]:
+            verdict = "SLOW"
+        timings[name] = (elapsed, max(root.get("timeout") or args.timeout, root["budget_s"]))
+        details[name] = records
+        return verdict
+
+    def accept(result):
+        name, verdict, _text = result
+        physical_results[name] = verdict
+        child = next((c for c in physical if c["name"] == name), None)
+        root_name = child.get("_root") if child else None
+        if not root_name:
+            results[name] = verdict
+            details[name] = [measurements[name]]
+            return name
+        if all(c["name"] in physical_results for c in children[root_name]):
+            results[root_name] = reduce_children(roots[root_name])
+            print(
+                "  independent %s: %s, %.1fs wall, %.1fs child work"
+                % (
+                    root_name,
+                    results[root_name],
+                    timings[root_name][0],
+                    sum(r["execution_s"] for r in details[root_name]),
+                )
+            )
+            return root_name
+        return None
+
     if jobs == 1:
         for i, t in enumerate(tests, 1):
-            name, verdict, _ = run_one(i, t)
-            results[name] = verdict
+            for child in children.get(t["name"], [t]):
+                accept(run_one(i, child))
     else:
         # Each test owns its own lane folder(s), port and mutex number, so the only shared resource is
         # the CPU. That makes this safe for CORRECTNESS runs and wrong for anything timing-sensitive --
@@ -2131,14 +2771,13 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         solo_groups = lane_groups(solos)
         chains = [[t["name"] for _i, t in g] for g in groups + solo_groups if len(g) > 1]
         net_jobs = max(1, min(args.net_jobs, len(groups) or 1))
-        # tooling:TL-SUITE-FOLD step 10: a default run (no rows named) submits its groups longest-first;
-        # naming rows keeps them in the order given.
-        if not (set(args.only) | set(args.only_flag)):
+        # Preserve ordinary named-run order; gates can explicitly opt into group scheduling.
+        if args.longest_first or not (set(args.only) | set(args.only_flag)):
             old_span = max(predict_makespan(groups, net_jobs), predict_makespan(solo_groups, jobs))
             groups, solo_groups = lpt_order(groups), lpt_order(solo_groups)
             new_span = max(predict_makespan(groups, net_jobs), predict_makespan(solo_groups, jobs))
             print(
-                "\nschedule: longest-first (predicted %.0f s vs %.0f s in registry order): %s"
+                "\nschedule: longest-first (coarse root-order estimate %.0f s vs %.0f s; private steps/admission not predicted): %s"
                 % (
                     new_span,
                     old_span,
@@ -2147,6 +2786,18 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
                     ),
                 )
             )
+        # Order public lane groups first; keep an independent root's private jobs together.
+        expanded = []
+        for group in solo_groups:
+            if len(group) == 1 and group[0][1]["name"] in children:
+                i, root = group[0]
+                expanded.extend(
+                    [(i, child)]
+                    for child in sorted(children[root["name"]], key=lambda c: -c["_schedule_s"])
+                )
+            else:
+                expanded.append(group)  # lane owners and their borrowers stay one serial item
+        solo_groups = expanded
         print(
             "\nrunning %d tests: %d solo in %d lane group(s) at --jobs %d + %d multi-peer in "
             "their own pool (--net-jobs %d; capped peers wait more than they compute)"
@@ -2167,11 +2818,16 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
             futs.update({ex_cpu.submit(run_group, g): [t for _, t in g] for g in solo_groups})
             futs.update({ex_net.submit(run_group, g): [t for _, t in g] for g in groups})
             for f in cf.as_completed(futs):
-                for name, verdict, text in f.result():
-                    results[name] = verdict
-                    done += 1
+                for result in f.result():
+                    name, verdict, text = result
                     print(text)
-                    print("  --> %s %s   (%d/%d complete)" % (name, verdict, done, len(tests)))
+                    root_name = accept(result)
+                    if root_name:
+                        done += 1
+                        print(
+                            "  --> %s %s   (%d/%d complete)"
+                            % (root_name, results[root_name], done, len(tests))
+                        )
 
     # tooling:TL-SUITE-LOADRED -- every row has now finished, so the pool this ran under is idle:
     # rerunning a red row HERE is "alone" by construction, no --jobs override needed. Skipped after
@@ -2182,10 +2838,27 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         def _run_one_alone(t):
             print("\n" + "-" * 78)
             print("solo rerun: %s" % t["name"])
-            _, verdict, text = run_one(len(tests) + 1, t)
-            if jobs > 1:  # jobs==1's run_one already streamed this as it ran
-                print(text)
+            saved = {c["name"]: measurements.get(c["name"]) for c in children.get(t["name"], [t])}
+            saved_ticks = {
+                c["name"]: measurement_ticks.get(c["name"]) for c in children.get(t["name"], [t])
+            }
+            first_details = details.get(t["name"])
+            for child in children.get(t["name"], [t]):
+                name, verdict, text = run_one(len(tests) + 1, child)
+                physical_results[name] = verdict
+                if jobs > 1:
+                    print(text)
+            verdict = reduce_children(t) if t["name"] in children else verdict
             secs, _budget = timings.get(t["name"], (0.0, 0))
+            rerun_details[t["name"]] = [
+                measurements[c["name"]] for c in children.get(t["name"], [t])
+            ]
+            if first_details is not None:
+                details[t["name"]] = first_details
+            for name, record in saved.items():
+                if record is not None:
+                    measurements[name] = record
+                    measurement_ticks[name] = saved_ticks[name]
             return verdict, secs
 
         load_rerun = apply_load_rerun(tests, results, timings, _run_one_alone)
@@ -2221,6 +2894,8 @@ def run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs):
         chains=chains,
         abort=abort,
         load_rerun=load_rerun,
+        details=details,
+        rerun_details=rerun_details,
     )
 
 
@@ -2304,47 +2979,55 @@ def write_suite_timing(args, tests, jobs, suite_t0, counts, rows):
     # unattended session budgeting against it has a real reason to skip a gate it could easily afford.
     # So the suite states its own cost, and writes it where the next reader can find it without
     # running anything.
-    elapsed = time.time() - suite_t0
+    elapsed = time.monotonic() - suite_t0
     print("  %.1f min wall clock (%d test(s), %d at a time)" % (elapsed / 60, len(tests), jobs))
+    rec = str(tool_paths.state_path("ui_test/last_suite_timing.json", repo=REPO))
     try:
-        rec = os.path.join(REPO, "tmp", "ui_test", "last_suite_timing.json")
+        with open(rec, encoding="utf-8") as fh:
+            history = dict(timing_cost_history(json.load(fh)))
+    except (OSError, ValueError):
+        history = {}
+    data = {
+        "seconds": round(elapsed, 1),
+        "tests": len(tests),
+        "jobs": jobs,
+        "passed": npass,
+        "failed": nfail,
+        "skipped": nskip,
+        "expected_red": nxfail,
+        "net_jobs": getattr(args, "net_jobs", None),
+        # First verdict and retry provenance remain confined to this invocation.
+        "load_rerun": load_rerun,
+        "per_test": {
+            t["name"]: {
+                "secs": round(timings.get(t["name"], (0.0, 0))[0], 1),
+                "budget_s": t.get("budget_s"),
+                "verdict": results.get(t["name"]),
+                "hash": hashes.get(t["name"]),
+                "children": rows.details.get(t["name"], []),
+                "child_work_s": round(
+                    sum(c["execution_s"] for c in rows.details.get(t["name"], [])), 3
+                ),
+                "admission_wait_s": round(
+                    sum(c["admission_wait_s"] for c in rows.details.get(t["name"], [])), 3
+                ),
+                "rerun_children": rows.rerun_details.get(t["name"], []),
+            }
+            for t in tests
+        },
+        "chains": [
+            {"tests": c, "secs": round(sum(timings.get(n, (0.0, 0))[0] for n in c), 1)}
+            for c in chains
+        ],
+    }
+    # A selected-step run cannot replace a complete row's cost with its cheaper subset.
+    if not getattr(args, "step", None):
+        history.update(timing_cost_history(data))
+    data["cost_history"] = history
+    try:
         os.makedirs(os.path.dirname(rec), exist_ok=True)
         with open(rec, "w", encoding="utf-8") as fh:
-            json.dump(
-                {
-                    "seconds": round(elapsed, 1),
-                    "tests": len(tests),
-                    "jobs": jobs,
-                    "passed": npass,
-                    "failed": nfail,
-                    "skipped": nskip,
-                    "expected_red": nxfail,
-                    # gate diet block 4b: what run_gate's cost rules read
-                    "net_jobs": getattr(args, "net_jobs", None),
-                    # tooling:TL-SUITE-LOADRED -- both results visible: `verdict` below already
-                    # carries the outcome word (LOAD-RED/LOAD-RED-ALLOW/RED-NOT-RERUN), this is the
-                    # first run's verdict + both runs' timings for whoever is reading the record.
-                    "load_rerun": load_rerun,
-                    "per_test": {
-                        t["name"]: {
-                            "secs": round(timings.get(t["name"], (0.0, 0))[0], 1),
-                            "budget_s": t.get("budget_s"),
-                            "verdict": results.get(t["name"]),
-                            "hash": hashes.get(t["name"]),
-                        }
-                        for t in tests
-                    },
-                    "chains": [
-                        {
-                            "tests": c,
-                            "secs": round(sum(timings.get(n, (0.0, 0))[0] for n in c), 1),
-                        }
-                        for c in chains
-                    ],
-                },
-                fh,
-                indent=1,
-            )
+            json.dump(data, fh, indent=1)
     except OSError:
         pass  # a timing note is never worth failing a suite over
 
@@ -2428,7 +3111,10 @@ def run_tact_tail(args, cfg, jobs):
         slot = tact_slots.get()  # a lane of the tact block, held for this journal's arms
         sub.tact_slot = slot
         try:
-            rc = run_tact_equiv(sub, cfg)
+            with tmp_runs.run_scope("tactical-row", task=name, adjudicator=True) as owned:
+                with gate_admission.lease("ui:tactical:" + name, seconds=120):
+                    rc = run_tact_equiv(sub, cfg)
+                owned.finish("PASS" if rc == 0 else "FAIL")
         except Exception:
             import traceback
 
@@ -2444,7 +3130,9 @@ def run_tact_tail(args, cfg, jobs):
             print("-" * 78)
             print("  tactical journal: %s" % name)
             sub.tact_slot = 0
-            if run_tact_equiv(sub, cfg):
+            with gate_admission.lease("ui:tactical:" + name, seconds=120):
+                rc = run_tact_equiv(sub, cfg)
+            if rc:
                 nfail += 1
             else:
                 npass += 1
@@ -2491,7 +3179,9 @@ def run_suite(args, cfg, tests, wanted):
         ok, why = req(args)
         if not ok:
             precondition_skip[t["name"]] = why
-    provisionable = [t for t in tests if t["name"] not in precondition_skip]
+    provisionable = ui_suite_common.physical_tests(
+        [t for t in tests if t["name"] not in precondition_skip], args.step
+    )
 
     plan = None
     if args.local:
@@ -2518,7 +3208,7 @@ def run_suite(args, cfg, tests, wanted):
             "possible, and only --local provisions them."
         )
         return 2
-    suite_t0 = time.time()
+    suite_t0 = time.monotonic()
     rows = run_rows(args, cfg, tests, suite, plan, precondition_skip, jobs)
     counts = print_summary(tests, rows)
     write_suite_timing(args, tests, jobs, suite_t0, counts, rows)
@@ -2593,4 +3283,22 @@ if __name__ == "__main__":
         pass
     if set(sys.argv[1:]) & OFFLINE_FLAGS:
         raise SystemExit(main())
-    raise SystemExit(hostlock.run_rig_tool(main, "test_ui"))
+    raise SystemExit(
+        hostlock.run_rig_tool(
+            lambda: tmp_runs.run_cli(
+                main,
+                "ui-suite",
+                human_flags=(
+                    "--ui-play",
+                    "--ui-record",
+                    "--ui-oracle",
+                    "--ui-selftest",
+                    "--tact-play",
+                    "--tact-record",
+                    "--tact-oracle",
+                    "--update-baselines",
+                ),
+            ),
+            "test_ui",
+        )
+    )

@@ -17,24 +17,25 @@ import shutil
 import subprocess
 import sys
 
+import tmp_runs
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _rundir  # noqa: E402  SES8: a process dir's session folders
-import desktop  # noqa: E402  the raw CreateProcessW launch that honours lpDesktop
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
-import machine_config as machine  # noqa: E402
-import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
-from ui_suite_common import (  # noqa: E402
-    LOCAL_PORT_BASE,
+import desktop
+import lane_alloc
+import machine_config as machine
+import make_lane
+import ui_test
+from ui_suite_common import (
     REPO,
-    RunnerConfig,
     TACT_PLAY_MOUSE_DIV,
     TACT_SCENARIOS,
-    play_mouse_div,
+    RunnerConfig,
     _tact_pid_handle,
     add_extra_ini_arg,
     add_runner_args,
     parse_mode_args,
+    play_mouse_div,
     print_desktop_banner,
     tact_apply_extra_ini,
     tact_merge_ini,
@@ -461,10 +462,10 @@ def run_tact_trim(args, cfg):
         "            kept %d record(s), dropped %d (%.1f%%); %.0f KB -> %.0f KB"
         % (kept, dropped, 100.0 * dropped / (kept + dropped), before / 1024, after / 1024)
     )
-    print("")
+    print()
     print("  Now PROVING it -- a trim is a claim about what the simulation depends on, and the")
     print("  cursor also drives unit facing and camera scroll (which reaches animation, 9k).")
-    print("")
+    print()
     sub_args = argparse.Namespace(**vars(args))
     sub_args.tact_verify = path
     sub_args.tact_trim = None
@@ -546,7 +547,8 @@ def run_tact_equiv(args, cfg):
     # the content is identical.
     slot = int(getattr(args, "tact_slot", 0) or 0)
     rollback = os.path.join(
-        REPO, "tmp", "tact_all_original%s.ini" % ("" if slot == 0 else "_%d" % slot)
+        tmp_runs.current_output("tactical"),
+        "tact_all_original%s.ini" % ("" if slot == 0 else "_%d" % slot),
     )
     ctrl_mode = write_all_original_ini(rollback)
     print("  journal   %s" % journal)
@@ -929,7 +931,7 @@ def run_tact_verify(args, cfg):
             "match depends on the input at all."
         )
         return 1
-    print("")
+    print()
     print("  NEG ARM: removed one whole click -- %d event(s), press at frame %d" % (mcount, mframe))
     tact_write_config(
         lane_dir,
@@ -1503,7 +1505,7 @@ def tact_provision_lane(args, visible=None, slot=0):
             "--lane",
             str(lane_alloc.lane("tact", slot)),
             "--port",
-            str(LOCAL_PORT_BASE + lane_alloc.lane("tact", slot)),
+            str(lane_alloc.lane_port(lane_alloc.lane("tact", slot))),
         ]
         + (["--visible"] if vis else ["--headless"])
         # PT-GFX5: an explicit --backend (add_runner_args) reaches the lane; default = owned device
@@ -1625,9 +1627,9 @@ def run_tact_play(args):
     else:
         print("  hashes    tact_hash_step=1, logged for the first %d frames" % args.tact_frames)
         print("            NOT RECORDING -- pass --tact-record to journal this session")
-    print("")
+    print()
     print("  Play the mission. Close the game window when you are done.")
-    print("")
+    print()
     exe = os.path.join(lane_dir, "mh.focus.exe")
     before = set(glob.glob(os.path.join(lane_dir, "logs", "*_solo")))
     proc = subprocess.Popen([exe, "--tactical", args.tact_save, "--skip-intro"], cwd=lane_dir)
@@ -1696,16 +1698,16 @@ def run_tact_play(args):
     if lost is None:
         # NOT the same as "no combat", and conflating them once told a user to re-record a
         # 63,563-frame session that had fought a whole battle. A missing line is an INSTRUMENT gap.
-        print("")
+        print()
         print("  *** NO COMBAT LINE was emitted -- that is a gap in the harness, NOT a verdict")
         print("  *** about this session. The journal above is intact either way. Replay it to")
         print("  *** find out what happened: the replay reports its own census.")
     elif lost == 0:
-        print("")
+        print()
         print("  *** THIS SESSION REACHED NO COMBAT (units_lost_total=0).")
         print("  *** TACT-REC clause 3 refuses such a journal: the trajectory oracle has to reach")
         print("  *** an engagement, or it is measuring a walk. Re-record and pick a fight.")
-    print("")
+    print()
     print(
         "  Verify it:  python tools/tact_test.py --tact-replay %s"
         % os.path.relpath(jpath, REPO).replace(chr(92), "/")
@@ -1788,8 +1790,7 @@ def tact_journal_extract(run_dir, dst, meta):
         f.write(";   K <frame> <scancode> <type> <ts>                            key event\n")
         f.write(";   C <frame> <x> <y>                                           cursor position\n")
         f.write(";\n")
-        for k, v in meta.items():
-            f.write("; %-12s %s\n" % (k, v))
+        f.writelines("; %-12s %s\n" % (k, v) for k, v in meta.items())
         f.write("; orders       %d\n" % len(orders))
         f.write("; direct       %d\n" % len(direct))
         f.write("; input        %d\n" % len(inputs))
@@ -1800,8 +1801,7 @@ def tact_journal_extract(run_dir, dst, meta):
         if survivors:
             f.write("; %s\n" % survivors.lstrip("; "))
         f.write(";\n")
-        for e in entries:
-            f.write(e + "\n")
+        f.writelines(e + "\n" for e in entries)
     return dst, len(orders), len(direct), len(inputs)
 
 
@@ -2045,8 +2045,7 @@ def tact_journal_shift(src, dst, index=None):
                 header.append(t)
     records.sort(key=lambda r: (r[0], r[1]))
     with open(dst, "w", encoding="utf-8", newline="\n") as out:
-        for h in header:
-            out.write(h + "\n")
+        out.writelines(h + "\n" for h in header)
         for _f, _n, t in records:
             out.write(t + "\n")
     label = {
@@ -2858,7 +2857,8 @@ def add_args(ap):
         metavar="N",
         help="--tact-determinism: override CurrentSystem, which is what selects the mission file "
         "POZ<N>{O,L}.DAT (NOT G_PLANET_INDEX -- a different global). 0 = leave the save's own "
-        "value. The O/L half is the race of --tact-owner's player.",
+        "value. Applied only after successfully saving the current strategic planet. "
+        "The O/L half is the race of --tact-owner's player.",
     )
     ap.add_argument(
         "--tact-frames",
@@ -2966,4 +2966,14 @@ def tail_args(args, journal):
 if __name__ == "__main__":
     import hostlock
 
-    raise SystemExit(hostlock.run_rig_tool(main, "tact_test"))
+    raise SystemExit(
+        hostlock.run_rig_tool(
+            lambda: tmp_runs.run_cli(
+                main,
+                "tactical",
+                adjudicator=True,
+                human_flags=("--tact-play", "--tact-record", "--tact-oracle"),
+            ),
+            "tact_test",
+        )
+    )

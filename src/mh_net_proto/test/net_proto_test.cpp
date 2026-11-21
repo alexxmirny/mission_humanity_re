@@ -1,6 +1,7 @@
 // mh_net_proto unit test -- round-trips + lobby-id dedup. Portable; returns non-zero on any failure.
 // Built + run by CMake (ctest) on both Windows and Linux. See S1.
 #include "mh_net_proto/gameplay_set.h"
+#include "mh_net_proto/start_map.h"
 #include "mh_net_proto/net_wire.h"
 #include "mh_net_proto/net_crypto.h"
 #include "mh_net_proto/net_udp.h"
@@ -12,34 +13,42 @@
 using namespace mh_net_proto;
 
 static int g_fails = 0;
-#define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); ++g_fails; } } while (0)
+#define CHECK(c)                                             \
+    do {                                                     \
+        if (!(c)) {                                          \
+            std::printf("FAIL line %d: %s\n", __LINE__, #c); \
+            ++g_fails;                                       \
+        }                                                    \
+    } while (0)
 
 int main() {
     // ---- wire header round-trip (S0 regression) ----
     {
-        WireHdr h{ WIRE_MAGIC, FLAG_HELLO, 3, BROADCAST, 1000 };
+        WireHdr      h{WIRE_MAGIC, FLAG_HELLO, 3, BROADCAST, 1000};
         std::uint8_t b[WIRE_HDR_SIZE];
         wire_hdr_encode(h, b);
-        CHECK(b[0] == 0x4D && b[1] == 0x48);              // 'MH' little-endian on the wire
+        CHECK(b[0] == 0x4D && b[1] == 0x48); // 'MH' little-endian on the wire
         WireHdr h2{};
         CHECK(wire_hdr_decode(b, h2));
-        CHECK(h2.magic == h.magic && h2.flags == h.flags && h2.src == h.src
-              && h2.dst == h.dst && h2.len == h.len);
+        CHECK(h2.magic == h.magic && h2.flags == h.flags && h2.src == h.src && h2.dst == h.dst && h2.len == h.len);
         std::uint8_t bad[WIRE_HDR_SIZE] = {0};
-        WireHdr hx{};
-        CHECK(!wire_hdr_decode(bad, hx));                 // magic mismatch -> reject
+        WireHdr      hx{};
+        CHECK(!wire_hdr_decode(bad, hx)); // magic mismatch -> reject
     }
 
     // ---- SESSION_INFO byte-identical round-trip ----
     {
         SessionInfo a{};
-        a.tag = 0xDEADBEEFu; a.host_version = 102; a.protocol = 1;
-        a.cur_players = 1; a.max_players = 2;
+        a.tag          = 0xDEADBEEFu;
+        a.host_version = 102;
+        a.protocol     = 1;
+        a.cur_players  = 1;
+        a.max_players  = 2;
         std::strcpy(a.name, "uitestgame");
-        std::strcpy(a.map,  "TUTORIAL.MP");
+        std::strcpy(a.map, "TUTORIAL.MP");
 
         std::uint8_t buf[SESSION_INFO_MAX_ENCODED];
-        std::size_t n = session_info_encode(a, buf);
+        std::size_t  n = session_info_encode(a, buf);
         CHECK(n > 0 && n <= SESSION_INFO_MAX_ENCODED);
 
         SessionInfo b{};
@@ -47,10 +56,11 @@ int main() {
         CHECK(b.tag == a.tag && b.host_version == a.host_version && b.protocol == a.protocol);
         CHECK(b.cur_players == a.cur_players && b.max_players == a.max_players);
         CHECK(std::strcmp(a.name, b.name) == 0);
-        CHECK(std::strcmp(a.map,  b.map)  == 0);
+        CHECK(std::strcmp(a.map, b.map) == 0);
 
         // empty strings round-trip
-        SessionInfo e{}; e.tag = 7;
+        SessionInfo e{};
+        e.tag          = 7;
         std::size_t en = session_info_encode(e, buf);
         SessionInfo e2{};
         CHECK(session_info_decode(buf, en, e2));
@@ -60,23 +70,26 @@ int main() {
         CHECK(!session_info_decode(buf, 3, b));
         CHECK(!session_info_decode(buf, 0, b));
         std::uint8_t badver[SESSION_INFO_MAX_ENCODED];
-        std::size_t bn = session_info_encode(a, badver);
-        badver[0] = 0xFF;                                 // unknown format version
+        std::size_t  bn = session_info_encode(a, badver);
+        badver[0]       = 0xFF; // unknown format version
         CHECK(!session_info_decode(badver, bn, b));
     }
 
     // ---- lobby-id (name + tag) dedup ----
     {
         SessionInfo base{};
-        std::strcpy(base.name, "MH Host"); base.tag = 0x11111111u;
+        std::strcpy(base.name, "MH Host");
+        base.tag = 0x11111111u;
 
-        SessionInfo same = base;                          // identical -> same lobby
+        SessionInfo same = base; // identical -> same lobby
         CHECK(session_same_lobby(base, same));
 
-        SessionInfo diffTag = base; diffTag.tag = 0x22222222u;  // same name, different tag -> distinct
+        SessionInfo diffTag = base;
+        diffTag.tag         = 0x22222222u; // same name, different tag -> distinct
         CHECK(!session_same_lobby(base, diffTag));
 
-        SessionInfo diffName = base; std::strcpy(diffName.name, "Other");  // diff name -> distinct
+        SessionInfo diffName = base;
+        std::strcpy(diffName.name, "Other"); // diff name -> distinct
         CHECK(!session_same_lobby(base, diffName));
 
         char id[64];
@@ -87,15 +100,18 @@ int main() {
     // ---- JOIN request round-trip + lobby-id match (S4) ----
     {
         SessionInfo host{};
-        std::strcpy(host.name, "s3test"); host.tag = 0xA4A24976u;
-        host.max_players = 8; host.cur_players = 1;
+        std::strcpy(host.name, "s3test");
+        host.tag         = 0xA4A24976u;
+        host.max_players = 8;
+        host.cur_players = 1;
 
         // a client builds its join from the received session descriptor
-        JoinRequest jr = join_request_for(host);
+        const std::uint8_t NO_CONTENT[CONTENT_DIGEST_BYTES] = {0};
+        JoinRequest        jr                               = join_request_for(host, 0, nullptr, nullptr, 0, NO_CONTENT);
         CHECK(jr.tag == host.tag && std::strcmp(jr.name, host.name) == 0);
 
         std::uint8_t buf[JOIN_REQUEST_MAX_ENCODED];
-        std::size_t n = join_request_encode(jr, buf);
+        std::size_t  n = join_request_encode(jr, buf);
         CHECK(n > 0 && n <= JOIN_REQUEST_MAX_ENCODED);
 
         JoinRequest jr2{};
@@ -104,35 +120,43 @@ int main() {
 
         // the host admits a matching lobby-id, rejects a wrong one
         CHECK(join_matches_session(jr2, host));
-        SessionInfo otherTag = host; otherTag.tag = 0xDEADBEEFu;   // right name, wrong tag -> reject
+        SessionInfo otherTag = host;
+        otherTag.tag         = 0xDEADBEEFu; // right name, wrong tag -> reject
         CHECK(!join_matches_session(jr2, otherTag));
-        SessionInfo otherName = host; std::strcpy(otherName.name, "elsewhere");  // wrong name -> reject
+        SessionInfo otherName = host;
+        std::strcpy(otherName.name, "elsewhere"); // wrong name -> reject
         CHECK(!join_matches_session(jr2, otherName));
 
         // S6: player_name round-trips (v2), and the lobby-id still matches
         std::strcpy(jr.player_name, "Alice");
         std::uint8_t pbuf[JOIN_REQUEST_MAX_ENCODED];
-        std::size_t pn = join_request_encode(jr, pbuf);
-        JoinRequest jr3{};
+        std::size_t  pn = join_request_encode(jr, pbuf);
+        JoinRequest  jr3{};
         CHECK(join_request_decode(pbuf, pn, jr3));
         CHECK(std::strcmp(jr3.player_name, "Alice") == 0 && join_matches_session(jr3, host));
 
         // S6: a v1 JOIN (format byte 1, lobby-id only) still decodes -> player_name left empty
-        std::uint8_t v1[JOIN_REQUEST_MAX_ENCODED]; std::uint8_t* q = v1;
-        *q++ = 1;
-        *q++ = (std::uint8_t)(host.tag & 0xff);  *q++ = (std::uint8_t)((host.tag >> 8) & 0xff);
-        *q++ = (std::uint8_t)((host.tag >> 16) & 0xff); *q++ = (std::uint8_t)((host.tag >> 24) & 0xff);
-        std::uint8_t nl = (std::uint8_t)std::strlen(host.name); *q++ = nl;
-        std::memcpy(q, host.name, nl); q += nl;
-        JoinRequest jrv1{}; std::strcpy(jrv1.player_name, "SHOULD_CLEAR");
+        std::uint8_t  v1[JOIN_REQUEST_MAX_ENCODED];
+        std::uint8_t *q = v1;
+        *q++            = 1;
+        *q++            = (std::uint8_t)(host.tag & 0xff);
+        *q++            = (std::uint8_t)((host.tag >> 8) & 0xff);
+        *q++            = (std::uint8_t)((host.tag >> 16) & 0xff);
+        *q++            = (std::uint8_t)((host.tag >> 24) & 0xff);
+        std::uint8_t nl = (std::uint8_t)std::strlen(host.name);
+        *q++            = nl;
+        std::memcpy(q, host.name, nl);
+        q += nl;
+        JoinRequest jrv1{};
+        std::strcpy(jrv1.player_name, "SHOULD_CLEAR");
         CHECK(join_request_decode(v1, (std::size_t)(q - v1), jrv1));
         CHECK(jrv1.player_name[0] == '\0' && jrv1.tag == host.tag && std::strcmp(jrv1.name, host.name) == 0);
 
         // truncated / bad-version decode fails cleanly
         CHECK(!join_request_decode(buf, 2, jr2));
         std::uint8_t badver[JOIN_REQUEST_MAX_ENCODED];
-        std::size_t bn = join_request_encode(jr, badver);
-        badver[0] = 0xFF;
+        std::size_t  bn = join_request_encode(jr, badver);
+        badver[0]       = 0xFF;
         CHECK(!join_request_decode(badver, bn, jr2));
     }
 
@@ -143,7 +167,10 @@ int main() {
     {
         auto hex = [](const std::uint8_t *b, std::size_t n, char *out) {
             static const char *H = "0123456789abcdef";
-            for (std::size_t i = 0; i < n; ++i) { out[i * 2] = H[b[i] >> 4]; out[i * 2 + 1] = H[b[i] & 0xf]; }
+            for (std::size_t i = 0; i < n; ++i) {
+                out[i * 2]     = H[b[i] >> 4];
+                out[i * 2 + 1] = H[b[i] & 0xf];
+            }
             out[n * 2] = '\0';
         };
         char h[80];
@@ -165,6 +192,24 @@ int main() {
         sha256(big, 200, d2);
         CHECK(std::memcmp(d, d2, SHA256_LEN) == 0); // deterministic
 
+        // Streaming == one-shot, fed in odd chunks that straddle block boundaries -- the feeding
+        // pattern of the DATAEXT1 mod content digest (mh/mod_catalog.cpp).
+        {
+            sha256_stream st;
+            sha256_reset(st);
+            for (std::size_t off = 0; off < 200; off += 7)
+                sha256_feed(st, big + off, (200 - off < 7) ? 200 - off : 7);
+            std::uint8_t d3[SHA256_LEN];
+            sha256_finish(st, d3);
+            CHECK(std::memcmp(d3, d, SHA256_LEN) == 0);
+            sha256_reset(st);
+            sha256_feed(st, big, 63);
+            sha256_feed(st, big + 63, 1);
+            sha256_feed(st, big + 64, 136);
+            sha256_finish(st, d3);
+            CHECK(std::memcmp(d3, d, SHA256_LEN) == 0);
+        }
+
         // RFC 4231 test case 2: HMAC-SHA256(key="Jefe", data="what do ya want for nothing?")
         hmac_sha256((const std::uint8_t *)"Jefe", 4,
                     (const std::uint8_t *)"what do ya want for nothing?", 28, d);
@@ -180,10 +225,10 @@ int main() {
         std::uint8_t zeros[64] = {0}, ks1[64], ks2[64];
         chacha20_xor(key, 1, zeros, ks1, 64);
         chacha20_xor(key, 2, zeros, ks2, 64);
-        CHECK(std::memcmp(ks1, ks2, 64) != 0);       // different record seq -> different keystream
+        CHECK(std::memcmp(ks1, ks2, 64) != 0); // different record seq -> different keystream
         std::uint8_t back[64];
         chacha20_xor(key, 1, ks1, back, 64);
-        CHECK(std::memcmp(back, zeros, 64) == 0);    // involution
+        CHECK(std::memcmp(back, zeros, 64) == 0); // involution
         // Crossing the 64-byte block boundary must keep the first block identical (counter starts 0).
         std::uint8_t longz[130] = {0}, kslong[130];
         chacha20_xor(key, 1, longz, kslong, 130);
@@ -193,12 +238,18 @@ int main() {
     // ---- handshake: mutual auth, and every failure mode ---------------------------------------
     {
         std::uint8_t psk[KEY_LEN], wrong[KEY_LEN];
-        for (int i = 0; i < (int)KEY_LEN; ++i) { psk[i] = (std::uint8_t)(i * 7 + 1); wrong[i] = (std::uint8_t)(i * 7 + 2); }
+        for (int i = 0; i < (int)KEY_LEN; ++i) {
+            psk[i]   = (std::uint8_t)(i * 7 + 1);
+            wrong[i] = (std::uint8_t)(i * 7 + 2);
+        }
         std::uint8_t cn[NONCE_LEN], sn[NONCE_LEN];
-        for (int i = 0; i < (int)NONCE_LEN; ++i) { cn[i] = (std::uint8_t)(0xA0 + i); sn[i] = (std::uint8_t)(0x50 + i); }
+        for (int i = 0; i < (int)NONCE_LEN; ++i) {
+            cn[i] = (std::uint8_t)(0xA0 + i);
+            sn[i] = (std::uint8_t)(0x50 + i);
+        }
 
-        std::uint8_t hello[HS_HELLO_LEN], chal[HS_CHALLENGE_LEN], resp[HS_RESPONSE_LEN];
-        std::uint8_t cn2[NONCE_LEN], sn2[NONCE_LEN];
+        std::uint8_t  hello[HS_HELLO_LEN], chal[HS_CHALLENGE_LEN], resp[HS_RESPONSE_LEN];
+        std::uint8_t  cn2[NONCE_LEN], sn2[NONCE_LEN];
         std::uint16_t ver = 0;
 
         hs_build_hello(cn, hello);
@@ -206,10 +257,10 @@ int main() {
 
         hs_build_challenge(psk, cn, sn, chal);
         CHECK(hs_check_challenge(psk, cn, chal, sn2, ver) && std::memcmp(sn, sn2, NONCE_LEN) == 0);
-        CHECK(!hs_check_challenge(wrong, cn, chal, sn2, ver));  // client detects a fake host
+        CHECK(!hs_check_challenge(wrong, cn, chal, sn2, ver)); // client detects a fake host
         hs_build_response(psk, cn, sn, resp);
         CHECK(hs_check_response(psk, cn, sn, resp));
-        CHECK(!hs_check_response(wrong, cn, sn, resp));         // host rejects a wrong key
+        CHECK(!hs_check_response(wrong, cn, sn, resp)); // host rejects a wrong key
 
         // A proof is bound to BOTH nonces: replaying it under a fresh server nonce must fail. This is
         // the property that stops a recorded handshake from being replayed by a scanner.
@@ -242,9 +293,12 @@ int main() {
     // ---- record layer: seal/open, tamper, replay, reflect -------------------------------------
     {
         std::uint8_t enc[KEY_LEN], mac[KEY_LEN];
-        for (int i = 0; i < (int)KEY_LEN; ++i) { enc[i] = (std::uint8_t)(i + 3); mac[i] = (std::uint8_t)(i + 9); }
-        const char  *msg = "lockstep payload";
-        std::uint32_t n  = (std::uint32_t)std::strlen(msg);
+        for (int i = 0; i < (int)KEY_LEN; ++i) {
+            enc[i] = (std::uint8_t)(i + 3);
+            mac[i] = (std::uint8_t)(i + 9);
+        }
+        const char   *msg = "lockstep payload";
+        std::uint32_t n   = (std::uint32_t)std::strlen(msg);
         std::uint8_t  rec[128], plain[128];
 
         std::size_t total = rec_seal(enc, mac, 7, (const std::uint8_t *)msg, n, rec);
@@ -255,21 +309,21 @@ int main() {
         CHECK(rec_open(enc, mac, 7, plain, n, rec + REC_LEN_SIZE + n));
         CHECK(std::memcmp(plain, msg, n) == 0);
 
-        std::memcpy(plain, rec + REC_LEN_SIZE, n);           // same bytes, WRONG sequence number
+        std::memcpy(plain, rec + REC_LEN_SIZE, n); // same bytes, WRONG sequence number
         CHECK(!rec_open(enc, mac, 8, plain, n, rec + REC_LEN_SIZE + n));
 
-        std::uint8_t tampered[128];                          // flip one ciphertext bit
+        std::uint8_t tampered[128]; // flip one ciphertext bit
         std::memcpy(tampered, rec, total);
         tampered[REC_LEN_SIZE] ^= 0x01;
         std::memcpy(plain, tampered + REC_LEN_SIZE, n);
         CHECK(!rec_open(enc, mac, 7, plain, n, tampered + REC_LEN_SIZE + n));
 
-        std::memcpy(tampered, rec, total);                   // flip one MAC bit
+        std::memcpy(tampered, rec, total); // flip one MAC bit
         tampered[REC_LEN_SIZE + n] ^= 0x01;
         std::memcpy(plain, tampered + REC_LEN_SIZE, n);
         CHECK(!rec_open(enc, mac, 7, plain, n, tampered + REC_LEN_SIZE + n));
 
-        std::memcpy(plain, rec + REC_LEN_SIZE, n);           // wrong direction's keys
+        std::memcpy(plain, rec + REC_LEN_SIZE, n); // wrong direction's keys
         CHECK(!rec_open(mac, enc, 7, plain, n, rec + REC_LEN_SIZE + n));
 
         std::size_t zt = rec_seal(enc, mac, 0, nullptr, 0, rec); // empty record (a bare 12-byte header)
@@ -286,17 +340,17 @@ int main() {
         CHECK(std::strlen(text) == KEY_HEX_LEN);
         CHECK(key_from_hex(text, back) && std::memcmp(k, back, KEY_LEN) == 0);
         char padded[KEY_HEX_LEN + 8];
-        std::snprintf(padded, sizeof(padded), "  %s\r\n", text);       // as read from a text file
+        std::snprintf(padded, sizeof(padded), "  %s\r\n", text); // as read from a text file
         CHECK(key_from_hex(padded, back) && std::memcmp(k, back, KEY_LEN) == 0);
-        CHECK(!key_from_hex("deadbeef", back));                        // too short
+        CHECK(!key_from_hex("deadbeef", back)); // too short
         CHECK(!key_from_hex(nullptr, back));
         char bad[KEY_HEX_LEN + 1];
         std::memcpy(bad, text, sizeof(bad));
         bad[5] = 'z';
-        CHECK(!key_from_hex(bad, back));                               // non-hex
+        CHECK(!key_from_hex(bad, back)); // non-hex
         char trailing[KEY_HEX_LEN + 4];
         std::snprintf(trailing, sizeof(trailing), "%sxx", text);
-        CHECK(!key_from_hex(trailing, back));                          // trailing junk
+        CHECK(!key_from_hex(trailing, back)); // trailing junk
     }
 
     // ---- UUIDv7 match_id (SES0) ----------------------------------------------------------------
@@ -305,12 +359,12 @@ int main() {
     // it is what would catch a gcc/clang disagreement about the bit packing before the relay lands.
     {
         const std::uint64_t MS = 1789646400000ULL;
-        std::uint8_t r[UUID7_RAND_MAX];
+        std::uint8_t        r[UUID7_RAND_MAX];
         for (int i = 0; i < (int)UUID7_RAND_MAX; ++i) r[i] = (std::uint8_t)(0xa0 + i);
         std::uint8_t id[UUID7_BYTES];
         uuid7_make(MS, r, id);
         CHECK(uuid7_version(id) == 7 && uuid7_variant(id) == 2);
-        CHECK(uuid7_unix_ms(id) == MS);                       // the stamp decodes back to the input
+        CHECK(uuid7_unix_ms(id) == MS); // the stamp decodes back to the input
         CHECK(!uuid7_is_nil(id));
         char hex[UUID7_HEX_CAP];
         uuid7_hex(id, hex, sizeof(hex));
@@ -321,7 +375,7 @@ int main() {
         std::uint8_t other[UUID7_BYTES];
         r[9] ^= 0xff;
         uuid7_make(MS, r, other);
-        CHECK(std::memcmp(id, other, UUID7_BYTES) != 0);      // two mints differ
+        CHECK(std::memcmp(id, other, UUID7_BYTES) != 0); // two mints differ
 
         std::uint8_t c0[CONN_ID_BYTES], c5[CONN_ID_BYTES];
         conn_id_from_match(id, 0, c0);
@@ -335,14 +389,19 @@ int main() {
 
         // The record grew and the id survives it; a v2 advert still decodes with a nil id.
         SessionInfo s{};
-        s.tag = 1; s.host_version = 2; s.protocol = 1; s.cur_players = 1; s.max_players = 2;
-        std::strcpy(s.name, "g"); std::strcpy(s.map, "m");
+        s.tag          = 1;
+        s.host_version = 2;
+        s.protocol     = 1;
+        s.cur_players  = 1;
+        s.max_players  = 2;
+        std::strcpy(s.name, "g");
+        std::strcpy(s.map, "m");
         std::memcpy(s.match_id, id, UUID7_BYTES);
-        s.codepage = 1251;                            // mp:F3 -- the pinned input codepage (v4)
+        s.codepage = 1251; // mp:F3 -- the pinned input codepage (v4)
         for (int i = 0; i < MAP_HASH_BYTES; ++i) s.map_hash[i] = (std::uint8_t)(0xA0 + i);
-        s.map_size = 462065;                          // mp:X2 -- the map's content hash + size (v5)
+        s.map_size = 462065; // mp:X2 -- the map's content hash + size (v5)
         std::uint8_t sb[SESSION_INFO_MAX_ENCODED];
-        std::size_t sn = session_info_encode(s, sb);
+        std::size_t  sn = session_info_encode(s, sb);
         CHECK(sb[0] == SESSION_INFO_FORMAT && SESSION_INFO_FORMAT == 5);
         SessionInfo sd{};
         CHECK(session_info_decode(sb, sn, sd) && std::memcmp(sd.match_id, id, UUID7_BYTES) == 0);
@@ -351,33 +410,35 @@ int main() {
         // Every earlier prefix still decodes, and each missing suffix reads as its own "absent"
         // rather than as a zero that means something: no claim is not a hash of zero.
         const std::size_t v4n = sn - MAP_HASH_BYTES - 4;
-        sb[0] = 4;
+        sb[0]                 = 4;
         CHECK(session_info_decode(sb, v4n, sd) && map_hash_is_none(sd.map_hash) && sd.map_size == 0);
         CHECK(sd.codepage == 1251);
         sb[0] = 2;
         CHECK(session_info_decode(sb, v4n - UUID7_BYTES - 2, sd) && uuid7_is_nil(sd.match_id) && sd.codepage == 0);
 
         // The negative case: a pre-SES0 JOIN is refused BY VERSION, not by content.
-        SessionInfo mine = s;
-        JoinRequest jr = join_request_for(mine, mine.codepage);
+        SessionInfo        mine                             = s;
+        const std::uint8_t NO_CONTENT[CONTENT_DIGEST_BYTES] = {0};
+        JoinRequest        jr                               = join_request_for(mine, mine.codepage, nullptr, nullptr, 0, NO_CONTENT);
         CHECK(std::memcmp(jr.match_id, id, UUID7_BYTES) == 0);
         CHECK(jr.codepage == 1251);
         std::uint8_t jb[JOIN_REQUEST_MAX_ENCODED];
-        std::size_t jn = join_request_encode(jr, jb);
-        JoinRequest got{};
+        std::size_t  jn = join_request_encode(jr, jb);
+        JoinRequest  got{};
         CHECK(join_admit(jb, jn, mine, got) == JoinAdmit::Admit);
-        jb[0] = 2;                                   // an old client's format byte...
-        CHECK(join_admit(jb, jn - MAP_HASH_BYTES - UUID7_BYTES - 2, mine, got) == JoinAdmit::RefusedOldProtocol);
-        CHECK(std::strcmp(join_admit_reason(JoinAdmit::RefusedOldProtocol), "old protocol (no match_id)") == 0);
+        jb[0] = 2;                                                                                                                                 // an old client's format byte...
+        CHECK(join_admit(jb, jn - (UUID7_BYTES + 2 + MAP_HASH_BYTES + 1 + 4 + CONTENT_DIGEST_BYTES), mine, got) == JoinAdmit::RefusedOldProtocol); // the TRUE v2 length (nothing after the player-name byte)
+        CHECK(std::strcmp(join_admit_reason(JoinAdmit::RefusedOldProtocol), "old game protocol") == 0);
 
         // mp:F3's negative case, in the PORTABLE arm too: the relay's toolchain compiles this decision
         // and a gcc/clang disagreement about the trailing u16 would show up here rather than on a rig.
-        JoinRequest mismatched = join_request_for(mine, 1250);
-        jn = join_request_encode(mismatched, jb);
+        JoinRequest mismatched = join_request_for(mine, 1250, nullptr, nullptr, 0, NO_CONTENT);
+        jn                     = join_request_encode(mismatched, jb);
         CHECK(join_admit(jb, jn, mine, got) == JoinAdmit::RefusedCodepage);
         CHECK(got.codepage == 1250);
         CHECK(std::strcmp(join_admit_reason(JoinAdmit::RefusedCodepage), "input codepage mismatch") == 0);
-        SessionInfo unpinned = mine; unpinned.codepage = 0;   // a host with no pin admits anyone
+        SessionInfo unpinned = mine;
+        unpinned.codepage    = 0; // a host with no pin admits anyone
         CHECK(join_admit(jb, jn, unpinned, got) == JoinAdmit::Admit);
     }
 
@@ -390,18 +451,21 @@ int main() {
     {
         using namespace mh_net_proto::udp;
         std::uint8_t enc[KEY_LEN], mac[KEY_LEN], conn[CONN_ID_BYTES];
-        for (int i = 0; i < (int)KEY_LEN; ++i) { enc[i] = (std::uint8_t)(i + 1); mac[i] = (std::uint8_t)(0x80 + i); }
+        for (int i = 0; i < (int)KEY_LEN; ++i) {
+            enc[i] = (std::uint8_t)(i + 1);
+            mac[i] = (std::uint8_t)(0x80 + i);
+        }
         for (int i = 0; i < (int)CONN_ID_BYTES; ++i) conn[i] = (std::uint8_t)(0xA0 + i);
 
-        std::uint8_t in[8] = {1, 2, 3, 4}, payload[64], body[128], pkt[MAX_DATAGRAM];
-        InputEntry   e[2] = {{100, in, 4}, {99, in, 4}};
-        const std::size_t pn = input_encode(e, 2, payload, sizeof(payload));
+        std::uint8_t      in[8] = {1, 2, 3, 4}, payload[64], body[128], pkt[MAX_DATAGRAM];
+        InputEntry        e[2]  = {{100, in, 4}, {99, in, 4}};
+        const std::size_t pn    = input_encode(e, 2, payload, sizeof(payload));
         CHECK(pn > 0);
         std::size_t used = 0;
         CHECK(frame_append(body, sizeof(body), &used, CH_INPUT, payload, pn));
 
-        Verdict why = Verdict::Ok;
-        const std::size_t n = packet_encode(PKT_DATA, conn, 42, enc, mac, body, used, pkt, why);
+        Verdict           why = Verdict::Ok;
+        const std::size_t n   = packet_encode(PKT_DATA, conn, 42, enc, mac, body, used, pkt, why);
         CHECK(n == HDR_SIZE + used + TAG_SIZE);
 
         Header       hdr{};
@@ -424,14 +488,14 @@ int main() {
     // ---- mp:F3c: the REFUSED announce round-trips and refuses a truncated frame ----
     {
         std::uint8_t ab[ANNOUNCE_MAX_ENCODED];
-        std::size_t  n = announce_refused_encode(5, "codepage 1252/1251", ab);
-        std::uint8_t who = 0; char why[ANNOUNCE_TEXT_CAP];
+        std::size_t  n   = announce_refused_encode(5, "codepage 1252/1251", ab);
+        std::uint8_t who = 0;
+        char         why[ANNOUNCE_TEXT_CAP];
         CHECK(ab[0] == ANNOUNCE_REFUSED && ab[1] == 5 && ab[n - 1] == 0);
-        CHECK(announce_refused_decode(ab, n, &who, why, sizeof(why)) && who == 5
-              && std::strcmp(why, "codepage 1252/1251") == 0);
-        CHECK(!announce_refused_decode(ab, n - 1, &who, why, sizeof(why)));   // NUL outside len -> truncated
+        CHECK(announce_refused_decode(ab, n, &who, why, sizeof(why)) && who == 5 && std::strcmp(why, "codepage 1252/1251") == 0);
+        CHECK(!announce_refused_decode(ab, n - 1, &who, why, sizeof(why))); // NUL outside len -> truncated
         std::uint8_t joined[4] = {ANNOUNCE_JOINED, 1, 'x', 0};
-        CHECK(!announce_refused_decode(joined, 4, &who, why, sizeof(why)));   // wrong kind
+        CHECK(!announce_refused_decode(joined, 4, &who, why, sizeof(why))); // wrong kind
     }
 
     // ---- PT-SET1: the gameplay set codec (FLAG_START trailer) + the JOIN v7 digest ----
@@ -444,8 +508,8 @@ int main() {
 
         const std::uint64_t NEG0 = 0x8000000000000000ull;
         const std::uint64_t NAN1 = 0x7ff8dead0000beefull; // quiet NaN with a payload
-        GameplaySet s{};
-        s.n = 4;
+        GameplaySet         s{};
+        s.n    = 4;
         s.e[0] = {K_FIX, GAMEPLAY_T_INT, -7, 0};
         s.e[1] = {K_MULT, GAMEPLAY_T_F64, 0, 0x4000000000000000ull}; // 2.0
         s.e[2] = {0x01020304u, GAMEPLAY_T_F64, 0, NEG0};
@@ -494,7 +558,7 @@ int main() {
         over.n = GAMEPLAY_MAX_ENTRIES + 1;
         CHECK(gameplay_set_encode(over, buf) == 0);
         GameplaySet badtype{};
-        badtype.n = 1;
+        badtype.n         = 1;
         badtype.e[0].type = GAMEPLAY_T_STR;
         CHECK(gameplay_set_encode(badtype, buf) == 0);
         // a full set (n == cap) round-trips
@@ -507,40 +571,182 @@ int main() {
 
         // digest: order independent, value independent, type sensitive, never 0
         GameplaySet x{}, y{}, z{}, w{};
-        x.n = 2; x.e[0] = {K_MULT, GAMEPLAY_T_F64, 0, 1}; x.e[1] = {K_FIX, GAMEPLAY_T_INT, 5, 0};
-        y.n = 2; y.e[0] = {K_FIX, GAMEPLAY_T_INT, 99, 0}; y.e[1] = {K_MULT, GAMEPLAY_T_F64, 0, 777};
+        x.n    = 2;
+        x.e[0] = {K_MULT, GAMEPLAY_T_F64, 0, 1};
+        x.e[1] = {K_FIX, GAMEPLAY_T_INT, 5, 0};
+        y.n    = 2;
+        y.e[0] = {K_FIX, GAMEPLAY_T_INT, 99, 0};
+        y.e[1] = {K_MULT, GAMEPLAY_T_F64, 0, 777};
         CHECK(gameplay_set_digest(x) == gameplay_set_digest(y));
         CHECK(gameplay_set_digest(x) == 0x65eec1ceu); // golden, FNV-1a over sorted (key_id LE, type)
-        z = x; z.e[1].type = GAMEPLAY_T_F64;
+        z           = x;
+        z.e[1].type = GAMEPLAY_T_F64;
         CHECK(gameplay_set_digest(z) != gameplay_set_digest(x));
-        w = x; w.n = 1;
+        w   = x;
+        w.n = 1;
         CHECK(gameplay_set_digest(w) != gameplay_set_digest(x));
         CHECK(gameplay_set_digest(empty) == 0x811c9dc5u && gameplay_set_digest(empty) != 0);
     }
 
-    // ---- PT-SET1: JOIN v7 in the portable arm ----
+    // Start map belongs to this Start, even if no periodic lobby header arrived.
+    {
+        GameplaySet settings{};
+        settings.n    = 1;
+        settings.e[0] = {0x12345678u, GAMEPLAY_T_INT, 175, 0};
+        std::uint8_t frame[START_TRAILER_MAX_ENCODED];
+        std::uint8_t map[START_MAP_BYTES];
+        for (std::size_t i = 0; i < sizeof(map); ++i) map[i] = std::uint8_t(i * 37 + 11);
+        const std::size_t   gp           = gameplay_set_encode(settings, frame);
+        const std::size_t   n            = start_map_append(frame, sizeof(frame), gp, map);
+        std::size_t         gp_size      = 0;
+        const std::uint8_t *received_map = nullptr;
+        CHECK(start_map_split(frame, n, gp_size, received_map));
+        GameplaySet received{};
+        CHECK(gameplay_set_decode(frame, gp_size, received) == GameplayErr::Ok &&
+              received.n == 1 && received.e[0].i == 175);
+        CHECK(received_map && std::memcmp(received_map, map, sizeof(map)) == 0);
+        for (std::size_t cut = 0; cut < n; ++cut) {
+            CHECK(!start_map_split(frame, cut, gp_size, received_map));
+            CHECK(gp_size == 0 && received_map == nullptr);
+        }
+        // Unknown format/length/magic cannot silently fall back to a lobby preview.
+        for (std::size_t k = n - sizeof(START_MAP_FOOTER); k < n; ++k) {
+            frame[k] ^= 1;
+            CHECK(!start_map_split(frame, n, gp_size, received_map));
+            frame[k] ^= 1;
+        }
+        CHECK(start_map_append(frame, n - 1, gp, map) == 0);
+        CHECK(start_map_append(frame, sizeof(frame), GAMEPLAY_MAX_ENCODED + 1, map) == 0);
+        CHECK(!start_map_split(frame, sizeof(frame) + 1, gp_size, received_map));
+        // A maximum settings set and a map still fit one Start payload.
+        settings.n = GAMEPLAY_MAX_ENTRIES;
+        for (int i = 0; i < settings.n; ++i)
+            settings.e[i] = {std::uint32_t(i + 1), GAMEPLAY_T_F64, 0, std::uint64_t(i)};
+        CHECK(gameplay_set_encode(settings, frame) == GAMEPLAY_MAX_ENCODED);
+        CHECK(start_map_append(frame, sizeof(frame), GAMEPLAY_MAX_ENCODED, map) == sizeof(frame));
+        CHECK(start_map_split(frame, sizeof(frame), gp_size, received_map));
+        CHECK(gameplay_set_decode(frame, gp_size, received) == GameplayErr::Ok &&
+              received.n == GAMEPLAY_MAX_ENTRIES);
+        CHECK(received_map && std::memcmp(received_map, map, sizeof(map)) == 0);
+    }
+
+    // ---- PT-SET1: JOIN v7 gameplay digest, then DATAEXT1: JOIN v8 content digest (portable arm) ----
     {
         SessionInfo host{};
-        std::strcpy(host.name, "gp"); host.tag = 7;
-        host.gameplay_digest = 0xAAAA0001u;
-        JoinRequest jr = join_request_for(host, 0, nullptr, nullptr, 0xBBBB0002u);
-        std::uint8_t jb[JOIN_REQUEST_MAX_ENCODED];
-        std::size_t  jn = join_request_encode(jr, jb);
-        CHECK(JOIN_REQUEST_FORMAT == 7 && JOIN_REQUEST_MIN_FORMAT == 7 && jb[0] == 7);
-        CHECK(jb[jn - 4] == 0x02 && jb[jn - 3] == 0x00 && jb[jn - 2] == 0xBB && jb[jn - 1] == 0xBB); // digest LE, last field
+        std::strcpy(host.name, "gp");
+        host.tag                                            = 7;
+        host.gameplay_digest                                = 0xAAAA0001u;
+        const std::uint8_t NO_CONTENT[CONTENT_DIGEST_BYTES] = {0};
+        JoinRequest        jr                               = join_request_for(host, 0, nullptr, nullptr, 0xBBBB0002u, NO_CONTENT);
+        std::uint8_t       jb[JOIN_REQUEST_MAX_ENCODED];
+        std::size_t        jn = join_request_encode(jr, jb);
+        CHECK(jb[jn - CONTENT_DIGEST_BYTES - 4] == 0x02 && jb[jn - CONTENT_DIGEST_BYTES - 3] == 0x00 &&
+              jb[jn - CONTENT_DIGEST_BYTES - 2] == 0xBB && jb[jn - CONTENT_DIGEST_BYTES - 1] == 0xBB); // gameplay digest LE, just before the v8 field
         JoinRequest got{};
         CHECK(join_admit(jb, jn, host, got) == JoinAdmit::RefusedGameplay && got.gameplay_digest == 0xBBBB0002u);
         char why[64];
-        join_refusal_text(JoinAdmit::RefusedGameplay, host, got, why, sizeof(why));
-        CHECK(std::strcmp(why, "gameplay keys AAAA0001/BBBB0002") == 0);
         host.gameplay_digest = 0xBBBB0002u;
         CHECK(join_admit(jb, jn, host, got) == JoinAdmit::Admit);
         host.gameplay_digest = 0;
         CHECK(join_admit(jb, jn, host, got) == JoinAdmit::Admit);
         jb[0] = 6;
-        CHECK(join_admit(jb, jn - 4, host, got) == JoinAdmit::RefusedOldProtocol);
+        CHECK(join_admit(jb, jn - 4 - CONTENT_DIGEST_BYTES, host, got) == JoinAdmit::RefusedOldProtocol); // the TRUE v6 length (ends at the build's length byte)
         jb[0] = 7;
-        CHECK(!join_request_decode(jb, jn - 1, got)); // truncated inside the digest
+        CHECK(join_admit(jb, jn - CONTENT_DIGEST_BYTES, host, got) == JoinAdmit::RefusedOldProtocol); // the TRUE v7 length (ends at the gameplay digest)
+        jb[0] = 8;
+        CHECK(!join_request_decode(jb, jn - 1, got)); // truncated inside the content digest
+        CHECK(!join_request_decode(jb, jn - 8, got)); // 8 bytes short of a 32-byte digest: no partial read
+
+        // DATAEXT1: the v8 content digest. UNCONDITIONAL 32-byte equality -- no zero bypass, no
+        // changed-last-byte escape, and the advert never carries it.
+        {
+            std::uint8_t H[CONTENT_DIGEST_BYTES], J[CONTENT_DIGEST_BYTES];
+            for (int i = 0; i < CONTENT_DIGEST_BYTES; ++i) {
+                H[i] = (std::uint8_t)(i + 1);
+                J[i] = (std::uint8_t)(i + 1);
+            }
+            std::memcpy(host.content_digest, H, CONTENT_DIGEST_BYTES); // host-local stamp (struct field, not wire)
+            std::size_t en = join_request_encode(join_request_for(host, 0, nullptr, nullptr, 0, J), jb);
+            CHECK(join_admit(jb, en, host, got) == JoinAdmit::Admit);
+            J[CONTENT_DIGEST_BYTES - 1] ^= 0x01; // changed LAST byte only
+            en = join_request_encode(join_request_for(host, 0, nullptr, nullptr, 0, J), jb);
+            CHECK(join_admit(jb, en, host, got) == JoinAdmit::RefusedContent);
+            join_refusal_text(JoinAdmit::RefusedContent, host, got, why, sizeof(why));
+            CHECK(std::strlen(why) <= JOIN_REFUSAL_TEXT_MAX);
+            std::memset(J, 0, sizeof(J)); // the EMPTY-SET claim: a real value, refused like any other mismatch
+            en = join_request_encode(join_request_for(host, 0, nullptr, nullptr, 0, J), jb);
+            CHECK(join_admit(jb, en, host, got) == JoinAdmit::RefusedContent); // NO zero/no-claim bypass
+            // The digest is host-local: it must not change the SESSION_INFO advert.
+            SessionInfo  a = host, b2 = host;
+            std::uint8_t ab[SESSION_INFO_MAX_ENCODED], bb[SESSION_INFO_MAX_ENCODED];
+            std::memset(a.content_digest, 0xAA, CONTENT_DIGEST_BYTES);
+            std::memset(b2.content_digest, 0xBB, CONTENT_DIGEST_BYTES);
+            std::size_t an = session_info_encode(a, ab), bn = session_info_encode(b2, bb);
+            CHECK(an == bn && std::memcmp(ab, bb, an) == 0);
+        }
+    }
+
+    // Equal release/content cannot admit the immediately previous game generation.
+    {
+        SessionInfo host{};
+        std::strcpy(host.name, "queue");
+        std::strcpy(host.build, "0.2.1-rc18");
+        host.tag          = 91;
+        host.host_version = HOST_GENERATION;
+        std::uint8_t content[CONTENT_DIGEST_BYTES];
+        std::memset(content, 0x5c, sizeof(content));
+        std::memcpy(host.content_digest, content, sizeof(content));
+        JoinRequest       jr = join_request_for(host, 0, nullptr, host.build, 0, content), got{};
+        std::uint8_t      bytes[JOIN_REQUEST_MAX_ENCODED + 1];
+        const std::size_t n = join_request_encode(jr, bytes);
+        CHECK(join_admit(bytes, n, host, got) == JoinAdmit::Admit);
+        // JOIN fields are unchanged; admission semantics require this generation.
+        bytes[0] = JOIN_REQUEST_MIN_FORMAT - 1;
+        CHECK(join_request_decode(bytes, n, got) && got.format == JOIN_REQUEST_MIN_FORMAT - 1);
+        CHECK(std::strcmp(got.build, host.build) == 0 &&
+              std::memcmp(got.content_digest, host.content_digest, sizeof(content)) == 0);
+        CHECK(join_admit(bytes, n, host, got) == JoinAdmit::RefusedOldProtocol);
+        char why[64];
+        join_refusal_text(JoinAdmit::RefusedOldProtocol, host, got, why, sizeof(why));
+        std::uint8_t announce[ANNOUNCE_MAX_ENCODED], target = 255;
+        const auto   an = announce_refused_encode(1, why, announce);
+        CHECK(announce_refused_decode(announce, an, &target, why, sizeof(why)) && target == 1);
+        bytes[0] = JOIN_REQUEST_FORMAT;
+        for (std::size_t cut = 0; cut < n; ++cut)
+            CHECK(join_admit(bytes, cut, host, got) == JoinAdmit::RefusedMalformed);
+        bytes[n] = 0;
+        CHECK(join_admit(bytes, n + 1, host, got) == JoinAdmit::RefusedMalformed);
+        bytes[0] = JOIN_REQUEST_FORMAT + 1;
+        CHECK(join_admit(bytes, n, host, got) == JoinAdmit::RefusedNewerProtocol);
+        for (std::uint16_t old = 0; old < HOST_MIN_GENERATION; ++old)
+            CHECK(!host_generation_supported(old));
+        CHECK(host_generation_supported(HOST_MIN_GENERATION));
+    }
+    // Mandatory TCP peer controls: exact stage, exact framing, exact generation.
+    // These portable predicates are used by the actual plaintext AND secure link.
+    {
+        std::uint8_t           bytes[GAME_FEATURE_BYTES + 1];
+        const GameFeatureStage stages[] = {GameFeatureStage::Offer, GameFeatureStage::Ack,
+                                           GameFeatureStage::Confirm};
+        for (auto stage : stages) {
+            const std::uint16_t flags = stage == GameFeatureStage::Ack ? FLAG_WELCOME : FLAG_HELLO;
+            game_feature_encode(stage, bytes);
+            CHECK(game_feature_accept(flags, bytes, GAME_FEATURE_BYTES, stage));
+            CHECK(!game_feature_accept(FLAG_DATA, bytes, GAME_FEATURE_BYTES, stage));
+            CHECK(!game_feature_accept(flags, nullptr, 0, stage));
+            for (std::size_t cut = 0; cut < GAME_FEATURE_BYTES; ++cut)
+                CHECK(!game_feature_accept(flags, bytes, cut, stage));
+            CHECK(!game_feature_accept(flags, bytes, GAME_FEATURE_BYTES + 1, stage));
+            for (std::size_t i = 0; i < GAME_FEATURE_BYTES; ++i) {
+                bytes[i] ^= 0x80;
+                CHECK(!game_feature_accept(flags, bytes, GAME_FEATURE_BYTES, stage));
+                bytes[i] ^= 0x80;
+            }
+            const std::uint16_t previous = GAME_GENERATION - 1;
+            bytes[4]                     = std::uint8_t(previous);
+            bytes[5]                     = std::uint8_t(previous >> 8);
+            CHECK(!game_feature_accept(flags, bytes, GAME_FEATURE_BYTES, stage));
+        }
     }
 
     std::printf(g_fails ? "\n%d CHECK(S) FAILED\n" : "ALL PASS\n", g_fails);

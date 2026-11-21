@@ -1,0 +1,57 @@
+{% macro thumb(c, e, cls="") -%}
+{%- set src = c.thumb_src(e) -%}
+{%- if src %}<img class="th {{ cls }}" src="{{ src }}" alt="" loading="lazy">{% else %}<span class="th ph {{ cls }}">{{ (c.name(e) or "?")[:1] }}</span>{% endif -%}
+{%- endmacro %}
+
+{% macro entlink(c, link, amb=none) -%}
+{%- set h = c.href(link) -%}
+{%- if h %}<a href="{{ h }}">{{ c.name(link) }}</a>{% else %}{{ c.name(link) }}{% endif -%}
+{%- if amb %}{% set sd = c.side(link, amb) %}{% if sd %} <span class="side f-{{ c.ent(link).faction }}">{{ sd }}</span>{% endif %}{% endif -%}
+{%- endmacro %}
+
+{% macro statrows(c, rows) %}
+{%- if rows %}
+<dl class="stats">
+{%- for r in rows %}
+  <dt{% if r.note %} title="{{ r.note }}"{% endif %}>{{ c.rowlabel(r) }}</dt>
+  <dd>
+  {%- if r.items %}{% set amb = c.ambiguous(r.items|selectattr("link")|map(attribute="link")|list) %}<ul class="items">
+    {%- for it in r.items %}<li>
+      {%- if it.link %}{{ entlink(c, it.link, amb) }}{% elif it.label_key %}{{ c.label(it.label_key) }}{% endif -%}
+      {%- if it.value is not none and (not it.link or it.value != 1) %} <span class="n">{{ c.fmt(it.value) }}</span>{% endif -%}
+    </li>{% endfor %}</ul>
+  {%- else %}{{ c.val(r) }}{% endif -%}
+  {%- if not r.verified %}<sup class="unv" title="{{ c.unv_title(r) }}">{{ c.S.unverified_mark }}</sup>{% endif -%}
+  </dd>
+{%- endfor %}
+</dl>
+{%- endif %}
+{% endmacro %}
+
+{% macro costs(c, p) %}
+{%- if p.costs %}
+<p class="costs"><b>{{ c.label(p.costs_label_key) }}</b>
+  {%- for k in p.costs %} <span class="cost"><span class="ore">{{ c.label(k.label_key) }}</span> <span class="n">{{ c.fmt(k.value) }}</span></span>{% endfor %}</p>
+{%- endif %}
+{% endmacro %}
+
+{% macro weapons(c, p) %}
+{%- if p.weapons %}
+<table class="wtab">
+  <thead><tr><th>{{ c.S.weapon }}</th><th>{{ c.label("K_MENU_Power")|trim(": ") }}</th><th>{{ c.S.range }}</th><th>{{ c.S.targets }}</th></tr></thead>
+  <tbody>
+  {%- for w in p.weapons %}
+  <tr><td>{{ entlink(c, w.weapon) }}</td><td class="n">{{ c.fmt(w.power) }}</td><td class="n">{{ w.range_min }}-{{ w.range_max }}</td><td><span class="tg" title="{{ c.target_title(w.target_mask) }}">{{ c.letters(w.target_mask) }}</span></td></tr>
+  {%- endfor %}
+  </tbody>
+</table>
+{%- endif %}
+{% endmacro %}
+
+{% macro panel(c, p) %}
+{%- if p.left or p.right %}
+<div class="cols"><div>{{ statrows(c, p.left) }}</div><div>{{ statrows(c, p.right) }}</div></div>
+{%- endif %}
+{{ weapons(c, p) }}
+{{ costs(c, p) }}
+{% endmacro %}

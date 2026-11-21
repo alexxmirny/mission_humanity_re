@@ -1,4 +1,4 @@
-# patching:PT-CAP9-U5 CLIENT of the both-peers burst row (cap_orders_mp2): mp_client_idle.txt's walk, but this peer LANDS ITS OWN MOTHERSHIP (shift+right-click, as the host
+# patching:PT-CAP9-U5 CLIENT of the both-peers burst row (cap_orders_mp2): mp_client_idle.txt's walk, but this peer LANDS ITS OWN MOTHERSHIP (Ctrl+right-click, as the host
 # does) so the harness unit-fill fixture can fill the client's player, and it stays in the match until the host's script ends. Own capture labels, so --update-baselines
 # here cannot clobber mp_client_idle's baselines.
 # mp:D25 CLIENT fixture -- the IDLE peer of host_clicks (and the U39/D28 negative rows). mp_client_start.txt's walk verbatim
@@ -43,7 +43,7 @@ absent Network players
 # 6000 is past saturation, the value res_picker needed for the same reason. Both peers use
 # the SAME number so a lockstep pair also captures the same sim moment.
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 6000
 capture orders_m3_launched
 log CLIENT entered the match and landed

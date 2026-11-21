@@ -6,7 +6,7 @@
 # caller=0x0049ddad` -> `on_gameover outcome=4`. That was read as "the joiner started with no
 # building and was eliminated for it". It is not: a fresh MP human owns ONE AIRBORNE mothership
 # (llm_game_land_players_on_planet's HUMAN arm creates the starting UNIT, is_ship=2, and places no
-# building), and the building appears only when the PLAYER lands it (shift+right-click = order
+# building), and the building appears only when the PLAYER lands it (Ctrl+right-click = order
 # 0x10 move + 0x18 deploy -> llm_strat_unit_state_deploy_to_building @0x00481a6b ->
 # llm_bldg_construct_finalize, then llm_strat_unit_teardown -> presence_lost(player, 0), which is
 # the `gate=alive ua=0 ba=1` line). `ua=1 ba=0` is an UNLANDED ship, and `mode=1` is the FORCED
@@ -77,7 +77,7 @@ clickl Start
 absent Network players
 gamemode 2
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 # the joiner lands ITS mother at 6000 and quits after 10000; nothing else for the host to do but
 # wait for the removal frame -- the match ends here the moment it lands (below quorum).
 awaitsignal quitting

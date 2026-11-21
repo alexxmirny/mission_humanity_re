@@ -1,0 +1,114 @@
+# DATAEXT2 two-peer gameplay; host uses normal order pipeline.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+clickl Ok
+present Network players
+peers 1
+occ 2
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock 3000
+simrclick 480 330 ctrl
+bldgready 46
+signal cfg_mother
+logavail blocked
+logbldgs before_academy
+logcfg before_academy
+# Existing build panel; hudbuild finds the actual visible row for the Academy type.
+simclick 890 215
+gameclock +300
+hudbuild 28
+retry 1500 1 3 buildarmed 28
+logbuild academy_armed
+# Place beside the landed mother using the map view, not a test-only constructor.
+simclick 180 330
+bldgready 28
+signal cfg_academy
+logbldgs academy_ready
+logavail unlocked
+# Normal Barracks capacity is required before the Academy may produce a Soldier.
+simclick 890 215
+gameclock +300
+hudbuild 36
+retry 1500 1 3 buildarmed 36
+logbuild barracks_armed
+simclick 650 330
+bldgready 36
+signal cfg_barracks
+logbldgs barracks_ready
+simclick 240 365
+selectedtype 28
+# Right-click the real Soldier row to inspect the game's info screen.
+hudinfo 26
+retry 1500 1 3 gamemode 4
+screensettled
+capture cfg_soldier_info
+keywidget 0x01 0x0065153b
+retry 1500 1 3 gamemode 2
+simclick 240 365
+selectedtype 28
+logcfg before_production
+hudprod 26
+prodstart 26
+signal cfg_prod_started
+logcfg production_started
+unitcount 26 1
+signal cfg_prod_finished
+logcfg production_finished
+# Send an ordinary queued movement order to the actual produced unit.
+ordermove 26 3 0
+gameclock +10000
+logcfg production_moved
+signal cfg_prod_moved
+# The Academy completion must unlock the Reactor; place and complete one normally.
+simclick 890 215
+gameclock +300
+hudbuild 27
+retry 1500 1 3 buildarmed 27
+logbuild reactor_armed
+simclick 650 500
+bldgready 27
+signal cfg_reactor
+logbldgs reactor_ready
+# Reuse the real produced Soldier; no fixture or test-only actor construction.
+zoom 100
+camto 20 18
+gameclock +100
+simclick 208 144
+logsel queue_selected
+loggoal queue_before
+simrclick 272 272
+gameclock +100
+simrclick 368 272 shift
+gameclock +100
+logsel queue_admitted
+loggoal queue_admitted
+simrclick 368 208 shift+alt
+gameclock +100
+simrclick 272 208 shift+alt
+gameclock +100
+loggoal queue_patrol
+signal cfg_queue_admitted
+gameclock +5000
+loggoal queue_progressed
+signal cfg_done
+log cfg gameplay complete
+# Both peers close at the same harness step, then drain genuine END/order/clock artifacts.
+simstep 12000
+gzdone 1
+end

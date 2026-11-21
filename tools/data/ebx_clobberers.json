@@ -16,7 +16,7 @@
     "`python tools/gen_reg_clobberers.py`. Applied by mh_set_calling_convention.py. Re-run the",
     "classifier after anything that changes function bodies."
   ],
-  "generated_from": "tmp/reg_preservation.json",
+  "generated_from": "input:reg_preservation.json",
   "counts": {
     "__mh_watcall_ebx_volatile": 246,
     "__mh_watcall_ecx_ebx_volatile": 207

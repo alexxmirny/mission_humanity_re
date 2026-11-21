@@ -23,6 +23,7 @@
 #include "hostapi_selftest_support.h"
 
 #include <cstdio>
+#include <initializer_list>
 #include <cstdlib>
 #include <cstring>
 
@@ -307,6 +308,12 @@ void test_synthetic_round_trips() {
         mh::lzw::decompress(g_dec, g_file, g_dst, &io_size, c.size);
         std::snprintf(what, sizeof what, "SV: %s round-trips to the same %u bytes", c.name, c.size);
         check(what, io_size == c.size && std::memcmp(g_dst, g_plain, c.size) == 0);
+        std::memset(g_dst, 0xcd, c.size);
+        check("SV: strict LZW reproduces the real compressed fixture",
+              mh::lzw::decompress_bounded(g_dec, g_file, len, g_dst, c.size) &&
+                  std::memcmp(g_dst, g_plain, c.size) == 0);
+        check("SV: strict LZW rejects a truncated framed payload",
+              !mh::lzw::decompress_bounded(g_dec, g_file, len - 1, g_dst, c.size));
     }
 }
 
@@ -392,6 +399,39 @@ void test_framing_refusals() {
 // not an error, it is the OTHER codec. The stream below is hand-assembled from the format at
 // 0x004ddc70: one 16-bit flag word (MSB first) = four literals, then a match; a 3-bit length code of
 // 2 meaning four bytes; and an offset byte of 252, i.e. a distance of 256-252 = 4.
+// Hand-framed 9-bit LZW streams: exercise strict code validity and reset semantics.
+void test_strict_lzw_codes() {
+    auto run = [](std::initializer_list<uint32_t> codes, uint32_t expected, const char *want) {
+        uint8_t  buf[64] = {};
+        size_t   pos     = sizeof(mh::lzw::payload_header);
+        uint32_t pending = 0, bits = 0;
+        for (uint32_t code : codes) {
+            pending |= code << bits;
+            bits += 9;
+            while (bits >= 8) {
+                buf[pos++] = uint8_t(pending);
+                pending >>= 8;
+                bits -= 8;
+            }
+        }
+        if (bits) buf[pos++] = uint8_t(pending);
+        mh::lzw::payload_header h{mh::lzw::MAGIC, expected, uint32_t(pos)};
+        std::memcpy(buf, &h, sizeof(h));
+        uint8_t    out[16] = {};
+        const bool ok      = mh::lzw::decompress_bounded(g_dec, buf, pos, out, expected);
+        return ok && (!want || std::memcmp(out, want, expected) == 0);
+    };
+    check("SV: strict LZW accepts KwKwK on a newly defined code", run({65, 258, 257}, 3, "AAA"));
+    check("SV: strict LZW accepts reset between literals", run({65, 256, 66, 257}, 2, "AB"));
+    check("SV: strict LZW rejects nonliteral first code", !run({258, 257}, 1, nullptr));
+    uint8_t                 short_code[sizeof(mh::lzw::payload_header) + 1] = {};
+    mh::lzw::payload_header h{mh::lzw::MAGIC, 1, uint32_t(sizeof(short_code))};
+    std::memcpy(short_code, &h, sizeof(h));
+    uint8_t out[1] = {};
+    check("SV: strict LZW rejects a partial final code despite a consistent length header",
+          !mh::lzw::decompress_bounded(g_dec, short_code, sizeof(short_code), out, sizeof(out)));
+}
+
 void test_lzss_fallback() {
     const unsigned char payload[] = {
         0x00, 0x0a,         // flags 0b0000101000000000: 0,0,0,0 literal; 1 match; 010 length
@@ -410,6 +450,35 @@ void test_lzss_fallback() {
     check("SV: a non-LZW block reports SUCCESS (the -1 is 'not LZW', not an error)", status == 0);
     check("SV: a non-LZW block is decoded by the LZSS path",
           std::memcmp(g_dst, "ABCDABCD", 8) == 0);
+    unsigned char strict[16] = {};
+    check("SV: bounded LZSS decodes the same real block",
+          mh::lzss::decompress_block_bounded(g_file, sizeof h + sizeof payload, strict, sizeof strict) &&
+              std::memcmp(strict, "ABCDABCD", 8) == 0);
+    check("SV: bounded LZSS refuses truncated literal/match stream",
+          !mh::lzss::decompress_block_bounded(g_file, sizeof h + sizeof payload - 1, strict, sizeof strict));
+    check("SV: bounded LZSS refuses an undersized destination",
+          !mh::lzss::decompress_block_bounded(g_file, sizeof h + sizeof payload, strict, 7));
+    // One literal followed by an overlapping four-byte match at distance one.
+    const uint8_t overlap[] = {0x00, 0x50, 'A', 0xff};
+    block_header  overlap_h{sizeof overlap, 5};
+    uint8_t       block[sizeof(overlap_h) + sizeof(overlap)];
+    std::memcpy(block, &overlap_h, sizeof overlap_h);
+    std::memcpy(block + sizeof overlap_h, overlap, sizeof overlap);
+    std::memset(strict, 0, sizeof strict);
+    check("SV: bounded LZSS preserves overlapping backreferences",
+          mh::lzss::decompress_block_bounded(block, sizeof block, strict, sizeof strict) &&
+              std::memcmp(strict, "AAAAA", 5) == 0);
+    overlap_h.uncompressed_size = 2; // retail writes the final run, extending three bytes past the end
+    std::memcpy(block, &overlap_h, sizeof overlap_h);
+    check("SV: bounded LZSS accepts retail final-run overrun within supplied slack",
+          mh::lzss::decompress_block_bounded(block, sizeof block, strict, 10) && strict[0] == 'A' && strict[1] == 'A');
+    const uint8_t before[] = {0x00, 0x80, 0xff}; // first operation references a nonexistent prior byte
+    block_header  before_h{sizeof before, 2};
+    uint8_t       bad[sizeof(before_h) + sizeof(before)];
+    std::memcpy(bad, &before_h, sizeof before_h);
+    std::memcpy(bad + sizeof before_h, before, sizeof before);
+    check("SV: bounded LZSS rejects references before output",
+          !mh::lzss::decompress_block_bounded(bad, sizeof bad, strict, sizeof strict));
 }
 
 // TRUNCATION, which is the sharp end of docs/save-format.md's open question 1. Getting this
@@ -1778,6 +1847,7 @@ int run_savetest(int argc, char **argv) {
     test_synthetic_round_trips();
     test_cap_raised_block();
     test_framing_refusals();
+    test_strict_lzw_codes();
     test_lzss_fallback();
     test_short_read_goes_unreported();
     test_short_vfs_read_is_reported();

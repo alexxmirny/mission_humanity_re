@@ -18,7 +18,7 @@ Planets[31] string slots before begin_map_load and logs how many bytes it found 
 WHAT IT ASSERTS (the d36_rematch_seed row: host lands in match 1 on Blue Monday, a FRESH client
 process joins its match 2 on the shorter-named Cold War):
   1. the host process holds EXACTLY two session directories and the fresh client's process EXACTLY
-     one, each with an `mh_match_seed.bin` (the harness's step-1 dump) of the manifest's size;
+     one, each with an `mh_match_seed.bin` (the harness's step-1 dump) matching actual manifest framing;
   2. the `; D36: match-entry residue ...` line: the host logged two entries, the client one; every
      FIRST-in-process entry measured nonzero=0 for both player_data and Planets[31] (the fix wipes
      only what a fresh process already has as zero), and the host's rematch entry measured
@@ -53,6 +53,7 @@ import os
 import re
 import shutil
 import sys
+import struct
 import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,14 +98,13 @@ COMPARED_RE = re.compile(
 RESOURCE_SPENT = ("p0_ai_econ", 0x18, 0x28)  # record +0x10054..+0x10064 inside the +0x1003c slice
 
 
-def load_regions():
+def load_regions(blob=None, allow_legacy=False):
+    from mp_analyze import seed_region_layout
+
     with open(MANIFEST, encoding="utf-8") as fh:
         regs = json.load(fh)["regions"]
-    out, off = [], 0
-    for r in regs:
-        out.append((r["name"], int(r["addr"], 16), off, r["size"]))
-        off += r["size"]
-    return out, off
+    out = seed_region_layout(blob, regs, allow_legacy=allow_legacy)
+    return out, sum(r[3] for r in out)
 
 
 # Verdict regions whose RAW seed bytes differ between two correct peers because the hash MASKS them
@@ -224,17 +224,16 @@ def net_facts(folder):
     return desyncs, first
 
 
-def read_seed(folder, total):
+def read_seed(folder):
     fp = os.path.join(folder, "mh_match_seed.bin")
     if not os.path.isfile(fp):
         raise Refusal("%s has no mh_match_seed.bin (the harness's step-1 dump)" % folder)
     with open(fp, "rb") as fh:
         blob = fh.read()
-    if len(blob) != total:
-        raise Refusal(
-            "%s: seed is %d B, the manifest sums to %d B -- a different region table"
-            % (fp, len(blob), total)
-        )
+    try:
+        load_regions(blob)
+    except (ValueError, KeyError) as exc:
+        raise Refusal("%s: %s" % (fp, exc)) from exc
     return blob
 
 
@@ -306,7 +305,6 @@ def check(run_dirs, expect="identical", sp_first=False, match1_hash=False):
         raise Refusal(
             "want exactly two peer run directories (host, client), got %d" % len(run_dirs)
         )
-    regions, total = load_regions()
     host_rd, cli_rd = run_dirs
     hs, cs = lane_sessions(host_rd), lane_sessions(cli_rd)
     print("check_d36_rematch_seed: host %d session(s), client %d session(s)" % (len(hs), len(cs)))
@@ -386,7 +384,10 @@ def check(run_dirs, expect="identical", sp_first=False, match1_hash=False):
                     "the clear is untested (vacuous run)" % who
                 )
 
-    hseed, cseed = read_seed(hs[1], total), read_seed(cs[0], total)
+    hseed, cseed = read_seed(hs[1]), read_seed(cs[0])
+    regions, _total = load_regions(hseed)
+    if load_regions(cseed)[0] != regions:
+        raise Refusal("peer seeds have different actual region lengths/shapes")
     if sp_first:
         verdict = hashed_region_names() - MASKED_IN_HASH
         diffs = diff_runs(hseed, cseed, regions, lambda n: n in verdict)
@@ -516,9 +517,69 @@ def _plant(root, lane, sessions, launch_proc="", ses8=False):
 
 
 def selftest():
-    regions, total = load_regions()
+    from mp_analyze import (
+        ORDER_CAMPAIGN_MAGIC,
+        ORDER_CAMPAIGN_SCHEMA,
+        ORDER_TASKS_HEADER_BYTES,
+        ORDER_TASKS_MAGIC,
+        ORDER_TASKS_ROW_BYTES,
+        ORDER_TASKS_SCHEMA,
+        STORAGE_POLICY_HEADER_BYTES,
+        STORAGE_POLICY_MAGIC,
+        STORAGE_POLICY_SCHEMA,
+    )
+
+    regions, _total = load_regions()
     off = {n: o for n, _b, o, _s in regions}
-    clean = bytes(total)
+
+    def seed_blob(roster=0):
+        # Match native initialize({}, {}) (empty) or a reserved 1/1/1 roster
+        # before a world is entered: no map, world identity, actors or routes.
+        # RAW canonical spans, not the SPOL/QORD save envelopes.
+        chunks = []
+        for name, _base, _offset, minimum in regions:
+            chunk = bytearray(minimum)
+            if name == "storage_policy":
+                size = STORAGE_POLICY_HEADER_BYTES + 32 * roster
+                chunk = bytearray(size)
+                struct.pack_into(
+                    "<8I",
+                    chunk,
+                    0,
+                    STORAGE_POLICY_MAGIC,
+                    STORAGE_POLICY_SCHEMA,
+                    roster,
+                    roster,
+                    roster,
+                    0,
+                    0,
+                    size,
+                )
+            elif name == "order_tasks":
+                size = ORDER_TASKS_HEADER_BYTES + ORDER_TASKS_ROW_BYTES * roster
+                chunk = bytearray(size)
+                struct.pack_into(
+                    "<10I",
+                    chunk,
+                    0,
+                    ORDER_TASKS_MAGIC,
+                    ORDER_TASKS_SCHEMA,
+                    roster,
+                    roster,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    size,
+                )
+                struct.pack_into("<I", chunk, 72, roster)  # reserved buildings
+            elif name == "order_campaign":
+                struct.pack_into("<2I", chunk, 0, ORDER_CAMPAIGN_MAGIC, ORDER_CAMPAIGN_SCHEMA)
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    clean = seed_blob()
 
     def poke(blob, region, rel, data):
         b = bytearray(blob)
@@ -701,6 +762,36 @@ def selftest():
     import io
 
     bad = 0
+    if "storage_policy" in off:
+        native_off = off["storage_policy"]
+        full = seed_blob(roster=1)
+        geometry = load_regions(full)[0]
+        ok = next(r for r in geometry if r[0] == "storage_policy") == (
+            "storage_policy",
+            None,
+            native_off,
+            64,
+        )
+        ok = ok and load_regions(clean[:native_off], allow_legacy=True)[1] == native_off
+        bad += not ok
+        print(
+            "  [%s] native seed uses complete64-byte span; explicit legacy remains stock-only"
+            % ("ok" if ok else "BAD")
+        )
+        for title, malformed in (
+            ("native seed truncated", full[:-1]),
+            ("native seed trailing bytes", full + b"x"),
+            (
+                "native seed bad shape",
+                full[: native_off + 28] + struct.pack("<I", 32) + full[native_off + 32 :],
+            ),
+        ):
+            try:
+                load_regions(malformed)
+                bad += 1
+                print("  [BAD] " + title)
+            except ValueError:
+                print("  [ok] " + title)
     for case in cases:
         title, host, cli, expect, want = case[:5]
         proc_launch = case[5] if len(case) > 5 else ""
@@ -729,18 +820,24 @@ def main(argv):
     if "--selftest" in argv:
         return selftest()
     if argv and argv[0] == "--diff":
-        regions, total = load_regions()
         a, b = (open(p, "rb").read() for p in argv[1:3])
+        try:
+            regions, _total = load_regions(a, allow_legacy=True)
+            if load_regions(b, allow_legacy=True)[0] != regions:
+                raise ValueError("peer seeds have different actual region lengths/shapes")
+        except (ValueError, KeyError) as exc:
+            print("[REFUSED] %s" % exc)
+            return 2
         for name, runs in diff_runs(a, b, regions).items():
             base, off = next((r[1], r[2]) for r in regions if r[0] == name)
             print("== %s runs=%d" % (name, len(runs)))
             for s, e in runs[:12]:
                 print(
-                    "   +%#x..+%#x VA %#x  A:%s B:%s"
+                    "   +%#x..+%#x %s  A:%s B:%s"
                     % (
                         s,
                         e,
-                        base + s,
+                        "native" if base is None else "VA %#x" % (base + s),
                         a[off + s : off + e][:20].hex(),
                         b[off + s : off + e][:20].hex(),
                     )

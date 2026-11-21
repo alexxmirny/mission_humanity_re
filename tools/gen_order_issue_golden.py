@@ -14,7 +14,7 @@ WAS EMITTED against what the ORIGINAL emits for the same inputs -- and this tool
 "what the original emits" answer, mechanically, from the original listing (never from the C++ we wrote).
 
 METHOD. A small forward abstract interpreter walks each wrapper's exported disassembly
-(`tmp/decomp_orders_issue/*.asm`) in address order, tracking an abstract VALUE (immediate / parameter /
+(`input:decomp_orders_issue/*.asm`) in address order, tracking an abstract VALUE (immediate / parameter /
 an operator tree over a fixed, EXPLICIT vocabulary / unknown-with-a-reason) per general register
 (EAX/EBX/ECX/EDX, sub-registers folded into their parent) and per EBP-relative stack slot. At every CALL
 to one of the four order-container primitives it snapshots the four argument registers (or the two
@@ -63,8 +63,10 @@ import pathlib
 import re
 import sys
 
+import tool_paths
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
-ASM_DIR = REPO / "tmp" / "decomp_orders_issue"
+ASM_DIR = tool_paths.input_path("decomp_orders_issue", repo=REPO)
 LEDGER = REPO / "tools" / "data" / "orders_issue_migration.json"
 RAW = REPO / "tools" / "data" / "order_matrix_raw.json"
 OUT_JSON = REPO / "tools" / "data" / "order_issue_golden.json"
@@ -166,7 +168,7 @@ def fmt_off(off: int) -> str:
 # ---------------------------------------------------------------------------------------------
 # instruction-line parsing
 #
-# Listing format (see tmp/decomp_orders_issue/*.asm):
+# Listing format (see input:decomp_orders_issue/*.asm):
 #   0x0046dae0 55               PUSH EBP
 #   0x0046db21 e8378dffff       CALL 0x0046685d                          ; llm_strat_order_scratch_set_field
 # Label-only lines ("LAB_0046db50:") carry no information we need -- jump targets are read off the
@@ -690,9 +692,13 @@ def crosscheck_site(name: str, s: dict, raw_site: dict):
         # with raw's "no-or", regardless of which reason our own read carries for it.
         compared += 1
         our_k, our_ks = owner_kind_like(s["owner_and_kind"])
-        if ks == "or-const" and our_ks == "or-const" and our_k == k:
-            agreed += 1
-        elif ks == "no-or" and our_ks != "or-const":
+        if (
+            ks == "or-const"
+            and our_ks == "or-const"
+            and our_k == k
+            or ks == "no-or"
+            and our_ks != "or-const"
+        ):
             agreed += 1
         else:
             disagreed.append(
@@ -788,7 +794,7 @@ def build() -> dict:
 
     return {
         "_generated_by": "tools/gen_order_issue_golden.py",
-        "_do_not_hand_edit": "Edit the generator; inputs are tmp/decomp_orders_issue/*.asm, "
+        "_do_not_hand_edit": "Edit the generator; inputs are input:decomp_orders_issue/*.asm, "
         "tools/data/orders_issue_migration.json and tools/data/order_matrix_raw.json.",
         "_what": (
             "The order-issue GOLDEN: for each of the 112 order-wrapper functions in "
@@ -796,7 +802,7 @@ def build() -> dict:
             "owner_and_kind, param0, order_code) and scratch-field writes each call site into "
             "llm_strat_order_dispatch/llm_strat_order_enqueue/llm_strat_order_scratch_set_field "
             "emits, derived by a small forward abstract interpreter walking the function's ORIGINAL "
-            "disassembly (tmp/decomp_orders_issue/*.asm) -- never from any C++ reimplementation. "
+            "disassembly (input:decomp_orders_issue/*.asm) -- never from any C++ reimplementation. "
             "Values that cannot be pinned to a constant/parameter through the supported instruction "
             "vocabulary are UNKNOWN with a reason rather than guessed; every one is listed in "
             "`unresolved`. `crosscheck` compares param0/order_code/kind against an independent "

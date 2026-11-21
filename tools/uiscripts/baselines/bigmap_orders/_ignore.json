@@ -1,0 +1,8 @@
+{
+  "_why": "rc14 actual ground route review captures. No world mask or automatic baseline acceptance; geometry and recorded normalized movement are inspected independently.",
+  "_unjudged": [
+    "capture_qol_ground_normalized.png",
+    "capture_qol_ground_phase.png",
+    "capture_qol_ground_cleared.png"
+  ]
+}

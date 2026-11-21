@@ -27,7 +27,7 @@ THE LEDGER IS DERIVED, NOT AUTHORED. Everything here comes from:
   docs/symbols.md              -- address, name, committed signature, tags (EN-canonical)
   tools/data/en_functions.json -- the real body extent per function (size); see load_symbols()
   tools/data/call_graph_no_crt.json -- reachability from the AI root, and the call layering
-  tmp/state_matrix.json        -- the measured per-function write set, shared vs island
+  input:state_matrix.json        -- the measured per-function write set, shared vs island
 
 The one thing this file does NOT derive is progress: `state`, `evidence_tier` and `promoted` are
 WRITTEN BY THE LOOP and preserved across regeneration (see `--merge`). Regenerating never silently
@@ -61,13 +61,14 @@ import os
 import re
 import sys
 
+import tool_paths
 from migration_domain import add_domain_arg, load_domain
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYMBOLS = os.path.join(REPO, "docs", "symbols.md")
 CALLGRAPH = os.path.join(REPO, "tools", "data", "call_graph_no_crt.json")
 ADDR_TAKEN = os.path.join(REPO, "tools", "data", "en_addr_taken.json")
-MATRIX = os.path.join(REPO, "tmp", "state_matrix.json")
+MATRIX = tool_paths.input_path("state_matrix.json", repo=REPO)
 # COMMITTED, unlike MATRIX: which regions the oracle hashes / snapshots. The join of the two is what
 # says whether suppressing a target removes a write the comparison was going to read.
 STATE_REGIONS = os.path.join(REPO, "tools", "data", "state_regions.json")
@@ -1346,7 +1347,7 @@ def select_seeded(symbols, callees, name_by_id):
         # refusal then blocks regeneration of the manifest that records the work. It still fires for
         # a domain with nothing to show; it stands down when the manifest already holds terminal
         # rows, which merge_progress keeps and flags `left_query`.
-        from migration_seeds import _domain_is_finished  # noqa: PLC0415
+        from migration_seeds import _domain_is_finished
 
         if not _domain_is_finished(DOM.name):
             raise SystemExit(
@@ -1610,7 +1611,7 @@ def build():
             "docs/symbols.md",
             "tools/data/en_functions.json",
             "tools/data/call_graph_no_crt.json",
-            "tmp/state_matrix.json",
+            "input:state_matrix.json",
         ],
         "_reclassified_out": RECLASSIFIED_OUT,
         "_select_report": select_report,
@@ -1841,10 +1842,10 @@ def check_all():
     stale waiver is the failure this repo keeps writing checks against -- it reads as a known,
     accepted problem long after the problem is gone, and nothing ever deletes it.
     """
-    import contextlib  # noqa: PLC0415
-    import io as _io  # noqa: PLC0415
+    import contextlib
+    import io as _io
 
-    from migration_domain import available  # noqa: PLC0415
+    from migration_domain import available
 
     stale, waived, dead_waivers, unreadable, clean = [], [], [], [], []
     deltas = {}
@@ -1948,7 +1949,7 @@ def main():
 
     for src in (SYMBOLS, CALLGRAPH, MATRIX):
         if not os.path.exists(src):
-            print("missing input: %s" % os.path.relpath(src, REPO), file=sys.stderr)
+            print("missing input: %s" % str(src), file=sys.stderr)
             return 2
 
     # CURRENCY GUARD (finding 2026-08-24-1151-19): refuse rather than shrink. A seeded domain
@@ -1993,7 +1994,7 @@ def main():
     # state/tier vocabulary here to break -- validating would demand the very column the flag exists
     # to remove. Skipped by the same rule the schema check uses, so the two cannot disagree.
     if DOM.records_state:
-        import migration_ledger  # noqa: PLC0415 -- see above: library-vs-generator split
+        import migration_ledger
 
         schema_probs = migration_ledger.validate(doc["functions"])
     else:
@@ -2132,7 +2133,7 @@ def main():
         bw = e.get("blinded_writes")
         if bw is None:
             print(
-                "\nBLINDED WRITES: NOT CHECKED -- tmp/state_matrix.json is absent (it is "
+                "\nBLINDED WRITES: NOT CHECKED -- input:state_matrix.json is absent (it is "
                 "gitignored).\n  Regenerate it to find out whether any `effectful` suppression "
                 "removes a compared write."
             )

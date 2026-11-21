@@ -74,6 +74,9 @@
 //
 #pragma once
 #include <cstdint>
+#include <cstring>
+#include "include/mh_storage_policy.h"
+#include "include/mh_order_tasks_host.h"
 
 #include "addr/mh_regions.gen.h"
 #include "addr/mh_structs.gen.h"
@@ -1786,6 +1789,38 @@ public:
     sim_store(const sim_store &)            = default;
     sim_store &operator=(const sim_store &) = default;
 
+    // Explicit external-policy observer bound to THIS store, never a process-global lookup in
+    // detail bodies. A pure component fixture may have no external policy observer. Live state()
+    // always installs the required synchronous host dispatcher; it has no disabled fallback.
+    int32_t storage_policy_request(const mh_storage_policy_request &request,
+                                   mh_storage_policy_result        &result) {
+        result = {};
+        return storage_policy_observer_ ? storage_policy_observer_(storage_policy_context_, &request, &result) : 0;
+    }
+    mh_storage_policy_result storage_policy(mh::storage_policy::operation operation,
+                                            uint32_t player = 0, uint32_t slot = 0,
+                                            double energy_before = 0.0) {
+        mh_storage_policy_request request{};
+        mh_storage_policy_result  result{};
+        request.operation = static_cast<uint32_t>(operation);
+        request.player    = player;
+        request.slot      = slot;
+        if (operation == mh::storage_policy::operation::paid_repair) {
+            uint64_t bits;
+            std::memcpy(&bits, &energy_before, sizeof bits);
+            request.args[0] = static_cast<uint32_t>(bits);
+            request.args[1] = static_cast<uint32_t>(bits >> 32);
+        }
+        storage_policy_request(request, result);
+        return result;
+    }
+
+    int32_t order_tasks_request(const mh_order_tasks_request &request, mh_order_tasks_result &result) {
+        result = {};
+        return order_tasks_observer_ ? order_tasks_observer_(order_tasks_context_, &request, &result) : 0;
+    }
+    bool has_order_tasks_observer() const { return order_tasks_observer_ != nullptr; }
+
     // ---- the rosters ----
     // One record, by reference. Deliberately NOT a pointer and NOT a row: the caller gets exactly
     // the record it named, so `store.unit_at(p, i)` cannot become `... + 1` or outlive a rebase.
@@ -3348,6 +3383,10 @@ private:
     // construction rather than threaded through a 35-argument constructor; defaults to stock so an
     // offline fixture that never sets it behaves exactly as before.
     mh::state::roster_caps caps_{mh::state::STOCK_ROSTER_CAPS};
+    void                  *order_tasks_context_                                                                = nullptr;
+    int32_t (*order_tasks_observer_)(void *, const mh_order_tasks_request *, mh_order_tasks_result *)          = nullptr;
+    void *storage_policy_context_                                                                              = nullptr;
+    int32_t (*storage_policy_observer_)(void *, const mh_storage_policy_request *, mh_storage_policy_result *) = nullptr;
 
     unit        *units_;
     player_data *players_;

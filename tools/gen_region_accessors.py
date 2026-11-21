@@ -21,7 +21,7 @@ just the rosters and not just the sim-written ones -- and every function in the 
 ours, not just the ones in a migration manifest.
 
 WHERE THE EDGES COME FROM, and this one decides whether the answer is right at all: the STATE MATRIX
-(tmp/state_matrix.json), which is an instruction-level scan that folds indirect edges in via
+(input:state_matrix.json), which is an instruction-level scan that folds indirect edges in via
 the fn-pointer reference materializer. NOT tools/data/call_graph_no_crt.json, which is a DIRECT-call graph and is
 exactly the measurement that missed the 68 fn-ptr-dispatched state handlers (2026-08-19) and then the
 30 building-type callbacks (2026-08-22). Any future contributor tempted to swap the source: don't.
@@ -60,13 +60,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import tool_paths
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 
 import _subsys
 from _reimpl import load_dead, load_reimpl
 
-MATRIX = REPO / "tmp" / "state_matrix.json"
+MATRIX = tool_paths.input_path("state_matrix.json", repo=REPO)
 REGISTRY = REPO / "tools" / "data" / "state_regions.json"
 FUNCTIONS = REPO / "tools" / "data" / "en_functions.json"
 OWNERSHIP = REPO / "tools" / "data" / "region_ownership.json"
@@ -108,7 +110,7 @@ def function_table():
 
 def host_resolver(regions):
     """addr -> the registry region that HOSTS it, or None. Same containment rule as claim_windows."""
-    by_base = {r["base"]: r for r in regions}
+    by_base = {r["base"]: r for r in regions if not r.get("host_native")}
     keys = sorted(by_base)
     reach = [max(by_base[k].get("extent", 0), by_base[k]["size"] or 0) or 1 for k in keys]
 
@@ -124,6 +126,18 @@ def host_resolver(regions):
 def region_key(r):
     """The key region_ownership.json uses. `id` when the registry has one, else the raw base."""
     return r.get("id") or ("0x%08x" % r["base"])
+
+
+def input_fingerprint(key, raw):
+    """Fingerprint source content, retaining the stock-only accessor evidence contract."""
+    raw = raw.replace(b"\r\n", b"\n")
+    if key == "state_regions":
+        doc = json.loads(raw)
+        if any(r.get("host_native") for r in doc["regions"]):
+            # Match the registry writer's exact legacy bytes for its stock projection.
+            doc["regions"] = [r for r in doc["regions"] if not r.get("host_native")]
+            raw = (json.dumps(doc, indent=1) + "\n").encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def fingerprints(ours=None):
@@ -153,7 +167,7 @@ def fingerprints(ours=None):
         # (this one, and the ST3 ownership interlock whose selftest asserts a green tree
         # first), while `lint_repo.py` on the maintainer's box passed 170/170, because the
         # recorded hash and the local file agreed with each other and with nothing else.
-        out[key] = hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:16]
+        out[key] = input_fingerprint(key, path.read_bytes())
     # Derived, not a file: `done` comes from the ledgers plus a source scan, so hash the SET rather
     # than any one input. This is the direction that moves most often -- every verified row changes
     # it -- which is exactly why its drift is classified separately below.
@@ -196,7 +210,7 @@ def dirty_inputs():
     return [ln[3:].strip() for ln in r.stdout.splitlines() if ln.strip()]
 
 
-def currency(doc):
+def currency(doc, now=None):
     """(unsafe, conservative) lists of input names whose fingerprint has moved since --refresh.
 
     THE TWO DIRECTIONS ARE NOT THE SAME RISK, and collapsing them would make this check either
@@ -217,7 +231,8 @@ def currency(doc):
     old = (doc.get("_provenance") or {}).get("inputs")
     if not old:
         return ["(no fingerprint recorded -- census predates the currency guard)"], []
-    now = fingerprints()
+    if now is None:
+        now = fingerprints()
     unsafe = [k for k in ("en_functions", "state_regions") if old.get(k) != now.get(k)]
     conservative = ["reimpl_done"] if old.get("reimpl_done") != now.get("reimpl_done") else []
     return unsafe, conservative
@@ -335,6 +350,8 @@ def refresh(allow_dirty=False):
             "external_bytes": sum(fns.get(f, (None, 0))[1] for f in ext_w + ext_r),
             "subsystems": dict(sorted(subsys.items(), key=lambda kv: -kv[1])),
         }
+        if r.get("host_native"):
+            out[key].update(host_native=True, pointer_free=True, source=r["source"])
 
     measured = sum(1 for v in out.values() if v["measured"])
     doc = {
@@ -343,7 +360,7 @@ def refresh(allow_dirty=False):
         "_schema": SCHEMA,
         "_candidate_set": (
             "Every region in tools/data/state_regions.json, against every function in the binary "
-            "that is not in _reimpl's `done` set. Edges from tmp/state_matrix.json (instruction "
+            "that is not in _reimpl's `done` set. Edges from input:state_matrix.json (instruction "
             "scan, folds fn-ptr edges), NOT from the direct-call graph."
         ),
         "_provenance": {
@@ -389,7 +406,12 @@ def load_ownership():
     return json.loads(OWNERSHIP.read_text(encoding="utf-8-sig"))["regions"]
 
 
-def cross_writes(doc, ownership=None):
+def _writer_source_facts():
+    """One invocation's immutable source inputs; every declaration join stays fresh."""
+    return function_table(), frozenset(a for a, v in load_reimpl(str(REPO)).items() if v == "done")
+
+
+def cross_writes(doc, ownership=None, *, source_facts=None):
     """Per region: the original writers whose SUBSYSTEM differs from the region's declared owner.
 
     THE COLUMN SB2 EXISTS FOR. One owner per region makes "own all the writers" finite; this is the
@@ -413,8 +435,9 @@ def cross_writes(doc, ownership=None):
     """
     if ownership is None:
         ownership = load_ownership()
-    fns = function_table()
-    ours = {a for a, v in load_reimpl(str(REPO)).items() if v == "done"}
+    if source_facts is None:
+        source_facts = _writer_source_facts()
+    fns, ours = source_facts
     out = {}
     for rid, v in doc["regions"].items():
         writers = [
@@ -497,7 +520,7 @@ def host_config_problems(rid, decl):
     return bad
 
 
-def ratchet_holes(doc, ownership=None):
+def ratchet_holes(doc, ownership=None, *, source_facts=None):
     """(region, writer) pairs on a region that DEMANDS per-writer adjudication but lacks it.
 
     THE RATCHET, and without it this whole layer is a snapshot rather than a guarantee. A region
@@ -512,7 +535,7 @@ def ratchet_holes(doc, ownership=None):
     want = {rid for rid, d in ownership.items() if d.get("cross_write_per_writer_required")}
     return [
         (r["region"], r["writer"])
-        for r in writer_rows(doc, ownership)
+        for r in writer_rows(doc, ownership, source_facts=source_facts)
         if r["region"] in want and r["state"] != "writer"
     ]
 
@@ -535,7 +558,7 @@ def live_external_writers(region):
     return [f for f in (region.get("external_writers") or ()) if f not in dead]
 
 
-def writer_rows(doc, ownership=None, subsystem=None):
+def writer_rows(doc, ownership=None, subsystem=None, *, source_facts=None):
     """One row per (region, original cross-writer), with how it is adjudicated.
 
     state is one of:
@@ -543,7 +566,7 @@ def writer_rows(doc, ownership=None, subsystem=None):
       region  -- covered only by the region-level `cross_write_accepted` string
       none    -- unadjudicated at either level
     """
-    xw = cross_writes(doc, ownership)
+    xw = cross_writes(doc, ownership, source_facts=source_facts)
     if ownership is None:
         ownership = load_ownership()
     rows = []
@@ -568,9 +591,9 @@ def writer_rows(doc, ownership=None, subsystem=None):
     return rows
 
 
-def stale_writer_entries(doc, ownership=None):
+def stale_writer_entries(doc, ownership=None, *, source_facts=None):
     """`cross_write_writers` names that are not (any longer) cross-writers of their region."""
-    xw = cross_writes(doc, ownership)
+    xw = cross_writes(doc, ownership, source_facts=source_facts)
     if ownership is None:
         ownership = load_ownership()
     out = []
@@ -720,7 +743,11 @@ def report(limit, show_all, region_id):
             return 1
         print("%s  (%s, 0x%08x, %d B)" % (region_id, v["name"], v["base"], v["size"]))
         if not v["measured"]:
-            print("  UNMEASURED -- the instruction scan never saw this region.")
+            print(
+                "  HOST-NATIVE -- source-declared pointer-free canonical storage; no original address."
+                if v.get("host_native")
+                else "  UNMEASURED -- the instruction scan never saw this region."
+            )
             return 0
         print(
             "  ours:     %d writer(s), %d reader(s)"
@@ -845,14 +872,41 @@ def check():
             )
         )
         return 1
-    unsafe, conservative = currency(doc)
+    for row in registry_regions():
+        acc = doc["regions"][region_key(row)]
+        if row.get("host_native"):
+            if (
+                not acc.get("host_native")
+                or acc.get("measured")
+                or acc.get("pointer_free") is not True
+                or acc.get("source") != row.get("source")
+                or acc.get("base") != 0
+                or acc.get("size") != row["size"]
+                or any(
+                    acc.get(k)
+                    for k in (
+                        "external_writers",
+                        "external_readers",
+                        "external_addr_takers",
+                        "ours_writers",
+                        "ours_readers",
+                    )
+                )
+            ):
+                print("INVALID HOST-NATIVE CENSUS PROVENANCE: %s -- run --refresh" % row["id"])
+                return 1
+        elif acc.get("host_native"):
+            print("STOCK REGION HAS NATIVE CENSUS PROVENANCE: %s" % row["id"])
+            return 1
+    source_facts = _writer_source_facts()
+    unsafe, conservative = currency(doc, fingerprints(source_facts[1]))
     if unsafe:
         print(
             "CENSUS OUT OF DATE (unsafe direction): %s changed since the census was built. A rename, "
             "a newly defined function or a new region can make the accessor lists UNDER-report -- an "
             "accessor nobody counted -- which is what could grant an owned_by_dll claim that should "
             "be refused. Run `python tools/gen_region_accessors.py --refresh` -- which needs "
-            "tmp/state_matrix.json, regenerated in Ghidra with mh_gen_state_matrix.py."
+            "input:state_matrix.json, regenerated in Ghidra with mh_gen_state_matrix.py."
             % ", ".join(unsafe)
         )
         return 1
@@ -869,7 +923,9 @@ def check():
     # against, so it fails HERE rather than in a report nobody runs. Safe to make fatal because
     # cross_writes() recomputes `ours` from the committed ledger -- conservative staleness cannot
     # manufacture a cross-writer, and the unsafe direction already returned above.
-    todo = unadjudicated(cross_writes(doc))
+    ownership = load_ownership()
+    xw = cross_writes(doc, ownership, source_facts=source_facts)
+    todo = unadjudicated(xw)
     if todo:
         names = ", ".join(sorted(todo)[:8])
         more = "" if len(todo) <= 8 else " (and %d more)" % (len(todo) - 8)
@@ -884,8 +940,7 @@ def check():
     # TACT-WRITERS: the per-writer layer's two structural refusals. Both are the unsafe direction --
     # an entry that no longer names a live cross-writer, or an exception that never says which host
     # configuration it holds in, would both leave the ledger printing a green zero over nothing.
-    ownership = load_ownership()
-    stale = stale_writer_entries(doc, ownership)
+    stale = stale_writer_entries(doc, ownership, source_facts=source_facts)
     if stale:
         print(
             "STALE `cross_write_writers` ENTR(IES): %d name(s) are no longer a cross-writer of "
@@ -894,7 +949,7 @@ def check():
             % (len(stale), ", ".join("%s/%s" % t for t in stale[:8]))
         )
         return 1
-    holes = ratchet_holes(doc, ownership)
+    holes = ratchet_holes(doc, ownership, source_facts=source_facts)
     if holes:
         print(
             "PER-WRITER RATCHET HOLE(S): %d cross-writer(s) of a region that declares "
@@ -917,8 +972,9 @@ def check():
             % (len(bad), "\n  ".join(bad))
         )
         return 1
-    xw = cross_writes(doc)
-    per_writer = sum(1 for r in writer_rows(doc, ownership) if r["state"] == "writer")
+    per_writer = sum(
+        1 for r in writer_rows(doc, ownership, source_facts=source_facts) if r["state"] == "writer"
+    )
     print(
         "region accessors: %d regions (%d measured, %d unmeasured) against %d reimplemented "
         "functions; %d cross-written region(s), all adjudicated; %d matrix region(s) outside the "
@@ -944,7 +1000,8 @@ def selftest():
     the logic, and a test that rewrites the data file would leave the tree dirty on failure.
     """
     ok = True
-    now = fingerprints()
+    source_facts = _writer_source_facts()
+    now = fingerprints(source_facts[1])
 
     # THE LINE-ENDING ARM. `fingerprints()` must fingerprint CONTENT, not the checkout. These inputs
     # are `text`/`eol=lf`: git stores LF, a fresh clone and CI have LF on disk, and the Windows
@@ -957,8 +1014,8 @@ def selftest():
         _raw = _path.read_bytes()
         _lf = _raw.replace(b"\r\n", b"\n")
         _crlf = _lf.replace(b"\n", b"\r\n")
-        _h_lf = hashlib.sha256(_lf.replace(b"\r\n", b"\n")).hexdigest()[:16]
-        _h_crlf = hashlib.sha256(_crlf.replace(b"\r\n", b"\n")).hexdigest()[:16]
+        _h_lf = input_fingerprint(_key, _lf)
+        _h_crlf = input_fingerprint(_key, _crlf)
         if _h_lf != _h_crlf or _h_lf != now[_key]:
             print(
                 "SELFTEST FAIL (line endings): %s fingerprints differently under LF (%s) and CRLF "
@@ -969,10 +1026,24 @@ def selftest():
         else:
             print("  ok: %s fingerprints identically under LF and CRLF" % _path.name)
 
+    stock = {"regions": [{"id": "stock", "base": 4096, "size": 4, "extent": 4}]}
+    native = {"regions": [*stock["regions"], {"id": "policy", "host_native": True, "size": 32}]}
+    changed = {"regions": [{**stock["regions"][0], "size": 8}]}
+    encode = lambda doc: (json.dumps(doc, indent=1) + "\n").encode("utf-8")
+    stable = input_fingerprint("state_regions", encode(stock))
+    if (
+        input_fingerprint("state_regions", encode(native)) != stable
+        or input_fingerprint("state_regions", encode(changed)) == stable
+    ):
+        print("SELFTEST FAIL: native append must preserve stock evidence, stock edits must not")
+        ok = False
+    else:
+        print("  ok: native append preserves stock evidence; changed stock does not")
+
     def arm(label, inputs, want_unsafe, want_conservative):
         nonlocal ok
         doc = {"_provenance": ({"inputs": inputs} if inputs is not None else {})}
-        unsafe, cons = currency(doc)
+        unsafe, cons = currency(doc, now)
         got = (bool(unsafe), bool(cons))
         if got != (want_unsafe, want_conservative):
             print(
@@ -1049,7 +1120,7 @@ def selftest():
         print("SELFTEST FAIL: no census on disk")
         return 1
     ownership = load_ownership()
-    xw = cross_writes(doc, ownership)
+    xw = cross_writes(doc, ownership, source_facts=source_facts)
     todo = unadjudicated(xw)
     if todo:
         print(
@@ -1062,7 +1133,7 @@ def selftest():
     victim = next(iter(sorted(xw)))
     stripped = json.loads(json.dumps(ownership))
     del stripped[victim]["cross_write_accepted"]
-    if victim not in unadjudicated(cross_writes(doc, stripped)):
+    if victim not in unadjudicated(cross_writes(doc, stripped, source_facts=source_facts)):
         print("SELFTEST FAIL: dropping %s's accepted-reason did not make it unadjudicated" % victim)
         return 1
     print("ok: dropping one accepted-reason -- %s goes unadjudicated" % victim)
@@ -1087,13 +1158,13 @@ def selftest():
     # with "did not demote it to region-level" -- a broken selftest reported as a real finding.
     # SIM1-H hit exactly that (G_PLANET_STATUS/SwitchToPlanet, 2026-09-10). Skipping owned writers
     # keeps the arm pointed at a live one instead of re-breaking on the next translation batch.
-    owned_now = {r["writer"] for r in writer_rows(doc, ownership) if r["state"] != "region"} | {
-        r["writer"] for r in writer_rows(doc, ownership)
+    live_pairs = {
+        (r["region"], r["writer"]) for r in writer_rows(doc, ownership, source_facts=source_facts)
     }
     prid = pfn = None
     for rid in per:
         for fn in per[rid]:
-            if any(r["region"] == rid and r["writer"] == fn for r in writer_rows(doc, ownership)):
+            if (rid, fn) in live_pairs:
                 prid, pfn = rid, fn
                 break
         if prid:
@@ -1108,7 +1179,7 @@ def selftest():
     del holed[prid]["cross_write_writers"][pfn]
     got = [
         r
-        for r in writer_rows(doc, holed)
+        for r in writer_rows(doc, holed, source_facts=source_facts)
         if r["region"] == prid and r["writer"] == pfn and r["state"] == "region"
     ]
     if not got:
@@ -1124,7 +1195,7 @@ def selftest():
     holed[prid].pop("cross_write_accepted", None)
     got = [
         r
-        for r in writer_rows(doc, holed)
+        for r in writer_rows(doc, holed, source_facts=source_facts)
         if r["region"] == prid and r["writer"] == pfn and r["state"] == "none"
     ]
     if not got:
@@ -1135,14 +1206,14 @@ def selftest():
     print("ok: with both layers removed -- %s/%s is UNADJUDICATED" % (prid, pfn))
 
     if ownership[prid].get("cross_write_per_writer_required"):
-        if (prid, pfn) not in ratchet_holes(doc, holed):
+        if (prid, pfn) not in ratchet_holes(doc, holed, source_facts=source_facts):
             print("SELFTEST FAIL: the ratchet did not report %s/%s as a hole" % (prid, pfn))
             return 1
         print("ok: the ratchet reports %s/%s as a hole when its entry is dropped" % (prid, pfn))
-        if ratchet_holes(doc, ownership):
+        if ratchet_holes(doc, ownership, source_facts=source_facts):
             print(
                 "SELFTEST FAIL (committed tree): %d ratchet hole(s)"
-                % len(ratchet_holes(doc, ownership))
+                % len(ratchet_holes(doc, ownership, source_facts=source_facts))
             )
             return 1
         print("ok: the committed tree has no ratchet hole")
@@ -1152,7 +1223,9 @@ def selftest():
 
     renamed = json.loads(json.dumps(ownership))
     renamed[prid]["cross_write_writers"]["llm_no_such_function_fixture"] = "fixture: not a writer"
-    if (prid, "llm_no_such_function_fixture") not in stale_writer_entries(doc, renamed):
+    if (prid, "llm_no_such_function_fixture") not in stale_writer_entries(
+        doc, renamed, source_facts=source_facts
+    ):
         print("SELFTEST FAIL: a per-writer entry naming a non-writer was not reported stale")
         return 1
     print("ok: a per-writer entry naming a non-writer is STALE, not silently accepted")
@@ -1195,7 +1268,7 @@ def selftest():
     rewired = json.loads(json.dumps(ownership))
     rewired["UNITS"]["owner_subsystem"] = "Sound"
     rewired["UNITS"].pop("cross_write_accepted", None)
-    got = cross_writes(doc, rewired).get("UNITS")
+    got = cross_writes(doc, rewired, source_facts=source_facts).get("UNITS")
     # The expectation is every ORIGINAL writer, i.e. the same not-ours filter cross_writes itself
     # applies -- not the raw external_writers list. A reimplemented writer is not an original one, so
     # once any UNITS writer is promoted to `done` the raw count is unreachable BY CONSTRUCTION and
@@ -1264,7 +1337,7 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--refresh", action="store_true", help="rebuild the census from tmp/state_matrix.json"
+        "--refresh", action="store_true", help="rebuild the census from input:state_matrix.json"
     )
     ap.add_argument(
         "--allow-dirty-inputs",

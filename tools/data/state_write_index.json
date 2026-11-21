@@ -20,8 +20,8 @@
  ],
  "_provenance": {
   "program": "mh.exe",
-  "matrix_cells": 10992,
-  "matrix_writes": 9292,
+  "matrix_cells": 10997,
+  "matrix_writes": 9294,
   "matrix_regions": 3551,
   "write_kinds": [
    "write",
@@ -29,7 +29,7 @@
    "movs"
   ],
   "regions_with_a_writer": 1406,
-  "region_function_pairs": 3623
+  "region_function_pairs": 3625
  },
  "writers": {
   "ANIM": [
@@ -3178,6 +3178,7 @@
    "llm_strat_ai_engage_candidate_add",
    "llm_strat_ai_engage_filter_and_commit_target",
    "llm_strat_ai_engage_partition_turret_candidates",
+   "llm_strat_ai_engage_prune_unseen_candidates",
    "llm_strat_ai_engage_rank_candidates_by_range",
    "llm_strat_ai_engage_select_and_commit",
    "llm_strat_ai_engage_sort_candidates_by_dist"
@@ -3185,6 +3186,7 @@
   "_G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT": [
    "llm_strat_ai_engage_candidate_add",
    "llm_strat_ai_engage_filter_and_commit_target",
+   "llm_strat_ai_engage_prune_unseen_candidates",
    "llm_strat_ai_engage_select_and_commit",
    "llm_strat_ai_group_dispatch_action_flags",
    "llm_strat_ai_unit_select_attack_target",
@@ -4003,8 +4005,8 @@
    "llm_strat_unit_state_squad_merge",
    "llm_strat_unit_teardown",
    "llm_strat_unit_update_soldiers",
-   "llm_unit_transport_unload_docked",
-   "llm_unit_transport_unload_field",
+   "llm_unit_squad_split_docked",
+   "llm_unit_squad_split_field",
    "map_FillDefaults"
   ],
   "_G_LLM_STRAT_SQUAD_FORMATION_ANCHOR_SCRATCH": [
@@ -4374,6 +4376,10 @@
   "_G_LLM_TACT_MINE_BLAST_FRAME_COUNT": [
    "llm_tact_mission_load"
   ],
+  "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP": [
+   "llm_tact_frame",
+   "llm_tact_mission_start"
+  ],
   "_G_LLM_TACT_MINE_BLAST_SOUND_ID": [
    "llm_tact_mission_load"
   ],
@@ -4510,10 +4516,6 @@
   ],
   "_G_LLM_TACT_SCREENSHOT_COUNTER": [
    "llm_tact_save_screenshot"
-  ],
-  "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP": [
-   "llm_tact_frame",
-   "llm_tact_mission_start"
   ],
   "_G_LLM_TACT_SEE_ENEMY_FLAG": [
    "llm_tact_mission_load"
@@ -6440,10 +6442,10 @@
    "llm_unit_force_disembark",
    "llm_unit_recruit",
    "llm_unit_set_order_param",
+   "llm_unit_squad_split_docked",
+   "llm_unit_squad_split_field",
    "llm_unit_status_bit_clear",
    "llm_unit_status_bit_set",
-   "llm_unit_transport_unload_docked",
-   "llm_unit_transport_unload_field",
    "map_unit_Add",
    "map_unit_PutOnMap"
   ],

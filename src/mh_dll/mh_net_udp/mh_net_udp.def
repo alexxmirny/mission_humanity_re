@@ -1,7 +1,7 @@
 ; mh_net_udp.def -- mh_net_udp.dll's EXPORT LIST (tracker mp:T1).
 ;
 ; THE SAME LIST AS mh_net.def, AND THAT IS THE POINT. mh.dll binds ONE net module per run, chosen by
-; `[net] transport` (mh/seams/module_bind.cpp), and it resolves the same 26 contract symbols plus the
+; `[net] transport` (mh/seams/module_bind.cpp), and it resolves the same transport contract plus the
 ; two module-level entries whichever file it opens. A transport that exported a different set would
 ; not be a second implementation of the contract, it would be a second contract.
 ;
@@ -29,11 +29,12 @@ EXPORTS
     MH_Net_InitEx
     MH_Net_Send
     MH_Net_Recv
+    MH_Net_RecvExcept
     MH_Net_PeerCount
     MH_Net_LocalPlayerId
     MH_Net_IdAssigned
     MH_Net_ActivePeerIds
-    MH_Net_TakeDeadPeer
+    MH_Net_DeadPeerMask
     MH_Net_IsStarted
     MH_Net_GetStats
     MH_Net_SetPeerHorizon

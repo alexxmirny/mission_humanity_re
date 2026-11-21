@@ -58,6 +58,13 @@ constexpr DWORD    SAMPLE_PERIOD_MS = 2000;  // one log line per refresh pass pe
 wchar_t g_label[MAX_SLOTS][16]; // one persistent buffer per slot; the widget only keeps the pointer
 DWORD   g_next_sample_tick = 0;
 
+struct LoggedCell {
+    int pid;
+    int relay;
+    int source; // 0 unset,1 unmeasured,2 own measurement,3 published measurement
+};
+LoggedCell g_logged[MAX_SLOTS];
+
 // ---- mp:L1f -- THE HOST'S PUBLISHED TABLE, as a client holds it --------------------------------
 //
 // ONE ALIGNED LONG PER PLAYER ID, and that is the whole of the thread safety. The summary arrives
@@ -190,6 +197,7 @@ void lobby_ping_tick() {
         const int       pid    = *(const int *)(rec + OFF_PLAYERID);
         if (status != STATUS_HUMAN || pid == local_id) {
             set_slot_label(slot, nullptr); // clear stale text: slot changed kind, or it is our own row
+            g_logged[slot].source = 0;
             continue;
         }
         bool measured        = false;
@@ -275,7 +283,10 @@ void lobby_ping_tick() {
             set_slot_label(slot, buf);
             ++painted;
         }
-        if (sample) {
+        const int   source   = !measured ? 1 : (from_host_table ? 3 : 2);
+        const int   path     = measured ? relay : -2;
+        LoggedCell &previous = g_logged[slot];
+        if (sample || previous.source != source || previous.pid != pid || previous.relay != path) {
             // mp:L1f -- `src` is the provenance the CELL deliberately does not show: `self` = this
             // peer measured it on its own connection, `host` = the host published it because this
             // peer physically cannot measure that link (the star topology), `none` = nothing to
@@ -285,6 +296,9 @@ void lobby_ping_tick() {
                       slot, pid, (int)measured, srtt_ms, measured ? relay : -2,
                       !measured ? "none" : (from_host_table ? "host" : "self"));
             ui_log(b);
+            previous.pid    = pid;
+            previous.relay  = path;
+            previous.source = source;
         }
     }
     InterlockedExchange(&g_measured_rows, (LONG)painted);

@@ -67,6 +67,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #include "addr/mh_regions.gen.h"
@@ -158,7 +159,7 @@ inline bool has_mask(int i) {
 inline int first_nonflat_slice() {
     for (int i = 0; i < HASH_REGION_COUNT; ++i) {
         const hash_region &r = HASH_REGIONS[i];
-        if (!owner_serves(r.rid, r.offset, r.len)) continue;
+        if (!owner_serves(r.rid, r.offset, hash_len(i))) continue;
         if (r.rid == RID_STRAT_ORDER_QUEUE || r.rid == RID_STRAT_ORDER_QUEUE_COUNT) continue;
         return i;
     }
@@ -244,14 +245,14 @@ inline uint64_t region_hash_bytes(int i, const uint8_t *p, uint32_t len, const k
 inline uint32_t live_order_queue_bytes() {
     int32_t c;
     memcpy(&c, reinterpret_cast<const void *>(static_cast<uintptr_t>(hash_base(HIDX_ORDER_QUEUE_COUNT))), sizeof(c));
-    return order_queue_live_bytes(c, HASH_REGIONS[HIDX_ORDER_QUEUE].len);
+    return order_queue_live_bytes(c, hash_len(HIDX_ORDER_QUEUE));
 }
 
 // From scratch, over LIVE memory at hash_base(i) -- independent of any shadow, which is the point of
 // the periodic self-check: a stale shadow disagrees here.
 inline uint64_t recompute_live(int i, const knobs &k) {
     const uint8_t *p = reinterpret_cast<const uint8_t *>(static_cast<uintptr_t>(hash_base(i)));
-    return region_hash_bytes(i, p, HASH_REGIONS[i].len, k, i == HIDX_ORDER_QUEUE ? live_order_queue_bytes() : 0);
+    return region_hash_bytes(i, p, hash_len(i), k, i == HIDX_ORDER_QUEUE ? live_order_queue_bytes() : 0);
 }
 
 // The state-only fold: FNV-1a-64 over the 8 bytes of each NON-excluded region hash in manifest order.
@@ -300,19 +301,25 @@ struct update_stats {
 };
 
 // ---- the tracker -------------------------------------------------------------------------------
-// Allocation-free: the caller hands attach() one arena of arena_bytes() (VirtualAlloc in mh.dll, a
-// heap block in the selftests), so this header carries no allocator and no Windows dependency.
+// Allocation-free: finalize all runtime extents BEFORE arena_bytes()/attach(), then keep them fixed
+// for the arena's lifetime. Base-only rebinding is allowed; extent changes are fatal, not resized.
+// The caller owns an arena of arena_bytes() (VirtualAlloc in mh.dll, heap in the selftests).
 class tracker {
 public:
     static constexpr int N = HASH_REGION_COUNT;
 
     static size_t arena_bytes() {
         size_t t = 0;
-        for (int i = 0; i < N; ++i) t += slot_bytes(HASH_REGIONS[i].len);
+        for (int i = 0; i < N; ++i) t += slot_bytes(hash_len(i));
         return t;
     }
 
     void set_journal(journal *j) { j_ = j; }
+
+    void require_extents() const {
+        for (int i = 0; i < N; ++i)
+            if (r_[i].len != hash_len(i)) std::abort();
+    }
 
     void attach(void *arena, const knobs &k) {
         k_         = k;
@@ -320,7 +327,7 @@ public:
         uint8_t *m = static_cast<uint8_t *>(arena);
         for (int i = 0; i < N; ++i) {
             region_slot &s = r_[i];
-            s.len          = HASH_REGIONS[i].len;
+            s.len          = hash_len(i);
             s.nblocks      = (s.len + BLOCK - 1) / BLOCK;
             s.bh           = reinterpret_cast<uint64_t *>(m);
             s.shadow       = m + (size_t)s.nblocks * 8u;
@@ -335,6 +342,7 @@ public:
 
     // Copy every live slice into the shadow and hash it from scratch.
     void prime() {
+        require_extents(); // before copying any slice or touching a cached shadow extent
         for (int i = 0; i < N; ++i) {
             region_slot &s = r_[i];
             s.base         = hash_base(i);
@@ -352,6 +360,7 @@ public:
     // hand the changed byte runs to `sink` (gap 0 = exact runs). Primes on first use.
     template <class Sink>
     void update(Sink &sink, uint32_t gap = RUN_GAP) {
+        require_extents(); // base changes are supported; extent changes invalidate this arena
         memset(&last, 0, sizeof(last));
         if (!primed_) {
             prime();
@@ -406,6 +415,7 @@ public:
     // (2026-09-27, 2-peer determinism run): `ls_horizon` moved between update() and this recompute,
     // which run back to back in one function on the sim thread -- so another thread wrote it.
     int verify(int *first_bad = nullptr, int *bad_excluded = nullptr) const {
+        require_extents();
         int bad = 0, first = -1, bad_ex = 0;
         for (int i = 0; i < N; ++i) {
             if (recompute_live(i, k_) == r_[i].sum) continue;

@@ -10,6 +10,12 @@
 #include "../../libmh/include/libmh_tact_host_api.gen.h"
 #include "addr/mh_calls.gen.h"
 #include "include/mh_hostapi_bind.h"
+#include <cstdlib>
+#include "seams/storage_policy.h"
+#include "seams/storage_policy_save.h"
+#include "seams/order_tasks_hosted.h"
+#include "seams/participant_boundary_hosted.h"
+#include "caps/save_host.h"
 
 namespace {
 void f_apply_frame_input() { mh::call::llm_strat_input_update(); }
@@ -49,6 +55,7 @@ void f_utils_abort(int32_t a0) { mh::call::utils_abort(a0); }
 namespace mh::hostapi {
 
 const libmh_host_api &mhdll_table() {
+    if (!mh::participant_boundary::hosted::initialize()) std::abort();
     static const libmh_host_api t = {
         f_apply_frame_input,
         mh::hostapi::io::asset_read,
@@ -65,6 +72,8 @@ const libmh_host_api &mhdll_table() {
         f_map_save_regions,
         f_planet_tlo_load,
         f_save_player_data,
+        mh::participant_boundary::hosted::participant_body_boundary,
+        mh::participant_boundary::hosted::participant_removal_admit,
         f_transport_recv,
         f_transport_send,
         f_ansi_to_wide,
@@ -74,6 +83,19 @@ const libmh_host_api &mhdll_table() {
         f_ticks_ms,
         f_fatal,
         f_media_diag_block,
+        mh::caps::savehost::load_extensions,
+        mh::caps::savehost::prepare,
+        mh::caps::savehost::restore,
+        mh::storage_policy::save::host_begin_load,
+        mh::storage_policy::save::host_finish_container,
+        mh::storage_policy::save::host_load_container,
+        mh::storage_policy::save::host_load_planet,
+        mh::storage_policy::save::host_normalize_version,
+        mh::storage_policy::hosted::invoke,
+        mh::storage_policy::save::host_preflight_container,
+        mh::storage_policy::save::host_preflight_planet,
+        mh::storage_policy::save::host_write_planet,
+        mh::order_tasks::hosted::invoke,
     };
     return t;
 }

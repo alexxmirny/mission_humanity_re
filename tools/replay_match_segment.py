@@ -44,14 +44,14 @@ gated on `occ`: a recorded AI is the real thing, a recorded human is a placehold
 oracle always had at slot 1). A computer's race is set with `pokerace`; colour has no lobby hook and
 the seed carries it. WHY: the AI's private (unhashed) state is built at session start from the LOBBY
 roster; one AI at slot 1 left a 3-human + AI-at-3 recording with player 3 not an established AI and a
-divergence at match step 2. A seed that cannot be parsed falls back to the old one-computer walk. The harness then runs the replay
+divergence at match step 2. A present malformed seed is refused; a missing seed retains the legacy walk.
+The harness then runs the replay
 contract (the LIB-REF one, tools/fixture_replay.py REPLAY_FLAGS, plus the seed inject):
 
     seed_step=1 seed_mode=1      the match's step-1 state over every hash region, pre-body
     order_mode=2                 the recorded queue drives dispatch
-    replay_dispatch_inject=1     (mp:D37b) the queue is set to the recorded snapshot at dispatch
-                                 ENTRY (the recorder's point); at the top of the step (the hash
-                                 point) to that snapshot less its AI-tick tail
+    replay_dispatch_inject=1     exact MHOR v2 HASH before hash; exact ENTRY after AI
+                                 and before the conditional count gate, including empty
     replay_suppress_enqueue=0    every enqueue runs for real (the suppression lost same-pass orders)
     replay_drop_net_issue=1      (mp:D37b) llm_strat_order_dispatch drops network-controlled
                                  players' orders: the recording holds their lockstep copies
@@ -85,7 +85,7 @@ Usage:
     python tools/replay_match_segment.py <match_or_process_dir> [--config auto|1|2] [--steps N]
     python tools/replay_match_segment.py <dir> --compare <replay_run_dir>    # no run, compare only
     python tools/replay_match_segment.py <client dir> --seat 1 --against <host dir>   # D37b oracle
-        [--net-extra "pioneer_refill_fix=0"] [--map-file X.mpm] [--legacy-suppress] [--extra k=v]
+        [--net-extra "pioneer_refill_fix=0"] [--map-file X.mpm] [--extra k=v]
     python tools/replay_match_segment.py <session dir> --shipped --segment N [--save NAME|PATH]
         [--carrier-save NAME|PATH]                                               # rc9.4 segment N
     python tools/replay_match_segment.py --selftest                          # offline, no rig
@@ -107,6 +107,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
 import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1)
+import mh_order_stream as order_stream
 
 SEG = {
     "orders": "mh_match_orders.bin",
@@ -131,18 +132,12 @@ SHIP = {
     "segments": "mh_rec_segments.txt",
 }
 LANE_NAME = {"orders": "mh_orders.bin", "clock": "mh_clock.bin", "seed": "mh_harness_seed.bin"}
-ORDERS_MAGIC_LEN = 8  # MHOR v1 header: u32 magic, u32 version
-ORDER_REC = 72  # u32 step + the 68-byte llm_strat_order
 
 REPLAY_FLAGS = {
     "seed_step": 1,
     "seed_mode": 1,
     "order_mode": 2,
-    # mp:D37b: NOT the LIB-REF suppression. Every enqueue runs for real, and the queue is set to the
-    # recorded snapshot at dispatch ENTRY (the recorder's own point). The suppression lost every order
-    # a handler appends during the dispatch pass -- it never reaches an entry snapshot -- which left
-    # the rc4 field recordings at match step 5857 (Nortus) / 6357 (Last Question). --legacy-suppress
-    # restores the old pair for comparison.
+    # MHOR v2 replaces both input phases; every real enqueue runs.
     "replay_suppress_enqueue": 0,
     "replay_dispatch_inject": 1,
     # mp:D37b: a lockstep recording STAGED every order issued for a network-controlled player; the
@@ -254,29 +249,26 @@ def fnv1a64_file(path):
 
 
 def cut_streams(orders_src, clock_src, start, outdir):
-    """Cut the order + clock streams at session step `start` into `outdir` (SEG names), renumbering the
-    order records so recorded step `start` is replay step 1. -> (orders, clock, kept records)."""
-    import struct
-
+    """Cut complete phase pairs and the clock on the existing session step axis."""
+    with open(clock_src, "rb") as fh:
+        clock_raw = fh.read()
+    if len(clock_raw) % 8:
+        raise Refusal("truncated clock track")
+    with open(orders_src, "rb") as fh:
+        raw = fh.read()
+    try:
+        order_stream.decode(raw, first_step=1, steps=len(clock_raw) // 8)
+        cut = order_stream.cut(raw, start)
+    except order_stream.Error as e:
+        raise Refusal(str(e)) from e
     os.makedirs(outdir, exist_ok=True)
-    off = start - 1
     clock = os.path.join(outdir, SEG["clock"])
-    with open(clock_src, "rb") as fi, open(clock, "wb") as fo:
-        fi.seek(off * 8)
-        shutil.copyfileobj(fi, fo, 1 << 20)
+    with open(clock, "wb") as fh:
+        fh.write(clock_raw[(start - 1) * 8 :])
     orders = os.path.join(outdir, SEG["orders"])
-    kept = 0
-    with open(orders_src, "rb") as fi, open(orders, "wb") as fo:
-        fo.write(fi.read(ORDERS_MAGIC_LEN))
-        while True:
-            chunk = fi.read(ORDER_REC * 4096)
-            if not chunk:
-                break
-            for i in range(0, len(chunk), ORDER_REC):
-                (stp,) = struct.unpack_from("<I", chunk, i)
-                if stp >= start:
-                    fo.write(struct.pack("<I", stp - off) + chunk[i + 4 : i + ORDER_REC])
-                    kept += 1
+    with open(orders, "wb") as fh:
+        fh.write(cut)
+    kept = sum(len(s.records) for s in order_stream.decode(cut) if s.phase == order_stream.ENTRY)
     return orders, clock, kept
 
 
@@ -428,19 +420,24 @@ def _block_names():
     return [(a, int(b), c) for a, b, c in re.findall(r'\{(RID_\w+), (\d+)u, "([^"]*)"\}', t)]
 
 
-def clean_scene_fixups(blob, flags=None, blocks=None):
-    """TL-REPORT-REPLAY-FIDELITY. -> (blob', dropped, kept). Drop every fixup entry that sits in a block of a
-    SAVE- or HASH-owned region.
+def _pointer_free_fixup_regions():
+    """Read the authoritative scalar-array policy shared by capture and import."""
+    path = os.path.join(REPO, "src", "mh_dll", "libmh", "state", "world_fixup.h")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    start = text.index("POINTER_FREE_REGIONS[] = {")
+    end = text.index("\n};", start)
+    return frozenset(re.findall(r"mh::state::(RID_\w+)", text[start:end]))
 
-    The capture classified every dword >= 0x10000 that lands in a mapped range of the RECORDING process as
-    a process-local pointer (PRESERVE: the importer keeps its OWN dword there). In a savegame-carried
-    region that is data, never a pointer (passable planes, path-step buffers, fog, the cfg tables' double
-    high words...), so PRESERVE kept the CARRIER's bytes where the dump held the recording's: 71 `passable`
-    tiles (unit occupancy marks) differed on a different carrier, the walker saw a free/blocked tile the
-    field never saw, and the replay diverged by step 256. Dropping those entries makes the import take the
-    dump's bytes verbatim, so the carrier no longer matters. The trailer is plain data (count, FNV checksum,
-    header length), so an OLD report is repaired without its own binaries having to change. A blob this does
-    not recognise (no trailer, different block table) is returned untouched."""
+
+def clean_scene_fixups(blob, flags=None, blocks=None):
+    """Return (blob, dropped, kept), removing false scalar-address fixups.
+
+    Remove all fixups targeting complete pointer-free scalar record arrays.
+    Elsewhere retain genuine REGION and own-module REBASE entries, removing
+    ambiguous PRESERVE/foreign-image coincidences in SAVE/HASH data.
+    Unknown schemas remain untouched; recognized malformed policy framing is refused.
+    """
     import struct
 
     HDR = 96
@@ -455,25 +452,49 @@ def clean_scene_fixups(blob, flags=None, blocks=None):
         return blob, 0, 0
     flags = flags if flags is not None else _region_flags_by_name()
     blocks = blocks if blocks is not None else _block_names()
-    # the blob's own block walk must agree with the table we read the flags from, or we do not guess
+    # Generated lengths are minima for native-owned policy; read its actual framed extent.
+    import mp_analyze
+
     o, i = HDR, 0
     while o < nav_off and i < len(blocks):
+        if o + 8 > nav_off:
+            raise Refusal("scene has a truncated world-block header")
         _rid, ln = struct.unpack_from("<II", blob, o)
-        if ln != blocks[i][1]:
+        rid_name, minimum, name = blocks[i]
+        end = o + 8 + ln
+        if end > nav_off:
+            raise Refusal("scene world block %s exceeds its payload" % name)
+        if rid_name in ("RID_STORAGE_POLICY", "RID_ORDER_TASKS", "RID_ORDER_CAMPAIGN"):
+            try:
+                mp_analyze.seed_region_layout(
+                    blob[o + 8 : end],
+                    entries=[{"name": name, "region": rid_name[4:], "offset": 0, "size": minimum}],
+                )
+            except ValueError as exc:
+                raise Refusal("scene %s framing: %s" % (name, exc)) from exc
+        elif ln != minimum:
             return blob, 0, 0
-        o += 8 + ln
+        o = end
         i += 1
     if o != nav_off or i != len(blocks):
         return blob, 0, 0
     drop = [bool(flags.get(blocks[k][2], set()) & {_MF_SAVE, _MF_HASH}) for k in range(len(blocks))]
+    pointer_free_regions = _pointer_free_fixup_regions()
+    pointer_free = [rid in pointer_free_regions for rid, _minimum, _name in blocks]
     mods = blob[t + 32 : t + 32 + nmod * 40]
     ents = blob[t + 32 + nmod * 40 : t + fix_len]
     keep = bytearray()
     dropped = 0
     for k in range(nent):
         e = ents[k * 16 : (k + 1) * 16]
-        b = struct.unpack_from("<H", e, 0)[0]
-        if b < len(drop) and drop[b]:
+        b, kind, module = struct.unpack_from("<HBB", e)
+        ours = False
+        if kind == 2:
+            if module >= nmod:
+                raise Refusal("scene fixup references an absent module")
+            ours = bool(struct.unpack_from("<I", mods, module * 40 + 36)[0] & 1)
+        ambiguous = kind == 3 or (kind == 2 and not ours)
+        if b < len(drop) and (pointer_free[b] or (drop[b] and ambiguous)):
             dropped += 1
         else:
             keep += e
@@ -485,6 +506,7 @@ def clean_scene_fixups(blob, flags=None, blocks=None):
     struct.pack_into("<II", hdr, 8, kept, h)  # entry_count, checksum
     new_fix = 32 + nmod * 40 + kept * 16
     out = bytearray(blob[:t]) + hdr + mods + keep
+    out += blob[t + fix_len :]  # Preserve the raised-capacity MHOV trailer byte-for-byte.
     struct.pack_into("<I", out, 92, new_fix)
     return bytes(out), dropped, kept
 
@@ -945,11 +967,17 @@ def diff_snaps(a_path, b_path):
 
 
 def clock_steps(path):
-    return os.path.getsize(path) // 8
+    size = os.path.getsize(path)
+    if size % 8:
+        raise Refusal("truncated clock track")
+    return size // 8
 
 
 def order_records(path):
-    return max(0, (os.path.getsize(path) - ORDERS_MAGIC_LEN) // ORDER_REC)
+    try:
+        return sum(len(s.records) for s in order_stream.load(path) if s.phase == order_stream.ENTRY)
+    except order_stream.Error as e:
+        raise Refusal(str(e)) from e
 
 
 # ---- comparing ----------------------------------------------------------------------------------
@@ -1083,24 +1111,27 @@ FLAG_NET, FLAG_COMPUTER = 0x04, 0x0B
 
 
 def seed_players(seed_path):
-    """[dict(slot, flags, race, color, name)] for every Players[] entry of a seed blob, or None when the
-    blob is not a seed of THIS manifest (size mismatch) -- the caller falls back to the legacy walk."""
+    """Players[] decoded using actual seed framing, including the native canonical tail.
+
+    Missing files retain the legacy caller behavior. A present malformed seed is a refusal,
+    never an implicit one-computer roster. Old native-free seeds retain their stock geometry.
+    """
+    from mp_analyze import seed_region_layout
+
     try:
-        with open(
-            os.path.join(REPO, "tools", "data", "hash_manifest.json"), encoding="utf-8"
-        ) as fh:
-            regions = json.load(fh)["regions"]
-        off = total = 0
-        for r in regions:
-            if r["name"] == "players":
-                off = total
-            total += r["size"]
         with open(seed_path, "rb") as fh:
             blob = fh.read()
-    except (OSError, ValueError, KeyError):
+    except FileNotFoundError:
         return None
-    if len(blob) != total:
-        return None
+    except OSError as exc:
+        raise Refusal("%s: cannot read recorded roster: %s" % (seed_path, exc)) from exc
+    try:
+        regions = seed_region_layout(blob, allow_legacy=True)
+        _name, _addr, off, size = next(r for r in regions if r[0] == "players")
+        if size != 8 * PLAYER_DESC:
+            raise ValueError("players descriptor is not eight native player records")
+    except (ValueError, KeyError, StopIteration) as exc:
+        raise Refusal("%s: cannot decode recorded roster: %s" % (seed_path, exc)) from exc
     out = []
     for i in range(8):
         rec = blob[off + i * PLAYER_DESC : off + (i + 1) * PLAYER_DESC]
@@ -1246,13 +1277,9 @@ def _unlink_dir_link(p):
         os.rmdir(p)  # a junction is removed as an (empty-looking) directory, never recursively
 
 
-def replay_flags(rec, steps, seat=-1, legacy_suppress=False, extra=None, session_mode=-1):
+def replay_flags(rec, steps, seat=-1, extra=None, session_mode=-1):
     """The harness knobs of one replay run (REPLAY_FLAGS + the per-recording ones)."""
     flags = dict(REPLAY_FLAGS)
-    if legacy_suppress:
-        flags["replay_suppress_enqueue"] = 1
-        flags["replay_dispatch_inject"] = 0
-        flags["replay_drop_net_issue"] = 0
     if session_mode is not None and session_mode >= 0:
         flags["replay_session_mode"] = session_mode
     flags["pin_fpu"] = rec.get("arm", {}).get("pin_fpu", "1")
@@ -1269,6 +1296,9 @@ def replay_flags(rec, steps, seat=-1, legacy_suppress=False, extra=None, session
     for kv in extra or ():
         k, _, v = kv.partition("=")
         flags[k.strip()] = v.strip()
+    refusal = order_stream.flag_refusal(flags)
+    if refusal:
+        raise Refusal(refusal)
     return flags
 
 
@@ -1288,16 +1318,21 @@ INI_KEY_RE = re.compile(
 INI_KEYS_DEF = os.path.join(REPO, "src", "mh_dll", "mh", "config", "ini_keys.def")
 
 
-def gameplay_rows(def_path=None):
-    """TL-REPORT-REPLAY-FIDELITY: [(key, default_text, hostsync)] of every [net] bool/int/float registry row that
-    steers the sim: the F_HOSTSYNC rows (the host's value wins) plus the F_LOCAL rows of the gameplay settings
-    tab (S_GAMEPLAY, e.g. project_gate_fix). Parsed from ini_keys.def -- the registry itself, not a copy of its
-    key list -- so a row added there reaches the replay with no edit here."""
+def gameplay_rows(def_path=None, section="net"):
+    """[(key, default_text, hostsync)] of numeric gameplay rows in one INI section.
+
+    None selects all sections for recognizing recorded summary keys. Preserve the
+    section when emitting settings: caps.raise changes executable path-ID writers.
+    """
     out = []
     with open(def_path or INI_KEYS_DEF, encoding="utf-8") as fh:
         for line in fh:
             m = INI_KEY_RE.search(line)
-            if not m or m.group(1) != "net" or m.group(3) not in ("T_BOOL", "T_INT", "T_FLOAT"):
+            if (
+                not m
+                or (section is not None and m.group(1) != section)
+                or m.group(3) not in ("T_BOOL", "T_INT", "T_FLOAT")
+            ):
                 continue
             host = "F_HOSTSYNC" in m.group(7)
             if host or m.group(6) == "S_GAMEPLAY":
@@ -1357,12 +1392,87 @@ def parse_ini_text(text):
     return out
 
 
+def scene_video_resolution(blob, blocks=None):
+    """The exact captured presentation dimensions, never world/map dimensions."""
+    if len(blob) < 96 or blob[:8] != b"MHWRLD\x00\x01":
+        return None
+    import mp_analyze
+    import struct
+
+    nav_off = struct.unpack_from("<I", blob, 84)[0]
+    if not 96 <= nav_off <= len(blob):
+        raise Refusal("scene video geometry has invalid world payload framing")
+    offset = 96
+    dimensions = {}
+    for rid, minimum, name in blocks if blocks is not None else _block_names():
+        if offset + 8 > nav_off:
+            raise Refusal("scene video geometry has a truncated world-block header")
+        _numeric_rid, length = struct.unpack_from("<II", blob, offset)
+        start, end = offset + 8, offset + 8 + length
+        if end > nav_off:
+            raise Refusal("scene video geometry block %s exceeds its payload" % name)
+        if rid in ("RID_STORAGE_POLICY", "RID_ORDER_TASKS", "RID_ORDER_CAMPAIGN"):
+            try:
+                mp_analyze.seed_region_layout(
+                    blob[start:end],
+                    entries=[{"name": name, "region": rid[4:], "offset": 0, "size": minimum}],
+                )
+            except ValueError as exc:
+                raise Refusal("scene video geometry %s framing: %s" % (name, exc)) from exc
+        elif length != minimum:
+            raise Refusal("scene video geometry block %s has an unexpected size" % name)
+        if rid in ("RID_WINDOWWIDTH", "RID_WINDOWHEIGHT"):
+            if length != 4:
+                raise Refusal("scene presentation dimension is not a four-byte scalar")
+            dimensions[rid] = struct.unpack_from("<I", blob, start)[0]
+        offset = end
+    if offset != nav_off:
+        raise Refusal("scene video geometry world blocks do not consume the payload")
+    if not dimensions:
+        return None
+    if len(dimensions) != 2:
+        raise Refusal("scene has only one presentation dimension")
+    width, height = dimensions["RID_WINDOWWIDTH"], dimensions["RID_WINDOWHEIGHT"]
+    resolution = "%dx%d" % (width, height)
+    if not re.fullmatch(r"\d{3,5}x\d{3,5}", resolution):
+        raise Refusal("scene has invalid presentation dimensions: " + resolution)
+    return resolution
+
+
+def process_video_resolution(session_dir):
+    """The unique observed gameplay frame size in this recording's process log."""
+    process_dir = session_dir
+    sj = _session_json(session_dir)
+    leaf = (sj or {}).get("process_dir")
+    if leaf:
+        process_dir = os.path.join(os.path.dirname(os.path.abspath(session_dir)), leaf)
+    path = os.path.join(process_dir, "mh_video.log")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        return None
+    sizes = set(
+        re.findall(
+            r"; \[ui\] view epoch [^\r\n]*?\bframe (\d{3,5}x\d{3,5}),[^\r\n]*?\bgame mode 2\b",
+            text,
+        )
+    )
+    if len(sizes) > 1:
+        raise Refusal(
+            "recording process has multiple observed gameplay frame sizes (%s) in %s; "
+            "cannot assign one geometry to this scene from the process log"
+            % (", ".join(sorted(sizes)), path)
+        )
+    return next(iter(sizes)) if sizes else None
+
+
 def carrier_of(session_dir):
     """TL-REPORT-REPLAY-FIDELITY: what a report carries about the machine's config, for an OLD recording whose
-    session.json `gameplay` is truncated or absent: {"net": {key: value} from config/mh_net.ini [net],
-    "video": resolution or None, "log": [(key, value)] from the mh_net.log `; gameplay:` lines (a line cut
-    short by the old 400-char buffer loses its last pair -- detected by the "[N key(s)" count)}."""
-    res = {"net": {}, "video": None, "log": []}
+    session.json `gameplay` is truncated or absent. Includes net/caps INI values, video fallback,
+    gameplay-log pairs and explicit boot receipts for local restart-only gameplay fixes.
+    A line cut short by the old 400-char buffer loses its last pair."""
+    res = {"net": {}, "caps": {}, "boot": {}, "video": None, "log": []}
     root = report_root(session_dir)
     if root:
         try:
@@ -1371,6 +1481,7 @@ def carrier_of(session_dir):
             ) as fh:
                 ini = parse_ini_text(fh.read())
             res["net"] = dict(ini.get("net", {}))
+            res["caps"] = dict(ini.get("caps", {}))
             res["video"] = (ini.get("video") or {}).get("resolution")
         except OSError:
             pass
@@ -1392,28 +1503,52 @@ def carrier_of(session_dir):
                 if len(pr) >= len(best):
                     best = pr
         res["log"] = best
+    session = _session_json(session_dir) or {}
+    process = session.get("process_dir")
+    boot_log = (
+        os.path.join(os.path.dirname(os.path.abspath(session_dir)), process, "mh_net.log")
+        if process
+        else lg
+    )
+    if os.path.isfile(boot_log):
+        with open(boot_log, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                match = re.search(
+                    r"progress recheck splice: installed, (ON|OFF) \(\[net\] project_gate_fix=([01])\b",
+                    line,
+                )
+                if match and (match.group(1) == "ON") == (match.group(2) == "1"):
+                    res["boot"]["project_gate_fix"] = match.group(2)
     return res
 
 
-def gameplay_net_extra(sj, user_extra="", keys=None, carrier=None, rows=None):
-    """The lane `--net-extra` that replays the recording with the gameplay settings it ran with.
+def recorded_lobby_speed(sj):
+    value = (sj or {}).get("lobby_speed_pct", 0)
+    if type(value) is not int or value not in (0, 100, 125, 150, 175, 200):
+        raise Refusal("invalid recorded lobby_speed_pct")
+    return value
 
-    PRECEDENCE (one pair per key, emitted once): the caller's own --net-extra (user wins, always) >
-    session.json `gameplay` ("key=value;..." ints %d floats %.17g) > the report's mh_net.log `; gameplay:`
-    line > the report's config/mh_net.ini [net] > the registry default. A gameplay-tab key that is not
-    host-synced (project_gate_fix) can only come from the ini. `keys` = [(key, default)] of the host-synced
-    rows (default: ini_keys.def); `rows` = gameplay_rows() shape. Returns (net_extra, warning, source).
+
+def gameplay_net_extra(sj, user_extra="", keys=None, carrier=None, rows=None, section="net"):
+    """Recorded numeric gameplay pairs for the requested INI section.
+
+    PRECEDENCE: explicit caller pairs > session summary > gameplay log >
+    explicit boot receipt > captured INI > registry default. Non-host-synced
+    rows without captured evidence are not invented. The caller emits caps pairs
+    into [caps], never --net-extra. Explicit extra-INI fragments still win.
+    Returns (extra, warning, source).
     Keys the registry no longer knows are dropped with a note."""
     if keys is None:
-        rows = gameplay_rows() if rows is None else rows
+        rows = gameplay_rows(section=section) if rows is None else rows
         keys = [(k, d) for k, d, h in rows if h]
     elif rows is None:
         rows = [(k, d, True) for k, d in keys]
     known = {k for k, _, _ in rows}
+    known_summary = {k for k, _, _ in gameplay_rows(section=None)}
     local_rows = [(k, d) for k, d, h in rows if not h]
     taken = {k for k, _ in _pairs(user_extra)}
     carrier = carrier or {}
-    cnet = {k.lower(): v for k, v in (carrier.get("net") or {}).items()}
+    cnet = {k.lower(): v for k, v in (carrier.get(section) or {}).items()}
     notes = []
     vals, origin = {}, {}
     raw = (sj or {}).get("gameplay")
@@ -1427,11 +1562,15 @@ def gameplay_net_extra(sj, user_extra="", keys=None, carrier=None, rows=None):
     for k, v in rec_pairs:
         if k in known:
             vals[k], origin[k] = v, "recording"
-        else:
+        elif k not in known_summary:
             notes.append("recorded key %r is not a gameplay row any more -- dropped" % k)
     for k, v in carrier.get("log") or ():
         if k in known and k not in vals:
             vals[k], origin[k] = v, "mh_net.log"
+    if section == "net":
+        for k, v in (carrier.get("boot") or {}).items():
+            if k in known and k not in vals:
+                vals[k], origin[k] = v, "boot receipt"
     for k, d in keys + local_rows:
         if k not in vals and k in cnet:
             vals[k], origin[k] = cnet[k], "mh_net.ini"
@@ -1472,56 +1611,6 @@ def merge_net_extra(user_extra, gp_extra):
     return ";".join(x for x in (user_extra.strip(";"), gp_extra) if x)
 
 
-def hqueue_counts(sr, first, last):
-    """tooling:TL-REPLAY-BM: the recording's order_queue_count AT ITS HASH POINT for match steps
-    first..last -> list of u32 (0xFFFFFFFF = the state recording does not cover that step).
-
-    WHY. The order stream (MHOR) holds the queue at dispatch ENTRY, S(N). The hash point sits earlier
-    in the same sim step, and S(N) = [what was queued by then: released orders + a human's direct
-    enqueue (immediate lane, exec_time 0)] + [the AI tick's tail T, enqueued between hash and
-    dispatch]. The replay's own AI regenerates T but nothing regenerates the human's click, and no
-    field of the record says which is which. The state recording's order_queue_count at step N IS the
-    boundary: the first that-many records of S(N) are the hash-point queue. The harness (mh_hqueue.bin,
-    order_replay_inject_prefix) injects exactly that prefix."""
-    import struct
-
-    ci = sr.region_index["order_queue_count"]
-    base = sr.region_offset[ci]
-    rlen = sr.regions[ci].len
-    out = {}
-    cur = None  # bytearray(4): the count region's bytes as of the chunk being walked
-    for c in sr.chunks:
-        kind = type(c).__name__
-        if kind == "KeyframeChunk":
-            cur = bytearray(c.state[base : base + rlen])
-            out[c.step] = struct.unpack_from("<I", cur, 0)[0]
-        elif kind == "StepChunk":
-            for ridx, off, ln, data in c.runs:
-                if ridx == ci and cur is not None:
-                    cur[off : off + ln] = data
-            if cur is not None:
-                out[c.step] = struct.unpack_from("<I", cur, 0)[0]
-    return [out.get(k, 0xFFFFFFFF) for k in range(first, last + 1)]
-
-
-def write_hqueue(rec, dst, first=1, last=0):
-    """Write mh_hqueue.bin for match steps first..last (replay step k = recorded step first+k-1) from
-    the recording's state file. -> number of steps covered, or 0 (no state recording: the harness
-    falls back to its clock-window split, unchanged)."""
-    import struct
-
-    import state_record
-
-    st_path = match_state_path(rec.get("snap_dir"))
-    if not st_path:
-        return 0
-    sr = state_record.load(st_path)
-    counts = hqueue_counts(sr, first, last)
-    with open(dst, "wb") as fh:
-        fh.write(struct.pack("<%dI" % len(counts), *counts))
-    return sum(1 for v in counts if v != 0xFFFFFFFF)
-
-
 def slice_from_step(rec, step, outdir):
     """tooling:PT-FIX1 (--from-keyframe): stage the replay inputs for a replay that STARTS at match step
     `step` instead of step 1, into `outdir`. -> dict(files=<rec files with orders/clock/seed swapped>, base).
@@ -1531,8 +1620,8 @@ def slice_from_step(rec, step, outdir):
     PRE-BODY boundary). state_at(step) laid out flat IS therefore a seed for `step`: the harness injects
     it at replay step 1, so replay step k runs recorded step `step`+k-1. A keyframe step costs no delta
     walk; any other step is rebuilt from the previous keyframe.
-    THE ORDERS are the per-step due-queue snapshots (MHOR v1: u32 step + order[0x44]); records of steps
-    >= `step` are kept and renumbered by -(step-1). THE CLOCK is one double per step: dropped (step-1).
+    THE ORDERS are complete MHOR v2 HASH/ENTRY pairs; both phases at steps >= `step`
+    are kept and rebased by -(step-1). THE CLOCK drops the same (step-1) entries.
     `base` = the recording's step_base + (step-1), so parse_stream() puts recorded step `step` at 1.
 
     NOT IN THE SEED: whatever the hash manifest does not cover (the AI's private state, per-module
@@ -1565,23 +1654,7 @@ def slice_from_step(rec, step, outdir):
         for r in sr.regions:
             fh.write(st[r.name])
     off = step - 1
-    clock = os.path.join(outdir, SEG["clock"])
-    with open(rec["files"]["clock"], "rb") as fi, open(clock, "wb") as fo:
-        fi.seek(off * 8)
-        shutil.copyfileobj(fi, fo, 1 << 20)
-    orders = os.path.join(outdir, SEG["orders"])
-    kept = 0
-    with open(rec["files"]["orders"], "rb") as fi, open(orders, "wb") as fo:
-        fo.write(fi.read(ORDERS_MAGIC_LEN))
-        while True:
-            chunk = fi.read(ORDER_REC * 4096)
-            if not chunk:
-                break
-            for i in range(0, len(chunk), ORDER_REC):
-                (stp,) = struct.unpack_from("<I", chunk, i)
-                if stp >= step:
-                    fo.write(struct.pack("<I", stp - off) + chunk[i + 4 : i + ORDER_REC])
-                    kept += 1
+    orders, clock, kept = cut_streams(rec["files"]["orders"], rec["files"]["clock"], step, outdir)
     print(
         "  from step %d: seed = state_at(%d) (%d bytes), clock -%d step(s), %d order record(s) kept"
         % (step, step, seed_len, off, kept)
@@ -1596,21 +1669,44 @@ def run_replay(
     steps,
     timeout,
     seat=-1,
-    legacy_suppress=False,
     extra=None,
     net_extra="",
     map_file=None,
     session_mode=-1,
     extra_ini=(),
-    hqueue=True,
     dll="",
 ):
     import make_lane
     import ui_test
 
+    try:
+        samples = order_stream.load(
+            rec["files"]["orders"], first_step=1, steps=clock_steps(rec["files"]["clock"])
+        )
+        if len(samples) < steps * 2:
+            raise Refusal("requested replay steps have missing HASH/ENTRY samples")
+    except order_stream.Error as e:
+        raise Refusal(str(e)) from e
+
     if dll:  # replay with THIS build's modules (a scene dump replays only with the build that recorded it)
         ui_test.DLL_OVERRIDE = os.path.abspath(dll)
+    module_dir = os.path.dirname(os.path.abspath(ui_test.g_dll()))
+    required_modules = ["mh_harness.dll"]
+    if config == 2:
+        required_modules.append("libmh.dll")
+    for name in required_modules:
+        source = os.path.join(module_dir, name)
+        if not os.path.isfile(source):
+            raise Refusal(
+                "replay requires %s beside the selected mh.dll (%s); "
+                "a pre-existing lane copy is not a matching diagnostic module. "
+                "Use an owned diagnostic bundle containing the exact game DLLs "
+                "and a compatible harness; leave the shipping package unchanged."
+                % (name, module_dir)
+            )
     lane = provision_lane(config)
+    for name in required_modules:
+        shutil.copyfile(os.path.join(module_dir, name), os.path.join(lane, name))
     for k, dst in LANE_NAME.items():
         shutil.copyfile(rec["files"][k], os.path.join(lane, dst))
     # field-report scene dump: a recorded world blob is imported over the carrier scene at the seed step
@@ -1624,8 +1720,9 @@ def run_replay(
             wb, dropped, kept = clean_scene_fixups(wb)
             if dropped:
                 print(
-                    "  scene dump: dropped %d fixup entr%s inside SAVE/HASH regions (data dwords the capture "
-                    "mistook for pointers), kept %d -- the import takes the dump's bytes, not the carrier's"
+                    "  scene dump: dropped %d false scalar-address fixup entr%s "
+                    "(pointer-free arrays or ambiguous SAVE/HASH data), kept %d "
+                    "-- recorded payload bytes are unchanged"
                     % (dropped, "y" if dropped == 1 else "ies", kept)
                 )
         with open(wb_dst, "wb") as fh:
@@ -1651,23 +1748,6 @@ def run_replay(
         if why:
             print("replay_match_segment: REFUSED -- " + why)
             sys.exit(2)
-    hq_dst = os.path.join(lane, "mh_hqueue.bin")
-    if os.path.isfile(hq_dst):
-        os.remove(
-            hq_dst
-        )  # a lane is reused: never let a previous recording's counts steer this one
-    if hqueue:
-        n_hq = write_hqueue(
-            rec, hq_dst, rec.get("first_step", 1), rec.get("first_step", 1) + steps - 1
-        )
-        print(
-            "  hash-point queue counts: %s"
-            % (
-                "%d step(s) from the state recording" % n_hq
-                if n_hq
-                else "none (no state recording)"
-            )
-        )
     if map_file:
         lane_add_map(lane, map_file)
     scene = rec.get("scene_save")
@@ -1711,13 +1791,17 @@ def run_replay(
         )
     with open(script, "w", encoding="ascii", newline="\n") as fh:
         fh.write(load_walk_script() if scene else walk_script(row, label, plan))
-    flags = replay_flags(rec, steps, seat, legacy_suppress, extra, session_mode)
+    flags = replay_flags(rec, steps, seat, extra, session_mode)
+    sess_dir = rec.get("snap_dir") or rec["dir"]
+    session = _session_json(sess_dir)
+    flags["replay_lobby_speed_pct"] = recorded_lobby_speed(session)
     ident = make_lane.read_identity(lane)
     argv = [
         sys.executable,
         os.path.join(REPO, "tools", "ui_test.py"),
         script,
         "--harness",
+        "--require-harness-binding",
         "--steps",
         str(steps),
         "--harness-extra",
@@ -1734,22 +1818,42 @@ def run_replay(
         "120",
         "--headless",
     ]
-    sess_dir = rec.get("snap_dir") or rec["dir"]
     carrier = carrier_of(sess_dir)
+    captured_video = scene_video_resolution(wb) if rec.get("world_blob") else None
+    observed_video = None if captured_video else process_video_resolution(sess_dir)
+    carrier["video"] = captured_video or observed_video or carrier["video"]
     gp_extra, gp_note, gp_src = gameplay_net_extra(
         _session_json(sess_dir), net_extra, carrier=carrier
     )
     print("  gameplay: %s from %s" % (gp_extra or "(none)", gp_src))
     if gp_note:
         print("  WARNING: " + gp_note)
+    caps_extra, caps_note, caps_src = gameplay_net_extra(session, carrier=carrier, section="caps")
+    print("  capacity policy: %s from %s" % (caps_extra or "(none)", caps_src))
+    if caps_note and caps_note != gp_note:
+        print("  WARNING: " + caps_note)
+    if caps_extra:
+        caps_path = os.path.join(tmpd, "report_caps.ini")
+        with open(caps_path, "w", encoding="ascii", newline="\n") as fh:
+            fh.write("[caps]\n" + "\n".join("%s=%s" % pair for pair in _pairs(caps_extra)) + "\n")
+        argv += ["--extra-ini", caps_path]
     net_extra = merge_net_extra(net_extra, gp_extra)
+    if int(flags.get("replay_session_mode", -1)) == 3:
+        # The outer SP frame is only a vehicle. Its default20ms pin must not overwrite
+        # the recorded MP body's quantum (e.g.10ms, which otherwise cannot fund step2).
+        quantum = session.get("sim_step_ms")
+        if not isinstance(quantum, int) or isinstance(quantum, bool) or not 5 <= quantum <= 200:
+            raise Refusal(
+                "multiplayer replay needs a recorded sim_step_ms supported by the SP carrier (5..200)"
+            )
+        net_extra = merge_net_extra("sp_sim_step_ms=%d" % quantum, net_extra)
     if net_extra:
         argv += ["--net-extra", net_extra]
     # the report's own [video] resolution (a 1280x960 scene crashes a 640x480 lane); the caller's
     # --extra-ini fragments come AFTER it, so an explicit [video] there still wins
     vid = video_fragment(carrier.get("video"), tmpd)
     if vid:
-        print("  video: resolution=%s from the report's mh_net.ini" % carrier["video"])
+        print("  video: recorded resolution=%s" % carrier["video"])
         argv += ["--extra-ini", vid]
     for frag in extra_ini:
         argv += ["--extra-ini", frag]
@@ -1780,7 +1884,24 @@ def run_replay(
     )
     if not new:
         raise Refusal("the replay left no run folder carrying an mh_harness.log")
-    return os.path.join(lane, "logs", new[-1])
+    run = os.path.join(lane, "logs", new[-1])
+    refusal = ui_test.harness_bind_refusal(run)
+    if refusal:
+        raise Refusal(refusal)
+    with open(os.path.join(run, "mh_net.log"), encoding="utf-8", errors="replace") as fh:
+        module_log = fh.read()
+    if "[modules] mh_harness: BOUND" not in module_log:
+        raise Refusal("replay has no successful mh_harness bind receipt")
+    with open(os.path.join(run, "mh_harness.log"), encoding="utf-8", errors="replace") as fh:
+        harness_log = fh.read()
+    if "mh replay harness armed:" not in harness_log:
+        raise Refusal("replay has no armed harness banner")
+    if rec.get("world_blob") and not re.search(
+        r"\[world_in\] (?:libmh_import_world|mh::desync::import_scene)\(\d+ bytes\) rc=0(?:\s|$)",
+        harness_log,
+    ):
+        raise Refusal("replay has no successful recorded-scene import receipt")
+    return run
 
 
 def _session_of_run(run):
@@ -1811,11 +1932,6 @@ def main(argv=None):
         help="the SESSION_MODE the sim body runs in (harness replay_session_mode): auto = 2 for a "
         "solo recording (session.json role=solo), 3 for a lockstep match (lockstep_step_ms), else "
         "leave the replay's own; -1 = leave",
-    )
-    ap.add_argument(
-        "--legacy-suppress",
-        action="store_true",
-        help="the pre-D37b contract (replay_suppress_enqueue=1, no dispatch-entry inject)",
     )
     ap.add_argument(
         "--extra", action="append", default=[], help="an extra [harness] key=value (repeatable)"
@@ -1850,12 +1966,6 @@ def main(argv=None):
         help="start the replay AT match step N: the seed is the state recording's state at N "
         "(mh_match_state.bin), orders/clock are sliced + renumbered from N (replay step k = recorded "
         "step N+k-1). --steps then counts from N. Saves replaying a long match from step 1",
-    )
-    ap.add_argument(
-        "--no-hqueue",
-        action="store_true",
-        help="do not hand the harness the recording's hash-point queue counts (the pre-"
-        "TL-REPLAY-BM clock-window split of the dispatch snapshot) -- the negative arm",
     )
     ap.add_argument(
         "--shipped",
@@ -1897,9 +2007,10 @@ def main(argv=None):
     ap.add_argument(
         "--raw-fixups",
         action="store_true",
-        help="import the scene dump's fixup trailer AS RECORDED (the negative arm). Default: drop the "
-        "entries inside SAVE/HASH-owned regions (clean_scene_fixups) so the replay no longer depends on "
-        "the carrier save",
+        help="import the scene dump's fixup trailer AS RECORDED (the negative arm). "
+        "Default: remove all fixups in pointer-free FX/Anim arrays and ambiguous "
+        "entries inside SAVE/HASH-owned regions. Raw old scenes containing "
+        "pointer-free-array fixups are refused by the importer.",
     )
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
@@ -2024,14 +2135,12 @@ def main(argv=None):
             last,
             a.timeout,
             seat=seat,
-            legacy_suppress=a.legacy_suppress,
             extra=a.extra,
             net_extra=a.net_extra,
             map_file=a.map_file,
             session_mode=smode,
             extra_ini=a.extra_ini,
             dll=a.dll,
-            hqueue=not a.no_hqueue,
         )
     except Refusal as e:
         print("replay_match_segment: REFUSED -- %s" % e)
@@ -2040,6 +2149,10 @@ def main(argv=None):
     bad = kind_refusal(judged["hash_kind"], rep_text, "--against" if other else "the recording")
     if bad:
         print("replay_match_segment: REFUSED -- %s" % bad)
+        return 2
+    bad = order_stream.receipt_refusal(rep_text, last)
+    if bad:
+        print("replay_match_segment: REFUSED -- " + bad)
         return 2
     rep_steps, rep_regs = parse_stream(rep_text)
     if other:
@@ -2314,6 +2427,55 @@ def selftest():
             if r["name"] == "players":
                 break
             base += r["size"]
+        import struct
+
+        from mp_analyze import (
+            ORDER_CAMPAIGN_MAGIC,
+            ORDER_CAMPAIGN_SCHEMA,
+            ORDER_TASKS_MAGIC,
+            ORDER_TASKS_SCHEMA,
+            STORAGE_POLICY_MAGIC,
+            STORAGE_POLICY_SCHEMA,
+        )
+
+        native_offset = 0
+        for row in regs:
+            owner = row.get("region")
+            if owner == "STORAGE_POLICY":
+                struct.pack_into(
+                    "<8I",
+                    blob,
+                    native_offset,
+                    STORAGE_POLICY_MAGIC,
+                    STORAGE_POLICY_SCHEMA,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    row["size"],
+                )
+            elif owner == "ORDER_TASKS":
+                struct.pack_into(
+                    "<10I",
+                    blob,
+                    native_offset,
+                    ORDER_TASKS_MAGIC,
+                    ORDER_TASKS_SCHEMA,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    row["size"],
+                )
+            elif owner == "ORDER_CAMPAIGN":
+                struct.pack_into(
+                    "<2I", blob, native_offset, ORDER_CAMPAIGN_MAGIC, ORDER_CAMPAIGN_SCHEMA
+                )
+            native_offset += row["size"]
         for slot, (flags, race, name) in enumerate(
             [(7, 1, "Fef"), (7, 1, "Rizzen"), (7, 1, "Carol"), (0x0B, 2, "Computer")]
         ):
@@ -2367,15 +2529,17 @@ def selftest():
             and f["replay_session_mode"] == 3
             and f["stop_step"] == 100,
         )
-        f = replay_flags({"arm": {}}, 100, legacy_suppress=True, extra=["verdict_snap_from=90"])
         check(
-            "--legacy-suppress restores the SES7b pair; no seat/mode knob when not asked; --extra wins",
-            f["replay_suppress_enqueue"] == 1
-            and f["replay_dispatch_inject"] == 0
-            and f["replay_drop_net_issue"] == 0
-            and "replay_seat" not in f
-            and "replay_session_mode" not in f
-            and f["verdict_snap_from"] == "90",
+            "suppression override is refused, not faithful",
+            _refused(lambda: replay_flags({"arm": {}}, 100, extra=["replay_suppress_enqueue=1"])),
+        )
+        check(
+            "AI-off override is refused",
+            _refused(lambda: replay_flags({"arm": {}}, 100, extra=["replay_ai_off=1"])),
+        )
+        check(
+            "top-step-only override is refused",
+            _refused(lambda: replay_flags({"arm": {}}, 100, extra=["replay_dispatch_inject=0"])),
         )
         put(
             s2,
@@ -2547,9 +2711,15 @@ def selftest():
         put(sl_dir, "mh_match_state.bin", sl_data)
         put(sl_dir, "mh_harness_seed.bin", sl_states[1])
         put(sl_dir, "mh_match_clock.bin", struct.pack("<6d", 1, 2, 3, 4, 5, 6))
-        recs = b"MHOR" + struct.pack("<I", 1)
-        for stp in (1, 3, 4, 4, 6):
-            recs += struct.pack("<I", stp) + bytes([stp]) * (ORDER_REC - 4)
+        recs = order_stream.encode(
+            order_stream.Sample(
+                stp,
+                phase,
+                tuple(bytes([stp]) * 68 for _ in range(2 if stp == 4 else int(stp in (1, 3, 6)))),
+            )
+            for stp in range(1, 7)
+            for phase in (order_stream.HASH, order_stream.ENTRY)
+        )
         put(sl_dir, "mh_match_orders.bin", recs)
         sl_rec = dict(
             snap_dir=sl_dir,
@@ -2568,8 +2738,10 @@ def selftest():
         with open(got["files"]["orders"], "rb") as fh:
             sl_ord = fh.read()
         sl_steps = [
-            struct.unpack_from("<I", sl_ord, ORDERS_MAGIC_LEN + i * ORDER_REC)[0]
-            for i in range(order_records(got["files"]["orders"]))
+            s.step
+            for s in order_stream.decode(sl_ord)
+            if s.phase == order_stream.ENTRY
+            for _ in s.records
         ]
         check(
             "from-keyframe: the seed is the state recording's state at the start step",
@@ -2596,7 +2768,14 @@ def selftest():
         put(sh, "session.json", json.dumps({"map": "y.mpm", "slot": 1, "lockstep_step_ms": 20}))
         put(sh, "mh_match_harness.log", "; [match] segment OPEN x at process step 3: step_base=2\n")
         for name, data in (
-            ("mh_rec_orders.bin.gz", b"MHOR\x01\0\0\0"),
+            (
+                "mh_rec_orders.bin.gz",
+                order_stream.encode(
+                    order_stream.Sample(s, p, ())
+                    for s in range(1, 4)
+                    for p in (order_stream.HASH, order_stream.ENTRY)
+                ),
+            ),
             ("mh_rec_clock.bin.gz", b"\0" * 24),
             ("mh_rec_seed.bin.gz", b"S" * 32),
         ):
@@ -2619,9 +2798,13 @@ def selftest():
         import struct
 
         put(sh, "mh_rec_seed_1.bin", b"T" * 32)
-        recs = b"MHOR" + struct.pack("<I", 1)
-        for stp in (5, 29, 30, 31, 45):
-            recs += struct.pack("<I", stp) + bytes([stp]) * (ORDER_REC - 4)
+        recs = order_stream.encode(
+            order_stream.Sample(
+                stp, phase, (bytes([stp]) * 68,) if stp in (5, 29, 30, 31, 45) else ()
+            )
+            for stp in range(1, 51)
+            for phase in (order_stream.HASH, order_stream.ENTRY)
+        )
         with gzip.open(os.path.join(sh, "mh_rec_orders.bin.gz"), "wb") as fh:
             fh.write(recs)
         with gzip.open(os.path.join(sh, "mh_rec_clock.bin.gz"), "wb") as fh:
@@ -2655,10 +2838,10 @@ def selftest():
         with open(sg["files"]["clock"], "rb") as fh:
             seg_clock = struct.unpack("<21d", fh.read())
         seg_steps = [
-            struct.unpack_from(
-                "<I", open(sg["files"]["orders"], "rb").read(), ORDERS_MAGIC_LEN + i * ORDER_REC
-            )[0]
-            for i in range(order_records(sg["files"]["orders"]))
+            s.step
+            for s in order_stream.load(sg["files"]["orders"])
+            if s.phase == order_stream.ENTRY
+            for _ in s.records
         ]
         check(
             "segment 1: its own seed, clock from step 30, orders >= 30 renumbered from 1",
@@ -2841,6 +3024,24 @@ def selftest():
         "gameplay: the gameplay-tab F_LOCAL row project_gate_fix is a replay row (ini-sourced)",
         ("project_gate_fix", "0", False) in gameplay_rows(),
     )
+    recorded_policy = {"gameplay": "raise=1;turret_clip_fix=1"}
+    policy_carrier = {
+        "caps": {"raise": "0"},
+        "net": {"project_gate_fix": "0"},
+        "boot": {"project_gate_fix": "1"},
+    }
+    caps_policy, _, _ = gameplay_net_extra(recorded_policy, carrier=policy_carrier, section="caps")
+    net_policy, _, _ = gameplay_net_extra(recorded_policy, carrier=policy_carrier)
+    check(
+        "gameplay: recorded raised policy overrides stale INI and stays in caps, not net",
+        dict(_pairs(caps_policy)) == {"raise": "1"}
+        and "raise" not in dict(_pairs(net_policy))
+        and dict(_pairs(net_policy))["turret_clip_fix"] == "1",
+    )
+    check(
+        "gameplay: explicit restart-only boot receipt beats stale captured local INI",
+        dict(_pairs(net_policy))["project_gate_fix"] == "1",
+    )
     # an OLD report: session.json cut at 191 chars, the key tail only in the carrier ini / mh_net.log
     tmp2 = tempfile.mkdtemp(prefix="gp_carrier_")
     try:
@@ -2896,6 +3097,40 @@ def selftest():
         check(
             "vehicle: planet 6 has a committed carrier save", os.path.isfile(VEHICLE_BY_PLANET[6])
         )
+        process_dir = os.path.join(tmp2, "logs", "recording_process")
+        os.makedirs(process_dir)
+        with open(os.path.join(sess2, "session.json"), "w", encoding="utf-8") as fh:
+            json.dump({"process_dir": "recording_process"}, fh)
+        video_log = os.path.join(process_dir, "mh_video.log")
+        with open(video_log, "w", encoding="utf-8") as fh:
+            fh.write(
+                "; [ui] view epoch 1 frame 640x480, game mode 3\n"
+                "; [ui] view epoch 2 frame 1920x1440, game mode 2\n"
+                "; [ui] view epoch 3 frame 640x480, game mode 3\n"
+            )
+        unrelated = os.path.join(tmp2, "logs", "newer_unrelated_process")
+        os.makedirs(unrelated)
+        with open(os.path.join(unrelated, "mh_video.log"), "w", encoding="utf-8") as fh:
+            fh.write("; [ui] view epoch 1 frame 800x600, game mode 2\n")
+        observed = carrier_of(sess2)
+        observed["video"] = process_video_resolution(sess2)
+        recorded_fragment = video_fragment(observed["video"], tmp2)
+        check(
+            "video: linked process gameplay geometry wins over menu, exit, INI and newer sibling",
+            observed["video"] == "1920x1440"
+            and open(recorded_fragment).read() == "[video]\nresolution=1920x1440\n",
+        )
+        with open(video_log, "a", encoding="utf-8") as fh:
+            fh.write("; [ui] view epoch 4 frame 1600x1200, game mode 2\n")
+        try:
+            process_video_resolution(sess2)
+            ambiguous_video_refused = False
+        except Refusal:
+            ambiguous_video_refused = True
+        check(
+            "video: multiple actual gameplay sizes refuse rather than guess",
+            ambiguous_video_refused,
+        )
     finally:
         shutil.rmtree(tmp2, ignore_errors=True)
     check(
@@ -2908,31 +3143,21 @@ def selftest():
             "turret_fire_poll_fix",
         ],
     )
-    import state_record
-
-    rdefs = [("order_queue", 8), ("order_queue_count", 4)]
-    sts = {}
-    for stp, c in ((10, 0), (11, 0), (12, 1), (13, 1), (14, 3), (15, 0)):
-        sts[stp] = bytes(8) + struct.pack("<I", c)
-    blob, _ = state_record._build_match(rdefs, sts, 4)
-    hq_path = os.path.join(tempfile.mkdtemp(prefix="hq_"), "mh_match_state.bin")
-    with open(hq_path, "wb") as fh:
-        fh.write(blob)
-    got = hqueue_counts(state_record.load(hq_path), 9, 16)
     check(
-        "hqueue_counts: per-step counts, uncovered steps unknown",
-        got == [0xFFFFFFFF, 0, 0, 1, 1, 3, 0, 0xFFFFFFFF],
+        "MHOR v2 payload framing, explicit empties and segment cuts", order_stream.selftest() == 0
     )
     # clean_scene_fixups (TL-REPORT-REPLAY-FIDELITY): a synthetic 3-block blob, block 0 SAVE-owned, 1 VIEW-owned, 2 HASH-owned
     blocks3 = [("RID_A", 8, "a"), ("RID_B", 8, "b"), ("RID_C", 8, "c")]
     flags3 = {"a": {"MF_SAVE"}, "b": {"MF_VIEW"}, "c": {"MF_HASH", "MF_VIEW"}}
 
-    def mk_blob(entries, nav=b"NAV!"):
+    def mk_blob(entries, nav=b"NAV!", own_module=False, policy=None, payloads=None):
         hdr = bytearray(96)
         hdr[:8] = b"MHWRLD\x00\x01"
-        body = b"".join(struct.pack("<II", i, 8) + bytes(8) for i in range(3))
+        if payloads is None:
+            payloads = [bytes(8), bytes(8), policy if policy is not None else bytes(8)]
+        body = b"".join(struct.pack("<II", i, len(p)) + p for i, p in enumerate(payloads))
         nav_off = 96 + len(body)
-        mods = bytes(40)
+        mods = bytes(36) + struct.pack("<I", int(own_module))
         ents = b"".join(struct.pack("<HBBIII", b, k, 0, off, 0, 0) for b, k, off in entries)
         h = 2166136261
         for c in mods + ents:
@@ -2946,7 +3171,7 @@ def selftest():
     blob3 = mk_blob([(0, 3, 0), (0, 3, 4), (1, 3, 0), (2, 2, 4)])
     out3, dropped3, kept3 = clean_scene_fixups(blob3, flags3, blocks3)
     check(
-        "clean_scene_fixups: entries in SAVE / HASH blocks are dropped, VIEW kept",
+        "clean_scene_fixups: ambiguous SAVE/HASH pointers are dropped, VIEW kept",
         (dropped3, kept3) == (3, 1),
     )
     t3 = struct.unpack_from("<III", out3, 84)
@@ -2960,11 +3185,108 @@ def selftest():
         and t3[2] == len(tr) == 32 + 40 + 16
         and struct.unpack_from("<I", tr, 12)[0] == chk,
     )
+    # A scene's raised roster/order records live AFTER MHFX, not inside its checksum.
+    # Keep that extension even when the cleaner has no entries to remove.
+    overflow_tail = b"MHOV" + bytes(range(1, 60))
+    for entries in ([(1, 1, 0)], [(0, 3, 0), (1, 1, 0)]):
+        original = mk_blob(entries) + overflow_tail
+        cleaned, dropped, kept = clean_scene_fixups(original, flags3, blocks3)
+        nav_off, nav_len, fix_len = struct.unpack_from("<III", cleaned, 84)
+        fix_off = nav_off + nav_len
+        fix = cleaned[fix_off : fix_off + fix_len]
+        checksum = 2166136261
+        for value in fix[32:]:
+            checksum = ((checksum ^ value) * 16777619) & 0xFFFFFFFF
+        check(
+            "clean_scene_fixups: raised records survive unchanged after the rebuilt trailer",
+            dropped == len(entries) - 1
+            and kept == 1
+            and cleaned[96:fix_off] == original[96:fix_off]
+            and cleaned[fix_off + fix_len :] == overflow_tail
+            and struct.unpack_from("<I", fix, 12)[0] == checksum,
+        )
     check(
         "clean_scene_fixups: a blob it does not recognise comes back untouched",
         clean_scene_fixups(blob3[:50], flags3, blocks3) == (blob3[:50], 0, 0)
         and clean_scene_fixups(blob3, flags3, blocks3[:2]) == (blob3, 0, 0),
     )
+    # Real policy framing is larger than the generated descriptor minimum. Its
+    # trailing fixups must still be parsed, retaining actual region/own-image pointers.
+    from mp_analyze import STORAGE_POLICY_MAGIC, STORAGE_POLICY_SCHEMA
+
+    policy = struct.pack(
+        "<8I", STORAGE_POLICY_MAGIC, STORAGE_POLICY_SCHEMA, 8, 500, 500, 128, 128, 128032
+    ) + bytes(128000)
+    policy_blocks = blocks3[:2] + [("RID_STORAGE_POLICY", 32, "c")]
+    policy_blob = mk_blob([(0, 1, 0), (2, 2, 32)], own_module=True, policy=policy)
+    check(
+        "clean_scene_fixups: native policy extent retains valid sim pointers byte-for-byte",
+        clean_scene_fixups(policy_blob, flags3, policy_blocks) == (policy_blob, 0, 2),
+    )
+    bad_policy = bytearray(policy)
+    struct.pack_into("<I", bad_policy, 28, 32)
+    try:
+        clean_scene_fixups(mk_blob([], policy=bad_policy), flags3, policy_blocks)
+        malformed_policy_refused = False
+    except Refusal:
+        malformed_policy_refused = True
+    check("clean_scene_fixups: malformed native policy framing refuses", malformed_policy_refused)
+    # An actual dynamically framed QORD block must not bypass scalar fixup cleanup.
+    tasks = bytearray(17376)
+    struct.pack_into("<10I", tasks, 0, 0x31524F51, 1, 2, 5, 8, 8, 9, 4, 7, len(tasks))
+    struct.pack_into("<I", tasks, 72, 3)
+    fx = bytearray(2856)
+    struct.pack_into("<I", fx, 2832, 0x79000008)
+    anim = bytearray(12)
+    struct.pack_into("<I", anim, 8, 0x79000008)
+    scalar_blocks = [
+        ("RID_STRAT_FX_ANIMS", len(fx), "fx"),
+        ("RID_ANIM", len(anim), "anim"),
+        ("RID_ORDER_TASKS", 96, "tasks"),
+        ("RID_WINDOWWIDTH", 4, "frame_width"),
+        ("RID_WINDOWHEIGHT", 4, "frame_height"),
+    ]
+    frame_payloads = [struct.pack("<I", 1920), struct.pack("<I", 1440)]
+    scalar_payloads = [fx, anim, tasks] + frame_payloads
+    scalar_blob = mk_blob(
+        [
+            (0, 1, 2832),
+            (0, 2, 2832),
+            (0, 3, 2832),
+            (1, 1, 8),
+            (1, 2, 8),
+            (1, 3, 8),
+            (2, 1, 96),
+            (2, 2, 100),
+        ],
+        own_module=True,
+        payloads=scalar_payloads,
+    )
+    scalar_clean, dropped, kept = clean_scene_fixups(scalar_blob, {}, scalar_blocks)
+    scalar_nav = struct.unpack_from("<I", scalar_blob, 84)[0]
+    clean_nav = struct.unpack_from("<I", scalar_clean, 84)[0]
+    check(
+        "clean_scene_fixups: all FX/Anim kinds removed after dynamic QORD framing; genuine other pointers kept",
+        (dropped, kept) == (6, 2) and scalar_blob[96:scalar_nav] == scalar_clean[96:clean_nav],
+    )
+    captured_size = scene_video_resolution(scalar_clean, scalar_blocks)
+    with tempfile.TemporaryDirectory(prefix="scene_video_") as video_tmp:
+        fragment = video_fragment(captured_size, video_tmp)
+        check(
+            "scene video: dynamic QORD/scalar cleanup preserves exact captured frame dimensions",
+            captured_size == "1920x1440"
+            and open(fragment).read() == "[video]\nresolution=1920x1440\n",
+        )
+    malformed_tasks = bytearray(tasks)
+    struct.pack_into("<I", malformed_tasks, 36, 96)
+    try:
+        clean_scene_fixups(
+            mk_blob([], payloads=[fx, anim, malformed_tasks] + frame_payloads), {}, scalar_blocks
+        )
+        malformed_tasks_refused = False
+    except Refusal:
+        malformed_tasks_refused = True
+    check("clean_scene_fixups: malformed dynamic QORD framing refuses", malformed_tasks_refused)
     print("replay_match_segment selftest: %s" % ("PASS" if not fails else "FAIL (%d)" % len(fails)))
     return 1 if fails else 0
 

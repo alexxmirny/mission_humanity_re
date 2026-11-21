@@ -1,6 +1,7 @@
 #include "orders/order_queue.h"
 #include "orders/admission_log.h" // mp:X3c: the PENDING-admission log (observe-only taps below)
 #include "state/host_api.h"       // LIFT-TABLE S6/S7: these callees are host-API entries now
+#include "state/host_events.h"
 
 #include "addr/mh_export.gen.h"       // MH_EXPORT_REPLACE / the entry-thunk shapes
 #include "addr/mh_calls.gen.h"        // typed callables for the original functions we still call OUT to
@@ -10,6 +11,8 @@
 #include "lockstep/turn_engine.h"     // mp:U54: fixes().spectate_after_defeat
 #include "mh_spectate.h"              // mp:U54: the spectator status bits
 #include "sim/rng_trace.h"            // LIB-REF step-5000: the ORDER-QUEUE COUNT LEDGER (see below)
+#include "include/mh_storage_policy.h"
+#include "state/order_tasks_origin.h"
 
 #include <cstdarg>
 #include <cstdio>
@@ -25,6 +28,7 @@
 #include "state/promoted_select.h" // LIB-REF-SPLIT: MH_PROMOTED
 
 namespace mh::orders {
+namespace W = mh::order_witness;
 
 const container_state &state() {
     // Addresses come from the state region REGISTRY (RI-STATE / ST1), never spelled here. Until
@@ -52,6 +56,7 @@ const container_state &state() {
         ptr<mh::game::mh_map_object_unit>(RID_UNITS),
         ptr<const uint8_t>(RID_UNIT),
         live_roster_caps(), // SB-BIND T2: derived row capacities
+        +[](const mh_order_tasks_request *q, mh_order_tasks_result *r) -> int32_t { return mh::host().order_tasks(q, r); },
     };
     return st;
 }
@@ -208,6 +213,48 @@ void scratch_set_field(const container_state &st, int32_t index, int32_t value) 
 // what the two arms are diffed on.
 const void *g_ledger_site = nullptr;
 
+// Carrier observation AFTER a real loss; policy/accounting stays in the shared dispatcher.
+static void task_record_lost(const container_state &st, const order &lost) {
+    namespace hp = mh::order_tasks::host_protocol;
+    if (!st.order_tasks_observer || (lost.owner_and_kind & 0xf0) != 0x80) return;
+    mh_order_tasks_request request{};
+    mh_order_tasks_result  result{};
+    request.operation = uint32_t(hp::operation::discarded);
+    request.player    = lost.owner_and_kind & 15;
+    request.slot      = lost.unit_index;
+    request.args[0]   = lost.owner_and_kind;
+    request.args[1]   = lost.order_code;
+    request.args[2]   = uint16_t(lost.param0);
+    for (uint32_t i = 0; i < 13; ++i) request.args[i + 3] = uint32_t(lost.args[i]);
+    if (!st.order_tasks_observer(&request, &result) || !result.values[1] || !st.units ||
+        request.player >= MAX_PLAYERS || !request.slot || request.slot >= uint32_t(st.caps.units)) return;
+    auto &actor        = st.units[request.player * st.caps.units + request.slot];
+    actor.order_queued = 0;
+    for (int32_t i = 0; i < *st.queue_count; ++i) {
+        const auto &record = st.queue[i];
+        if (record.unit_index != lost.unit_index || record.owner_and_kind != lost.owner_and_kind) continue;
+        const uint32_t tag = uint32_t(record.args[8]);
+        if (!hp::is_primary_marker(tag)) {
+            actor.order_queued = 1;
+            break;
+        }
+        request           = {};
+        result            = {};
+        request.operation = uint32_t(hp::operation::primary_admission);
+        request.player    = record.owner_and_kind & 15;
+        request.slot      = record.unit_index;
+        request.args[0]   = record.owner_and_kind;
+        request.args[1]   = record.order_code;
+        request.args[2]   = uint16_t(record.param0);
+        for (uint32_t j = 0; j < 13; ++j) request.args[j + 3] = uint32_t(record.args[j]);
+        request.args[16] = 1; // read-only survivor inspection, never a native application
+        if (st.order_tasks_observer(&request, &result) && result.values[0]) {
+            actor.order_queued = 1;
+            break;
+        }
+    }
+}
+
 // llm_strat_order_enqueue @0x00466094 -- the IMMEDIATE lane.
 //
 // Two things here are counter-intuitive and both are load-bearing:
@@ -257,12 +304,16 @@ int32_t enqueue(const container_state &st, uint16_t unit_index, uint16_t owner_a
                                     (uint32_t)*st.queue_count, (uint32_t)(uintptr_t)g_ledger_site);
         return 0;
     }
+    auto &w = mh::state::order_witnesses();
 
     if (*st.queue_count >= QUEUE_CAP) {
         mh::sim::rng_trace_add_note(11u, (uint32_t)*st.queue_count, (uint32_t)unit_index,
                                     (uint32_t)owner_and_kind, (uint32_t)(uint16_t)param0, 0u,
                                     (uint32_t)(uintptr_t)g_ledger_site);
-        *st.queue_count = 0;
+        const int32_t lost_count = *st.queue_count;
+        *st.queue_count          = 0;
+        for (int32_t i = 0; i < lost_count && i < QUEUE_CAP; ++i) task_record_lost(st, st.queue[i]);
+        W::clear_from(w, W::container::queue, 0);
         return 0;
     }
     order &rec         = st.queue[*st.queue_count];
@@ -271,7 +322,11 @@ int32_t enqueue(const container_state &st, uint16_t unit_index, uint16_t owner_a
     rec.param0         = param0;
     rec.order_code     = order_code;
     for (int i = 0; i < ARG_SLOTS; ++i) rec.args[i] = st.scratch[i];
+    mh::order_tasks::origin::stamp(owner_and_kind & 15, unit_index, order_code, param0, rec.args);
     *st.queue_count += 1;
+    W::admit(w, W::container::queue,
+             static_cast<uint32_t>(*st.queue_count - 1),
+             W::canonical(rec), false);
     mh::sim::rng_trace_add_note(10u, (uint32_t)order_code, (uint32_t)unit_index,
                                 (uint32_t)owner_and_kind, (uint32_t)(uint16_t)param0,
                                 (uint32_t)*st.queue_count, (uint32_t)(uintptr_t)g_ledger_site);
@@ -285,9 +340,13 @@ int32_t enqueue(const container_state &st, uint16_t unit_index, uint16_t owner_a
 // happen before the copy or the stored record differs. O1c: unit_index is decoded as 12 bits (a superset
 // of the vanilla `& 0xff` for every index < 256); the other three fields keep the 8-bit mask.
 int32_t pending_enqueue(const container_state &st, order *rec) {
+    auto &w = mh::state::order_witnesses();
     if (*st.pending_count >= PENDING_CAP) {
         admission::note_overflow(); // mp:X3c R5: the reset below destroys admitted records -- latch it
-        *st.pending_count = 0;
+        const int32_t lost_count = *st.pending_count;
+        *st.pending_count        = 0;
+        for (int32_t i = 0; i < lost_count && i < PENDING_CAP; ++i) task_record_lost(st, st.pending[i]);
+        W::clear_from(w, W::container::pending, 0);
         return 0;
     }
     order &in     = *rec;
@@ -298,6 +357,10 @@ int32_t pending_enqueue(const container_state &st, order *rec) {
     st.pending[*st.pending_count] = in;             // 17 dwords, REP MOVSD in the original
     admission::note(st.pending[*st.pending_count]); // mp:X3c: observe the STORED form (observe-only)
     *st.pending_count += 1;
+    const order &accepted = st.pending[*st.pending_count - 1];
+    W::admit(w, W::container::pending,
+             static_cast<uint32_t>(*st.pending_count - 1),
+             W::canonical(accepted), true);
     return 1;
 }
 
@@ -314,7 +377,19 @@ int32_t pending_enqueue(const container_state &st, order *rec) {
 int32_t stage_scheduled(const container_state &st, const game_calls &gc, char *tag,
                         uint16_t unit_index, uint16_t owner_and_kind, int16_t param0,
                         uint16_t order_code, double exec_time) {
-    if (*st.staging_count >= STAGING_CAP) return 0;
+    if (*st.staging_count >= STAGING_CAP) {
+        if (st.order_tasks_observer && (owner_and_kind & 0xf0) == 0x80) {
+            order lost{};
+            lost.unit_index     = unit_index;
+            lost.owner_and_kind = owner_and_kind;
+            lost.param0         = param0;
+            lost.order_code     = order_code;
+            for (uint32_t i = 0; i < ARG_SLOTS; ++i) lost.args[i] = st.scratch[i];
+            task_record_lost(st, lost);
+        }
+        return 0;
+    }
+    auto &w = mh::state::order_witnesses();
 
     order &hdr         = st.staging[*st.staging_count];
     hdr.unit_index     = g_order_wide_index ? encode_index(unit_index) : dup_low_byte(unit_index);
@@ -333,8 +408,21 @@ int32_t stage_scheduled(const container_state &st, const game_calls &gc, char *t
     // reads afterwards is not provably the one it read before. Faithful is free here.
     order &tail = st.staging[*st.staging_count];
     for (int i = 0; i < ARG_SLOTS; ++i) tail.args[i] = st.scratch[i];
+    mh::order_tasks::origin::stamp(owner_and_kind & 15, unit_index, order_code, param0, tail.args);
 
     *st.staging_count += 1;
+    auto command       = W::canonical(tail);
+    command.unit_index = g_order_wide_index
+                             ? decode_index(command.unit_index)
+                             : static_cast<uint16_t>(command.unit_index & 0xff);
+    command.owner_and_kind &= 0xff;
+    command.param0 = static_cast<int16_t>(
+        static_cast<uint16_t>(command.param0) & 0xff);
+    command.order_code &= 0xff;
+
+    W::admit(w, W::container::staging,
+             static_cast<uint32_t>(*st.staging_count - 1),
+             command, false);
     return *st.staging_count; // the NEW count (0x0046632b)
 }
 
@@ -349,14 +437,21 @@ int32_t stage_scheduled(const container_state &st, const game_calls &gc, char *t
 // (unit_index: O1c 12-bit decode; the rest `& 0xff`), which is the mirror of what pending_enqueue does to a remote one. Sending the masked
 // form would break the receiver's integrity check.
 int32_t schedule(const container_state &st, const game_calls &gc) {
-    int32_t       flushed = 0;
-    int32_t       out     = 0;                 // compaction cursor: where the NOT-drained orders end up
-    const int32_t n       = *st.staging_count; // snapshotted before the loop (0x0046636e)
+    auto          &w                  = mh::state::order_witnesses();
+    const uint32_t witness_generation = W::generation(w);
+    int32_t        flushed            = 0;
+    int32_t        out                = 0;                 // compaction cursor: where the NOT-drained orders end up
+    const int32_t  n                  = *st.staging_count; // snapshotted before the loop (0x0046636e)
 
     for (int32_t i = 0; i < n; ++i) {
+        W::pinned witness(
+            w, W::container::staging, static_cast<uint32_t>(i));
         if (*st.pending_count >= PENDING_CAP) {
             // Pending is full: keep this order staged for a later call rather than dropping it.
             copy_record(&st.staging[out], &st.staging[i]);
+            if (witness.current())
+                W::copy(w, W::container::staging,
+                        static_cast<uint32_t>(out), witness.get());
             ++out;
             continue;
         }
@@ -376,6 +471,10 @@ int32_t schedule(const container_state &st, const game_calls &gc) {
         p.param0     = static_cast<int16_t>(p.param0 & 0xff);
         p.order_code &= 0xff;
         admission::note(p); // mp:X3c: own human order, stored (masked) form -- observe-only
+        if (witness.current())
+            W::copy(w, W::container::pending,
+                    static_cast<uint32_t>(*st.pending_count),
+                    witness.get());
         *st.pending_count += 1;
 
         gc.send_order(&s); // return value DISCARDED by the original (0x004664b5)
@@ -383,6 +482,9 @@ int32_t schedule(const container_state &st, const game_calls &gc) {
     }
 
     *st.staging_count = out;
+    if (witness_generation == W::generation(w))
+        W::clear_from(w, W::container::staging,
+                      static_cast<uint32_t>(out));
     if (st.packet.dirty()) flushed += gc.send_buf_flush();
     return flushed;
 }
@@ -401,7 +503,9 @@ int32_t schedule(const container_state &st, const game_calls &gc) {
 // entry is OVERWRITTEN only if it is the weaker of the two: earlier exec_time, or the same exec_time
 // and a lower order_code.
 int32_t release_due(const container_state &st, double now) {
-    int32_t out = 0;
+    auto          &w                  = mh::state::order_witnesses();
+    const uint32_t witness_generation = W::generation(w);
+    int32_t        out                = 0;
 
     for (int32_t player = 0; player < MAX_PLAYERS && *st.pending_count > 0; ++player) {
         if ((st.players[player].status_flags & PLAYER_ALIVE) == 0) continue;
@@ -410,6 +514,8 @@ int32_t release_due(const container_state &st, double now) {
         out             = 0;
 
         for (int32_t i = 0; i < n; ++i) {
+            W::pinned witness(
+                w, W::container::pending, static_cast<uint32_t>(i));
             order &p = st.pending[i];
 
             // `!(exec_time > now)`, NOT `exec_time <= now`. The original is FCOMP/FNSTSW/SAHF/JBE
@@ -423,6 +529,9 @@ int32_t release_due(const container_state &st, double now) {
                                  !(p.exec_time > now) && (*st.queue_count < QUEUE_CAP);
             if (!release) {
                 copy_record(&st.pending[out], &p);
+                if (witness.current())
+                    W::copy(w, W::container::pending,
+                            static_cast<uint32_t>(out), witness.get());
                 ++out;
                 continue;
             }
@@ -431,6 +540,11 @@ int32_t release_due(const container_state &st, double now) {
             for (int32_t q = 0; q < *st.queue_count; ++q) {
                 order &e = st.queue[q];
                 if (e.unit_index != p.unit_index || e.owner_and_kind != p.owner_and_kind) continue;
+                if (mh::storage_policy::independent_settings(
+                        e.owner_and_kind, e.order_code, p.owner_and_kind, p.order_code,
+                        mh::storage_policy::RALLY_COMMAND, mh::storage_policy::AUTO_COMMAND) ||
+                    mh::order_tasks::independent(e.owner_and_kind, e.order_code, p.owner_and_kind, p.order_code))
+                    continue;
                 if (e.param0 == p.param0 && e.order_code == p.order_code) continue;
                 // mp:U45. One diplomacy Apply issues 0xf4 and 0xf5 with unit 0 and the issuer as
                 // owner, at one exec_time -- the same dedup identity, so the higher code (0xf5)
@@ -444,13 +558,22 @@ int32_t release_due(const container_state &st, double now) {
                     replace = true; // queued one is older -> the newer wins
                 else if (e.exec_time == p.exec_time && e.order_code < p.order_code)
                     replace = true; // same instant -> higher order_code wins (unsigned CMP/JNC)
-                if (replace) copy_record(&e, &p);
+                if (replace) {
+                    copy_record(&e, &p);
+                    if (witness.current())
+                        W::copy(w, W::container::queue,
+                                static_cast<uint32_t>(q), witness.get());
+                }
 
                 matched = true; // set even when the queued entry stood: the incoming one is consumed
             }
 
             if (!matched) {
                 copy_record(&st.queue[*st.queue_count], &p);
+                if (witness.current())
+                    W::copy(w, W::container::queue,
+                            static_cast<uint32_t>(*st.queue_count),
+                            witness.get());
                 *st.queue_count += 1;
                 mh::sim::rng_trace_add_note(12u, (uint32_t)p.order_code, (uint32_t)p.unit_index,
                                             (uint32_t)p.owner_and_kind,
@@ -461,6 +584,9 @@ int32_t release_due(const container_state &st, double now) {
 
         *st.pending_count = out;
     }
+    if (witness_generation == W::generation(w))
+        W::clear_from(w, W::container::pending,
+                      static_cast<uint32_t>(*st.pending_count));
 
     return *st.pending_count > 0 ? 0 : 1;
 }
@@ -546,48 +672,176 @@ int32_t queue_find_index(const container_state &st, int32_t player, int32_t unit
 //     being non-zero, and they pass DIFFERENT mode arguments (1 then 0).
 void queue_apply_and_dequeue(const container_state &st, const game_calls &gc, uint32_t player,
                              int32_t unit_idx, int32_t queue_idx) {
+    auto     &w = mh::state::order_witnesses();
+    W::pinned witness(
+        w, W::container::queue, static_cast<uint32_t>(queue_idx));
     const order &q = st.queue[queue_idx];
     auto        &u = st.units[static_cast<uint16_t>(player) * st.caps.units + unit_idx];
 
-    gc.unit_set_order_param(static_cast<uint16_t>(player), unit_idx, q.param0);
+    namespace hp  = mh::order_tasks::host_protocol;
+    auto admitted = [&](const order &record, mh::order_tasks::tile *anchor = nullptr) {
+        if (record.order_code == 0x1d || record.order_code == 0x1e) return true;
+        if (!st.order_tasks_observer)
+            return !hp::is_primary_marker(uint32_t(record.args[8]));
+        mh_order_tasks_request request{};
+        mh_order_tasks_result  result{};
+        request.operation = uint32_t(hp::operation::primary_admission);
+        request.player    = player;
+        request.slot      = uint32_t(unit_idx);
+        request.args[0]   = record.owner_and_kind;
+        request.args[1]   = record.order_code;
+        request.args[2]   = uint16_t(record.param0);
+        for (uint32_t i = 0; i < 13; ++i) request.args[i + 3] = uint32_t(record.args[i]);
+        request.args[16] = anchor ? 0 : 1;
+        if (!st.order_tasks_observer(&request, &result) || !result.values[0]) return false;
+        if (anchor) *anchor = {result.values[2], result.values[3]};
+        if (anchor && (uint32_t(record.args[8]) == hp::AUTONOMOUS_PRIMARY ||
+                       uint32_t(record.args[8]) == hp::PHYSICAL_PRIMARY)) {
+            request           = {};
+            result            = {};
+            request.operation = uint32_t(hp::operation::reservation);
+            request.player    = player;
+            request.slot      = uint32_t(unit_idx);
+            request.args[0]   = uint32_t(hp::reservation_operation::handoff);
+            request.args[1]   = uint32_t((record.args[5] & 0x40) ? mh::order_tasks::object_kind::building : mh::order_tasks::object_kind::unit);
+            request.args[2]   = uint32_t(record.args[5]) & 15;
+            request.args[3]   = uint32_t(record.args[6]);
+            request.args[4]   = uint32_t(record.args[11]);
+            request.args[5]   = uint32_t(record.args[10]);
+            if (!st.order_tasks_observer(&request, &result) || !result.values[0]) return false;
+        }
+        if (anchor && uint32_t(record.args[8]) == hp::EXPLICIT_PRIMARY) {
+            request           = {};
+            result            = {};
+            request.operation = uint32_t(hp::operation::reservation);
+            request.player    = player;
+            request.slot      = uint32_t(unit_idx);
+            request.args[0]   = uint32_t(hp::reservation_operation::captured_application);
+            if (!st.order_tasks_observer(&request, &result) || !result.values[0]) return false;
+        }
+        if (anchor && !hp::is_primary_marker(uint32_t(record.args[8]))) {
+            request           = {};
+            result            = {};
+            request.operation = uint32_t(hp::operation::reservation);
+            request.player    = player;
+            request.slot      = uint32_t(unit_idx);
+            request.args[0]   = uint32_t(hp::reservation_operation::physical_application);
+            if (record.args[5] > 0 && record.args[6] > 0) {
+                request.args[1] = uint32_t((record.args[5] & 0x40) ? mh::order_tasks::object_kind::building : mh::order_tasks::object_kind::unit);
+                request.args[2] = uint32_t(record.args[5]) & 15;
+                request.args[3] = uint32_t(record.args[6]);
+            }
+            if (!st.order_tasks_observer(&request, &result) || !result.values[0]) return false;
+        }
+        return true;
+    };
+    mh::order_tasks::tile autonomous_anchor{};
+    const bool            apply = admitted(q, &autonomous_anchor);
+    order                 discarded_record;
+    if (!apply) discarded_record = q;
+    if (apply) {
+        gc.unit_set_order_param(static_cast<uint16_t>(player), unit_idx, q.param0);
 
-    if (u.target_ref != 0) {
-        gc.target_release_ref(static_cast<uint16_t>(player), unit_idx, 1);
-        u.target_ref   = 0;
-        u.target_index = 0;
-    }
+        if (u.target_ref != 0) {
+            gc.target_release_ref(static_cast<uint16_t>(player), unit_idx, 1);
+            u.target_ref   = 0;
+            u.target_index = 0;
+        }
 
-    if (q.args[0] != ARG_UNCHANGED_32) u.goal_x = static_cast<uint8_t>(q.args[0]);
-    if (q.args[1] != ARG_UNCHANGED_32) u.goal_y = static_cast<uint8_t>(q.args[1]);
-    if (q.args[2] != ARG_UNCHANGED_32) u.home_storage_slot = static_cast<uint8_t>(q.args[2]);
-    if (q.args[3] != ARG_UNCHANGED_32) u.target_fine_x = q.args[3];
-    if (q.args[4] != ARG_UNCHANGED_32) u.target_fine_y = q.args[4];
-    if (q.args[5] != ARG_UNCHANGED_32) u.target_ref = static_cast<int16_t>(q.args[5]);
-    if (q.args[5] != ARG_UNCHANGED_32) u.target_index = static_cast<int16_t>(q.args[6]); // [5], not [6]
-    if (q.args[7] != ARG_UNCHANGED_32) u.selected_weapon = static_cast<uint8_t>(q.args[7]);
-    if (q.args[12] != ARG_UNCHANGED_32) u.move_group_id = q.args[12];
+        if (q.args[0] != ARG_UNCHANGED_32) u.goal_x = static_cast<uint8_t>(q.args[0]);
+        if (q.args[1] != ARG_UNCHANGED_32) u.goal_y = static_cast<uint8_t>(q.args[1]);
+        if (q.args[2] != ARG_UNCHANGED_32) u.home_storage_slot = static_cast<uint8_t>(q.args[2]);
+        if (q.args[3] != ARG_UNCHANGED_32) u.target_fine_x = q.args[3];
+        if (q.args[4] != ARG_UNCHANGED_32) u.target_fine_y = q.args[4];
+        if (q.args[5] != ARG_UNCHANGED_32) u.target_ref = static_cast<int16_t>(q.args[5]);
+        if (q.args[5] != ARG_UNCHANGED_32) u.target_index = static_cast<int16_t>(q.args[6]); // [5], not [6]
+        if (q.args[7] != ARG_UNCHANGED_32) u.selected_weapon = static_cast<uint8_t>(q.args[7]);
+        if (q.args[12] != ARG_UNCHANGED_32) u.move_group_id = q.args[12];
 
-    u.path_blocked_retry_count = 0;
-    u.order_queued             = 0;
-    u.home_x                   = u.x; // snapshot the rally point from the current position
-    u.home_y                   = u.y;
+        u.path_blocked_retry_count = 0;
+        u.order_queued             = 0;
+        u.home_x                   = u.x; // snapshot the rally point from the current position
+        u.home_y                   = u.y;
 
-    // The unit's live state is compared against an UNNAMED per-prototype byte in the unit config
-    // table (Unit[proto] + 0xec). What that byte means is not established, so it gets no invented
-    // name here; the comparison is reproduced literally. The state field is 16-bit and the config
-    // byte is zero-extended (MOVZX), so this is a widened compare, not a byte compare.
-    const uint8_t proto_state =
-        st.unit_types[static_cast<int32_t>(u.unit_proto_id) * UNIT_TYPE_STRIDE + UNIT_TYPE_STATE_BYTE];
-    if (static_cast<uint32_t>(u.state) == static_cast<uint32_t>(proto_state))
-        gc.unit_notify_status(static_cast<uint16_t>(player), unit_idx, 0);
+        // The unit's live state is compared against an UNNAMED per-prototype byte in the unit config
+        // table (Unit[proto] + 0xec). What that byte means is not established, so it gets no invented
+        // name here; the comparison is reproduced literally. The state field is 16-bit and the config
+        // byte is zero-extended (MOVZX), so this is a widened compare, not a byte compare.
+        const uint8_t proto_state =
+            st.unit_types[static_cast<int32_t>(u.unit_proto_id) * UNIT_TYPE_STRIDE + UNIT_TYPE_STATE_BYTE];
+        if (static_cast<uint32_t>(u.state) == static_cast<uint32_t>(proto_state))
+            gc.unit_notify_status(static_cast<uint16_t>(player), unit_idx, 0);
 
-    if (u.target_ref != 0) gc.target_release_ref(static_cast<uint16_t>(player), unit_idx, 0);
+        if (u.target_ref != 0) gc.target_release_ref(static_cast<uint16_t>(player), unit_idx, 0);
+        mh::state::emit_order_observation(
+            LIBMH_EVK_UNIT_ORDER_COMMITTED, LIBMH_ORDER_OBSERVATION_QUEUE,
+            q.unit_index, q.owner_and_kind, q.param0, q.order_code, q.args);
+        if (st.order_tasks_observer && q.order_code != 0x1d && q.order_code != 0x1e) {
+            mh_order_tasks_request request{};
+            mh_order_tasks_result  result{};
+            request.operation = uint32_t(uint32_t(q.args[8]) == hp::AUTONOMOUS_PRIMARY ? hp::operation::autonomous_applied : hp::operation::ordinary_applied);
+            request.player    = player;
+            request.slot      = uint32_t(unit_idx);
+            request.args[0]   = q.owner_and_kind;
+            request.args[1]   = q.order_code;
+            request.args[2]   = uint16_t(q.param0);
+            for (uint32_t i = 0; i < 13; ++i) request.args[i + 3] = uint32_t(q.args[i]);
+            if (uint32_t(q.args[8]) == hp::AUTONOMOUS_PRIMARY) {
+                request.args[16] = autonomous_anchor.x;
+                request.args[17] = autonomous_anchor.y;
+            }
+            st.order_tasks_observer(&request, &result);
+        }
+        W::applied(w, witness.get());
+    } // no state, order or target-ref writes for stale QOPA/QOEX
 
     *st.queue_count -= 1;
     mh::sim::rng_trace_add_note(13u, (uint32_t)q.order_code, (uint32_t)q.unit_index,
                                 (uint32_t)q.owner_and_kind, (uint32_t)queue_idx,
                                 (uint32_t)*st.queue_count, (uint32_t)player);
-    for (int32_t j = queue_idx; j < *st.queue_count; ++j) copy_record(&st.queue[j], &st.queue[j + 1]);
+    for (int32_t j = queue_idx; j < *st.queue_count; ++j) {
+        copy_record(&st.queue[j], &st.queue[j + 1]);
+        if (witness.current()) {
+            W::pinned following(
+                w, W::container::queue, static_cast<uint32_t>(j + 1));
+            W::copy(w, W::container::queue,
+                    static_cast<uint32_t>(j), following.get());
+        }
+    }
+    if (witness.current())
+        W::clear_from(w, W::container::queue,
+                      static_cast<uint32_t>(*st.queue_count));
+    if (!apply) {
+        // Hover assumes order_queued guarantees a real matching record. Preserve newer
+        // pending records, ignore stale tagged ones, and do not create an applied event.
+        bool pending = false;
+        for (int32_t i = 0; i < *st.queue_count; ++i) {
+            const auto &next = st.queue[i];
+            if (next.unit_index != unit_idx || (next.owner_and_kind & 0xff) != (player | 0x80u)) continue;
+            const uint32_t tag = uint32_t(next.args[8]);
+            if (!hp::is_primary_marker(tag)) {
+                pending = true;
+                break;
+            }
+            if (admitted(next)) {
+                pending = true;
+                break;
+            }
+        }
+        u.order_queued = pending ? 1 : 0;
+        if (st.order_tasks_observer) {
+            mh_order_tasks_request request{};
+            mh_order_tasks_result  result{};
+            request.operation = uint32_t(hp::operation::discarded);
+            request.player    = player;
+            request.slot      = uint32_t(unit_idx);
+            request.args[0]   = discarded_record.owner_and_kind;
+            request.args[1]   = discarded_record.order_code;
+            request.args[2]   = uint16_t(discarded_record.param0);
+            for (uint32_t i = 0; i < 13; ++i) request.args[i + 3] = uint32_t(discarded_record.args[i]);
+            st.order_tasks_observer(&request, &result);
+        }
+    }
 }
 
 // llm_strat_order_integrity_check @0x0046616e -- the verifier for stage_scheduled's byte-duplication

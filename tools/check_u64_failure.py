@@ -25,16 +25,18 @@ Absence of a log is a REFUSAL (exit 2), never a pass.
 """
 
 import argparse
+import json
 import os
 import re
 import sys
+import subprocess
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_u53_elim as u53  # noqa: E402
 from check_u62_handover import _wall, stall_window  # noqa: E402
 
 PEERS = ("host", "client1", "client2", "client3")
-ID_OF = {"host": 0, "client1": 1, "client2": 2, "client3": 3}
 MIN_POST = 1000
 STALL_MAX_MS = 6000
 MINORITY_MAX_S = 40.0
@@ -88,6 +90,68 @@ def _identical(det_dir, peers, min_common):
     return ok, out
 
 
+def _minority_identical(det_dir, peers, incident):
+    """Full analyzer verdict over the certified prefix, not a rendered in-band substring."""
+    with tempfile.TemporaryDirectory(prefix="mh_minority_verdict_") as tmp:
+        path = os.path.join(tmp, "analysis.json")
+        result = subprocess.run(
+            [
+                sys.executable,
+                u53.MP_ANALYZE,
+                "--minority-cleanup",
+                "--no-resync",
+                "--min-common",
+                str(max(1, incident - 1)),
+                "--json",
+                path,
+            ]
+            + [os.path.join(det_dir, peer) for peer in peers],
+            capture_output=True,
+            text=True,
+        )
+        if not os.path.isfile(path):
+            return False, [
+                "    minority analysis produced no structured verdict: "
+                + (result.stderr or result.stdout)[-600:]
+            ]
+        with open(path, encoding="utf-8") as fh:
+            verdict = json.load(fh)
+    proofs = verdict.get("minority_cleanup") or {}
+    pairs = verdict.get("desync_pairs") or []
+    ok = (
+        result.returncode == 0
+        and not verdict.get("refused")
+        and verdict.get("run_invalid") is False
+        and verdict.get("all_pairwise_clean") is True
+        and verdict.get("inband_desync") is False
+        and len(proofs) == len(peers)
+        and bool(pairs)
+    )
+    lines = [
+        "    certified minority analysis: %s" % (verdict.get("refused") or verdict.get("verdict"))
+    ]
+    for role, proof in proofs.items():
+        lines.append(
+            "    %s native=%d first_cleanup=%d base=%d generation=%d flags=%s"
+            % (
+                role,
+                proof["local"],
+                proof["first"],
+                proof["base"],
+                proof["generation"],
+                ",".join("%08X" % x for x in proof["flags"]),
+            )
+        )
+    for pair in pairs:
+        lines.append(
+            "    %s: %d common pre-cleanup hashes, %d state mismatches"
+            % (pair["pair"], pair.get("overlap", 0), pair.get("mismatch_count", 0))
+        )
+    if not ok:
+        lines += ["      " + line for line in result.stdout.strip().splitlines()[-8:]]
+    return ok, lines
+
+
 def _removals(net):
     """{dead id: step} of the removal lines a survivor logged (llm_net_player_remove / pinned removal)."""
     out = {}
@@ -101,6 +165,9 @@ def _removals(net):
 def check(det_dir, arm, spec, crash=None, relayed=False):
     crash = spec["crash"] if crash is None else crash
     out, bad = [], []
+    id_of = u53.native_peer_ids(det_dir, PEERS)
+    native_peers = {slot: peer for peer, slot in id_of.items()}
+    out.append("match-owned native player slots: %r" % id_of)
     logs = {}
     for p in PEERS:
         d = os.path.join(det_dir, p)
@@ -117,7 +184,7 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
     if spec_p:
         # mp:U71: the defeated peer must have become a SPECTATOR on every peer, and (unless the arm withholds the bit)
         # each survivor must have exported it to its transport (`U71 spectator mask 00 -> 0x`).
-        bit = 1 << ID_OF[spec_p]
+        bit = 1 << id_of[spec_p]
         withheld = "spectate_mask=0" in spec.get("net_extra", "")
         if not re.search(r"; U54 spectate: defeat dialog opened by a SPECTATOR", logs[spec_p][0]):
             bad.append("%s was never made a spectator (no U54 spectate line)" % spec_p)
@@ -202,6 +269,10 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
                     "%s announced a hub election in a match it could not keep: %r"
                     % (sv, elected[sv])
                 )
+            if not spec.get("neg_control") and re.search(r"net: failover DONE\b", net):
+                bad.append(
+                    "%s completed failover in a minority; provisional rehome is not quorum" % sv
+                )
             tl = u53.timeline(net, sv)
             out += tl
             over = next((x for x in net.splitlines() if "on_gameover" in x), None)
@@ -228,24 +299,21 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
             t_loss = _first_wall(net, "failover SUSPECT")
             t_end = _first_wall(net, "failover MINORITY") or _first_wall(net, "failover FAILED")
             if t_loss is not None and t_end is not None:
-                out.append(
-                    "    %s: minority verdict %.1f s after the suspicion" % (sv, t_end - t_loss)
-                )
-                if t_end - t_loss > MINORITY_MAX_S:
-                    bad.append(
-                        "%s took %.1f s to end (> %.0f)" % (sv, t_end - t_loss, MINORITY_MAX_S)
-                    )
-        # the match ENDS early on purpose, so mp_analyze reads it as "environmental"; what matters is that no desync was seen
-        _ok, lines = _identical(det_dir, surv, 1)
-        out += lines
-        if not spec.get("neg_control") and any(
-            "IN-BAND: no peer reported a desync" not in ln
-            and "IN-BAND" in ln
-            and "desync" in ln
-            and "no peer" not in ln
-            for ln in lines
-        ):
-            bad.append("an in-band desync was reported before the minority ended")
+                elapsed = u53.elapsed_wall_seconds(t_loss, t_end)
+                out.append("    %s: minority verdict %.1f s after the suspicion" % (sv, elapsed))
+                if elapsed > MINORITY_MAX_S:
+                    bad.append("%s took %.1f s to end (> %.0f)" % (sv, elapsed, MINORITY_MAX_S))
+        if spec.get("neg_control"):
+            # U71's disabled-spectator control proves that the even split ends, not shared-state
+            # determinism. Its relay follower can end via retail's timeout without its own MINORITY.
+            out.append(
+                "    negative control: mask/quorum/end checks only; no shared-state certification claimed"
+            )
+        else:
+            ok, lines = _minority_identical(det_dir, surv, first_incident)
+            out += lines
+            if not ok:
+                bad.append("minority shared-state prefix is not strictly certified and identical")
         return (not bad), out + ["FAIL: " + b_ for b_ in bad]
 
     # ---- plays on ---------------------------------------------------------------------------------------
@@ -261,8 +329,12 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
     elif firsts:
         hid, ep = next(iter(firsts.values()))
         out.append("all survivors logged `hub elected %s epoch %s`" % (hid, ep))
-        if spec.get("expect_hub") is not None and not relayed and int(hid) != spec["expect_hub"]:
-            bad.append("expected player %d to be elected, got %s" % (spec["expect_hub"], hid))
+        expected_role = PEERS[spec["expect_hub"]] if spec.get("expect_hub") is not None else None
+        if expected_role and not relayed and int(hid) != id_of[expected_role]:
+            bad.append(
+                "expected %s (native player %d) to be elected, got %s"
+                % (expected_role, id_of[expected_role], hid)
+            )
         # the election must realise the held ranking: the first candidate that is not already dead
         ranks = RANK_RE.findall(logs[surv[0]][0])
         if ranks:
@@ -272,13 +344,12 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
             out.append(
                 "held ranking before the loss: %s -> first live candidate %s" % (ranks[0], exp)
             )
-        if int(hid) not in [ID_OF[s] for s in surv] + [ID_OF[s] for s in crash if s != "host"]:
+        if int(hid) not in [id_of[s] for s in surv] + [id_of[s] for s in crash if s != "host"]:
             bad.append("the elected hub %s is not a survivor (of that failover)" % hid)
         else:
-            hp = PEERS[int(hid)]
-            if hp in PEERS:
-                if "this player is the hub now" not in logs[hp][0]:
-                    bad.append("%s was elected but never logged that it became the hub" % hp)
+            hp = native_peers[int(hid)]
+            if "this player is the hub now" not in logs[hp][0]:
+                bad.append("%s was elected but never logged that it became the hub" % hp)
             for sv in surv:
                 if sv != hp and "re-dialled player" not in logs[sv][0]:
                     bad.append("%s never logged re-dialling the elected hub" % sv)
@@ -291,7 +362,7 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
             out.append("second election on every survivor: hub %s epoch %s" % (hid2, ep2))
             ranks = RANK_RE.findall(logs[surv[0]][0])
             if len(ranks) > 1:
-                dead2 = {0} | {ID_OF[p] for p in crash if p != "host"}
+                dead2 = {0} | {id_of[p] for p in crash if p != "host"}
                 exp2 = next((int(c) for c in ranks[1].split(">") if int(c) not in dead2), None)
                 out.append(
                     "held ranking before the second loss: %s -> first live candidate %s"
@@ -303,11 +374,11 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
                         % (hid2, ranks[1], exp2)
                     )
             if int(hid2) == int(next(iter(firsts.values()))[0]) or int(hid2) not in [
-                ID_OF[s] for s in surv
+                id_of[s] for s in surv
             ]:
                 bad.append("the second hub %s is the dead first hub or not a survivor" % hid2)
     # dropped by a silence timer?
-    ids = [ID_OF[s] for s in surv]
+    ids = [id_of[s] for s in surv]
     for sv in surv:
         net = logs[sv][0]
         for x in net.splitlines():
@@ -346,10 +417,10 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
                 bad.append("%s: no lockstep rows near step %d" % (sv, step))
             elif gap > STALL_MAX_MS:
                 bad.append("%s stalled %d ms around step %d (> %d)" % (sv, gap, step, STALL_MAX_MS))
-    # removals: the NEW hub's U17 fast-drop removes a dead peer at the PARKED step and broadcasts it, so every survivor
-    # applies it at that one step -- a different step on one survivor would change its roster flags and break the hash
-    # identity checked above. What is checked here is that the removal HAPPENED, once per dead peer, by a survivor.
-    dead_ids = {ID_OF[p] for p in crash} | {ID_OF[p] for p in spec.get("minority_peers", ())}
+    # A new hub broadcasts exactly one removal per dead peer. The all-survivor
+    # per-step hash comparison above proves agreement on the roster transition;
+    # a diagnostic label such as "PARKED" cannot certify actual body completion.
+    dead_ids = {id_of[p] for p in crash} | {id_of[p] for p in spec.get("minority_peers", ())}
     drops = {}
     for sv in PEERS:  # every peer's log: the FIRST new hub may itself be a later casualty
         for x in logs[sv][0].splitlines():
@@ -361,7 +432,7 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
                 drops.setdefault(int(mm.group(1)), []).append((sv, mm.group(2), int(mm.group(3))))
     for d in sorted(dead_ids):
         got = drops.get(d, [])
-        if not got and spec_p and d == ID_OF[spec_p]:
+        if not got and spec_p and d == id_of[spec_p]:
             # a SPECTATOR was already out of the roster (mp:U54): its transport closing is "already removed, no second removal"
             pre = [
                 sv
@@ -382,11 +453,6 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
                 "peer %d must be removed exactly once (by the hub of that failover), saw %r"
                 % (d, got)
             )
-        elif got[0][1] != "PARKED":
-            bad.append(
-                "peer %d was removed by the safety valve (%s), not at the PARKED step"
-                % (d, got[0][1])
-            )
     # the cut-off minority
     for mp in spec.get("minority_peers", ()):
         net, har = logs[mp]
@@ -401,14 +467,15 @@ def check(det_dir, arm, spec, crash=None, relayed=False):
             t_end = _wall(over)
             t_cut = _first_wall(logs[surv[0]][0], "failover SUSPECT")
             if t_end is not None and t_cut is not None:
+                elapsed = u53.elapsed_wall_seconds(t_cut, t_end)
                 out.append(
                     "    minority %s ended %.1f s after the survivors' suspicion began"
-                    % (mp, t_end - t_cut)
+                    % (mp, elapsed)
                 )
-                if t_end - t_cut > MINORITY_PEER_MAX_S:
+                if elapsed > MINORITY_PEER_MAX_S:
                     bad.append(
                         "the minority %s took %.1f s to end (> %.0f s)"
-                        % (mp, t_end - t_cut, MINORITY_PEER_MAX_S)
+                        % (mp, elapsed, MINORITY_PEER_MAX_S)
                     )
     if spec.get("heal_at"):
         wc = {}

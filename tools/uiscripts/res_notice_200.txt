@@ -26,5 +26,27 @@ gameclock +20
 cursorhold 640 500 6
 pcapture res_notice_after
 capture res_notice_frame_after
-log res_notice COMPLETE -- notice at 200%
+# The same first notice starts the six-line modal proof; append the other five.
+# No second load or notice reset: both checks share their original boot settings.
+notice Order refused: no free slot in the queue here
+notice Order refused: target out of range for it
+notice Order refused: the building is not ready yet
+notice Order refused: not enough credits today
+notice Order refused: unit is busy right now
+# Pin both readbacks to one body: native notices blink red/yellow with game time.
+simstep 40
+cursorhold 640 500 6
+pcapture res_nm_notice
+bcapture res_nm_notice
+rawmouse sabs 300 300
+simstep 44
+key 0x01
+present &Options
+settled &Options
+gamemode 3
+screensettled
+capture res_nm_frame
+pcapture res_nm_modal
+bcapture res_nm_modal
+log res_notice COMPLETE -- 200% scaling and scaled notice under the mode-3 menu
 end

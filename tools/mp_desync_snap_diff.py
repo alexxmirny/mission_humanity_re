@@ -131,6 +131,8 @@ def main():
             )
         if s["fp"] != base["fp"]:
             sys.exit(f"manifest fingerprint mismatch between {base['path']} and {s['path']}")
+        if len(s["regions"]) != len(base["regions"]):
+            sys.exit(f"region-count mismatch between {base['path']} and {s['path']}")
 
     manifest = load_manifest()
     if len(manifest) != len(base["regions"]):
@@ -144,7 +146,8 @@ def main():
     any_diff = False
     for i, ref in enumerate(base["regions"]):
         name = manifest[i]["name"] if i < len(manifest) else f"region_{i}"
-        addr = int(manifest[i]["addr"], 16) if i < len(manifest) else 0
+        descriptor = manifest[i] if i < len(manifest) else None
+        addr = int(descriptor["addr"], 16) if descriptor and "addr" in descriptor else None
         peers_diff = [s for s in snaps[1:] if s["regions"][i] != ref]
         if not peers_diff:
             continue
@@ -152,7 +155,14 @@ def main():
         who = ", ".join(
             os.path.basename(os.path.dirname(s["path"]) or s["path"]) for s in peers_diff
         )
-        print(f"\n== {name} (idx {i}, base {addr:#x}, {len(ref)} bytes) differs vs: {who}")
+        location = (
+            f"base {addr:#x}"
+            if addr is not None
+            else "host-native"
+            if descriptor and "region" in descriptor
+            else "unknown address"
+        )
+        print(f"\n== {name} (idx {i}, {location}, {len(ref)} bytes) differs vs: {who}")
         m = PLAYER_SLICE_RE.match(name)
         slice_base = PLAYER_SLICE_BASE[m.group(2)] if m else None
         for s in peers_diff:

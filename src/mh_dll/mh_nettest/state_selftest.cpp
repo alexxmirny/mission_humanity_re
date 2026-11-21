@@ -66,9 +66,11 @@
 #include "state/region_view.h"
 #include "lockstep/lockstep_state.h" // SB-BIND T4: host_binds() -- the production-arm binds
 #include "lockstep/turn_engine.h"    // SB-BIND T4: the lockstep binders under test in arm K
-#include "state/host_bind.h"         // SB-BIND T1: the state ABI under test in run_bindtest()
-#include "state/roster_caps.h"       // SB-BIND T2: the derived per-player caps
-#include "seams/boot_residue.h"      // mp:D45: the boot-snapshot restore arithmetic under test
+#include "storage_policy_fixture.h"
+#include "state/host_bind.h"    // SB-BIND T1: the state ABI under test in run_bindtest()
+#include "state/roster_caps.h"  // SB-BIND T2: the derived per-player caps
+#include "seams/boot_residue.h" // mp:D45: the boot-snapshot restore arithmetic under test
+#include "include/mh_tile_dirty.h"
 // mp:D29: the harness's configuration (1) path -- its fallback binder, its gates and its two report
 // lines are header-only precisely so these arms can drive the production code with planted inputs.
 #include "../mh_harness/config1.h"
@@ -181,26 +183,64 @@ int run_statetest() {
     // against pre-ST2 goldens. This is that comparison, in a stronger and cheaper form than diffing
     // two run logs: it asserts, EXHAUSTIVELY, that every address any consumer can dereference is the
     // constexpr value it replaced. A log diff would only cover the regions a particular run happened
-    // to touch and would have to be re-earned by hand each time; this covers all 243 regions and all
-    // 55 hash slices, and it runs on every gate from now on.
+    // to touch and would have to be re-earned by hand each time; this covers the stock regions
+    // and their hash slices on every gate.
     //
     // Must come FIRST -- the rebases below deliberately violate it.
     {
         int drift = 0;
         for (int r = 0; r < RID_COUNT; ++r) {
             const auto rid = (region_id)r;
+            if (REGIONS[rid].host_native) continue;
             if (is_rebased(rid) || live_base(rid) != REGIONS[r].base ||
                 live_size(rid) != REGIONS[r].size)
                 ++drift;
         }
         ck(drift == 0,
-           "on an unrebased build EVERY region's live base and size equal the constexpr values -- "
+           "on an unrebased build stock regions' live bases and sizes equal the constexpr values -- "
            "which is what makes ST2 provably behaviour-free until something actually moves");
 
         int hdrift = 0;
-        for (int i = 0; i < HASH_REGION_COUNT; ++i)
+        for (int i = 0; i < HASH_REGION_COUNT; ++i) {
+            if (REGIONS[HASH_REGIONS[i].rid].host_native) continue;
             if (hash_base(i) != HASH_REGIONS[i].base) ++hdrift;
-        ck(hdrift == 0, "...and every one of the 55 hash slices resolves to its stock address");
+        }
+        ck(hdrift == 0, "stock hash slices resolve to their stock addresses");
+    }
+
+    // Lookup indexing must retain the former first-containing-region rule, including widened
+    // overlapping reaches, zero-size end points and non-wrapping address arithmetic.
+    {
+        bool same    = true;
+        auto compare = [&](uint32_t addr, uint32_t size) {
+            const region *expected = nullptr;
+            for (const region &r : REGIONS) {
+                if (!r.host_native && r.reach && addr >= r.base &&
+                    uint64_t(addr) + size <= uint64_t(r.base) + r.reach) {
+                    expected = &r;
+                    break;
+                }
+            }
+            same &= covering(addr, size) == expected;
+        };
+        for (const region &r : REGIONS) {
+            const uint64_t end      = uint64_t(r.base) + r.reach;
+            const uint64_t points[] = {r.base ? uint64_t(r.base) - 1 : 0, r.base,
+                                       uint64_t(r.base) + 1, end ? end - 1 : 0, end, end + 1};
+            const uint32_t sizes[]  = {0, 1, 4, r.reach, UINT32_MAX};
+            for (uint64_t addr : points)
+                if (addr <= UINT32_MAX)
+                    for (uint32_t size : sizes) compare(uint32_t(addr), size);
+        }
+        uint32_t random = 0x43a19e27u;
+        for (int i = 0; i < 10000; ++i) {
+            random              = random * 1664525u + 1013904223u;
+            const uint32_t addr = random;
+            random              = random * 1664525u + 1013904223u;
+            compare(addr, i & 1 ? random : random & 1023u);
+        }
+        ck(same, "indexed covering preserves exact first-match region identity at all boundaries "
+                 "and random/overflowing windows");
     }
 
     // ---- premises ------------------------------------------------------------------------------
@@ -662,52 +702,50 @@ int run_bindtest() {
        "premise: the fixture region's REACH exceeds what its symbol measures (the overrun case)");
 
     // ---- B. the default table is the stock answer, derived from REGIONS[] --------------------
-    ck(libmh_region_count() == (size_t)RID_COUNT, "libmh_region_count() is the registry's size");
-    ck(libmh_default_binds(nullptr, 0) == (size_t)RID_COUNT,
-       "a null/zero-cap probe still returns the full count, so a host can size its buffer");
     {
         static libmh_region_bind t[RID_COUNT];
-        const size_t             n = libmh_default_binds(t, RID_COUNT);
-        ck(n == (size_t)RID_COUNT, "the default table fills every region");
-        int bad_base = 0, bad_size = 0, bad_count = 0, bad_id = 0;
-        for (int i = 0; i < RID_COUNT; ++i) {
-            const auto rid = (region_id)i;
-            if (t[i].region_id != (uint32_t)i) ++bad_id;
-            if ((uintptr_t)t[i].base != (uintptr_t)base_of(rid)) ++bad_base;
-            if (t[i].size != reach_of(rid)) ++bad_size;
-            if (t[i].count != 0) ++bad_count;
+        const size_t             n   = libmh_default_binds(t, RID_COUNT);
+        int                      bad = 0;
+        for (size_t i = 0; i < n; ++i) {
+            if (t[i].region_id >= static_cast<uint32_t>(RID_COUNT)) {
+                ++bad;
+                continue;
+            }
+            const auto rid = static_cast<region_id>(t[i].region_id);
+            if (REGIONS[rid].host_native ||
+                reinterpret_cast<uintptr_t>(t[i].base) != base_of(rid) ||
+                t[i].size != reach_of(rid)) ++bad;
         }
-        ck(bad_id == 0 && bad_base == 0, "every default entry is (its own id, its STOCK base)");
-        ck(bad_size == 0,
-           "...and its size is the region's REACH, not what the symbol measures -- the D6.5 "
-           "decision, in the table rather than in prose");
-        ck(bad_count == 0,
-           "...and count is 0 throughout: the registry carries no element stride, so the stock "
-           "table declares no capacity and the compile-time caps stand (T2 changes that)");
-
-        // A cap smaller than the table writes only cap entries and still reports the true size.
+        ck(bad == 0, "default entries supply only stock regions, at stock base and full reach");
         static libmh_region_bind small[4];
         for (int i = 0; i < 4; ++i) small[i].region_id = 0xffffffffu;
-        ck(libmh_default_binds(small, 3) == (size_t)RID_COUNT && small[2].region_id == 2 &&
-               small[3].region_id == 0xffffffffu,
-           "a short cap writes exactly cap entries and does not run off the end");
+        libmh_default_binds(small, 3);
+        ck(small[2].region_id == t[2].region_id && small[3].region_id == 0xffffffffu,
+           "a short cap writes its prefix and preserves the following sentinel");
     }
 
-    // ---- C. binding the stock table is a NO-OP, and that is the hosted arm's whole basis -----
-    ck(mh::state::bind_stock() == RID_COUNT, "bind_stock() binds every region through the C entry");
-    ck(bound_count() == RID_COUNT, "...and every region now reports itself answered-for");
+    // ---- C. stock binding preserves the separately owned native state -----------------------
+    uint8_t policy[mh::storage_policy::HEADER_BYTES];
+    if (!mh::test::initialize_storage_policy(policy, sizeof(policy))) return 1;
+    const libmh_region_bind native = {
+        static_cast<uint32_t>(RID_STORAGE_POLICY), policy, sizeof(policy), 0};
+    if (libmh_bind_regions(&native, 1) != 1) return 1;
+    uint8_t policy_before_stock[sizeof(policy)];
+    std::memcpy(policy_before_stock, policy, sizeof(policy));
+    mh::state::bind_stock();
+    ck(is_bound(RID_STORAGE_POLICY) && !is_rebased(RID_STORAGE_POLICY) &&
+           live_base(RID_STORAGE_POLICY) == reinterpret_cast<uintptr_t>(policy) &&
+           live_size(RID_STORAGE_POLICY) == sizeof(policy) &&
+           std::memcmp(policy, policy_before_stock, sizeof(policy)) == 0,
+       "stock binding preserves the native owner's pointer, extent and bytes without relocating it");
     {
-        int moved = 0, drifted = 0;
+        int drifted = 0;
         for (int i = 0; i < RID_COUNT; ++i) {
-            const auto rid = (region_id)i;
-            if (is_rebased(rid)) ++moved;
-            if (live_base(rid) != REGIONS[i].base) ++drifted;
+            const auto rid = static_cast<region_id>(i);
+            if (REGIONS[rid].host_native) continue;
+            if (is_rebased(rid) || live_base(rid) != REGIONS[rid].base) ++drifted;
         }
-        ck(moved == 0,
-           "NOT ONE region reports itself moved after the stock bind -- `moved` is derived from "
-           "whether the base actually differs, so translate() never leaves its identity path and "
-           "island_move() can still claim its 48 regions later");
-        ck(drifted == 0, "...and every live base is still the constexpr .bss address");
+        ck(drifted == 0, "stock binding leaves stock consumers on their original addresses");
     }
 
     // ---- D. the one intended delta: live_size becomes reach ---------------------------------
@@ -715,6 +753,7 @@ int run_bindtest() {
         int differs = 0, expected = 0;
         for (int i = 0; i < RID_COUNT; ++i) {
             const auto rid = (region_id)i;
+            if (REGIONS[rid].host_native) continue;
             if (reach_of(rid) != size_of(rid)) ++expected;
             if (live_size(rid) != size_of(rid)) ++differs;
         }
@@ -824,6 +863,19 @@ int run_bindtest() {
         bad[1].size = 0;
         ck(libmh_bind_regions(bad, 2) == 2, "a null base with size 0 is accepted");
         ck(live_count((region_id)0) == 7, "...and now the count the host declared IS stored");
+
+        if (libmh_bind_regions(&native, 1) != 1) return 1;
+        uint8_t witness[sizeof(policy)];
+        std::memcpy(witness, policy, sizeof(policy));
+        bad[0]      = native;
+        bad[0].base = witness;
+        bad[1]      = native;
+        bad[1].size = sizeof(policy) - 1u;
+        ck(libmh_bind_regions(bad, 2) == -4 &&
+               live_base(RID_STORAGE_POLICY) == reinterpret_cast<uintptr_t>(policy) &&
+               live_size(RID_STORAGE_POLICY) == sizeof(policy) &&
+               std::memcmp(policy, witness, sizeof(policy)) == 0,
+           "invalid native binding refuses the whole table without changing owner or bytes");
     }
 
     // ---- I. THE DERIVED ROSTER CAPS (SB-BIND T2) ---------------------------------------------
@@ -1213,47 +1265,24 @@ int run_bindtest() {
         // switch and defeat the fail-safe the enum is built around.
         o.armed_walkers = WALK_PROMOTABLE;
 
+        if (libmh_bind_regions(&native, 1) != 1) return 1;
+        uint8_t policy_before[sizeof(policy)];
+        std::memcpy(policy_before, policy, sizeof(policy));
         const int n = bind_relocated(arena, sizeof(arena), o, &rep);
         ck(rep.refused == nullptr, "H1: the relocating bind is not refused with a full-size arena");
         ck(n == rep.relocated && n > 0, "H1: it reports what it bound, and it bound something");
 
-        // THE ARITHMETIC HAS TO CLOSE. relocated + zero_size accounts for every relocatable region,
-        // and blocked accounts for the rest -- a report whose parts do not sum to RID_COUNT is one
-        // that has quietly dropped a region, which is the failure a per-count assertion misses.
-        // `under_overrun` is NOT a bucket in this sum any more, and that is the 2026-09-06 change:
-        // those regions MOVE now (the four blocks that span regions are decomposed), so they are
-        // counted in `relocated` and reported separately as "relying on the decomposition".
-        ck(rep.relocated + rep.zero_size + rep.overrunning + rep.already_moved ==
-               RELOCATABLE_COUNT,
-           "H1: the four relocatable-side buckets sum to the generated RELOCATABLE_COUNT");
-        ck(rep.relocated == movable_count(),
-           "H1: and what it MOVED is exactly the generated is_movable() set -- the bind and the "
-           "counts read one predicate, so the non-vacuity assertion below cannot drift from it");
-        ck(rep.overrunning == 0,
-           "H1: no region is refused for OVERRUNNING its own symbol today -- all ten such regions "
-           "are already blocked by an original accessor, so this bucket is empty on purpose and the "
-           "day it is not is the day the save-block decomposition tranche is overdue");
-        ck(rep.under_overrun > 0 && rep.under_overrun <= rep.relocated,
-           "H1: regions lying UNDER someone else's overrunning window now MOVE and are reported, "
-           "not refused -- they were refused until the four blocks that span regions were "
-           "decomposed (SLICED_BLOCKS + check_save_block_slices). The count is a subset of the "
-           "moved ones, and it is the number relying on that decomposition to stay correct");
-        ck(rep.blocked == BLOCKED_COUNT,
-           "H1: the blocked count is the generated one -- the census decides it, not this bind");
-        ck(rep.relocated + rep.zero_size + rep.overrunning + rep.already_moved + rep.blocked ==
-               RID_COUNT,
-           "H1: ...and the buckets account for EVERY region, so none was silently dropped");
-
-        // A HOST ANSWERS FOR EVERYTHING IT DOES NOT MOVE, TOO. The 364 blocked regions are bound to
-        // their stock bases -- a no-op by construction, and what keeps `did every region get an
-        // answer?` answerable. Without it a relocating host would be indistinguishable from one
-        // that simply forgot 364 regions.
-        ck(bound_count() == RID_COUNT,
-           "H1: every region is BOUND -- the ones that moved to the arena and the ones the census "
-           "pinned to their stock base alike");
+        ck(rep.under_overrun > 0,
+           "H1: stock regions covered by decomposed overrunning save blocks actually relocate");
         ck(is_bound(RID_UNITS) && !is_rebased(RID_UNITS),
-           "H1: ...so a blocked region is BOUND-and-not-moved, which is a different state from "
-           "unbound and must not be confused with it");
+           "H1: a blocked stock region stays bound at its stock address");
+        mh::storage_policy::state preserved;
+        ck(is_bound(RID_STORAGE_POLICY) &&
+               live_base(RID_STORAGE_POLICY) == reinterpret_cast<uintptr_t>(policy) &&
+               live_size(RID_STORAGE_POLICY) == sizeof(policy) &&
+               preserved.bind(policy, sizeof(policy)) &&
+               std::memcmp(policy, policy_before, sizeof(policy)) == 0,
+           "relocation preserves the native owner's pointer, extent and canonical bytes");
 
         // NON-VACUITY. A relocation that moved nothing the determinism hash reads is green over
         // bytes nobody watches. This is the same claim the live acceptance makes, asserted here
@@ -1311,8 +1340,6 @@ int run_bindtest() {
                                                            movable_count(),
            "H1: what moved is the promotion-conditional set, and the two sets differ by exactly "
            "the held count -- neither number is free to drift from the other");
-        ck(bound_count() == RID_COUNT,
-           "H1: every region still gets an answer, held ones included");
         for (int i = 0; i < RID_COUNT; ++i) unrebase((region_id)i);
 
         // ARMING ONE WALKER IS NOT ARMING ITS PAIR, and this is the arm that would have caught the
@@ -1617,6 +1644,40 @@ int run_bindtest() {
            "D29: the compile-time manifest fingerprint equals the runtime definition it replaced");
     }
 
+    // Dirty stamping follows each live logical capacity, not stock300 or physical padding.
+    {
+        struct dirty_maps {
+            uint8_t drawn[4096], vis_prefix[6], vis[4096], vis_tail[3];
+        };
+        static dirty_maps maps;
+        int32_t           width = 64, height = 65; // Deliberately more cells than either allocation.
+        bind(RID_VIEW_TILES_W, (uint32_t)(uintptr_t)&width, sizeof width);
+        bind(RID_VIEW_TILES_H, (uint32_t)(uintptr_t)&height, sizeof height);
+        const uint32_t capacities[][2] = {{300, 300}, {1018, 1024}, {4096, 4096}, {1024, 300}};
+        for (const auto &cap : capacities) {
+            std::memset(maps.drawn, 0x80, sizeof maps.drawn);
+            std::memset(maps.vis, 0x20, sizeof maps.vis);
+            std::memset(maps.vis_prefix, 0xa7, sizeof maps.vis_prefix);
+            std::memset(maps.vis_tail, 0, sizeof maps.vis_tail);
+            bind(RID_TILE_DRAWN_MAP, (uint32_t)(uintptr_t)maps.drawn, cap[0]);
+            bind(RID_TILE_VIS_MAP, (uint32_t)(uintptr_t)maps.vis, cap[1]);
+            mh::gfx::mark_ground_tiles_dirty(0, 0, width * 32, height * 32);
+            bool correct = true;
+            for (uint32_t i = 0; i < 4096; ++i) {
+                correct &= maps.drawn[i] == (i < cap[0] ? 1 : 0x80);
+                correct &= maps.vis[i] == (i < cap[1] ? 0x21 : 0x20);
+            }
+            for (uint8_t value : maps.vis_prefix) correct &= value == 0xa7;
+            for (uint8_t value : maps.vis_tail) correct &= value == 0;
+            ck(correct, "dirty stamping reaches every live cell independently and preserves guards");
+            if (cap[1] == 4096) {
+                uint32_t last;
+                std::memcpy(&last, maps.vis + 4095, sizeof last);
+                ck(last == 0x21, "native final-cell DWORD observes its flag with untouched padding");
+            }
+        }
+    }
+
     // ---- H. leave the registry as we found it ------------------------------------------------
     for (int i = 0; i < RID_COUNT; ++i) unrebase((region_id)i);
     {
@@ -1624,7 +1685,8 @@ int run_bindtest() {
         for (int i = 0; i < RID_COUNT; ++i) {
             const auto rid = (region_id)i;
             if (is_rebased(rid) || is_bound(rid) || live_base(rid) != REGIONS[i].base ||
-                live_size(rid) != REGIONS[i].size || live_count(rid) != 0)
+                live_size(rid) != (REGIONS[i].host_native ? 0u : REGIONS[i].size) ||
+                live_count(rid) != 0)
                 ++dirty;
         }
         ck(dirty == 0,

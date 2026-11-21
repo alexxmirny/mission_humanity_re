@@ -235,13 +235,14 @@ struct fsm {
 };
 
 enum event_kind : int {
-    E_INCIDENT = 0,    // the gate passed for this peer (a = incident step D, roster = current word)
-    E_CAPTURE_OK,      // capture done + blob queued + META sent (a = S)
-    E_CAPTURE_FAIL,    // this attempt failed (e.g. -8 hashed slice missing)
-    E_DONE,            // T_WS_DONE received (a = live step, rc in `rc`)
-    E_STEP,            // one host step elapsed (elapsed_ms = ms since BEGIN, roster = current word,
-                       //   session_mode = SESSION_MODE, peer_active = still an active human)
-    E_PENDING_OVERFLOW // ORDER_PENDING overflowed on the host (R5)
+    E_INCIDENT = 0,     // the gate passed for this peer (a = incident step D, roster = current word)
+    E_CAPTURE_OK,       // capture done + blob queued + META sent (a = S)
+    E_CAPTURE_FAIL,     // this attempt failed (e.g. -8 hashed slice missing)
+    E_DONE,             // T_WS_DONE received (a = live step, rc in `rc`)
+    E_STEP,             // one host step elapsed (elapsed_ms = ms since BEGIN, roster = current word,
+                        //   session_mode = SESSION_MODE, peer_active = still an active human)
+    E_PENDING_OVERFLOW, // ORDER_PENDING overflowed on the host (R5)
+    E_FRAME             // wall-clock service while parked; never consumes cooldown steps
 };
 
 struct event {
@@ -304,8 +305,10 @@ inline action fsm_step(const config &c, fsm &f, const event &e) {
         case E_PENDING_OVERFLOW:
             if (f.state == P_BEGUN || f.state == P_SENT) return fsm_abort(f, c, WS_ABORT_PENDING_OVFL);
             return {};
+        case E_FRAME:
         case E_STEP:
             if (f.state == P_COOLDOWN) {
+                if (e.kind == E_FRAME) return {};
                 if (--f.cooldown_left <= 0) {
                     f.state = P_IDLE;
                     return {A_COOLDOWN_END, 0};
@@ -324,6 +327,14 @@ inline action fsm_step(const config &c, fsm &f, const event &e) {
     }
     return {};
 }
+
+// Only the identified in-flight peer may hold its unchanged horizon during
+// catch-up. The wall bound also applies if no simulation step can run.
+inline bool watchdog_held(const config &c, peer_state state, uint32_t begin_ms, uint32_t now_ms) {
+    return (state == P_BEGUN || state == P_SENT) && c.timeout_ms > 0 &&
+           uint32_t(now_ms - begin_ms) < uint32_t(c.timeout_ms);
+}
+
 
 // ---- 4. the minority side ---------------------------------------------------------------------------
 // The admission ring keeps the last RING records. A per-source counter `have[s]` (records admitted so far)

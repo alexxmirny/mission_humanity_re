@@ -152,10 +152,19 @@ def _order_bytes(step, salt=0):
 
 
 def _write_orders(path, records):
+    import mh_order_stream as order_stream
+
+    grouped = {}
+    for step, raw in records:
+        grouped.setdefault(step, []).append(raw)
+    samples = [
+        order_stream.Sample(step, phase, tuple(grouped.get(step, ())))
+        for step in range(1, max(grouped, default=0) + 1)
+        for phase in (order_stream.HASH, order_stream.ENTRY)
+    ]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as fh:
-        fh.write(b"\x00" * mod.HEADER_LEN)
-        fh.writelines(struct.pack("<i", step) + raw for step, raw in records)
+        fh.write(order_stream.encode(samples))
 
 
 def _plant_peer(root, name, steps, present=True, empty=False, flip_step=None):

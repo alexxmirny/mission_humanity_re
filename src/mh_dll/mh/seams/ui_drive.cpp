@@ -23,34 +23,43 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "include/mh_uidrive_export.h"
-#include "include/mh_mapzoom_export.h" // MH_MapZoom_Get (the `zoom` predicate)
-#include "include/mh_capture_export.h" // MH_Capture_Shot (named per-screen captures for the interpreter)
-#include "include/mh_net_export.h"     // MH_Net_PeerCount (the `peers` predicate: all peers connected)
-#include "include/mh_seam_export.h"    // MH_Seam_S8RetryArmed (`retryready`), MH_Seam_S3LobbyGen (`lobbygen`)
-#include "include/mh_harness_export.h" // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
-#include "seams/ui_net_indicator.h"    // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
-#include "ui/lobby_ping.h"             // mp:L1f: lobby_ping_measured_rows -- the `lobbyping` predicate
-#include "gfx/overlay_imgui.h"         // PT-GFX4: the `imgui` predicate reads the overlay's state
-#include "gfx/ddraw_own.h"             // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
-#include "input/dinput_own.h"          // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
-#include "include/mh_run_context.h"    // MH_RunDir
-#include "desync/state_compress.h"     // mp:Q2/Q3: the `gzdone` predicate reads the gzip thread's counters
-#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
-#include "include/mh_log_sink.h"       // LOG1: the async log sink
-#include "addr/mh_addrs.gen.h"         // generated EN VAs
-#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "addr/mh_calls.gen.h"         // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
-#include "state/region_runtime.h"      // SB-HOSTFREE: live_base/ptr -- a movable region is read
-#include "caps/caps.h"                 // PT-CAP8: mh::caps::rec -- the roster arrays the game addresses
-                                       // where it IS, not where the binary put it
-#include "addr/mh_structs.gen.h"       // generated game struct mirrors (mh::game::mh_llm_*)
-#include "hook/watcall.h"              // call_watcall2 (resolve_position is __watcall)
-#include "en_guard.h"                  // EN-only build gate
-#include "mh_net_proto/text_utf8.h"    // mp:MP-LANG: `wlobby` reads a plain-text needle as UTF-8
+#include "include/mh_mapzoom_export.h"    // MH_MapZoom_Get (the `zoom` predicate)
+#include "include/mh_capture_export.h"    // MH_Capture_Shot (named per-screen captures for the interpreter)
+#include "include/mh_mod_export.h"        // MH_Mods_Resource_Find (mounted snapshot observation)
+#include "include/mh_net_export.h"        // MH_Net_PeerCount (the `peers` predicate: all peers connected)
+#include "include/mh_chatinput_export.h"  // actual chat character acceptance/refusal counters
+#include "include/mh_seam_export.h"       // MH_Seam_S8RetryArmed (`retryready`), MH_Seam_S3LobbyGen (`lobbygen`)
+#include "include/mh_harness_export.h"    // MH_Harness_StepFence (the `simstep` predicate: the SIM's own step)
+#include "seams/ui_net_indicator.h"       // MH_Lockstep_StallBindingPeer -- the `stalled` predicate (TL-UISTALL)
+#include "ui/lobby_ping.h"                // mp:L1f: lobby_ping_measured_rows -- the `lobbyping` predicate
+#include "ui/lobby_ui.h"                  // mods:MAPGEN2: map_preview_page -- the `lobbypage` / `pickpage` predicates
+#include "seams/lobby_speed.h"            // actual lobby display owner, never a scalar substitute
+#include "seams/storage_policy.h"         // read-only unit incarnation and receiver rally observations
+#include "seams/strategic_input_native.h" // exact widget-pump return through the binding wrapper
+#include "gfx/overlay_imgui.h"            // PT-GFX4: the `imgui` predicate reads the overlay's state
+#include "gfx/ddraw_own.h"                // PT-GFX3: `winsize` logs the image rect the mouse is mapped through
+#include "input/dinput_own.h"             // PT-INPUT1: the `raw*` verbs feed the owned DirectInput
+#include "include/mh_run_context.h"       // MH_RunDir
+#include "desync/state_compress.h"        // mp:Q2/Q3: the `gzdone` predicate reads the gzip thread's counters
+#include "desync/state_recorder.h"        // wait for the writer to hand off its file before declaring gzip complete
+#include "include/mh_config_dir.h"        // RL3: <config dir>mh_net.ini
+#include "include/mh_log_sink.h"          // LOG1: the async log sink
+#include "addr/mh_addrs.gen.h"            // generated EN VAs
+#include "config/ini_read.h"              // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "addr/mh_calls.gen.h"            // mh::call::llm_time_get_ticks_ms (the key ring's timestamp)
+#include "state/region_runtime.h"         // SB-HOSTFREE: live_base/ptr -- a movable region is read
+#include "caps/caps.h"                    // PT-CAP8: mh::caps::rec -- the roster arrays the game addresses
+                                          // where it IS, not where the binary put it
+#include "addr/mh_structs.gen.h"          // generated game struct mirrors (mh::game::mh_llm_*)
+#include "hook/watcall.h"                 // call_watcall2 (resolve_position is __watcall)
+#include "en_guard.h"                     // EN-only build gate
+#include "hook/patch.h"
+#include "mh_net_proto/text_utf8.h" // mp:MP-LANG: `wlobby` reads a plain-text needle as UTF-8
 
 void seam_log(const char *s); // the process's single mh_net.log writer (net_seams.cpp)
 
@@ -190,7 +199,7 @@ constexpr uint32_t WIDGET_DISABLED = 0x40; // llm_ui_widget.flags: input_tick's 
 // (e.g. the lobby's disabled "Start" placeholder vs the real enabled Start action widget).
 inline bool clickable(uint32_t flags) { return (flags & (WIDGET_HIDDEN | WIDGET_DISABLED)) == 0; }
 
-uint32_t g_ts      = 0x10000; // synthetic monotonic timestamp; big gaps so poll never sees a double-click
+uint32_t g_ts      = 0x10000; // synthetic timestamp; wide gaps except explicitly timestamped gestures
 bool     g_prev_f7 = false;
 
 // [uitest] config
@@ -646,7 +655,7 @@ mh_llm_ui_widget_list *active_list() {
 // Push one event into the mouse ring, mirroring the producers (llm_input_di_mouse_poll /
 // llm_input_wndproc_tap): write at WRITE_IDX, advance &0x7f, but only if the ring isn't full.
 bool g_btn_held = false; // RES12: `presshold` -- MOVE events carry the left button as a hand-held mouse's do, until `release`
-bool enqueue(uint32_t type, int x, int y) {
+bool enqueue(uint32_t type, int x, int y, const uint32_t *exact_timestamp = nullptr) {
     uint32_t w    = *(volatile uint32_t *)WRITEIDX;
     uint32_t next = (w + 1) & 0x7f;
     if (next == *(volatile uint32_t *)READIDX) return false; // ring full -> drop (never happens in practice)
@@ -663,8 +672,8 @@ bool enqueue(uint32_t type, int x, int y) {
     ev->x           = (uint32_t)x;
     ev->y           = (uint32_t)y;
     ev->wheel_total = 0;
-    ev->timestamp   = g_ts;
-    g_ts += 0x4000;
+    ev->timestamp   = exact_timestamp ? *exact_timestamp : g_ts;
+    if (!exact_timestamp) g_ts += 0x4000;
     *(volatile uint32_t *)WRITEIDX = next;
     return true;
 }
@@ -728,10 +737,8 @@ bool enqueue_key(uint32_t scancode, bool down) {
     return true;
 }
 
-// The key ring is EMPTY -- i.e. every event we pushed has been dequeued, and dequeue IS translate
-// (llm_input_key_dequeue_translate_ascii pops and resolves in one call). That makes it the exact
-// "the previous character has been consumed" predicate `type` needs before it may change the
-// modifier state for the next one. A pure state test: no frame count, no sleep.
+// Empty means translated for menu fields. In-game chat first dequeues raw scancodes and
+// translates them in a later drain, so `type` also waits for that consumer before changing modifiers.
 bool key_ring_empty() { return *(volatile uint32_t *)KREADIDX == *(volatile uint32_t *)KWRITEIDX; }
 
 // One journal segment, verbatim, into the log -- the EVIDENCE behind `keyjournal same`. An assertion
@@ -777,11 +784,108 @@ constexpr int TYPE_MAX = 48;
 TypeChar      g_type[TYPE_MAX];
 int           g_type_n        = 0;
 int           g_type_i        = 0;
-bool          g_type_pushed   = false; // character g_type_i is in the ring and not yet consumed
+bool          g_type_pushed   = false; // character g_type_i is in flight to its native consumer
 int           g_type_step     = -1;    // script step index this resolution belongs to
-DWORD         g_type_progress = 0;     // wall clock of the last character actually pushed
+DWORD         g_type_progress = 0;     // elapsed tick at the last consumer acknowledgement
 DWORD         g_type_diag_ms  = 0;     // throttle for the pump-state diagnostic below
 int           g_type_stall_ms = 15000;
+bool          g_type_chat     = false;
+uint32_t      g_type_chat_ack = 0;
+bool          g_type_pending  = false;
+uint32_t      g_type_down_ms = 0, g_type_up_ms = 0;
+uintptr_t     g_type_consumer = 0;
+
+// Present can run inside a menu-transition settle that drains the keyboard.
+// Publish chat only at its native queue check, after strategic input's reset.
+// These callbacks preserve GP/flags, not FP: no clock, keyboard API or logging here.
+void __cdecl flush_chat_type(uintptr_t consumer) {
+    if (!g_type_pending || !g_type_pushed ||
+        !*(volatile const int *)mh::addr::_G_LLM_CHAT_INPUT_ACTIVE ||
+        !*(volatile const uint32_t *)0x005d01d8u) return;
+    const uint32_t w = *(volatile const uint32_t *)KWRITEIDX;
+    if (w != *(volatile const uint32_t *)KREADIDX) return;
+    const uint32_t scan = g_type[g_type_i].sc;
+    for (uint32_t i = 0; i < 2; ++i) {
+        const uint32_t slot  = (w + i) & 0x7fu;
+        auto          *event = (mh_llm_input_key_event *)(KEVENTS + size_t(slot) * sizeof(mh_llm_input_key_event));
+        event->scancode      = scan;
+        event->event_type    = i == 0 ? 0x100u : 0x80u;
+        event->timestamp     = i == 0 ? g_type_down_ms : g_type_up_ms;
+        if (g_keyj_n < KEYJ_MAX) {
+            g_keyj[g_keyj_n].scancode   = uint16_t(scan);
+            g_keyj[g_keyj_n].event_type = uint16_t(event->event_type);
+            ++g_keyj_n;
+        }
+    }
+    // An empty 128-slot ring has room for both edges; publish the pair once.
+    *(volatile uint32_t *)KWRITEIDX = (w + 2u) & 0x7fu;
+    g_type_consumer                 = consumer;
+    g_type_pending                  = false;
+}
+
+uintptr_t              g_chat_queue_empty = 0x004d1018u;
+__declspec(naked) void chat_type_queue_empty() {
+    __asm {
+        pushfd
+        pushad
+        push dword ptr [esp+36]
+        call flush_chat_type
+        add esp,4
+        popad
+        popfd
+        jmp dword ptr [g_chat_queue_empty]
+    }
+}
+
+void __cdecl flush_widget_key(uintptr_t consumer);
+__declspec(naked) void widget_key_queue_empty() {
+    __asm {
+        pushfd
+        pushad
+        push dword ptr [ebp+4]
+        call flush_widget_key
+        add esp,4
+        popad
+        popfd
+        jmp dword ptr [g_chat_queue_empty]
+    }
+}
+
+bool arm_script_key_consumers() {
+    static bool armed = false;
+    if (armed) return true;
+    // Native main/wait chat and modal-widget queue tests, before their empty branches.
+    constexpr uintptr_t sites[]       = {0x00441be8u, 0x0044decbu, 0x004b52b0u};
+    constexpr uint8_t   expected[][5] = {
+        {0xe8, 0x2b, 0xf4, 0x08, 0x00},
+        {0xe8, 0x48, 0x31, 0x08, 0x00},
+        {0xe8, 0x63, 0xbd, 0x01, 0x00}};
+    uint8_t replacement[3][5];
+    for (unsigned i = 0; i < 3; ++i) {
+        if (memcmp(reinterpret_cast<const void *>(sites[i]), expected[i], 5)) return false;
+        replacement[i][0]      = 0xe8;
+        const uintptr_t target = i == 2 ? reinterpret_cast<uintptr_t>(&widget_key_queue_empty)
+                                        : reinterpret_cast<uintptr_t>(&chat_type_queue_empty);
+        const int32_t   offset = int32_t(target - (sites[i] + 5));
+        memcpy(replacement[i] + 1, &offset, sizeof offset);
+    }
+    if (!mh::hook::patch_bytes_guarded(sites[0], expected[0], replacement[0], 5)) return false;
+    if (!mh::hook::patch_bytes_guarded(sites[1], expected[1], replacement[1], 5)) {
+        if (!mh::hook::patch_bytes_guarded(sites[0], replacement[0], expected[0], 5))
+            ui_log("; [script] chat consumer hook rollback failed; script remains disarmed");
+        return false;
+    }
+    if (!mh::hook::patch_bytes_guarded(sites[2], expected[2], replacement[2], 5)) {
+        const bool wait_restored = mh::hook::patch_bytes_guarded(sites[1], replacement[1], expected[1], 5);
+        const bool main_restored = mh::hook::patch_bytes_guarded(sites[0], replacement[0], expected[0], 5);
+        if (!wait_restored || !main_restored)
+            ui_log("; [script] key consumer hook rollback failed; script remains disarmed");
+        return false;
+    }
+    armed = true;
+    ui_log("; [script] key production owned by native main/wait/widget queue consumers (3/3)");
+    return true;
+}
 
 HKL g_hkl_orig = nullptr; // whatever the process had before the script touched it
 HKL g_hkl_cur  = nullptr;
@@ -852,6 +956,8 @@ bool set_layout(const char *klid) {
 bool type_resolve(const char *utf8) {
     g_type_n = g_type_i = 0;
     g_type_pushed       = false;
+    g_type_pending      = false;
+    g_type_consumer     = 0;
     wchar_t wbuf[TYPE_MAX + 1];
     int     n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, TYPE_MAX + 1);
     if (n <= 1) {
@@ -1097,7 +1203,7 @@ bool click_center_of(mh_llm_ui_widget_list *list, mh_llm_ui_widget *w, const cha
 //
 // So the CLICK distinguishes them:
 //   CLICK_OK      clicked it.
-//   CLICK_RETRY   the label IS on this screen but every match is greyed -- a TIMING condition. Stay
+//   CLICK_RETRY   the matching widget is greyed or its native slide is unfinished -- a TIMING condition. Stay
 //                 on this step and try again next frame, bounded by the step's own frame watchdog,
 //                 exactly as a wait would be. This is what removes the whole failure class, without
 //                 editing 40 scripts and without a script author having to remember `enabled` first.
@@ -1116,7 +1222,12 @@ click_result try_click(Pred match, const char *why) {
     for (mh_llm_ui_widget **wp = list->children; *wp; ++wp) {
         mh_llm_ui_widget *w = *wp;
         if (!match(w)) continue;
-        if (clickable(w->flags)) return click_center_of(list, w, why) ? CLICK_OK : CLICK_ABSENT;
+        if (clickable(w->flags)) {
+            // Native004bc30e presents inside a blocking slide, before it processes input.
+            // A sampled still center can be mid-tween after descheduling; do not queue stale coordinates.
+            if (*(const int *)mh::addr::slide_anim_elapsed != 0) return CLICK_RETRY;
+            return click_center_of(list, w, why) ? CLICK_OK : CLICK_ABSENT;
+        }
         if ((w->flags & WIDGET_HIDDEN) == 0) present_but_greyed = true;
     }
     return present_but_greyed ? CLICK_RETRY : CLICK_ABSENT;
@@ -1313,41 +1424,134 @@ extern "C" void MH_UIDrive_Click(int x, int y) {
 // press -> release), exactly as a physical click arrives, which the game selects reliably.
 extern "C" void MH_UIDrive_Press(int x, int y) { enqueue(EV_LDOWN, x, y); }
 
-// ---- mp:D25 (2026-09-19): the RIGHT button, optionally under a held Shift --------------------------
-//
-// Shift+right-click on the map is how a player LANDS the mothership (deploy: order 0x10 move + 0x18
-// deploy; states 0x18 DEPLOY_APPROACH -> 0x17 DEPLOY_TO_BUILDING), and a fresh MP human owns nothing else -- no landing, no
-// base, no build menu, so no scenario could reach llm_strat_bldg_try_begin_placement's affordability
-// probe until this existed. Two facts decide the shape, both measured before by the journal replay
-// (mh_harness/harness.cpp, "THE KEYSTATE ARRAY IS A SECOND INPUT CHANNEL"): the strategic input
-// reads Shift from _G_LLM_INPUT_KEYSTATE[0x2a] (bit 0), NOT from the key ring, and a DirectInput
-// keyboard re-latches that array from the real device every poll -- so the byte is asserted on
-// EVERY present the click is in flight, exactly the replay's re-assert convention, and cleared at
-// the end so a held key cannot stick. The button events are spread over presents like a physical
-// click (MOVE, then DOWN, then UP), for the same reason `press`/`release` exist.
+// Script modifiers use the existing key ring as well as the native level latches. The
+// strategic resolver observes real dequeues (and expanded-map pre-input previews pending
+// modifier records); writing KEYSTATE alone no longer establishes a physical held role.
+// Masks match hotkey_parse: Ctrl=1, Alt=2, Shift=4. Only keys owned by this action are released.
 constexpr uint32_t SC_LSHIFT = 0x2a;
-void               keystate_shift(bool held) {
-    volatile uint8_t *ks = (volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
-    ks[SC_LSHIFT]        = held ? (uint8_t)(ks[SC_LSHIFT] | 5u) : (uint8_t)(ks[SC_LSHIFT] & 0xfeu);
+constexpr uint32_t SC_LCTRL  = 0x1d;
+constexpr uint32_t SC_LALT   = 0x38;
+struct ScriptModifier {
+    unsigned mask;
+    uint32_t scan;
+};
+constexpr ScriptModifier SCRIPT_MODIFIERS[]           = {{1u, SC_LCTRL}, {2u, SC_LALT}, {4u, SC_LSHIFT}};
+unsigned                 g_script_modifiers           = 0;
+bool                     g_script_modifiers_releasing = false;
+int                      g_script_click_start         = -1;
+bool                     g_script_raw_keys[256]       = {};
+int                      g_widget_key_down            = -1;
+int                      g_widget_key_phase           = 0;
+DWORD                    g_widget_key_diag_ms         = 0;
+unsigned                 g_widget_key_pending         = 0; // one prepared edge, not yet in the native ring
+unsigned                 g_widget_key_delivered       = 0;
+uint32_t                 g_widget_key_scan            = 0;
+uint32_t                 g_widget_key_stamp           = 0;
+uint32_t                 g_widget_key_target          = 0;
+uintptr_t                g_widget_key_consumer        = 0;
+mh_llm_ui_widget_list   *g_widget_key_list            = nullptr;
+
+void widget_key_diagnostic(const char *stage) {
+    ui_log("; keywidget %s phase=%d owned=%d pending=%u delivered=%u consumer=%08x r/w=%u/%u selected=%08x keysel=%08x mode=%u screen=%08x running=%d",
+           stage, g_widget_key_phase, g_widget_key_down, g_widget_key_pending, g_widget_key_delivered,
+           unsigned(g_widget_key_consumer), *(volatile uint32_t *)KREADIDX,
+           *(volatile uint32_t *)KWRITEIDX, *(volatile uint32_t *)0x0065429du,
+           *(volatile uint32_t *)0x006542a5u, unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE),
+           unsigned(uintptr_t(active_list())), *(volatile int32_t *)0x005d5fe8u);
+    ui_log("; keywidget menu_state=%u callbacks=%08x/%08x/%08x input_lock=%d",
+           unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_UI_MENU_STATE),
+           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK,
+           *(volatile uint32_t *)(mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK + 4),
+           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MENU_ASYNC_CALLBACK_B,
+           *(volatile int32_t *)mh::addr::_G_LLM_UI_MENU_INPUT_LOCK_TIMER);
+    ui_log("; keywidget pump event_kind=%u flags=%02x/%02x rec=%u/%u ts=%u pub=%u/%u now=%u next=%u deadline=%u",
+           unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_UI_MOUSE_EVENT_KIND),
+           unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_DLG_STATE_FLAGS),
+           unsigned(*(volatile uint8_t *)(mh::addr::_G_LLM_DLG_STATE_FLAGS + 1)),
+           *(volatile uint32_t *)0x006542cau, *(volatile uint32_t *)0x006542ceu,
+           *(volatile uint32_t *)0x006542eau, *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_KEY_SCANCODE,
+           unsigned(*(volatile uint16_t *)mh::addr::_G_LLM_UI_MODAL_KEY_ASCII),
+           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MENU_NOW_MS,
+           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_STEP_NEXT_MS,
+           *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_STEP_DEADLINE_MS);
 }
-// PT-CAP9-U5: the same latch for Ctrl -- the strategic input reads it from _G_LLM_INPUT_KEYSTATE[0x1d] (_G_LLM_KEY_LCTRL_HELD, tested against masks 1 and 2),
-// NOT from the key ring, so `key <digit> ctrl` is how a script presses Ctrl+digit (llm_unit_ctrl_group_recall -> the selection becomes control group N).
-constexpr uint32_t SC_LCTRL = 0x1d;
-void               keystate_ctrl(bool held) {
+
+void script_raw_keys_release() {
+    for (unsigned key = 0; key < 256; ++key)
+        if (g_script_raw_keys[key] && mh::input::harness_key(uint16_t(key & 0x7fu), (key & 0x80u) != 0, false))
+            g_script_raw_keys[key] = false;
+}
+
+void script_widget_key_release() {
+    g_widget_key_pending = 0;
+    if (g_widget_key_down >= 0 && enqueue_key(uint32_t(g_widget_key_down), false)) g_widget_key_down = -1;
+}
+
+void script_modifier_latch(uint32_t scan, bool held) {
     volatile uint8_t *ks = (volatile uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
-    ks[SC_LCTRL]         = held ? (uint8_t)(ks[SC_LCTRL] | 5u) : (uint8_t)(ks[SC_LCTRL] & 0xfau);
+    ks[scan]             = held ? uint8_t(ks[scan] | 5u) : uint8_t(ks[scan] & 0xfau);
+}
+
+bool script_modifiers_hold(unsigned modifiers) {
+    if (g_script_modifiers_releasing) return true; // the click is already completing
+    for (const auto &m : SCRIPT_MODIFIERS) {
+        if (!(modifiers & m.mask)) continue;
+        if (!(g_script_modifiers & m.mask)) {
+            if (!enqueue_key(m.scan, true)) return false;
+            g_script_modifiers |= m.mask;
+        }
+        script_modifier_latch(m.scan, true); // DI may refresh KEYSTATE between presents
+    }
+    return true;
+}
+
+bool script_modifiers_release() {
+    g_script_modifiers_releasing = true;
+    for (const auto &m : SCRIPT_MODIFIERS) {
+        if (!(g_script_modifiers & m.mask)) continue;
+        script_modifier_latch(m.scan, false);
+        if (enqueue_key(m.scan, false)) g_script_modifiers &= ~m.mask;
+    }
+    if (g_script_modifiers) return false; // ring full: retry the remaining releases next present
+    g_script_modifiers_releasing = false;
+    return true;
+}
+
+bool script_click_frame(int frame, unsigned modifiers, int &relative) {
+    if (frame == 0) g_script_click_start = -1;
+    if (!script_modifiers_hold(modifiers)) return false;
+    if (g_script_click_start < 0) g_script_click_start = frame;
+    relative = frame - g_script_click_start;
+    return true;
+}
+
+bool modified_key_frame(int frame, uint32_t scan, unsigned modifiers) {
+    static int sent;
+    if (frame == 0) sent = -1;
+    if (!script_modifiers_hold(modifiers)) return false;
+    if (sent < 0) {
+        const uint32_t w = *(volatile uint32_t *)KWRITEIDX;
+        const uint32_t r = *(volatile uint32_t *)KREADIDX;
+        if (((r - w - 1u) & 127u) < 2u) return false;
+        enqueue_key(scan, true);
+        enqueue_key(scan, false);
+        sent = frame;
+    }
+    if (frame - sent < 3) return false;
+    return script_modifiers_release();
 }
 // One frame of the sequence; returns true when it is complete. `frame` is the caller's per-step wait
 // counter (0 on the first present the step runs).
-bool rclick_frame(int frame, int x, int y, bool shift) {
-    if (shift) keystate_shift(true);
+bool rclick_frame(int frame, int x, int y, unsigned modifiers) {
+    int relative;
+    if (!script_click_frame(frame, modifiers, relative)) return false;
+    frame = relative;
     switch (frame) {
         case 0: enqueue(EV_MOVE, x, y); return false;
         case 1: enqueue(EV_RDOWN, x, y); return false;
         case 2: enqueue(EV_RUP, x, y); return false;
         default:
-            if (shift) keystate_shift(false);
-            return true;
+            return script_modifiers_release();
     }
 }
 extern "C" void MH_UIDrive_Release(int x, int y) {
@@ -1398,11 +1602,11 @@ static double simclick_clock_ms() { // the `gameclock` global, game-SECONDS
 // (press and release, 0x00413251) saw the button inside the rect; the three-present `rclick` was not
 // seen by them at all (measured: four tries on the build tab's Academy row, no info screen), the
 // hand-like hold is.
-// `simrclick <x> <y> shift` (mp:D37) holds the game's Shift latch for the whole hold, the way `rclick
-// ... shift` does -- the mothership's landing order (shift+right-click) was lost under suite load with
-// the three-present `rclick`.
-static bool simclick_frame(int frame, int x, int y, bool right = false, bool shift = false) {
-    if (shift) keystate_shift(true);
+// Optional Ctrl/Alt/Shift chords remain held for the whole click, including the UP drain.
+static bool simclick_frame(int frame, int x, int y, bool right = false, unsigned modifiers = 0) {
+    int relative;
+    if (!script_click_frame(frame, modifiers, relative)) return false;
+    frame = relative;
     if (frame == 0) {
         g_simclick_phase = 0;
         enqueue(EV_MOVE, x, y);
@@ -1423,12 +1627,70 @@ static bool simclick_frame(int frame, int x, int y, bool right = false, bool shi
             g_simclick_phase = 2;
             break;
         default:
-            if ((held || cap) && shift) keystate_shift(false);
-            return held || cap;
+            return (held || cap) && script_modifiers_release();
     }
     g_simclick_clk0 = simclick_clock_ms();
     g_simclick_f0   = frame;
     return false;
+}
+
+// SEL1: `simdoubleclick <x> <y> [modifiers]` feeds two completed native clicks, not
+// a direct selection write. Each edge waits for the strategic pump's consumed
+// button byte; MOVE packets keep the current hold asserted. Close timestamps are
+// producer data, independent of host speed, and are retained by journal recording.
+static bool simdoubleclick_frame(int frame, int x, int y, unsigned modifiers) {
+    int relative;
+    if (!script_click_frame(frame, modifiers, relative)) return false;
+    frame = relative;
+    static int      phase;
+    static uint32_t base;
+    if (frame == 0) {
+        phase = 0;
+        base  = g_ts;
+        g_ts += 0x10000;
+        g_btn_held = false;
+    }
+    const uint32_t ts   = base + static_cast<uint32_t>(phase);
+    const bool     down = (*(const volatile uint8_t *)mh::addr::_G_LLM_MOUSE_BUTTONS_PREV & 1u) != 0;
+    if (!enqueue(EV_MOVE, x, y, &ts)) return false;
+    switch (phase) {
+        case 0:
+            // Give the moved cursor a render before the first press.
+            phase = 1;
+            return false;
+        case 1:
+            if (down || !enqueue(EV_LDOWN, x, y, &ts)) return false;
+            g_btn_held = true;
+            phase      = 2;
+            return false;
+        case 2:
+            if (!down) return false;
+            g_btn_held = false;
+            if (!enqueue(EV_LUP, x, y, &ts)) {
+                g_btn_held = true;
+                return false;
+            }
+            phase = 3;
+            return false;
+        case 3:
+            // The first release completed before issuing the second press.
+            if (down || !enqueue(EV_LDOWN, x, y, &ts)) return false;
+            g_btn_held = true;
+            phase      = 4;
+            return false;
+        case 4:
+            if (!down) return false;
+            g_btn_held = false;
+            if (!enqueue(EV_LUP, x, y, &ts)) {
+                g_btn_held = true;
+                return false;
+            }
+            phase = 5;
+            return false;
+        default:
+            if (down) return false;
+            return script_modifiers_release();
+    }
 }
 
 extern "C" int MH_UIDrive_ClickWidget(int idx) {
@@ -1481,7 +1743,7 @@ extern "C" int MH_UIDrive_ClickLabel(const char *substr) {
     click_result r = click_label_try(substr);
     if (r == CLICK_OK) return 1;
     ui_log("; click_label('%s') FAILED: %s", substr ? substr : "",
-           r == CLICK_RETRY ? "matched only DISABLED widget(s)" : "no clickable widget matched");
+           r == CLICK_RETRY ? "widget not ready (disabled or native slide)" : "no clickable widget matched");
     log_click_label_rejects(list, substr);
     return 0;
 }
@@ -1495,7 +1757,7 @@ extern "C" int MH_UIDrive_ClickValue(int value) {
     click_result r = click_value_try(value);
     if (r == CLICK_OK) return 1;
     ui_log("; click_value(%d) FAILED: %s", value,
-           r == CLICK_RETRY ? "matched only DISABLED widget(s)" : "no clickable widget matched");
+           r == CLICK_RETRY ? "widget not ready (disabled or native slide)" : "no clickable widget matched");
     return 0;
 }
 
@@ -1591,6 +1853,12 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                lobby) where `settled <button>` goes stable frames before the slot snapshot arrives.
 //     team <SLOT> <V> = THIS peer's view of slot SLOT's TEAM byte (+0x0c) == V (0 "-", 1..4 T1..T4). mp:U51.
 //     lobbymode <V> = THIS peer's view of the lobby MODE (host slot 0 +0x07): 0 FFA, 1 Team. mp:U51.
+//     lobbyspeed <N> = THIS peer's accepted lobby display percent; never writes/fakes speed or proves the frozen scalar.
+//     lobbypage <N> = the lobby's right-panel PAGE spinner is on page N (0 Description/status, 1 Preview,
+//                2 Settings); `pickpage <N>` is the map picker's (0 Description, 1 Preview). mods:MAPGEN2. The page
+//                is local state, so this is the gate between two clicks on the pager: the 0x32 input-lock timer
+//                swallows back-to-back synthetic clicks, and a page the click did not turn is a timeout, not a guess.
+//                Never true when [ui] map_preview=0 (the spinner does not exist then).
 //     pokerace <SLOT> <V> = ACTION, test hook: write slot SLOT's race field on THIS peer only, WITHOUT
 //                the 0x0c push the real spinner sends. Manufactures the end-state of an edit the host
 //                never saw, deterministically -- which is how U28's "a client slot change in flight at
@@ -1638,12 +1906,10 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                entry) because the step counter is the instrument's; without one the script is REFUSED by
 //                name rather than left to time out. Also refused if the sim has ALREADY passed N when the
 //                predicate first runs, since a fence can only truncate a burst it was armed before.
-//                The hold is NOT released automatically and the grammar has no release verb -- use it to
-//                take the LAST captures of a scenario. (`simstep 0` is not one: it parses as a target
-//                already in the past and aborts, which is right for a typo and wrong for a release. The
-//                day a script must resume, give it its own directive over MH_Harness_StepFence(0).)
+//                The hold is not released automatically. `simresume` explicitly releases it before
+//                later gameplay. `simstep 0` remains an invalid past target, not a release.
 //     gzdone [N] = mp:Q2/Q3: >= N session recordings (state / orders / clock) compressed to their final .gz by
-//                this process and no compression still running -- gate a script's `end` on it after a quit,
+//                this process, with no state writer or compressor still running -- use after a quit,
 //                so the runner's kill cannot strand a raw file. Default N = 1.
 //                Its timeout is WALL time (120 s), not `timeout_frames`: the compressor is a background thread, and
 //                a headless lane's ~9000 fps turns an 81000-frame budget into ~9 s (tooling:TL-SPREC-LOADRED).
@@ -1678,6 +1944,8 @@ extern "C" void MH_UIDrive_DumpWidgets(void) {
 //                units; plain text is widened as Latin-1, which covers ASCII needles.
 //   ACTIONS clickv <N>  clickl <label>  clicki <idx>  cursor <x> <y>  click <x> <y>
 //           press <x> <y>  release <x> <y>  capture <name>  pcapture <name>  bcapture <name>  log <text>  dump (widget list)  end
+//           simdoubleclick <x> <y> [modifiers] -- two native completed clicks; wait for consumed button edges,
+//                with explicit near ring timestamps (release delta 2 ms), not a game/wall-time delay.
 //     pcapture (mods:RES4) = capture of the PRESENTED image: the game frame composed on the CPU into the presenter's
 //     quad list ([video] ui_scale), at the window's client size or the dev key [video] ui_screen=WxH.
 //     The only way a headless (null backend) lane can see where the scaled HUD lands. Written as capture_<name>.bmp.
@@ -1790,6 +2058,7 @@ enum {
     OP_W_DISABLED,
     OP_W_HOVERED,
     OP_W_GAMEMODE,
+    OP_W_CHATREADY,
     OP_W_TACTSEL,
     OP_W_BLDGSEL, // mp:D37a: `bldgsel <N|any|none>` -- the strategic HUD's selected building
     OP_W_SESSIONS,
@@ -1799,13 +2068,17 @@ enum {
     OP_W_HUDTOP,   // D15: `hudtop <descVA> <N>` -- a strategic side-panel list descriptor's top row (desc+0x29) is N
     OP_W_INFOPAGE, // D15: `infopage <N>` -- the unit/building info screen shows page N (_G_LLM_UI_INFO_DESC_INDEX)
     OP_W_RACE,
-    OP_W_TEAM,      // mp:U51: `team <slot> <v>` -- the slot's TEAM byte (+0x0c) on THIS peer
-    OP_W_LOBBYMODE, // mp:U51: `lobbymode <0|1>` -- host slot 0's MODE byte (+0x07): 0 FFA, 1 Team
+    OP_W_TEAM,       // mp:U51: `team <slot> <v>` -- the slot's TEAM byte (+0x0c) on THIS peer
+    OP_W_LOBBYMODE,  // mp:U51: `lobbymode <0|1>` -- host slot 0's MODE byte (+0x07): 0 FFA, 1 Team
+    OP_W_LOBBYSPEED, // accepted lobby display percent on THIS peer
+    OP_W_LOBBYPAGE,  // mods:MAPGEN2: `lobbypage <0|1|2>` -- the lobby's right-panel page
+    OP_W_PICKPAGE,   // mods:MAPGEN2: `pickpage <0|1>` -- the map picker's right-panel page
     OP_W_RETRYREADY,
     OP_W_LOBBYGEN,
     OP_W_LOBBYPING, // mp:L1f: N lobby slot rows are showing a real ping number on THIS screen
     OP_W_GAMECLOCK,
     OP_W_SIMSTEP,
+    OP_W_SOADONE,
     OP_W_AWAITSIGNAL,
     OP_W_FIELD,
     OP_W_WMSG,
@@ -1823,7 +2096,13 @@ enum {
     OP_W_GZDONE,        // mp:Q2/Q3: `gzdone <N>` -- N recordings compressed by this process and none in flight
     OP_W_MAPSIZE,       // `mapsize <N>` -- the loaded map is N x N tiles (the torus's wrap width, 64 / 128 / 256)
     OP_W_MRING,         // mp:U44b: `mring <N>` -- the in-game mouse ring holds at most N undrained events
-    OP_W_LAST = OP_W_MRING,
+    OP_W_BUILDARMED,    // `buildarmed <type>`: normal placement mode armed that building type
+    OP_W_SELECTEDTYPE,  // `selectedtype <type>`: the selected building has that config ID
+    OP_W_BLDGREADY,     // `bldgready <type>`: a live own building has come online
+    OP_W_PRODSTART,     // `prodstart <type>`: the selected producer has started this unit type
+    OP_W_UNITCOUNT,     // `unitcount <type> <minimum>`: live own roster count
+    OP_W_UNITTRAVEL,    // `unittravel <type> <rally|move> <max-game-ms>`: actual world movement
+    OP_W_LAST = OP_W_UNITTRAVEL,
     // actions (fire once, then advance)
     OP_A_CLICKV,
     OP_A_CLICKL,
@@ -1833,21 +2112,27 @@ enum {
     OP_A_CLICK,
     OP_A_PRESS,
     OP_A_RELEASE,
-    OP_A_PRESSHOLD, // RES12: `presshold <x> <y>` -- `press`, and every later MOVE carries the held button until `release` (a real drag)
-    OP_A_RCLICK,    // mp:D25: `rclick <x> <y> [shift]`
-    OP_A_SIMCLICK,  // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
-    OP_A_SIMRCLICK, // mp:X2g: `simrclick <x> <y>` -- the same hold with the right button
-    OP_A_WMCLICK,   // PT-GFX4: `wmclick <x> <y>` -- a left click POSTED to the game window as messages
-    OP_A_WINSIZE,   // PT-GFX3: `winsize <w> <h>` -- resize the game window's client as a player's drag would
-    OP_A_WINMIN,    // mp:P17: `winmin <ms>` -- minimise the game window now, a helper thread restores it after <ms>
-    OP_A_WINAWAY,   // PT-GFX8: `winaway` -- another top-level window takes the foreground (what Alt-Tab does)
-    OP_A_WINRETURN, // PT-GFX8: `winreturn [launcher]` -- bring the game back the way the switcher / the launcher does
-    OP_A_WINPROBE,  // PT-GFX8: `winprobe` -- log the window facts the eligibility rule rests on
-    OP_A_WINEX,     // PT-GFX8: `winex <set-hex> <clear-hex>` -- change the ex-style (the negative arm's injected fault)
-    OP_A_RAWFOCUS,  // PT-INPUT1: `rawfocus -1|0|1` -- the foreground the owned DirectInput sees
-    OP_A_RAWMOUSE,  // PT-INPUT1: `rawmouse abs|rel|down|up ...` -- a Raw Input packet into the owned mouse
-    OP_A_RAWKEY,    // PT-INPUT1: `rawkey <make> [e0] [down|up]` -- a Raw Input packet into the owned keyboard
+    OP_A_PRESSHOLD,      // RES12: `presshold <x> <y>` -- `press`, and every later MOVE carries the held button until `release` (a real drag)
+    OP_A_RCLICK,         // mp:D25: `rclick <x> <y> [modifiers]`
+    OP_A_ORDERMOVE,      // `ordermove <unit type> <dx> <dy>`: issue a normal queued move
+    OP_A_HUDBUILD,       // `hudbuild <type>`: held click on that available building's visible row
+    OP_A_HUDPROD,        // `hudprod <type>`: held click on that unit's production + button
+    OP_A_HUDINFO,        // `hudinfo <type>`: held click on that unit's info row
+    OP_A_SIMCLICK,       // TL-SUITE-SPLICE-HOSTCLICK: `simclick <x> <y>` -- a left click held across sim steps
+    OP_A_SIMRCLICK,      // mp:X2g: `simrclick <x> <y>` -- the same hold with the right button
+    OP_A_SIMDOUBLECLICK, // SEL1: two native clicks, consumed-edge paced, with deliberate near timestamps
+    OP_A_WMCLICK,        // PT-GFX4: `wmclick <x> <y>` -- a left click POSTED to the game window as messages
+    OP_A_WINSIZE,        // PT-GFX3: `winsize <w> <h>` -- resize the game window's client as a player's drag would
+    OP_A_WINMIN,         // mp:P17: `winmin <ms>` -- minimise the game window now, a helper thread restores it after <ms>
+    OP_A_WINAWAY,        // PT-GFX8: `winaway` -- another top-level window takes the foreground (what Alt-Tab does)
+    OP_A_WINRETURN,      // PT-GFX8: `winreturn [launcher]` -- bring the game back the way the switcher / the launcher does
+    OP_A_WINPROBE,       // PT-GFX8: `winprobe` -- log the window facts the eligibility rule rests on
+    OP_A_WINEX,          // PT-GFX8: `winex <set-hex> <clear-hex>` -- change the ex-style (the negative arm's injected fault)
+    OP_A_RAWFOCUS,       // PT-INPUT1: `rawfocus -1|0|1` -- the foreground the owned DirectInput sees
+    OP_A_RAWMOUSE,       // PT-INPUT1: `rawmouse abs|rel|down|up ...` -- a Raw Input packet into the owned mouse
+    OP_A_RAWKEY,         // PT-INPUT1: `rawkey <make> [e0] [down|up]` -- a Raw Input packet into the owned keyboard
     OP_A_KEY,
+    OP_A_KEYWIDGET,  // `keywidget <scan> <widgetVA>` -- release only after the native widget accepts DOWN
     OP_A_KEYHOLD,    // mp:SES3c: `keyhold <scancode> <frames>` -- the unpaired-DOWN sibling of `key`
     OP_A_HOTKEY,     // `hotkey Ctrl+Alt+D` -- a GetAsyncKeyState-style chord, synthesised (2026-09-20)
     OP_A_HOTKEYDOWN, // `hotkeydown <spec>` -- press the chord and KEEP it down until `hotkeyup` (mods:MM4: a hold key)
@@ -1856,13 +2141,15 @@ enum {
     OP_A_LAYOUT,
     OP_A_KEYJOURNAL,
     OP_A_CAPTURE,
-    OP_A_BCAPTURE, // `bcapture <name>` -- mods:RES23-S0: capture_<name>__b.bmp of what the PRESENTER really put on screen (written by the next present)
-    OP_A_PCAPTURE, // `pcapture <name>` -- mods:RES4: capture_<name>.bmp of the PRESENTED image (the ui_scale quad list composed on the CPU)
+    OP_A_BCAPTURE,  // `bcapture <name>` -- mods:RES23-S0: capture_<name>__b.bmp of what the PRESENTER really put on screen (written by the next present)
+    OP_A_PCAPTURE,  // `pcapture <name>` -- mods:RES4: capture_<name>.bmp of the PRESENTED image (the ui_scale quad list composed on the CPU)
+    OP_A_SIMRESUME, // release the harness sim fence after a deterministic capture
     OP_A_LOG,
     OP_A_NOTICE, // `notice <text>` -- RES20: the game's own red floating notice (llm_ui_print_floating_msg_red), the text widened from ASCII
     OP_A_SIGNAL,
     OP_A_DUMP,
     OP_A_MARK,       // `mark <segment>` -- a `; [mark] <segment>` line in mh_video.log, mh_input.log and mh_net.log (a post_check's slice boundary)
+    OP_A_LOGCFG,     // `logcfg <label>`: live config costs and system-derived start planet
     OP_A_LOGBUILD,   // `logbuild <label>` -- D11: a `; [build] <label> armed= shift= placed=` line (the armed building type, Shift, own buildings of that type) in mh_video.log
     OP_A_LOGBLDGS,   // mods:A1: `logbldgs <label> [col0 row0 col1 row1]` -- a `; [a1] <label> planet= primary= ... gen= con= pop= res=` line (primary mother, power, population, stock) and one `;   [a1] <label> slot= ... flags= online= energy= prog=` line per building (in the tile rectangle, when given)
     OP_A_CAMTO,      // mods:A1: `camto <col> <row>` -- llm_map_cam_set_col/row
@@ -1929,6 +2216,55 @@ bool                   g_script_done    = false;
 int                    g_timeout        = 1500; // watchdog frames before a stuck WAIT aborts the run
 bool                   g_dump_screens   = false;
 mh_llm_ui_widget_list *g_last_seen      = nullptr;
+
+// Called inside the native modal pump, before it decides an empty ring has no input.
+// Only the widget dispatcher may receive this edge, not the wait/menu drain callers.
+// No native calls, logging or FP/SIMD work here: the thunk preserves GP/flags only.
+void __cdecl flush_widget_key(uintptr_t consumer) {
+    if (!g_widget_key_pending || !g_script_on || g_script_done ||
+        (consumer != 0x004b7456u && consumer != mh::seams::strategic_input_native::modal_widget_return))
+        return;
+    auto *list = active_list();
+    if (!list || list != g_widget_key_list || !list->children) return;
+    bool found = false;
+    for (mh_llm_ui_widget **wp = list->children; *wp; ++wp) {
+        if (uintptr_t(*wp) == g_widget_key_target) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) return;
+    const unsigned edge = g_widget_key_pending;
+    if (edge == 2 && (*(volatile uint32_t *)0x0065429du != g_widget_key_target ||
+                      *(volatile uint32_t *)0x006542a5u != g_widget_key_target))
+        return;
+    const uint32_t w = *(volatile uint32_t *)KWRITEIDX;
+    if (w != *(volatile uint32_t *)KREADIDX) return;
+    auto *event       = (mh_llm_input_key_event *)(KEVENTS + size_t(w) * sizeof(mh_llm_input_key_event));
+    event->scancode   = g_widget_key_scan;
+    event->event_type = edge == 1 ? 0x100u : 0x80u;
+    event->timestamp  = g_widget_key_stamp;
+    if (g_keyj_n < KEYJ_MAX) {
+        g_keyj[g_keyj_n].scancode   = uint16_t(g_widget_key_scan);
+        g_keyj[g_keyj_n].event_type = uint16_t(event->event_type);
+        ++g_keyj_n;
+    }
+    *(volatile uint32_t *)KWRITEIDX = (w + 1u) & 0x7fu;
+    g_widget_key_down               = edge == 1 ? int(g_widget_key_scan) : -1;
+    g_widget_key_consumer           = consumer;
+    g_widget_key_delivered          = edge;
+    g_widget_key_pending            = 0;
+}
+
+void prepare_widget_key(uint32_t scan, uint32_t target, unsigned edge) {
+    if (edge == 1) g_widget_key_list = active_list();
+    g_widget_key_scan      = scan;
+    g_widget_key_target    = target;
+    g_widget_key_stamp     = mh::call::llm_time_get_ticks_ms();
+    g_widget_key_delivered = 0;
+    g_widget_key_pending   = edge;
+}
+
 // OP_W_SETTLED state: the target's resolved center from the previous frame (motion-stopped detection)
 int  g_settle_cx = 0, g_settle_cy = 0;
 bool g_settle_primed = false;
@@ -2000,7 +2336,7 @@ void copy_trim(char *dst, int cap, const char *src) {
 
 // ---- `hotkey`: a synthesised GetAsyncKeyState chord (2026-09-20) --------------------------------
 //
-// The DLL's own hotkeys ([debug] toggle_key, [hud] net_indicator_key, F12 capture) poll
+// The remaining DLL-polled hotkeys ([debug] toggle_key and F12 capture) poll
 // GetAsyncKeyState, and GetAsyncKeyState answers 0 for a process whose desktop is not the input
 // desktop -- which is every headless lane (tools/ui_test.py resolve_desktop). So an in-game hotkey
 // could never be exercised by the suite. This table is the harness's view of "held": the pollers
@@ -2079,6 +2415,29 @@ bool hotkey_parse(const char *spec, int *vk, int *mods) {
     return false;
 }
 
+// Modifier-only suffix, with the same Ctrl/Control/Alt/Shift names and '+' grammar as hotkey_parse.
+// Empty is unmodified. Reject unknown/trailing tokens instead of silently issuing a plain click.
+bool action_modifiers_parse(const char *spec, int *mods) {
+    *mods = 0;
+    if (!*spec) return true;
+    for (;;) {
+        const char *end       = strchr(spec, '+');
+        const char *token_end = end ? end : spec + strlen(spec);
+        while (token_end > spec && (token_end[-1] == ' ' || token_end[-1] == '\t')) --token_end;
+        const size_t n   = size_t(token_end - spec);
+        unsigned     bit = 0;
+        if ((n == 4 && _strnicmp(spec, "ctrl", n) == 0) ||
+            (n == 7 && _strnicmp(spec, "control", n) == 0)) bit = 1;
+        else if (n == 3 && _strnicmp(spec, "alt", n) == 0) bit = 2;
+        else if (n == 5 && _strnicmp(spec, "shift", n) == 0) bit = 4;
+        else return false;
+        if (unsigned(*mods) & bit) return false;
+        *mods |= int(bit);
+        if (!end) return true;
+        spec = end + 1;
+    }
+}
+
 void synth_chord_set(int vk, int mods, bool down) {
     const uint8_t v = down ? 1u : 0u;
     if (mods & 1) g_synth_vk[VK_CONTROL] = v;
@@ -2145,6 +2504,8 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "gamemode") == 0) {
         s->op = OP_W_GAMEMODE;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "chatready") == 0) {
+        s->op = OP_W_CHATREADY;
     } else if (strcmp(op, "tactsel") == 0) {
         s->op = OP_W_TACTSEL;
         s->a  = (int)strtol(arg, nullptr, 0);
@@ -2185,6 +2546,15 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "lobbymode") == 0) {
         s->op = OP_W_LOBBYMODE;
         s->b  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
+    } else if (strcmp(op, "lobbyspeed") == 0) {
+        s->op = OP_W_LOBBYSPEED;
+        s->b  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
+    } else if (strcmp(op, "lobbypage") == 0) {
+        s->op = OP_W_LOBBYPAGE;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
+    } else if (strcmp(op, "pickpage") == 0) {
+        s->op = OP_W_PICKPAGE;
+        s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : -1;
     } else if (strcmp(op, "retryready") == 0) {
         s->op = OP_W_RETRYREADY;
         s->a  = (arg && *arg) ? (int)strtol(arg, nullptr, 0) : 1;
@@ -2223,6 +2593,10 @@ void parse_line(const char *line) {
     } else if (strcmp(op, "simstep") == 0) {
         s->op = OP_W_SIMSTEP;
         s->a  = (int)strtol(arg, nullptr, 0);
+    } else if (strcmp(op, "soadone") == 0) {
+        s->op = OP_W_SOADONE;
+    } else if (strcmp(op, "simresume") == 0) {
+        s->op = OP_A_SIMRESUME;
     } else if (strcmp(op, "retry") == 0) {
         // `retry <game-ms> <back> <tries> <wait directive>` -- a WAIT that, when it has not held after
         // <game-ms> of SIM time, rewinds <back> steps (the click meant to cause it) and tries again, at
@@ -2272,23 +2646,61 @@ void parse_line(const char *line) {
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, nullptr, 0);
-    } else if (strcmp(op, "simclick") == 0 || strcmp(op, "simrclick") == 0) {
-        // `simclick <x> <y>` / `simrclick <x> <y>` -- see simclick_frame.
-        s->op = strcmp(op, "simclick") == 0 ? OP_A_SIMCLICK : OP_A_SIMRCLICK;
+    } else if (strcmp(op, "buildarmed") == 0 || strcmp(op, "selectedtype") == 0 || strcmp(op, "bldgready") == 0 || strcmp(op, "prodstart") == 0 || strcmp(op, "unitcount") == 0) {
+        s->op = strcmp(op, "buildarmed") == 0 ? OP_W_BUILDARMED : strcmp(op, "selectedtype") == 0 ? OP_W_SELECTEDTYPE
+                                                              : strcmp(op, "bldgready") == 0      ? OP_W_BLDGREADY
+                                                              : strcmp(op, "prodstart") == 0      ? OP_W_PRODSTART
+                                                                                                  : OP_W_UNITCOUNT;
+        char *end;
+        s->a = (int)strtol(arg, &end, 10);
+        s->b = (int)strtol(end, nullptr, 10);
+    } else if (strcmp(op, "unittravel") == 0) {
+        s->op        = OP_W_UNITTRAVEL;
+        char mode[8] = {}, trailing = 0;
+        if (sscanf_s(arg, "%d %7s %d %c", &s->a, mode, (unsigned)sizeof(mode), &s->c, &trailing, 1u) != 3 ||
+            s->a <= 0 || s->a >= 100 || s->c <= 0 ||
+            (strcmp(mode, "rally") != 0 && strcmp(mode, "move") != 0)) {
+            ui_log("; [script] ABORT at step %d: malformed unittravel: %s", g_nstep, line);
+            g_script_done = true;
+            return;
+        }
+        s->b = strcmp(mode, "rally") == 0 ? 1 : 0;
+    } else if (strcmp(op, "ordermove") == 0) {
+        s->op = OP_A_ORDERMOVE;
+        char *end;
+        s->a = (int)strtol(arg, &end, 10);
+        s->b = (int)strtol(end, &end, 10);
+        s->c = (int)strtol(end, nullptr, 10);
+    } else if (strcmp(op, "hudbuild") == 0 || strcmp(op, "hudprod") == 0 || strcmp(op, "hudinfo") == 0) {
+        s->op = strcmp(op, "hudbuild") == 0 ? OP_A_HUDBUILD : strcmp(op, "hudprod") == 0 ? OP_A_HUDPROD
+                                                                                         : OP_A_HUDINFO;
+        s->a  = (int)strtol(arg, nullptr, 10);
+    } else if (strcmp(op, "simclick") == 0 || strcmp(op, "simrclick") == 0 || strcmp(op, "simdoubleclick") == 0) {
+        // `<verb> <x> <y> [modifiers]`; the double-click uses consumed-edge pacing and near timestamps.
+        s->op = strcmp(op, "simdoubleclick") == 0 ? OP_A_SIMDOUBLECLICK : strcmp(op, "simclick") == 0 ? OP_A_SIMCLICK
+                                                                                                      : OP_A_SIMRCLICK;
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, &end, 0);
         while (*end == ' ' || *end == '	') ++end;
-        s->c = strncmp(end, "shift", 5) == 0 ? 1 : 0; // D11: `simclick <x> <y> shift` holds Shift for the whole click too
+        if (!action_modifiers_parse(end, &s->c)) {
+            ui_log("; [script] ABORT at step %d: malformed click modifiers: %s", g_nstep, line);
+            g_script_done = true;
+            return;
+        }
     } else if (strcmp(op, "rclick") == 0) {
-        // `rclick <x> <y> [shift]` -- a right-click spread over three presents, under a held Shift
-        // when the word is given. See rclick_frame.
+        // `rclick <x> <y> [modifiers]` -- a right-click spread over three presents, under
+        // the optional modifier chord. See rclick_frame.
         s->op = OP_A_RCLICK;
         char *end;
         s->a = (int)strtol(arg, &end, 0);
         s->b = (int)strtol(end, &end, 0);
         while (*end == ' ' || *end == '	') ++end;
-        s->c = (strncmp(end, "shift", 5) == 0) ? 1 : 0;
+        if (!action_modifiers_parse(end, &s->c)) {
+            ui_log("; [script] ABORT at step %d: malformed click modifiers: %s", g_nstep, line);
+            g_script_done = true;
+            return;
+        }
     } else if (strcmp(op, "cursorhold") == 0) {
         // `cursorhold <x> <y> <frames>` -- SES3, and the harness could not express this before.
         //
@@ -2310,18 +2722,25 @@ void parse_line(const char *line) {
         s->c        = (int)strtol(after, nullptr, 0);
         if (s->c < 1) s->c = 1;
     } else if (strcmp(op, "key") == 0) {
-        // key <scancode> [shift]  -- one down+up pair. Scancodes are PC set-1, the same values
-        // llm_strat_input_update compares against (e.g. 0x01 ESC, 0x3f..0x41 F5/F6/F7, 0x1c Enter).
-        // `shift` (mp:CH1) holds the game's OWN Shift latch (_G_LLM_INPUT_KEYSTATE[0x2a], the byte
-        // the strategic input reads -- NOT the OS table `type` uses) across the presents the pair
-        // is in flight, the way `rclick ... shift` does: Shift+Enter is how the strategic view opens
-        // the hidden debug console instead of the chat line (the branch at 0x00441c82).
+        // `key <set-1 scancode> [Ctrl+Alt+Shift]`: the same modifier owner as mouse actions.
         s->op       = OP_A_KEY;
         char *after = nullptr;
         s->a        = (int)strtol(arg, &after, 0);
-        // `ctrl` (PT-CAP9-U5) is the same with the Ctrl latch (_G_LLM_INPUT_KEYSTATE[0x1d]): Ctrl+digit assigns the selection to a control group.
-        s->c = (strncmp(skip_ws(after), "shift", 5) == 0) ? 1 : (strncmp(skip_ws(after), "ctrl", 4) == 0) ? 2
-                                                                                                          : 0;
+        if (!action_modifiers_parse(skip_ws(after), &s->c)) {
+            ui_log("; [script] ABORT at step %d: malformed key modifiers: %s", g_nstep, line);
+            g_script_done = true;
+            return;
+        }
+    } else if (strcmp(op, "keywidget") == 0) {
+        s->op       = OP_A_KEYWIDGET;
+        char *after = nullptr;
+        s->a        = (int)strtol(arg, &after, 0);
+        s->b        = (int)strtol(after, &after, 0);
+        if (s->a <= 0 || s->a > 255 || s->b == 0 || *skip_ws(after)) {
+            ui_log("; [script] ABORT at step %d: malformed keywidget: %s", g_nstep, line);
+            g_script_done = true;
+            return;
+        }
     } else if (strcmp(op, "keyhold") == 0) {
         // `keyhold <scancode> <frames>` -- mp:SES3c. `key` always sends a DOWN and an UP, so a
         // held arrow key (the four CAM_SCROLL_*_HELD latches -- 0x4b/0x4d/0x48/0x50 LEFT/RIGHT/
@@ -2340,7 +2759,7 @@ void parse_line(const char *line) {
         if (s->c < 1) s->c = 1;
     } else if (strcmp(op, "hotkey") == 0) {
         // hotkey <spec>  -- `Ctrl+Alt+D`, `Alt+F9`, `0x79`, `D`: the DLL's OWN hotkey grammar (the
-        // [debug] overlay's toggle_key and the [hud] net_indicator_key read it), held for two
+        // [debug] overlay's toggle_key reads it), held for two
         // presents and released. NOT the game's key ring: those hotkeys poll GetAsyncKeyState, which
         // reads 0 on the isolated desktop every headless lane runs on, so no injected event can reach
         // them. The chord is synthesised in the DLL's own key-state view instead (MH_UIDrive_-
@@ -2540,14 +2959,18 @@ void parse_line(const char *line) {
         // last frame's io.WantCaptureMouse equals it -- ImGui's hover, fed from the GAME cursor.
         // `imgui difiltered <N>` (PT-INPUT1): >= N DirectInput button/wheel records withheld from the game by
         // the overlay's DI filter -- the swallow on the DI path, which `swallowed` (messages) cannot see.
+        // `imgui cursor <cx> <cy>`: processed ImGui pointer within2 client pixels of the expected point.
         s->op         = OP_W_IMGUI;
         const char *q = skip_ws(arg);
         s->a          = (strncmp(q, "open", 4) == 0) ? 1 : (strncmp(q, "closed", 6) == 0)    ? 0
                                                        : (strncmp(q, "hover", 5) == 0)       ? 3
                                                        : (strncmp(q, "difiltered", 10) == 0) ? 4
+                                                       : (strncmp(q, "cursor", 6) == 0)      ? 5
                                                                                              : 2;
         while (*q && *q != ' ' && *q != '\t') ++q;
-        s->b = (int)strtol(skip_ws(q), nullptr, 0);
+        char *end;
+        s->b = (int)strtol(skip_ws(q), &end, 0);
+        if (s->a == 5) s->c = (int)strtol(end, nullptr, 0);
     } else if (strcmp(op, "wmsg") == 0) {
         // wmsg <text | hex:xx..> -- the newest floating message contains this UTF-16 sequence.
         s->op = OP_W_WMSG;
@@ -2584,6 +3007,9 @@ void parse_line(const char *line) {
         s->op = OP_A_DUMP; // debug aid: log the active widget list at this point in the walk
     } else if (strcmp(op, "mark") == 0) {
         s->op = OP_A_MARK;
+        copy_trim(s->text, sizeof(s->text), arg);
+    } else if (strcmp(op, "logcfg") == 0) {
+        s->op = OP_A_LOGCFG;
         copy_trim(s->text, sizeof(s->text), arg);
     } else if (strcmp(op, "logbuild") == 0) {
         s->op = OP_A_LOGBUILD;
@@ -2692,6 +3118,7 @@ bool load_script(const char *path) {
             // until the row's timeout (dead-ends G306).
             if (q > line && q[-1] == '\r') q[-1] = 0;
             parse_line(line);
+            if (g_script_done) return false; // reject malformed modifier suffixes before any action runs
             line = q + 1;
             if (end == 0) break;
         }
@@ -2843,7 +3270,8 @@ void log_field(int slot) {
     char           hx[3 * 64 + 1];
     char           as[64 + 1];
     int            n = 0, k = 0;
-    const int      lim = (slot == FIELD_LOBBY) ? 63 : 32; // the name globals are char[32]
+    const int      lim = slot == FIELD_LOBBY ? 63 : slot == FIELD_CHAT ? 40
+                                                                       : 32;
     for (; n < lim && b[n]; ++n) {
         static const char H[] = "0123456789abcdef";
         hx[k++]               = H[b[n] >> 4];
@@ -2861,10 +3289,127 @@ void log_field(int slot) {
            n, hx, as);
 }
 
+bool chat_editor_active() {
+    return *(volatile const int *)mh::addr::_G_LLM_CHAT_INPUT_ACTIVE != 0;
+}
+
+// Buffer-full refusal still consumes the raw character; intentional truncation must not hang typing.
+uint32_t chat_handled_characters() {
+    long accepted = 0, full = 0;
+    MH_ChatInput_Stats(nullptr, &accepted, nullptr);
+    MH_ChatInput_LangStats(nullptr, &full, nullptr);
+    return (uint32_t)accepted + (uint32_t)full;
+}
+
 double game_clock_ms() {
     double clk;
     memcpy(&clk, (const void *)GAMECLOCK_ADDR, sizeof(clk));
     return clk * 1000.0; // the global is game-SECONDS (see OP_W_GAMECLOCK)
+}
+
+// Observational helpers shared by the predicates below. Never modify the game state.
+static int                                     cfgproof_player() { return *reinterpret_cast<const uint16_t *>(mh::addr::PlayerSide) & 7; }
+static const mh::game::mh_map_object_building *cfgproof_buildings() {
+    return mh::caps::rec<const mh::game::mh_map_object_building>(mh::caps::BUILDINGS, cfgproof_player(), 0);
+}
+static int cfgproof_selected_producer() {
+    const unsigned index = *reinterpret_cast<const uint16_t *>(mh::addr::_G_LLM_STRAT_UI_SELECTED_BLDG_INDEX);
+    return index < mh::caps::g(mh::caps::BUILDINGS).limit ? (int)index : 0;
+}
+static int cfgproof_unit_count(int type) {
+    const auto *units = mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, cfgproof_player(), 0);
+    int         n     = 0;
+    for (unsigned i = 1; i < mh::caps::g(mh::caps::UNITS).limit; ++i)
+        if (units[i].unit_proto_id == type && units[i].energy > 0.0) ++n;
+    return n;
+}
+
+struct cfgproof_motion {
+    mh::storage_policy::identity unit{}, receiver{};
+    int                          type = 0, storage = 0, x = 0, y = 0, goal_x = 0, goal_y = 0;
+    bool                         in_world = false;
+};
+cfgproof_motion g_cfg_produced, g_cfg_move, g_cfg_travel;
+double          g_cfg_travel_start = 0;
+bool            g_cfg_travel_world = false;
+
+static bool cfgproof_same(mh::storage_policy::identity a, mh::storage_policy::identity b) {
+    return a.incarnation && a.player == b.player && a.slot == b.slot && a.incarnation == b.incarnation;
+}
+static int cfgproof_distance(int x, int y, int gx, int gy, int width, int height) {
+    int dx = abs(x - gx), dy = abs(y - gy);
+    if (dx > width / 2) dx = width - dx;
+    if (dy > height / 2) dy = height - dy;
+    return dx * dx + dy * dy;
+}
+static bool cfgproof_travel(const Step *s) {
+    using namespace mh::storage_policy;
+    if (!g_wait) {
+        g_cfg_travel       = s->b ? g_cfg_produced : g_cfg_move;
+        g_cfg_travel_start = game_clock_ms();
+        g_cfg_travel_world = false;
+    }
+    auto       &m    = g_cfg_travel;
+    const auto &caps = mh::caps::g(mh::caps::UNITS);
+    const auto *geom = reinterpret_cast<const mh::game::mh_llm_strat_map_geom *>(mh::addr::general);
+    const int   w = geom->big_width >> 5, h = geom->big_height >> 5;
+    if (m.type != s->a || m.unit.player != (unsigned)cfgproof_player() || m.unit.player >= caps.players ||
+        !m.unit.slot || m.unit.slot >= caps.limit || w <= 0 || h <= 0 || w > 256 || h > 256 ||
+        !cfgproof_same(m.unit, hosted::unit_identity(m.unit.player, m.unit.slot))) {
+        ui_log("; [script] ABORT at step %d: unittravel missing or replaced bound unit type=%d slot=%u incarnation=%u",
+               g_cur, s->a, m.unit.slot, m.unit.incarnation);
+        g_script_done = true;
+        return false;
+    }
+    const auto &u      = *mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, m.unit.player, m.unit.slot);
+    bool        docked = false, receiver_valid = true;
+    if (s->b) {
+        const auto &storage_caps = mh::caps::g(mh::caps::UNIT_STORAGE);
+        receiver_valid           = m.storage > 0 && (unsigned)m.storage < storage_caps.limit &&
+                         m.unit.player < storage_caps.players &&
+                         u.home_storage_slot == m.storage &&
+                         cfgproof_same(m.receiver, hosted::building_identity(m.unit.player, m.receiver.slot)) &&
+                         hosted::eligible_building(m.unit.player, m.receiver.slot);
+        if (receiver_valid) {
+            const auto &st = *mh::caps::rec<const mh::game::mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, m.unit.player, m.storage);
+            const auto &b  = *mh::caps::rec<const mh::game::mh_map_object_building>(mh::caps::BUILDINGS, m.unit.player, m.receiver.slot);
+            receiver_valid = st.b_index == (int)m.receiver.slot && b.sub_id == m.storage &&
+                             st.docked_count >= 0 && st.docked_count <= 50;
+            for (int i = 0; receiver_valid && i < st.docked_count; ++i)
+                docked = docked || st.docked_units[i] == (int)m.unit.slot;
+        }
+    }
+    if (u.unit_proto_id != s->a || !(u.energy > 0) || !receiver_valid) {
+        ui_log("; [script] ABORT at step %d: unittravel bound unit/receiver no longer live slot=%u receiver=%u",
+               g_cur, m.unit.slot, m.receiver.slot);
+        g_script_done = true;
+        return false;
+    }
+    const auto *tiles  = mh::state::ptr<const mh::game::mh_map_tile_object_data>(mh::state::RID_TILE_OBJECTS);
+    const bool  linked = tiles && u.x < w && u.y < h &&
+                        tiles[(u.x << 8) | u.y].class_owner == (0x80 | m.unit.player) &&
+                        tiles[(u.x << 8) | u.y].building == m.unit.slot;
+    const bool goal = u.goal_x == m.goal_x && u.goal_y == m.goal_y;
+    // A move issued while docked normally performs native storage egress first;
+    // that path chooses its exit tile rather than preserving the requested world goal.
+    if (linked && !docked && (goal || (!s->b && !m.in_world))) {
+        if (s->b && !g_cfg_travel_world) {
+            m.x                = u.x;
+            m.y                = u.y;
+            g_cfg_travel_world = true;
+        }
+        const bool moved    = u.x != m.x || u.y != m.y;
+        const int  distance = cfgproof_distance(u.x, u.y, m.goal_x, m.goal_y, w, h);
+        if (moved && (!s->b || (distance <= 2 && distance < cfgproof_distance(m.x, m.y, m.goal_x, m.goal_y, w, h))))
+            return true;
+    }
+    if (game_clock_ms() - g_cfg_travel_start >= s->c) {
+        ui_log("; [script] ABORT at step %d: unittravel deadline unit=%u pos=%u,%u goal=%u,%u expected=%d,%d receiver=%u docked=%d linked=%d",
+               g_cur, m.unit.slot, (unsigned)u.x, (unsigned)u.y, (unsigned)u.goal_x, (unsigned)u.goal_y,
+               m.goal_x, m.goal_y, m.receiver.slot, docked, linked);
+        g_script_done = true;
+    }
+    return false;
 }
 
 bool wait_satisfied(const Step *s) {
@@ -2931,6 +3476,12 @@ bool wait_satisfied(const Step *s) {
                 g_settle_fx_max = *(const int *)mh::addr::lobby_frame_x;
                 g_settle_rx_max = *(const int *)mh::addr::lobby_right_panel_x;
             }
+            // Native slide tick seeds elapsed=1 and clears it only on endpoint completion.
+            // Wall-clock dwell during an unfinished blocking tween is not geometric readiness.
+            if (*(const int *)mh::addr::slide_anim_elapsed != 0) {
+                g_settle_primed = false;
+                return false;
+            }
             const DWORD now = GetTickCount();
             if (!g_settle_primed || cx != g_settle_cx || cy != g_settle_cy) {
                 if (g_settle_primed) ++g_settle_moves; // it actually MOVED, vs first look
@@ -2978,6 +3529,15 @@ bool wait_satisfied(const Step *s) {
         }
         case OP_W_GAMEMODE:
             return *(unsigned char *)GAMEMODE_ADDR == (unsigned char)s->a;
+        case OP_W_CHATREADY: {
+            const bool ready = chat_editor_active();
+            if (g_wait == 0 || ready)
+                ui_log("; [script] chatready state: mode=%u active=%d ring=%u/%u",
+                       (unsigned)*(volatile const unsigned char *)GAMEMODE_ADDR,
+                       *(volatile const int *)mh::addr::_G_LLM_CHAT_INPUT_ACTIVE,
+                       *(volatile uint32_t *)KREADIDX, *(volatile uint32_t *)KWRITEIDX);
+            return ready;
+        }
         case OP_W_TACTSEL: return *(const int *)TACTSELCNT_ADDR() == s->a;
         case OP_W_BLDGSEL: {
             const int sel = *(const uint16_t *)BLDGSEL_ADDR();
@@ -3052,7 +3612,11 @@ bool wait_satisfied(const Step *s) {
                 if (xs[i] < s->a - s->c || xs[i] > s->a + s->c || ys[i] < s->b - s->c || ys[i] > s->b + s->c) return false;
             return true;
         }
-        case OP_W_GZDONE: return mh::desync::gz::completed() >= s->a && mh::desync::gz::active() == 0;
+        case OP_W_GZDONE:
+            // A state writer schedules compression before decrementing active(). Checking gzip alone
+            // can observe an idle gap after another file finishes but before this writer hands off.
+            return mh::desync::recorder::active() == 0 && mh::desync::gz::completed() >= s->a &&
+                   mh::desync::gz::active() == 0;
         case OP_W_MAPSIZE: {
             const mh::game::mh_llm_strat_map_geom *g = (const mh::game::mh_llm_strat_map_geom *)mh::addr::general;
             return (int)(g->big_width >> 5) == s->a && (int)(g->big_height >> 5) == s->a;
@@ -3068,6 +3632,11 @@ bool wait_satisfied(const Step *s) {
             if (s->a == 0) return ov::query(ov::query_what::armed) == 1 && ov::query(ov::query_what::open) == 0;
             if (s->a == 3) return ov::query(ov::query_what::open) == 1 && ov::query(ov::query_what::want_mouse) == s->b;
             if (s->a == 4) return ov::query(ov::query_what::di_filtered) >= s->b; // PT-INPUT1: DI records withheld
+            if (s->a == 5) {
+                const int64_t dx = (int64_t)ov::query(ov::query_what::mouse_x) - s->b;
+                const int64_t dy = (int64_t)ov::query(ov::query_what::mouse_y) - s->c;
+                return ov::query(ov::query_what::open) == 1 && dx >= -2 && dx <= 2 && dy >= -2 && dy <= 2;
+            }
             return ov::query(ov::query_what::swallowed_mouse) >= s->b;
         }
         case OP_W_MRING: { // mp:U44b: the mouse ring is drained to at most s->a events
@@ -3111,6 +3680,15 @@ bool wait_satisfied(const Step *s) {
             }
             return now >= s->a;
         }
+        case OP_W_SOADONE: {
+            const int done = MH_Harness_SoaComplete();
+            if (done < 0) {
+                ui_log("; [script] ABORT at step %d: `%s` needs an armed harness with soa_at configured.", g_cur, s->raw);
+                g_script_done = true;
+                return false;
+            }
+            return done != 0;
+        }
         case OP_W_SESSIONS: // discovered joinable sessions (the browser's join gate)
             return count_ok(s, *(int *)SESSIONCNT_ADDR);
         case OP_W_PEERS: // transport-connected peers (host: "all clients joined" before Start)
@@ -3149,14 +3727,35 @@ bool wait_satisfied(const Step *s) {
             if (s->b < 0) return false;
             return (*(const unsigned char *)(LOBBY_SLOTS_ADDR + 0x07) != 0 ? 1 : 0) == s->b;
         }
-        case OP_W_FIELD: {    // the menu text-field BUFFER is exactly these bytes (NUL-terminated)
-            uint8_t want[72]; // the lobby field holds 63 bytes
+        case OP_W_LOBBYSPEED:
+            return mh::seams::lobby_speed::valid(s->b) &&
+                   *(const uintptr_t *)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == mh::addr::lobby_widget_origin &&
+                   mh::seams::lobby_speed::display_percent() == s->b;
+        case OP_W_LOBBYPAGE: // mods:MAPGEN2: the lobby's page spinner (-1 = the feature is off: never true)
+            return s->a >= 0 && mh::ui::map_preview_page(2) == s->a;
+        case OP_W_PICKPAGE: // mods:MAPGEN2: the map picker's page spinner
+            return s->a >= 0 && mh::ui::map_preview_page(1) == s->a;
+        case OP_W_FIELD: { // exact bytes, including the terminating NUL
+            uint8_t want[72];
             int     wn = field_expect(s->text, want, (int)sizeof(want));
-            if (wn < 0) return false; // malformed spec -- the timeout diagnostic names it
-            const uint8_t *b = (const uint8_t *)field_addr(s->a);
-            for (int i = 0; i < wn; ++i)
-                if (b[i] != want[i]) return false;
-            return b[wn] == 0; // and nothing after it: an exact buffer, not a prefix
+            if (wn < 0) return false;
+            const uint8_t *b           = (const uint8_t *)field_addr(s->a);
+            const bool     matches     = memcmp(b, want, (size_t)wn) == 0 && b[wn] == 0;
+            static int     logged_step = -1;
+            if (matches) {
+                logged_step = -1;
+            } else if (s->a == FIELD_CHAT && logged_step != g_cur) {
+                logged_step      = g_cur;
+                const auto *keys = (volatile const uint8_t *)mh::addr::_G_LLM_INPUT_KEYSTATE;
+                ui_log("; [script] chat mismatch: want=%s active=%d ring=%u/%u "
+                       "shift=%02x/%02x ctrl=%02x alt=%02x handled=%u",
+                       s->text, chat_editor_active() ? 1 : 0,
+                       *(volatile uint32_t *)KREADIDX, *(volatile uint32_t *)KWRITEIDX,
+                       keys[0x2a], keys[0x36], keys[0x1d], keys[0x38],
+                       chat_handled_characters());
+                log_field(FIELD_CHAT);
+            }
+            return matches;
         }
         case OP_W_WMSG: { // the newest floating message CONTAINS this UTF-16 sequence
             uint8_t want[34];
@@ -3186,6 +3785,30 @@ bool wait_satisfied(const Step *s) {
             }
             return false;
         }
+        case OP_W_BUILDARMED:
+            return s->a > 0 && *(const volatile int32_t *)mh::addr::_G_LLM_BUILD_PLACEMENT_ID == s->a;
+        case OP_W_SELECTEDTYPE: {
+            const int selected = cfgproof_selected_producer();
+            return selected && cfgproof_buildings()[selected].building_id == s->a;
+        }
+        case OP_W_BLDGREADY: {
+            const auto *b = cfgproof_buildings();
+            for (unsigned i = 1; i < mh::caps::g(mh::caps::BUILDINGS).limit; ++i)
+                if (b[i].building_id == s->a && b[i].energy > 0.0 && b[i].state != 100 && b[i].online_state > 0) return true;
+            return false;
+        }
+        case OP_W_PRODSTART: {
+            const int slot = cfgproof_selected_producer();
+            if (!slot || s->a <= 0 || s->a >= 100) return false;
+            const auto &b = cfgproof_buildings()[slot];
+            if (b.sub_id == 0 || b.sub_id >= mh::caps::g(mh::caps::PRODUCTIONS).limit) return false;
+            const auto *prod = mh::caps::rec<const mh::game::mh_map_object_production>(mh::caps::PRODUCTIONS, cfgproof_player(), b.sub_id);
+            return prod->active_unit_type == s->a && b.state != 100 && b.cycle_progress > 0.0;
+        }
+        case OP_W_UNITCOUNT:
+            return s->a > 0 && s->a < 100 && s->b > 0 && cfgproof_unit_count(s->a) >= s->b;
+        case OP_W_UNITTRAVEL:
+            return cfgproof_travel(s);
         case OP_W_WLOBBY: { // some lobby log line CONTAINS this UTF-16 sequence
             uint16_t  needle[64];
             const int nn = wlobby_needle(s->text, needle, 64);
@@ -3209,8 +3832,7 @@ bool wait_satisfied(const Step *s) {
 // link_death) and then the wall-clock budget. So the reported failure named a step nowhere near the
 // real cause, and the wall clock looked like a contention/timeout problem. It was neither.
 //
-// Only the three widget CLICKS can report anything but CLICK_OK -- they are the only actions with a
-// resolvable target that can be missing or not-yet-ready.
+// Targeted actions can refuse a missing control; simresume also refuses an absent harness.
 click_result do_action(const Step *s) {
     switch (s->op) {
         case OP_A_CLICKV:
@@ -3241,10 +3863,97 @@ click_result do_action(const Step *s) {
             MH_UIDrive_Press(s->a, s->b);
             g_btn_held = true;
             break;
+        case OP_A_ORDERMOVE: {
+            // Select the actual live unit and send the game's own normal order issuer.
+            const auto *units = mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, cfgproof_player(), 0);
+            const auto *geom  = reinterpret_cast<const mh::game::mh_llm_strat_map_geom *>(mh::addr::general);
+            const int   w = geom->big_width >> 5, h = geom->big_height >> 5;
+            if (w <= 0 || h <= 0) return CLICK_ABSENT;
+            for (unsigned i = 1; i < mh::caps::g(mh::caps::UNITS).limit; ++i) {
+                const auto &u = units[i];
+                if (u.unit_proto_id != s->a || u.energy <= 0.0) continue;
+                const int x = ((int)u.x + s->b % w + w) % w;
+                const int y = ((int)u.y + s->c % h + h) % h;
+                // The raw *_enqueue path is forbidden here: it bypasses lockstep replication.
+                // Match the normal issuer and per-player sequence handling in synth_move_issue.
+                const unsigned player = cfgproof_player();
+                auto          *seqp   = reinterpret_cast<uint8_t *>(
+                    mh::state::live_base(mh::state::RID_STRAT_ORDER_SEQ_ID_BY_PLAYER) + player);
+                const unsigned seq  = *seqp;
+                g_cfg_move          = {};
+                g_cfg_move.unit     = mh::storage_policy::hosted::unit_identity(player, i);
+                g_cfg_move.type     = s->a;
+                g_cfg_move.x        = u.x;
+                g_cfg_move.y        = u.y;
+                g_cfg_move.goal_x   = x;
+                g_cfg_move.goal_y   = y;
+                const auto *tiles   = mh::state::ptr<const mh::game::mh_map_tile_object_data>(mh::state::RID_TILE_OBJECTS);
+                g_cfg_move.in_world = tiles && u.x < w && u.y < h &&
+                                      tiles[(u.x << 8) | u.y].class_owner == (0x80 | player) &&
+                                      tiles[(u.x << 8) | u.y].building == i;
+                mh::call::llm_strat_unit_order_move(player, (int32_t)i, (uint32_t)x, (uint32_t)y, seq);
+                if (++(*seqp) == 0) ++(*seqp);
+                ui_log("; [cfgproof] move unit=%u type=%d from=%u,%u to=%d,%d", i, s->a, (unsigned)u.x, (unsigned)u.y, x, y);
+                return CLICK_OK;
+            }
+            return CLICK_ABSENT;
+        }
+        case OP_A_HUDBUILD:
+        case OP_A_HUDPROD:
+        case OP_A_HUDINFO: {
+            // Drive the actual widget with the same held input as simclick, not a direct
+            // write to a pending-row flag or a synthetic resource/cost adjustment.
+            static int x, y;
+            if (g_wait == 0) {
+                if (s->a <= 0 || s->a >= 100) return CLICK_ABSENT;
+                const bool      build      = s->op == OP_A_HUDBUILD;
+                const uintptr_t descriptor = build ? 0x00510115u : 0x0050ffefu;
+                int             offset, count;
+                memcpy(&offset, reinterpret_cast<const void *>(descriptor + 0x29), sizeof(offset));
+                memcpy(&count, reinterpret_cast<const void *>(descriptor + 0x2d), sizeof(count));
+                if (offset < 0 || count < 0 || offset >= count) return CLICK_ABSENT;
+                int row = -1;
+                if (build) {
+                    const auto *list = reinterpret_cast<const int32_t *>(mh::addr::AvailableBuildings) + cfgproof_player() * 50;
+                    for (int i = offset; i < count && i < 50 && i < offset + 10; ++i)
+                        if (list[i] == s->a) {
+                            row = i - offset;
+                            break;
+                        }
+                } else {
+                    const int selected = cfgproof_selected_producer();
+                    if (!selected) return CLICK_ABSENT;
+                    const int type = cfgproof_buildings()[selected].building_id;
+                    for (int i = offset; i < count && i < offset + 10; ++i)
+                        if (mh::call::llm_bldg_available_unit_type_by_slot(i, type) == s->a) {
+                            row = i - offset;
+                            break;
+                        }
+                }
+                if (row < 0) return CLICK_ABSENT;
+                const int widget_id = (build ? 0x47 : s->op == OP_A_HUDPROD ? 0x101
+                                                                            : 0x115) +
+                                      row;
+                const uintptr_t widget = mh::addr::_G_LLM_UI_HUD_WIDGETS + widget_id * 28;
+                int             left, top, right, bottom;
+                memcpy(&left, reinterpret_cast<const void *>(widget + 8), 4);
+                memcpy(&top, reinterpret_cast<const void *>(widget + 12), 4);
+                memcpy(&right, reinterpret_cast<const void *>(widget + 16), 4);
+                memcpy(&bottom, reinterpret_cast<const void *>(widget + 20), 4);
+                if (right <= left || bottom <= top) return CLICK_ABSENT;
+                // HUD widget rectangles are panel-local; mouse input is in full game pixels.
+                x = *(const volatile int32_t *)mh::addr::G_WIN_W + left + (right - left) / 2;
+                y = top + (bottom - top) / 2;
+                ui_log("; [cfgproof] hud op=%d type=%d row=%d widget=%d screen=%d,%d", s->op, s->a, row, widget_id, x, y);
+            }
+            return simclick_frame(g_wait, x, y, s->op == OP_A_HUDINFO) ? CLICK_OK : CLICK_RETRY;
+        }
         case OP_A_SIMCLICK:
-            return simclick_frame(g_wait, s->a, s->b, false, s->c != 0) ? CLICK_OK : CLICK_RETRY;
+            return simclick_frame(g_wait, s->a, s->b, false, unsigned(s->c)) ? CLICK_OK : CLICK_RETRY;
         case OP_A_SIMRCLICK:
-            return simclick_frame(g_wait, s->a, s->b, true, s->c != 0) ? CLICK_OK : CLICK_RETRY;
+            return simclick_frame(g_wait, s->a, s->b, true, unsigned(s->c)) ? CLICK_OK : CLICK_RETRY;
+        case OP_A_SIMDOUBLECLICK:
+            return simdoubleclick_frame(g_wait, s->a, s->b, unsigned(s->c)) ? CLICK_OK : CLICK_RETRY;
         case OP_A_WMCLICK: {
             // Spread over presents like a hand: MOVE on 0 and 1 (a frame is built with the pointer
             // there), DOWN on 2, UP on 3, advance on 4. Posted, not sent: the game's own message loop
@@ -3289,12 +3998,14 @@ click_result do_action(const Step *s) {
             const bool e0 = s->b != 0;
             if (s->c == 0 && g_wait == 0) {
                 if (!mh::input::harness_key((uint16_t)s->a, e0, true)) return CLICK_ABSENT;
+                g_script_raw_keys[(unsigned(s->a) & 0x7fu) | (e0 ? 0x80u : 0u)] = true;
                 return CLICK_RETRY; // UP on the next present, so the game's poll sees a press
             }
             if (!mh::input::harness_key((uint16_t)s->a, e0, s->c == 1)) {
                 ui_log("; rawkey -- no owned DirectInput keyboard ([input] backend=own, device created?)");
                 return CLICK_ABSENT;
             }
+            g_script_raw_keys[(unsigned(s->a) & 0x7fu) | (e0 ? 0x80u : 0u)] = s->c == 1;
             break;
         }
         case OP_A_WINSIZE: {
@@ -3367,7 +4078,7 @@ click_result do_action(const Step *s) {
         }
         case OP_A_RCLICK:
             // Multi-present like cursorhold: g_wait is the frame index while the step retries.
-            return rclick_frame(g_wait, s->a, s->b, s->c != 0) ? CLICK_OK : CLICK_RETRY;
+            return rclick_frame(g_wait, s->a, s->b, unsigned(s->c)) ? CLICK_OK : CLICK_RETRY;
         case OP_A_KEY:
             if (s->c == 0) {
                 // The DOWN and the UP go into the ring on DIFFERENT presents, not back to back on
@@ -3404,21 +4115,49 @@ click_result do_action(const Step *s) {
                 }
                 break;
             }
-            // `key <sc> shift` (mp:CH1): multi-present like rclick. The pair goes into the ring on
-            // present 0; the latch is re-asserted on presents 0..2 (the consumer drains the ring on
-            // the frame AFTER the present that queued it, and the DI poll re-latches the byte every
-            // frame -- the D25 convention) and cleared on present 3 so a held Shift cannot stick.
-            if (s->c == 2) keystate_ctrl(true);
-            else keystate_shift(true);
+            return modified_key_frame(g_wait, uint32_t(s->a), unsigned(s->c)) ? CLICK_OK : CLICK_RETRY;
+        case OP_A_KEYWIDGET: {
+            // EN 0x004b7555 selects on make; 0x004b760c activates on break only
+            // for the same native key-selected widget. Presents/raw dequeue alone
+            // do not acknowledge that first consumer.
+            const uint32_t target       = uint32_t(s->b);
+            const uint32_t selected     = *(volatile uint32_t *)0x0065429du;
+            const uint32_t key_selected = *(volatile uint32_t *)0x006542a5u;
             if (g_wait == 0) {
-                enqueue_key((uint32_t)s->a, true);
-                enqueue_key((uint32_t)s->a, false);
-                ui_log("; key scancode 0x%02x (down+up) under a held %s latch", s->a, s->c == 2 ? "Ctrl" : "Shift");
+                g_widget_key_phase = 0;
+                if (key_selected == target) {
+                    ui_log("; keywidget refuses an already key-selected target %08x (selected=%08x)", target, selected);
+                    return CLICK_ABSENT;
+                }
             }
-            if (g_wait < 3) return CLICK_RETRY;
-            if (s->c == 2) keystate_ctrl(false);
-            else keystate_shift(false);
-            break;
+            if (g_widget_key_phase == 0) {
+                if (!key_ring_empty()) return CLICK_RETRY;
+                prepare_widget_key(uint32_t(s->a), target, 1);
+                g_widget_key_phase = 1;
+                ui_log("; keywidget scan=0x%02x target=%08x prepared DOWN", s->a, target);
+                g_widget_key_diag_ms = GetTickCount();
+                widget_key_diagnostic("DOWN");
+                return CLICK_RETRY;
+            }
+            if (g_widget_key_phase == 1) {
+                const DWORD now = GetTickCount();
+                if (now - g_widget_key_diag_ms >= 2000) {
+                    g_widget_key_diag_ms = now;
+                    widget_key_diagnostic("waiting");
+                }
+                if (g_widget_key_pending || g_widget_key_delivered != 1 ||
+                    key_selected != target || selected != target)
+                    return CLICK_RETRY;
+                widget_key_diagnostic("native DOWN acknowledged");
+                prepare_widget_key(uint32_t(s->a), target, 2);
+                g_widget_key_phase = 2;
+                ui_log("; keywidget scan=0x%02x target=%08x native DOWN acknowledged; prepared UP", s->a, target);
+                return CLICK_RETRY;
+            }
+            if (g_widget_key_pending || g_widget_key_delivered != 2 || !key_ring_empty()) return CLICK_RETRY;
+            widget_key_diagnostic("UP consumed");
+            return CLICK_OK;
+        }
         case OP_A_KEYHOLD:
             // DOWN once, on present 0; presents 1..c-1 are the hold itself and inject nothing
             // (the unpaired DOWN is what stays latched); UP on present c-1, mirroring
@@ -3456,30 +4195,26 @@ click_result do_action(const Step *s) {
             ui_log("; hotkeyup %s released", s->text);
             break;
         case OP_A_TYPE: {
-            // ONE CHARACTER PER RING DRAIN. The modifier state is a single process-wide table, so it
-            // can only be correct for one character at a time -- pushing the whole string at once
-            // would type "Привет" with whatever shift state the LAST character wanted. The gate is
-            // the ring going empty, which (dequeue == translate) means "the previous character has
-            // been translated", so this is a state predicate, not a pace.
+            // Hold each character's modifiers through its actual consumer. Menu dequeue translates
+            // immediately; chat dequeue only queues a raw scancode for the later UTF-8 drain.
+            // A full chat line is also a consumed character: retain intentional refusal semantics.
             if (g_type_step != g_cur) {
                 if (!type_resolve(s->text)) {
                     g_type_step = -1;
                     return CLICK_ABSENT; // reported as a script ABORT, never silently dropped
                 }
                 g_type_step     = g_cur;
+                g_type_chat     = chat_editor_active();
                 g_type_progress = GetTickCount();
             }
-            if (!key_ring_empty()) {
+            if (g_type_pending || !key_ring_empty() ||
+                (g_type_chat && g_type_pushed && chat_handled_characters() == g_type_chat_ack)) {
                 // Character g_type_i is still in flight: hold its modifiers. Re-applied every tick
                 // rather than once, so a message the game pumps in between cannot quietly reset the
                 // key-state table under us.
                 if (g_type_i < g_type_n) apply_mod_state(g_type[g_type_i].sh);
-                // WHY THE RING IS NOT DRAINING, throttled, in the pump's own terms. A stall here is
-                // never "the harness lost an event": it is llm_ui_modal_key_pump declining to latch
-                // the next one, and the four numbers below are the whole state machine that decides
-                // that: NOW_MS is the menu clock, NEXT_MS the 150 ms accumulator, DEAD_MS the latched key's own
-                // timestamp, and dlgflags bit 0x80 means a key is latched but not yet published. Without them the
-                // only symptom is a 15 s silence.
+                // The menu pump or downstream chat drain may still own the character.
+                // Preserve its modifiers and report the real consumer state while waiting.
                 const DWORD t = GetTickCount();
                 if (t - g_type_diag_ms > 2000) {
                     g_type_diag_ms = t;
@@ -3493,10 +4228,21 @@ click_result do_action(const Step *s) {
                            *(volatile uint8_t *)(mh::addr::_G_LLM_DLG_STATE_FLAGS + 1),
                            *(volatile uint32_t *)mh::addr::_G_LLM_UI_MODAL_KEY_SCANCODE,
                            *(volatile uint16_t *)mh::addr::_G_LLM_UI_MODAL_KEY_ASCII);
+                    if (g_type_chat) {
+                        ui_log("; [script]   type chat waiting: active=%d handled=%u before=%u pending=%d consumer=%08x",
+                               chat_editor_active() ? 1 : 0, chat_handled_characters(), g_type_chat_ack,
+                               g_type_pending ? 1 : 0, unsigned(g_type_consumer));
+                        log_field(FIELD_CHAT);
+                    }
                 }
                 return CLICK_RETRY;
             }
-            if (g_type_pushed) { // the ring drained -> that character has been translated
+            if (g_type_pushed) {
+                if (g_type_chat) {
+                    ui_log("; [script] type chat consumed #%d/%d: handled=%u consumer=%08x",
+                           g_type_i + 1, g_type_n, chat_handled_characters(), unsigned(g_type_consumer));
+                    log_field(FIELD_CHAT);
+                }
                 ++g_type_i;
                 g_type_pushed   = false;
                 g_type_progress = GetTickCount();
@@ -3509,9 +4255,18 @@ click_result do_action(const Step *s) {
             }
             const TypeChar &t = g_type[g_type_i];
             apply_mod_state(t.sh);
-            enqueue_key(t.sc, true);
-            enqueue_key(t.sc, false);
             g_type_pushed = true;
+            if (g_type_chat) {
+                g_type_chat_ack = chat_handled_characters();
+                g_type_down_ms  = mh::call::llm_time_get_ticks_ms();
+                g_type_up_ms    = mh::call::llm_time_get_ticks_ms();
+                g_type_consumer = 0;
+                g_type_pending  = true;
+                ui_log("; [script] type chat pending #%d/%d: awaiting native consumer", g_type_i + 1, g_type_n);
+            } else {
+                enqueue_key(t.sc, true);
+                enqueue_key(t.sc, false);
+            }
             ui_log("; [script] type #%d/%d U+%04X -> sc=0x%02x vk=0x%02x sh=%u | layout byte 0x%02x, "
                    "game ToAscii byte 0x%02x%s",
                    g_type_i + 1, g_type_n, (unsigned)t.wc, t.sc, t.vk, t.sh, t.native, t.acp,
@@ -3572,6 +4327,16 @@ click_result do_action(const Step *s) {
         case OP_A_BCAPTURE:
             MH_Capture_ShotBackbuffer(s->text);
             break;
+        case OP_A_SIMRESUME: {
+            const int now = MH_Harness_StepFence(0);
+            if (now < 0) {
+                ui_log("; [script] ABORT at step %d: `simresume` needs an ARMED HARNESS", g_cur);
+                g_script_done = true;
+                return CLICK_ABSENT;
+            }
+            ui_log("; [script] simresume released the sim fence at step %d", now);
+            break;
+        }
         case OP_A_POKERACE: {
             // U28 TEST HOOK: write a lobby slot's race field LOCALLY, without the spinner and so
             // WITHOUT the 0x0c push the spinner would send. That is the whole point -- it manufactures,
@@ -3617,6 +4382,133 @@ click_result do_action(const Step *s) {
         case OP_A_DUMP:
             MH_UIDrive_DumpWidgets();
             break;
+        case OP_A_LOGCFG: {
+            // Pure observation of the actual boot/load/New Game state. System is raw: its
+            // Ghidra struct is shifted by eight bytes; field 4 is entry planet (EN 0x45543e).
+            const auto *units   = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::ptr<uint8_t>(mh::state::RID_UNIT));
+            const auto *systems = reinterpret_cast<const int32_t *>(mh::state::ptr<uint8_t>(mh::state::RID_SYSTEM));
+            if (!units || !systems) {
+                ui_log("; [cfgproof] %s unavailable", s->text);
+                break;
+            }
+            const auto &unit = units[26];
+            char        line[512];
+            int         len = _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                          "; [cfgproof] %s sys=%d planet=%u system1_first=%d system1_second=%d "
+                                                  "cost=%u:%d,%u:%d,%u:%d,%u:%d\n",
+                                          s->text,
+                                          *reinterpret_cast<const int32_t *>(mh::addr::CurrentSystem),
+                                          (unsigned)*reinterpret_cast<const uint16_t *>(mh::addr::G_PLANET_INDEX),
+                                          (int)systems[35 + 4], (int)systems[35 + 5],
+                                          (unsigned)unit.resource[0].id, unit.resource[0].val,
+                                          (unsigned)unit.resource[1].id, unit.resource[1].val,
+                                          (unsigned)unit.resource[2].id, unit.resource[2].val,
+                                          (unsigned)unit.resource[3].id, unit.resource[3].val);
+            if (len > 0) {
+                mh_proc_path(g_mark_vid, MAX_PATH, "%smh_video.log", &g_mark_vid_gen);
+                mh_logq_write(g_mark_vid, line, len);
+            }
+            // Observe the actual text table and both resource interfaces, not fixture constants.
+            // DEFINE ids 326/378 are N_human_Soldier1/N_human_Akademia in retail INIT.
+            const auto texts = reinterpret_cast<const wchar_t *const *>(mh::addr::cfg_G_TEXT_PTRS);
+            auto       hex   = [](const uint8_t *p, size_t n, char *out, size_t cap) {
+                static const char digits[] = "0123456789abcdef";
+                if (!p || !n) {
+                    out[0] = '-';
+                    out[1] = 0;
+                    return;
+                }
+                if (n > (cap - 1) / 2) {
+                    out[0] = '!';
+                    out[1] = 0;
+                    return;
+                }
+                for (size_t i = 0; i < n; ++i) {
+                    out[i * 2]     = digits[p[i] >> 4];
+                    out[i * 2 + 1] = digits[p[i] & 15];
+                }
+                out[n * 2] = 0;
+            };
+            auto text_hex = [&](unsigned id, char *out, size_t cap) {
+                const wchar_t *value = texts[id];
+                size_t         units = 0;
+                if (value)
+                    while (units < 120 && value[units]) ++units;
+                hex(reinterpret_cast<const uint8_t *>(value), units * sizeof(wchar_t), out, cap);
+            };
+            char soldier[481], academy_text[481], mounted[513], loaded[513];
+            text_hex(326, soldier, sizeof(soldier));
+            text_hex(378, academy_text, sizeof(academy_text));
+            const uint8_t *mount_ptr  = nullptr;
+            uint32_t       mount_size = 0;
+            const int      mount_hit  = MH_Mods_Resource_Find("info\\cfgproof.txt", &mount_ptr, &mount_size);
+            hex(mount_ptr, mount_size, mounted, sizeof(mounted));
+            char           resource_name[] = "info\\cfgproof.txt";
+            const uint32_t resource_size   = mh::call::rsr_GetFileRealSize(resource_name);
+            uint8_t       *resource_ptr    = mh::call::GetResourseFilePtr(resource_name);
+            hex(resource_ptr, resource_size, loaded, sizeof(loaded));
+            char      io_line[2200];
+            const int io_len = _snprintf_s(io_line, sizeof(io_line), _TRUNCATE,
+                                           "; [cfgio] %s soldier=%s academy=%s mounted=%d:%u:%s resource=%d:%u:%s\n",
+                                           s->text, soldier, academy_text, mount_hit, (unsigned)mount_size, mounted,
+                                           resource_ptr ? 1 : 0, (unsigned)resource_size, loaded);
+            if (io_len > 0) mh_logq_write(g_mark_vid, io_line, io_len);
+            if (resource_ptr) mh::call::utils_free(resource_ptr);
+            if (*reinterpret_cast<const uint8_t *>(mh::addr::_G_LLM_GAME_MODE) == 2) {
+                const unsigned player   = cfgproof_player();
+                const auto    *b        = cfgproof_buildings();
+                const int      selected = cfgproof_selected_producer();
+                int            active = 0, queued = 0, academy = 0;
+                for (unsigned i = 1; i < mh::caps::g(mh::caps::BUILDINGS).limit; ++i) {
+                    if (b[i].building_id != 28 || b[i].energy <= 0.0) continue;
+                    academy = (int)i;
+                    if (b[i].sub_id && b[i].sub_id < mh::caps::g(mh::caps::PRODUCTIONS).limit) {
+                        const auto *p = mh::caps::rec<const mh::game::mh_map_object_production>(mh::caps::PRODUCTIONS, player, b[i].sub_id);
+                        active        = p->active_unit_type;
+                        queued        = p->queued_count[26];
+                    }
+                    break;
+                }
+                const auto *roster    = mh::caps::rec<const mh::game::mh_map_object_unit>(mh::caps::UNITS, player, 0);
+                unsigned    unit_slot = 0;
+                for (unsigned i = 1; i < mh::caps::g(mh::caps::UNITS).limit; ++i)
+                    if (roster[i].unit_proto_id == 26 && roster[i].energy > 0.0) {
+                        unit_slot = i;
+                        break;
+                    }
+                if (strcmp(s->text, "production_finished") == 0) {
+                    g_cfg_produced           = {};
+                    g_cfg_produced.unit      = mh::storage_policy::hosted::unit_identity(player, unit_slot);
+                    g_cfg_produced.type      = 26;
+                    const auto &made         = roster[unit_slot];
+                    const auto &storage_caps = mh::caps::g(mh::caps::UNIT_STORAGE);
+                    if (unit_slot && player < storage_caps.players && made.home_storage_slot > 0 &&
+                        made.home_storage_slot < storage_caps.limit) {
+                        g_cfg_produced.storage = made.home_storage_slot;
+                        const auto &st         = *mh::caps::rec<const mh::game::mh_map_object_unit_storage>(mh::caps::UNIT_STORAGE, player, made.home_storage_slot);
+                        if (st.b_index > 0) {
+                            g_cfg_produced.receiver = mh::storage_policy::hosted::building_identity(player, st.b_index);
+                            const auto rally        = mh::storage_policy::hosted::read_rally(player, st.b_index);
+                            if (rally.enabled) {
+                                g_cfg_produced.goal_x = rally.x;
+                                g_cfg_produced.goal_y = rally.y;
+                            } else {
+                                g_cfg_produced.type = 0; // no configured rally cannot satisfy a rally WAIT
+                            }
+                        }
+                    }
+                }
+                const int32_t *r = reinterpret_cast<const int32_t *>(mh::addr::player_resources) + player * 10;
+                const auto    &u = roster[unit_slot];
+                len              = _snprintf_s(line, sizeof(line), _TRUNCATE,
+                                               "; [cfgprod] %s side=%u selected=%d academy=%d online=%d active=%d queued=%d count=%d unit=%u pos=%u,%u goal=%u,%u res=%d,%d,%d,%d\n",
+                                               s->text, player, selected, academy, academy ? (int)b[academy].online_state : 0,
+                                               active, queued, cfgproof_unit_count(26), unit_slot, (unsigned)u.x, (unsigned)u.y,
+                                               (unsigned)u.goal_x, (unsigned)u.goal_y, r[1], r[2], r[3], r[4]);
+                if (len > 0) mh_logq_write(g_mark_vid, line, len);
+            }
+            break;
+        }
         case OP_A_LOGBUILD: {
             // D11: the armed building type (_G_LLM_BUILD_PLACEMENT_ID), the Shift latch, and how many of the local player's
             // buildings of that type exist (placed = building_id == type with a position; a slot never used reads all zero).
@@ -3653,6 +4545,8 @@ click_result do_action(const Step *s) {
         case OP_A_CAMTO:
             mh::call::llm_map_cam_set_col(s->a);
             mh::call::llm_map_cam_set_row(s->b);
+            // Native setters change coordinates only; retained ground must be repainted too.
+            mh::call::llm_map_cam_mark_viewport_dirty();
             ui_log("; [script] camto %d %d", s->a, s->b);
             break;
         case OP_A_WATCH:
@@ -3954,6 +4848,8 @@ void dump_on_change() {
     }
 }
 
+// Error terminal records follow their synchronous diagnostics/artifacts: the runner may
+// terminate this process as soon as it observes TIMEOUT or ABORT.
 void script_tick() {
     if (!g_script_on || g_script_done) return;
     if (g_cur >= g_nstep) {
@@ -3986,12 +4882,12 @@ void script_tick() {
             // `retry`: the sim ran <ms> without the wait holding -- the click that should have caused
             // it was lost. Rewind to it, bounded; exhausted is a terminal ABORT naming the step.
             if (s->retry_used >= s->retry_tries) {
-                ui_log("; [script] ABORT at step %d: retry exhausted -- %d re-attempt(s), the wait never held: %s",
-                       g_cur, s->retry_used, s->raw);
                 retry_abort_diag();
                 ui_log("; [script]   active screen at abort:");
                 MH_UIDrive_DumpWidgets();
                 MH_Capture_Shot("script_timeout");
+                ui_log("; [script] ABORT at step %d: retry exhausted -- %d re-attempt(s), the wait never held: %s",
+                       g_cur, s->retry_used, s->raw);
                 g_script_done = true;
                 return;
             }
@@ -4001,8 +4897,6 @@ void script_tick() {
             g_cur -= s->retry_back;
             g_wait = 0;
         } else if (s->op == OP_W_GZDONE ? (++g_wait, step_ms > 120000) : (++g_wait > g_timeout)) {
-            ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s", g_cur, g_wait,
-                   step_ms / 1000, step_ms % 1000, s->raw);
             if (s->op == OP_W_SETTLED)
                 ui_log("; [script]   settle diag: target resolved on %d frames, moved %d times, x in [%d..%d] -- %s",
                        g_settle_seen, g_settle_moves, g_settle_minx, g_settle_maxx,
@@ -4051,6 +4945,8 @@ void script_tick() {
             // screen nobody had looked at. A timeout is exactly the moment the frame is worth
             // keeping, and it is gone a millisecond later.
             MH_Capture_Shot("script_timeout");
+            ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s", g_cur, g_wait,
+                   step_ms / 1000, step_ms % 1000, s->raw);
             g_script_done = true;
         }
     } else {
@@ -4075,11 +4971,7 @@ void script_tick() {
             const bool type_stalled = (s->op == OP_A_TYPE) &&
                                       (int)(GetTickCount() - g_type_progress) > g_type_stall_ms;
             if (s->op == OP_A_TYPE ? type_stalled : (g_wait > g_timeout)) {
-                ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s (%s)",
-                       g_cur, g_wait, step_ms / 1000, step_ms % 1000, s->raw,
-                       s->op == OP_A_TYPE ? "the key ring stopped draining -- is the text field "
-                                            "focused? a menu field only accepts keys once clicked"
-                                          : "target present but never became clickable");
+                if (s->op == OP_A_KEYWIDGET) widget_key_diagnostic("TIMEOUT");
                 if (s->op == OP_A_TYPE)
                     ui_log("; [script]   type stalled at character %d/%d (sc=0x%02x), ring read=%u "
                            "write=%u",
@@ -4087,6 +4979,11 @@ void script_tick() {
                            *(volatile uint32_t *)KREADIDX, *(volatile uint32_t *)KWRITEIDX);
                 ui_log("; [script]   active screen at timeout:");
                 MH_UIDrive_DumpWidgets();
+                ui_log("; [script] TIMEOUT at step %d after %d frames (%u.%03us) -- ABORT: %s (%s)",
+                       g_cur, g_wait, step_ms / 1000, step_ms % 1000, s->raw,
+                       s->op == OP_A_TYPE ? "the typed key has not reached its consumer -- is the "
+                                            "intended editor active?"
+                                          : "target present but never became clickable");
                 g_script_done = true;
             }
             return; // stay on this step
@@ -4094,10 +4991,10 @@ void script_tick() {
         if (r == CLICK_ABSENT) {
             // Nothing on this screen carries the target at all: a real error, so FAIL FAST at the
             // step that is actually wrong instead of letting a doomed script run into a later wait.
-            ui_log("; [script] ABORT at step %d: the action could not be performed: %s", g_cur,
-                   s->raw);
             ui_log("; [script]   active screen at abort:");
             MH_UIDrive_DumpWidgets();
+            ui_log("; [script] ABORT at step %d: the action could not be performed: %s", g_cur,
+                   s->raw);
             g_script_done = true;
             return;
         }
@@ -4124,6 +5021,11 @@ extern "C" void MH_UIDrive_OnPresent(void) {
     if (f7 && !g_prev_f7) MH_UIDrive_DumpWidgets();
     g_prev_f7 = f7;
 
+    if (g_script_done) {
+        script_modifiers_release(); // retry terminal cleanup even if the ring was full
+        script_widget_key_release();
+        script_raw_keys_release();
+    }
     if (!g_enabled) return;
 
     dump_on_change(); // [uitest] dump_screens=1: log each new screen (script-authoring aid)
@@ -4137,6 +5039,10 @@ extern "C" void MH_UIDrive_OnPresent(void) {
         // predicate's own refusal) and a `layout 00000419` left behind by any of them would be a
         // side effect on the machine that outlives the run. One place, checked once per present.
         if (g_script_done && !was_done) {
+            g_type_pending = false;
+            script_modifiers_release();
+            script_widget_key_release();
+            script_raw_keys_release();
             restore_layout();
             memset(g_synth_vk, 0, sizeof(g_synth_vk)); // a `hotkeydown` left down by an aborted script
         }
@@ -4181,6 +5087,10 @@ extern "C" int MH_UIDrive_Install(void) {
     char scriptname[64];
     mh::config::read_ini_string("uitest", "script", "", scriptname, sizeof(scriptname), ini); // TL-HARN4
     if (scriptname[0]) {
+        if (g_enabled && !arm_script_key_consumers()) {
+            ui_log("; [script] ABORT at step 0: native key consumer hooks unavailable; script not started");
+            return 0;
+        }
         char spath[MAX_PATH];
         // UI scripts are rig inputs staged beside the exe (a dev affordance, like the harness replay
         // inputs), so they resolve against the EXE directory -- not the config dir (RL3). A rig lane

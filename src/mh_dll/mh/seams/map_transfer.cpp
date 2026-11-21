@@ -9,8 +9,11 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
+#include <vector>
+#include <atomic>
 
 #include "seams/map_transfer.h"
+#include "seams/tileset_save_preflight.h"
 
 #include "include/mh_log_sink.h"     // mp:LOG2: the stored map is written by the log sink's writer
 #include "include/mh_net_export.h"   // MH_Net_PeerCount -- "is anyone even here"
@@ -24,12 +27,47 @@
 #include "net_internal.h"            // g_ini, seam_log
 #include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
 #include "ui/player_strings.h"       // mods:LANG4: the notices below are table rows
+#include "ui/lobby_ui.h"             // mods:MAPGEN2: map_preview_notice_posted
+#include "mh_mod_catalog.h"          // mods:DATAEXT1: the pure catalog snapshot (mh_common/include)
+#include "mh_config_dir.h"           // mods:DATAEXT1: <cfgdir> -- the mod map cache lives beside mh_net.ini
+#include "mh_mapgen/mpm.h"           // mods:DATAEXT1: read_mpm -- the map-domain double-check at arm
+#include "seams/storage_policy_save.h"
 
 #pragma comment(lib, "user32.lib") // wsprintfA
+
+bool mh_mod_picker_present_ready();
 
 namespace mh {
 namespace seams {
 namespace maps {
+
+static bool mh_export_install_utils_open_file(); // defined by MH_EXPORT_REPLACE below
+
+namespace {
+bool decode_network_header(const uint8_t *header, size_t size, std::string &token) {
+    constexpr size_t PATH_OFFSET = 0x18, NAME_OFFSET = 0xfc, TOKEN_OFFSET = 0x11c;
+    if (!header || size < TOKEN_OFFSET + 13 ||
+        !memchr(header + PATH_OFFSET, 0, NAME_OFFSET - PATH_OFFSET) ||
+        !memchr(header + NAME_OFFSET, 0, TOKEN_OFFSET - NAME_OFFSET)) return false;
+    const char *name = reinterpret_cast<const char *>(header + TOKEN_OFFSET);
+    const char *end  = static_cast<const char *>(memchr(name, 0, 13));
+    if (!end) return false;
+    std::string error;
+    return mh::mods::tileset_token(std::string_view(name, size_t(end - name)), token, error);
+}
+} // namespace
+
+bool validate_advert_header(const uint8_t *header, size_t size) {
+    std::string token;
+    return decode_network_header(header, size, token);
+}
+
+bool validate_network_header(const uint8_t *header, size_t size) {
+    std::string token;
+    if (!decode_network_header(header, size, token)) return false;
+    const auto *snapshot = mh::mods::mounted_snapshot();
+    return mh::mods::stock_tileset_index(token) != 0 || (snapshot && snapshot->tileset(token));
+}
 
 namespace {
 
@@ -94,6 +132,13 @@ char     g_host_map[MAP_NAME_CAP]; // the map name our claim is FOR (so a picker
 uint8_t  g_host_hash[HASH_N];
 uint32_t g_host_size  = 0;
 bool     g_host_claim = false; // g_host_hash is a real claim rather than the no-claim zero
+// mods:DATAEXT1 -- set with the claim when the name is a mounted mod winner: the pump reads these
+// bytes instead of a file (MH_Net_SnapshotSend copies, so the borrowed pointer needs no owner) and
+// the join/Start path treats a disagreeing peer as BLOCKED rather than a download target. Main
+// thread only (written by host_refresh_claim next to the claim itself).
+const uint8_t *g_host_mod_bytes = nullptr;
+uint32_t       g_host_mod_len   = 0;
+bool           g_host_is_mod    = false;
 
 int g_tx_peer = -1; // the peer a transfer is armed for, or -1
 // mp:X2i -- seats released (by a LEAVE, or found gone at the transport) whose channel-C transfer must
@@ -173,11 +218,8 @@ DWORD    g_need_since = 0;
 
 uint8_t *g_rx_buf     = nullptr; // the client's delivery buffer (MAP_MAX_BYTES, on first need)
 bool     g_rejoin_due = false;   // a stored download owes the host a re-JOIN (see client_tick)
-// mp:X2j -- channel C's receive frontier survives a finished download (udp_channel_c.cpp keeps it
-// across conn drops and endpoint restarts), so the NEXT map download in the same process would count
-// its chunks as duplicates and never reach the Receiver. Entering CS_NEED therefore owes one
-// MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX) -- main thread only, so client_resolve_now (which can run
-// on the recv thread, via client_on_advert) only SETS this; client_tick pays it before the first poll.
+// A changed claim after a prior claim retains the existing map-change rewind. The first claim in
+// an explicit join is rewound BEFORE the JOIN can cause a sender to arm, in client_begin_join().
 bool g_discard_owed = false;
 // mp:X2d -- what the LAST JOIN told the host we hold (client_my_hash is only ever asked by a JOIN
 // builder). client_resolve_now compares against it: a resolve that changes the answer after the host
@@ -282,6 +324,376 @@ const char *basename_of(const char *p) {
 }
 
 } // namespace
+
+// =================================================================================================
+// mods:DATAEXT1 -- THE MOUNTED SNAPSHOT'S MAP DOMAIN
+//
+// The resource adapter's DIRECT overlay (GetResourseFilePtr + rsr_GetFileRealSize) already serves a
+// mod winner's bytes wherever retail resolves a name through the pack path -- including both map
+// loaders and the campaign `Dane\*.mp` class -- and rsr_GetFileEntry stays stock, so
+// `in_resource_pack` above sees NO overlay. This section owns only the loose `maps\*.mpm` FILE
+// domain: whose bytes a claim hashes, whether the pack-shadow refusals still apply, which file a
+// preview opens, which rows the picker lists, and where a DIRECT open of a mod name lands.
+// Everything reads the armed row table; with no mods the table is empty and every consumer is one
+// bool wide, byte-for-byte stock.
+// =================================================================================================
+namespace {
+
+constexpr int MOD_LEAF_MAX  = 31; // current_map_data.map_name is 32 bytes WITH its NUL
+constexpr int MOD_CANON_MAX = 48; // the catalog's RESOURCE_NAME_MAX is 46 + NUL
+
+enum ModState { MOD_UNTRIED = 0,
+                MOD_TRYING  = 1,
+                MOD_ON      = 2,
+                MOD_FAILED  = 3,
+                MOD_OFF     = 4 };
+std::atomic<LONG> g_mod_state{MOD_UNTRIED}; // row preparation completes before publication
+
+struct ModRow {
+    char canonical[MOD_CANON_MAX]; // "maps\foo.mpm" -- the catalog key the bytes resolve by (flat leaf)
+    char leaf[MOD_CANON_MAX];      // "foo.mpm"     -- retail's map_name shape (<= MOD_LEAF_MAX + NUL)
+    char path[MAX_PATH];           // <cfgdir>\modmaps\<pid>\<leaf> -- the FILE-API copy
+    char mod_id[mh::mods::ID_MAX + 1];
+};
+
+std::vector<ModRow> g_mod_rows;
+int                 g_mod_rows_n = 0;
+
+bool g_open_seam_on = false;           // the utils_open_file replacement was ATTEMPTED
+bool g_open_seam_ok = false;           // ...and the attempt armed
+bool arm_open_seam(bool for_mod_maps); // below; shared by install() and mod_arm
+
+// Bounded "<a><b>". wsprintfA truncates instead of refusing, and a truncated cache path is a
+// silent wrong-file write, so every path this section composes goes through here and a refusal
+// fails the arm instead of overflowing.
+bool join_capped(char *out, size_t cap, const char *a, const char *b) {
+    const size_t la = (size_t)lstrlenA(a), lb = (size_t)lstrlenA(b);
+    if (la + lb + 1 > cap) return false;
+    memcpy(out, a, la);
+    memcpy(out + la, b, lb + 1);
+    return true;
+}
+
+// Is this open a MAP-DOMAIN open at all: a bare name (the loader's one-shape call) or a path under
+// the maps directory? A same-leaf path anywhere else -- saves\, Dane\, mh_dl\, screenshots -- is
+// never a mod map, whatever it spells; the mod layer must not go global-basename.
+bool open_is_map_domain(const char *in, const char *leaf) {
+    size_t n = static_cast<size_t>(leaf - in);
+    if (n == 0) return true;
+    if (in[n - 1] == '\\' || in[n - 1] == '/') --n;
+    if (n == 4 && _strnicmp(in, "maps", 4) == 0) return true;
+    char        exe[MAX_PATH];
+    const DWORD len = GetModuleFileNameA(nullptr, exe, MAX_PATH);
+    if (!len || len >= MAX_PATH) return false;
+    char *slash = strrchr(exe, '\\');
+    if (!slash) return false;
+    const size_t root = static_cast<size_t>(slash - exe);
+    if (n != root + 5 || in[root] != '\\' || _strnicmp(in, exe, root) != 0) return false;
+    return _strnicmp(in + root + 1, "maps", 4) == 0;
+}
+
+// The armed winner for a canonical game NAME (what retail's map_name carries), or null. A linear
+// scan over a handful of rows on the paths that already do file I/O or hashing; a table would be
+// machinery, not safety.
+bool g_mod_test_rows = false;
+bool rows_visible() {
+    return g_mod_state == MOD_ON && (g_mod_test_rows || mh::mods::mounted_snapshot() != nullptr);
+}
+ModRow *mod_row_of(const char *leaf_name) {
+    if (!rows_visible() || leaf_name == nullptr) return nullptr;
+    for (int i = 0; i < g_mod_rows_n; ++i)
+        if (g_mod_rows[i].leaf[0] && lstrcmpiA(g_mod_rows[i].leaf, leaf_name) == 0) return &g_mod_rows[i];
+    return nullptr;
+}
+
+} // namespace
+
+// ---- the boot arm and the maptest doors (mh::seams::maps, per map_transfer.h) ----
+
+bool mod_open_apply(const char *in, char *out, size_t cap) {
+    if (!rows_visible() || in == nullptr || out == nullptr) return false;
+    const char *leaf = basename_of(in);
+    if (!open_is_map_domain(in, leaf)) return false;
+    const ModRow *r = mod_row_of(leaf);
+    if (r == nullptr) return false;
+    if ((size_t)lstrlenA(r->path) + 1 > cap) return false;
+    lstrcpynA(out, r->path, (int)cap);
+    return true;
+}
+
+bool claim_bytes_for(const char *leaf_name, const uint8_t **out_bytes, uint32_t *out_len,
+                     const char **out_mod_id) {
+    if (out_mod_id != nullptr) *out_mod_id = nullptr;
+    const ModRow *r = mod_row_of(leaf_name);
+    if (r == nullptr) return false;
+    // The bytes are the PUBLISHED snapshot's winner copy -- immutable for the process lifetime, and
+    // exactly what the adapter's overlay hands the loaders. Zero copies: sha256 and
+    // MH_Net_SnapshotSend both read in place.
+    const mh::mods::Snapshot *s = mh::mods::mounted_snapshot();
+    if (s == nullptr) return false;
+    const mh::mods::Payload *p = s->winner(r->canonical);
+    if (p == nullptr || p->bytes.empty()) return false;
+    if (out_bytes != nullptr) *out_bytes = p->bytes.data();
+    if (out_len != nullptr) *out_len = (uint32_t)p->bytes.size();
+    if (out_mod_id != nullptr) *out_mod_id = r->mod_id;
+    return true;
+}
+
+bool mod_active() { return rows_visible(); }
+
+void mod_disarm_for_test() {
+    g_mod_rows_n = 0;
+    g_mod_rows.clear();
+    g_mod_test_rows = false;
+    g_mod_state     = MOD_OFF;
+}
+
+void mod_set_for_test(const ModMapEntry *entries, int count) {
+    g_mod_test_rows = entries != nullptr;
+    g_mod_rows_n    = 0;
+    g_mod_rows.clear();
+    if (entries != nullptr) {
+        g_mod_rows.resize(count > 0 ? static_cast<size_t>(count) : 0);
+        for (int i = 0; i < count; ++i) {
+            ModRow &r = g_mod_rows[g_mod_rows_n];
+            memset(&r, 0, sizeof(r));
+            lstrcpynA(r.canonical, entries[i].canonical != nullptr ? entries[i].canonical : "", sizeof(r.canonical));
+            lstrcpynA(r.leaf, entries[i].leaf != nullptr ? entries[i].leaf : "", sizeof(r.leaf));
+            lstrcpynA(r.path, entries[i].path != nullptr ? entries[i].path : "", sizeof(r.path));
+            lstrcpynA(r.mod_id, entries[i].mod_id != nullptr ? entries[i].mod_id : "", sizeof(r.mod_id));
+            ++g_mod_rows_n;
+        }
+    }
+    g_mod_state = (entries != nullptr) ? MOD_ON : MOD_OFF; // maptest only; path-only rows, no snapshot
+}
+
+// Boot-time materialization of the FILE-API copies. Nothing here runs again after the arm: the
+// resolver never scans a directory and the row table never reloads, so a file left by an earlier
+// boot (this pid got reused) is inert -- it is simply never named by any row. A set with no map
+// winners never touches the cache at all.
+namespace {
+
+bool write_cache_file(const char *path, const mh::mods::Payload &p) {
+    // LOG-SINK-OK: boot-only map cache creation; the file must exist before snapshot publication.
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD w = 0;
+    // LOG-SINK-OK: one candidate map payload, not a log or recording; no writes occur on sim ticks.
+    const BOOL ok = p.bytes.empty() ? TRUE
+                                    : WriteFile(h, p.bytes.data(), (DWORD)p.bytes.size(), &w, nullptr);
+    CloseHandle(h);
+    return ok && w == p.bytes.size();
+}
+
+// Delete last boot's leftovers in THIS process's pid directory that today's set does not name. The
+// pid directory is ours alone while we run (pids are unique among live processes), so a concurrent
+// game is never touched; the directories of OTHER, possibly live pids are left alone for the same
+// reason. Bounded, boot-time, and never on a tick.
+void sweep_stale_cache(const char *piddir, const ModRow *rows, int n) {
+    WIN32_FIND_DATAA fd;
+    char             spec[MAX_PATH];
+    if (!join_capped(spec, sizeof(spec), piddir, "*")) return;
+    HANDLE f = FindFirstFileA(spec, &fd);
+    if (f == INVALID_HANDLE_VALUE) return;
+    do {
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+        bool wanted = false;
+        for (int i = 0; i < n && !wanted; ++i) wanted = lstrcmpiA(fd.cFileName, rows[i].leaf) == 0;
+        if (wanted) continue;
+        char path[MAX_PATH];
+        if (join_capped(path, sizeof(path), piddir, fd.cFileName)) DeleteFileA(path);
+    } while (FindNextFileA(f, &fd));
+    FindClose(f);
+}
+
+// The canonical key filter shared by both passes: the loose maps domain only, flat leaf.
+bool canon_is_map(const char *canon, size_t len) {
+    return len >= 4 && lstrcmpiA(canon + len - 4, ".mpm") == 0 && _strnicmp(canon, "maps\\", 5) == 0;
+}
+
+// The ONE utils_open_file replacement (this TU). Returns whether the arm actually succeeded: with
+// the transfer enabled the first arm's logs are exactly as shipped; a mod-domain arm REQUIRES the
+// seam, and its refusal is the caller's active-set failure.
+bool arm_open_seam(bool for_mod_maps) {
+    if (g_open_seam_on) return g_open_seam_ok;
+    g_open_seam_on = true;
+    g_open_seam_ok = mh_export_install_utils_open_file();
+    if (!g_open_seam_ok) {
+        mlog("; [map] the file-open resolve seam did NOT arm -- a downloaded map cannot be loaded "
+             "this run (the host's Start gate still refuses, so nobody plays the wrong map)\n");
+        return false;
+    }
+    if (for_mod_maps)
+        mlog("; [map] the file-open resolve seam armed -- a direct open of a mod map name is served "
+             "the winner's cache file (mods:DATAEXT1)\n");
+    return true;
+}
+
+} // namespace
+
+bool mod_arm(const mh::mods::Snapshot *snapshot) {
+    if (snapshot == nullptr) return false;
+    g_mod_test_rows = false;
+    g_mod_rows_n    = 0;
+    g_mod_rows.clear();
+    if (!snapshot->ok) { // the failure snapshot mounts stock -- nothing to serve, nothing to say
+        g_mod_state = MOD_OFF;
+        return false;
+    }
+    bool ok                       = true;
+    int  n                        = 0; // map-domain winners this arm would mount
+    char fail_name[MOD_CANON_MAX] = "";
+    char fail_why[192]            = "";
+    // PASS 1 -- the map domain of the winner set: canonical `maps\*.mpm` with a FLAT leaf the
+    // engine's 32-byte map_name can carry. The catalog already ran the FULL mh_mapgen::read_mpm
+    // over every .mpm at prepare and failed the whole set on a bad one; the same parser runs once
+    // more here because these bytes are what retail's loaders will be fed. Campaign `Dane\*.mp`
+    // and every other class ride the resource adapter's overlay within DATAEXT1 -- this filter
+    // refuses nothing of theirs; it just does not adopt them as picker/open names.
+    for (const auto &kv : snapshot->winners) {
+        const std::string &canon = kv.first;
+        const bool         mpm   = canon.size() >= 4 && canon.compare(canon.size() - 4, 4, ".mpm") == 0;
+        if (mpm && !canon_is_map(canon.c_str(), canon.size())) {
+            ok = false;
+            lstrcpynA(fail_name, canon.c_str(), sizeof(fail_name));
+            lstrcpynA(fail_why,
+                      "map payload must be under Maps", // mh-str-ok: boot-log diagnostic only
+                      sizeof(fail_why));
+            break;
+        }
+        if (!mpm) continue;
+        const char *leaf = strrchr(canon.c_str(), '\\');
+        leaf             = (leaf != nullptr) ? leaf + 1 : canon.c_str();
+        if (strchr(canon.c_str() + 5, '\\') != nullptr) {
+            // `maps\a\foo.mpm` and `maps\b\foo.mpm` would both collapse to the leaf `foo.mpm` --
+            // one cache path, one ambiguous name. Retail's map_name is FLAT and the picker
+            // composes `Maps\<stem>.mpm`, so a nested name could never be selected or opened
+            // under its own folder: refuse the set rather than silently mis-serve it.
+            ok = false;
+            lstrcpynA(fail_name, leaf, sizeof(fail_name));
+            lstrcpynA(fail_why,
+                      "nested Maps\\ subfolder names are not supported (the engine's map name is flat)",
+                      sizeof(fail_why));
+            break;
+        }
+        const mh::mods::Payload *p = snapshot->payload(kv.second);
+        mh_mapgen::MpmModel      model;
+        std::string              err;
+        if (p == nullptr || !mh_mapgen::read_mpm(p->bytes.data(), p->bytes.size(), model, err)) {
+            ok = false;
+            lstrcpynA(fail_name, leaf, sizeof(fail_name));
+            _snprintf_s(fail_why, sizeof(fail_why), _TRUNCATE, "not a readable map (%.150s)",
+                        p != nullptr ? err.c_str() : "missing payload");
+        } else if ((int)lstrlenA(leaf) > MOD_LEAF_MAX) {
+            ok = false;
+            lstrcpynA(fail_name, leaf, sizeof(fail_name));
+            lstrcpynA(fail_why,
+                      "name is longer than the engine's 32-byte map_name field", // mh-str-ok: boot-log diagnostic only
+                      sizeof(fail_why));
+        }
+        if (!ok) break;
+        ++n;
+    }
+    // PASS 2 -- materialize the FILE-API copies and fill the row table. A set with NO map winners
+    // (a resource-only mod) skips every cache-path decision: nothing to materialize, nothing that
+    // needs a writable directory.
+    char piddir[MAX_PATH] = "";
+    if (ok && n > 0) {
+        g_mod_rows.resize(static_cast<size_t>(n));
+        char dir[MAX_PATH];
+        if (!mh::cfgdir::join(dir, sizeof(dir), "modmaps\\")) {
+            ok = false;
+            lstrcpynA(fail_why,
+                      "the config dir cannot hold the mod map cache path", // mh-str-ok: boot-log diagnostic only
+                      sizeof(fail_why));
+        } else {
+            char pidtail[24];
+            wsprintfA(pidtail, "%lu\\", (unsigned long)GetCurrentProcessId());
+            if (!join_capped(piddir, sizeof(piddir), dir, pidtail)) {
+                // Refuse BEFORE any write: a truncated pid dir would be a silent wrong location.
+                ok = false;
+                lstrcpynA(fail_why,
+                          "the mod map cache path does not fit MAX_PATH", // mh-str-ok: boot-log diagnostic only
+                          sizeof(fail_why));
+            } else {
+                CreateDirectoryA(dir, nullptr);    // already-exists is the expected answer
+                CreateDirectoryA(piddir, nullptr); // per-process: concurrent games never share a cache
+            }
+        }
+    }
+    for (const auto &kv : snapshot->winners) {
+        if (!ok || n <= 0) break; // no map winners: the table stays empty, the cache stays untouched
+        const std::string &canon = kv.first;
+        if (!canon_is_map(canon.c_str(), canon.size())) continue;
+        const char *leaf           = strrchr(canon.c_str(), '\\');
+        leaf                       = (leaf != nullptr) ? leaf + 1 : canon.c_str();
+        const mh::mods::Payload *p = snapshot->payload(kv.second);
+        if (p == nullptr || p->mod_index >= snapshot->mods.size()) {
+            ok = false;
+            lstrcpynA(fail_why,
+                      "invalid map provenance", // mh-str-ok: boot-log diagnostic only
+                      sizeof(fail_why));
+            break;
+        }
+        ModRow &r = g_mod_rows[g_mod_rows_n];
+        memset(&r, 0, sizeof(r));
+        lstrcpynA(r.canonical, canon.c_str(), sizeof(r.canonical));
+        lstrcpynA(r.leaf, leaf, sizeof(r.leaf));
+        lstrcpynA(r.mod_id, snapshot->mods[p->mod_index].id.c_str(), sizeof(r.mod_id));
+        if (!join_capped(r.path, sizeof(r.path), piddir, leaf)) {
+            // A leaf that cannot sit under the pid dir would open from a truncated path: refuse.
+            ok = false;
+            lstrcpynA(fail_name, leaf, sizeof(fail_name));
+            lstrcpynA(fail_why,
+                      "the cache path for this map does not fit MAX_PATH", // mh-str-ok: boot-log diagnostic only
+                      sizeof(fail_why));
+            break;
+        }
+        if (!write_cache_file(r.path, *p)) {
+            ok = false;
+            lstrcpynA(fail_name, leaf, sizeof(fail_name));
+            wsprintfA(fail_why,
+                      "the cache copy of %.60s could not be written", // mh-str-ok: boot-log diagnostic only
+                      leaf);
+            break;
+        }
+        ++g_mod_rows_n;
+    }
+    if (!ok) {
+        g_mod_rows_n = 0;
+        g_mod_state  = MOD_FAILED; // final: the adapter publishes the failure snapshot instead
+        wsprintfA(g_line, "; [map] mods: REJECTED %s -- %s (active set fails: stock fallback)\n",
+                  fail_name, fail_why);
+        mlog(g_line);
+        return false;
+    }
+    // READINESS -- the open seam is a REQUIRED hook for a mounted map domain (a direct open of a
+    // mod name must land on the winner's cache file, and this TU owns that seam). Its refusal is
+    // an active-set failure, never a degraded mount; MOD_ON publishes only after it succeeded.
+    bool seams_ok = true;
+    if (g_mod_rows_n > 0) {
+        seams_ok = mh_mod_picker_present_ready() && arm_open_seam(true);
+    }
+    if (!seams_ok) {
+        g_mod_rows_n = 0;
+        g_mod_state  = MOD_FAILED;
+        mlog("; [map] mods: the file-open resolve seam REFUSED to arm (active set fails: stock "
+             "fallback)\n");
+        return false;
+    }
+    if (g_mod_rows_n > 0) sweep_stale_cache(piddir, g_mod_rows.data(), g_mod_rows_n);
+    for (int i = 0; i < g_mod_rows_n; ++i) {
+        wsprintfA(g_line, "; [map] mods: map '%s' (mod %s) -> %s\n", g_mod_rows[i].leaf,
+                  g_mod_rows[i].mod_id, g_mod_rows[i].path);
+        mlog(g_line);
+    }
+    wsprintfA(g_line, "; [map] mods: %d map(s) mounted -- picker, preview, hash and open resolve the "
+                      "same winner bytes; mod names are never transferred\n",
+              g_mod_rows_n);
+    mlog(g_line);
+    g_mod_state = MOD_ON;
+    return true;
+}
 
 // =================================================================================================
 // THE FILE LAYER
@@ -461,16 +873,118 @@ const char *redirect_apply(const char *in, char *scratch, size_t cap) {
 
 namespace {
 
+volatile LONG g_missing_save_tileset = 0;
+
+int32_t save_probe_tell(void *file) { return mh::call::file_tell(file); }
+int     save_probe_seek(void *file, int32_t offset, int whence) {
+    return mh::call::file_seek(file, offset, static_cast<uint32_t>(whence));
+}
+uint32_t save_probe_read(void *file, void *dst, uint32_t n) {
+    return mh::call::utils_read_from_file(dst, 1u, n, file);
+}
+
+bool planet_save_name(const char *name, size_t length) {
+    if (length < 10 || lstrcmpiA(name + length - 4, ".dat") != 0) return false;
+    const char *base = name + length;
+    while (base != name && base[-1] != '\\' && base[-1] != '/') --base;
+    const size_t n = static_cast<size_t>(name + length - base);
+    if (n != 10 && n != 11) return false;
+    const size_t prefix = n - 6;
+    if ((prefix == 4 && _strnicmp(base, "save", 4) != 0) ||
+        (prefix == 5 && _strnicmp(base, "qsave", 5) != 0)) return false;
+    return base[prefix] >= '0' && base[prefix] <= '9' &&
+           base[prefix + 1] >= '0' && base[prefix + 1] <= '9';
+}
+
 bool absent_hides(const char *filename); // mp:X2e harness staging -- see `map_test_pretend=absent`
 
 int32_t __cdecl open_file_replacement(char *filename, char *mode) {
+    const size_t requested_len = filename ? strlen(filename) : 0;
+    if (requested_len >= 4 && lstrcmpiA(filename + requested_len - 4, ".sav") == 0 &&
+        mode && lstrcmpiA(mode, "rb") == 0) begin_save_read_attempt();
     if (absent_hides(filename)) return 0; // NULL FILE*: what a machine without the file answers
-    char        scratch[MAX_PATH];
-    const char *use = redirect_apply(filename, scratch, sizeof(scratch));
-    return (int32_t)(uintptr_t)mh::call::_fsopen((char *)use, mode, 0);
+    char mpath[MAX_PATH];
+    if (mod_open_apply(filename, mpath, sizeof(mpath))) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            _snprintf_s(g_line, sizeof(g_line), _TRUNCATE, "; [map] mod open %.100s -> %.240s\n", filename, mpath);
+            mlog(g_line);
+        }
+        // mods:DATAEXT1: a direct open of a mod map name gets the winner's cache file. The load
+        // itself usually rides the adapter's GetResourseFilePtr overlay; this keeps the one open
+        // seam (this file's) serving the same bytes for whatever opens the path as a file.
+        return (int32_t)(uintptr_t)mh::call::_fsopen(mpath, mode, 0);
+    }
+    char         scratch[MAX_PATH];
+    const char  *use = redirect_apply(filename, scratch, sizeof(scratch));
+    const size_t len = strlen(use);
+    const bool   mpm = len >= 4 && lstrcmpiA(use + len - 4, ".mpm") == 0;
+    const bool   mp  = len >= 3 && lstrcmpiA(use + len - 3, ".mp") == 0;
+    if ((mpm || mp) && mode && mode[0] == 'r' && GetFileAttributesA(use) != INVALID_FILE_ATTRIBUTES) {
+        uint32_t    size  = 0;
+        uint8_t    *bytes = read_file("", use, static_cast<uint32_t>(mh::mods::PAYLOAD_BYTES_MAX), &size);
+        std::string error;
+        const bool  valid = bytes && validate_runtime_map(bytes, size, mp, error);
+        free_bytes(bytes);
+        if (!valid) {
+            _snprintf_s(g_line, sizeof(g_line), _TRUNCATE, "; [map] refused %.120s: %.200s\n", use,
+                        error.empty() ? "unreadable map" : error.c_str());
+            mlog(g_line);
+            return 0;
+        }
+    }
+    const bool    container_save = len >= 4 && lstrcmpiA(use + len - 4, ".sav") == 0;
+    const bool    planet_save    = planet_save_name(use, len);
+    const bool    reading        = mode && strcmp(mode, "rb") == 0;
+    const bool    is_save_read   = container_save && reading;
+    static char   update_mode[]  = "w+b";
+    char *const   open_mode      = (container_save || planet_save) && mode && strcmp(mode, "wb") == 0
+                                       ? update_mode
+                                       : mode;
+    const int32_t opened         = (int32_t)(uintptr_t)mh::call::_fsopen((char *)use, open_mode, 0);
+    if (opened && reading && (container_save || planet_save)) {
+        const bool valid = container_save
+                               ? mh::storage_policy::save::host_preflight_container(opened) == 1
+                               : mh::storage_policy::save::host_preflight_planet(opened) == 1;
+        if (!valid) {
+            mh::call::utils_close_file(reinterpret_cast<void *>(static_cast<uintptr_t>(opened)));
+            _snprintf_s(g_line, sizeof(g_line), _TRUNCATE,
+                        "; [map] save refused %.120s: invalid or unsupported storage policy\n", use);
+            mlog(g_line);
+            return 0;
+        }
+    }
+    if (opened && is_save_read) {
+        void             *file = reinterpret_cast<void *>(static_cast<uintptr_t>(opened));
+        const SaveProbeIo io{file, save_probe_tell, save_probe_seek, save_probe_read};
+        std::string       error;
+        SaveProbeResult   result = SaveProbeResult::invalid_save;
+        try {
+            result = probe_save_resources(io, reinterpret_cast<const uint8_t *>(mh::addr::s_Extermination__demo_version_005d08f4),
+                                          mh::mods::mounted_snapshot(), error);
+        } catch (...) {
+            error.clear();
+        }
+        if (result != SaveProbeResult::available) {
+            record_save_read_refusal(result);
+            mh::call::utils_close_file(file);
+            _snprintf_s(g_line, sizeof(g_line), _TRUNCATE, "; [map] save refused %.120s: %.220s\n", use, error.empty() ? "save resource check failed" : error.c_str());
+            mlog(g_line);
+            return 0;
+        }
+    }
+    return opened;
 }
 
 } // namespace
+
+void begin_save_read_attempt() { InterlockedExchange(&g_missing_save_tileset, 0); }
+void record_save_read_refusal(SaveProbeResult result) {
+    if (result == SaveProbeResult::missing_resources)
+        InterlockedExchange(&g_missing_save_tileset, 1);
+}
+bool take_missing_save_tileset_refusal() { return InterlockedExchange(&g_missing_save_tileset, 0) != 0; }
 
 MH_EXPORT_REPLACE(utils_open_file, open_file_replacement)
 
@@ -503,6 +1017,9 @@ wchar_t g_notice[256];
 bool    g_notice_on = false;
 
 void paint_notice() {
+    static bool was_on = false; // mods:MAPGEN2: a status notice APPEARING (not each repaint) pages the lobby box back to the text
+    if (g_notice_on && !was_on) mh::ui::map_preview_notice_posted();
+    was_on = g_notice_on;
     if (g_notice_on) paint(g_notice);
 }
 
@@ -537,10 +1054,9 @@ constexpr uintptr_t ADDR_START_WIDGET = 0x006502a3u; // llm_ui_widget_006502a3, 
 mh::game::mh_llm_ui_widget *find_start_widget() {
     if (!mh::en_build_ok()) return nullptr;
     auto *w = (mh::game::mh_llm_ui_widget *)ADDR_START_WIDGET;
-    // THE WIRING CHECK, and it is the HOST branch specifically -- which is the only branch that
-    // matters, because gate_close/gate_open are reached from host_tick alone. On a client
-    // llm_lobby_screen_open hides this widget (flags |= 0xc0) and wires the entry to a different
-    // one; a callback that is not begin_map_load therefore means the host lobby has not opened yet
+    // Only the supported host lobby wires this widget to begin_map_load. On a client
+    // llm_lobby_screen_open hides it (flags |= 0xc0) and wires a different entry.
+    // A different callback means the host lobby has not opened yet
     // (nothing to grey) or that this address is not what it was.
     const bool wired = w->action_cb == (void *)ADDR_BEGIN_MAP_LOAD;
     // Told once per OUTCOME, not once per call: the first call can land before the lobby has
@@ -561,36 +1077,6 @@ mh::game::mh_llm_ui_widget *find_start_widget() {
 
 constexpr uint32_t WIDGET_DISABLED = 0x40u; // mh_structs.gen.h: hit-test and hotkey both skip it
 
-// WE ARE NOT THE ONLY WRITER OF THIS BIT, which an earlier draft of this file asserted and the
-// decompile refutes: `llm_lobby_screen_open` does `flags |= 0x40` on the host branch, so Start is
-// DISABLED the moment the lobby opens and the retail dispatch clears it once the slots settle --
-// the rig's own `peers 1` step waits 8.5 s for exactly that. So the gate may only ever clear a bit
-// it SET.
-//
-// CLOSED per frame, OPENED on the edge. Closing re-asserts because the widget is not ours and the
-// lobby rebuilds it; opening happens once, and afterwards the bit belongs to retail again. The one
-// residue is a single frame wide: if retail wanted Start disabled at the moment the last joiner
-// reported the map, our release enables it until retail's next dispatch re-disables it. That is
-// the cheapest of the available wrong answers -- the alternative, sampling retail's intent when
-// the gate closes and restoring it when it opens, restores a value that is stale by construction,
-// because at close time retail has the button disabled almost always and the gate would then never
-// reopen at all.
-bool g_gate_shut = false; // WE set the DISABLED bit and owe exactly one clear
-
-void gate_close() {
-    mh::game::mh_llm_ui_widget *w = find_start_widget();
-    if (w == nullptr) return; // the lobby's widgets are not built yet
-    w->flags |= WIDGET_DISABLED;
-    g_gate_shut = true;
-}
-
-void gate_open() {
-    if (!g_gate_shut) return; // never ours to clear
-    mh::game::mh_llm_ui_widget *w = find_start_widget();
-    if (w == nullptr) return;
-    w->flags &= ~WIDGET_DISABLED;
-    g_gate_shut = false;
-}
 
 } // namespace
 
@@ -628,13 +1114,26 @@ void host_refresh_claim() {
     {
         HostLock l; // mp:T6: the recv thread reads these three in host_on_join
         lstrcpynA(g_host_map, live, sizeof(g_host_map));
-        g_host_claim = false;
-        g_host_size  = 0;
+        g_host_claim     = false;
+        g_host_size      = 0;
+        g_host_is_mod    = false;
+        g_host_mod_bytes = nullptr;
+        g_host_mod_len   = 0;
         memset(g_host_hash, 0, HASH_N);
     }
     char hex[np::MAP_HASH_HEX_CAP];
 
-    if (in_resource_pack(g_host_map)) {
+    // mods:DATAEXT1 -- a mounted winner IS the map, whatever the packs and the loose directory hold
+    // under the name: its bytes are what the adapter's overlay serves the loader on EVERY peer that
+    // passed the JOIN v8 content-digest admission, so they are what the claim describes. The two
+    // stock answers below (pack noclaim, loose hash) are for names no mod provides -- there the
+    // pack-shadow reasoning is untouched.
+    const uint8_t *mod_bytes = nullptr;
+    uint32_t       mod_len   = 0;
+    const char    *mod_id    = nullptr;
+    const bool     from_mod  = claim_bytes_for(g_host_map, &mod_bytes, &mod_len, &mod_id);
+
+    if (!from_mod && in_resource_pack(g_host_map)) {
         // NO CLAIM, and the header explains why this is the right answer rather than a gap: a map
         // the resource packs answer for is the same bytes on every install of this build, and a
         // claim about a loose file we would not load would be a claim about the wrong bytes.
@@ -644,7 +1143,13 @@ void host_refresh_claim() {
         mlog(g_line);
         return;
     }
-    if (!file_hash(dir_for(g_host_map), g_host_map, g_host_hash, &g_host_size)) {
+    if (from_mod) {
+        // No file read at all: SHA-256 over the snapshot's own bytes -- the loaders read the same.
+        uint8_t full[np::SHA256_LEN];
+        np::sha256(mod_bytes, mod_len, full);
+        np::map_hash_from_sha256(full, g_host_hash);
+        g_host_size = mod_len;
+    } else if (!file_hash(dir_for(g_host_map), g_host_map, g_host_hash, &g_host_size)) {
         memset(g_host_hash, 0, HASH_N);
         wsprintfA(g_line, "; [map] host noclaim %s (no readable file at %s%s -- joiners fall back "
                           "to their own copy, as before X2)\n",
@@ -662,9 +1167,19 @@ void host_refresh_claim() {
             g_peer[i].blocked = false;
         }
         g_tx_peer = -1;
+        if (from_mod) { // mods:DATAEXT1: the pump reads the same bytes; nothing ever transfers them
+            g_host_is_mod    = true;
+            g_host_mod_bytes = mod_bytes;
+            g_host_mod_len   = mod_len;
+        }
     }
-    wsprintfA(g_line, "; [map] host claim %s sha=%s size=%lu\n", g_host_map,
-              hexof(g_host_hash, hex, sizeof(hex)), (unsigned long)g_host_size);
+    if (from_mod)
+        wsprintfA(g_line, "; [map] host claim %s sha=%s size=%lu (mod %s -- served from the mounted "
+                          "set, never transferred)\n",
+                  g_host_map, hexof(g_host_hash, hex, sizeof(hex)), (unsigned long)g_host_size, mod_id);
+    else
+        wsprintfA(g_line, "; [map] host claim %s sha=%s size=%lu\n", g_host_map,
+                  hexof(g_host_hash, hex, sizeof(hex)), (unsigned long)g_host_size);
     mlog(g_line);
 }
 
@@ -761,7 +1276,8 @@ void drain_cancels() {
 void host_pump_transfer() {
     drain_cancels(); // mp:X2i: first, before any (re-)arm below, so a cancel never hits the new one
     if (!g_host_claim) return;
-    if (!can_carry()) return; // mp:X2b: never arm a transfer the link cannot carry
+    if (!can_carry()) return;  // mp:X2b: never arm a transfer the link cannot carry
+    if (g_host_is_mod) return; // mods:DATAEXT1: the pump never carries a mod map -- it rides the set
     // mp:X2f -- the transport's view first, OUTSIDE the lock (a transport call), stamped with the
     // report sequence it is older than. See reap_gone_locked.
     uint32_t probe_seq = 0;
@@ -807,6 +1323,12 @@ void host_pump_transfer() {
     if (g_pump_hooks != nullptr && g_pump_hooks->body != nullptr) {
         src = g_pump_hooks->body; // maptest: no Maps\ directory under the suite
         n   = g_pump_hooks->len;
+    } else if (g_host_mod_bytes != nullptr) {
+        // mods:DATAEXT1: the claim's bytes come from the immutable snapshot -- no file read, and
+        // MH_Net_SnapshotSend copies, so the borrowed pointer needs no ownership here. Unreachable
+        // while the g_host_is_mod guard above stands; the belt is the transfer SOURCE agreement.
+        src = g_host_mod_bytes;
+        n   = g_host_mod_len;
     } else {
         body = read_file(dir_for(g_host_map), g_host_map, MAP_MAX_BYTES, &n);
         src  = body;
@@ -878,7 +1400,6 @@ void host_tick() {
         else
             wsprintfW(g_notice, mh::ui::tr(mh::ui::Str::MAP_SENDING), wname);
         g_notice_on = true;
-        gate_close();
         // LOGGED ON THE EDGE, not every lobby frame: this runs at frame rate, and a refusal that
         // wrote sixty lines a second would be the same fact told until it was unreadable. The edge
         // is also what an oracle wants -- "the gate closed, for this peer", once per closing.
@@ -905,7 +1426,6 @@ void host_tick() {
             if (mh::en_build_ok())
                 *(wchar_t *)ADDR_MAP_STATUS_LINE = L'\0'; // hand it back to retail map status
         }
-        gate_open();
     }
     paint_notice();
 }
@@ -957,6 +1477,17 @@ void host_on_join(int sender, const char *player_name, const uint8_t map_hash[HA
                           sender, p.name, hexof(g_host_hash, hex, sizeof(hex)));
                 // Its transfer is done (or, mid-pump, withdrawn); let the next peer have the link.
                 if (g_tx_peer == sender) g_tx_peer = -1;
+            } else if (!now && g_host_is_mod && !p.blocked) {
+                // mods:DATAEXT1: the map arrives with the mod set -- channel C never carries it, so
+                // a disagreeing report is final and the Start gate refuses naming this peer. JOIN
+                // v8's content digest should have refused this joiner before it was ever seated.
+                p.blocked = true;
+                wsprintfA(line, "; [map] peer %d '%s' cannot be sent mod map %s (has=%s want=%s) -- "
+                                "it arrives with the mod set, never over channel C; Start is "
+                                "refused while it disagrees\n",
+                          sender, p.name, g_host_map,
+                          np::map_hash_is_none(p.had) ? "none" : hexof(p.had, hex, sizeof(hex)),
+                          hexof(g_host_hash, hex2, sizeof(hex2)));
             } else if (!now && !p.blocked) {
                 wsprintfA(line, "; [map] peer %d '%s' needs the map (has=%s want=%s)%s\n", sender,
                           p.name, np::map_hash_is_none(p.had) ? "none" : hexof(p.had, hex, sizeof(hex)),
@@ -981,7 +1512,8 @@ void host_on_leave(int sender) {
 
 int host_next_peer_needing_map() {
     if (!enabled() || !g_host_claim) return -1;
-    if (!can_carry()) return -1; // mp:X2b: nobody is a transfer target on a link without channel C
+    if (!can_carry()) return -1;  // mp:X2b: nobody is a transfer target on a link without channel C
+    if (g_host_is_mod) return -1; // mods:DATAEXT1: nobody is a transfer target for a mod map at all
     HostLock l;
     return next_peer_locked();
 }
@@ -992,6 +1524,14 @@ void host_set_claim_for_test(const char *map_name, const uint8_t hash[HASH_N], u
     memcpy(g_host_hash, hash, HASH_N);
     g_host_size  = size;
     g_host_claim = !np::map_hash_is_none(g_host_hash);
+    // mods:DATAEXT1: the test claim carries the same mod classification the live claim derives.
+    const uint8_t *mb  = nullptr;
+    uint32_t       ml  = 0;
+    const char    *mid = nullptr;
+    g_host_is_mod      = g_host_claim && claim_bytes_for(map_name, &mb, &ml, &mid);
+    g_host_mod_bytes   = g_host_is_mod ? mb : nullptr;
+    g_host_mod_len     = g_host_is_mod ? ml : 0;
+    (void)mid;
 }
 
 void set_can_carry_for_test(int v) { g_carry_test = v; }
@@ -1009,7 +1549,8 @@ bool host_start_blocked(char *out_peer, int cap, bool *out_unfetchable) {
         if (g_peer[i].seated && !g_peer[i].holds) {
             if (out_peer != nullptr && cap > 0) lstrcpynA(out_peer, g_peer[i].name, cap);
             // mp:X2b: without channel C this is not a wait, it is a refusal -- nothing will arrive.
-            if (out_unfetchable != nullptr) *out_unfetchable = !carry;
+            // mods:DATAEXT1: a peer blocked on a MOD map receives nothing on ANY transport either.
+            if (out_unfetchable != nullptr) *out_unfetchable = !carry || g_peer[i].blocked;
             return true;
         }
     }
@@ -1175,10 +1716,39 @@ void client_resolve_now() {
     char      name[STORED_PATH_CAP];
     const int pm = pretend_mode();
     // mp:X2e: `absent` ignores an EARLIER download too, until the current lobby stores its own.
-    const bool    skip_stored = pm == PRETEND_ABSENT && !g_absent_downloaded;
-    const Resolve r           = resolve(dir_for(g_want_map), g_want_map, g_want_hash, name, sizeof(name),
-                                        pm != PRETEND_OFF, skip_stored);
-    if (r == Resolve::Base) {
+    const bool skip_stored = pm == PRETEND_ABSENT && !g_absent_downloaded;
+    // mods:DATAEXT1 -- the mod winner is what this peer opens, so it is also what the JOIN reports.
+    // There is NO DOWNLOAD for a mod map: the bytes arrive with the mounted set, the JOIN v8 content
+    // digest has already compared the two sets, and a disagreement that slips through anyway is a
+    // refusal (blocked), never a transfer.
+    const uint8_t *mod_bytes = nullptr;
+    uint32_t       mod_len   = 0;
+    const char    *mod_id    = nullptr;
+    const bool     from_mod  = claim_bytes_for(g_want_map, &mod_bytes, &mod_len, &mod_id);
+    Resolve        r         = Resolve::Missing;
+    if (!from_mod)
+        r = resolve(dir_for(g_want_map), g_want_map, g_want_hash, name, sizeof(name),
+                    pm != PRETEND_OFF, skip_stored);
+    if (from_mod) {
+        uint8_t wh[HASH_N], full[np::SHA256_LEN];
+        np::sha256(mod_bytes, mod_len, full);
+        np::map_hash_from_sha256(full, wh);
+        redirect_clear();
+        if (np::map_hash_equal(wh, g_want_hash)) {
+            g_cs = CS_HAVE;
+            memcpy(g_my_hash, g_want_hash, HASH_N);
+            wsprintfA(g_line, "; [map] client resolve mod %s -- the mounted set already holds the "
+                              "host's bytes\n",
+                      g_want_map);
+        } else {
+            g_cs = CS_BLOCKED;
+            memcpy(g_my_hash, wh, HASH_N); // report what we would play: the host refuses the mismatch
+            wsprintfA(g_line, "; [map] client BLOCKED %s -- the local mod winner (mod %s) differs "
+                              "from the host's claim; mods are never transferred\n",
+                      g_want_map, mod_id);
+        }
+        mlog(g_line);
+    } else if (r == Resolve::Base) {
         redirect_clear();
         g_cs = CS_HAVE;
         memcpy(g_my_hash, g_want_hash, HASH_N);
@@ -1219,9 +1789,8 @@ void client_resolve_now() {
                       g_want_map);
             mlog(g_line);
         } else {
-            g_cs           = CS_NEED;
-            g_need_since   = GetTickCount();
-            g_discard_owed = true; // mp:X2j -- paid by client_tick, on the main thread
+            g_cs         = CS_NEED;
+            g_need_since = GetTickCount();
             mlog("; [map] client resolve missing -- waiting for the host's copy over channel C\n");
         }
     }
@@ -1330,6 +1899,13 @@ void client_tick() {
         return;
     }
 
+    std::string map_error;
+    if (len <= 0 || !validate_runtime_map(g_rx_buf, static_cast<size_t>(len), false, map_error)) {
+        _snprintf_s(g_line, sizeof(g_line), _TRUNCATE, "; [map] refused download: %.250s\n", map_error.c_str());
+        mlog(g_line);
+        client_refuse_delivery(len);
+        return;
+    }
     char stored[STORED_PATH_CAP];
     if (!store(g_want_map, g_want_hash, g_rx_buf, (uint32_t)len, stored,
                sizeof(stored))) {
@@ -1401,6 +1977,7 @@ void client_on_advert(const np::SessionInfo &rec) {
     if (g_want_valid && lstrcmpiA(g_want_map, rec.map) == 0 &&
         np::map_hash_equal(g_want_hash, rec.map_hash))
         return; // the same claim we already acted on -- the advert repeats ~1 Hz
+    const bool changed_claim = g_want_valid && g_reported_valid;
     lstrcpynA(g_want_map, rec.map, sizeof(g_want_map));
     memcpy(g_want_hash, rec.map_hash, HASH_N);
     g_want_size  = rec.map_size;
@@ -1412,6 +1989,9 @@ void client_on_advert(const np::SessionInfo &rec) {
     pretend_mode(); // harness-only; a no-op unless [net] map_test_pretend is set
     client_sample_local("before");
     client_resolve_now();
+    // Preserve the existing rewind for a genuinely different map in the same lobby. Repeated
+    // adverts and the first claim do not discard chunks that may already have been acknowledged.
+    g_discard_owed = changed_claim && g_cs == CS_NEED;
 }
 
 bool client_my_hash(uint8_t out[HASH_N]) {
@@ -1433,6 +2013,131 @@ bool client_my_hash(uint8_t out[HASH_N]) {
     if (!g_want_valid) return false;
     memcpy(out, g_my_hash, HASH_N);
     return !np::map_hash_is_none(out);
+}
+
+// The CLIENT half of the preview decision, shared by preview_file and preview_resolve: the download
+// redirect applies only while a client is still waiting for (or only just stores) the host's map.
+int preview_locked(const char *base, char *out, int cap) {
+    ClientLock l(false); // main thread -- waits
+    if (g_want_valid && g_cs != CS_HAVE && g_cs != CS_IDLE) return 1;
+    char        scratch[MAX_PATH];
+    const char *use = redirect_apply(base, scratch, sizeof(scratch));
+    lstrcpynA(out, use, cap);
+    return 0;
+}
+
+// preview_file without the game-state read; the offline suite drives this directly. A mod winner
+// resolves FIRST: the picker screen has no lobby state at all, and single-player must preview with
+// [net] map_transfer=0 exactly the bytes it plays.
+int preview_resolve(const char *base, char *out, int cap) {
+    if (mod_open_apply(base, out, cap)) return 0;
+    lstrcpynA(out, base, cap);
+    if (!enabled()) return 0;
+    return preview_locked(base, out, cap);
+}
+
+// mods:MAPGEN2: which FILE does the lobby's map preview read on THIS peer, given the path the game
+// would open (`base`). 0 = read `out` (the host's file; a client's own copy or its stored download -- the redirect
+// applied); 1 = a client that does not hold the host's map yet. Read-only; main thread.
+int preview_file(const char *base, char *out, int cap) {
+    if (mod_open_apply(base, out, cap)) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            _snprintf_s(g_line, sizeof(g_line), _TRUNCATE, "; [map] mod preview %.100s -> %.240s\n", base, out);
+            mlog(g_line);
+        }
+        return 0;
+    }
+    lstrcpynA(out, base, cap);
+    if (!enabled() || *(const int *)mh::addr::_G_LLM_NET_IS_HOST != 0) return 0;
+    return preview_locked(base, out, cap);
+}
+
+// ---- mods:DATAEXT1: THE MAP PICKER --------------------------------------------------------------
+//
+// `llm_mp_mappicker_populate_list` (EN 0x004c0aca) clears the list and scans `Maps\` -- folders
+// first (llm_mp_mappicker_add_folder), then *.mpm (llm_mp_mappicker_add_mapfile, which strips the
+// extension and appends with entry+0xc = 0, aux_filetime null). It has no committed prototype, so
+// instead of replacing it this tick runs a frame later from the present hook and appends whatever
+// the scan could not see: the mounted set's own names, through the very same
+// llm_ui_list_widget_append_entry call, shaped exactly like add_mapfile's rows. Selection, proceed,
+// the Ok button and the scrollbar stay retail's; a rescan (llm_mp_mappicker_activate_cb re-runs
+// populate) simply makes the next frame re-append.
+constexpr uintptr_t ADDR_PICKER_LIST_WIDGET = 0x0065025fu; // llm_ui_widget_0065025f: the picker's list
+constexpr uintptr_t ADDR_PICKER_PARAM_BLOCK = 0x00644fdbu; // its param_block: +0 entry array, +0x18 count, +0x20 selected (ui/map_preview.cpp reads the same three)
+constexpr uintptr_t ADDR_MENU_OK_WIDGET     = 0x00650a57u; // _G_LLM_UI_WGT_MENU_OK: populate disables it while its scan found nothing
+
+bool on_the_picker_screen() {
+    if (!mh::en_build_ok()) return false;
+    return *(void **)mh::addr::_G_LLM_UI_MENU_WIDGET_LIST == (void *)mh::addr::map_picker_widget_origin;
+}
+
+// The pure half: which of the armed rows the picker's current rows do not show yet. Names longer
+// than the engine's map_name field are skipped here too -- they cannot be selected retail-side even
+// if an arm path ever let one through.
+int picker_rows_missing(const wchar_t (*existing)[64], int n_existing, wchar_t out[][48], int cap) {
+    int n = 0;
+    if (!rows_visible() || out == nullptr || cap <= 0) return 0;
+    for (int i = 0; i < g_mod_rows_n && n < cap; ++i) {
+        if (lstrlenA(g_mod_rows[i].leaf) > MOD_LEAF_MAX) continue;
+        wchar_t stem[48];
+        if (!MultiByteToWideChar(CP_ACP, 0, g_mod_rows[i].leaf, -1, stem,
+                                 (int)(sizeof(stem) / sizeof(stem[0]))))
+            continue;
+        const int len = lstrlenW(stem);
+        if (len > 4 && lstrcmpiW(stem + len - 4, L".mpm" /* mh-str-ok: file extension */) == 0) stem[len - 4] = L'\0';
+        if (!stem[0]) continue;
+        bool seen = false;
+        for (int j = 0; j < n_existing && !seen; ++j) seen = lstrcmpiW(existing[j], stem) == 0;
+        for (int j = 0; j < n && !seen; ++j) seen = lstrcmpiW(out[j], stem) == 0;
+        if (!seen) lstrcpynW(out[n++], stem, 48);
+    }
+    return n;
+}
+
+void picker_tick() {
+    if (!rows_visible() || !on_the_picker_screen()) return;
+    const char *dir = reinterpret_cast<const char *>(0x006567a6u);
+    if (_stricmp(dir, "Maps\\") != 0 && _stricmp(dir, "Maps/") != 0) return;
+    const int        count = *(const int *)(ADDR_PICKER_PARAM_BLOCK + 0x18);
+    const uintptr_t *rows  = *(const uintptr_t *const *)ADDR_PICKER_PARAM_BLOCK;
+    if ((rows == nullptr && count != 0) || count < 0) return;
+
+    wchar_t missing[64][48];
+    int     nm = 0;
+    for (int k = 0; k < g_mod_rows_n && nm < 64; ++k) {
+        wchar_t stem[48];
+        if (!MultiByteToWideChar(CP_ACP, 0, g_mod_rows[k].leaf, -1, stem, 48)) continue;
+        const int len = lstrlenW(stem);
+        if (len <= 4 || lstrcmpiW(stem + len - 4, L".mpm" /* mh-str-ok: file extension */) != 0) continue;
+        stem[len - 4] = L'\0';
+        bool seen     = false;
+        for (int i = 0; i < count && !seen; ++i) {
+            const uintptr_t e = rows[i];
+            if (!e || *(const int *)(e + 0xc) != 0) continue;
+            const wchar_t *text = *(const wchar_t **)e;
+            seen                = text && lstrcmpiW(text, stem) == 0;
+        }
+        for (int i = 0; i < nm && !seen; ++i) seen = lstrcmpiW(missing[i], stem) == 0;
+        if (!seen) lstrcpynW(missing[nm++], stem, 48);
+    }
+    if (!nm) return;
+
+    const bool was_empty = count == 0; // populate disabled Ok and left the selection at -1 here
+    for (int i = 0; i < nm; ++i) {
+        void *e = mh::call::llm_ui_list_widget_append_entry((void *)ADDR_PICKER_LIST_WIDGET, missing[i],
+                                                            nullptr);
+        if (e != nullptr) *(int *)((uintptr_t)e + 0xc) = 0; // selectable map row: add_mapfile's shape
+    }
+    mh::call::llm_ui_scrollbar_bind_range((void *)ADDR_PICKER_LIST_WIDGET);
+    if (was_empty) {
+        if (*(int *)(ADDR_PICKER_PARAM_BLOCK + 0x20) < 0) *(int *)(ADDR_PICKER_PARAM_BLOCK + 0x20) = 0;
+        *(uint32_t *)(ADDR_MENU_OK_WIDGET + 0x8) &= ~0x40u; // the same bit populate set
+        mh::call::llm_lobby_mappicker_selection_changed();  // retail's own derive: loads row 0 + paints the panel
+    }
+    wsprintfA(g_line, "; [map] picker: %d mod map row(s) added after a rescan\n", nm);
+    mlog(g_line);
 }
 
 void client_on_start() {
@@ -1524,8 +2229,16 @@ MH_EXPORT_REPLACE(llm_cfg_map_verify_version, entry_check_replacement)
 // =================================================================================================
 
 void install() {
-    if (g_installed || !enabled()) return;
+    if (g_installed) return;
     g_installed = true;
+    arm_open_seam(false); // save-resource guard is required even when map transfer/mods are off
+    if (!enabled()) {
+        // mods:DATAEXT1: with the transfer off, the one open seam arms only for a mounted map set
+        // -- and retail's lobby-entry verify is NOT suppressed: a mod map's open already serves the
+        // winner bytes its record was built from, so the checksum compare passes on its own.
+        if (mod_active() && g_mod_rows_n > 0) arm_open_seam(true);
+        return;
+    }
     if (!mh_export_install_llm_cfg_map_verify_version())
         mlog("; [map] entry check NOT armed -- a joiner without the map gets retail's error box "
              "at lobby entry and its download stalls (mp:X2e)\n");
@@ -1533,11 +2246,9 @@ void install() {
         mlog("; [map] entry check armed -- a map missing or different at lobby entry is left to "
              "the transfer (mp:X2e)\n");
     // The replacement is armed even on a peer that never joins anything: `g_redir_on` is what
-    // decides whether it does anything, and arming once at MH_Core_Arm keeps the install out of the
-    // lobby's frame path. install_export_ok checks the entry bytes and logs its own refusal.
-    if (!mh_export_install_utils_open_file())
-        mlog("; [map] the file-open resolve seam did NOT arm -- a downloaded map cannot be loaded "
-             "this run (the host's Start gate still refuses, so nobody plays the wrong map)\n");
+    // decides whether it does anything, and arming once at MH_Core_Arm keeps the install out of
+    // the lobby's frame path. install_export_ok checks the entry bytes and logs its own refusal.
+    arm_open_seam(false);
 }
 
 void lobby_tick(int is_host) {
@@ -1546,13 +2257,34 @@ void lobby_tick(int is_host) {
     else client_tick();
 }
 
+void lobby_gate_after_dispatch(int is_host) {
+    if (!is_host || !on_the_lobby_screen() || !host_start_blocked(nullptr, 0)) return;
+    // Native dispatch at EN004c041d/004c0426 just derived its own disabled reasons.
+    // Add the map constraint before input/draw; native code alone owns enabling.
+    if (auto *w = find_start_widget()) w->flags |= WIDGET_DISABLED;
+}
+
+void client_begin_join() {
+    if (!enabled()) return;
+    ClientLock l(false); // main thread, before a fresh explicit JOIN or its deferred redial
+    g_discard_owed   = false;
+    g_reported_valid = false; // prior browser/attempt reports do not belong to this fresh JOIN
+    const int did    = MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX);
+    wsprintfA(g_line, "; [map] client preparing JOIN -- channel C receive side %s\n",
+              did ? "rewound to chunk 0" : "has nothing to rewind (TCP or no module)");
+    mlog(g_line);
+}
+
 void session_reset() {
     {
         HostLock l;
         for (int i = 0; i < 8; ++i) g_peer[i] = PeerMap{};
-        g_tx_peer     = -1;
-        g_host_claim  = false;
-        g_cancel_mask = 0xffu; // mp:X2i: whatever was still being sent stops at the next pump
+        g_tx_peer        = -1;
+        g_host_claim     = false;
+        g_host_is_mod    = false; // mods:DATAEXT1: the lobby ends, the mod classification ends with it
+        g_host_mod_bytes = nullptr;
+        g_host_mod_len   = 0;
+        g_cancel_mask    = 0xffu; // mp:X2i: whatever was still being sent stops at the next pump
     }
     ClientLock cl(false); // mp:X2d
     g_want_valid        = false;
@@ -1571,7 +2303,6 @@ void session_reset() {
     MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX);
     memset(g_host_hash, 0, HASH_N);
     memset(g_my_hash, 0, HASH_N);
-    gate_open(); // hands the DISABLED bit back to retail if we were the ones holding it
     // THE REDIRECT IS NOT CLEARED HERE, and that is deliberate: the lobby ends when the MATCH
     // BEGINS, and the match is precisely when the map file is opened. Clearing it at the lobby exit
     // would un-redirect the load the redirect exists for. It is replaced by the next lobby's, and a

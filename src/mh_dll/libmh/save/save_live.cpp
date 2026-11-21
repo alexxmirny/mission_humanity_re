@@ -393,6 +393,11 @@ uint32_t run_ours(uint32_t planet_index, uint32_t mode, char *out_path) {
         say("; [save] planet=%d mode=%u: open_file('%s') FAILED\n", (int)planet, (unsigned)mode, path);
         return 0;
     }
+    if (mh::host().planet_save_prepare() != 1) {
+        mh::host().planet_save_restore();
+        mh::host().vfs_close(fh);
+        return 0;
+    }
     std::strcpy(out_path, path);
 
     driver_env   env   = live_env(fh);
@@ -419,6 +424,8 @@ uint32_t run_ours(uint32_t planet_index, uint32_t mode, char *out_path) {
         img.progress_slice = slice;
         rc                 = save_planet(env, img);
     }
+    if (rc == 0 && mh::host().storage_write_planet(fh) != 1) rc = 1;
+    mh::host().planet_save_restore();
 
     // 0x004480e0: closed unconditionally, before the result is decided.
     mh::host().vfs_close(fh);
@@ -453,6 +460,10 @@ uint32_t run_ours_load(uint32_t planet_index, uint32_t mode) {
         say("; [save] LOAD planet=%d mode=%u: open_file('%s') FAILED\n", (int)planet, (unsigned)mode, path);
         return 0;
     }
+    if (mh::host().storage_preflight_planet(fh) != 1 || mh::host().storage_begin_load() != 1) {
+        mh::host().vfs_close(fh);
+        return 0;
+    }
 
     driver_env   env   = live_env(fh);
     uint32_t     slice = 0;
@@ -463,8 +474,11 @@ uint32_t run_ours_load(uint32_t planet_index, uint32_t mode) {
     } else {
         rc = load_planet(env, &img);
     }
-    mh::host().vfs_close(fh);
-    if (rc != 0) return 0; // 0x004485ed: a nonzero failure accumulator returns 0
+    if (rc == 0 && mh::host().planet_load_extensions(fh) != 1) rc = 1;
+    if (rc != 0) {
+        mh::host().vfs_close(fh);
+        return 0;
+    }
 
     // ---- THE APPLY PHASE (0x004485fc..0x0044864e). None of this is file I/O; it is the loaded
     // state being pushed into the map/render layer, and every call stays a CALL -- they are the
@@ -477,7 +491,10 @@ uint32_t run_ours_load(uint32_t planet_index, uint32_t mode) {
     // result to hand back and this early return could not be expressed at all -- the COMPILER is what
     // said so (C2186: an operand cannot have type 'void'). Committing `int` was the fix. Same class as
     // read_from_file at L1: a missing return type becomes a behaviour gap one level up.
-    if (mode != 2 && mh::host().planet_tlo_load(planet_index) == 0) return 0;
+    if (mode != 2 && mh::host().planet_tlo_load(planet_index) == 0) {
+        mh::host().vfs_close(fh);
+        return 0;
+    }
     *binds().build_placement_id     = 0;
     *binds().build_preview_suppress = 0;
     MH_LIBMH_BIND(llm_map_setup_dimensions)();
@@ -485,7 +502,12 @@ uint32_t run_ours_load(uint32_t planet_index, uint32_t mode) {
     mh::state::evt::cam_set_col(*binds().cam_col);
     mh::state::evt::cam_set_row(*binds().cam_row);
     mh::state::evt::inv_planet_extra_sprite_banks(); // 0x00448649, and the body's last statement
-    return 1;
+    const uint32_t witness_generation_before =
+        mh::order_witness::generation(mh::state::order_witnesses());
+    const bool published = mh::host().storage_load_planet(fh) == 1;
+    if (published) mh::state::reset_order_witnesses_if_unchanged(witness_generation_before);
+    mh::host().vfs_close(fh);
+    return published ? 1u : 0u;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -620,6 +642,7 @@ int32_t member_begin_read(void *, int32_t planet) {
     append_bounded(path, PATH_BYTES, binds().save_temp_dir);
     append_bounded(path, PATH_BYTES, name);
     g_member_fh = mh::host().vfs_open(path, MH_VFS_READ);
+    if (g_member_fh == 0) return -1;
     // 0x00447507: the length is SEEK_END + tell + SEEK_SET, not a stat. Reproduced, because the
     // original's own u32 length prefix is whatever tell reported.
     //
@@ -748,23 +771,24 @@ bool build_sav_path(char *path, const char *save_name) {
 // member_io and a null hook set.
 arena g_container_arena{};
 
+bool normalize_live_header(char *header) { return mh::host().storage_normalize_version(header) == 1; }
+
 driver_env live_container_env(int32_t file_handle) {
-    driver_env e      = live_env(file_handle);
-    e.members         = &MEMBER_IO;
-    e.media_source    = live_media_source;
-    e.legacy          = &LEGACY_HOOKS;
-    g_container_arena = arena{g_container_scratch, sizeof(g_container_scratch), 0};
-    e.mem             = &g_container_arena;
-    e.vt              = version_table{binds().version_strings,
+    driver_env e       = live_env(file_handle);
+    e.members          = &MEMBER_IO;
+    e.media_source     = live_media_source;
+    e.legacy           = &LEGACY_HOOKS;
+    g_container_arena  = arena{g_container_scratch, sizeof(g_container_scratch), 0};
+    e.mem              = &g_container_arena;
+    e.vt               = version_table{binds().version_strings,
                          binds().version_index};
+    e.normalize_header = normalize_live_header;
     return e;
 }
 
 uint32_t run_ours_savegame(char *save_name, char *out_path) {
-    // 0x0044719a: the CURRENT planet is written out FIRST, and its result is deliberately not
-    // accumulated (0x0044719f reloads ESI rather than ADDing). With the save closure key on this is our
-    // own body; with it off it is the original. Either way the container then embeds what it wrote.
-    MH_LIBMH_BIND(map_SavePlanetToDisk)(*binds().planet_index, 3);
+    // Required planet extensions must reach disk before this container embeds their bytes.
+    if (MH_LIBMH_BIND(map_SavePlanetToDisk)(*binds().planet_index, 3) != 1) return 0;
 
     char path[PATH_BYTES];
     build_sav_path(path, save_name);
@@ -782,7 +806,8 @@ uint32_t run_ours_savegame(char *save_name, char *out_path) {
     // save_container drives the version GATE off img.version, and the writer always stamps the
     // current build's string -- so a legacy step can never be selected here. Asserted by the walk
     // itself: a `discard` step is skipped unconditionally on the write side.
-    const int rc = save_container(env, img);
+    int rc = save_container(env, img);
+    if (rc == 0 && mh::host().storage_finish_container(fh) != 1) rc = 1;
     mh::host().vfs_close(fh);
     return rc == 0 ? 1u : 0u;
 }
@@ -821,6 +846,10 @@ uint32_t run_ours_load_container(char *save_name) {
         say("; [save] LOADGAME open_file('%s') FAILED\n", path);
         return 0;
     }
+    if (mh::host().storage_preflight_container(fh) != 1 || mh::host().storage_begin_load() != 1) {
+        mh::host().vfs_close(fh);
+        return 0;
+    }
 
     driver_env      env = live_container_env(fh);
     container_image img{};
@@ -834,7 +863,8 @@ uint32_t run_ours_load_container(char *save_name) {
     // refusal. Both end in `return 0` having already overwritten some state; ours overwrites strictly
     // less of it. Reproducing "keep parsing a file we have already decided is bad" would be
     // faithfulness for its own sake.
-    const int rc = load_container(env, &img);
+    int rc = load_container(env, &img);
+    if (rc == 0 && mh::host().storage_load_container(fh) != 1) rc = 1;
     mh::host().vfs_close(fh);
     if (rc != 0) return 0;
 

@@ -116,6 +116,23 @@ def check(
         fp = (man.get("step0") or {}).get("hash_manifest_fp")
         if fp is None:
             continue  # not a hash fixture (pacing-frametime has no step0)
+        # A matching fingerprint cannot make v1/suppression semantics faithful.
+        import mh_order_stream as order_stream
+        import zlib
+
+        problem = order_stream.contract_refusal(man)
+        if problem:
+            errs.append("STALE FIXTURE %s: %s -- %s" % (name, problem, RECAPTURE_HINT))
+        if "replay_contract" in man:
+            try:
+                artifact = man["artifacts"]["orders"]
+                with open(os.path.join(os.path.dirname(mf), artifact["file"]), "rb") as fh:
+                    raw = zlib.decompress(fh.read())
+                order_stream.decode(raw, first_step=1, steps=man["steps"])
+            except (OSError, ValueError, KeyError, zlib.error) as e:
+                errs.append(
+                    "STALE FIXTURE %s: order phase data: %s -- %s" % (name, e, RECAPTURE_HINT)
+                )
         if fp.upper() != cur:
             errs.append(
                 "STALE FIXTURE %s: captured under hash manifest %s, current %s -- %s"
@@ -277,6 +294,23 @@ def selftest():
                 man["step0"]["hash_manifest_fp"] = cur
                 man["step0"]["hash_input_epoch"] = _m.hash_input_epoch()
                 man["step0"]["world_schema_fp"] = cur_schema
+                # Synthetic phase payloads belong only to the planted test copy.
+                import mh_order_stream as order_stream
+                import zlib
+
+                if "replay_contract" in man:
+                    man["replay_contract"]["order_stream"] = dict(order_stream.CONTRACT)
+                    man["replay_contract"]["flags"].update(order_stream.FAITHFUL_FLAGS)
+                    raw = order_stream.encode(
+                        order_stream.Sample(s, p, (bytes(range(68)),) if s == 1 else ())
+                        for s in range(1, man["steps"] + 1)
+                        for p in (order_stream.HASH, order_stream.ENTRY)
+                    )
+                    artifact = man["artifacts"]["orders"]
+                    with open(os.path.join(os.path.dirname(mf), artifact["file"]), "wb") as fh:
+                        fh.write(zlib.compress(raw))
+                else:
+                    man["live_contract"]["flags"]["replay_ai_off"] = 0
                 json.dump(man, open(mf, "w", encoding="utf-8"))
         for op in glob.glob(os.path.join(jn, "*.oracle.gz")):
             lines = gzip.open(op, "rt", encoding="utf-8").read().splitlines(True)

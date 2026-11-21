@@ -27,12 +27,12 @@ CLAUSES (peers are the SESSION dirs, test_ui.py `post_check_session: True`; the 
             this: it logs hitches only -- one mode-4 row in the whole window. The script's own
             `gamemode 4` predicates, before and after the hold, are the second witness.);
   clause 2  (above) the joiner's sim advanced and received throughout the window;
-  clause 3  the HOST kept running: its clock never stood still >= 1000 ms inside the window and advanced
-            >= 90% of it, its wait icon (`icon_calls`) never armed, and the stall-episode counter
-            (`stall`, what feeds `[netind] stall waiting_for=`) rose by <= 2 -- one hitch at the edge is
-            tolerated (the open's AVI load can block the joiner's frame on a loaded box; one first run
-            showed +1 and passed on rerun). The rc5 drain was ONE episode that never ended, so the
-            counter alone would miss it; the freeze and the clock advance are the real tests;
+  clause 3  the HOST kept running: its clock never stood still >= 1000 ms inside the window,
+            its rate stays comparable to the pre-panel rate, and its stall gauge does not
+            gain a sustained peak. `icon_calls` counts requested overlay frames BEFORE
+            suppression, not shown icons or wait episodes; it is diagnostic only.
+            The rc5 drain was ONE episode that never ended, so freeze and clock advance
+            are the consumer-visible tests;
   clause 4  (above) no client driver tick after match entry.
 
   python tools/check_u47_info_joiner.py <host-session-dir> <client-session-dir> [--min-window-s N]
@@ -89,7 +89,6 @@ BASE_MIN_CLOCK_MS = (
 )
 BASE_MIN_SPAN_MS = 5000  # less than this of baseline is noise, not a rate
 MIN_RATE_RATIO = 0.6  # window rate must keep >= this share of the pre-panel rate (bug: ~0)
-ICON_SLACK = 2
 
 
 def baseline_of(rows, w0):
@@ -174,20 +173,11 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
         h_stall = max(r["stall"] for r in hin) - base_stall
         h_icon = max(r.get("icon_calls", 0) for r in hin) - base_icon
         h_adv = hin[-1]["clock_ms"] - hin[0]["clock_ms"]
-        # A one-row hitch is allowed at the window's edge (the open itself -- the AVI and INFO.Txt
-        # loads -- briefly blocks the joiner's frame on a loaded box). What the rc5 drain produced was
-        # an episode that never ENDED, which the `stall` counter shows as ONE increment, so the real
-        # tests are the clock freeze, the wait icon and the clock advance; the counter is a backstop.
+        # The rc5 drain produced an episode that never ended. Clock freeze and
+        # advance measure that behavior; overlay request counts do not.
         freeze = longest_freeze(hin)
-        icon_allow = 0
         max_freeze = MAX_FREEZE_MS
         if hbase:
-            # the wait icon is drawn after the sim has been parked > 1 s; how often a loaded box does
-            # that before the panel sets how often it may inside it (rc5: every frame, for the whole hold)
-            icon_rate = (
-                hbase[2][-1].get("icon_calls", 0) - hbase[2][0].get("icon_calls", 0)
-            ) / float(hbase[1])
-            icon_allow = int(2 * icon_rate * (w1 - w0)) + ICON_SLACK
             max_freeze = max(MAX_FREEZE_MS, 3 * longest_freeze(hbase[2]))
         if h_stall > MAX_NEW_EPISODES:
             fails.append(
@@ -198,11 +188,6 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
             fails.append(
                 "clause 3: the host's clock stood still for %d ms inside the window (max %d)"
                 % (freeze, max_freeze)
-            )
-        if h_icon > icon_allow:
-            fails.append(
-                "clause 3: the host's wait icon armed %d time(s) inside the window (allowed %d at its pre-panel rate)"
-                % (h_icon, icon_allow)
             )
         if hbase:
             h_rate = h_adv / float(max(1, w1 - w0))
@@ -231,7 +216,7 @@ def analyse(host_rows, client_rows, client_launch, min_window_s=10.0):
                 % ticks
             )
     summary = (
-        "window %.1f s at mode 4, joiner clock +%d ms rx +%d max since_rx %d ms; host new stalls %d icons %d clock +%d ms; in-match driver ticks %d"
+        "window %.1f s at mode 4, joiner clock +%d ms rx +%d max since_rx %d ms; host new stalls %d overlay requests %d clock +%d ms; in-match driver ticks %d"
         % (span_s, clock_adv, rx_adv, max_since, h_stall, h_icon, h_adv, ticks)
     )
     return fails, summary
@@ -268,7 +253,6 @@ def _plant(
     panel=True,
     load=1.0,
     host_slow_in_window=1.0,
-    host_icons_per_row=0,
     saw=0,
     entry="trigger",
 ):
@@ -292,8 +276,6 @@ def _plant(
             hstep = 0.0
         clock_h += hstep
         clock_c += step
-        if in_win and host_icons_per_row:
-            icon += host_icons_per_row
         gauge = stall + ((i // 100) % (saw + 1) if saw else 0)
         host.append(
             dict(
@@ -354,11 +336,6 @@ def selftest():
         (
             "NEG: LOADED box AND the host drops to 20% of its own rate inside the window",
             dict(load=0.5, host_slow_in_window=0.2),
-            False,
-        ),
-        (
-            "NEG: wait icon armed every frame inside the window (rc5), clock still moving",
-            dict(host_icons_per_row=1),
             False,
         ),
         ("NEG: no entry marker at all", dict(entry="none"), False),

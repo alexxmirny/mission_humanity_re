@@ -15,6 +15,7 @@
 #include "hostapi_selftest_support.h"
 
 #include "../libmh/state/host_api.h"
+#include "../mh/seams/tileset_summary.h"
 #include "../libmh/state/host_events.h"       // LIFT-EVQ: the event-channel surface's contract checks
 #include "../mh/include/mh_libmh_hook_bind.h" // F4D-PRE: mh.dll's HOOK-service table...
 #include "../libmh/state/hook_api.h"          // ... and libmh's side of the same contract
@@ -239,23 +240,88 @@ int run_hostapitest() {
         ck(libmh_poll_events(d, 8) == 0, "screen ring drained empty");
     }
 
-    // ---- LIFT-TABLE S3: the planet graphics record -------------------------------------------
-    //
-    // cfg_final_planet_Construct's graphics tail has NO offline suite -- its only oracle is the
-    // hosted rig -- so the one thing that can be pinned off the rig is pinned here: the record
-    // carries the planet SLOT and the resolved TLO INDEX, in that order, as identities. The order
-    // matters because both are small integers, so a swap would be invisible everywhere else and
-    // would silently write planet 5's banks for a tlo of 31.
+    // A queued record owns even the complete 12-byte token after its caller changes.
     {
         libmh_event d[4];
         (void)libmh_poll_events(d, 4);
-        mh::state::evt::inv_planet_gfx_setup(0x1f, 5);
+        char token[13] = "Diuna256.tlo";
+        mh::state::evt::inv_planet_gfx_setup(0x1f, token);
+        std::memset(token, 'x', 12);
         const uint32_t n = libmh_poll_events(d, 4);
         ck(n == 1 && d[0].channel == LIBMH_EVC_INVALIDATE &&
-               d[0].kind == LIBMH_EVK_INV_PLANET_GFX_SETUP,
-           "planet gfx setup emits ONE invalidate record");
-        ck(n == 1 && d[0].a == 0x1f && d[0].b == 5,
-           "a = planet slot, b = tlo_index -- an identity pair, and not the other way round");
+               d[0].kind == LIBMH_EVK_INV_PLANET_GFX_SETUP && d[0].a == 0x1f,
+           "planet graphics event owns its slot");
+        if (n == 1) {
+            const uint32_t words[]     = {static_cast<uint32_t>(d[0].b),
+                                          static_cast<uint32_t>(d[0].c),
+                                          static_cast<uint32_t>(d[0].d)};
+            char           decoded[13] = {};
+            for (unsigned i = 0; i < 12; ++i)
+                decoded[i] = static_cast<char>((words[i / 4] >> ((i % 4) * 8)) & 0xff);
+            ck(std::strcmp(decoded, "Diuna256.tlo") == 0, "queued token survives caller mutation");
+        }
+        char too_long[] = "Diuna256.tloX";
+        mh::state::evt::inv_planet_gfx_setup(2, too_long);
+        const uint32_t long_n = libmh_poll_events(d, 4);
+        ck(long_n == 1 && d[0].a == 2 && d[0].b == 0 && d[0].c == 0 && d[0].d == 0,
+           "overlong token is invalid, never the valid twelve-byte prefix");
+        mh::state::evt::inv_planet_gfx_setup(3, "nope.tlo");
+        const uint32_t unknown_n = libmh_poll_events(d, 4);
+        ck(unknown_n == 1 && d[0].a == 3 &&
+               static_cast<uint32_t>(d[0].b) == 0x65706f6e &&
+               static_cast<uint32_t>(d[0].c) == 0x6f6c742e,
+           "unknown token crosses unchanged, not as a Jungle index");
+        mh::state::evt::inv_planet_gfx_setup(1, "x.tlo");
+        const uint32_t short_n = libmh_poll_events(d, 4);
+        ck(short_n == 1 && static_cast<uint32_t>(d[0].c) == 0x0000006f && d[0].d == 0,
+           "short token is zero filled");
+        static libmh_event captured;
+        static int         calls;
+        calls = 0;
+        ck(libmh_set_event_sink(+[](const libmh_event *e) { captured = *e; ++calls; }, LIBMH_HOST_EVENTS_VERSION) == 0, "bind graphics sink");
+        char custom[] = "marsh01.tlo";
+        mh::state::evt::inv_planet_gfx_setup(7, custom);
+        std::memset(custom, 0, sizeof(custom));
+        char           copy[13] = {};
+        const uint32_t words[]  = {static_cast<uint32_t>(captured.b), static_cast<uint32_t>(captured.c),
+                                   static_cast<uint32_t>(captured.d)};
+        for (unsigned i = 0; i < 12; ++i)
+            copy[i] = static_cast<char>((words[i / 4] >> ((i % 4) * 8)) & 0xff);
+        ck(calls == 1 && captured.a == 7 && std::strcmp(copy, "marsh01.tlo") == 0,
+           "synchronous sink receives owned custom token");
+        ck(libmh_set_event_sink(nullptr, LIBMH_HOST_EVENTS_VERSION) == 0, "restore queue mode");
+    }
+
+    // EN's two native format strings and control-character variants, with the
+    // original argument order. The local canary proves the 256-unit boundary.
+    {
+        struct {
+            wchar_t text[256];
+            wchar_t canary;
+        } out{};
+        out.canary                = 0x1234;
+        const wchar_t *formats[]  = {L"%c%s\n%s %dx%d\n%s: %d", L"%c%s\n\x01%s %dx%d\n%s: %d"};
+        const wchar_t *expected[] = {L"\x02Map\nScarlet Marsh 128x256\nPlayers: 4",
+                                     L"\x02Map\n\x01Scarlet Marsh 128x256\nPlayers: 4"};
+        for (int i = 0; i < 2; ++i) {
+            mh::tileset_runtime::format_summary(out.text, formats[i], 2, L"Map", L"Scarlet Marsh",
+                                                128, 256, L"Players", 4, L"OVERFLOW");
+            ck(std::wcscmp(out.text, expected[i]) == 0 && out.canary == 0x1234,
+               "native lobby format parity and control bytes");
+        }
+        wchar_t long_text[256];
+        for (unsigned i = 0; i < 255; ++i) long_text[i] = L'X';
+        long_text[224] = 0;
+        const int fit  = mh::tileset_runtime::format_summary(out.text, formats[1], 2, L"Map", L"Scarlet Marsh",
+                                                             128, 256, long_text, 4, L"OVERFLOW");
+        ck(fit == 255 && std::wcslen(out.text) == 255 && out.canary == 0x1234,
+           "exactly 255 visible UTF-16 units fit with a terminator");
+        long_text[224] = L'X';
+        long_text[225] = 0;
+        mh::tileset_runtime::format_summary(out.text, formats[1], 2, L"Map", L"Scarlet Marsh",
+                                            128, 256, long_text, 4, L"OVERFLOW");
+        ck(std::wcscmp(out.text, L"OVERFLOW") == 0 && out.canary == 0x1234,
+           "oversized localized text reports overflow without partial label or overwrite");
     }
 
     // ---- SIMABI-NOTIFY: the sim table's four CONVERTs ------------------------------------------

@@ -74,6 +74,11 @@
 #include "sim/move/near_enough.h"   // mods:M1H move_near_enough (2b) + the on-goal stop: the shared decision (header-only)
 #include "sim/move/route_through.h" // mods:M1G 4b: the undo list the formation reads (true_passable)
 #include "sim/move/formation.h"     // mods:M1G 4b move_formation_click: the shared decision (header-only)
+#include "seams/order_tasks_native.h"
+#include "seams/order_tasks_hosted.h"
+extern "C" void order_tasks_projection_gateway();
+extern "C" void order_tasks_retry_gateway();
+extern "C" void order_tasks_planner_return_gateway();
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -122,6 +127,19 @@ uintptr_t unit_at(uint32_t p, uint32_t i) { return reinterpret_cast<uintptr_t>(m
 uint32_t  tidx(uint32_t x, uint32_t y) { return ((x & 0xffu) << 8) | (y & 0xffu); }
 uint32_t  region_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8); }
 uint32_t  field_of(uint32_t t) { return rd<uint32_t>(A_REGION_GRID + t * 8 + 4) >> 8; }
+struct placement_patrol_info {
+    bool     eligible;
+    uint32_t group, sequence;
+};
+placement_patrol_info placement_patrol(uint32_t p, uint32_t slot) {
+    mh_order_tasks_request q{};
+    mh_order_tasks_result  r{};
+    q.operation = uint32_t(mh::order_tasks::host_protocol::operation::ground_patrol_placement);
+    q.player    = p;
+    q.slot      = slot;
+    if (!mh::order_tasks::hosted::invoke(&q, &r)) return {};
+    return {r.values[0] != 0, r.values[1], r.values[2]};
+}
 
 void call_pathfind(uint32_t mode, uint32_t target) {
     __asm {
@@ -160,15 +178,23 @@ struct arrival_live_world {
     uint32_t region_of(uint32_t t) { return ::region_of(t); }
     uint32_t field_of(uint32_t t) { return ::field_of(t); }
     bool     unit(uint32_t owner_, uint32_t i, mh::sim::move::arr_unit *out) {
-        const uintptr_t u = unit_at(owner_, i);
-        out->order        = rd<uint16_t>(u + U_ORDER);
-        out->state        = rd<uint16_t>(u + U_STATE);
-        out->goal_x       = rd<uint8_t>(u + U_GOAL_X);
-        out->goal_y       = rd<uint8_t>(u + U_GOAL_Y);
-        out->group        = rd<int32_t>(u + U_GROUP);
-        out->x            = rd<uint8_t>(u + U_X);
-        out->y            = rd<uint8_t>(u + U_Y);
-        out->path_slot    = mh::caps::path::unit_slot_u8(reinterpret_cast<const uint8_t *>(u)); // the byte, or 0xff when a raised id does not fit it
+        if (owner_ >= 8 || i >= mh::caps::g(mh::caps::UNITS).limit) return false;
+        const uintptr_t u    = unit_at(owner_, i);
+        out->order           = rd<uint16_t>(u + U_ORDER);
+        out->state           = rd<uint16_t>(u + U_STATE);
+        out->goal_x          = rd<uint8_t>(u + U_GOAL_X);
+        out->goal_y          = rd<uint8_t>(u + U_GOAL_Y);
+        out->group           = rd<int32_t>(u + U_GROUP);
+        out->x               = rd<uint8_t>(u + U_X);
+        out->y               = rd<uint8_t>(u + U_Y);
+        out->path_slot       = mh::caps::path::unit_slot_u8(reinterpret_cast<const uint8_t *>(u)); // the byte, or 0xff when a raised id does not fit it
+        out->owned_patrol    = false;
+        out->patrol_sequence = 0;
+        if (out->order == 16) {
+            const auto q         = placement_patrol(owner_, i);
+            out->owned_patrol    = q.eligible && q.group == uint32_t(out->group);
+            out->patrol_sequence = q.sequence;
+        }
         return true;
     }
     void set_unit_goal(uint32_t owner_, uint32_t i, uint8_t x, uint8_t y) {
@@ -261,7 +287,7 @@ void __cdecl arrival_after_pathfind(int32_t group_id, uint32_t mode, uint32_t ta
 // The live unit rows (unit_at / A_TILE_OBJECTS), exactly what the splice always read: the retail marshal's EAX is a byte offset into the unit array.
 struct ne_live_world {
     const mh::game::mh_map_object_unit *unit(uint32_t p, int32_t i) {
-        if (p >= 8 || i < 0 || i >= mh::sim::mvc::NE_ROSTER) return nullptr;
+        if (p >= 8 || i < 0 || uint32_t(i) >= mh::caps::g(mh::caps::UNITS).limit) return nullptr;
         return reinterpret_cast<const mh::game::mh_map_object_unit *>(unit_at(p, static_cast<uint32_t>(i)));
     }
     uint8_t                                  pass(uint32_t x, uint32_t y) { return rd<uint8_t>(A_PASSABLE + tidx(x, y)); }
@@ -276,8 +302,12 @@ void __cdecl arrival_retry_check(uint32_t unit_off) {
     const uintptr_t u   = mh::caps::g(mh::caps::UNITS).base + unit_off;
     const uint32_t  idx = (unit_off - p * mh::caps::row_bytes(mh::caps::UNITS)) / UNIT_SIZE;
     ne_live_world   w;
-    const auto      st = mh::sim::mvc::near_enough_check(w, p, static_cast<int32_t>(idx), g_arr_near_r);
+    const auto      q      = rd<uint16_t>(u + U_ORDER) == 16 ? placement_patrol(p, idx) : placement_patrol_info{};
+    const bool      patrol = q.eligible && q.group == uint32_t(rd<int32_t>(u + U_GROUP));
+    const auto      st     = mh::sim::mvc::near_enough_check(w, p, static_cast<int32_t>(idx), g_arr_near_r, patrol);
     if (st == mh::sim::mvc::ne_stop::no) return;
+    const bool accepted = mh::order_tasks::native::accepted_near(p, idx, st == mh::sim::mvc::ne_stop::on_goal);
+    if (patrol && !accepted) return; // Rejected completion cannot force the native give-up path.
     const char *why = st == mh::sim::mvc::ne_stop::on_goal ? "on its goal" : "near enough to a goal a friend holds";
     const int   x = rd<uint8_t>(u + U_X), y = rd<uint8_t>(u + U_Y), gx = rd<uint8_t>(u + U_GOAL_X), gy = rd<uint8_t>(u + U_GOAL_Y);
     wr<uint8_t>(u + U_RETRY, 4); // the retail give-up branch runs now
@@ -317,10 +347,21 @@ int __cdecl merge_goal_pick(uint32_t gx, uint32_t gy, uint32_t *ox, uint32_t *oy
 
 uintptr_t g_fn_closer_visible = 0x0041fff5; // llm_strat_pathfind_find_closer_visible_tile (read by the stub)
 int       g_mg_handled        = 0;          // merge_goal_pick's verdict, carried across the stub's POPAD (sim thread only)
+// Preserve the original projection helper's two stack arguments and RET8.
+__declspec(naked) void queue_projection_result() {
+    __asm {
+        push dword ptr [esp + 8]
+        push dword ptr [esp + 8]
+        call dword ptr [g_fn_closer_visible]
+        call order_tasks_projection_gateway
+        ret 8
+    }
+}
 
 // clang-format off
 __declspec(naked) void mv_arr_commit_stub() {
     __asm {
+        call order_tasks_planner_return_gateway
         cmp   g_fc_handled, 0                    // mods:M1G 4b: the formation planned this commit inside the bracket -- 2a is skipped, once
         je    ac_nofc
         mov   g_fc_handled, 0
@@ -364,7 +405,7 @@ __declspec(naked) void mv_merge_goal_stub() {
         xor   eax, eax                           // 0 = found, as the callee returns
         ret   8
     mg_retail:
-        jmp   dword ptr [g_fn_closer_visible]
+        jmp queue_projection_result
     }
 }
 
@@ -388,6 +429,7 @@ __declspec(naked) void mv_arr_retry_stub() {
         add   esp, 4
         popad
     ar_done:
+        call order_tasks_retry_gateway
         push  edx
         mov   edx, dword ptr [mh_caps_base + 4 * MH_CAPS_IDX_UNITS]
         cmp   byte ptr [eax + edx + 0xab], 4     // replaced; its flags feed the JNC (the pop leaves them alone)

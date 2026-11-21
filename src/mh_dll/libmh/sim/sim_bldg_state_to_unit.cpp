@@ -4,6 +4,7 @@
 // consulted for this file -- see the header banner).
 //
 #include "sim/sim_bldg_state_to_unit.h"
+#include "sim/sim_order_tasks.h"
 
 #include <cstring>
 #include <limits>
@@ -235,6 +236,7 @@ void bldg_state_to_unit(const sim_view &v, sim_store &own, const bldg_state_to_u
     own.building_at(*v.cur_player, 0).energy += BLDG_TO_UNIT_HEADER_ROW_ENERGY_DELTA;
 
     // ---- 0x004719f0-0x00471a04: AI removal notification, building kind -----------------------------
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::building, *v.cur_player, *v.cur_index, false);
     c.ai_notify_object_removed(static_cast<uint32_t>(*v.cur_player) | mh::ai::REF_BLDG_BIT,
                                static_cast<uint32_t>(*v.cur_index), /*hard_remove=*/0);
 

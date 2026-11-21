@@ -8,6 +8,8 @@ src/mh_dll/mh/addr/mh_addrs.gen.h
 src/mh_dll/mh/addr/mh_patches.gen.h
 src/mh_dll/mh/addr/mh_tombstones.gen.h
 src/mh_dll/mh/addr/mh_regions.gen.h
+# DATAEXT2: schema rows are emitted by cfgkit.runtime_schema and drift-checked against that source.
+src/mh_dll/mh_common/include/mh_cfg_schema.gen.h
 src/mh_dll/libmh/save/save_table.gen.h
 src/mh_dll/mh/attic/*
 src/mh_dll/mh/addr/mh_state_handlers.gen.h

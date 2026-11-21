@@ -10,6 +10,7 @@
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "state/order_tasks_runtime.h"
 
 namespace mh::tact {
 
@@ -47,6 +48,7 @@ void mission_end_return_to_strategic(const tact_view &tv, tact_store &own,
     // @0x0044d3eb-0x0044d40e: UNKNOWN(0) -> VISITED(1) latch, E_PLANET_STATUS.
     const int32_t planet = *tv.planet_index;
     if (own.planet_status_at(planet) == 0) {
+        mh::order_tasks::runtime::ensure_known_planet(own, uint32_t(planet));
         own.planet_status_at(planet) = 1;
     }
 

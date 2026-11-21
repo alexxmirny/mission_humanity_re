@@ -19,7 +19,8 @@ refuse.codepage = codepage %u/%u
 refuse.newer_protocol = protocollo %u > %u
 refuse.older_protocol = protocollo %u < %u
 refuse.malformed = richiesta di accesso non valida
-refuse.no_match_id = vecchio protocollo (senza match_id)
+refuse.old_protocol = vecchio protocollo di gioco
+refuse.host_generation = generazione host %u < %u
 refuse.newer_than_host = protocollo più recente dell'host
 refuse.not_our_lobby = non è la nostra lobby
 refuse.cp_mismatch = codepage di input diversa
@@ -27,6 +28,7 @@ refuse.unknown = sconosciuto
 refuse.caps = impossibile aumentare i limiti
 refuse.build = l'host ha %s, tu hai %s: aggiorna
 refuse.gameplay = Impostazioni di gioco diverse (%s/%s): aggiorna
+refuse.content = contenuti di gioco diversi (mod?)
 relay.outdated = Relay obsoleto (protocollo %u < %u)
 
 # map transfer
@@ -70,5 +72,34 @@ lobby.team_4 = S4
 lobby.mode_ffa = Modalità: tutti contro tutti
 lobby.mode_team = Modalità: squadre
 
+# right panel page spinner (mods:MAPGEN2)
+page.description = Vista: Descrizione
+page.preview = Vista: Anteprima
+page.settings = Vista: Impostazioni
+page.settings_title = Impostazioni partita
+page.settings_host_only = Impostazioni partita (decise dall'host)
+page.preview_not_received = Mappa non ancora ricevuta
+page.preview_none = Nessuna anteprima disponibile
+
 # raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
 caps.load_refused = Questo salvataggio usa limiti aumentati. Attiva "Raised limits" nel launcher per caricarlo.
+# the .sav mod-metadata carrier: one deferred notice, the load continues (mh/mods/save_meta.cpp)
+mods.save_mismatch = Salvataggio creato con mod diverse - caricamento comunque
+mods.save_legacy = Salvataggio senza dati delle mod - può non corrispondere alle mod attive
+mods.save_tileset_missing = A questo salvataggio manca un set di tessere. Attiva la relativa mod.
+mods.config_refused = Mod rifiutate; risorse originali attive
+mods.config_details = Dettagli in mh_video.log
+tileset.summary_overflow = Il riepilogo della mappa supera il limite di visualizzazione
+tileset.unknown = Set di tessere sconosciuto
+lobby.speed = Velocità: %d%%
+storage.auto_dispatch = uscita automatica
+
+keys.input_unavailable = Impossibile installare in sicurezza i comandi strategici. Riavvia con versioni compatibili del gioco e della mod.
+orders.queue_full = %u unità: coda ordini piena (32 voci)
+orders.after_patrol = %u unità: un ordine finito non può seguire una pattuglia ciclica
+orders.degenerate = %u unità: la pattuglia richiede punti distinti
+orders.target = %u unità: il bersaglio non è più disponibile
+orders.unsupported = %u unità: questa attività non può essere accodata
+orders.actor_unavailable = %u unità: unità non disponibile per ordini in coda
+orders.world_unavailable = %u unità: ordine in coda non valido nel mondo attuale
+orders.blocked = %u unità: ordine bloccato; sostituisci il percorso per continuare

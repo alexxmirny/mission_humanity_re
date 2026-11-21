@@ -1,0 +1,26 @@
+# mods:MAPGEN2 -- the preview of a GENERATED map (mods:MAPGEN1 lane map: the lane's ONLY map, so picker row 0 is ours; made by
+# `python tools/mapgen_check.py --lane-maps` into input:mapgen/lane/). Picker Preview page, then the lobby's Preview page.
+# Captures are the user's to review (baselines/mappreview_gen/_ignore.json marks them _unjudged).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture mpg_picker
+clickl Ok
+present Network players
+settled Start
+settled Cancel
+click 501 380
+lobbypage 1
+capture mpg_lobby
+log mappreview_gen: generated map previewed
+end

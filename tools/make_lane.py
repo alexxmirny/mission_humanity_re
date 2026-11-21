@@ -32,8 +32,9 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import machine_config as machine  # noqa: E402
-import map_variant  # noqa: E402 -- mp:T5 forced-snapshot lane / mp:X2a own-Maps shape
+import machine_config as machine
+import map_variant
+import mods_fixture
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DLL = os.path.join(REPO, "src", "mh_dll", "Release", "mh.dll")
@@ -56,6 +57,7 @@ DLL = os.path.join(REPO, "src", "mh_dll", "Release", "mh.dll")
 # itself. Both windows are seconds; the runs they protect are minutes.
 BOOT_LOCK = os.path.join(machine.LANE_ROOT, ".boot.lock")
 BOOT_LOCK_STALE = 90  # a crashed launcher must not wedge the machine forever
+BOOT_LOCK_OPEN_ATTEMPTS = 8
 
 
 class boot_lock:
@@ -77,21 +79,22 @@ class boot_lock:
 
     def __enter__(self):
         t0 = time.time()
+        denied = 0
+        os.makedirs(os.path.dirname(BOOT_LOCK), exist_ok=True)
         while True:
             try:
-                os.makedirs(os.path.dirname(BOOT_LOCK), exist_ok=True)
                 fd = os.open(BOOT_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(fd, ("%d %s" % (os.getpid(), self.tag)).encode())
-                os.close(fd)
-                self.waited = time.time() - t0
-                self.held_at = time.time()
-                if self.waited >= 1.0:
-                    print(
-                        "  [boot] %s waited %.0fs for the machine-wide boot lock"
-                        % (os.path.basename(self.tag), self.waited)
-                    )
-                return self
+            except PermissionError:
+                # Windows can deny CREATE_NEW while the previous file is delete-pending.
+                # Ownership still requires a successful exclusive create. Permanent denial
+                # must escape, not become an unbounded contention wait.
+                if os.name != "nt" or denied >= BOOT_LOCK_OPEN_ATTEMPTS - 1:
+                    raise
+                time.sleep(min(0.01 * 2**denied, 0.2))
+                denied += 1
+                continue
             except FileExistsError:
+                denied = 0
                 try:  # break a lock left behind by a launcher that died holding it
                     if time.time() - os.path.getmtime(BOOT_LOCK) > BOOT_LOCK_STALE:
                         print("  [boot] breaking a stale boot lock (>%ds old)" % BOOT_LOCK_STALE)
@@ -100,6 +103,18 @@ class boot_lock:
                 except OSError:
                     pass
                 time.sleep(0.5)
+                continue
+            # Do not retry metadata I/O after ownership has already been acquired.
+            os.write(fd, ("%d %s" % (os.getpid(), self.tag)).encode())
+            os.close(fd)
+            self.waited = time.time() - t0
+            self.held_at = time.time()
+            if self.waited >= 1.0:
+                print(
+                    "  [boot] %s waited %.0fs for the machine-wide boot lock"
+                    % (os.path.basename(self.tag), self.waited)
+                )
+            return self
 
     def __exit__(self, *_exc):
         held = time.time() - getattr(self, "held_at", time.time())
@@ -135,7 +150,7 @@ def lane_conflict(lane_dir):
     if n is None:
         return None
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import lane_alloc  # noqa: PLC0415 -- local, to keep make_lane importable stand-alone
+    import lane_alloc
 
     if not lane_alloc.mutex_in_use(n):
         return None
@@ -380,6 +395,21 @@ LINKED_DIRS = ["Res", "Maps", "lang"]
 PACK_EXT = (".rsr", ".nam")
 
 
+def provision_maps_only(dst_dir, files):
+    """mods:MAPGEN1 W4: a REAL `Maps` directory holding ONLY `files` (copied under their own basename), so
+    the lobby's default map -- picker row 0 -- is one of ours and not whatever sorts first in the
+    install. The files are generated maps (input:mapgen/lane/), small, so they are copied not linked."""
+    os.makedirs(dst_dir, exist_ok=True)
+    for f in files:
+        if not os.path.isfile(f):
+            sys.exit("--maps-only %s: no such file" % f)
+        name = os.path.basename(f)
+        if len(name) > 24 or not name.isascii():
+            sys.exit("--maps-only %s: the picker needs an ASCII name of <= 24 chars" % name)
+        shutil.copy2(f, os.path.join(dst_dir, name))
+        print("  MAPS-ONLY: %s" % name)
+
+
 def provision_maps_with_variant(src_dir, dst_dir, variant_name):
     """Build a REAL (not shared) `Maps` directory: every file is still LINKED individually to the
     shared install (link_or_copy per-file, same ~0-copy cost as before) except `variant_name`,
@@ -429,6 +459,20 @@ def provision_maps_with_variant(src_dir, dst_dir, variant_name):
         )
 
 
+def provision_mods_fixture(args, *, child_env=None):
+    """DATAEXT1: build this lane's OWN mods/<id>/ fixture (tools/mods_fixture.py) -- copied bytes
+    unpacked out of THIS lane's install packs (an ordinary info\\*.txt text member; never a font or
+    art the menu loads pre-join), never linked (a shared mutable source dir would make both peers
+    hash the same bytes) and never committed (no retail art in the repo)."""
+    if args.mods_fixture == "pair":
+        if args.mods_id == "other":
+            raise ValueError("pair fixture requires an id different from other")
+        mods_fixture.build(args.dst, args.mods_id, "match", args.src, child_env=child_env)
+        mods_fixture.build(args.dst, "other", "variant", args.src, child_env=child_env)
+    else:
+        mods_fixture.build(args.dst, args.mods_id, args.mods_fixture, args.src, child_env=child_env)
+
+
 def link_or_copy(src, dst, is_dir):
     """Share `src` into the lane without copying it: a symlink when the account may create one
     (Developer Mode or an elevated shell), else the two NTFS links that need NO privilege -- a
@@ -443,7 +487,7 @@ def link_or_copy(src, dst, is_dir):
         why = e.strerror or e
     try:
         if is_dir:
-            import _winapi  # noqa: PLC0415 -- Windows-only, and only on this fallback path
+            import _winapi
 
             _winapi.CreateJunction(os.path.abspath(src), os.path.abspath(dst))
         else:
@@ -580,7 +624,7 @@ def tame_dgvoodoo(conf):
         f.writelines(out)
 
 
-def main():
+def main(argv=None, *, child_env=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -693,8 +737,43 @@ def main():
         "simulating it with a key; the `module_absent` suite scenario is `--omit-satellite "
         "mh_net.dll`. Repeatable. Refuses a name the lane would not have deployed anyway.",
     )
-    args = ap.parse_args()
-    import lane_alloc  # noqa: PLC0415 -- stdlib-only; the ceiling is the DLL's (MHMu%03d)
+    ap.add_argument(
+        "--maps-only",
+        nargs="+",
+        default=[],
+        metavar="FILE",
+        help="mods:MAPGEN1: give the lane its OWN Maps directory holding ONLY these .mpm files "
+        "(copied), so the lobby's default map is the first of them. Wins over --map-variant.",
+    )
+    ap.add_argument(
+        "--mods-fixture",
+        choices=("match", "variant", "full-match", "full-variant", "pair")
+        + mods_fixture.CFG_MODES
+        + mods_fixture.TILESET_MODES,
+        default=None,
+        help="DATAEXT1: give this lane its OWN mods/<id>/ fixture (tools/mods_fixture.py), built "
+        "from an ordinary info\\*.txt text member unpacked out of THIS install's packs at provision "
+        "time. 'match' writes the payload verbatim; 'variant' changes its last ASCII letter, "
+        "preserving the text encoding, BOM and size, so two peers enabling the same id hash DIFFERENT "
+        "content without ever changing a byte the menu or loader renders. Copied, never linked; "
+        "nothing committed. Config fixtures use cfg-a/cfg-b, cfg-invalid-* or cfg-pair "
+        "(A, B and invalid later mods in one lane); cfg-gameplay-fast keeps only A/campaign "
+        "with shorter real building durations and faster Academy production. A lane without "
+        "the flag has no mods dir at all (the stock snapshot).",
+    )
+    ap.add_argument(
+        "--mods-id",
+        default="fixture",
+        help="the mod folder id --mods-fixture builds (ASCII [a-z0-9_-], 1..32; must match the "
+        "peers' [mods] enabled= line).",
+    )
+    ap.add_argument(
+        "--mods-empty-maps",
+        action="store_true",
+        help="use a private empty Maps directory for the mod picker fixture",
+    )
+    args = ap.parse_args(argv)
+    import lane_alloc
 
     if not 0 <= args.lane <= lane_alloc.LANE_MAX:
         ap.error(
@@ -751,10 +830,10 @@ def main():
     # two concurrent boots, and with concurrent runners in separate processes only the writer
     # itself can serialise it.
     with boot_lock("provision:%s" % os.path.basename(args.dst)):
-        return _provision(args)
+        return _provision(args, child_env=child_env)
 
 
-def _provision(args):
+def _provision(args, *, child_env=None):
     if os.path.isdir(args.dst):
         # This deletes the previous run's logs too, and that is SAFE only because ui_test.py
         # archives a dead peer's text logs to tmp/ui_test/postmortem/ the moment it sees the death
@@ -832,10 +911,18 @@ def _provision(args):
     for name in LINKED_DIRS:
         s = os.path.join(args.src, name)
         if os.path.isdir(s):
-            if name == "Maps" and args.map_variant:
+            if name == "Maps" and args.mods_empty_maps:
+                os.makedirs(os.path.join(args.dst, name), exist_ok=True)
+            elif name == "Maps" and getattr(args, "maps_only", None):
+                provision_maps_only(os.path.join(args.dst, name), args.maps_only)
+            elif name == "Maps" and args.map_variant:
                 provision_maps_with_variant(s, os.path.join(args.dst, name), args.map_variant)
             else:
                 link_or_copy(s, os.path.join(args.dst, name), True)
+
+    # DATAEXT1: the per-lane mod fixture, after the linked dirs -- mods/ is this lane's OWN copy.
+    if getattr(args, "mods_fixture", None):
+        provision_mods_fixture(args, child_env=child_env)
 
     if args.headless and args.backend == "system":
         tame_dgvoodoo(os.path.join(args.dst, "dgVoodoo.conf"))

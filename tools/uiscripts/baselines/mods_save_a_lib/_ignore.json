@@ -1,0 +1,13 @@
+{
+  "_why": "This row asserts actual native save/provenance, not a fixed new-campaign terrain or presentation-clock phase. The current saved frame differs in the unpinned world, while the complete sidebar region below is identical. Existing structural judgement requires a real textured strategic frame and matching HUD; check_mod_save_runtime remains mandatory for successful save and exact mounted A digest/identity. This does not cover Auto or target-stroke assertions.",
+  "_structural": {
+    "capture_dx_save_a.png": {
+      "ref": "capture_dx_save_a.png",
+      "view_rect": [0, 0, 480, 448],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [480, 250, 160, 198],
+      "hud_tol": 0.10
+    }
+  }
+}

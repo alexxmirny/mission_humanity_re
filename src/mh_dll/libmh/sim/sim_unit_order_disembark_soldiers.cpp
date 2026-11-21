@@ -1,6 +1,6 @@
 //
 // sim/sim_unit_order_disembark_soldiers.cpp -- see sim_unit_order_disembark_soldiers.h. Translated
-// from the DISASSEMBLY (tmp/decomp/llm_unit_order_disembark_soldiers_0046e76c.asm).
+// from the DISASSEMBLY (tmp/decomp/llm_unit_order_squad_split_0046e76c.asm).
 //
 #include "sim/sim_unit_order_disembark_soldiers.h"
 

@@ -217,8 +217,13 @@ void group_issue_enter_building_order(const sim_view &v, const group_issue_order
 // ---- the public wrappers ---------------------------------------------------------------------------
 
 void group_issue_attack_order(uint32_t param_1, uint32_t player, uint16_t selector) {
-    sim_state st = state();
+    static constexpr int32_t no_args[13]{};
+    sim_state                st = state();
+    mh::state::emit_order_observation(
+        LIBMH_EVK_ATTACK_GROUP_BEGIN, 0, static_cast<uint16_t>(param_1),
+        static_cast<uint16_t>(player), 0, selector, no_args);
     detail::group_issue_attack_order(st.read, live_group_issue_orders_calls(), param_1, player, selector);
+    mh::state::emit_order_observation(LIBMH_EVK_ATTACK_GROUP_END, 0, 0, 0, 0, 0, no_args);
 }
 
 void group_issue_enter_building_order(uint32_t param_1, uint32_t param_2, uint32_t param_3) {

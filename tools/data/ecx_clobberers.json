@@ -16,7 +16,7 @@
     "Functions on __stdcall / __cdecl / __mhfastocall are EXCLUDED by construction: those models kill",
     "ECX already, and forcing a __watcall-derived model onto them would change parameter passing."
   ],
-  "generated_from": "tmp/reg_preservation.json",
+  "generated_from": "input:reg_preservation.json",
   "count": 229,
   "functions": [
     {

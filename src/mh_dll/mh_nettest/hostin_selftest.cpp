@@ -24,6 +24,7 @@
 //
 #include "../libmh/state/host_bind.h" // libmh_bind_regions / libmh_bound_count -- the open's gate
 #include "../libmh/state/host_in.h"
+#include "storage_policy_fixture.h"
 
 #include <cstdio>
 #include <cstring>
@@ -75,12 +76,24 @@ int run_hostintest() {
                "not exercised in this run\n");
     }
 
-    // Answer for every region with the stock table. In this process those bases are mh.exe's .bss
-    // addresses and nothing is mapped there -- which is fine and is the reason no arm below calls
-    // an entry that forwards. What the bind buys is a legal open.
+    // Stock defaults cannot answer the native owner's binding. No forwarding is exercised here.
+    mh::state::unrebase(mh::state::RID_STORAGE_POLICY);
+    mh::state::unrebase(mh::state::RID_ORDER_TASKS);
+    mh::state::unrebase(mh::state::RID_ORDER_CAMPAIGN);
     mh::state::bind_stock();
-    ck(libmh_bound_count() == (int)libmh_region_count(),
-       "the stock bind answers for every region (the open's precondition)");
+    ck(libmh_in_open(LIBMH_HOST_IN_VERSION) == LIBMH_IN_E_STATE,
+       "stock binding alone leaves native state unanswered and refuses open");
+    uint8_t                 policy[mh::storage_policy::HEADER_BYTES];
+    uint8_t                 tasks[mh::order_tasks::HEADER_BYTES];
+    uint8_t                 campaign[mh::order_tasks::campaign_state::BYTES];
+    const libmh_region_bind native[] = {
+        {static_cast<uint32_t>(mh::state::RID_STORAGE_POLICY), policy, sizeof(policy), 0},
+        {static_cast<uint32_t>(mh::state::RID_ORDER_TASKS), tasks, sizeof(tasks), 0},
+        {static_cast<uint32_t>(mh::state::RID_ORDER_CAMPAIGN), campaign, sizeof(campaign), 0}};
+    for (const auto &binding : native)
+        if (!mh::test::initialize_canonical_native(static_cast<mh::state::region_id>(binding.region_id),
+                                                   binding.base, binding.size)) return 1;
+    if (libmh_bind_regions(native, 3) != 3) return 1;
 
     // ---- version handshake -------------------------------------------------------------------
     ck(libmh_in_open(LIBMH_HOST_IN_VERSION + 1) == LIBMH_IN_E_CLOSED,
@@ -196,6 +209,9 @@ int run_hostintest() {
            "every entry id resolves to a libmh_-prefixed name (the walk's naming source)");
     }
 
+    mh::state::unrebase(mh::state::RID_STORAGE_POLICY);
+    mh::state::unrebase(mh::state::RID_ORDER_TASKS);
+    mh::state::unrebase(mh::state::RID_ORDER_CAMPAIGN);
     printf("hostintest: %d checks, %d failures\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

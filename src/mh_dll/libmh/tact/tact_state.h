@@ -94,6 +94,7 @@
 #include "addr/mh_regions.gen.h"
 #include "addr/mh_structs.gen.h"
 #include "state/mode_planes.h"
+#include "include/mh_order_tasks_host.h"
 
 namespace mh::tact {
 
@@ -610,6 +611,11 @@ public:
     // llm_tact_mission_end_return_to_strategic as one of the accepted cross-writers of this
     // canonical mode flag -- shared by design, not a misattribution). llm_tact_mission_end_return_
     // to_strategic (TACT1A) is this closure's sole writer, setting it back to 2 (strategic) on exit.
+    int32_t order_tasks_request(const mh_order_tasks_request &request, mh_order_tasks_result &result) {
+        result = {};
+        return order_tasks_observer_ ? order_tasks_observer_(&request, &result) : 0;
+    }
+    bool     has_order_tasks_observer() const { return order_tasks_observer_ != nullptr; }
     uint8_t &game_mode() { return *game_mode_; }
     // RID_G_PLANET_STATUS -- E_PLANET_STATUS[32] (Ghidra enum, /Manual/game/E_PLANET_STATUS:
     // UNKNOWN=0, VISITED=1, CONQUERED=2, INVASION=4), indexed by planet. region_ownership.json's
@@ -1062,12 +1068,13 @@ private:
     uint8_t **tile_vis_map_ptr_;
     uint8_t **los_cache_ptr_;
 
-    int32_t *sidebar_unassigned_scroll_row_;
-    int32_t *sidebar_group_scroll_row_;
-    uint8_t *unassigned_unit_roster_;
-    uint8_t *group_unit_roster_;
-    uint8_t *mouse_buttons_cur_;
-    wchar_t *text_scratch_;
+    int32_t                *sidebar_unassigned_scroll_row_;
+    int32_t                *sidebar_group_scroll_row_;
+    uint8_t                *unassigned_unit_roster_;
+    uint8_t                *group_unit_roster_;
+    uint8_t                *mouse_buttons_cur_;
+    wchar_t                *text_scratch_;
+    mh_order_tasks_callback order_tasks_observer_ = nullptr;
 };
 
 struct tact_state {

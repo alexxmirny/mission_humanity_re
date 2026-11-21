@@ -9,7 +9,7 @@
 //!
 //! * The FIRST `[section]` header wins (case-insensitive, whitespace inside the brackets trimmed) and
 //!   the first `key=` line inside it wins (case-insensitive, key trimmed). This is what
-//!   `GetPrivateProfileString` does, so a later duplicate is dead text and is never rewritten.
+//!   `GetPrivateProfileString` does; ordinary value edits never rewrite later duplicates.
 //! * Only the value bytes change. A value is the text after `=` up to the first `;` (the same cut
 //!   `mh::config::strip_ini_comment` makes in the DLL), trimmed. Whitespace around `=` and the
 //!   trailing `; comment` stay exactly as they were.
@@ -19,15 +19,17 @@
 //!   file without a final newline keeps not having one.
 //! * Only keys whose value actually differs are touched, so an Apply of an unchanged page is a
 //!   byte-for-byte no-op and the file's mtime does not move.
+//! * Retired managed-key removals remove all occurrences, preserving inline comments and unrelated bytes.
 
 use std::path::{Path, PathBuf};
 
-/// One requested change: set `[section] key = value`.
+/// One requested managed-key value edit or removal.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Edit {
     pub section: String,
     pub key: String,
     pub value: String,
+    pub remove: bool,
 }
 
 impl Edit {
@@ -36,6 +38,16 @@ impl Edit {
             section: section.to_string(),
             key: key.to_string(),
             value: value.to_string(),
+            remove: false,
+        }
+    }
+
+    pub fn remove(section: &str, key: &str) -> Self {
+        Self {
+            section: section.to_string(),
+            key: key.to_string(),
+            value: String::new(),
+            remove: true,
         }
     }
 }
@@ -255,15 +267,53 @@ fn apply_one(bytes: &[u8], edit: &Edit) -> Vec<u8> {
     out
 }
 
+/// Remove a managed key from every matching section, including dead duplicates.
+/// Keep unrelated bytes and preserve an inline comment as a standalone comment.
+fn remove_key(bytes: &[u8], section: &str, key: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut in_section = false;
+
+    for (index, raw) in bytes.split_inclusive(|byte| *byte == b'\n').enumerate() {
+        let (line, terminator) = split_terminator(raw);
+        if let Some(header) = header_name(line, index == 0) {
+            in_section = header.eq_ignore_ascii_case(section.as_bytes());
+            out.extend_from_slice(raw);
+            continue;
+        }
+
+        if in_section {
+            if let Some(parsed) = key_line(line) {
+                if line[parsed.key.0..parsed.key.1].eq_ignore_ascii_case(key.as_bytes()) {
+                    if let Some(offset) =
+                        line[parsed.value.1..].iter().position(|byte| *byte == b';')
+                    {
+                        let comment = parsed.value.1 + offset;
+                        out.extend_from_slice(&line[..parsed.key.0]);
+                        out.extend_from_slice(&line[comment..]);
+                        out.extend_from_slice(terminator);
+                    }
+                    continue;
+                }
+            }
+        }
+
+        out.extend_from_slice(raw);
+    }
+    out
+}
 /// Apply `edits` to `existing` (or to nothing). Only edits whose value differs from what the file
 /// already says are made; the rest are skipped, so equal input gives byte-identical output.
 pub fn apply_edits(existing: Option<&[u8]>, edits: &[Edit]) -> Vec<u8> {
     let mut cur: Vec<u8> = existing.map(<[u8]>::to_vec).unwrap_or_default();
-    for e in edits {
-        if read_value(&cur, &e.section, &e.key).as_deref() == Some(e.value.as_str()) {
+    for edit in edits {
+        if edit.remove {
+            cur = remove_key(&cur, &edit.section, &edit.key);
             continue;
         }
-        cur = apply_one(&cur, e);
+        if read_value(&cur, &edit.section, &edit.key).as_deref() == Some(edit.value.as_str()) {
+            continue;
+        }
+        cur = apply_one(&cur, edit);
     }
     cur
 }
@@ -465,5 +515,58 @@ mod tests {
         let e2 = [Edit::new("video", "window", "windowed")];
         assert_eq!(apply_file(&path, &e2).unwrap(), Change::Written);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn retired_key_removal_preserves_comments_and_removes_dead_duplicates() {
+        let before = b"\xEF\xBB\xBF; heading\r\n\
+[keys]\r\n\
+  role_queue = Shift ; keep this note\r\n\
+role_queue=Alt\r\n\
+other = exact ; unrelated\r\n\
+[keys]\r\n\
+ROLE_QUEUE=Ctrl\r\n\
+[unknown]\r\n\
+role_queue=opaque\r\n";
+        let after = apply_edits(Some(before), &[Edit::remove("keys", "role_queue")]);
+        assert_eq!(
+            after,
+            b"\xEF\xBB\xBF; heading\r\n\
+[keys]\r\n\
+  ; keep this note\r\n\
+other = exact ; unrelated\r\n\
+[keys]\r\n\
+[unknown]\r\n\
+role_queue=opaque\r\n"
+        );
+        assert_eq!(
+            apply_edits(Some(&after), &[Edit::remove("keys", "role_queue")]),
+            after
+        );
+    }
+
+    #[test]
+    fn canonical_slot_write_and_legacy_removal_share_one_edit_batch() {
+        let before = b"; keep\n[keys]\nchat_all_numpad=F3 ; old binding\nopaque=x\n";
+        let after = apply_edits(
+            Some(before),
+            &[
+                Edit::new("keys", "chat_all_2", "F3"),
+                Edit::new("keys", "bindings_version", "2"),
+                Edit::remove("keys", "chat_all_numpad"),
+            ],
+        );
+        assert_eq!(
+            read_value(&after, "keys", "chat_all_2").as_deref(),
+            Some("F3")
+        );
+        assert_eq!(
+            read_value(&after, "keys", "bindings_version").as_deref(),
+            Some("2")
+        );
+        assert_eq!(read_value(&after, "keys", "chat_all_numpad"), None);
+        let text = String::from_utf8(after).unwrap();
+        assert!(text.contains("; old binding\n"));
+        assert!(text.contains("opaque=x\n"));
+        assert!(text.starts_with("; keep\n"));
     }
 }

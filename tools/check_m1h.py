@@ -56,14 +56,31 @@ import shutil
 import sys
 import tempfile
 
+import tmp_runs
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HASH_DIR = os.path.join(REPO, "tmp", "m1h")
+HASH_DIR = None  # Bound to the enclosing row, never to a previous invocation.
 
 ORDERSUM = re.compile(
     r"; MV ORDERSUM ord=(\d+) goal=(-?\d+),(-?\d+) units=(\d+) arrived=(\d+) near=(\d+) stopped_short=(\d+) gave_up=(\d+) interrupted=(\d+) "
     r"dead=(\d+) t_first_arrive=(-?\d+) t_last_settle=(-?\d+) max_spread=(\d+) stalls=(\d+)"
 )
-OS_FIELDS = "ord goal_x goal_y units arrived near stopped_short gave_up interrupted dead t_first t_last spread stalls".split()
+OS_FIELDS = [
+    "ord",
+    "goal_x",
+    "goal_y",
+    "units",
+    "arrived",
+    "near",
+    "stopped_short",
+    "gave_up",
+    "interrupted",
+    "dead",
+    "t_first",
+    "t_last",
+    "spread",
+    "stalls",
+]
 HITS = re.compile(r"; move hits (.*)$")
 TWIN = re.compile(r"; move twin hits (\w+)=(\d+)")
 CARRIER = re.compile(r"; move carrier \[net\] (\w+)=(-?\d+): (.*)$")
@@ -85,8 +102,25 @@ FC_V = re.compile(
 DR_T = re.compile(
     r"; DR TOTAL steps=(-?\d+) n=(\d+) docked=(\d+) giveups=(\d+) closes=(\d+) firstdock=(-?\d+) lastdock=(-?\d+) eff=(-?\d+)"
 )
-DR_FIELDS = "steps n docked giveups closes firstdock lastdock eff".split()
-FC_FIELDS = "case steps n tiles straight moved maxtiles maxcheb dup maxratio onwall idle bw bh rigid lastmove".split()
+DR_FIELDS = ["steps", "n", "docked", "giveups", "closes", "firstdock", "lastdock", "eff"]
+FC_FIELDS = [
+    "case",
+    "steps",
+    "n",
+    "tiles",
+    "straight",
+    "moved",
+    "maxtiles",
+    "maxcheb",
+    "dup",
+    "maxratio",
+    "onwall",
+    "idle",
+    "bw",
+    "bh",
+    "rigid",
+    "lastmove",
+]
 HASHLN = re.compile(r"^(\d+) ([0-9A-F]{16}) ([0-9A-F]{16}) ([0-9A-F]{16})\s*$")
 
 # hit name -> the key whose carrier line must be there (and whose splice/twin it counts)
@@ -342,7 +376,22 @@ def nd_verdict(f, case, k):
         if r[0] == "V" and r[1] == case and r[2] == k:
             return dict(
                 zip(
-                    "case k unit x y gx gy arrived tiles replans wait maxretry state".split(), r[1:]
+                    [
+                        "case",
+                        "k",
+                        "unit",
+                        "x",
+                        "y",
+                        "gx",
+                        "gy",
+                        "arrived",
+                        "tiles",
+                        "replans",
+                        "wait",
+                        "maxretry",
+                        "state",
+                    ],
+                    r[1:],
                 )
             )
     return None
@@ -1683,6 +1732,11 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser()
+    global HASH_DIR
+    ap.add_argument(
+        "--work-dir",
+        help="Explicit shared directory for manual comparisons; defaults to the owned row",
+    )
     ap.add_argument("--case", choices=sorted(CASES))
     ap.add_argument("--arm", choices=["ship", "orig", "lib", "off", "mixed"])
     ap.add_argument("--selftest", action="store_true")
@@ -1705,6 +1759,7 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    HASH_DIR = a.work_dir or tmp_runs.current_output("m1h")
     if a.hash_cmp:
         return hash_cmp(*a.hash_cmp)
     if a.mp:

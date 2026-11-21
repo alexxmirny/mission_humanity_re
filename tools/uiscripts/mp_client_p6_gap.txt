@@ -38,7 +38,6 @@ absent Network players
 # window under test is exactly what keeps this peer able to reach this line at all once the host has
 # already left lockstep.
 gameclock 6000
-capture m3_launched
 log CLIENT is in the match
 screen 0x00653dc3
 capture client_lost

@@ -1,3 +1,4 @@
+#include "seams/strategic_input.h"
 //
 // seams/ui_net_indicator.cpp -- mp:L1: the player-visible connection indicator.
 //
@@ -119,16 +120,16 @@
 #include <cstring>
 
 #include "seams/ui_net_indicator.h"
-#include "include/mh_net_export.h"     // MH_Net_GetStats / IsStarted / PeerCount / LocalPlayerId
-#include "addr/mh_addrs.gen.h"         // generated EN VAs
-#include "addr/mh_calls.gen.h"         // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
-#include "config/ini_read.h"           // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "include/mh_config_dir.h"     // RL3: <config dir>mh_net.ini
-#include "state/region_runtime.h"      // SB-HOSTFREE: a movable region is read where it IS
-#include "include/mh_tile_dirty.h"     // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
-#include "include/mh_uidrive_export.h" // MH_UIDrive_SynthKeyDown -- the `hotkey` verb's chord (mp:GX1)
-#include "en_guard.h"                  // EN-only build gate
-#include "ui/player_strings.h"         // mods:LANG4: the words on the indicator are table rows
+#include "seams/lobby_speed.h"
+#include "include/mh_net_export.h" // MH_Net_GetStats / IsStarted / PeerCount / LocalPlayerId
+#include "addr/mh_addrs.gen.h"     // generated EN VAs
+#include "addr/mh_calls.gen.h"     // mh::call::llm_gfx_font_select / llm_gfx_draw_text_rgb
+#include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "include/mh_config_dir.h" // RL3: <config dir>mh_net.ini
+#include "state/region_runtime.h"  // SB-HOSTFREE: a movable region is read where it IS
+#include "include/mh_tile_dirty.h" // mp:GX1: mark_ground_tiles_dirty -- shared with gfx_overlay.cpp
+#include "en_guard.h"              // EN-only build gate
+#include "ui/player_strings.h"     // mods:LANG4: the words on the indicator are table rows
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -281,15 +282,12 @@ int live_peer_slot(int nth) {
 }
 
 // ---- knobs (mh_net.ini `[hud]`) -----------------------------------------------------------------
-bool               g_enabled  = false;       // [hud] net_indicator      -- armed at all
-bool               g_visible  = true;        // ...flipped by the hotkey; the indicator is ON but hidden
-int                g_x        = GEOM_MARGIN; // effective draw position: the L1d-computed one
-int                g_y        = GEOM_MARGIN;
-constexpr int      g_font     = 0;       // game font slot 0 = FONTY08, the in-game HUD face
-constexpr uint16_t g_color    = 0xffffu; // RGB565 white
-int                g_key_vk   = 'N';     // [hud] net_indicator_key
-bool               g_key_ctrl = true, g_key_alt = true, g_key_shift = false;
-bool               g_key_prev = false;
+bool               g_enabled = false;       // [hud] net_indicator      -- armed at all
+bool               g_visible = true;        // ...flipped by the hotkey; the indicator is ON but hidden
+int                g_x       = GEOM_MARGIN; // effective draw position: the L1d-computed one
+int                g_y       = GEOM_MARGIN;
+constexpr int      g_font    = 0;       // game font slot 0 = FONTY08, the in-game HUD face
+constexpr uint16_t g_color   = 0xffffu; // RGB565 white
 
 // ---- mp:GX1: the ground-tile damage-map stamp -----------------------------------------------------
 //
@@ -391,66 +389,6 @@ void draw_line(int y, const wchar_t *text) {
     mh::call::llm_gfx_draw_text_rgb(g_x, y, (uint16_t *)w, r, g, b);
 }
 
-// ---- ini parsing ---------------------------------------------------------------------------------
-int parse_int(const char *s) {
-    int sign = 1, v = 0;
-    while (*s == ' ' || *s == '\t') ++s;
-    if (*s == '-') {
-        sign = -1;
-        ++s;
-    }
-    for (; *s >= '0' && *s <= '9'; ++s) v = v * 10 + (*s - '0');
-    return v * sign;
-}
-
-// `Ctrl+Alt+N`, `Shift+F9`, `N`, or empty/`none` for no hotkey. Deliberately a SMALL grammar: a
-// modifier list plus one letter, digit or function key. The debug overlay carries the general
-// version; duplicating it here would be a second parser to keep in step with the first.
-void parse_key(const char *s) {
-    g_key_ctrl = g_key_alt = g_key_shift = false;
-    g_key_vk                             = 0;
-    while (*s == ' ' || *s == '\t') ++s;
-    if (!*s) return;
-    if ((s[0] == 'n' || s[0] == 'N') && (s[1] == 'o' || s[1] == 'O')) return; // none
-    for (;;) {
-        if (_strnicmp(s, "ctrl+", 5) == 0) {
-            g_key_ctrl = true;
-            s += 5;
-        } else if (_strnicmp(s, "alt+", 4) == 0) {
-            g_key_alt = true;
-            s += 4;
-        } else if (_strnicmp(s, "shift+", 6) == 0) {
-            g_key_shift = true;
-            s += 6;
-        } else {
-            break;
-        }
-    }
-    if ((s[0] == 'f' || s[0] == 'F') && s[1] >= '1' && s[1] <= '9') {
-        const int n = parse_int(s + 1);
-        if (n >= 1 && n <= 12) g_key_vk = VK_F1 + n - 1;
-        return;
-    }
-    if ((s[0] >= 'a' && s[0] <= 'z')) g_key_vk = s[0] - 'a' + 'A';
-    else if ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= '0' && s[0] <= '9')) g_key_vk = s[0];
-}
-
-// HELD = the OS says so OR the UI harness is synthesising it -- gfx_overlay.cpp's vk_held, for the
-// same reason: GetAsyncKeyState reads 0 on a headless lane's isolated desktop, so without the second
-// arm the suite could never toggle this readout (found by mp:GX1's rig row, Wave 2 2026-09-23).
-bool vk_held(int vk) {
-    return (GetAsyncKeyState(vk) & 0x8000) != 0 || MH_UIDrive_SynthKeyDown(vk) != 0;
-}
-
-bool hotkey_edge() {
-    if (!g_key_vk) return false;
-    const bool down = vk_held(g_key_vk) && (!g_key_ctrl || vk_held(VK_CONTROL)) &&
-                      (!g_key_alt || vk_held(VK_MENU)) && (!g_key_shift || vk_held(VK_SHIFT));
-    const bool edge = down && !g_key_prev;
-    g_key_prev      = down;
-    return edge;
-}
-
 void ind_log(const char *fmt, ...) {
     char    line[288];
     va_list ap;
@@ -484,9 +422,6 @@ extern "C" int MH_NetIndicator_Install(void) {
     g_enabled = mh_ini_get_int("hud", "net_indicator", 1, ini) != 0;
     if (!g_enabled) return 0;
 
-    char buf[96];
-    mh::config::read_ini_string("hud", "net_indicator_key", "Ctrl+Alt+N", buf, sizeof(buf), ini); // TL-HARN4
-    parse_key(buf);
     g_visible          = true;
     g_next_sample_tick = GetTickCount();
     return 1;
@@ -506,6 +441,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         armed = true;
         MH_NetIndicator_Install();
     }
+    const bool toggle_requested = mh::seams::strategic_input::take_network_indicator_toggle();
     if (!g_enabled) return;
     // SOLO DRAWS NOTHING, and it is this branch rather than a hidden element: a single-player game
     // is not session mode 3 and has no started transport.
@@ -521,7 +457,7 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
         }
         return;
     }
-    if (hotkey_edge()) g_visible = !g_visible;
+    if (toggle_requested) g_visible = !g_visible;
 
     // The stall message is a MEASUREMENT, not a drawing: keep taking it while hidden so the log (and
     // a player's bug report) still carries who the match was waiting for.
@@ -558,6 +494,13 @@ extern "C" void MH_NetIndicator_OnPresent(void) {
     long step_ms = ms_of(ADDR_SIM_STEP_INT());
     if (look_ms < 0) look_ms = 0;
     if (step_ms < 0) step_ms = 0;
+    double native_speed;
+    memcpy(&native_speed, (const void *)mh::addr::game_speed, sizeof(native_speed));
+    const double speed = mh::seams::lobby_speed::effective_scalar(native_speed);
+    if (speed != 1.0) {
+        look_ms = (long)mh::seams::lobby_speed::game_to_wall((double)look_ms, speed);
+        step_ms = (long)mh::seams::lobby_speed::game_to_wall((double)step_ms, speed);
+    }
     long cmd_ms = look_ms + step_ms;
     if (cmd_ms > 9999) cmd_ms = 9999;
 

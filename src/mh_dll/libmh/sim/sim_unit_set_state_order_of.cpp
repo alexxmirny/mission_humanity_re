@@ -7,6 +7,7 @@
 // both turned out correct.
 //
 #include "sim/sim_unit_set_state_order_of.h"
+#include "state/host_events.h"
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -40,6 +41,8 @@ void unit_set_state_order_of(sim_store &own, int32_t player, int32_t unit_index,
 void unit_set_state_order_of(int32_t player, int32_t unit_index, int16_t state, int16_t param) {
     sim_state st = mh::sim::state();
     detail::unit_set_state_order_of(st.own, player, unit_index, state, param);
+    mh::state::emit_primary_terminal(static_cast<uint32_t>(player),
+                                     static_cast<uint32_t>(unit_index), static_cast<uint16_t>(state));
 }
 
 

@@ -11,11 +11,10 @@
 // [ebp-0x38] holds `len`, as llm_net_lockstep_dispatch's does).
 //
 // The datagram is U19g's: a bare MSG_HORIZON whose byte[6] is 0xff (so a clobbered parse lands in
-// handle_garbled), then the sender's own CTL_PLAYER_LEFT. The CONTROL arm calls the fake emitter the
-// way the unpatched original does -- straight, no thunk -- and shows the U19e damage: the head of the
-// datagram is the kick's record. The CARRIER arm shows the same emit leaving the datagram
-// byte-identical. Together those are the both-ways claim; the lockstest arm then owns what the
-// parse does with each buffer.
+// handle_garbled), then the sender's own CTL_PLAYER_LEFT. The CONTROL arm uses the same thunk with
+// restoration disabled and shows the U19e damage. The CARRIER arm shows the same emit leaving the
+// datagram byte-identical. Both exercise the real diagnostic helpers without permitting them to
+// alter the emitter's registers/flags. The lockstest arm owns parsing each resulting buffer.
 //
 #include "seams/gone_peer_guard.h"
 
@@ -67,6 +66,7 @@ __declspec(naked) void fake_kick() {
         add  esp, 4
         popad
         mov  eax, 0xdeadbeef
+        stc                         // diagnostics must preserve the emitter's return flags too
         ret
     }
 }
@@ -75,6 +75,7 @@ __declspec(naked) void fake_kick() {
 // ---- a fake llm_net_lockstep_dispatch frame, and the call the splice makes ------------------------
 uint32_t g_frame[32];
 uint32_t g_regs_out[4]; // ebx, esi, edi, edx after the call
+uint32_t g_eax_out, g_flags_out;
 
 // C4731 is the point: the call is made with EBP pointing at a FAKE dispatch frame, restored after.
 #pragma warning(push)
@@ -100,6 +101,9 @@ void call_site(void (*target)(), int32_t side_id, uint32_t len) {
         mov  edi, 0x33333333
         mov  edx, 0x44444444
         call ecx
+        pushfd
+        pop  dword ptr [g_flags_out]
+        mov  g_eax_out, eax
         pop  ebp
         mov  g_regs_out[0], ebx
         mov  g_regs_out[4], esi
@@ -115,7 +119,7 @@ void call_site(void (*target)(), int32_t side_id, uint32_t len) {
 
 bool regs_intact() {
     return g_regs_out[0] == 0x11111111u && g_regs_out[1] == 0x22222222u && g_regs_out[2] == 0x33333333u &&
-           g_regs_out[3] == 0x44444444u;
+           g_regs_out[3] == 0x44444444u && g_eax_out == 0xdeadbeefu && (g_flags_out & 1u) != 0;
 }
 
 } // namespace
@@ -148,21 +152,25 @@ int run_gpfgtest() {
         g_kick_side   = 0;
         g_kick_saw_dg = false;
     };
-    uint8_t *const  save_buf  = gpg::g_buf;
-    const uintptr_t save_kick = gpg::g_kick;
-    gpg::g_buf                = buf;
-    gpg::g_kick               = (uintptr_t)&fake_kick;
+    uint8_t *const  save_buf     = gpg::g_buf;
+    const uintptr_t save_kick    = gpg::g_kick;
+    const bool      save_enabled = gpg::g_enabled;
+    gpg::g_buf                   = buf;
+    gpg::g_kick                  = (uintptr_t)&fake_kick;
 
-    // ---- (2) CONTROL: what the unpatched original does -- the call straight to the emitter ------
+    // ---- (2) CONTROL: unprotected native emitter, through the real diagnostic path --------------
     reset();
-    call_site(&fake_kick, 101, dlen);
+    gpg::g_enabled = false;
+    call_site(&gpg::thunk, 101, dlen);
     ck(g_kick_calls == 1 && g_kick_side == 101, "control: the kick fires for the gone sender");
     ck(memcmp(buf, dg, sizeof(dg)) != 0, "control: the datagram is DAMAGED (U19e) -- this is the bug");
     ck(buf[0] == 4 && buf[1] == 10 && buf[6] == 0xff,
        "control: head = the kick's own record, byte 6 = the horizon's 0xff (the rig's garbled shape)");
+    ck(regs_intact(), "control: diagnostics preserve the emitter's return registers and carry flag");
 
     // ---- (3) CARRIER: the same emit through the thunk -----------------------------------------
     reset();
+    gpg::g_enabled        = true;
     const unsigned fires0 = gpg::g_fires;
     call_site(&gpg::thunk, 101, dlen);
     ck(g_kick_calls == 1 && g_kick_side == 101, "carrier: the kick still fires, once, for the same side_id");
@@ -189,9 +197,10 @@ int run_gpfgtest() {
     ck(memcmp(buf, dg, sizeof(dg)) == 0 && buf[gpg::CAPACITY - 1] == 0xcd,
        "clamp: the whole CAPACITY restored, nothing written past it");
 
-    gpg::g_buf  = save_buf;
-    gpg::g_kick = save_kick;
-    g_target    = nullptr;
+    gpg::g_buf     = save_buf;
+    gpg::g_kick    = save_kick;
+    gpg::g_enabled = save_enabled;
+    g_target       = nullptr;
     printf("=== gpfgtest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails ? 1 : 0;
 }

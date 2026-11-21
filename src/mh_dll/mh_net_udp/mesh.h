@@ -32,11 +32,11 @@ namespace mh {
 namespace netudp {
 namespace mesh {
 
-constexpr int      MAXP         = 8;      // == osq::ORIGINS == MH_NET_MAX_PEERS: player ids 0..7
-constexpr uint16_t NONE         = 0xFFFF; // an unmeasured edge / leg
-constexpr int      MAX_CANDS    = 4;      // addresses brokered per peer (the punch path's is 8; 4 bounds the probe fan-out)
-constexpr int      MAX_FRAME    = 1024;   // every control frame here is far below the transport's 2048
-constexpr uint8_t  FRAME_EXTRA  = 0;      // reserved
+constexpr int      MAXP        = 8;      // == osq::ORIGINS == MH_NET_MAX_PEERS: player ids 0..7
+constexpr uint16_t NONE        = 0xFFFF; // an unmeasured edge / leg
+constexpr int      MAX_CANDS   = 4;      // addresses brokered per peer (the punch path's is 8; 4 bounds the probe fan-out)
+constexpr int      MAX_FRAME   = 1024;   // every control frame here is far below the transport's 2048
+constexpr uint8_t  FRAME_EXTRA = 0;      // reserved
 
 // ---- the five FLAG_MESH frame kinds (first payload byte) ---------------------------------------------
 enum Kind : uint8_t {
@@ -134,7 +134,7 @@ inline void coverage(const Matrix &M, uint32_t S, int *have, int *total) {
 
 // FNV-1a 32 over exactly what elect() and coverage() read, for the members of S in ascending id order.
 inline uint32_t digest(const Matrix &M, uint32_t S) {
-    uint32_t h = 2166136261u;
+    uint32_t h   = 2166136261u;
     auto     mix = [&](uint32_t b) {
         h ^= (b & 0xffu);
         h *= 16777619u;
@@ -168,15 +168,18 @@ inline uint32_t digest(const Matrix &M, uint32_t S) {
 // When SOME but not all candidates are tier 1 the rest follow them, shortest known leg first then
 // lowest id (a candidate some peer cannot probe is a poor hub, but it is still a candidate of last resort).
 // `rank[0..n)` is the whole of S in preference order; the result depends on nothing but (M, S).
-enum Tier : uint8_t { TIER_NONE = 0, TIER_DIRECT = 1, TIER_RELAY = 2, TIER_ID = 3 };
+enum Tier : uint8_t { TIER_NONE   = 0,
+                      TIER_DIRECT = 1,
+                      TIER_RELAY  = 2,
+                      TIER_ID     = 3 };
 
 struct Election {
-    int      n;           // |S|
-    uint8_t  rank[MAXP];  // player ids, best first
-    uint32_t cost[MAXP];  // per rank slot: tier-1 cost in dms (0xFFFFFFFF where not tier 1)
-    uint32_t sum[MAXP];   // per rank slot: tier-1 sum in dms
-    uint8_t  tier;        // the tier rank[0] was chosen in (TIER_NONE when S is empty)
-    int      winner;      // rank[0], -1 when S is empty
+    int      n;          // |S|
+    uint8_t  rank[MAXP]; // player ids, best first
+    uint32_t cost[MAXP]; // per rank slot: tier-1 cost in dms (0xFFFFFFFF where not tier 1)
+    uint32_t sum[MAXP];  // per rank slot: tier-1 sum in dms
+    uint8_t  tier;       // the tier rank[0] was chosen in (TIER_NONE when S is empty)
+    int      winner;     // rank[0], -1 when S is empty
 };
 
 inline void elect(const Matrix &M, uint32_t S, Election &out) {
@@ -263,8 +266,14 @@ inline void elect(const Matrix &M, uint32_t S, Election &out) {
 }
 
 // ---- byte helpers -------------------------------------------------------------------------------------
-inline void     put16(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
-inline void     put32(uint8_t *p, uint32_t v) { put16(p, v); put16(p + 2, v >> 16); }
+inline void put16(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+}
+inline void put32(uint8_t *p, uint32_t v) {
+    put16(p, v);
+    put16(p + 2, v >> 16);
+}
 inline uint32_t get16(const uint8_t *p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8); }
 inline uint32_t get32(const uint8_t *p) { return get16(p) | (get16(p + 2) << 16); }
 
@@ -301,7 +310,7 @@ inline int cand_frame_encode(bool relayed, const CandList &c, uint8_t *out, int 
 }
 inline bool cand_frame_decode(const uint8_t *in, int len, bool &relayed, CandList &c) {
     if (len < 3 || in[0] != MK_CAND) return false;
-    relayed = (in[1] & 1) != 0;
+    relayed     = (in[1] & 1) != 0;
     const int k = cands_decode(in + 2, len - 2, c);
     return k != 0 && 2 + k == len;
 }
@@ -390,7 +399,7 @@ inline bool row_decode(const uint8_t *in, int len, Row &r) {
         r.rtt[i] = (uint16_t)get16(in + o);
         o += 2;
     }
-    r.leg     = (uint16_t)get16(in + o);
+    r.leg = (uint16_t)get16(in + o);
     o += 2;
     r.relayed = (in[o] & 1) != 0;
     return true;
@@ -460,8 +469,8 @@ inline int epoch_encode(const Epoch &e, uint8_t *out, int cap) {
 inline bool epoch_decode(const uint8_t *in, int len, Epoch &e) {
     e = Epoch();
     if (len < 14 || in[0] != MK_EPOCH) return false;
-    int o    = 1;
-    e.epoch  = get32(in + o);
+    int o   = 1;
+    e.epoch = get32(in + o);
     o += 4;
     e.digest = get32(in + o);
     o += 4;
@@ -506,7 +515,7 @@ inline bool epoch_decode(const uint8_t *in, int len, Epoch &e) {
 
 // ---- MK_ACK: kind | epoch(4) | digest(4) ----------------------------------------------------------------
 constexpr int ACK_BYTES = 9;
-inline void ack_encode(uint32_t epoch, uint32_t dig, uint8_t out[ACK_BYTES]) {
+inline void   ack_encode(uint32_t epoch, uint32_t dig, uint8_t out[ACK_BYTES]) {
     out[0] = MK_ACK;
     put32(out + 1, epoch);
     put32(out + 5, dig);
@@ -594,7 +603,7 @@ inline bool leaving_decode(const uint8_t *in, int len, Leaving &l) {
 }
 constexpr int     LEAVE_ACK_BYTES = 7;
 constexpr uint8_t LA_SUCCESSOR    = 1;
-inline void leave_ack_encode(uint32_t epoch, uint8_t gen, uint8_t flags, uint8_t out[LEAVE_ACK_BYTES]) {
+inline void       leave_ack_encode(uint32_t epoch, uint8_t gen, uint8_t flags, uint8_t out[LEAVE_ACK_BYTES]) {
     out[0] = MK_LEAVE_ACK;
     put32(out + 1, epoch);
     out[5] = gen;
@@ -638,11 +647,25 @@ constexpr int     PROBE_BODY = 8;
 //   PR_FO_REDIRECT "not me -- ask `arg` instead": the answer of a non-hub candidate that can still reach a
 //                  better-ranked candidate (plan 5.3 rule 2), or that already follows a hub.
 constexpr uint8_t PR_FO_STATE = 3, PR_FO_REDIRECT = 4;
-constexpr int     FO_BODY    = 13;
+constexpr int     FO_BODY     = 13;
 constexpr uint8_t FOF_SUSPECT = 1; // "my hub has been silent for T_suspect"
 constexpr uint8_t FOF_HUB     = 2; // "I am the hub now" (rehomed as the hub)
 constexpr uint8_t FOF_REPLY   = 4; // an answer to a FO_STATE: never answered in turn (no ping-pong)
 constexpr uint8_t FO_NONE_ARG = 0xFF;
+
+// Loss evidence names the failed hub, not the sender's current role. Adjacent
+// held epochs may describe the same hub; a different loss must not corroborate it.
+constexpr uint8_t FOF_LOSS_TAG = 0x08, FOF_LOSS_HUB_MASK = 0x70;
+inline uint8_t    fo_loss_flags(uint8_t hub) {
+    return (uint8_t)(FOF_SUSPECT | FOF_LOSS_TAG | ((hub & 7u) << 4));
+}
+inline bool fo_loss_matches(uint8_t flags, uint32_t epoch, const Epoch &held) {
+    if ((flags & (FOF_SUSPECT | FOF_LOSS_TAG)) != (FOF_SUSPECT | FOF_LOSS_TAG) ||
+        ((flags & FOF_LOSS_HUB_MASK) >> 4) != held.hub || !epoch || !held.epoch)
+        return false;
+    const uint32_t distance = epoch > held.epoch ? epoch - held.epoch : held.epoch - epoch;
+    return distance <= 1;
+}
 
 struct ProbeKeys {
     uint8_t cid[8];
@@ -712,19 +735,19 @@ inline bool fo_body_decode(const uint8_t *in, int len, uint8_t &kind, int &from,
 }
 
 // Timing (plan section 2 and 5.2; every figure is [U] until the rig has said otherwise).
-constexpr uint32_t FO_SUSPECT_MIN_MS = 2000; // T_suspect's floor: two missed 1 Hz pings
-constexpr uint32_t FO_CORROB_MS      = 1000; // a peer that already hears "hub silent" from another survivor suspects at this much silence
-constexpr uint32_t FO_STATE_MS       = 250;  // FO_STATE cadence while a failover runs
-constexpr uint32_t FO_FRESH_MS       = 1500; // a FO_STATE / probe / echo younger than this proves the peer is alive and reachable
-constexpr uint32_t FO_DEAD_MS        = 1000; // a candidate silent this long after corroboration is dead TO ME (four unanswered FO_STATEs)
-constexpr uint32_t FO_REDIAL_MS      = 1500; // how long one candidate is dialled (split over its addresses) before the next
-constexpr uint32_t FO_QUORUM_MS      = 6000; // the new hub waits this long for its roster to re-dial before it judges the quorum
-constexpr uint32_t FO_ISOLATED_MS    = 5000; // mp:U64: a RELAYED survivor whose own relay leg has been dead this long is alone (a group of 1)
+constexpr uint32_t FO_SUSPECT_MIN_MS = 2000;  // T_suspect's floor: two missed 1 Hz pings
+constexpr uint32_t FO_CORROB_MS      = 1000;  // a peer that already hears "hub silent" from another survivor suspects at this much silence
+constexpr uint32_t FO_STATE_MS       = 250;   // FO_STATE cadence while a failover runs
+constexpr uint32_t FO_FRESH_MS       = 1500;  // a FO_STATE / probe / echo younger than this proves the peer is alive and reachable
+constexpr uint32_t FO_DEAD_MS        = 1000;  // a candidate silent this long after corroboration is dead TO ME (four unanswered FO_STATEs)
+constexpr uint32_t FO_REDIAL_MS      = 1500;  // how long one candidate is dialled (split over its addresses) before the next
+constexpr uint32_t FO_QUORUM_MS      = 6000;  // the new hub waits this long for its roster to re-dial before it judges the quorum
+constexpr uint32_t FO_ISOLATED_MS    = 5000;  // mp:U64: a RELAYED survivor whose own relay leg has been dead this long is alone (a group of 1)
 constexpr uint32_t FO_BUDGET_MS      = 20000; // the whole failover is bounded: past this a true partition ends (U55's path)
 
 // T_suspect = max(2000 ms, 4 x SRTT + 4 x RTTVAR) of the hub link (plan section 2).
 inline uint32_t fo_suspect_ms(double srtt_ms, double rttvar_ms) {
-    const double t = 4.0 * srtt_ms + 4.0 * rttvar_ms;
+    const double   t = 4.0 * srtt_ms + 4.0 * rttvar_ms;
     const uint32_t v = t > 60000.0 ? 60000u : (t < 0.0 ? 0u : (uint32_t)t);
     return v > FO_SUSPECT_MIN_MS ? v : FO_SUSPECT_MIN_MS;
 }
@@ -760,9 +783,9 @@ inline int fo_next_candidate(const uint8_t *rank, int n, uint32_t skip) {
 // Pure, so the selftest can drive it. `cur_cost`/`new_cost` are tier-1 costs in dms of the CURRENT
 // epoch's winner under the CURRENT matrix and of the new winner; a switch must beat the incumbent by
 // more than 20 % AND more than 10 ms (100 dms).
-constexpr uint32_t REELECT_MS    = 10000; // how often the host re-evaluates
+constexpr uint32_t REELECT_MS     = 10000; // how often the host re-evaluates
 constexpr uint32_t MIN_PUBLISH_MS = 30000; // at most one hysteresis-driven epoch per this
-inline bool beats_incumbent(uint32_t cur_cost, uint32_t new_cost) {
+inline bool        beats_incumbent(uint32_t cur_cost, uint32_t new_cost) {
     if (cur_cost == 0xFFFFFFFFu) return new_cost != 0xFFFFFFFFu; // the incumbent became unusable
     if (new_cost >= cur_cost) return false;
     const uint32_t gain = cur_cost - new_cost;

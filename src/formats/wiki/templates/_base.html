@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} - {{ S.site }}</title>
+<link rel="stylesheet" href="{{ R }}assets/site.css">
+<script src="{{ R }}assets/site.js" defer></script>
+{% block head %}{% endblock %}
+</head>
+<body data-lang-root="{{ L }}" data-root="{{ R }}" data-nores="{{ S.no_results }}">
+<header class="top">
+  <a class="brand" href="{{ L }}index.html">{{ S.site }}</a>
+  <nav>{% for label, href in c.nav() %}<a href="{{ href }}">{{ label }}</a>{% endfor %}</nav>
+  <div class="search"><input id="q" type="search" placeholder="{{ S.search }}" aria-label="{{ S.search }}" autocomplete="off"><ul id="qres" hidden></ul></div>
+  <div class="langs">{% for code, label, href in c.lang_links() %}{% if href %}<a href="{{ href }}" hreflang="{{ code }}">{{ label }}</a>{% else %}<b>{{ label }}</b>{% endif %}{% endfor %}</div>
+</header>
+<main>
+{% block body %}{% endblock %}
+</main>
+<footer>{{ S.footer }}</footer>
+</body>
+</html>

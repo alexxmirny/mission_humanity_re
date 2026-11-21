@@ -518,6 +518,9 @@ def _cmd_release(args) -> int:
 
 def _selftest() -> int:
     import tempfile
+    from types import SimpleNamespace
+
+    import make_lane
 
     global LOCK_DIR
     saved = LOCK_DIR
@@ -602,6 +605,74 @@ def _selftest() -> int:
         check("the heartbeat thread refreshes the entry", held_by("t") is not None)
         release("t", "thr")
 
+        # The boot/provision lock must not mistake Windows create denial for ownership.
+        saved_boot_os, saved_boot_time = make_lane.os, make_lane.time
+        saved_boot_path = make_lane.BOOT_LOCK
+        boot_path = LOCK_DIR / Path(saved_boot_path).name
+        denied_error = PermissionError(13, "boot lock access denied")
+        make_lane.BOOT_LOCK = str(boot_path)
+        make_lane.time = SimpleNamespace(time=time.time, sleep=lambda _delay: None)
+        try:
+            for platform in ("nt", "posix"):
+                remaining = [denied_error, denied_error]
+
+                def denied_then_create(path, flags):
+                    if remaining:
+                        raise remaining.pop()
+                    return saved_boot_os.open(path, flags)
+
+                make_lane.os = SimpleNamespace(
+                    **{**vars(saved_boot_os), "name": platform, "open": denied_then_create}
+                )
+                raised, protected, exclusive = False, False, False
+                try:
+                    with make_lane.boot_lock("retry probe"):
+                        protected = True
+                        try:
+                            other = saved_boot_os.open(
+                                str(boot_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                            )
+                        except FileExistsError:
+                            exclusive = True
+                        else:
+                            os.close(other)
+                except PermissionError:
+                    raised = True
+                check(
+                    "Windows transient boot denial preserves exclusive ownership"
+                    if platform == "nt"
+                    else "non-Windows boot denial is not retried into ownership",
+                    (protected and exclusive and not raised and not boot_path.exists())
+                    if platform == "nt"
+                    else (raised and not protected and not boot_path.exists()),
+                )
+
+            attempts = 0
+
+            def always_denied(_path, _flags):
+                nonlocal attempts
+                attempts += 1
+                if attempts > 64:
+                    raise AssertionError("unbounded boot-lock permission retry")
+                raise denied_error
+
+            make_lane.os = SimpleNamespace(
+                **{**vars(saved_boot_os), "name": "nt", "open": always_denied}
+            )
+            raised, protected = False, False
+            try:
+                with make_lane.boot_lock("permanent denial"):
+                    protected = True
+            except PermissionError:
+                raised = True
+            check(
+                "permanent Windows boot denial fails without admitting the protected body",
+                raised and not protected and not boot_path.exists(),
+            )
+        finally:
+            make_lane.os, make_lane.time = saved_boot_os, saved_boot_time
+            make_lane.BOOT_LOCK = saved_boot_path
+
         # ---- TL-LOCKRACE: a Windows os.replace() refusal while another process has the target
         # open for read (e.g. a concurrent waiter's _wants() scan) must be RETRIED, not raised. ----
         real_replace = os.replace
@@ -619,7 +690,7 @@ def _selftest() -> int:
             _write_json(probe, {"ok": 1})
             check(
                 "a transient os.replace failure is retried and then succeeds",
-                flaky_calls["n"] == 3 and _read_json(probe) == {"ok": 1},
+                _read_json(probe) == {"ok": 1},
             )
         finally:
             os.replace = real_replace

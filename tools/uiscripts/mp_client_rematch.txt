@@ -49,9 +49,16 @@ settled Join game
 clickl Join game
 present Network players
 # tell the host we are really in our lobby (its `awaitsignal lobby`), not merely connected
-signal lobby
 settled Cancel
+occ 2
+click 501 366
+lobbypage 1
+settled Cancel
+click 501 366
+lobbypage 2
+lobbyspeed 200
 capture host_rematch__q1_lobby_game1
+signal lobby
 
 # ---- the match, then END it ----------------------------------------------------------------------
 absent Network players
@@ -99,6 +106,7 @@ clickl Join game
 present Network players
 occ 2
 settled Cancel
+lobbyspeed 100
 capture host_rematch__q2_rejoined_after_match
 # ---- game 2: the rematch itself --------------------------------------------------------------------
 # The host presses Start only after we have captured the lobby (`awaitsignal rejoined` on its side).

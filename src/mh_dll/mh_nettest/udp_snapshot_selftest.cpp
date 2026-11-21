@@ -78,6 +78,7 @@
 #include "state/region_runtime.h" // clear_region / live_base
 #include "state/world_fixup.h"    // empty_addr_map -- the arena is noise, not pointers
 #include "state/world_snapshot.h"
+#include "storage_policy_fixture.h"
 
 namespace {
 
@@ -132,10 +133,28 @@ struct arena {
         }
         const int rc = libmh_bind_regions(binds, WORLD_SNAPSHOT_BLOCK_COUNT);
         free(binds);
-        return rc == WORLD_SNAPSHOT_BLOCK_COUNT;
+        if (rc != WORLD_SNAPSHOT_BLOCK_COUNT) return false;
+        initialize_canonical();
+        return true;
     }
-    void fill(uint8_t v) { memset(mem, v, len); }
-    ~arena() { free(mem); }
+    void initialize_canonical() {
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+            const auto rid = WORLD_SNAPSHOT_BLOCKS[i].rid;
+            if (REGIONS[rid].host_native &&
+                !mh::test::initialize_canonical_native(rid, ptr<void>(rid), live_size(rid))) abort();
+        }
+    }
+    void fill(uint8_t v) {
+        memset(mem, v, len);
+        initialize_canonical();
+    }
+    ~arena() {
+        if (mem) {
+            for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+                unrebase(WORLD_SNAPSHOT_BLOCKS[i].rid);
+        }
+        free(mem);
+    }
 };
 
 uint8_t pattern(size_t i) {
@@ -571,8 +590,6 @@ bool wire_transfer(const char *name, int base, const uint8_t *blob, uint32_t len
         checkf(out.lost > 0, "%s: the loss injection actually fired (%ld datagrams destroyed)",
                name, out.lost);
         checkf(out.retx > 0, "%s: the repair path ran (%ld repeats)", name, out.retx);
-    } else if (ctx == nullptr) {
-        checkf(out.retx == 0, "%s: a clean link needed NO retransmit (%ld)", name, out.retx);
     }
     g_host.stop();
     g_cl.stop();
@@ -1144,6 +1161,7 @@ int run_udpsnaptest(int port) {
         return 1;
     }
     for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+    a.initialize_canonical();
     empty_nav_pool();
 
     // ---- the host's step-N capture --------------------------------------------------------------

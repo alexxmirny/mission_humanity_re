@@ -33,6 +33,7 @@
 #include <windows.h>
 #include <initializer_list>
 #include <new>
+#include <mutex>
 #include <string>
 #include <stdarg.h>
 #include <stdio.h>
@@ -80,9 +81,55 @@ const unsigned char TEST_PSK[32] = {0x4d, 0x48, 0x6d, 0x65, 0x73, 0x68, 0x74, 0x
 // mp:U63 -- the per-endpoint "hub elected" lines (the failover arms compare them across survivors). `ctx` is the
 // endpoint's index in g_e[], or null for an arm that does not record.
 std::vector<std::string> g_elected[8];
+std::mutex               g_elected_mutex;
 void                     ep_log(void *ctx, const char *line) {
-    if (ctx && strstr(line, "hub elected ")) g_elected[*(int *)ctx & 7].push_back(line);
-    if (getenv("MH_UDP_LOOPBACK_VERBOSE")) printf("    | %s\n", line);
+    if (ctx && strstr(line, "hub elected ")) {
+        const std::lock_guard<std::mutex> held(g_elected_mutex);
+        g_elected[*(int *)ctx & 7].push_back(line);
+    }
+    if (getenv("MH_UDP_LOOPBACK_VERBOSE")) printf("    | peer %d: %s\n", ctx ? *(int *)ctx : -1, line);
+}
+struct ElectionObservation {
+    unsigned count  = 0;
+    int      hub    = -1;
+    unsigned epoch  = 0;
+    bool     parsed = false;
+};
+ElectionObservation observe_election(int peer) {
+    const std::lock_guard<std::mutex> held(g_elected_mutex);
+    const auto                       &events = g_elected[peer & 7];
+    ElectionObservation               result;
+    result.count = static_cast<unsigned>(events.size());
+    if (!events.empty())
+        result.parsed = sscanf(strstr(events.back().c_str(), "hub elected "), "hub elected %d epoch %u", &result.hub, &result.epoch) == 2;
+    return result;
+}
+void reset_elections() {
+    const std::lock_guard<std::mutex> held(g_elected_mutex);
+    for (auto &events : g_elected) events.clear();
+}
+bool completed_once(const Endpoint::HubStatus &s, int hub) {
+    // DONE re-arms to IDLE after three real seconds. Completion is durable;
+    // FAILED/MINORITY, a wrong winner and any second change still refuse.
+    return s.changes == 1 && s.hub_id == hub &&
+           (s.failover == Endpoint::FO_DONE || s.failover == Endpoint::FO_IDLE);
+}
+void test_completion_observer() {
+    Endpoint::HubStatus s{};
+    s.changes  = 1;
+    s.hub_id   = 2;
+    s.failover = Endpoint::FO_DONE;
+    check("completion observer: DONE is complete", completed_once(s, 2));
+    s.failover = Endpoint::FO_IDLE;
+    check("completion observer: rearmed IDLE retains completion", completed_once(s, 2));
+    s.failover = Endpoint::FO_FAILED;
+    check("completion observer: FAILED is not completion", !completed_once(s, 2));
+    s.failover = Endpoint::FO_MINORITY;
+    check("completion observer: MINORITY is not completion", !completed_once(s, 2));
+    s.failover = Endpoint::FO_IDLE;
+    check("completion observer: wrong winner refuses", !completed_once(s, 1));
+    s.changes = 2;
+    check("completion observer: second change refuses", !completed_once(s, 2));
 }
 
 template <class Pred>
@@ -1075,8 +1122,89 @@ void relay_arm(int base) {
     tear_down(a);
 }
 
+// ORDERSEQ: force-entry skips UI JOIN, including declared-ID mode (no WELCOME).
+// These are real endpoints. A token/ACK must agree before the receiver publishes
+// IDs, hands off a control, queues task 0xfe or accepts channel-C data.
+void generation_control(void *ctx, uint16_t flags, int, const unsigned char *, int) {
+    if (flags == mh_net_proto::FLAG_JOIN || flags == mh_net_proto::FLAG_START ||
+        flags == mh_net_proto::FLAG_SESSION_INFO)
+        InterlockedIncrement(static_cast<volatile LONG *>(ctx));
+}
+void task_generation_arm(int base) {
+    // TOKEN's one-byte capability is separate from GAME_GENERATION.
+    static_assert(mh::netudp::osq::CAP_VERSION < 255, "future capability must fit on the wire");
+    for (int secure = 0; secure < 2; ++secure) {
+        for (int sender = 0; sender < 2; ++sender) {
+            // sender 0 forges the host's ACK, sender 1 the client's TOKEN.
+            for (int kind = 0; kind < 5; ++kind) {
+                for (int i = 0; i < 2; ++i) new (&g_e[i]) Endpoint();
+                Config ch, cc;
+                fill_cfg(ch, 0, base, (unsigned short)base, false, -1);
+                fill_cfg(cc, 1, base, (unsigned short)(base + 1), false, -1);
+                ch.net.host_assign = cc.net.host_assign = 0;
+                volatile LONG mutations                 = 0;
+                g_e[0].set_ctrl(generation_control, (void *)&mutations);
+                g_e[1].set_ctrl(generation_control, (void *)&mutations);
+                g_e[0].set_log(ep_log, nullptr);
+                g_e[1].set_log(ep_log, nullptr);
+                if (kind < 2) g_e[sender].mesh_test_cap(kind == 0 ? mh::netudp::osq::CAP_VERSION - 1 : mh::netudp::osq::CAP_VERSION + 1);
+                else g_e[sender].game_test_handshake_shape(kind - 1); // omitted/trailing/suppressed
+                const bool up = g_e[0].start(ch, TEST_PSK, secure != 0) && g_e[1].start(cc, TEST_PSK, secure != 0);
+                check("force-entry generation endpoints start", up);
+                const int receiver = 1 - sender;
+                bool      refused  = false;
+                if (kind != 4) {
+                    refused = wait_for([&] { return g_e[receiver].osq_counters().legacy_refused > 0; }, 3000);
+                    check("old/future/omitted/trailing TOKEN or ACK is actually refused", refused);
+                } else {
+                    // An ACK suppressed at the sender never reaches capability
+                    // validation, but the client must remain unadmitted throughout.
+                    Sleep(300);
+                }
+                const unsigned char unsupported[] = {0xfe, 1, 2, 3};
+                g_e[sender].send_ctrl(mh_net_proto::FLAG_JOIN, unsupported, sizeof(unsupported));
+                g_e[sender].send_ctrl(mh_net_proto::FLAG_START, unsupported, sizeof(unsupported));
+                g_e[sender].send_ctrl(mh_net_proto::FLAG_SESSION_INFO, unsupported, sizeof(unsupported));
+                g_e[sender].send(MH_NET_BROADCAST, unsupported, sizeof(unsupported));
+                Sleep(100);
+                int           from = -1, n = 32;
+                unsigned char bytes[32];
+                check("refusal leaves receiver peers/control/game queues untouched",
+                      g_e[receiver].peer_count() == 0 && mutations == 0 && !g_e[receiver].recv(&from, bytes, &n));
+                g_e[1].stop();
+                g_e[0].stop();
+            }
+        }
+        // Positive no-WELCOME path proves the mandatory token gate is not merely
+        // disabling every force-entry connection.
+        for (int i = 0; i < 2; ++i) new (&g_e[i]) Endpoint();
+        Config ch, cc;
+        fill_cfg(ch, 0, base, (unsigned short)base, false, -1);
+        fill_cfg(cc, 1, base, (unsigned short)(base + 1), false, -1);
+        ch.net.host_assign = cc.net.host_assign = 0;
+        check("current force-entry endpoints start", g_e[0].start(ch, TEST_PSK, secure != 0) && g_e[1].start(cc, TEST_PSK, secure != 0));
+        check("current capability admits both directions without a UI JOIN or assigned-ID WELCOME", wait_for([&] {
+                  return g_e[0].peer_count() == 1 && g_e[1].peer_count() == 1;
+              },
+                                                                                                             3000));
+        const unsigned char payload[] = {0xfe, 9, 9};
+        g_e[1].send(0, payload, sizeof(payload));
+        int           from = -1, n = 32;
+        unsigned char bytes[32];
+        check("current force-entry task bytes reach only the admitted endpoint", wait_for([&] {
+                                                                                     n = sizeof(bytes);
+                                                                                     return g_e[0].recv(&from, bytes, &n) != 0;
+                                                                                 },
+                                                                                          3000) &&
+                                                                                     n == sizeof(payload) && memcmp(bytes, payload, sizeof(payload)) == 0);
+        g_e[1].stop();
+        g_e[0].stop();
+    }
+}
+
 // ---- D4: the capability gate -------------------------------------------------------------------------------
 void legacy_arm(int base) {
+    task_generation_arm(base);
     printf("  -- D. the capability gate (a pre-mesh build -- the U59/U60 capability byte -- is refused at join)\n");
     {
         Arm a{};
@@ -1089,11 +1217,11 @@ void legacy_arm(int base) {
         fill_cfg(cc, 1, base, (unsigned short)(base + 1), false, -1);
         g_e[0].set_log(ep_log, nullptr);
         g_e[1].set_log(ep_log, nullptr);
-        g_e[1].mesh_test_cap(1); // an old CLIENT: HELLO carries capability 1
+        g_e[1].mesh_test_cap(1); // an old CLIENT: TOKEN carries capability1
         g_e[0].start(ch, TEST_PSK, true);
         g_e[1].start(cc, TEST_PSK, true);
         const bool refused = wait_for([&] { return g_e[0].osq_counters().legacy_refused > 0; }, 6000);
-        checkf(refused, "a client whose HELLO carries capability 1 (a U59/U60 build) is refused by the host");
+        checkf(refused, "a client carrying capability1 is refused by the host");
         Sleep(150);
         check("...and holds no seat", g_e[0].peer_count() == 0);
         g_e[1].stop();
@@ -1106,11 +1234,11 @@ void legacy_arm(int base) {
         fill_cfg(cc, 1, base + 2, (unsigned short)(base + 3), false, -1);
         g_e[0].set_log(ep_log, nullptr);
         g_e[1].set_log(ep_log, nullptr);
-        g_e[0].mesh_test_cap(1); // an old HOST: WELCOME carries capability 1
+        g_e[0].mesh_test_cap(1); // an old HOST: TOKEN_ACK carries capability1
         g_e[0].start(ch, TEST_PSK, true);
         g_e[1].start(cc, TEST_PSK, true);
         const bool refused = wait_for([&] { return g_e[1].osq_counters().legacy_refused > 0; }, 6000);
-        checkf(refused, "a host whose WELCOME carries capability 1 is refused by the client");
+        checkf(refused, "a host carrying capability1 is refused by the client");
         g_e[1].stop();
         g_e[0].stop();
     }
@@ -1127,7 +1255,7 @@ void legacy_arm(int base) {
         g_e[0].start(ch, TEST_PSK, true);
         g_e[1].start(cc, TEST_PSK, true);
         const bool refused = wait_for([&] { return g_e[0].osq_counters().legacy_refused > 0; }, 6000);
-        checkf(refused, "a client whose HELLO carries capability 2 (a U61/U62 build) is refused by the host (mp:U63)");
+        checkf(refused, "a client carrying capability2 is refused by the host");
         g_e[1].stop();
         g_e[0].stop();
     }
@@ -1317,6 +1445,16 @@ void test_fo_pure() {
           M::quorum_members(e, mask({2})) == mask({0, 1, 3}) && M::quorum_ok(M::quorum_members(e, mask({2})), mask({1, 3})) &&
               !M::quorum_ok(M::quorum_members(e, mask({2, 3})), mask({1})));
 
+    e.epoch            = 10;
+    const uint8_t loss = M::fo_loss_flags(e.hub);
+    check("late hub loss evidence corroborates the same failed hub", M::fo_loss_matches(loss | M::FOF_HUB, 10, e));
+    check("adjacent held epochs for the same failed hub corroborate", M::fo_loss_matches(loss, 9, e) && M::fo_loss_matches(loss, 11, e));
+    check("an older failover cannot corroborate the current loss", !M::fo_loss_matches(loss, 8, e) && !M::fo_loss_matches(loss, 12, e));
+    check("a different failed hub cannot corroborate even an adjacent epoch", !M::fo_loss_matches(M::fo_loss_flags(1), 11, e));
+    check("bare HUB or untagged suspicion is not scoped loss evidence",
+          !M::fo_loss_matches(M::FOF_HUB, 10, e) && !M::fo_loss_matches(M::FOF_SUSPECT, 10, e));
+    check("unset epochs are not evidence", !M::fo_loss_matches(loss, 0, e));
+
     const uint8_t rank[3] = {2, 1, 3};
     check("the walk takes the first live candidate", M::fo_next_candidate(rank, 3, 0) == 2);
     check("...skips a failed/dead one", M::fo_next_candidate(rank, 3, mask({2})) == 1);
@@ -1341,7 +1479,8 @@ void failover_arm(int clients, int base, int mode) {
                                "minority (even split) ends", "MUTATION: hub_migration=0", "lone survivor: the budget ends it",
                                "a MUTE first candidate (up, but nobody hears it): the second takes over, the mute one ends",
                                "ONE survivor loses its own link, the hub is alive: no corroboration, no failover (a flaky link must not hijack a live hub)",
-                               "a NON-hub client dies, the hub is alive: nobody suspects the hub, no failover"};
+                               "a NON-hub client dies, the hub is alive: nobody suspects the hub, no failover",
+                               "minority: second survivor hears the first only after rehome"};
     printf("  -- U63. %d-endpoint mesh, %s\n", clients + 1, NM[mode]);
     Arm a{};
     a.clients      = clients;
@@ -1349,7 +1488,7 @@ void failover_arm(int clients, int base, int mode) {
     a.rx_timeout   = -1;
     g_no_migration = (mode == 4);
     g_fo_budget    = (mode == 5) ? 6000 / kDiv : 0;
-    for (auto &v : g_elected) v.clear();
+    reset_elections();
     check("endpoints started", bring_up(a));
     for (int i = 0; i <= clients; ++i) g_e[i].set_in_match(true);
     const bool acked = wait_for([&] { return admitted(a) && all_acked(a); }, 9000);
@@ -1360,8 +1499,13 @@ void failover_arm(int clients, int base, int mode) {
         tear_down(a);
         return;
     }
-    uint32_t epoch0 = 0;
-    check("one epoch everywhere", same_epoch_settled(a, &epoch0));
+    uint32_t   epoch0 = 0;
+    const bool agreed = same_epoch_settled(a, &epoch0);
+    check("one epoch everywhere", agreed);
+    if (!agreed) {
+        tear_down(a);
+        return;
+    }
     const Endpoint::MeshStatus h0 = st(g_e[0]);
     int                        idx_of[8];
     for (int i = 0; i < 8; ++i) idx_of[i] = -1;
@@ -1373,8 +1517,15 @@ void failover_arm(int clients, int base, int mode) {
         g_e[1 + fi].fo_test_mute(true);
         g_e[1 + fi].mesh_test_no_probe(true);
     }
+    if (mode == 9) g_e[1 + fi].fo_test_mute_until_hub();
     uint32_t    dead   = 0; // survivors that are gone too
     const DWORD t_kill = GetTickCount();
+    if (mode == 9 && ti >= 0) {
+        // Retire the unrelated survivor while the original hub is still audible.
+        // It must not corroborate the later loss before its thread stops.
+        g_e[1 + ti].stop();
+        dead |= 1u << ti;
+    }
     if (mode == 8) g_e[2].stop();                    // a client's process is gone: the hub and the other client stay up
     else if (mode == 7) g_e[1].set_rx_loss(1000, 7); // client 0's receive path is dead: it hears neither the hub nor anyone
     else g_e[0].stop();                              // the hub's process is gone: no LEAVING, no DISCONNECT -- silence
@@ -1442,8 +1593,8 @@ void failover_arm(int clients, int base, int mode) {
         tear_down(a);
         return;
     }
-    if (mode == 3 || mode == 5) {
-        const int  want  = mode == 3 ? Endpoint::FO_MINORITY : Endpoint::FO_FAILED;
+    if (mode == 3 || mode == 5 || mode == 9) {
+        const int  want  = mode == 5 ? Endpoint::FO_FAILED : Endpoint::FO_MINORITY;
         const bool ended = wait_for(
             [&] {
                 for (int i = 0; i < clients; ++i) {
@@ -1454,15 +1605,31 @@ void failover_arm(int clients, int base, int mode) {
                 }
                 return true;
             },
-            mode == 3 ? 12000 : 14000);
-        checkf(ended, "every surviving side reports %s", mode == 3 ? "MINORITY (ends)" : "FAILED (budget)");
+            mode == 5 ? 14000 : 12000);
+        checkf(ended, "every surviving side reports %s", mode == 5 ? "FAILED (budget)" : "MINORITY (ends)");
         for (int i = 0; i < clients; ++i) {
             if (!live(i)) continue;
             Endpoint::HubStatus s;
             g_e[1 + i].hub_status(s);
+            if (!ended)
+                printf("    survivor %d id %d: phase %d expected %d group %d active %d changes %ld age %d\n",
+                       i, a.ids[i], s.failover, want, s.fo_group, (int)s.failover_active, s.changes, s.failover_ms);
             checkf(!s.failover_active, "survivor %d: the failover is over (the game's timers resume)", i);
             checkf(s.changes == 0, "survivor %d: no hub change happened", i);
-            if (mode == 3) checkf(s.fo_group == 2, "survivor %d counted a group of 2 (of 4 seated)", i);
+            if (mode == 3)
+                checkf(s.fo_group == 2, "survivor %d counted a group of 2 (of 4 seated), actual %d", i, s.fo_group);
+            else if (mode == 9)
+                checkf(s.fo_group > 0 && s.fo_group <= 2,
+                       "survivor %d id%d rank%s: local minority group%d phase%d role%d active%d changes%ld age%d",
+                       i, a.ids[i], i == fi ? "first" : "second", s.fo_group, s.failover, s.role,
+                       (int)s.failover_active, s.changes, s.failover_ms);
+        }
+        if (mode == 9) {
+            Endpoint::HubStatus first_status;
+            g_e[1 + fi].hub_status(first_status);
+            check("the muted first survivor really rehomed before its loss report", first_status.role == 0);
+            check("second survivor corroborated the matching old-hub loss from the already-rehomed first",
+                  g_e[1 + si].fo_test_corroborated_from_hub(first));
         }
         tear_down(a);
         return;
@@ -1492,10 +1659,10 @@ void failover_arm(int clients, int base, int mode) {
         else check("a survivor is a client of it, with the crash flag set", s.role == 1 && s.rehomed && s.change_crash && s.new_hub == winner);
         if (i != widx) checkf(s.old_hub == 0, "survivor %d records the crashed hub (player 0) as old (%d)", i, s.old_hub);
         // the SAME "hub elected <id> epoch <e>" line on every survivor
-        int        id   = -1;
-        unsigned   e    = 0;
-        const bool have = !g_elected[i + 1].empty() && sscanf(strstr(g_elected[i + 1].back().c_str(), "hub elected "), "hub elected %d epoch %u", &id, &e) == 2;
-        checkf(have && id == winner && e == epoch0, "survivor %d logged `hub elected %d epoch %u` (got %d / %u)", i, winner, (unsigned)epoch0, id, e);
+        const auto elected = observe_election(i + 1);
+        checkf(elected.parsed && elected.hub == winner && elected.epoch == epoch0,
+               "survivor %d logged `hub elected %d epoch %u` (got %d / %u)", i, winner,
+               (unsigned)epoch0, elected.hub, elected.epoch);
         const bool rdone = wait_for(
             [&] {
                 Endpoint::HubStatus t;
@@ -1609,7 +1776,7 @@ void u64_arm(int clients, int base, int mode) {
     a.clients    = clients;
     a.base       = base;
     a.rx_timeout = -1;
-    for (auto &v : g_elected) v.clear();
+    reset_elections();
     check("endpoints started", bring_up(a));
     for (int i = 0; i <= clients; ++i) g_e[i].set_in_match(true);
     const bool acked = wait_for([&] { return admitted(a) && all_acked(a); }, 9000);
@@ -1620,8 +1787,21 @@ void u64_arm(int clients, int base, int mode) {
     }
     uint32_t epoch0 = 0;
     check("one epoch everywhere", same_epoch_settled(a, &epoch0));
-    const Endpoint::MeshStatus h0    = st(g_e[0]);
-    const int                  first = h0.rank[0];
+    const Endpoint::MeshStatus h0             = st(g_e[0]);
+    const int                  first          = h0.rank[0];
+    auto                       dump_survivors = [&](const char *stage) {
+        for (int i = 1; i <= clients; ++i) {
+            Endpoint::HubStatus s;
+            g_e[i].hub_status(s); // release the endpoint lock before the diagnostic lock
+            const auto elected = observe_election(i);
+            printf("  FAIL-DETAIL U64 %s tick=%lu peer=%d role=%d hub=%d phase=%d changes=%u group=%u elections=%u last=%d/%u\n",
+                                         stage, GetTickCount(), i, (int)s.role, (int)s.hub_id, (int)s.failover,
+                                         (unsigned)s.changes, (unsigned)s.fo_group, elected.count, elected.hub, elected.epoch);
+            const std::lock_guard<std::mutex> held(g_elected_mutex);
+            for (const auto &line : g_elected[i])
+                printf("  FAIL-DETAIL U64 peer=%d election: %s\n", i, line.c_str());
+        }
+    };
     if (mode == 0) {
         for (int i = 1; i <= clients; ++i) block_between(base, 0, i, true);
         const bool settled = wait_for(
@@ -1629,12 +1809,13 @@ void u64_arm(int clients, int base, int mode) {
                 for (int i = 0; i < clients; ++i) {
                     Endpoint::HubStatus s;
                     g_e[1 + i].hub_status(s);
-                    if (s.changes < 1 || s.hub_id != first || s.failover != Endpoint::FO_DONE) return false;
+                    if (!completed_once(s, first) || observe_election(i + 1).count != 1) return false;
                 }
                 return true;
             },
             16000);
-        checkf(settled, "the three clients are DONE with the same elected hub (player %d), the old hub still alive", first);
+        checkf(settled, "the three clients completed one election with the same hub (player %d), the old hub still alive", first);
+        if (!settled) dump_survivors("partition convergence");
         Endpoint::HubStatus h;
         g_e[0].hub_status(h);
         check("the cut-off hub is untouched: still a hub, no hub change, no failover", h.role == 0 && h.changes == 0 && h.failover == Endpoint::FO_IDLE);
@@ -1647,8 +1828,8 @@ void u64_arm(int clients, int base, int mode) {
         for (int i = 0; i < clients; ++i) {
             Endpoint::HubStatus s;
             g_e[1 + i].hub_status(s);
-            calm &= s.changes == 1 && s.hub_id == first && s.failover != Endpoint::FO_SUSPECT && s.failover != Endpoint::FO_ELECT;
-            calm &= g_elected[i + 1].size() == 1;
+            calm &= completed_once(s, first);
+            calm &= observe_election(i + 1).count == 1;
         }
         check("after the heal: no survivor changed hub or failed over a second time", calm);
         got = flow_frames(a, 0, &want);
@@ -1694,23 +1875,51 @@ void u64_arm(int clients, int base, int mode) {
                 for (int i = 0; i < clients; ++i) {
                     Endpoint::HubStatus s;
                     g_e[1 + i].hub_status(s);
-                    if (s.changes < 1 || s.hub_id != first || s.failover != Endpoint::FO_DONE) return false;
+                    if (!completed_once(s, first) || observe_election(i + 1).count != 1) return false;
                 }
                 return true;
             },
             16000);
-        checkf(settled, "every survivor is DONE with the elected hub (player %d)%s", first, mode == 3 ? ", although a new process listens at the old hub's address" : "");
-        if (mode == 2) up = relaunch();
+        checkf(settled, "every survivor completed one election with hub (player %d)%s", first, mode == 3 ? ", although a new process listens at the old hub's address" : "");
+        if (!settled) {
+            dump_survivors("before relaunch");
+            tear_down(a);
+            return; // no derived claim about relaunch after failed initial convergence
+        }
+        if (mode == 2) {
+            const bool rearmed = wait_for([&] {
+                bool saw_rearmed_client = false;
+                for (int i = 1; i <= clients; ++i) {
+                    Endpoint::HubStatus s;
+                    g_e[i].hub_status(s);
+                    if (!completed_once(s, first) || observe_election(i).count != 1) return false;
+                    if (s.role == 1) {
+                        if (s.failover != Endpoint::FO_IDLE) return false;
+                        saw_rearmed_client = true;
+                    }
+                }
+                return saw_rearmed_client;
+            },
+                                          5000);
+            check("completed election survives the DONE-to-IDLE observer delay", rearmed);
+            if (!rearmed) {
+                dump_survivors("cooldown observer");
+                tear_down(a);
+                return;
+            }
+            up = relaunch();
+        }
         check("the old host's address is listening again (a new process)", up);
         Sleep(5000 / kDiv);
         bool calm = true;
         for (int i = 0; i < clients; ++i) {
             Endpoint::HubStatus s;
             g_e[1 + i].hub_status(s);
-            calm &= s.changes == 1 && s.hub_id == first && (s.failover == Endpoint::FO_DONE || s.failover == Endpoint::FO_IDLE); // DONE re-arms to IDLE after 3 s
-            calm &= g_elected[i + 1].size() == 1;
+            calm &= completed_once(s, first);
+            calm &= observe_election(i + 1).count == 1;
         }
         check("the survivors kept their hub: no second election, no hub change", calm);
+        if (!calm) dump_survivors("after relaunch");
         check("the relaunched host holds no peer", g_e[0].peer_count() == 0);
         int       want = 0;
         const int got  = flow_frames(a, 0, &want);
@@ -1754,10 +1963,9 @@ void rooms_stable_arm(int base) {
     tear_down(a);
 }
 
-// mp:U64 -- a hub that loses SEVERAL clients in the same watchdog pass (it is partitioned from all of them, or they all die) must
-// report EVERY one through take_dead_peer(); the latch was one slot and the earlier ids were overwritten, so the game removed only the
-// last and the sim stalled on a human nobody dropped (found by the 4-peer partition arm: the old hub took 57 s to end instead of 8).
-void dead_queue_arm(int base) {
+// Losing several clients must retain every death while the game is parked.
+// Reconnection cancels its own declaration, including after an earlier read.
+void dead_set_arm(int base) {
     printf("  -- U64. a hub that loses three clients at once reports all three dead peers\n");
     Arm a{};
     a.clients    = 3;
@@ -1768,14 +1976,14 @@ void dead_queue_arm(int base) {
     check("three clients admitted", acked);
     if (acked) {
         for (int i = 3; i >= 1; --i) g_e[i].stop();
-        uint32_t    seen = 0;
-        const DWORD t0   = GetTickCount();
-        while ((int)(GetTickCount() - t0) < 9000 && seen != 0x0e) {
-            const int d = g_e[0].take_dead_peer();
-            if (d >= 0 && d < 8) seen |= 1u << d;
-            else Sleep(20);
-        }
-        checkf(seen == 0x0e, "take_dead_peer reported players 1, 2 and 3 (mask %02x)", (unsigned)seen);
+        check("all three deaths remain observable",
+              wait_for([&] { return g_e[0].dead_peer_mask() == 0x0e; }, 9000));
+        check("reading does not consume a held death", g_e[0].dead_peer_mask() == 0x0e);
+        Config cc{};
+        fill_cfg(cc, 1, a.base, (unsigned short)(a.base + 1), false, a.rx_timeout);
+        check("the first survivor re-dials", g_e[1].start(cc, TEST_PSK, true));
+        check("accepted rejoin cancels only its already-read death",
+              wait_for([&] { return g_e[1].id_assigned() && g_e[0].dead_peer_mask() == 0x0c; }, 9000));
     }
     tear_down(a);
 }
@@ -1831,12 +2039,14 @@ int run_meshtest() {
     const DWORD t0 = GetTickCount();
     WSADATA     wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
+    test_completion_observer();
     // MH_MESHTEST_ONLY=fo runs just the U63 failover arms (iterating on them: ~70 s instead of ~2 min).
     const char *only    = getenv("MH_MESHTEST_ONLY");
     const bool  fo_only = only && strcmp(only, "fo") == 0;
     // MH_MESHTEST_ONLY=u64 runs just the mp:U64 arms .
-    const bool u64_only = only && strcmp(only, "u64") == 0;
-    if (!fo_only && !u64_only) {
+    const bool u64_only  = only && strcmp(only, "u64") == 0;
+    const bool late_only = only && strcmp(only, "fo_late") == 0;
+    if (!fo_only && !u64_only && !late_only) {
         test_delay_gate();
         test_elect_table();
         test_elect_fuzz();
@@ -1852,7 +2062,7 @@ int run_meshtest() {
         handover_arm(3, selftest_port(40260), 1);
         handover_arm(2, selftest_port(40280), 2);
     }
-    if (!u64_only) {
+    if (!u64_only && !late_only) {
         test_fo_pure();
         failover_arm(2, selftest_port(40300), 0);
         failover_arm(3, selftest_port(40320), 0);
@@ -1865,13 +2075,16 @@ int run_meshtest() {
         failover_arm(3, selftest_port(40460), 7);
         failover_arm(2, selftest_port(40480), 8); // mp:U58 shape: a silent NON-hub client must not read as hub loss
     }
-    u64_arm(3, selftest_port(40500), 0);      // mp:U64 -- the live hub partitioned from every client, then the heal
-    u64_arm(3, selftest_port(40520), 1);      // mp:U64 -- an even split: the far side ends as MINORITY on both members
-    u64_arm(3, selftest_port(40540), 2);      // mp:U64 -- the old host relaunches after the failover
-    u64_arm(3, selftest_port(40560), 3);      // mp:U64 -- ...and during it
-    isolated_relay_arm(selftest_port(40580)); // mp:U64 -- a relayed survivor with a dead relay leg
-    dead_queue_arm(selftest_port(40620));     // mp:U64 -- three clients lost in one pass are all reported
-    rooms_stable_arm(selftest_port(40600));   // mp:U64 -- relayed epochs keep each candidate's room
+    if (!u64_only) failover_arm(3, selftest_port(40640), 9);
+    if (!late_only) {
+        u64_arm(3, selftest_port(40500), 0);      // mp:U64 -- the live hub partitioned from every client, then the heal
+        u64_arm(3, selftest_port(40520), 1);      // mp:U64 -- an even split: the far side ends as MINORITY on both members
+        u64_arm(3, selftest_port(40540), 2);      // mp:U64 -- the old host relaunches after the failover
+        u64_arm(3, selftest_port(40560), 3);      // mp:U64 -- ...and during it
+        isolated_relay_arm(selftest_port(40580)); // mp:U64 -- a relayed survivor with a dead relay leg
+        dead_set_arm(selftest_port(40620));       // held deaths remain visible; rejoin cancels its own
+        rooms_stable_arm(selftest_port(40600));   // mp:U64 -- relayed epochs keep each candidate's room
+    }
     printf("=== meshtest: %d checks, %d failures, %u ms ===\n", g_checks, g_fails, (unsigned)(GetTickCount() - t0));
     return g_fails ? 1 : 0;
 }

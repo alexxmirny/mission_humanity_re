@@ -107,6 +107,9 @@ enum class point {
     snd_play,      // llm_snd_play                    -- [log] snd_trace: every sound request + its outcome
     snd_order_ack, // llm_strat_group_order_ack_voice -- [log] snd_trace: the move-ack cooldown branch
 
+    sim_step_post_ai,          // EN 0043f544: complete CMP instruction, before JZ/dispatch
+    sim_step_post_ai_observer, // the translated body
+
     count_
 };
 

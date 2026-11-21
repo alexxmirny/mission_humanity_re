@@ -10,7 +10,7 @@
     "mh_frametime.log": "per-PRESENT qpc_us + game mode -- what the player FEELS. Per SESSION.",
     "mh_temporal.log": "the per-EVENT temporal trace ([trace] temporal=1). Per SESSION; rotates at 64 MB.",
     "mh_harness.log": "the determinism/replay instrument's channel, held open and buffered by mh_harness.dll. Per PROCESS -- mh.dll composes the path once and the harness copies the string at init. Since mp:SES7 each MATCH also gets its own slice of it -- see mh_match_harness.log.",
-    "mh_match_harness.log": "mp:SES7: the harness's per-MATCH mirror of mh_harness.log -- every line written while a session is open, plus a `; [match] segment OPEN/CLOSE` header stating the step mapping. Per SESSION, composed inside mh_harness.dll from MH_RunDir(); not size-capped (each match file is written whole; the report packager budgets the compressed zip). Its siblings mh_match_orders.bin / mh_match_clock.bin / mh_match_seed.bin are the replay inputs on the match's own step axis. No tool parses it yet (mp_analyze reads mh_harness.log by exact name).",
+    "mh_match_harness.log": "mp:SES7: the harness's per-MATCH mirror of mh_harness.log, plus segment OPEN/CLOSE headers stating the process-step mapping. Per SESSION, owned by the full match ID and process directory; not size-capped. mp_analyze rebases these hashes and validates producer-owned FAILOVER-CLEANUP boundaries here. The sibling mh_match_orders.bin / mh_match_clock.bin / mh_match_seed.bin are replay inputs on that match's step axis.",
     "mh_uidrive.log": "the UI-automation channel the rig polls. Per PROCESS, necessarily: the runner discovers ONE directory at launch. Since mp:SES7 it carries `[mtrace]` rows ONLY when [uitest] enable=1 (check_cam_trace reads them here, interleaved with the script's LOG markers).",
     "mh_mtrace.log": "mp:SES7: the [input] mouse_trace rows (`; [mtrace] ...`, same text as the uidrive copy) plus `; [mtrace-ctx]` lines (an OPEN header with the input config, focus / DI-keyboard transitions), each line prefixed with the absolute mh_log_stamp. Per SESSION -- follows MH_RunDir, so a match's rows land in the match folder; not size-capped (each match file is written whole). No tool parses it yet.",
     "mh_launch.log": "launch-verb and start-barrier events. Per SESSION.",
@@ -22,6 +22,58 @@
     "mh_video.log": "the mh.dll-only ADVISORY gfx channel (ruling Q4: reported by check_arm_order, never gated) -- [video] arming, the F2 glyph-guard's arm line and its probe notices. Per SESSION. Registered 2026-09-20 for the probe_text trailing-comment notice; nothing parses it."
   },
   "formats": [
+    {
+      "id": "harness.failover_cleanup",
+      "stream": "mh_match_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; FAILOVER-CLEANUP phase=",
+      "tags": [],
+      "needles": ["; FAILOVER-CLEANUP phase="],
+      "fields": ["phase", "match", "local", "remove", "generation", "base", "last", "first", "flags"],
+      "parsers": ["tools/mp_analyze.py:certified_minority_end"],
+      "since": "2026-11-12",
+      "status": "live",
+      "note": "Observe-only first native cleanup boundary, before roster mutation. The strict minority oracle requires matching ownership/axis and the complete shared prefix; this is not a later game-over marker."
+    },
+    {
+      "id": "harness.failover_cleanup_refused",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; FAILOVER-CLEANUP REFUSED:",
+      "tags": [],
+      "needles": ["; FAILOVER-CLEANUP REFUSED"],
+      "fields": [],
+      "parsers": ["tools/mp_analyze.py:certified_minority_end"],
+      "since": "2026-11-12",
+      "status": "live",
+      "note": "A non-unique, reset, unpublished or otherwise invalid producer boundary refuses certification."
+    },
+    {
+      "id": "harness.capture_import_close",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; [capture] CLOSE reason=successful-world-import",
+      "tags": ["capture"],
+      "needles": ["\\[capture\\] CLOSE"],
+      "fields": [],
+      "parsers": ["tools/mp_analyze.py:certified_minority_end"],
+      "since": "2026-11-12",
+      "status": "live",
+      "note": "A real successful-import close invalidates minority publication-axis certification. A prose mention of SNAPIMP does not."
+    },
+    {
+      "id": "harness.world_import_lifecycle",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; [world_in]",
+      "tags": ["world_in"],
+      "needles": ["\\[world_in\\]"],
+      "fields": [],
+      "parsers": ["tools/mp_analyze.py:certified_minority_end"],
+      "since": "2026-11-12",
+      "status": "live",
+      "note": "The strict minority reader conservatively refuses any direct world-import attempt in the process or match stream rather than guessing whether its step axis stayed continuous."
+    },
     {
       "id": "net.wall_stamp",
       "stream": "mh_net.log",
@@ -188,7 +240,10 @@
         "tools/check_build_probe.py:check",
         "tools/check_pioneer_refill.py:check",
         "tools/check_storage_purge.py:check",
-        "tools/state_record.py:name_localised_lines"
+        "tools/state_record.py:name_localised_lines",
+        "tools/check_cap_save.py:_crash",
+        "tools/check_cap_orders.py:save_problems",
+        "tools/check_cap_turret.py:problems"
       ],
       "since": "mp:D21",
       "status": "live",
@@ -763,10 +818,10 @@
       "note": "Fallback role source, consulted only when net.welcome_player matched nothing."
     },
     {
-      "id": "net.conn_is_player",
+      "id": "net.conn_assigned_player",
       "stream": "mh_net.log",
       "emitter": "src/mh_dll/mh_net/net_transport.cpp",
-      "emit": "net: conn %d is player %d",
+      "emit": "net: assigned conn %d -> player %d (WELCOME sent)",
       "tags": [],
       "needles": [
         "player 1"
@@ -780,7 +835,27 @@
       ],
       "since": "mp:A0",
       "status": "live",
-      "note": "Matched as the literal substring 'player 1' by the U14 drop-test path -- a formatted-slot needle that would not survive a two-digit player id. Registered as it is, not as it should be."
+      "note": "TCP host-assigned identity after feature admission and WELCOME. The U14 pre-kill diagnostic matches only the literal substring 'player 1'; it does not parse a connection mapping or prove declared-ID admission."
+    },
+    {
+      "id": "net.udp_conn_is_player",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh_net_udp/udp_endpoint.cpp",
+      "emit": "net: udp conn %d is player %d",
+      "tags": [],
+      "needles": [
+        "player 1"
+      ],
+      "fields": [
+        "conn",
+        "player_id"
+      ],
+      "parsers": [
+        "tools/mp_run.py:main"
+      ],
+      "since": "ORDERSEQ1 consumer cutover",
+      "status": "live",
+      "note": "UDP HELLO identity receipt; the same U14 pre-kill diagnostic can consume this transport's 'player 1' substring."
     },
     {
       "id": "net.watchdog_armed",
@@ -886,6 +961,7 @@
         "survivors"
       ],
       "parsers": [
+        "tools/check_graceful_quit.py:check",
         "tools/check_quit_survivors_3peer.py:check_needles"
       ],
       "since": "mp:U19b (2026-09-22)",
@@ -1182,13 +1258,15 @@
         "script"
       ],
       "needles": [
-        "; [script] COMPLETE"
+        "; [script] COMPLETE",
+        "[script] COMPLETE"
       ],
       "fields": [],
       "parsers": [
         "tools/ui_test.py:local_script_status",
         "tools/ui_test.py:remote_script_status",
-        "tools/test_ui.py:run_artifacts"
+        "tools/test_ui.py:run_artifacts",
+        "tools/check_order_chains.py:session_for"
       ],
       "since": "mp:D15",
       "status": "live",
@@ -1213,7 +1291,8 @@
       ],
       "parsers": [
         "tools/ui_test.py:local_script_status",
-        "tools/ui_test.py:peer_script_abort"
+        "tools/ui_test.py:peer_script_abort",
+        "tools/mp_analyze.py:certified_minority_end"
       ],
       "since": "mp:D15",
       "status": "live",
@@ -1228,13 +1307,16 @@
         "script"
       ],
       "needles": [
-        "; [script] ABORT at step"
+        "; [script] ABORT at step",
+        "[script] ABORT"
       ],
       "fields": [
         "step"
       ],
       "parsers": [
-        "tools/ui_test.py:local_script_status"
+        "tools/ui_test.py:local_script_status",
+        "tools/check_order_chains.py:session_for",
+        "tools/mp_analyze.py:certified_minority_end"
       ],
       "since": "mp:D15",
       "status": "live",
@@ -1341,14 +1423,65 @@
         "; ==== mh replay harness armed"
       ],
       "fields": [
-        "seed_step"
+        "seed_step",
+        "seed_mode",
+        "order_mode",
+        "replay_ai_off",
+        "suppress_enqueue"
       ],
       "parsers": [
-        "tools/mp_analyze.py:parse_harness"
+        "tools/mp_analyze.py:parse_harness",
+        "tools/check_order_chains.py:Evidence.__init__"
       ],
       "since": "mp:D6",
       "status": "live",
-      "note": "RESETS the parsed segment to the LAST run in the file -- a file with several armings keeps only the newest, because the harness appends across relaunches."
+      "note": "mp_analyze resets to the LAST run in the file. check_order_chains instead requires exactly one arming receipt and checks seed/order modes plus AI/enqueue settings to exclude injected workloads."
+    },
+    {
+      "id": "harness.synth_move_arming",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; synth_move=%d armed=%d seed=%d at=%d every=%d",
+      "tags": [],
+      "needles": [
+        "; synth_move=0 armed=0"
+      ],
+      "fields": [
+        "synth_move",
+        "armed",
+        "seed",
+        "at",
+        "every"
+      ],
+      "parsers": [
+        "tools/check_order_chains.py:Evidence.__init__"
+      ],
+      "since": "ORDERSEQ1 consumer cutover",
+      "status": "live",
+      "note": "The actual-input order-chain oracle requires the existing synthetic-movement workload to be disabled and unarmed."
+    },
+    {
+      "id": "harness.order_replay_v2_summary",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; order replay v2: HASH=%lu ENTRY=%lu missed=0 ai_off=0 suppress_enqueue=0",
+      "tags": [],
+      "needles": [
+        "order replay v2: HASH="
+      ],
+      "fields": [
+        "HASH",
+        "ENTRY",
+        "missed",
+        "ai_off",
+        "suppress_enqueue"
+      ],
+      "parsers": [
+        "tools/mh_order_stream.py:receipt_refusal"
+      ],
+      "since": "ORDERSEQ1 consumer cutover",
+      "status": "live",
+      "note": "fixture_replay.cmd_verify delegates the textual phase-summary check to mh_order_stream.receipt_refusal. Both exact phase counts must equal the requested steps; old count-only injector receipts cannot certify replay."
     },
     {
       "id": "harness.arming_line",
@@ -1432,12 +1565,11 @@
         "hex_bytes"
       ],
       "parsers": [
-        "tools/fixture_replay.py:cmd_counts_guard",
         "tools/abc_region_diff.py:read_rx"
       ],
       "since": "LIB-REF-REC (registered TL-GATE-D25FX, 2026-09-20)",
       "status": "live",
-      "note": "The RAW REGION DUMP: [harness] rdump_rid=<hash column>;rdump_lo=<step>;rdump_hi=<step> dumps that region's bytes at the SAME sample point as the `R` line, 64 bytes per row, `rid` = the hash column (the rdump_addr / rdump_regid address and registry windows, which wrote rid -1 / -2, were retired 2026-10-06). counts-guard reads the order_queue_count slice off it; abc_region_diff diffs a whole region between two arms to name the bytes a `state` mismatch is about. Was parsed unregistered until 2026-09-20 -- arm B only discovers the `; [tag]` class."
+      "note": "The RAW REGION DUMP: [harness] rdump_rid=<hash column>;rdump_lo=<step>;rdump_hi=<step> dumps that region's bytes at the SAME sample point as the `R` line, 64 bytes per row, `rid` = the hash column (the rdump_addr / rdump_regid address and registry windows, which wrote rid -1 / -2, were retired 2026-10-06). abc_region_diff diffs whole regions between arms. fixture_replay counts-guard now decodes exact HASH/ENTRY counts from binary MHOR v2, not RX text. Was parsed unregistered until 2026-09-20 -- arm B only discovers the `; [tag]` class."
     },
     {
       "id": "harness.hash_fingerprint",
@@ -2757,7 +2889,8 @@
         "netind"
       ],
       "needles": [
-        "; \\[netind\\] stall waiting_for=(.*?) peer=(-?\\d+) ms=(\\d+)"
+        "; \\[netind\\] stall waiting_for=(.*?) peer=(-?\\d+) ms=(\\d+)",
+        "; [netind] stall waiting_for=host"
       ],
       "fields": [
         "name",
@@ -2765,7 +2898,8 @@
         "ms"
       ],
       "parsers": [
-        "tools/check_net_indicator.py:main"
+        "tools/check_net_indicator.py:main",
+        "tools/check_u62_handover.py:selftest"
       ],
       "since": "mp:L1 2026-09-18",
       "status": "live",
@@ -3169,7 +3303,33 @@
       ],
       "since": "mp:U19i",
       "status": "live",
-      "note": "Boot line of gone_peer_frame_guard's byte-patch carrier (the splice over llm_net_lockstep_dispatch's kick re-broadcast @0x0049c330). Configuration (1) reads PATCHED; a promoted dispatch reads DISPLACED (the body carries the guard); MISMATCHED is a wrong image and also writes an UNCARRIED FIX line. Absent when [net] gone_peer_frame_guard=0. Replaces U19e's `gone_peer_frame_guard=1 but INERT` line, which the carrier made false."
+      "note": "Boot line of the mandatory gone_peer_frame_guard carrier over the original lockstep dispatch kick re-broadcast. Configuration (1) reads PATCHED in both knob arms: the snapshot description means fresh-datagram restoration ON; explicit fresh-datagram guard OFF disables only restoration while saved-continuation bypass remains installed. DISPLACED denotes promotion; MISMATCHED also reports an UNCARRIED FIX. The negative-control checker requires one unambiguous matching arm, not absence of the mandatory carrier."
+    },
+    {
+      "id": "net.gone_peer_frame_trace",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [net] gone-peer frame trace #%u: mode=%s side=%d len=%u before=%s emitted=%s after=%s\\n",
+      "tags": ["net"],
+      "needles": ["gone-peer frame trace"],
+      "fields": ["serial", "mode", "side_id", "length", "before", "emitted", "after"],
+      "parsers": ["tools/check_gone_peer_guard.py:check"],
+      "since": "tooling:TL-GATE12",
+      "status": "live",
+      "note": "Direct fresh-datagram witness at the native gone-peer kick carrier in both modes. First 16 bytes, capped at four invocations per process. Off mode observes but never restores; on mode preserves the full bounded datagram."
+    },
+    {
+      "id": "net.gone_peer_frame_outcome",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/net_lockstep.cpp",
+      "emit": "; [net] gone-peer frame outcome #%u: side=%d caller=%08X native_unknown_tag=%u same_frame=%u same_len=%u same_buffer=%u same_thread=%u sess=%u outcome=%u gclk=%ld\\n",
+      "tags": ["net"],
+      "needles": ["gone-peer frame outcome"],
+      "fields": ["serial", "side_id", "caller", "native_unknown_tag", "same_frame", "same_len", "same_buffer", "same_thread", "session", "outcome", "gclk_ms"],
+      "parsers": ["tools/check_gone_peer_guard.py:check"],
+      "since": "tooling:TL-GATE12",
+      "status": "live",
+      "note": "Binds the off-mode overwrite to the verified EN native unknown-tag return site, original dispatch frame/length, thread and unchanged emitted bytes before the actual outcome dialog. Not a cross-peer timestamp inference."
     },
     {
       "id": "net.gone_peer_frame_guard_fired",
@@ -4184,9 +4344,7 @@
         "count",
         "last_horizon_ms"
       ],
-      "parsers": [
-        "tools/check_gone_peer_guard.py:check"
-      ],
+      "parsers": [],
       "since": "mp:SES5",
       "status": "live",
       "note": "mp:SES5 decision (1): the per-packet `; GameRecv sender=%d len=%d type=0x%02x` line (unregistered free-form, unchanged for every OTHER in-game type, and for `GameRecv DROP`) was 95.7 MB of a measured 96 MB / 43-minute match -- the 50 ms horizon-extend heartbeat (type=0x02), logged once per packet at ~700/s. Rolled up to one line per sender per second: count of type=0x02 packets since the last flush + the last horizon value seen (ms). `GameRecv DROP` and every other in-game type (0x01/0x03/0x04/0x05) are untouched -- tools/check_graceful_quit.py:409 greps `GameRecv ... type=0x04`, which still fires per packet."
@@ -5055,6 +5213,266 @@
       "since": "mp:U62",
       "status": "live",
       "note": "mh.dll's seam line when a survivor printed the in-game `<host> left; <new> is now hosting` notice for a hub change (mp:U62)."
+    },
+    {
+      "id": "harness.cap_save_file",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; CAP SAVE FILE name=%s size=%u fnv=%08X header_valid=%d raised=%d policy=%d",
+      "tags": [],
+      "needles": [
+        "; CAP SAVE FILE name="
+      ],
+      "fields": [
+        "name",
+        "size",
+        "fnv",
+        "header_valid",
+        "raised",
+        "policy"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:current_framing_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Exact 40-byte native/required-support header classification, not a full framing or CRC verdict. Current policy-only MSP1 and policy+caps MSB1 are distinct; full validation comes from real reload preflight."
+    },
+    {
+      "id": "harness.cap_save_planet",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; CAP SAVE PLANET file=%s size=%u footer=%d footer_len=%u policy_tail=%d policy_len=%u",
+      "tags": [],
+      "needles": [
+        "; CAP SAVE PLANET file="
+      ],
+      "fields": [
+        "file",
+        "size",
+        "footer",
+        "footer_len",
+        "policy_tail",
+        "policy_len"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:current_framing_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Exact EOF MHOF and immediately preceding SPFT presence/length. No duplicate native block parser; presence is not validation."
+    },
+    {
+      "id": "harness.cap_save_roundtrip",
+      "stream": "mh_harness.log",
+      "emitter": "src/mh_dll/mh_harness/harness.cpp",
+      "emit": "; CAP %s step=%lu name=%s rc=%u digest=",
+      "tags": [],
+      "needles": [
+        "; CAP SAVE step=",
+        "; CAP LOAD step="
+      ],
+      "fields": [
+        "tag",
+        "step",
+        "name",
+        "rc",
+        "digest",
+        "ovf",
+        "bldg_ovf",
+        "prj_ovf"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:save_problems",
+        "tools/check_cap_save.py:off_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Actual save/load return codes, overflow counts and digest on each side of the native round trip."
+    },
+    {
+      "id": "net.storage_save_admitted",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/storage_policy_save_hosted.cpp",
+      "emit": "; [storage-save] container accepted members=%08X policy=%08X caps=%08X version=%d",
+      "tags": [
+        "storage-save"
+      ],
+      "needles": [
+        "; \\[storage-save\\] container accepted members="
+      ],
+      "fields": [
+        "members",
+        "policy",
+        "caps",
+        "version"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:current_framing_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Emitted only after complete native/member framing, policy/overflow integrity, exact required-manifest validation and capability admission. No state published; file cursor restored."
+    },
+    {
+      "id": "net.caps_save_admitted",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/storage_policy_save_hosted.cpp",
+      "emit": "; [caps] load: raised save accepted",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "; [caps] load: raised save accepted"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_cap_save.py:save_problems",
+        "tools/check_cap_orders.py:save_problems",
+        "tools/check_cap_turret.py:problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Truthful semantic result of the composed reader, including legacy MHC1. Not an obsolete version-check hook readiness message."
+    },
+    {
+      "id": "net.caps_save_unsupported",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/seams/storage_policy_save_hosted.cpp",
+      "emit": "; [caps] load REFUSED: the save is a raised-caps save and [caps] raise is OFF",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "; [caps] load REFUSED: the save is a raised-caps save and [caps] raise is OFF"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_cap_save.py:refuse_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Only structurally valid unsupported-caps input sets the specific raised-refusal flag; corrupt files remain invalid."
+    },
+    {
+      "id": "net.caps_save_refusal_notice",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/patch/caps_install.cpp",
+      "emit": "; [caps] load REFUSED: showing the raised-limits message",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "; [caps] load REFUSED: showing the raised-limits message"
+      ],
+      "fields": [],
+      "parsers": [
+        "tools/check_cap_save.py:refuse_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Native load-failure dialog consumed the typed refusal and selected the localized raised-limits notice."
+    },
+    {
+      "id": "net.caps_save_overflow_written",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/caps/ovf_save.cpp",
+      "emit": "; [caps] save: planet %d trailer %d records (%u bytes)",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "; \\[caps\\] save: planet "
+      ],
+      "fields": [
+        "planet",
+        "records",
+        "bytes",
+        "path",
+        "orders"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:save_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Actual MHOV encode/write counts. Container requirements are derived from serialized members, not this diagnostic."
+    },
+    {
+      "id": "net.caps_save_overflow_applied",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/caps/ovf_save.cpp",
+      "emit": "; [caps] load: planet file overflow %d records applied",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "; \\[caps\\] load: planet file overflow "
+      ],
+      "fields": [
+        "records"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:save_problems"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Actual validated overflow application, checked against the saved record count and digest."
+    },
+    {
+      "id": "net.caps_save_relocated",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/patch/caps_install.cpp",
+      "emit": "; [caps] relocation APPLIED (%d sites, %d sections, base .mhcapd=",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "[caps] relocation APPLIED"
+      ],
+      "fields": [
+        "sites",
+        "sections",
+        "base",
+        "ms"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:_common_banners"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Save-fixture relocation precondition; not a substitute for real save/load behavior."
+    },
+    {
+      "id": "net.caps_save_limits",
+      "stream": "mh_net.log",
+      "emitter": "src/mh_dll/mh/caps/caps.cpp",
+      "emit": "; [caps] limits %s (%s): buildings %u",
+      "tags": [
+        "caps"
+      ],
+      "needles": [
+        "[caps] limits ON ("
+      ],
+      "fields": [
+        "on",
+        "source",
+        "buildings",
+        "storage",
+        "turrets",
+        "mines",
+        "labs",
+        "productions",
+        "projectiles",
+        "units",
+        "soldiers"
+      ],
+      "parsers": [
+        "tools/check_cap_save.py:_common_banners"
+      ],
+      "since": "mods:STORAGEPOL1",
+      "status": "live",
+      "note": "Whether the real raised-capacity fixture is enabled in this process."
     }
   ]
 }

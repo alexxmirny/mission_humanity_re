@@ -22,6 +22,8 @@
 #include "state/rebind_targets.gen.h"
 #include "crt/crt_select.h" // LIB-CRT: MH_CRT() picks the vendored CRT in the standalone build
 
+#include "lockstep/participant_removal.h"
+
 namespace mh::lockstep {
 
 gate_audit &dispatch_gate_audit() {
@@ -154,9 +156,51 @@ void last_peer_teardown(const dispatch_state &ds, const dispatch_calls &calls,
 // difference as a parameter precisely so that difference cannot be lost in a copy: tag 8 calls
 // llm_net_lockstep_sync_busywait before llm_strat_time_resync_and_tick (0x0049cc45), tag 9 calls only
 // the latter (0x0049ce8f).
+detail::packet_result complete_peer_drop(const engine_state &st, const dispatch_state &ds,
+                                         const dispatch_calls &calls, int32_t pidx, double horizon,
+                                         bool busywait_before_resync, bool admitted) {
+    mark_player_gone(ds, pidx);
+    if (!admitted && !detail::x87_equal_or_unordered(horizon, st.peer_horizon[pidx])) {
+        say("; [u19h] drop arm=HORIZON-DISAGREE -- eliminating every other human, match over\n");
+        eliminate_other_humans(st, ds, calls, /*notify=*/true);
+        return detail::packet_result::stop;
+    }
+    if (calls.count_active_players() > 1) {
+        say("; [u19h] drop arm=AGREE -- a peer lighter, the match goes on\n");
+        detail::commit_horizon(st);
+        --*ds.lockstep_player_count;
+        --*ds.lobby_scan_host_count;
+        if (busywait_before_resync) calls.sync_busywait();
+        calls.time_resync_and_tick();
+        return detail::packet_result::drain_again;
+    }
+    say("; [u19h] drop arm=LAST-PEER-TEARDOWN -- we were the last one standing\n");
+    last_peer_teardown(ds, calls, pidx);
+    return detail::packet_result::stop;
+}
+
+struct receive_removal {
+    engine_state   state;
+    dispatch_state dispatch;
+    dispatch_calls calls;
+    int32_t        index;
+    double         horizon;
+    bool           busywait;
+};
+bool receive_terminal(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<receive_removal>(bytes, size);
+    return participant::survivors(p.dispatch.players_w, p.index) <= 1;
+}
+bool receive_execute(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<receive_removal>(bytes, size);
+    return complete_peer_drop(p.state, p.dispatch, p.calls, p.index, p.horizon, p.busywait, true) !=
+           detail::packet_result::stop;
+}
+
 detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_state &ds,
                                        const dispatch_calls &calls, uint32_t &cursor,
-                                       bool busywait_before_resync) {
+                                       bool busywait_before_resync, int32_t sender_idx,
+                                       int32_t sender_side, uint32_t len) {
     const int32_t side_id = take<int32_t>(ds, cursor);
     const double  horizon = take<double>(ds, cursor);
     const int32_t pidx    = calls.player_by_side_id(side_id);
@@ -194,37 +238,67 @@ detail::packet_result handle_peer_drop(const engine_state &st, const dispatch_st
         return detail::packet_result::stop;
     }
 
-    mark_player_gone(ds, pidx);
-
-    // `FLD horizon` / `FCOMP peer_horizon[pidx]` / `JZ`: an UNORDERED compare (either side NaN) sets
-    // ZF and so counts as EQUAL, taking the "we agree" path. A plain `==` would take the disagree
-    // path instead -- and the disagree path tears the whole session down, so getting this backwards
-    // turns one NaN into a dropped match.
-    if (!detail::x87_equal_or_unordered(horizon, st.peer_horizon[pidx])) {
-        say("; [u19h] drop arm=HORIZON-DISAGREE -- eliminating every other human, match over\n");
-        eliminate_other_humans(st, ds, calls, /*notify=*/true);
-        // (empty llm_teardown_hook_stub_b @0x0049bc66 here in the original -- not reproduced)
-        return detail::packet_result::stop;
-    }
-
-    // Horizons agreed. If anyone else is still playing, carry on a peer lighter.
-    if (calls.count_active_players() > 1) {
-        say("; [u19h] drop arm=AGREE -- a peer lighter, the match goes on\n");
-        detail::commit_horizon(st);
-        --*ds.lockstep_player_count;
-        --*ds.lobby_scan_host_count;
-        if (busywait_before_resync) calls.sync_busywait();
-        calls.time_resync_and_tick();
-        return detail::packet_result::drain_again;
-    }
-    say("; [u19h] drop arm=LAST-PEER-TEARDOWN -- we were the last one standing\n");
-    last_peer_teardown(ds, calls, pidx);
-    return detail::packet_result::stop;
+    // Keep the original receive notice and network pending-clear above: other origins' adverts
+    // must be allowed to fund this last body. Only the simulation-affecting suffix waits.
+    if (!participant::continuing(ds.players_w, pidx, *st.player_side) ||
+        !detail::x87_equal_or_unordered(horizon, st.peer_horizon[pidx]))
+        return complete_peer_drop(st, ds, calls, pidx, horizon, busywait_before_resync, false);
+    const receive_removal p{st, ds, calls, pidx, horizon, busywait_before_resync};
+    auto                  r = participant::request_for(pidx, horizon, p, receive_execute, nullptr, receive_terminal);
+    r.received              = 1;
+    r.tail_sender           = sender_side;
+    r.tail_sender_slot      = sender_idx;
+    r.tail_size             = len - cursor;
+    r.tail                  = ds.packet.bytes + cursor;
+    const auto result       = participant::submit(calls.participant_admit, r);
+    if (result == participant::pb::admission::execute_now)
+        return complete_peer_drop(st, ds, calls, pidx, horizon, busywait_before_resync, true);
+    return result == participant::pb::admission::applied_stop
+               ? detail::packet_result::stop
+               : detail::packet_result::next_packet;
 }
 
 // CTL_LEAVE_CONSENSUS (inner tag 6, 0x0049c804). A peer reports that `side_id` is leaving. We record
 // that vote in the peer-state matrix and only actually remove the player once NO OTHER participating
 // peer still has it marked PRESENT.
+struct consensus_removal {
+    engine_state   state;
+    dispatch_state dispatch;
+    dispatch_calls calls;
+    int32_t        side, index;
+    uint64_t       horizon;
+};
+bool consensus_valid(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<consensus_removal>(bytes, size);
+    if (p.calls.player_by_side_id(p.side) != p.index ||
+        !participant::human(p.dispatch.players_w, p.index) ||
+        participant::pb::bits(p.state.peer_horizon[p.index]) != p.horizon ||
+        (*p.dispatch.status_flags & LS_HORIZON_PENDING) == 0 ||
+        p.state.peer_state[p.index * MAX_PLAYERS + *p.state.player_side] != PEER_STATE_NONE)
+        return false;
+    for (int32_t i = 0; i < MAX_PLAYERS; ++i)
+        if (i != p.index && participant::human(p.dispatch.players_w, i) &&
+            p.state.peer_state[p.index * MAX_PLAYERS + i] == PEER_STATE_PRESENT) return false;
+    return true;
+}
+bool consensus_terminal(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<consensus_removal>(bytes, size);
+    return participant::survivors(p.dispatch.players_w, p.index) <= 1;
+}
+bool consensus_execute(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<consensus_removal>(bytes, size);
+    p.calls.player_remove(p.side);
+    p.calls.format_player_line(TXT_PLAYER_DROPPED,
+                               p.calls.ansi_to_wide_scratch(p.dispatch.players_w[p.index].name));
+    p.calls.print_floating_msg_red(p.dispatch.text_scratch);
+    *p.dispatch.status_flags &= static_cast<uint8_t>(~LS_HORIZON_PENDING);
+    --*p.dispatch.lockstep_player_count;
+    --*p.dispatch.lobby_scan_host_count;
+    p.calls.sync_busywait();
+    p.calls.time_resync_and_tick();
+    return true;
+}
+
 detail::packet_result handle_leave_consensus(const engine_state &st, const dispatch_state &ds,
                                              const dispatch_calls &calls, uint32_t &cursor,
                                              int32_t sender_idx) {
@@ -250,15 +324,16 @@ detail::packet_result handle_leave_consensus(const engine_state &st, const dispa
     }
     if (!everyone_agrees) return detail::packet_result::drain_again;
 
-    calls.player_remove(side_id);
-    calls.format_player_line(TXT_PLAYER_DROPPED,
-                             calls.ansi_to_wide_scratch(ds.players_w[pidx].name));
-    calls.print_floating_msg_red(ds.text_scratch);
-    *ds.status_flags &= static_cast<uint8_t>(~LS_HORIZON_PENDING);
-    --*ds.lockstep_player_count;
-    --*ds.lobby_scan_host_count;
-    calls.sync_busywait();
-    calls.time_resync_and_tick();
+    const consensus_removal p{st, ds, calls, side_id, pidx,
+                              participant::pb::bits(st.peer_horizon[pidx])};
+    if (!participant::continuing(ds.players_w, pidx, *st.player_side)) {
+        consensus_execute(&p, sizeof(p));
+        return detail::packet_result::drain_again;
+    }
+    const auto r = participant::request_for(pidx, st.peer_horizon[pidx], p, consensus_execute,
+                                            consensus_valid, consensus_terminal);
+    if (participant::submit(calls.participant_admit, r) == participant::pb::admission::execute_now)
+        consensus_execute(&p, sizeof(p));
     return detail::packet_result::drain_again;
 }
 
@@ -360,7 +435,8 @@ void handle_garbled(const engine_state &st, const dispatch_state &ds, const disp
 // ---- the inner (MSG_CONTROL) switch --------------------------------------------------------------
 detail::packet_result dispatch_control(const engine_state &st, const dispatch_state &ds,
                                        const dispatch_calls &calls, const reimpl_fixes &fx,
-                                       uint32_t &cursor, int32_t sender_idx) {
+                                       uint32_t &cursor, int32_t sender_idx,
+                                       int32_t sender_side, uint32_t len) {
     // The RAW tag is kept as well as the decremented selector: CTL_RESYNC_BEGIN stamps the raw value
     // into the order it synthesises (0x0049d034 reads the same local the selector was derived from).
     const uint8_t raw_tag = ds.packet.bytes[cursor++];
@@ -449,10 +525,10 @@ detail::packet_result dispatch_control(const engine_state &st, const dispatch_st
         }
 
         case CTL_DROP_SYNCED: // 0x0049ca0a
-            return handle_peer_drop(st, ds, calls, cursor, /*busywait_before_resync=*/true);
+            return handle_peer_drop(st, ds, calls, cursor, true, sender_idx, sender_side, len);
 
         case CTL_DROP_UNSYNCED: // 0x0049cc54 -- the ONLY difference is the missing busywait
-            return handle_peer_drop(st, ds, calls, cursor, /*busywait_before_resync=*/false);
+            return handle_peer_drop(st, ds, calls, cursor, false, sender_idx, sender_side, len);
 
         case CTL_KICK: { // 0x0049ce99
             const int32_t side_id = take<int32_t>(ds, cursor);
@@ -574,7 +650,9 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
     // U19 removed. What the parse loop needs is the bytes that ARRIVED, so the guard snapshots the
     // datagram across the emit and puts it back. Everything else -- what goes on the wire, in what
     // order, and every handler's effect -- is unchanged.
-    if (ds.players_w[sender_idx].status_flags & PLAYER_GONE) {
+    // A saved suffix already passed this datagram's preamble before its canonical removal.
+    if ((ds.players_w[sender_idx].status_flags & PLAYER_GONE) &&
+        (!calls.participant_continuation || !calls.participant_continuation())) {
         if (calls.is_local_leader_peer(sender_side_id)) {
             if (fx.gone_peer_frame_guard) {
                 // Bounded by the recv capacity the wrapper passes (`len` can never exceed it), and
@@ -686,7 +764,7 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
             }
 
             case MSG_CONTROL: // 0x0049c5d1
-                r = dispatch_control(st, ds, calls, fx, cursor, sender_idx);
+                r = dispatch_control(st, ds, calls, fx, cursor, sender_idx, sender_side_id, len);
                 break;
 
             case MSG_CHAT: // 0x0049d128
@@ -694,7 +772,7 @@ packet_result dispatch_packet(const engine_state &st, const dispatch_state &ds,
                 break;
         }
 
-        if (r == packet_result::stop) return r;
+        if (r != packet_result::drain_again) return r;
     }
     return packet_result::drain_again;
 }
@@ -749,6 +827,8 @@ const dispatch_calls &live_dispatch_calls() {
         live_format_plain_line,
         &live_overlay_hoist_ops(), // LIB-ABI stage E
         live_chat_to_wide,         // mp:MP-LANG
+        participant::live_admit,
+        [] { return participant::boundary(participant::pb::operation::receive_continuation) != 0; },
     };
     return dc;
 }

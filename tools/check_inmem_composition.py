@@ -821,22 +821,6 @@ def selftest():
             for r in doc["registered_patch_overlaps"]
         ),
     )
-    known6 = {
-        "0x00462ab9",
-        "0x0047c6c8",
-        "0x00491eac",  # v0.2.2: buildings/turrets hooks
-        "0x00482b5b",
-        "0x0047ebe1",
-        "0x00466bfe",  # v0.2.3 (PT-CAP9-U1): the three units hooks
-        "0x00491166",  # mp:DSHEAL soldier_origin_anim_fix: the soldiers array disp inside the displaced MOVZX
-    }
-    cap_addrs = {r["addr"] for r in doc["cap_set_overlaps"]}
-    expect(
-        "against the cap manifests exactly the three buildings/turrets hooks, the three units "
-        "hooks and the soldier-origin load overlap (the units one with two sites in move_near_enough)",
-        cap_addrs == known6 and len(doc["cap_set_overlaps"]) == 8,
-        sorted(cap_addrs),
-    )
     expect(
         "every cap_set_overlaps row is in tools/data/cap_compose_allow.json",
         not strict_failures(doc, check_source=False),

@@ -21,9 +21,9 @@ Clauses (all must hold):
      high-water mark is reported (the pool is 4000 wide, so a mark past 1500 is also a record in the raised part: `hw_index`).
   4  10 GAME MINUTES: the game clock in the last per-step hash line of mh_harness.log is >= --seconds (default 600).
   5  mirror_check: `[caps] mirror_check ARMED` is in the net log and no `[caps] mirror_check: ... changed` writer report.
-  6  the SAVE ROUND TRIP while the pool is over --min: check_cap_save's save clauses (equal digest/counts, planet-file footer, container stamp,
-     trailer N == ovf, raised save accepted, overflow applied) AND the live census either side of the load (`; CAP SAVEPRJ before/after`):
-     live > --min before, and live / highest slot / count past slot 1500 EQUAL after.
+  6  the SAVE ROUND TRIP while the pool is over --min: shared save clauses require equal digest/counts, valid current policy+caps framing,
+     SPFT before MHOF, full container preflight, trailer N == ovf, raised-save acceptance and matching overflow application.
+     The live census on either side (`; CAP SAVEPRJ before/after`) keeps live / highest slot / past-1500 / pool-header EQUAL, live > --min.
 
   python tools/check_cap_turret.py [--min N] [--hold STEPS] [--seconds S] [--turrets N] [--attackers N] <run-dir> [<run-dir> ...]
   python tools/check_cap_turret.py --selftest
@@ -228,11 +228,10 @@ GOOD_NET = [
     "; [caps] mirror_check ARMED: a writer that touches a stock (canonical-mirror) address is reported once per array",
     "; [caps] relocation APPLIED (3945 sites, 2 sections, base .mhcapd=0x040C0000) in 10.1 ms; limits OFF",
     "; [caps] limits ON (gameplay settings): buildings 500, storage 127, turrets 127, mines 127, labs 127, productions 127, projectiles 4000",
-    "; [caps] save splices: trailer armed, container stamp armed, version check armed, refusal message armed",
     "; [caps] save: planet 31 trailer 2612 records (401336 bytes)",
-    "; [caps] save: container stamped (a member planet carries an overflow trailer)",
     "; [caps] load: raised save accepted",
     "; [caps] load: planet file overflow 2612 records applied",
+    "; [storage-save] container accepted members=80000000 policy=80000000 caps=80000000 version=5",
 ]
 
 
@@ -251,8 +250,8 @@ def _good_harness():
     h += [
         "; CAP SAVEPRJ before step=2900 live=2736 highest_slot=2868 past_1500=1300 pool_header=2736",
         "; CAP SAVE step=2900 name=capturret rc=1 digest=AA638E7743D707B3 ovf=2612 bldg_ovf=713 prj_ovf=1369",
-        "; CAP SAVE FILE name=capturret size=926833 fnv=E696F9ED stamped=1",
-        "; CAP SAVE PLANET file=save\\temp\\save31.dat size=897457 footer=1 footer_len=401336",
+        "; CAP SAVE FILE name=capturret size=926833 fnv=E696F9ED header_valid=1 raised=1 policy=1",
+        "; CAP SAVE PLANET file=save\\temp\\save31.dat size=897457 footer=1 footer_len=401336 policy_tail=1 policy_len=40",
         "; CAP LOAD step=2900 name=capturret rc=1 digest=AA638E7743D707B3 ovf=2612 bldg_ovf=713 prj_ovf=1369",
         "; CAP SAVEPRJ after step=2900 live=2736 highest_slot=2868 past_1500=1300 pool_header=2736",
         "30000 %016X 0000000000000000 0000000000000000"

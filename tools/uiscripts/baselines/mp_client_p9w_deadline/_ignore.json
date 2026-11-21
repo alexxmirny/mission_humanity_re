@@ -1,0 +1,4 @@
+{
+  "_why": "The real receiver_deadline event, leaderless barrier and native match exit are this network test's verdict. Keep the first-frame screenshot for review without testing unrelated mothership/reveal phase or introducing a fence that changes barrier timing.",
+  "_unjudged": ["capture_m1_launched.png"]
+}

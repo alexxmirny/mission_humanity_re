@@ -4,6 +4,7 @@
 // is cited only as corroboration -- see the header banner for the full derivation.
 //
 #include "sim/sim_bldg_apply_damage.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // mh::ai::REF_BLDG_BIT + ai_say / trace_budget (the shared trace sink)
@@ -54,6 +55,7 @@ void bldg_apply_damage(const sim_view &v, sim_store &own, const bldg_apply_damag
     // ---- lethal-drop check (0x0047111b-0x00471123): FLDZ; FCOMP energy; JC skips this arm when
     // energy>0.0, so the arm runs when energy<=0.0 -- see the header's FCOMP/SAHF derivation.
     if (b.energy <= 0.0) {
+        order_tasks_adapter::retire(own, mh::order_tasks::object_kind::building, *v.cur_player, *v.cur_index, true);
         b.energy = 0.0; // second double field, same two-dword-zero idiom (0x0047112a/0x00471131)
 
         // Fixed HQ energy refund to the player's home building, buildings[cur_player][0] -- slot 0

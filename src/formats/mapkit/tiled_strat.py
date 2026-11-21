@@ -207,6 +207,20 @@ def import_(tmj: dict) -> strategic.MpModel:
     m.width, m.height, m.f1 = sc["width"], sc["height"], sc["f1"]
     m.header_raw = b64d(sc["header_raw"])
     m.tlo_name = b64d(sc["tlo_name_raw"])
+    name = _prop(tmj.get("properties"), "mapkit_tlo")
+    original = m.tlo_name.split(b"\x00", 1)[0].decode("latin1")
+    if name is not None and name != original:
+        stem, dot, ext = name.rpartition(".") if isinstance(name, str) else ("", "", "")
+        if (dot != "." or ext.lower() != "tlo" or not 1 <= len(stem) <= 8 or
+                any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in stem)):
+            raise ValueError("ABORT: mapkit_tlo must be a DOS 8.3 ASCII .tlo name")
+        m.tlo_name = name.encode("ascii").ljust(12, b"\x00")
+        if len(name) == 12:
+            # The model carries only twelve name bytes. The next byte stays in
+            # the raw header and must terminate a full-width edited token.
+            header = bytearray(m.header_raw)
+            header[0x19] = 0
+            m.header_raw = bytes(header)
     W, H, n = m.width, m.height, m.width * m.height
     flags_hi = struct.unpack("<%dH" % n, b64d(sc["flags_hi"]))
     m.building = list(struct.unpack("<%dH" % n, b64d(sc["building"])))

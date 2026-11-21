@@ -64,6 +64,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mh_harness", "mh_harness\mh
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmh_test", "libmh_test\libmh_test.vcxproj", "{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mh_mapgen", "mh_mapgen\mh_mapgen.vcxproj", "{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mh_mapgen_cli", "mh_mapgen_cli\mh_mapgen_cli.vcxproj", "{C4A27D90-1E5B-4F38-8A6D-2B9E0F713C85}"
+	ProjectSection(ProjectDependencies) = postProject
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60} = {3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mh_mapgen_test", "mh_mapgen_test\mh_mapgen_test.vcxproj", "{6D19B3E7-8F02-4A5C-B471-E5A0C3D92F18}"
+	ProjectSection(ProjectDependencies) = postProject
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60} = {3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -126,6 +138,18 @@ Global
 		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Debug|x86.Build.0 = Debug|Win32
 		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Release|x86.ActiveCfg = Release|Win32
 		{8A47F3C6-1D52-4E09-B73A-5C6F2E90D148}.Release|x86.Build.0 = Release|Win32
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}.Debug|x86.ActiveCfg = Debug|Win32
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}.Debug|x86.Build.0 = Debug|Win32
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}.Release|x86.ActiveCfg = Release|Win32
+		{3B8E5F21-6A4C-4D17-9E02-7C1D5A8F4B60}.Release|x86.Build.0 = Release|Win32
+		{C4A27D90-1E5B-4F38-8A6D-2B9E0F713C85}.Debug|x86.ActiveCfg = Debug|Win32
+		{C4A27D90-1E5B-4F38-8A6D-2B9E0F713C85}.Debug|x86.Build.0 = Debug|Win32
+		{C4A27D90-1E5B-4F38-8A6D-2B9E0F713C85}.Release|x86.ActiveCfg = Release|Win32
+		{C4A27D90-1E5B-4F38-8A6D-2B9E0F713C85}.Release|x86.Build.0 = Release|Win32
+		{6D19B3E7-8F02-4A5C-B471-E5A0C3D92F18}.Debug|x86.ActiveCfg = Debug|Win32
+		{6D19B3E7-8F02-4A5C-B471-E5A0C3D92F18}.Debug|x86.Build.0 = Debug|Win32
+		{6D19B3E7-8F02-4A5C-B471-E5A0C3D92F18}.Release|x86.ActiveCfg = Release|Win32
+		{6D19B3E7-8F02-4A5C-B471-E5A0C3D92F18}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

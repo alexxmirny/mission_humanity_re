@@ -1,0 +1,4 @@
+{
+  "_why": "Pip-start and the PT1 pre-fixture frame precede their stimuli and retain unsynchronized flight poses for inspection, not pixel equality. The unchanged mandatory pip and turret checkers require actual planted/completed states, live slot ownership, reload duration and exact shared hashes; every other capture remains judged.",
+  "_unjudged": ["capture_bldg_pip_guard__pip_start.png", "capture_turret_slot_reuse__pre_fixture.png"]
+}

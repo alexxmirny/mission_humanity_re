@@ -135,9 +135,8 @@ void try_enter_tactical_mission(const sim_view &v, sim_store &own, const squad_s
 
     if (count == 0) return; // 0x0044d37f-d383: no squad nearby, entry refused
 
-    // 0x0044d38a-d38f: RETURN VALUE DISCARDED -- the original's own defect (see header banner); this
-    // is the ONLY backup of the strategic planet before the tactical mission wipes its working state.
-    c.save_planet_to_disk(static_cast<uint32_t>(*v.planet_index), 1);
+    // Do not enter tactical mode unless the sole strategic backup, including policy, succeeded.
+    if (c.save_planet_to_disk(static_cast<uint32_t>(*v.planet_index), 1) != 1) return;
 
     own.game_mode() = 6; // 0x0044d394: GAME_MODE 6 = tactical mission (mh_launch_export.h confirms)
 

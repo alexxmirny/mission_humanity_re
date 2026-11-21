@@ -1,0 +1,35 @@
+# DATAEXT2 mixed locale joining peer: actual RU menu, unchanged fixture bytes.
+settled value:110
+capture cfg_client_ready_ru
+clickv 110
+present Имя игрока
+settled Ok
+clickl Ok
+present Интернет-сервер
+settled Интернет-сервер
+clickl Интернет-сервер
+present Адрес сервера
+settled Соединение
+clickl Соединение
+sessions 1
+settled Вступить в игру
+clickl Вступить в игру
+present Игроки в сети
+signal lobby
+absent Игроки в сети
+gamemode 2
+gameclock 6000
+logcfg client_locale
+# Each marker follows a real host-side readiness predicate; no simulated state changes.
+awaitsignal cfg_mother
+awaitsignal cfg_academy
+awaitsignal cfg_barracks
+awaitsignal cfg_prod_started
+awaitsignal cfg_prod_finished
+awaitsignal cfg_prod_moved
+awaitsignal cfg_reactor
+awaitsignal cfg_done
+log cfg peer workload complete
+simstep 12000
+gzdone 1
+end

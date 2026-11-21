@@ -387,6 +387,39 @@ void arm_fsm() {
         fsm_step(c, x, inc);
         return fsm_step(c, x, step_ev(c.timeout_ms + 5, 0x1)).reason == WS_ABORT_ROSTER;
     }());
+
+    // A catching-up peer intentionally holds its advertised horizon. Only its
+    // bounded active machine suspends the horizon watchdog.
+    begun(m);
+    const uint32_t begin_ms = 0xfffffff0u;
+    check("watchdog: begun peer held across tick wrap",
+          watchdog_held(c, m.state, begin_ms, begin_ms + uint32_t(c.timeout_ms - 1)));
+    check("watchdog: exact wall deadline releases even without a sim step",
+          !watchdog_held(c, m.state, begin_ms, begin_ms + uint32_t(c.timeout_ms)));
+    fsm unrelated;
+    check("watchdog: unrelated idle peer is still watched",
+          !watchdog_held(c, unrelated.state, begin_ms, begin_ms + 100));
+    fsm_step(c, m, ev(E_CAPTURE_OK, 4003));
+    check("watchdog: sent peer remains held", watchdog_held(c, m.state, 100, 200));
+    fsm_step(c, m, ev(E_DONE, 4200));
+    check("watchdog: DONE releases the hold", !watchdog_held(c, m.state, 100, 200));
+    event frame        = step_ev(c.timeout_ms, 0x7);
+    frame.kind         = E_FRAME;
+    const int cooldown = m.cooldown_left;
+    check("fsm: wall frames do not consume cooldown",
+          fsm_step(c, m, frame).kind == A_NONE && m.cooldown_left == cooldown);
+    begun(m);
+    a = fsm_step(c, m, frame);
+    check("fsm: parked wall deadline aborts once and releases watchdog",
+          a.kind == A_SEND_ABORT && a.reason == WS_ABORT_TIMEOUT &&
+              !watchdog_held(c, m.state, 100, 200) && fsm_step(c, m, frame).kind == A_NONE);
+    begun(m);
+    frame.elapsed_ms  = 10;
+    frame.peer_active = false;
+    a                 = fsm_step(c, m, frame);
+    check("fsm: dead transport aborts while horizon hold was active",
+          a.kind == A_SEND_ABORT && a.reason == WS_ABORT_PEER_GONE &&
+              !watchdog_held(c, m.state, 100, 200));
 }
 
 // ---- F. the minority side ------------------------------------------------------------------------------

@@ -36,6 +36,19 @@ uint32_t h_wide_to_local_bytes(void *) { mh_hostapi_trap("wide_to_local_bytes");
 uint32_t h_ticks_ms() { mh_hostapi_trap("ticks_ms"); return (uint32_t)0; }
 void h_fatal(int32_t) { mh_hostapi_trap("fatal"); }
 void *h_media_diag_block() { mh_hostapi_trap("media_diag_block"); return (void *)0; }
+int32_t h_planet_load_extensions(int32_t) { mh_hostapi_trap("planet_load_extensions"); return (int32_t)0; }
+int32_t h_planet_save_prepare() { mh_hostapi_trap("planet_save_prepare"); return (int32_t)0; }
+void h_planet_save_restore() { mh_hostapi_trap("planet_save_restore"); }
+int32_t h_storage_begin_load() { mh_hostapi_trap("storage_begin_load"); return (int32_t)0; }
+int32_t h_storage_finish_container(int32_t) { mh_hostapi_trap("storage_finish_container"); return (int32_t)0; }
+int32_t h_storage_load_container(int32_t) { mh_hostapi_trap("storage_load_container"); return (int32_t)0; }
+int32_t h_storage_load_planet(int32_t) { mh_hostapi_trap("storage_load_planet"); return (int32_t)0; }
+int32_t h_storage_normalize_version(void *) { mh_hostapi_trap("storage_normalize_version"); return (int32_t)0; }
+int32_t h_storage_policy(const mh_storage_policy_request *, mh_storage_policy_result *) { mh_hostapi_trap("storage_policy"); return (int32_t)0; }
+int32_t h_storage_preflight_container(int32_t) { mh_hostapi_trap("storage_preflight_container"); return (int32_t)0; }
+int32_t h_storage_preflight_planet(int32_t) { mh_hostapi_trap("storage_preflight_planet"); return (int32_t)0; }
+int32_t h_storage_write_planet(int32_t) { mh_hostapi_trap("storage_write_planet"); return (int32_t)0; }
+int32_t h_order_tasks(const mh_order_tasks_request *, mh_order_tasks_result *) { mh_hostapi_trap("order_tasks"); return (int32_t)0; }
 void h_llm_gfx_convert_pixels_565_to_555(int16_t *) {  }
 void h_llm_tlo_palette_convert_565_to_555() {  }
 void h_llm_tlo_shade_table_build_tact() {  }
@@ -55,6 +68,7 @@ void h_utils_abort(int32_t) { mh_hostapi_trap("utils_abort"); }
 }  // namespace
 
 const libmh_host_api &mh_hostapi_selftest_table() {
+    mh_hostapi_participant_initialize();
     static const libmh_host_api t = {
         h_apply_frame_input,
         h_asset_read,
@@ -71,6 +85,8 @@ const libmh_host_api &mh_hostapi_selftest_table() {
         h_map_save_regions,
         h_planet_tlo_load,
         h_save_player_data,
+        mh_hostapi_participant_body_boundary,
+        mh_hostapi_participant_removal_admit,
         h_transport_recv,
         h_transport_send,
         h_ansi_to_wide,
@@ -80,6 +96,19 @@ const libmh_host_api &mh_hostapi_selftest_table() {
         h_ticks_ms,
         h_fatal,
         h_media_diag_block,
+        h_planet_load_extensions,
+        h_planet_save_prepare,
+        h_planet_save_restore,
+        h_storage_begin_load,
+        h_storage_finish_container,
+        h_storage_load_container,
+        h_storage_load_planet,
+        h_storage_normalize_version,
+        h_storage_policy,
+        h_storage_preflight_container,
+        h_storage_preflight_planet,
+        h_storage_write_planet,
+        h_order_tasks,
     };
     return t;
 }

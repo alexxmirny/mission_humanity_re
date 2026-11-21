@@ -45,7 +45,9 @@ HEADER = os.path.join(REPO, "src", "mh_dll", "libmh", "save", "save_table.gen.h"
 def regions():
     """(base, size, id) for every SIZED registry region, sorted by base."""
     regs = json.loads(open(REGISTRY, encoding="utf-8-sig").read())["regions"]
-    return sorted((r["base"], r["size"], r["id"]) for r in regs if r["size"])
+    return sorted(
+        (r["base"], r["size"], r["id"]) for r in regs if r["size"] and not r.get("host_native")
+    )
 
 
 def blocks():

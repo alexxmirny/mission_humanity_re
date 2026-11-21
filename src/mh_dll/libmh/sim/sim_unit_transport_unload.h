@@ -5,6 +5,14 @@
 
 namespace mh::sim {
 
+// NAMING NOTE (re:RE-DB37, 2026-10-26): these are SQUAD SPLITS, not transport unloads. The Ghidra
+// names are now llm_unit_squad_split_field / llm_unit_squad_split_docked (order_code 0x32, hotkey Z
+// via llm_unit_order_squad_split). An infantry squad is one unit record whose proto id encodes the
+// soldier count; "transport" in the identifiers and comments below means "the squad record being
+// split". The file and C++ identifiers keep their original names. Experience: the field split hands
+// each split-off soldier xp/soldier_count (the squad loses it); the docked split (squad PARKED in
+// storage) never touches xp, so the new soldiers start at 0 and the squad keeps all of it.
+
 // ---- the outward calls -----------------------------------------------------------------------
 //
 // Indirected for the same reason as sim_unit_on_destroyed.h: a direct mh::call:: inside a detail::
@@ -33,18 +41,18 @@ const unit_transport_unload_calls &live_unit_transport_unload_calls();
 
 namespace detail {
 
-// llm_unit_transport_unload_field @0x00488a8b. See the header banner above.
+// llm_unit_squad_split_field @0x00488a8b. See the header banner above.
 void unload_field(const sim_view &v, sim_store &own, const unit_transport_unload_calls &c,
                   uint32_t transport_player, uint32_t transport_unit_index);
 
-// llm_unit_transport_unload_docked @0x004891d8. See the header banner above.
+// llm_unit_squad_split_docked @0x004891d8. See the header banner above.
 void unload_docked(const sim_view &v, sim_store &own, const unit_transport_unload_calls &c,
                    uint32_t player, uint32_t unit_index);
 
 } // namespace detail
 
 // Live wrappers: the logic applied to state() and live_unit_transport_unload_calls(). Match the
-// committed __watcall(EAX,EDX) shapes (sig_llm_unit_transport_unload_field/_docked) exactly.
+// committed __watcall(EAX,EDX) shapes (sig_llm_unit_squad_split_field/_docked) exactly.
 void unload_field(uint32_t transport_player, uint32_t transport_unit_index);
 void unload_docked(uint32_t player, uint32_t unit_index);
 

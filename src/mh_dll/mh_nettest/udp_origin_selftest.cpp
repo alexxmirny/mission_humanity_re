@@ -129,6 +129,10 @@ void test_prefix_and_codecs() {
     check("report encodes to its fixed size", osq::report_encode(r, wire) == osq::REPORT_WIRE_BYTES);
     check("report round-trips", osq::report_decode(wire, sizeof(wire), back) && memcmp(&r, &back, sizeof(r)) == 0);
     check("a truncated report is refused", !osq::report_decode(wire, sizeof(wire) - 1, back));
+    wire[0] = osq::CAP_VERSION - 1;
+    check("the previous incompatible capability report refuses", !osq::report_decode(wire, sizeof(wire), back));
+    wire[0] = osq::CAP_VERSION + 1;
+    check("a future capability report refuses", !osq::report_decode(wire, sizeof(wire), back));
     wire[0] ^= 0xff;
     check("a report of another version is refused", !osq::report_decode(wire, sizeof(wire), back));
 

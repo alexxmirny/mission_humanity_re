@@ -1,0 +1,23 @@
+# mods:MAPGEN2 -- the same picker Preview page at size_mode=2 (1024x768 window, [video] via ini/video_1024.ini). Menus are always
+# a 640x480 frame at every size mode, so the CAPTURE equals the 640 one; the PCAPTURE is the presented, scaled image.
+# Captures are the user's to review (baselines/mappreview_1024/_ignore.json marks them _unjudged).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture mp1024_picker
+pcapture mp1024_picker_presented
+click 120 120
+settled Ok
+capture mp1024_second
+log mappreview_1024: picker previewed at 1024x768
+end

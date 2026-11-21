@@ -147,14 +147,22 @@ def verdict(peer_dirs, expect, only=None, other=None):
 
 
 def _write(path, recs):
+    import mh_order_stream as order_stream
+
+    grouped = {}
+    for step, code, owner, other in recs:
+        raw = bytearray(mod.ORDER_LEN)
+        struct.pack_into("<H", raw, 0x0A, owner)
+        struct.pack_into("<H", raw, 0x0E, code)
+        struct.pack_into("<i", raw, ARG_OTHER, other)
+        grouped.setdefault(step, []).append(bytes(raw))
+    samples = [
+        order_stream.Sample(step, phase, tuple(grouped.get(step, ())))
+        for step in range(1, max(grouped, default=0) + 1)
+        for phase in (order_stream.HASH, order_stream.ENTRY)
+    ]
     with open(path, "wb") as f:
-        f.write(b"MHOR" + struct.pack("<I", 1))
-        for step, code, owner, other in recs:
-            raw = bytearray(mod.ORDER_LEN)
-            struct.pack_into("<H", raw, 0x0A, owner)
-            struct.pack_into("<H", raw, 0x0E, code)
-            struct.pack_into("<i", raw, ARG_OTHER, other)
-            f.write(struct.pack("<i", step) + bytes(raw))
+        f.write(order_stream.encode(samples))
 
 
 def selftest():

@@ -75,6 +75,8 @@ import subprocess
 import sys
 import time
 
+import tmp_runs
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 PATCHER = os.path.join(REPO, "src", "patcher")
@@ -82,35 +84,24 @@ for p in (PATCHER, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import lief  # noqa: E402
-
-import gen_inmem_manifest as gim  # noqa: E402
-import machine_config as machine  # noqa: E402
-import mhpatch  # noqa: E402
+import gen_inmem_manifest as gim
+import lief
+import machine_config as machine
+import mhpatch
 
 CLEAN = machine.POLYGON_CLEAN + "/mh.exe"
-TMP = os.path.join(REPO, "tmp")
 LANE = os.path.join(machine.LANE_ROOT, "f1e_parity")
 
 # run_gate's `inmem` unit (--run) and lint_repo's parity row (--selftest) run this tool in two
 # processes at once; a fixed scratch name made the loser die on WinError 32 (filed at F5H). Every
-# scratch path carries the pid, and stale scratch from finished runs is swept on startup.
+# Scratch belongs to this invocation; completed siblings are removed only by lifecycle adjudication.
 _SCRATCH_TAG = "p%d" % os.getpid()
 
 
 def scratch(leaf):
-    return os.path.join(TMP, "inmem_parity_%s_%s" % (_SCRATCH_TAG, leaf))
-
-
-def sweep_stale_scratch(max_age_s=24 * 3600):
-    for p in glob.glob(os.path.join(TMP, "inmem_parity_p*_*")):
-        if p.startswith(os.path.join(TMP, "inmem_parity_%s_" % _SCRATCH_TAG)):
-            continue
-        try:
-            if time.time() - os.path.getmtime(p) > max_age_s:
-                os.remove(p)
-        except OSError:
-            pass
+    return os.path.join(
+        tmp_runs.current_output("inmem_parity"), "inmem_parity_%s_%s" % (_SCRATCH_TAG, leaf)
+    )
 
 
 # THE GATE UNIT. `--run` with no --manifest walks the whole shipped set; run_gate's unit runs this
@@ -573,7 +564,7 @@ def compare(dump_path, manifest_path_, clean, ref_exe, say=print, sites_vs=None,
             toks = str(p.get("expect", "")).split()
             if live["bytes"] != vanilla and len(toks) == len(vanilla) == len(live["bytes"]):
                 lv, vv = bytearray(live["bytes"]), bytearray(vanilla)
-                for k0 in range(0, len(toks) - 3):
+                for k0 in range(len(toks) - 3):
                     if all(t.lower() in ("xx", "??") for t in toks[k0 : k0 + 4]):
                         dl = int.from_bytes(lv[k0 : k0 + 4], "little")
                         dv = int.from_bytes(vv[k0 : k0 + 4], "little")
@@ -798,7 +789,7 @@ def selftest(clean):
         )
         ok = ok and cond
 
-    quiet = lambda *_a, **_k: None  # noqa: E731
+    quiet = lambda *_a, **_k: None
 
     names = shipped()
     expect("the shipped set is non-empty and derived from the corpus", bool(names), names)
@@ -939,7 +930,7 @@ def provision():
     # THE LANE NUMBER IS ALLOCATED, not the literal 9 it was (fork F4H). 9 sits inside the capture
     # suite's block, and this is a GATE UNIT that launches beside the suite -- a shared lane number
     # is a shared single-instance mutex, and the loser dies at boot with no frame and no log line.
-    import lane_alloc  # noqa: PLC0415
+    import lane_alloc
 
     subprocess.run(
         [
@@ -956,7 +947,7 @@ def provision():
 
 def run_lane(name, dump_out):
     """Arm the lane for ONE manifest, launch once, wait for the dump. -> seconds of rig time."""
-    import make_lane  # noqa: F401  -- imported for its boot lock
+    import make_lane
 
     if os.path.exists(dump_out):
         os.remove(dump_out)
@@ -1038,7 +1029,7 @@ CAPS_MS_FAIL = 100.0  # a timing gate must not flake under rig load: fail only w
 def run_lane_caps(dump_out, raise_):
     """One launch with `[caps] raise=<raise_>`. The caps path writes <dump_out> (reloc) and <dump_out>.limits.
     -> (seconds, the 'relocation APPLIED' log line or None)."""
-    import make_lane  # noqa: F401  -- imported for its boot lock
+    import make_lane
 
     for p in (
         dump_out,
@@ -1183,8 +1174,6 @@ def main():
     ap.add_argument("--clean", default=CLEAN)
     args = ap.parse_args()
 
-    os.makedirs(TMP, exist_ok=True)
-    sweep_stale_scratch()
     if args.selftest:
         return selftest(args.clean)
 
@@ -1220,7 +1209,7 @@ def main():
 
     rc, results = 0, []
     for name in names:
-        print("")
+        print()
         print("=== %s ===" % name)
         path = manifest_path(name)
         ref = scratch("ref_%s.exe" % name)
@@ -1259,7 +1248,7 @@ def main():
         rc = rc or (1 if fail else 0)
 
     if len(results) > 1:
-        print("")
+        print()
         print("%-38s %-8s %8s %8s %8s" % ("manifest", "verdict", "ref s", "lane s", "cmp s"))
         for name, okk, a, b, c in results:
             print("%-38s %-8s %8.1f %8.1f %8.1f" % (name, "OK" if okk else "FAILED", a, b, c))
@@ -1276,4 +1265,6 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(
+        tmp_runs.run_cli(main, "inmem-parity", adjudicator=True, offline_flags=("--help", "-h"))
+    )

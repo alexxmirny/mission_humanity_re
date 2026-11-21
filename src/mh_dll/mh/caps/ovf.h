@@ -256,6 +256,9 @@ enum encode_mode : unsigned {
 size_t encode(uint8_t *out, size_t cap, unsigned mode = FOR_WORLD);
 // Full validation, writes nothing. Returns OVF_OK or an ovf_err.
 int check(const void *blob, size_t n);
+// Complete wire/CRC/geometry validation without requiring this run's backing arrays.
+// Save admission uses this only to distinguish a valid unsupported save from corruption.
+int check_format(const void *blob, size_t n);
 // check() first, then write the records into the wide arrays (and the path pool). The caller has already zeroed the tails
 // (canon_scatter()). Refused = nothing written. *features (optional) receives the header's FEAT_* bits (0 for a v1 blob).
 int apply(const void *blob, size_t n, uint32_t *features = nullptr);

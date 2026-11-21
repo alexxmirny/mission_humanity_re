@@ -27,6 +27,7 @@
 #include <cstdint>
 
 #include "addr/mh_regions.gen.h"
+#include "addr/mh_structs.gen.h"
 
 namespace mh::state {
 
@@ -82,6 +83,44 @@ inline int32_t per_player_capacity(region_id r, uint32_t elem_size, int32_t play
     return static_cast<int32_t>(live_size(r) / elem_size / static_cast<uint32_t>(players));
 }
 
+// Storage-policy executor/validator bindings. Borrowed for this invocation only;
+// physical row capacities follow the live world, not the policy's logical reservation.
+struct storage_policy_world {
+    game::mh_map_object_unit                 *units;
+    game::mh_map_object_building             *buildings;
+    const game::mh_map_object_unit_storage   *storages;
+    const game::mh_cfg_final_struct_Unit     *unit_types;
+    const game::mh_cfg_final_struct_Building *building_types;
+    uint32_t                                  unit_rows, building_rows, storage_rows, unit_types_count, building_types_count;
+};
+inline storage_policy_world storage_policy_tables(int32_t players) {
+    using unit            = game::mh_map_object_unit;
+    using building        = game::mh_map_object_building;
+    using storage         = game::mh_map_object_unit_storage;
+    using unit_config     = game::mh_cfg_final_struct_Unit;
+    using building_config = game::mh_cfg_final_struct_Building;
+    return {ptr<unit>(RID_UNITS), ptr<building>(RID_BUILDINGS),
+            ptr<const storage>(RID_UNIT_STORAGE), ptr<const unit_config>(RID_UNIT),
+            ptr<const building_config>(RID_BUILDING),
+            uint32_t(per_player_capacity(RID_UNITS, sizeof(unit), players)),
+            uint32_t(per_player_capacity(RID_BUILDINGS, sizeof(building), players)),
+            uint32_t(per_player_capacity(RID_UNIT_STORAGE, sizeof(storage), players)),
+            live_size(RID_UNIT) / sizeof(unit_config), live_size(RID_BUILDING) / sizeof(building_config)};
+}
+struct canonical_binding {
+    void    *data;
+    uint32_t bytes;
+};
+inline canonical_binding storage_policy_region() {
+    return {ptr<void>(RID_STORAGE_POLICY), canonical_region_len(RID_STORAGE_POLICY)};
+}
+inline canonical_binding order_tasks_region() {
+    return {ptr<void>(RID_ORDER_TASKS), canonical_region_len(RID_ORDER_TASKS)};
+}
+inline canonical_binding order_campaign_region() {
+    return {ptr<void>(RID_ORDER_CAMPAIGN), canonical_region_len(RID_ORDER_CAMPAIGN)};
+}
+
 #ifndef MH_LIBMH_BUILD // the stock-address block resumes -- see the banner above region_at()
 
 // Where [addr, addr+size) IS, given that `addr` is a stock address. Identity unless the covering
@@ -89,11 +128,12 @@ inline int32_t per_player_capacity(region_id r, uint32_t elem_size, int32_t play
 // header comment; do not add a second null path without reading it.
 inline void *translate(uint32_t addr, uint32_t size) {
     const region_id rid = region_at(addr, size);
-    if (rid == RID_COUNT || !is_rebased(rid))
-        return reinterpret_cast<void *>(static_cast<uintptr_t>(addr));
+    if (rid == RID_COUNT) return reinterpret_cast<void *>(static_cast<uintptr_t>(addr));
+    const live_table &table = live();
+    if (!table.moved[rid]) return reinterpret_cast<void *>(static_cast<uintptr_t>(addr));
     const uint32_t delta = addr - REGIONS[rid].base;
-    if (uint64_t(delta) + size > uint64_t(live_size(rid))) return nullptr;
-    return reinterpret_cast<void *>(static_cast<uintptr_t>(live_base(rid) + delta));
+    if (uint64_t(delta) + size > uint64_t(table.size[rid])) return nullptr;
+    return reinterpret_cast<void *>(static_cast<uintptr_t>(table.base[rid] + delta));
 }
 
 #endif // !MH_LIBMH_BUILD
@@ -171,10 +211,11 @@ inline void clear_region(region_id r) {
 // ---- a region's CANONICAL bytes, saved and put back (mp:X3c's keep-local pass) --------------------
 //
 // The resync import must leave some regions exactly as this peer had them (state/world_fixup.h
-// RESYNC_KEEP_LOCAL). Whole-region and rid-keyed like clear_region: the length is the registry's own
-// canonical `size` (what the world blob carries for it), clamped to what is actually bound, so it can
-// neither be pointed at a slice nor run into a neighbour. Returns the byte count (0 if unbound).
+// RESYNC_KEEP_LOCAL). Stock regions retain the registry's canonical size clamped to the binding.
+// Host-native state has no stock extent: its checked whole allocation is canonical, not just its
+// minimum schema header. An invalid native binding is never silently reduced to zero or 32 bytes.
 inline uint32_t region_bytes(region_id r) {
+    if (REGIONS[r].host_native) return canonical_region_len(r);
     const uint32_t bound = live_size(r);
     const uint32_t want  = REGIONS[r].size;
     return bound < want ? bound : want;

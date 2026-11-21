@@ -27,6 +27,7 @@ diverts the stock draw into a scratch and the presenter shows it as an overlay s
 """
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -124,23 +125,27 @@ def red_count(img, area=NOTICE_ZONE_RED):
 
 
 def notice_log_groups(run_dir):
-    """mh_capture.log, one entry per pcapture, in order: (notice overlay listed?, [dialog screen rects (x0, y0, x1, y1)])."""
+    """Map each completed presented capture name to its notice/dialog evidence."""
     path = os.path.join(run_dir, "mh_capture.log")
     if not os.path.isfile(path):
         return None
-    out, dialogs = [], []
+    out, dialogs, notice = {}, [], None
     for line in open(path, encoding="utf-8", errors="replace"):
         f = line.split()
         if line.startswith("; pcapture dialog ") and "screen" in f:
             i = f.index("screen")
             dialogs.append(tuple(int(v) for v in f[i + 1 : i + 5]))
         elif line.startswith("; pcapture notice rect"):
-            out.append((True, dialogs))
-            dialogs = []
+            notice = True
         elif line.startswith("; pcapture notice none"):
-            out.append((False, dialogs))
-            dialogs = []
-    return out
+            notice = False
+        elif match := re.match(r"; capture_(.+)\.bmp written \(presented image ", line):
+            name = match.group(1)
+            if notice is None or name in out:
+                return None
+            out[name] = (notice, dialogs)
+            dialogs, notice = [], None
+    return out if notice is None else None
 
 
 MODAL_MIN_RED = 60  # a printed notice line is hundreds of red pixels at 100%, thousands at 200%
@@ -155,7 +160,7 @@ def red_set(img, area, warm=False):
         row = img[2][y]
         for x in range(x0, min(x1, img[0])):
             r, g, b = row[x]
-            if (r >= 180 and b <= 90) if warm else (r >= 180 and g <= 70 and b <= 70):
+            if r >= 180 and ((g <= 70 and b <= 70) or (warm and g >= 180 and b <= 90)):
                 out.add((x, y))
     return out
 
@@ -179,14 +184,13 @@ def modal_problems(pct, run_dir):
     if err:
         return [err]
     groups = notice_log_groups(run_dir)
-    if groups is None or len(groups) < 2:
-        return ["mh_capture.log has no `pcapture notice` lines for both captures (%r)" % (groups,)]
-    if not groups[0][0] or not groups[1][0]:
-        out.append(
-            "pcapture listed `notice none` for the live view or the menu view: %r"
-            % ([g[0] for g in groups[:2]],)
-        )
-    dialogs = groups[1][1]
+    live_group = groups.get(pre) if groups else None
+    modal_group = groups.get(mod) if groups else None
+    if live_group is None or modal_group is None:
+        return ["mh_capture.log lacks named notice evidence for %s/%s" % (pre, mod)]
+    if not live_group[0] or not modal_group[0]:
+        out.append("pcapture listed `notice none` for the live view or the menu view")
+    dialogs = modal_group[1]
     if not dialogs:
         out.append("the menu capture lists no dialog quad: the menu is not up")
     m = 14  # the dialog quad's outer margin is transparent bevel shadow: judge the covered part inside it
@@ -197,37 +201,37 @@ def modal_problems(pct, run_dir):
         ("", "the CPU composition (pcapture)"),
         ("__b", "the presenter's output (bcapture)"),
     ):
-        live = red_set(imgs[pre + suffix], MODAL_ZONE)
-        now = red_set(imgs[mod + suffix], MODAL_ZONE)
+        live = red_set(imgs[pre + suffix], MODAL_ZONE, warm=True)
+        now = red_set(imgs[mod + suffix], MODAL_ZONE, warm=True)
         under = {p for p in live if inside(p)}
         free = live - under
         if len(free) < MODAL_MIN_RED:
             out.append(
-                "%s: only %d live red pixels outside the dialog: the row proves nothing (vacuous)"
+                "%s: only %d live notice pixels outside the dialog: the row proves nothing (vacuous)"
                 % (what, len(free))
             )
             continue
         if len(under) < 30:
             out.append(
-                "%s: only %d live red pixels fall under the dialog: the cover assertion is vacuous (print more notices)"
+                "%s: only %d live notice pixels fall under the dialog: the cover assertion is vacuous (print more notices)"
                 % (what, len(under))
             )
         kept = len(free & now)
         if kept < 0.9 * len(free):
             out.append(
-                "%s: the scaled notice is missing behind the menu: %d of %d live red pixels outside the dialog remain"
+                "%s: the scaled notice is missing behind the menu: %d of %d live notice pixels outside the dialog remain"
                 % (what, kept, len(free))
             )
         shown = len(under & now)
         if under and shown > 0.1 * len(under):
             out.append(
-                "%s: the notice is drawn OVER the dialog: %d of %d red pixels under it still red"
+                "%s: the notice is drawn OVER the dialog: %d of %d notice pixels under it remain"
                 % (what, shown, len(under))
             )
-    stock = red_count(imgs[frm], (0, 0, 600, 140))
+    stock = len(red_set(imgs[frm], (0, 0, 600, 140), warm=True))
     if stock:
         out.append(
-            "the game frame holds %d red pixels of the stock 1x notice behind the menu: the detour did not take mode 3"
+            "the game frame holds %d notice-colored pixels behind the menu: the detour did not take mode 3"
             % stock
         )
     return out
@@ -240,13 +244,15 @@ def stale_problems(pct, run_dir):
     if err:
         return [err]
     groups = notice_log_groups(run_dir)
-    if groups is None or len(groups) < 2:
-        return ["mh_capture.log has no `pcapture notice` lines for both captures (%r)" % (groups,)]
-    if not groups[0][0]:
+    live_group = groups.get(live) if groups else None
+    info_group = groups.get(info) if groups else None
+    if live_group is None or info_group is None:
+        return ["mh_capture.log lacks named notice evidence for %s/%s" % (live, info)]
+    if not live_group[0]:
         out.append(
             "pcapture of the live notice listed `notice none`: the row proves nothing (vacuous)"
         )
-    if groups[1][0]:
+    if info_group[0]:
         out.append(
             "pcapture over the info screen (mode 4) still lists a notice overlay: a stale entry (captured for an earlier present) was not dropped"
         )
@@ -292,9 +298,36 @@ def selftest():
     a = img(1000, 200, (10, 10, 200, 24))
     if diff_box(b, a, AREA)[:4] != (10, 10, 200, 24):
         fails.append("diff box")
+    blink = (5, 1, [[(255, 0, 0), (255, 255, 0), (0, 255, 0), (255, 255, 255), (0, 0, 0)]])
+    if red_set(blink, (0, 0, 5, 1), warm=True) != {(0, 0), (1, 0)}:
+        fails.append(
+            "both native notice blink phases must count, not green/white/background pixels"
+        )
     with tempfile.TemporaryDirectory() as td:
         if not problems(100, td):
             fails.append("an empty run dir must be RED")
+        path = os.path.join(td, "mh_capture.log")
+        entries = (
+            "; pcapture dialog none\n; pcapture notice none\n"
+            "; capture_res_notice_before.bmp written (presented image 10x10)\n"
+            "; pcapture dialog none\n; pcapture notice rect 0 0 10 10\n"
+            "; capture_res_nm_notice.bmp written (presented image 10x10)\n"
+            "; pcapture dialog 0 0 10 10 screen 1 2 8 9\n; pcapture notice rect 0 0 10 10\n"
+            "; capture_res_nm_modal.bmp written (presented image 10x10)\n"
+        )
+        with open(path, "w") as f:
+            f.write(entries)
+        groups = notice_log_groups(td)
+        if (
+            not groups
+            or groups["res_nm_modal"] != (True, [(1, 2, 8, 9)])
+            or groups["res_notice_before"][0]
+        ):
+            fails.append("folded captures must bind evidence by name, not position")
+        with open(path, "a") as f:
+            f.write(entries)
+        if notice_log_groups(td) is not None:
+            fails.append("repeated capture names must refuse ambiguous evidence")
     print("check_res_notice selftest: %s" % ("FAIL" if fails else "ok"))
     for n in fails:
         print("SELFTEST FAIL:", n)

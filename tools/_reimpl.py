@@ -109,7 +109,8 @@ def _manifests(repo):
 DLL_SRC = os.path.join("src", "mh_dll")
 # `MH_EXPORT_REPLACE(fn, ...)` / `MH_SHADOW_REPLACE(fn, ...)` -- anywhere on the line, because
 # several TUs indent them inside a namespace block.
-RE_REPLACE = re.compile(r"\bMH_(?:EXPORT|SHADOW)_REPLACE\(\s*([A-Za-z_]\w*)\s*,")
+REPLACE_MACROS = ("MH_EXPORT_REPLACE", "MH_SHADOW_REPLACE")
+RE_REPLACE = re.compile(r"\b(?:" + "|".join(REPLACE_MACROS) + r")\(\s*([A-Za-z_]\w*)\s*,")
 # The terminal ledger state that means "proven equivalent". Kept as a literal rather than imported
 # from migration_ledger so this module has no import cost inside PyGhidra.
 # Identifiers that are a MACRO PARAMETER at the match site, not a function: the macro's own
@@ -176,6 +177,16 @@ def load_dead(repo):
     return out
 
 
+def iter_installed_names(text):
+    """Recognize the same macros, avoiding a word-boundary scan of unrelated source."""
+    if not any(macro in text for macro in REPLACE_MACROS):
+        return
+    for match in RE_REPLACE.finditer(text):
+        name = match.group(1)
+        if name not in MACRO_PARAM_NAMES:
+            yield name
+
+
 def load_installed_names(repo):
     """Function NAMES with a C++ body installed through the export/shadow macros."""
     names = set()
@@ -189,9 +200,7 @@ def load_installed_names(repo):
             if not name.endswith((".cpp", ".h")):
                 continue
             with open(os.path.join(dirpath, name), encoding="utf-8", errors="replace") as fh:
-                for m in RE_REPLACE.finditer(fh.read()):
-                    if m.group(1) not in MACRO_PARAM_NAMES:
-                        names.add(m.group(1))
+                names.update(iter_installed_names(fh.read()))
     return names
 
 

@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_libmh_calls.py -- do not hand-edit; regenerate instead",
  "_measures": "mh::call:: tokens in src/mh_dll/mh/** (comments stripped; addr/+attic/ excluded)",
  "summary": {
-  "distinct_callees": 208,
+  "distinct_callees": 249,
   "config_measures": {
    "hosted": {
     "sites": 1573,
@@ -36,8 +36,8 @@
   },
   "by_status": {
    "dead": 2,
-   "original": 119,
-   "translated": 87
+   "original": 137,
+   "translated": 110
   },
   "modules": {
    "desync": {
@@ -52,17 +52,23 @@
     "outward_sites": 0,
     "outward_distinct": 0
    },
+   "mods": {
+    "sites": 5,
+    "distinct": 5,
+    "outward_sites": 5,
+    "outward_distinct": 5
+   },
    "patch": {
-    "sites": 3,
-    "distinct": 3,
-    "outward_sites": 3,
-    "outward_distinct": 3
+    "sites": 4,
+    "distinct": 4,
+    "outward_sites": 4,
+    "outward_distinct": 4
    },
    "seams": {
-    "sites": 369,
-    "distinct": 201,
-    "outward_sites": 191,
-    "outward_distinct": 119
+    "sites": 481,
+    "distinct": 241,
+    "outward_sites": 244,
+    "outward_distinct": 137
    },
    "sim": {
     "sites": 1,
@@ -71,10 +77,10 @@
     "outward_distinct": 1
    },
    "ui": {
-    "sites": 5,
-    "distinct": 3,
-    "outward_sites": 5,
-    "outward_distinct": 3
+    "sites": 13,
+    "distinct": 10,
+    "outward_sites": 9,
+    "outward_distinct": 7
    }
   },
   "dispatch_tables": {
@@ -93,7 +99,7 @@
    "orphaned": [],
    "misrouted_host_callbacks": [],
    "resurrected_deleted": [],
-   "hostapi_entries": 37,
+   "hostapi_entries": 52,
    "by_class": {
     "cfg-snapshot": 1
    }
@@ -106,9 +112,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 4,
    "modules": {
-    "seams": 2
+    "seams": 3,
+    "ui": 1
    },
    "adjudication": "host-callback:io"
   },
@@ -124,14 +131,26 @@
    }
   },
   {
+   "name": "ToLower",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
    "name": "_fsopen",
    "status": "original",
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": null
   },
@@ -165,9 +184,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 4,
    "modules": {
-    "seams": 1
+    "mods": 1,
+    "seams": 3
    },
    "adjudication": "host-callback:io"
   },
@@ -177,9 +197,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 4,
    "modules": {
-    "seams": 1
+    "mods": 1,
+    "seams": 3
    },
    "adjudication": "host-callback:io"
   },
@@ -211,9 +232,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 3,
+   "sites": 7,
    "modules": {
-    "seams": 3
+    "seams": 7
    }
   },
   {
@@ -233,9 +254,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },
@@ -250,6 +271,18 @@
     "seams": 1
    },
    "adjudication": "event-channel:invalidate"
+  },
+  {
+   "name": "llm_bldg_available_unit_type_by_slot",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_bldg_finish_current_order",
@@ -272,6 +305,18 @@
    "modules": {
     "seams": 1
    }
+  },
+  {
+   "name": "llm_cam_center_on_ctrl_group",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_cam_jump_queue_clear",
@@ -349,9 +394,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 3,
    "modules": {
-    "seams": 2
+    "seams": 3
    },
    "adjudication": "event-channel:event"
   },
@@ -374,14 +419,26 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": null
   },
   {
    "name": "llm_gfx_font_measure_text",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_gfx_font_measure_text_width",
    "status": "original",
    "domain": null,
    "tier": null,
@@ -398,9 +455,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 4,
+   "sites": 6,
    "modules": {
-    "seams": 4
+    "seams": 6
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -434,9 +491,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 5,
+   "sites": 6,
    "modules": {
-    "seams": 5
+    "seams": 6
    },
    "adjudication": null
   },
@@ -525,6 +582,30 @@
    "adjudication": "event-channel:invalidate"
   },
   {
+   "name": "llm_hit_list_find_enemy_of_type",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_hit_list_find_own_of_type",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_input_key_dequeue",
    "status": "original",
    "domain": null,
@@ -537,14 +618,50 @@
    "adjudication": "host-callback:input"
   },
   {
+   "name": "llm_input_mouse_buttons_get",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": "host-callback:input"
+  },
+  {
+   "name": "llm_input_wndproc_tap",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_lobby_mappicker_selection_changed",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_map_cam_mark_viewport_dirty",
    "status": "original",
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 6,
+   "sites": 9,
    "modules": {
-    "seams": 6
+    "seams": 9
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -646,38 +763,14 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 4,
+   "sites": 1,
    "modules": {
-    "seams": 4
+    "seams": 1
    },
    "adjudication": null
   },
   {
    "name": "llm_map_tile_find_own_of_type",
-   "status": "original",
-   "domain": null,
-   "tier": null,
-   "promoted": false,
-   "sites": 2,
-   "modules": {
-    "seams": 2
-   },
-   "adjudication": null
-  },
-  {
-   "name": "llm_map_tile_has_enemy",
-   "status": "original",
-   "domain": null,
-   "tier": null,
-   "promoted": false,
-   "sites": 2,
-   "modules": {
-    "seams": 2
-   },
-   "adjudication": null
-  },
-  {
-   "name": "llm_map_tile_has_own",
    "status": "original",
    "domain": null,
    "tier": null,
@@ -735,14 +828,25 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_net_lockstep_commit_horizon",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_net_lockstep_count_active_players",
    "status": "translated",
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 3,
    "modules": {
-    "seams": 2
+    "seams": 3
    }
   },
   {
@@ -751,9 +855,9 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -785,9 +889,9 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    }
   },
   {
@@ -825,6 +929,17 @@
     "seams": 2
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_net_player_remove",
+   "status": "translated",
+   "domain": "(pre-ledger)",
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_prod_shuttle_slot_bind_default",
@@ -914,9 +1029,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 4,
    "modules": {
-    "seams": 2
+    "seams": 4
    },
    "adjudication": "event-channel:event"
   },
@@ -1034,14 +1149,25 @@
    }
   },
   {
+   "name": "llm_strat_bldg_footprint_random_offset",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_bldg_get_coords",
    "status": "translated",
    "domain": "sim",
    "tier": "T3",
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 3
    }
   },
   {
@@ -1078,14 +1204,25 @@
    }
   },
   {
+   "name": "llm_strat_dist_out_of_range",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "ui": 1
+   }
+  },
+  {
    "name": "llm_strat_facing24_to_delta",
    "status": "translated",
    "domain": "sim",
    "tier": "T3",
    "promoted": false,
-   "sites": 3,
+   "sites": 4,
    "modules": {
-    "seams": 3
+    "seams": 4
    }
   },
   {
@@ -1117,9 +1254,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    }
   },
   {
@@ -1162,9 +1299,20 @@
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 19,
+   "sites": 14,
    "modules": {
-    "seams": 19
+    "seams": 14
+   }
+  },
+  {
+   "name": "llm_strat_group_order_ack_voice",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 2,
+   "modules": {
+    "seams": 2
    }
   },
   {
@@ -1203,6 +1351,17 @@
    }
   },
   {
+   "name": "llm_strat_order_ctrlgrp_flash_member",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_order_ctrlgrp_select_member",
    "status": "translated",
    "domain": "sim",
@@ -1230,9 +1389,20 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 4,
+   "sites": 6,
    "modules": {
-    "seams": 4
+    "seams": 6
+   }
+  },
+  {
+   "name": "llm_strat_order_enqueue",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
    }
   },
   {
@@ -1285,9 +1455,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 4,
    "modules": {
-    "seams": 2
+    "seams": 4
    }
   },
   {
@@ -1296,9 +1466,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": true,
-   "sites": 4,
+   "sites": 6,
    "modules": {
-    "seams": 4
+    "seams": 6
    }
   },
   {
@@ -1318,6 +1488,17 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_path_attach_slot",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
    "sites": 1,
    "modules": {
     "seams": 1
@@ -1357,6 +1538,17 @@
    }
   },
   {
+   "name": "llm_strat_pathtrace_dirs_get",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_planet_transition_finalize",
    "status": "translated",
    "domain": "sim_resid",
@@ -1380,6 +1572,28 @@
    "adjudication": "event-channel:invalidate"
   },
   {
+   "name": "llm_strat_player_by_side_id",
+   "status": "translated",
+   "domain": "lib_trans",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
+   "name": "llm_strat_player_presence_lost",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_player_set_color",
    "status": "original",
    "domain": null,
@@ -1397,9 +1611,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },
@@ -1438,6 +1652,18 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_strat_selection_drag_finish",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 6,
+   "modules": {
+    "seams": 6
+   },
+   "adjudication": null
   },
   {
    "name": "llm_strat_spawn_debris_burst",
@@ -1484,7 +1710,7 @@
    }
   },
   {
-   "name": "llm_strat_target_release_ref",
+   "name": "llm_strat_target_class",
    "status": "translated",
    "domain": "sim",
    "tier": "T1",
@@ -1495,7 +1721,29 @@
    }
   },
   {
+   "name": "llm_strat_target_release_ref",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
    "name": "llm_strat_time_resync_and_tick",
+   "status": "translated",
+   "domain": "sim_resid",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 3,
+   "modules": {
+    "seams": 3
+   }
+  },
+  {
+   "name": "llm_strat_try_enter_tactical_mission",
    "status": "translated",
    "domain": "sim_resid",
    "tier": "T2",
@@ -1522,9 +1770,9 @@
    "domain": "orders_issue",
    "tier": "T1",
    "promoted": true,
-   "sites": 2,
+   "sites": 1,
    "modules": {
-    "seams": 2
+    "seams": 1
    }
   },
   {
@@ -1533,9 +1781,9 @@
    "domain": "sim",
    "tier": "T2",
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    }
   },
   {
@@ -1550,7 +1798,30 @@
    }
   },
   {
-   "name": "llm_strat_unit_notify_status",
+   "name": "llm_strat_unit_ctrlgroup_add_member",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_get_coords",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": true,
+   "sites": 3,
+   "modules": {
+    "seams": 1,
+    "ui": 2
+   }
+  },
+  {
+   "name": "llm_strat_unit_in_weapon_range",
    "status": "translated",
    "domain": "sim",
    "tier": "T1",
@@ -1561,18 +1832,18 @@
    }
   },
   {
-   "name": "llm_strat_unit_order_attack_building_reposition",
+   "name": "llm_strat_unit_notify_status",
    "status": "translated",
-   "domain": "orders_issue",
-   "tier": "T2",
-   "promoted": true,
-   "sites": 1,
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 8,
    "modules": {
-    "seams": 1
+    "seams": 8
    }
   },
   {
-   "name": "llm_strat_unit_order_attack_target",
+   "name": "llm_strat_unit_order_attack_building_reposition",
    "status": "translated",
    "domain": "orders_issue",
    "tier": "T2",
@@ -1583,14 +1854,47 @@
    }
   },
   {
+   "name": "llm_strat_unit_order_attack_target",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 4,
+   "modules": {
+    "seams": 4
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_attack_target_alt",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T2",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_order_attack_unit",
+   "status": "translated",
+   "domain": "orders_issue",
+   "tier": "T1",
+   "promoted": true,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
    "name": "llm_strat_unit_order_move",
    "status": "translated",
    "domain": "orders_issue",
    "tier": "T2",
    "promoted": true,
-   "sites": 6,
+   "sites": 8,
    "modules": {
-    "seams": 6
+    "seams": 8
    }
   },
   {
@@ -1610,9 +1914,9 @@
    "domain": "sim",
    "tier": "T1",
    "promoted": false,
-   "sites": 2,
+   "sites": 5,
    "modules": {
-    "seams": 2
+    "seams": 5
    }
   },
   {
@@ -1639,6 +1943,50 @@
   },
   {
    "name": "llm_strat_unit_soldiers_set_heading",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   }
+  },
+  {
+   "name": "llm_strat_unit_soldiers_start_walk_anim",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T3",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_spawn_docked",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T2",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_try_pay_action_cost",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
+  },
+  {
+   "name": "llm_strat_unit_update_damage_smoke",
    "status": "translated",
    "domain": "sim",
    "tier": "T1",
@@ -1995,9 +2343,9 @@
    "domain": "(pre-ledger)",
    "tier": null,
    "promoted": false,
-   "sites": 3,
+   "sites": 6,
    "modules": {
-    "seams": 3
+    "seams": 6
    }
   },
   {
@@ -2074,6 +2422,18 @@
    "adjudication": null
   },
   {
+   "name": "llm_ui_chat_recalc_target_mode",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_ui_dlg_build_from_table",
    "status": "original",
    "domain": null,
@@ -2086,6 +2446,66 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_ui_hud_widget_hit_test",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_icon_draw_vclipped",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_icon_rect_hit_test",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 2,
+   "modules": {
+    "seams": 2
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_icon_rect_hit_test_release_pos",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_ui_icon_rect_hit_test_rmb",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_ui_info_media_draw_p1",
    "status": "original",
    "domain": null,
@@ -2096,6 +2516,18 @@
     "seams": 1
    },
    "adjudication": "event-channel:screen"
+  },
+  {
+   "name": "llm_ui_list_widget_append_entry",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
   },
   {
    "name": "llm_ui_menu_bg_redraw_cb",
@@ -2151,9 +2583,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "event-channel:event"
   },
@@ -2163,10 +2595,11 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 4,
+   "sites": 6,
    "modules": {
+    "mods": 1,
     "patch": 1,
-    "seams": 3
+    "seams": 4
    },
    "adjudication": "event-channel:event"
   },
@@ -2207,14 +2640,26 @@
    "adjudication": "event-channel:screen"
   },
   {
+   "name": "llm_ui_scrollbar_bind_range",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_ui_text_draw_rgb16",
    "status": "original",
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 4,
+   "sites": 5,
    "modules": {
-    "seams": 4
+    "seams": 5
    },
    "adjudication": "event-channel:invalidate"
   },
@@ -2256,6 +2701,18 @@
    "adjudication": null
   },
   {
+   "name": "llm_ui_widget_draw_content",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "ui": 1
+   },
+   "adjudication": null
+  },
+  {
    "name": "llm_ui_widget_list_center",
    "status": "original",
    "domain": null,
@@ -2285,11 +2742,34 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 16,
+   "sites": 17,
    "modules": {
-    "seams": 16
+    "seams": 17
    },
    "adjudication": null
+  },
+  {
+   "name": "llm_unit_ctrl_group_flash_observer",
+   "status": "original",
+   "domain": null,
+   "tier": null,
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   },
+   "adjudication": null
+  },
+  {
+   "name": "llm_unit_force_disembark",
+   "status": "translated",
+   "domain": "sim",
+   "tier": "T1",
+   "promoted": false,
+   "sites": 1,
+   "modules": {
+    "seams": 1
+   }
   },
   {
    "name": "llm_unit_set_order_param",
@@ -2364,9 +2844,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 3,
    "modules": {
-    "seams": 1
+    "seams": 2,
+    "ui": 1
    },
    "adjudication": null
   },
@@ -2376,9 +2857,9 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "host-callback:io"
   },
@@ -2388,9 +2869,10 @@
    "domain": "lib_trans",
    "tier": "T3",
    "promoted": true,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "seams": 1
+    "seams": 1,
+    "ui": 1
    }
   },
   {
@@ -2399,9 +2881,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 4,
    "modules": {
-    "seams": 1
+    "patch": 1,
+    "seams": 3
    },
    "adjudication": "host-callback:io"
   },
@@ -2411,10 +2894,11 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 4,
    "modules": {
     "desync": 1,
-    "seams": 1
+    "seams": 2,
+    "ui": 1
    },
    "adjudication": "crt"
   },
@@ -2424,9 +2908,10 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 1,
+   "sites": 2,
    "modules": {
-    "desync": 1
+    "desync": 1,
+    "seams": 1
    },
    "adjudication": "crt"
   },
@@ -2447,10 +2932,11 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 5,
    "modules": {
+    "mods": 1,
     "patch": 1,
-    "seams": 1
+    "seams": 3
    },
    "adjudication": "host-callback:io"
   },
@@ -2495,10 +2981,11 @@
    "domain": null,
    "tier": null,
    "promoted": false,
-   "sites": 2,
+   "sites": 4,
    "modules": {
+    "mods": 1,
     "patch": 1,
-    "seams": 1
+    "seams": 2
    },
    "adjudication": "host-callback:io"
   },

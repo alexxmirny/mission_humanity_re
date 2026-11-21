@@ -113,6 +113,9 @@
 #include "sim/sim_state.h"
 
 namespace mh::sim {
+// Exact post-AI/pre-count-gate phase; independent of the dispatch-entry observer.
+void set_sim_step_post_ai_observer(void (*fn)());
+void fire_sim_step_post_ai_observer();
 
 // ---- the outward calls -----------------------------------------------------------------------
 //

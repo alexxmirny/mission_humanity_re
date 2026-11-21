@@ -1,0 +1,64 @@
+# DATAEXT2: genuine campaign New Game on the controlled planet-2 resource.
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock 3000
+simrclick 480 330 ctrl
+bldgready 46
+logavail blocked
+logbldgs before_academy
+logcfg before_academy
+# Existing build panel; hudbuild finds the actual visible row for the Academy type.
+simclick 890 215
+gameclock +300
+hudbuild 28
+retry 1500 1 3 buildarmed 28
+logbuild academy_armed
+# Place beside the landed mother using the map view, not a test-only constructor.
+simclick 180 330
+bldgready 28
+logbldgs academy_ready
+logavail unlocked
+# Normal Barracks capacity is required before the Academy may produce a Soldier.
+simclick 890 215
+gameclock +300
+hudbuild 36
+retry 1500 1 3 buildarmed 36
+logbuild barracks_armed
+simclick 650 330
+bldgready 36
+logbldgs barracks_ready
+simclick 240 365
+selectedtype 28
+# Right-click the real Soldier row to inspect the game's info screen.
+hudinfo 26
+retry 1500 1 3 gamemode 4
+screensettled
+capture cfg_soldier_info_campaign
+key 0x01
+retry 1500 1 3 gamemode 2
+simclick 240 365
+selectedtype 28
+logcfg before_production
+hudprod 26
+prodstart 26
+logcfg production_started
+unitcount 26 1
+logcfg production_finished
+# Send an ordinary queued movement order to the actual produced unit.
+ordermove 26 3 0
+unittravel 26 move 10000
+logcfg production_moved
+# The Academy completion must unlock the Reactor; place and complete one normally.
+simclick 890 215
+gameclock +300
+hudbuild 27
+retry 1500 1 3 buildarmed 27
+logbuild reactor_armed
+simclick 650 500
+bldgready 27
+logbldgs reactor_ready
+log cfg gameplay complete
+end

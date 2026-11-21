@@ -71,12 +71,26 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string>
 
 #include "mh_net_proto/session_info.h" // SessionInfo / MAP_HASH_BYTES / map_stored_name
+
+namespace mh::mods {
+struct Snapshot;
+} // namespace mh::mods
 
 namespace mh {
 namespace seams {
 namespace maps {
+
+// Discovery validates structure only; JOIN content identity decides missing mods.
+bool validate_advert_header(const uint8_t *header, size_t size);
+// Admitted runtime headers additionally require an available tileset.
+bool validate_network_header(const uint8_t *header, size_t size);
+
+// Validate already-read bytes against the mounted immutable set and stock resources.
+bool validate_runtime_map(const uint8_t *bytes, size_t size, bool campaign, std::string &error,
+                          bool *retryable = nullptr);
 
 // ---- the file layer: small, and deliberately callable with no game and no network ---------------
 //
@@ -158,6 +172,13 @@ Resolve resolve(const char *dir, const char *base,
 bool store(const char *base, const uint8_t hash[mh_net_proto::MAP_HASH_BYTES], const void *bytes,
            uint32_t len, char *out_path, size_t cap);
 
+// Start each .sav read before opening; record only the explicit missing-resource error.
+void begin_save_read_attempt();
+enum class SaveProbeResult;
+void record_save_read_refusal(SaveProbeResult result);
+// One-shot reason for the existing save-load failure dialog.
+bool take_missing_save_tileset_refusal();
+
 // ---- the OPEN redirect (rule 2 above) -----------------------------------------------------------
 //
 // One entry, because one lobby picks one map. Registering a second replaces the first; clearing is
@@ -174,8 +195,11 @@ const char *redirect_apply(const char *in, char *scratch, size_t cap);
 void install();
 
 // One lobby frame, from on_lobby_dispatch (net_seams.cpp). Drives the host's per-peer state machine
-// and the client's download, repaints the status-line notice, and opens or closes the Start gate.
+// and the client's download and repaints the status-line notice.
 void lobby_tick(int is_host);
+// After native lobby flag recomputation, before menu input/draw. Adds only the map
+// constraint; never enables Start or erases a native disabled reason.
+void lobby_gate_after_dispatch(int is_host);
 
 // S2 (net_discovery.cpp): stamp our own map's content claim into the advert we are about to send.
 void host_fill_advert(mh_net_proto::SessionInfo &si);
@@ -191,14 +215,14 @@ void host_on_leave(int sender);
 
 // THE START GATE. True while some admitted joiner does not report our map; `out_peer` receives that
 // peer's name. `out_unfetchable` (mp:X2b) is set when the transport has no channel C, i.e. the
-// joiner can never be sent the map and this is a REFUSAL rather than a wait. Read by the lobby tick
-// (which closes the button) and by nothing else -- a second caller would be a second answer.
+// joiner can never be sent the map and this is a REFUSAL rather than a wait. The tick,
+// late widget constraint and activation guard all consult this one semantic decision.
 bool host_start_blocked(char *out_peer, int cap, bool *out_unfetchable = nullptr);
 
 // mp:X2/X2b -- asked by launch.cpp's begin_map_load hook when the host's Start is ACTIVATED. True =
 // swallow the activation: the gate is shut (a joiner is still downloading, or holds a different map
 // on a transport that cannot carry it). Logs `; [map] start CLICK REFUSED -- '<peer>' ...` each time.
-// This, not the widget's DISABLED bit, is the enforcement -- retail re-derives that bit every frame.
+// Activation is guarded too; the late widget constraint runs after retail re-derives its flags.
 bool host_refuse_start_click();
 
 // maptest only (mp:X2b): pretend the transport can (1) or cannot (0) carry a map; -1 = ask the
@@ -244,6 +268,9 @@ int host_next_peer_needing_map();
 void host_set_claim_for_test(const char   *map_name,
                              const uint8_t hash[mh_net_proto::MAP_HASH_BYTES], uint32_t size);
 
+// A fresh user JOIN resets the receive frontier before the host can send. Never call for re-JOIN.
+void client_begin_join();
+
 // S3 (net_discovery.cpp), client side: a host advert arrived. Records what map content this lobby
 // requires and decides, once, whether we already hold it.
 void client_on_advert(const mh_net_proto::SessionInfo &rec);
@@ -256,6 +283,73 @@ bool client_my_hash(uint8_t out[mh_net_proto::MAP_HASH_BYTES]);
 // note on why the JOIN field IS the protocol). One-shot; net_discovery.cpp drains it from the lobby
 // tick because that TU owns the stored host record and the player name the JOIN carries.
 bool client_take_rejoin();
+
+// mods:MAPGEN2 (the lobby map preview): the file to read for the lobby's map on THIS peer, given the path the game
+// would open (`base`). 0 = read `out` (the host's file; a client's own copy or its stored download -- the redirect
+// applied); 1 = a client that does not hold the host's map yet. Read-only; main thread.
+int preview_file(const char *base, char *out, int cap);
+
+// ---- mods:DATAEXT1 -- the mounted mod snapshot's MAP domain -------------------------------------
+//
+// What a mounted mod set changes here, and exactly what it may not. The pure catalog
+// (mh_common/include/mh_mod_catalog.h) publishes ONE immutable Snapshot per boot; the resource
+// adapter's DIRECT overlay (GetResourseFilePtr + rsr_GetFileRealSize) already serves a winner's
+// bytes wherever retail resolves a name through the pack path -- including both map loaders and
+// the campaign `Dane\*.mp` class -- and `rsr_GetFileEntry` stays stock, so it sees NO overlay.
+// This seam owns only the loose `maps\*.mpm` FILE domain, and every decision in it asks the mod
+// winners FIRST:
+//
+//   * The host claim hashes the winner's bytes (a mod map overriding a stock pack name IS
+//     claimed -- the pack-shadow "stock is install-identical" answer is for names no mod
+//     provides). The client resolve, the pack-shadow "blocked" verdicts and the picker preview
+//     follow the same winner.
+//   * A MOD MAP IS NEVER TRANSFERRED. The bytes arrive with the mod set; a seated peer that
+//     reports different content for a mod name is a REFUSAL (blocked), not a download target.
+//   * The picker lists the set's own names (picker_tick), and the one utils_open_file
+//     replacement in map_transfer.cpp stays the single open owner: a direct open of a mod map
+//     name -- a bare name, or a path under the maps directory -- gets the winner's cache file,
+//     so picker preview, claim hash, load and (never-armed) transfer source all see the same
+//     immutable bytes.
+//   * Winner bytes for the FILE API are materialized ONCE per arm into
+//     `<cfgdir>\modmaps\<pid>\` -- process-specific, so concurrent games never collide -- and
+//     nothing ever scans a directory: a stale file from an earlier boot is never named by a row
+//     and is therefore never activated. A set with NO map winners materializes nothing.
+//
+// WIRING (the boot adapter, plan section 4): after `mh::mods::prepare`, call
+// `mh::seams::maps::mod_arm(&candidate)` BEFORE `mh::mods::mount_snapshot` -- enumeration, the
+// read_mpm double-check and the cache copies happen there. `false` is an active-set failure --
+// a nested `maps\` name (the engine's map_name is flat), a leaf past the 32-byte map_name
+// field, bytes that fail read_mpm, a cache path that does not fit, or the open seam refusing to
+// arm -- and the adapter publishes the failure snapshot instead ("enumeration + cache readiness
+// precede final publish"). Rows remain inert until the snapshot is published.
+struct ModMapEntry {       // one map-domain winner, as the seam consumes it (mh::mods path-only form)
+    const char *canonical; // "maps\foo.mpm" -- catalog key, lowercase, backslashes, flat leaf
+    const char *leaf;      // "foo.mpm"      -- what retail's 32-byte map_name and the picker carry
+    const char *path;      // the materialized cache file the FILE API opens
+    const char *mod_id;    // the mod that wins this name (log provenance)
+};
+
+// Boot gate + publication. `snapshot` may be the adapter's prepared candidate (pre-mount) or the
+// published one; null returns false and stays retryable. Validates the map domain, writes the
+// cache files, arms the seams and only then reports success. False = active-set failure; the
+// seam stays disarmed and stock stands.
+bool mod_arm(const mh::mods::Snapshot *snapshot);
+bool mod_active();          // a set is mounted AND its map domain armed
+void mod_disarm_for_test(); // stock answers (maptest only)
+
+// maptest doors and pure halves (never called from a game path). `mod_set_for_test` arms
+// path-only rows (open/preview/picker logic); byte-backed claim arms go through `mod_arm` with a
+// built mh::mods::Snapshot plus one `mh::mods::mount_snapshot`.
+void mod_set_for_test(const ModMapEntry *entries, int count); // copies; null entries disarms
+bool mod_open_apply(const char *in, char *out, size_t cap);   // false = not a mod-map open (out untouched)
+bool claim_bytes_for(const char *leaf_name, const uint8_t **out_bytes, uint32_t *out_len,
+                     const char **out_mod_id);              // the winner's snapshot bytes for a map name
+int  preview_resolve(const char *base, char *out, int cap); // preview_file without the host check
+int  picker_rows_missing(const wchar_t (*existing)[64], int n_existing, wchar_t out[][48], int cap);
+
+// One pass per menu frame (net_lockstep.cpp's present hook, beside browser_notice_tick): after
+// any retail repopulate of the MP map picker, append the mounted set's own rows. Cheap when idle.
+void picker_tick();
 
 // U2 (net_discovery.cpp), client side: the host's FLAG_START arrived. Samples the base map file one
 // last time, so a log carries the bytes of the player's own file AFTER the match it was not used in.

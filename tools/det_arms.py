@@ -12,7 +12,6 @@ Split out of tools/test_ui.py (tooling:TL-SUITE-SPLIT); `test_ui.py --determinis
 forward here.
 """
 
-import check_orders_agree  # noqa: E402  TL-SUITE-FOLD-DETC1: the mh_orders.bin verdict
 import argparse
 import contextlib
 import glob
@@ -23,22 +22,24 @@ import shutil
 import subprocess
 import sys
 
+import check_orders_agree
+import tmp_runs
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _rundir  # noqa: E402  SES8: run-dir names + a process dir's sessions
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import machine_config as machine  # noqa: E402
-import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
-import map_variant  # noqa: E402  mp:X2a -- the one-bit flip pushed to the client VM's own Maps\
-import rig_phases  # noqa: E402  tooling:TL-RIG-PHASES
-import mp_run  # noqa: E402  mp:X2a -- scp the variant to/from the two independent rig VMs
-from ui_suite_common import (  # noqa: E402
+import lane_alloc
+import machine_config as machine
+import make_lane
+import map_variant
+import mp_run
+import rig_phases
+from ui_suite_common import (
     BLIT_LOCAL_FPS_FLOOR,
-    LOCAL_PORT_BASE,
     LOCAL_TIMEOUT_FRAMES,
     MODE_BROKERED,
     MODE_ORIGINAL,
-    REPO,
     RELAY_PORT,
+    REPO,
     RelayProc,
     RunnerConfig,
     add_extra_ini_arg,
@@ -56,11 +57,12 @@ from ui_suite_common import (  # noqa: E402
     print_desktop_banner,
     provision_lanes,
     relay_addr_for_peers,
-    run_ui_test as _run_ui_test,
     soak_ai_premise,
-    sp_newest_run,
     vm_reachable,
     write_all_original_ini,
+)
+from ui_suite_common import (
+    run_ui_test as _run_ui_test,
 )
 
 
@@ -255,8 +257,7 @@ def write_fixes_off_ini(path):
         f.write(";   reimpl_fixes  -- the fix exists ONLY in our body, so there is no patch to\n")
         f.write(";                    derive it from\n")
         f.write("[net]\n")
-        for k in knobs:
-            f.write("%s=0   ; %s\n" % (k, sources[k]))
+        f.writelines("%s=0   ; %s\n" % (k, sources[k]) for k in knobs)
     return knobs
 
 
@@ -467,7 +468,7 @@ def sp_speed_refusal(speeds, na, nb):
     tests, and the live path's evidence is that a matched-speed run prints the comparable line.
     """
     if speeds.get(na) != speeds.get(nb):
-        fmt = lambda s: ("%d%%" % s) if s is not None else "UNKNOWN"  # noqa: E731
+        fmt = lambda s: ("%d%%" % s) if s is not None else "UNKNOWN"
         return (
             "the two arms ran at DIFFERENT game speeds (%s: %s, %s: %s).\n"
             "      A step's game-time size scales with game_speed_pct, so per-step hashes recorded\n"
@@ -576,14 +577,33 @@ def sp_mode_refusal(mode_a, mode_b, na, nb):
     return (None, "arms: %s=%s vs %s=%s -- different configurations" % (na, mode_a, nb, mode_b))
 
 
-def _sp_fixed_hashes(lane_dir):
-    """{match step: (clock, state hash)} from the newest match segment's per-step lines. The `combined` column (3rd) folds in
-    wall-dependent regions and differs between any two unpinned runs, so it is NOT compared; clock + state are the channels."""
-    segs = sorted(glob.glob(os.path.join(lane_dir, "logs", "*_host")), key=os.path.getmtime)
-    path = os.path.join(segs[-1], "mh_match_harness.log") if segs else None
+def _sp_run_dirs(lane_dir):
+    return set(_rundir.run_dirs(os.path.join(lane_dir, "logs")))
+
+
+def _sp_fresh_run(lane_dir, before, rc, required):
+    """Refuse failed children, recycled process directories, and missing evidence."""
+    if rc != 0:
+        raise ValueError("ui_test failed with exit code %s" % rc)
+    fresh = [d for d in _sp_run_dirs(lane_dir) - before if _rundir.is_process_dir(d)]
+    if len(fresh) != 1:
+        raise ValueError("expected one new process log directory, found %d" % len(fresh))
+    run = fresh[0]
+    missing = [fn for fn in required if not os.path.isfile(os.path.join(run, fn))]
+    if missing:
+        raise ValueError("new process directory missing: " + ", ".join(missing))
+    return run
+
+
+def _sp_fixed_hashes(run):
+    """Read clock and state hashes only from this process's own match segment."""
+    sessions = _rundir.sessions_of(run)
+    if len(sessions) != 1:
+        raise ValueError("expected one session for %s, found %d" % (run, len(sessions)))
+    path = os.path.join(sessions[0], "mh_match_harness.log")
+    if not os.path.isfile(path):
+        raise ValueError("missing match harness log: " + path)
     out = {}
-    if not path or not os.path.isfile(path):
-        return out
     with open(path, encoding="utf-8", errors="ignore") as fh:
         for line in fh:
             f = line.split()
@@ -594,28 +614,32 @@ def _sp_fixed_hashes(lane_dir):
 
 def run_sp_fixed_determinism(args, cfg):
     """The FIXED-STEP single-player determinism check (2026-10-16): the same scripted run three times on the SHIPPED
-    config with NO pin_wallclock -- idle, under CPU load, idle again -- and the per-step (clock, state) hashes must be
-    identical at `sp_sim_step_ms=20`. The control is the same pair at `sp_sim_step_ms=0` (retail's variable step), which
-    MUST differ: without it a vacuous comparison (nothing recorded, hashes constant) would read as a pass."""
+    config with NO pin_wallclock -- idle, under CPU load and a headless frame cap, idle again -- and the per-step
+    (clock, state) hashes must be identical at `sp_sim_step_ms=20`. The same perturbation at `sp_sim_step_ms=0`
+    (retail variable step) must produce a clock difference, so the negative control exercises timing."""
     import multiprocessing
 
     lane = "ui_sp_det_fixed"
     lane_dir = os.path.join(make_lane.LANE_ROOT, lane)
-    r = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(REPO, "tools", "make_lane.py"),
-            "--name",
-            lane,
-            "--lane",
-            str(lane_alloc.lane("sp_det_fixed", 0)),
-            "--port",
-            str(LOCAL_PORT_BASE + lane_alloc.lane("sp_det_fixed", 0)),
-            "--headless",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    import gate_admission
+
+    with gate_admission.lease("fixed-sp:provision", seconds=3, bootstrap=True) as held:
+        r = subprocess.run(
+            [
+                sys.executable,
+                os.path.join(REPO, "tools", "make_lane.py"),
+                "--name",
+                lane,
+                "--lane",
+                str(lane_alloc.lane("sp_det_fixed", 0)),
+                "--port",
+                str(lane_alloc.lane_port(lane_alloc.lane("sp_det_fixed", 0))),
+                "--headless",
+            ],
+            capture_output=True,
+            text=True,
+            env=held.covered_env(),
+        )
     if r.returncode != 0:
         print("lane FAILED: %s" % (r.stderr or r.stdout).strip()[:300])
         return 1
@@ -624,15 +648,88 @@ def run_sp_fixed_determinism(args, cfg):
         "fixed_step=0;region_hash_step=1;synth_seed=" + seed
     )  # NO pin_wallclock: the clock is the wall clock
 
-    def one(sp_ms, loaded):
-        procs = []
-        if loaded:
-            procs = [
-                multiprocessing.Process(target=_burn_cpu, daemon=True)
-                for _ in range(os.cpu_count() or 4)
-            ]
-            for p in procs:
-                p.start()
+    def one(sp_ms, loaded, following):
+        count = max(1, min(4, (os.cpu_count() or 4) // 4)) if loaded else 0
+        with gate_admission.lease(
+            "fixed-sp:%d:%s" % (sp_ms, "loaded" if loaded else "idle"),
+            seconds=45,
+            credits=gate_admission.CORE * (1 + count),
+            tail=[
+                ("fixed-sp:%d:%s" % (ms, "loaded" if load else "idle"), 45)
+                for ms, load in following
+            ],
+        ) as held:
+            return one_admitted(sp_ms, loaded, count, held.covered_env())
+
+    def one_admitted(sp_ms, loaded, count, child_env):
+        import threading
+
+        import win_job
+
+        before = _sp_run_dirs(lane_dir)
+        stop = threading.Event()
+        burners = []
+        jobs = []
+        load = {"step": None, "error": None}
+
+        def start_after_game_entry():
+            # Do not compete with the scripted menu's mouse injection: a missed spinner
+            # click leaves the game in the lobby forever. Begin load only after GAME_MODE 2.
+            while not stop.wait(0.1):
+                fresh = [d for d in _sp_run_dirs(lane_dir) - before if _rundir.is_process_dir(d)]
+                if len(fresh) != 1:
+                    continue
+                run = fresh[0]
+                try:
+                    with open(
+                        os.path.join(run, "mh_uidrive.log"), encoding="utf-8", errors="replace"
+                    ) as f:
+                        entered = any(" ok " in line and ": gamemode 2" in line for line in f)
+                except OSError:
+                    continue
+                if not entered:
+                    continue
+                try:
+                    for _ in range(count):
+                        if stop.is_set():
+                            return
+                        p = multiprocessing.Process(target=_burn_cpu, daemon=True)
+                        p.start()
+                        burners.append(p)
+                        job = win_job.assign_kill_on_close(p.pid)
+                        if not job:
+                            raise RuntimeError("could not protect burner with kill-on-close job")
+                        jobs.append(job)
+                    if stop.is_set() or not all(p.is_alive() for p in burners):
+                        return
+                    # Wait for measured CPU use, then snapshot the step boundary. No
+                    # pre-load step is admitted to the loaded comparison.
+                    initial = [_burner_cpu_seconds(p.pid) for p in burners]
+                    while not stop.wait(0.05):
+                        if not all(p.is_alive() for p in burners):
+                            raise RuntimeError("CPU burner exited before starting work")
+                        current = [_burner_cpu_seconds(p.pid) for p in burners]
+                        if sum(end - start for start, end in zip(initial, current)) > 0:
+                            break
+                    else:
+                        return
+                    with open(
+                        os.path.join(run, "mh_harness.log"), encoding="utf-8", errors="ignore"
+                    ) as f:
+                        steps = [
+                            int(parts[0])
+                            for line in f
+                            if len(parts := line.split()) == 4 and parts[0].isdigit()
+                        ]
+                    load["step"] = max(steps, default=0)
+                    load["cpu_start"] = current
+                except (OSError, ValueError, RuntimeError) as exc:
+                    load["error"] = str(exc)
+                return
+
+        watcher = threading.Thread(target=start_after_game_entry) if loaded else None
+        if watcher:
+            watcher.start()
         try:
             argv = build_scenario_argv(
                 cfg=cfg,
@@ -644,30 +741,71 @@ def run_sp_fixed_determinism(args, cfg):
                 timeout_frames=LOCAL_TIMEOUT_FRAMES,
                 timeout=max(args.timeout, 180 + args.steps),
                 headless=True,
+                # Exercise both loaded arms under the same real frame-cadence
+                # perturbation; CPU consumption alone may miss no clock ticks.
+                extra_ini=["tools/uiscripts/ini/fps60.ini"] if loaded else [],
                 net_extra="sp_sim_step_ms=%d" % sp_ms,
             )
             print(
                 "\n=== sp_sim_step_ms=%d %s ===" % (sp_ms, "UNDER CPU LOAD" if loaded else "idle")
             )
-            run_ui_test(argv, max(args.per_test_timeout, 240 + args.steps))
+            rc, _ = run_ui_test(argv, max(args.per_test_timeout, 240 + args.steps), env=child_env)
         finally:
-            for p in procs:
-                p.terminate()
-        return _sp_fixed_hashes(lane_dir)
+            stop.set()
+            if watcher:
+                watcher.join()
+            load["alive_at_end"] = bool(burners) and all(p.is_alive() for p in burners)
+            try:
+                load["cpu_end"] = (
+                    [_burner_cpu_seconds(p.pid) for p in burners] if load["alive_at_end"] else []
+                )
+            except OSError as exc:
+                load["error"] = str(exc)
+            finally:
+                _stop_burners(burners, jobs)
+        run = _sp_fresh_run(lane_dir, before, rc, ("mh_harness.log", "mh_uidrive.log"))
+        hashes = _sp_fixed_hashes(run)
+        if loaded:
+            if load["error"] or load["step"] is None or not load["alive_at_end"]:
+                raise ValueError(
+                    "CPU load did not start in game: %s"
+                    % (load["error"] or "burners not alive throughout run")
+                )
+            cpu_used = sum(end - start for start, end in zip(load["cpu_start"], load["cpu_end"]))
+            if cpu_used <= 0:
+                raise ValueError("CPU burners consumed no processor time")
+            covered = sum(step > load["step"] for step in hashes)
+            print(
+                "  CPU load: %d burners, %.3fs CPU, started after step %d; %d later steps"
+                % (len(burners), cpu_used, load["step"], covered)
+            )
+            if covered < max(1, (9 * args.steps + 9) // 10):
+                raise ValueError("CPU load covered too few simulation steps")
+            # Every loaded hash entering either comparison must postdate the point
+            # when all burners were running and CPU accounting began.
+            hashes = {step: value for step, value in hashes.items() if step > load["step"]}
+        return hashes
 
     def diff(a, b):
         ks = sorted(set(a) & set(b))
         bad = [k for k in ks if a[k] != b[k]]
         return len(ks), len(bad), (bad[0] if bad else None)
 
-    res = {}
-    for sp_ms in (20, 0):
-        a = one(sp_ms, False)
-        b = one(sp_ms, True)
-        res[sp_ms] = (diff(a, b), len(a), len(b))
-        if sp_ms == 20:
-            c = one(20, False)
-            res["idle2"] = diff(a, c)
+    cases = [(20, False), (20, True), (20, False), (0, False), (0, True)]
+    try:
+        runs = [one(sp_ms, loaded, cases[i + 1 :]) for i, (sp_ms, loaded) in enumerate(cases)]
+        a, b, c, control_a, control_b = runs
+        res = {
+            20: (diff(a, b), len(a), len(b)),
+            0: (diff(control_a, control_b), len(control_a), len(control_b)),
+            "idle2": diff(a, c),
+            "clock0": sum(
+                control_a[k][0] != control_b[k][0] for k in set(control_a) & set(control_b)
+            ),
+        }
+    except ValueError as exc:
+        print("\nSP-FIXED-DETERMINISM: FAIL (%s)" % exc)
+        return 1
     print("\n" + "=" * 78 + "\nSP-FIXED-DETERMINISM verdict (no pin_wallclock)\n" + "=" * 78 + "\n")
     (n20, bad20, first20), la, lb = res[20]
     print(
@@ -684,14 +822,84 @@ def run_sp_fixed_determinism(args, cfg):
         "  CONTROL sp_sim_step_ms=0 idle vs loaded : compared %d steps, %d differ (first %s) -- must differ"
         % (n0, bad0, first0)
     )
+    print("  CONTROL clock differences: %d -- must differ" % res["clock0"])
     ok = (
-        n20 >= args.steps * 0.9 and bad20 == 0 and bad2 == 0 and n2 >= args.steps * 0.9 and bad0 > 0
+        n20 >= max(1, args.steps * 0.9)
+        and bad20 == 0
+        and bad2 == 0
+        and n2 >= max(1, args.steps * 0.9)
+        and n0 >= max(1, args.steps * 0.9)
+        and bad0 > 0
+        and res["clock0"] > 0
     )
     print("\nSP-FIXED-DETERMINISM: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
 
+def _burner_cpu_seconds(pid):
+    """Actual processor time, not merely an alive burner process."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        raise OSError("cannot query CPU burner %s" % pid)
+    try:
+        creation, exit_time, system, user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(system),
+            ctypes.byref(user),
+        ):
+            raise OSError("cannot read CPU time for burner %s" % pid)
+
+        def ticks(ft):
+            return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+
+        return (ticks(system) + ticks(user)) / 10_000_000.0
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def _stop_burners(burners, jobs):
+    import win_job
+
+    for p in burners:
+        if p.is_alive():
+            p.terminate()
+    exit_codes = []
+    for p in burners:
+        p.join()
+        exit_codes.append(p.exitcode)
+        p.close()
+    for job in jobs:
+        win_job.close_job(job)
+    return exit_codes
+
+
 def _burn_cpu():
+    # Load should compete for spare CPU without starving the game or unrelated rig work.
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.SetPriorityClass.restype = wintypes.BOOL
+    if not kernel.SetPriorityClass(
+        kernel.GetCurrentProcess(), 0x00004000
+    ):  # BELOW_NORMAL_PRIORITY_CLASS
+        raise ctypes.WinError(
+            ctypes.get_last_error(), "SetPriorityClass(BELOW_NORMAL_PRIORITY_CLASS) failed"
+        )
     while True:
         pass
 
@@ -717,7 +925,7 @@ def run_sp_determinism(args, cfg):
             # grown onto (`pause_hotkey`), so the gate's spdet unit and that scenario shared a mutex.
             str(lane_alloc.lane("sp_det", 0)),
             "--port",
-            str(LOCAL_PORT_BASE + lane_alloc.lane("sp_det", 0)),
+            str(lane_alloc.lane_port(lane_alloc.lane("sp_det", 0))),
         ]
         + (["--visible"] if args.visible else ["--headless"]),
         capture_output=True,
@@ -791,10 +999,12 @@ def run_sp_determinism(args, cfg):
             net_extra=net_extra,
         )
         print("\n=== SP arm: %s (promoted=%s) ===" % (name, promoted))
-        run_ui_test(argv, max(args.per_test_timeout, 240 + args.steps))
-        rd = sp_newest_run(lane_dir)
-        if not rd:
-            print("  no run directory produced -- arm %s did not launch" % name)
+        before = _sp_run_dirs(lane_dir)
+        rc, _ = run_ui_test(argv, max(args.per_test_timeout, 240 + args.steps))
+        try:
+            rd = _sp_fresh_run(lane_dir, before, rc, ("mh_harness.log", "mh_net.log"))
+        except ValueError as exc:
+            print("  arm %s REFUSED: %s" % (name, exc))
             return 1
         a_ok, a_lines = sp_arm_report(rd, name, promoted)
         ok &= a_ok
@@ -975,8 +1185,10 @@ def det_standard_selftest():
         os.makedirs(os.path.join(d, "client1"), exist_ok=True)
         with open(os.path.join(d, "client1", "mh_net.log"), "w", encoding="utf-8") as f:
             f.write("; nothing promoted here\n")
-            for nm in ("scratch_reset", "enqueue", "pending_enqueue"):
-                f.write("; [promote] %s: call #1 (OURS is live)\n" % nm)
+            f.writelines(
+                "; [promote] %s: call #1 (OURS is live)\n" % nm
+                for nm in ("scratch_reset", "enqueue", "pending_enqueue")
+            )
         check(
             "a client with NO RUN-CONFIG still passes the asymmetric shape though mh::orders logged "
             "liveness lines",
@@ -1543,6 +1755,78 @@ def det_standard_selftest():
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
+    # Exercise the actual orphan-reaper decision with owned child processes. Unknown
+    # runner liveness or an unreadable creation time must never kill a live shim.
+    from unittest import mock
+
+    import ui_test as _shim_ui
+
+    d = tempfile.mkdtemp(prefix="det_shim_owner_")
+    owned = []
+    try:
+        pidfile = os.path.join(d, "shim.json")
+        runner_started = _shim_ui._process_created_at(os.getpid())
+        check("SHIM: current runner creation time can be read", runner_started is not None)
+        with mock.patch.object(_shim_ui, "_shim_pidfile_path", return_value=pidfile):
+
+            def make_shim(runner_pid, started):
+                child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+                owned.append(child)
+                with open(pidfile, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "runner_pid": runner_pid,
+                            "runner_started": started,
+                            "shim_pid": child.pid,
+                        },
+                        f,
+                    )
+                return child
+
+            shim = make_shim(os.getpid(), runner_started)
+            with mock.patch.object(_shim_ui, "_process_still_running", return_value=None):
+                result = _shim_ui._shim_reap_if_orphaned(1)
+            check(
+                "SHIM: unknown runner liveness leaves the real shim alive",
+                not result and shim.poll() is None,
+            )
+            with (
+                mock.patch.object(_shim_ui, "_process_still_running", return_value=True),
+                mock.patch.object(_shim_ui, "_process_created_at", return_value=None),
+            ):
+                result = _shim_ui._shim_reap_if_orphaned(1)
+            check(
+                "SHIM: unknown runner identity leaves the real shim alive",
+                not result and shim.poll() is None,
+            )
+            if runner_started is not None:
+                result = _shim_ui._shim_reap_if_orphaned(1)
+                check(
+                    "SHIM: confirmed live runner leaves the real shim alive",
+                    not result and shim.poll() is None,
+                )
+            runner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+            owned.append(runner)
+            shim2 = make_shim(runner.pid, _shim_ui._process_created_at(runner.pid))
+            runner.terminate()
+            runner.wait(timeout=5)
+            result = _shim_ui._shim_reap_if_orphaned(1)
+            if result:
+                try:
+                    shim2.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            check(
+                "SHIM: confirmed exited runner permits reaping its real shim",
+                result and shim2.poll() is not None,
+            )
+    finally:
+        for child in owned:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5)
+        shutil.rmtree(d, ignore_errors=True)
+
     # TL-HARN-CLEANCLOSE: the runner's straggler wait. Silent when it works (every peer closed) and
     # silent when it is wrong in the other direction too (a pull taken before a client's stop reads as
     # "no rollups" -- the exact misreading D31/U41c made), so both directions are pinned here, with
@@ -1604,6 +1888,133 @@ def det_standard_selftest():
         _uc.pull_peer_logs = real_pull
         _uc.CLOSE_WAIT_S = saved_wait
         shutil.rmtree(d, ignore_errors=True)
+    # An arm may only consume evidence created by that successful child, never the
+    # prior arm's logs. Use real directories and files, just like the runner.
+    d = tempfile.mkdtemp(prefix="det_sp_fresh_")
+    try:
+        logs = os.path.join(d, "logs")
+        old_run = os.path.join(logs, "2026-11-02T07-00-00Z_menu_solo")
+        os.makedirs(old_run)
+        with open(os.path.join(old_run, "mh_harness.log"), "w") as f:
+            f.write("1 clock combined state\n")
+        before = _sp_run_dirs(d)
+
+        def refused(rc):
+            try:
+                _sp_fresh_run(d, before, rc, ("mh_harness.log",))
+            except ValueError:
+                return True
+            return False
+
+        check("SP evidence: a successful child without a new run refuses stale logs", refused(0))
+        new_run = os.path.join(logs, "2026-11-02T07-01-00Z_menu_solo")
+        os.makedirs(new_run)
+        check("SP evidence: a missing new harness log is refused", refused(0))
+        with open(os.path.join(new_run, "mh_harness.log"), "w") as f:
+            f.write("1 clock combined state\n")
+        check("SP evidence: failed child is refused even with new logs", refused(1))
+        check(
+            "SP evidence: successful child uses its own new logs",
+            _sp_fresh_run(d, before, 0, ("mh_harness.log",)) == new_run,
+        )
+        old_session = os.path.join(logs, "2026-11-02T07-00-01Z_12345678_map_host")
+        new_session = os.path.join(logs, "2026-11-02T07-01-01Z_87654321_map_host")
+        for session, process, state in (
+            (old_session, old_run, "old"),
+            (new_session, new_run, "new"),
+        ):
+            os.makedirs(session)
+            with open(os.path.join(session, "session.json"), "w") as f:
+                json.dump({"process_dir": os.path.basename(process)}, f)
+            with open(os.path.join(session, "mh_match_harness.log"), "w") as f:
+                f.write("1 clock combined %s\n" % state)
+        check(
+            "SP fixed evidence: session belongs to the current process",
+            _sp_fixed_hashes(new_run) == {1: ("clock", "new")},
+        )
+        os.unlink(os.path.join(new_session, "mh_match_harness.log"))
+        try:
+            _sp_fixed_hashes(new_run)
+            missing_refused = False
+        except ValueError:
+            missing_refused = True
+        check(
+            "SP fixed evidence: missing session harness cannot reuse previous session",
+            missing_refused,
+        )
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    # Actual processes, not a mocked terminate: the lifecycle helper must reap every
+    # child even when the run stops while they are still active.
+    import multiprocessing
+    import time
+
+    children = []
+    try:
+        for _ in range(2):
+            p = multiprocessing.Process(target=time.sleep, args=(30,))
+            p.start()
+            children.append(p)
+    finally:
+        codes = _stop_burners(children, [])
+    check(
+        "SP load lifecycle: stopped children are reaped",
+        len(codes) == 2 and all(code is not None for code in codes),
+    )
+    # Exercise the actual burner, including its Windows priority call, not merely
+    # the lifecycle helper. Observe its priority before measuring subsequent CPU.
+    import ctypes
+    from ctypes import wintypes
+
+    import win_job
+
+    child = multiprocessing.Process(target=_burn_cpu, daemon=True)
+    child.start()
+    job = None
+    handle = None
+    burn_ok = False
+    error = ""
+    try:
+        job = win_job.assign_kill_on_close(child.pid)
+        if not job:
+            raise RuntimeError("could not protect selftest burner with kill-on-close job")
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetPriorityClass.argtypes = [wintypes.HANDLE]
+        kernel.GetPriorityClass.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x1000, False, child.pid)
+        if not handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        deadline = time.monotonic() + 5
+        while child.is_alive() and time.monotonic() < deadline:
+            priority = kernel.GetPriorityClass(handle)
+            if not priority:
+                raise ctypes.WinError(ctypes.get_last_error())
+            if priority == 0x00004000:  # BELOW_NORMAL_PRIORITY_CLASS
+                break
+            child.join(timeout=0.05)
+        else:
+            raise RuntimeError("burner exited or did not enter below-normal priority")
+        initial = _burner_cpu_seconds(child.pid)
+        while child.is_alive() and time.monotonic() < deadline:
+            if _burner_cpu_seconds(child.pid) > initial:
+                burn_ok = True
+                break
+            child.join(timeout=0.05)
+        if not burn_ok:
+            error = "burner exited or consumed no CPU after priority was set"
+    except (OSError, RuntimeError) as exc:
+        error = str(exc)
+    finally:
+        if handle:
+            kernel.CloseHandle(handle)
+        codes = _stop_burners([child], [job] if job else [])
+    check(
+        "SP load: real below-normal burner consumes CPU" + (": " + error if error else ""), burn_ok
+    )
+    check("SP load: real burner was reaped", len(codes) == 1 and codes[0] is not None)
     print("det_standard_selftest:", "PASS" if not fails else "FAIL (%d)" % len(fails))
     return 0 if not fails else 1
 
@@ -1625,7 +2036,7 @@ def det_standard_selftest():
 #   * `peers=2` -- NET_BLOCK has no `[net] peers`, so the host would log "(expect 1 peers)" and the
 #     third peer has nowhere to go.
 #   * the lane on the HOST'S GAME PORT -- peers of one match share `[net] port`, so a lane on its own
-#     port dials a host that is not there. Hence DET3_PORT, not LOCAL_PORT_BASE + n.
+#     port dials a host that is not there. Hence DET3_PORT, not lane_alloc.lane_port(n).
 #   * --timeout-frames -- a headless lane runs at thousands of fps, so ui_test's default 1500-frame
 #     per-step watchdog expires ~1.1 s in, before the menu exists ("TIMEOUT at step 0 after 1501
 #     frames (1.125s) -- ABORT: settled value:110").
@@ -2252,9 +2663,17 @@ def run_u53(args, cfg, arm, config1=False):
                 clients=["%s:%s" % (args.vms[1], c1s), "lane=%s:%s" % (DET3_LANE, c2s)],
                 connect_ip=args.vms[0],
             )
+        # CONQ also authors orders owned by its victim. Give that synthetic owner one
+        # producer: real movement UI authors only its local owner's orders, and the
+        # native pending queue preserves arrival order within an owner. Arming both
+        # survivors invents cross-origin writers for the same host-owned units.
+        conq_peers = list(getattr(args, "harness_extra_peer", None) or ())
+        if victim == "host" and base_arm != "host-quit":
+            conq_peers.insert(0, "1:" + conq)
         argv = build_scenario_argv(
             cfg=cfg,
             determinism=True,
+            record=getattr(args, "record", 0),
             steps=steps,
             det_exclude=[]
             if (u54 and base_arm in ("client-spec", "host-spec") and not arm.startswith("u54-neg"))
@@ -2273,8 +2692,7 @@ def run_u53(args, cfg, arm, config1=False):
                 )
             ),
             harness_extra_host=host_extra if host_extra else (conq if victim != "host" else None),
-            harness_extra_client=conq if (victim == "host" and base_arm != "host-quit") else None,
-            harness_extra_peer=list(getattr(args, "harness_extra_peer", None) or ()),
+            harness_extra_peer=conq_peers,
             net_extra_peer=list(getattr(args, "net_extra_peer", None) or ()),
             omit_satellite=["libmh.dll"] if config1 else (),
         )
@@ -2683,12 +3101,14 @@ U19J_FENCED_SCRIPT = "mp_client_gpfg3_frozen.txt"
 
 
 def u19j_log_dir(guarded):
-    return os.path.join(REPO, "tmp", "ui_test", "u19j_gpfg3" + ("" if guarded else "_unguarded"))
+    return os.path.join(
+        tmp_runs.current_output("peer_logs"), "u19j_gpfg3" + ("" if guarded else "_unguarded")
+    )
 
 
 def run_u19j_gpfg3(args, cfg, guarded=True):
-    """mp:U19j's 3-peer carrier-FIRES shape. Returns (ok, lines); `ok` for the unguarded arm is the
-    EXPECT-RED verdict (True = XFAIL on the garbled frame)."""
+    """mp:U19j's 3-peer carrier-FIRES shape. Both UI runs must pass; the unguarded game's
+    EXPECT-RED verdict must independently prove XFAIL on the garbled frame."""
     down = [ip for ip in args.vms[:2] if not vm_reachable(ip)]
     if down:
         return None, ["      SKIP -- VM(s) unreachable: %s" % ", ".join(down)]
@@ -2720,11 +3140,15 @@ def run_u19j_gpfg3(args, cfg, guarded=True):
     if args.net_extra:
         net.append(args.net_extra)
     log_dir = u19j_log_dir(guarded)
+    host_script, survivor_script = U19J_HOST_SCRIPT, U19J_SURVIVOR_SCRIPT
+    if not guarded:
+        host_script = os.path.join("u19j_unguarded", host_script)
+        survivor_script = os.path.join("u19j_unguarded", survivor_script)
     argv = build_scenario_argv(
         cfg=cfg,
-        host="%s:%s" % (args.vms[0], U19J_HOST_SCRIPT),
+        host="%s:%s" % (args.vms[0], host_script),
         clients=[
-            "%s:%s" % (args.vms[1], U19J_SURVIVOR_SCRIPT),
+            "%s:%s" % (args.vms[1], survivor_script),
             "lane=%s:%s" % (DET3_LANE, U19J_FENCED_SCRIPT),
         ],
         connect_ip=args.vms[0],
@@ -2744,7 +3168,7 @@ def run_u19j_gpfg3(args, cfg, guarded=True):
     shutil.rmtree(log_dir, ignore_errors=True)
     rc = run_ui_test(argv, max(args.per_test_timeout, 420))[0]
     dirs = [os.path.join(log_dir, k) for k in ("host", args.vms[1], DET3_LANE)]
-    lines = ["   ui_test rc=%d%s" % (rc, "" if guarded else " (a red here is the expected half)")]
+    lines = ["   ui_test rc=%d" % rc]
     lines += ["   peer logs:"] + ["      %s" % d for d in dirs]
     chk_argv = [sys.executable, os.path.join(REPO, "tools", "check_gone_peer_guard.py"), *dirs]
     chk_argv += ["--arm", "on"] if guarded else ["--arm", "off", "--expect-red"]
@@ -2752,11 +3176,9 @@ def run_u19j_gpfg3(args, cfg, guarded=True):
     lines += ["   check_gone_peer_guard:"] + [
         "      " + ln for ln in (chk.stdout or chk.stderr).strip().splitlines()
     ]
-    if guarded:
-        return (rc == 0 and chk.returncode == 0), lines
-    # EXPECT-RED: the checker's own XFAIL is the verdict. ui_test's rc is not consulted -- the host's
-    # `absent Continue game` is SUPPOSED to fail when the frame garbles.
-    return chk.returncode == 0, lines
+    # A real native outcome terminates the negative scripts. Neither an unrelated UI
+    # failure nor missing capture evidence may be hidden by the causal checker's XFAIL.
+    return (rc == 0 and chk.returncode == 0), lines
 
 
 # mp:U58 -- GS2 (the data-timeout watchdog) IN A 3-PEER STAR. Same topology/lane as --u53-* (host on
@@ -2877,7 +3299,7 @@ X2A_MAP_NAME = "blue monday.mpm"  # the map picker's pre-selected entry; both sc
 
 
 def x2a_log_dir():
-    return os.path.join(REPO, "tmp", "ui_test", "x2a_map_variant")
+    return os.path.join(tmp_runs.current_output("peer_logs"), "x2a_map_variant")
 
 
 def run_x2a_map_variant(args, cfg):
@@ -2888,7 +3310,7 @@ def run_x2a_map_variant(args, cfg):
     host_ip, client_ip = args.vms[0], args.vms[1]
     fwd = machine.VM_DIR.replace("\\", "/")
     remote_map = "%s/Maps/%s" % (fwd, X2A_MAP_NAME)
-    scratch = os.path.join(REPO, "tmp", "x2a_map_variant")
+    scratch = tmp_runs.current_output("x2a_map_variant")
     os.makedirs(scratch, exist_ok=True)
     backup_local = os.path.join(scratch, "backup.mpm")
     variant_local = os.path.join(scratch, "variant.mpm")
@@ -3369,10 +3791,7 @@ def run_det_config1(args, cfg, local=False, gate=False):
             results.append((tag, ok, lines))
             # keep each arm's evidence: the next arm det_clear()s the shared dir
             keep = os.path.join(
-                REPO,
-                "tmp",
-                "ui_test",
-                "det_config1",
+                tmp_runs.current_output("det_config1"),
                 re.sub(r"[^A-Za-z0-9]+", "_", tag).strip("_").lower(),
             )
             shutil.rmtree(keep, ignore_errors=True)
@@ -3593,9 +4012,9 @@ def run_det_standard(args, cfg):
 
 # --det-local's own range. The lane numbers come from lane_alloc (fork F4H), and since TL-BANDS200
 # (2026-09-29) so does the port: peers of one match share one port, so it is the block's FIRST lane's
-# derived port (LOCAL_PORT_BASE + lane, in lane_alloc's lane port band) rather than one per lane. It
+# derived port (lane_alloc.lane_port(lane), in lane_alloc's lane port band) rather than one per lane. It
 # was a hand-picked 6620 -- the capture suite's row 20 game port -- until then.
-DET_LOCAL_PORT = LOCAL_PORT_BASE + lane_alloc.lane("det_local", 0)
+DET_LOCAL_PORT = lane_alloc.lane_port(lane_alloc.lane("det_local", 0))
 # provision_lanes numbers from the BASE (lane_base + 1 is the first peer), so this is the block's
 # base rather than its first lane. Allocated at fork F4H -- see tools/lane_alloc.py.
 DET_LOCAL_LANE_BASE = lane_alloc.block("det_local")[0]
@@ -4170,9 +4589,7 @@ def main(argv=None, lenient=False):
             args.par_slot = 0
         if not 0 <= args.par_slot < lane_alloc.PAR_SLOTS:
             ap.error("--par-slot must be 0..%d" % (lane_alloc.PAR_SLOTS - 1))
-        os.environ[rig_phases.SCRATCH_ENV] = os.path.join(
-            REPO, "tmp", "rig_par", "slot%d" % args.par_slot
-        )
+        os.environ.setdefault(rig_phases.SCRATCH_ENV, tmp_runs.current_output("rig_scratch"))
     rc = apply_net_args(
         ap,
         args,
@@ -4627,4 +5044,8 @@ if __name__ == "__main__":
 
     if set(sys.argv[1:]) & {"--det-selftest"}:  # offline: must not wait on the rig lease
         raise SystemExit(main())
-    raise SystemExit(hostlock.run_rig_tool(main, "det_arms"))
+    raise SystemExit(
+        hostlock.run_rig_tool(
+            lambda: tmp_runs.run_cli(main, "det-arm", adjudicator=True), "det_arms"
+        )
+    )

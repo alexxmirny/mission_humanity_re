@@ -50,9 +50,16 @@ void game_speed_recompute(const sim_view &v, sim_store &own) {
 
 // ---- the public wrapper --------------------------------------------------------------------------
 
+namespace {
+void (*g_recompute_observer)() = nullptr;
+}
+
+void set_game_speed_recompute_observer(void (*fn)()) { g_recompute_observer = fn; }
+
 void game_speed_recompute() {
     sim_state st = state();
     detail::game_speed_recompute(st.read, st.own);
+    if (g_recompute_observer) g_recompute_observer();
 }
 
 

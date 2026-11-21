@@ -1,3 +1,4 @@
+#include "seams/strategic_input_native.h"
 // seams/ui_bigmap.cpp -- mods:MM4: a big minimap drawn over the strategic view while a key is held.
 //
 // RENDER AND INPUT ONLY. It reads game memory, writes pixels into the composed frame from the shared
@@ -92,10 +93,6 @@ bool g_on     = false;
 bool g_orders = true; // [ui] bigmap_orders: the right click on the overlay issues the minimap's order (off = swallowed, nothing happens)
 int  g_center = 0;    // 0 camera, 1 start, 2 map
 int  g_dim    = 35;
-struct Key {
-    int  vk   = 0;
-    bool ctrl = false, alt = false, shift = false;
-} g_key;
 
 // --- state --------------------------------------------------------------------------------------
 bool          g_shown  = false; // the last present drew the overlay
@@ -120,78 +117,6 @@ long long us_since(const LARGE_INTEGER &t0) {
     return g_qf.QuadPart ? (t1.QuadPart - t0.QuadPart) * 1000000 / g_qf.QuadPart : 0;
 }
 
-int parse_int(const char *s) { return (int)strtol(s, nullptr, 0); }
-
-// "Tab", "Ctrl+Alt+N", "F9", "0x09", "none". Same grammar as the overlay's own parser.
-bool parse_key(const char *spec, Key *out) {
-    *out          = Key{};
-    const char *s = spec;
-    for (;;) {
-        if (_strnicmp(s, "ctrl+", 5) == 0) {
-            out->ctrl = true;
-            s += 5;
-        } else if (_strnicmp(s, "control+", 8) == 0) {
-            out->ctrl = true;
-            s += 8;
-        } else if (_strnicmp(s, "alt+", 4) == 0) {
-            out->alt = true;
-            s += 4;
-        } else if (_strnicmp(s, "shift+", 6) == 0) {
-            out->shift = true;
-            s += 6;
-        } else break;
-    }
-    if ((s[0] == 'V' || s[0] == 'v') && (s[1] == 'K' || s[1] == 'k') && s[2] == '_') s += 3;
-    static const struct {
-        const char *name;
-        int         vk;
-    } NAMED[] = {
-        {"tab", VK_TAB},
-        {"pageup", VK_PRIOR},
-        {"pagedown", VK_NEXT},
-        {"space", VK_SPACE},
-        {"pgup", VK_PRIOR},
-        {"prior", VK_PRIOR},
-        {"pgdn", VK_NEXT},
-        {"next", VK_NEXT},
-        {"home", VK_HOME},
-        {"end", VK_END},
-        {"ins", VK_INSERT},
-        {"insert", VK_INSERT},
-        {"del", VK_DELETE},
-        {"delete", VK_DELETE},
-        {"up", VK_UP},
-        {"down", VK_DOWN},
-        {"left", VK_LEFT},
-        {"right", VK_RIGHT},
-        {"capslock", VK_CAPITAL},
-        {"caps", VK_CAPITAL},
-    };
-    for (const auto &e : NAMED)
-        if (lstrcmpiA(e.name, s) == 0) {
-            out->vk = e.vk;
-            return true;
-        }
-    if ((s[0] == 'F' || s[0] == 'f') && s[1] >= '0' && s[1] <= '9') {
-        const int n = parse_int(s + 1);
-        if (n >= 1 && n <= 24) {
-            out->vk = VK_F1 + n - 1;
-            return true;
-        }
-    }
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        out->vk = parse_int(s);
-        return out->vk > 0 && out->vk < 256;
-    }
-    if (s[0] && !s[1]) {
-        char c = s[0];
-        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-        out->vk = (unsigned char)c;
-        return true;
-    }
-    return false;
-}
-
 void init() {
     g_init = true;
     if (!mh::en_build_ok()) return;
@@ -205,39 +130,17 @@ void init() {
     mh::config::read_ini_string("ui", "bigmap_center", "camera", buf, sizeof(buf), g_ini);
     g_center = lstrcmpiA(buf, "start") == 0 ? 1 : lstrcmpiA(buf, "map") == 0 ? 2
                                                                              : 0;
-    mh::config::read_ini_string("ui", "bigmap_key", "Tab", buf, sizeof(buf), g_ini);
-    bool bound = buf[0] && lstrcmpiA(buf, "none") != 0 && parse_key(buf, &g_key);
-    if (!bound) {
-        g_key = Key{};
-        if (g_on) g_on = false;
-    }
     char m[200];
-    wsprintfA(m, "; BIGMAP: %s centre=%s key='%s' dim=%d%% orders=%d\n", g_on ? "armed" : "off", g_center == 1 ? "start" : g_center == 2 ? "map"
-                                                                                                                                         : "camera",
-              buf, g_dim, g_orders ? 1 : 0);
+    wsprintfA(m, "; BIGMAP: %s centre=%s profile=%08x dim=%d%% orders=%d\n",
+              g_on ? "armed" : "off", g_center == 1 ? "start" : g_center == 2 ? "map"
+                                                                              : "camera",
+              mh::seams::strategic_input::effective_profile_fingerprint(), g_dim, g_orders ? 1 : 0);
     seam_log(m);
 }
 
-bool foreground_is_us() {
-    HWND fg = GetForegroundWindow();
-    if (!fg) return false;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(fg, &pid);
-    return pid == GetCurrentProcessId();
-}
-
-// Held = the OS says so (and the game window is the foreground one: the key may be held in another app) OR
-// the UI harness synthesises it (a headless lane's GetAsyncKeyState always answers 0).
+// One normalized physical held/release owner; no OS polling or synthetic-key alias.
 bool key_held() {
-    if (!g_key.vk) return false;
-    bool vk_down = MH_UIDrive_SynthKeyDown(g_key.vk) != 0;
-    if (!vk_down && (GetAsyncKeyState(g_key.vk) & 0x8000) != 0 && foreground_is_us()) vk_down = true;
-    if (!vk_down) return false;
-    auto mod = [&](int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0 || MH_UIDrive_SynthKeyDown(vk) != 0; };
-    if (g_key.ctrl && !mod(VK_CONTROL)) return false;
-    if (g_key.alt && !mod(VK_MENU)) return false;
-    if (g_key.shift && !mod(VK_SHIFT)) return false;
-    return true;
+    return mh::seams::strategic_input::action_held(size_t(mh::strategic_bindings::action_id::expanded_map));
 }
 
 // Strategic view on screen, no chat line, no modal dialog / foreign widget list.
@@ -596,195 +499,54 @@ void cam_goto_xy(const Shown &S, int x, int y, bool drag) {
     }
 }
 
-// ---- the right click: the side minimap's order ---------------------------------------------------
-// mods:MM4C. A right click on the overlay does what a right click on the side minimap does: the ladder of
-// llm_strat_input_update 0x00441b88 that runs when _G_LLM_MINIMAP_CLICK_VALID is set, over the clicked tile.
-// Transcribed with the same tests in the same order, calling the same helpers and the same issuers (which
-// schedule the order through llm_strat_order_dispatch, so it is lockstep-safe: no sim write happens here).
-// "iu.c N" cites the line of tmp/mm4c/iu.c, the decompile of that function. With libmh present the issuers are
-// whichever body owns the stock entry (the wrappers call the stock address; a promoted body is a jmp there).
-//
-// Not reproduced, on purpose: the stock sets _G_LLM_RMB_GESTURE_STATE = 1 (cleared by its own button-up edge,
-// which the overlay eats, so a copy would stick) and the 5-frame cursor icon flash (a local icon id the
-// overlay's own cursor does not use).
-constexpr uintptr_t ADDR_RMB_T_CUR  = 0x005d0bacu;                      // _G_LLM_RMB_DBLCLICK_T_CUR: double, game clock of the last RMB press
-constexpr uintptr_t ADDR_RMB_T_PREV = 0x005d0bb4u;                      // _G_LLM_RMB_DBLCLICK_T_PREV: double, the press before it
-constexpr uintptr_t ADDR_WIN_C4F    = 0x00500c4fu;                      // _G_LLM_RMB_DBLCLICK_WINDOW_C4F: double 0.4 (own-unit tile move)
-constexpr uintptr_t ADDR_WIN_C57    = 0x00500c57u;                      // ..._C57: enter-building window
-constexpr uintptr_t ADDR_WIN_C5F    = 0x00500c5fu;                      // ..._C5F: empty-tile move window
-constexpr unsigned  SEL_UNIT = 0x20, SEL_UNIT2 = 0x80, SEL_BLDG = 0x40; // type masks of the tile finders
-constexpr int       BLDG_TYPE_A_TURRET = 5, BLDG_TYPE_H_TURRET = 25;
-constexpr int       CFG_BUILDING_STRIDE = 0x842;
-constexpr int       TILE_VISIBILITY_OFF = 7; // tile_objects element +7: the visibility refcount (0 = not in sight)
-
-int g_dt_milli = 0, g_win_milli = 0; // T_CUR - T_PREV and game_speed * the empty-tile window, x1000, for the log line
-
-void log_order(int x, int y, int tc, int tr, const char *what, int group, int dbl, int shift) {
-    char m[300];
-    wsprintfA(m, "; BIGMAP: order at (%d,%d) -> tile (%d,%d): %s [group %d, double click %d, shift %d, dt %d window %d]\n", x, y, tc, tr, what, group, dbl, shift, g_dt_milli, g_win_milli);
-    seam_log(m);
-}
-
+// World, side minimap and expanded-map commands use one semantic classifier and issue adapter.
 void right_click_order(const Shown &S, int x, int y) {
-    int tc, tr;
-    tile_at(S, x, y, &tc, &tr);
-    // iu.c 277 / 511 (the placement clear in the stock world and non-minimap arms): the stock right click disarms a building (BUILD_PLACEMENT_ID = 0). User decision
-    // 2026-10-17: on the overlay that is ALL it does -- no order follows.
-    int32_t *placing = mh::state::ptr<int32_t>(mh::state::RID_BUILD_PLACEMENT_ID);
-    if (placing && *placing != 0) {
-        *placing = 0;
-        log_order(x, y, tc, tr, "cancel placement, no order", 0, 0, 0);
-        return;
-    }
-    // iu.c 243-246: the press edge stamps the double-click clock (T_PREV = T_CUR; T_CUR = now) before the ladder reads it.
-    const double now = *mh::state::ptr<const double>(mh::state::RID_CURRENT_GAME_TIME);
-    const double cur = rd<double>(ADDR_RMB_T_CUR);
-    memcpy((void *)ADDR_RMB_T_PREV, &cur, 8);
-    memcpy((void *)ADDR_RMB_T_CUR, &now, 8);
-
-    const unsigned side     = *mh::state::ptr<const uint16_t>(mh::state::RID_PLAYERSIDE);
-    const int      group    = *mh::state::ptr<const int32_t>(mh::state::RID_STRAT_CTRL_GROUPS); // CTRL_GROUPS[0].count
-    const bool     shift    = (rd<uint8_t>(mh::addr::_G_LLM_KEY_RSHIFT_HELD) & 1) != 0 || (rd<uint8_t>(mh::addr::_G_LLM_KEY_LSHIFT_HELD) & 1) != 0;
-    const double   gspeed   = *mh::state::ptr<const double>(mh::state::RID_GAME_SPEED);
-    const double   since    = rd<double>(ADDR_RMB_T_CUR) - rd<double>(ADDR_RMB_T_PREV);
-    g_dt_milli              = (int)(since * 1000.0);
-    g_win_milli             = (int)(gspeed * rd<double>(ADDR_WIN_C5F) * 1000.0);
-    auto           dbl      = [&](uintptr_t win) { return since < gspeed * rd<double>(win); }; // T_CUR - T_PREV < game_speed * WINDOW
-    const uint8_t *tobj     = mh::state::ptr<const uint8_t>(mh::state::RID_TILE_OBJECTS);
-    const bool     visible  = tobj && tobj[(size_t)(((tc & 255) << 8) | (tr & 255)) * 8 + TILE_VISIBILITY_OFF] != 0;
-    uint32_t       found    = 0;
-    uint16_t       owner[4] = {};
-
-    if (group == 0) {
-        // iu.c 307-352: nothing selected. Only a selected TURRET with a visible enemy on the tile acts.
-        const unsigned bsel = *mh::state::ptr<const uint16_t>(mh::state::RID_STRAT_UI_SELECTED_BLDG_INDEX);
-        if (bsel == 0 || !visible || side > 7 || bsel >= mh::caps::g(mh::caps::BUILDINGS).limit) {
-            log_order(x, y, tc, tr, "no order (nothing selected)", group, 0, shift);
-            return;
-        }
-        const uint8_t *cfgb = mh::state::ptr<const uint8_t>(mh::state::RID_BUILDING);
-        if (!cfgb) return;
-        const uint8_t *b  = mh::caps::rec<const uint8_t>(mh::caps::BUILDINGS, side, bsel);
-        const unsigned id = (unsigned)(b[2] | (b[3] << 8));                            // map_object_building.building_id
-        const int      ty = id < 100 ? cfgb[(size_t)id * CFG_BUILDING_STRIDE + 8] : 0; // cfg Building.type
-        if (ty != BLDG_TYPE_A_TURRET && ty != BLDG_TYPE_H_TURRET) {
-            log_order(x, y, tc, tr, "no order (nothing selected, not a turret)", group, 0, shift);
-            return;
-        }
-        if (!mh::call::llm_map_tile_has_enemy(tc, tr)) {
-            log_order(x, y, tc, tr, "no order (turret, no enemy)", group, 0, shift);
-            return;
-        }
-        if (mh::call::llm_map_tile_find_enemy_of_type(tc, tr, &found, owner, SEL_UNIT)) {
-            mh::call::llm_strat_turret_order_target_unit((uint16_t)side, (uint16_t)bsel, owner[0], found);
-            log_order(x, y, tc, tr, "turret target unit", group, 0, shift);
-        } else if (mh::call::llm_map_tile_find_enemy_of_type(tc, tr, &found, owner, SEL_UNIT2)) {
-            mh::call::llm_strat_turret_order_target_unit((uint16_t)side, (uint16_t)bsel, owner[0], found);
-            log_order(x, y, tc, tr, "turret target unit", group, 0, shift);
-        } else if (mh::call::llm_map_tile_find_enemy_of_type(tc, tr, &found, owner, SEL_BLDG)) {
-            mh::call::llm_strat_turret_order_target_building((uint16_t)side, (uint16_t)bsel, owner[0], found);
-            log_order(x, y, tc, tr, "turret target building", group, 0, shift);
-        } else {
-            log_order(x, y, tc, tr, "no order (turret, enemy not found)", group, 0, shift);
-        }
-        return;
-    }
-
-    // iu.c 353-461: units selected (the else of CTRL_GROUPS[0].count == 0 at 307).
-    if (!visible) { // iu.c 356-359
-        mh::call::llm_strat_group_issue_move_order_deferred(tc, tr, 0x8000);
-        log_order(x, y, tc, tr, "move (deferred, tile not visible)", group, 0, shift);
-        return;
-    }
-    if (mh::call::llm_map_tile_has_enemy(tc, tr)) { // iu.c 437-458: attack, finder order 0x20, 0x80, 0x40
-        const unsigned sels[3] = {SEL_UNIT, SEL_UNIT2, SEL_BLDG};
-        for (unsigned sel : sels)
-            if (mh::call::llm_map_tile_find_enemy_of_type(tc, tr, &found, owner, (int16_t)sel)) {
-                mh::call::llm_strat_group_issue_attack_order(found, owner[0], (uint16_t)sel);
-                char what[64];
-                wsprintfA(what, "attack 0x%x target %u side %u", sel, (unsigned)found, (unsigned)owner[0]);
-                log_order(x, y, tc, tr, what, group, 0, shift);
-                return;
-            }
-        log_order(x, y, tc, tr, "no order (enemy not found)", group, 0, shift);
-        return;
-    }
-    if (!mh::call::llm_map_tile_has_own(tc, tr)) { // iu.c 365-379: empty tile
-        const bool d = dbl(ADDR_WIN_C5F);
-        if (d || shift) {
-            mh::call::llm_strat_group_issue_move_order_confirmed(tc, tr);
-            log_order(x, y, tc, tr, "move (confirmed)", group, d, shift);
-        } else {
-            mh::call::llm_strat_group_issue_move_order_deferred(tc, tr, 0x8000);
-            log_order(x, y, tc, tr, "move (deferred)", group, 0, shift);
-        }
-        return;
-    }
-    // iu.c 380-436: an own unit or building on the tile.
-    if (mh::call::llm_map_tile_find_own_of_type(tc, tr, &found, SEL_UNIT2)) { // iu.c 414-425: an own unit
-        const bool d = dbl(ADDR_WIN_C4F);
-        if (d || shift) {
-            mh::call::llm_strat_group_issue_move_order(tc, tr);
-            log_order(x, y, tc, tr, "move (own unit tile, confirmed)", group, d, shift);
-        } else {
-            mh::call::llm_strat_group_issue_move_order_deferred(tc, tr, 0x8000);
-            log_order(x, y, tc, tr, "move (own unit tile, deferred)", group, 0, shift);
-        }
-        return;
-    }
-    if (!mh::call::llm_map_tile_find_own_of_type(tc, tr, &found, SEL_BLDG)) { // iu.c 389-396
-        mh::call::llm_strat_group_issue_move_order_deferred(tc, tr, 0x8000);
-        log_order(x, y, tc, tr, "move (deferred, own tile, nothing found)", group, 0, shift);
-        return;
-    }
-    // iu.c 397-413: an own building: a double click or Shift enters it when it has a vehicle sub id.
-    const bool d   = dbl(ADDR_WIN_C57);
-    uint32_t   sub = 0;
-    if (d || shift) sub = mh::call::llm_strat_get_vehicle_building_sub_id(side, (int32_t)found);
-    if (sub == 0) {
-        mh::call::llm_strat_group_issue_move_order_deferred(tc, tr, 0x8000);
-        log_order(x, y, tc, tr, "move (deferred, own building)", group, d, shift);
-    } else {
-        mh::call::llm_strat_group_issue_enter_building_order(sub, tc, tr);
-        log_order(x, y, tc, tr, "enter building", group, d, shift);
-    }
+    int col, row;
+    tile_at(S, x, y, &col, &row);
+    mh::seams::strategic_input_native::command_tile(mh::strategic_bindings::surface::bigmap,
+                                                    static_cast<uint32_t>(col), static_cast<uint32_t>(row), x, y);
 }
 
 void on_pre_input() {
     if (!g_on) return;
-    const int w = rd<int32_t>(RING_W) & 0x7f;
+    mh::seams::strategic_input_native::capture_pointer_modifiers();
+    const unsigned select_mask  = mh::seams::strategic_input_native::button_mask(mh::strategic_bindings::select_button);
+    const unsigned command_mask = mh::seams::strategic_input_native::button_mask(mh::strategic_bindings::command_button);
+    const unsigned select_down = select_mask == 1 ? 2 : 8, select_up = select_mask == 1 ? 4 : 16;
+    const unsigned command_down = command_mask == 1 ? 2 : 8, command_up = command_mask == 1 ? 4 : 16;
+    const int      w = rd<int32_t>(RING_W) & 0x7f;
     for (int i = rd<int32_t>(RING_R) & 0x7f; i != w; i = (i + 1) & 0x7f) {
         uint8_t       *ev   = (uint8_t *)(RING_EV + (uintptr_t)i * EV_STRIDE);
         const uint32_t type = rd<uint32_t>((uintptr_t)ev + 4);
         const int      x = rd<int32_t>((uintptr_t)ev + 0x14), y = rd<int32_t>((uintptr_t)ev + 0x18);
         const bool     live = g_shown && g_shown_geom.valid;
         bool           eat  = false;
-        if (type == 2) { // left down
+        if (type == select_down) { // semantic selection down
             if (live && over_overlay(g_shown_geom, x, y)) {
                 g_ldrag   = true;
                 g_gesture = g_shown_geom;
                 cam_goto_xy(g_gesture, x, y, false);
                 eat = true;
             }
-        } else if (type == 4) { // left up
+        } else if (type == select_up) { // semantic selection up
             if (g_ldrag) {
                 g_ldrag = false;
                 eat     = true;
             }
-        } else if (type == 8) { // right down
+        } else if (type == command_down) { // semantic command down
             if (live && over_overlay(g_shown_geom, x, y)) {
                 g_rswallow = true;
                 eat        = true;
                 if (g_orders) right_click_order(g_shown_geom, x, y);
             }
-        } else if (type == 0x10) { // right up
+        } else if (type == command_up) { // semantic command up
             if (g_rswallow) {
                 g_rswallow = false;
                 eat        = true;
             }
         } else if (type == 1) { // move
             if (g_ldrag) {
-                if (rd<uint32_t>((uintptr_t)ev) & 1) cam_goto_xy(g_gesture, x, y, true);
+                if (rd<uint32_t>((uintptr_t)ev) & select_mask) cam_goto_xy(g_gesture, x, y, true);
                 eat = true;
             } else if (g_rswallow) {
                 eat = true;

@@ -10,11 +10,11 @@
 // breakdown, to the exact array). See the replay-harness notes.
 //
 // FORK F4E: EVERY DECLARATION BELOW IS NOW A DLL BOUNDARY. The harness ships as mh_harness.dll and
-// mh.dll resolves these thirteen symbols with GetProcAddress, defining each as a forwarding shim over
+// mh.dll resolves these symbols with GetProcAddress, defining each as a forwarding shim over
 // the bound table (mh/seams/harness_bind.cpp). Not one call site changed -- that is the point of the
 // shim -- but two things are worth knowing when editing this header:
 //
-//   * The CONTRACT is mh/include/mh_harness_module.h, which carries the same thirteen names WITH the
+//   * The CONTRACT is mh/include/mh_harness_module.h, which carries the same names WITH the
 //     value each answers when the instrument is absent. Adding a declaration here is not enough:
 //     tools/gen_harness_contract.py re-derives the set from objects and REFUSES if the two disagree.
 //   * MH_Harness_ReportRelocation is the one exception and is NOT a contract row -- it moved to
@@ -122,7 +122,7 @@ void MH_Harness_LateArm(void);
 // name stays because it describes whose CONFIGURATION it reports -- `[harness] relocate_state` -- and
 // because renaming it would be churn for a sentence. The F4 surface pass predicted thirteen crossing
 // symbols; it was twelve at F4E, and this is the one that stopped crossing by moving to the side
-// that owns its data (R9). It is thirteen again today for an unrelated reason (StepFence, above).
+// that owns its data (R9). Later exports such as StepFence are independent crossings.
 void MH_Harness_ReportRelocation(void);
 
 // F5J: THE SIM-STEP FENCE -- the honest surface behind the UI script grammar's `simstep <N>`.
@@ -154,6 +154,17 @@ void MH_Harness_ReportRelocation(void);
 // also the absent value, so an uninstrumented lane and a disarmed one answer alike and ui_drive
 // refuses the script by name instead of timing out on a predicate nothing can satisfy.
 int MH_Harness_StepFence(int target);
+
+// Shot-origin probe completion, including durability of its queued UNIT/ORIGIN/DONE records.
+// Returns -1 without an armed, configured probe; 0 while pending; 1 after its output is on disk.
+// Completion does not certify the samples: check_soa still judges completeness and the outcome.
+int MH_Harness_SoaComplete(void);
+
+// Observe the first local failover cleanup BEFORE the caller removes another human.
+// Writes a match-owned certificate after the last published pre-body hash; returns the first
+// future MATCH hash, or -1 when absent, ambiguous, stopped/reset/imported, or between publications.
+// Observe-only: never changes the fence, game clock, roster or failover decision.
+int MH_Harness_RecordFailoverCleanup(int phase, int local_id, int removed_side);
 
 // UI-REC: the present-cadence tick for the input journal's mode-agnostic arm ([harness]
 // ui_journal_rec / ui_journal). Call once per present, from net_lockstep::on_present.
@@ -191,6 +202,9 @@ int  MH_Harness_WantsMovieTick(void);
 //          `arg` = how many steps the local counter must step BACK (a delta, robust to a harness step
 //          counter that did not start with the match). The harness rewinds its own step counter, writes
 //          SNAPIMP from live memory, and re-hashes its pending step row over the imported world.
+//          Successful import also ends continuous order/clock capture at its last complete pair
+//          (or last standalone clock), discarding an unpublished HASH and flushing process/match
+//          streams. Hash observations, replay configuration and gameplay remain enabled.
 // No-op without an armed harness.
 void MH_Harness_OnWorldSync(int what, unsigned step, int arg, const void *blob, unsigned len);
 

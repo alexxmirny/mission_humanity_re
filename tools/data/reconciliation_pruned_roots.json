@@ -409,7 +409,7 @@
    "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
   },
   {
-   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "name": "llm_unit_order_squad_split_enqueue",
    "address": "0x0046e7d6",
    "evidence": {
     "orphan_closure": true,
@@ -423,7 +423,7 @@
     "prev_insn_falls_through": false,
     "callers_all_orphaned": []
    },
-   "why": "Zero-caller root. The immediate/local-lane twin of the LIVE llm_unit_order_disembark_soldiers (0x0046e76c, called by llm_strat_input_update): the UI path issues only the replicated-lane order, so the _enqueue mirror was never wired. THE ONLY ONE OF THESE EIGHT THAT WITHDRAWS A SECTION-5 ROW -- it forward-reaches the owned llm_strat_order_enqueue.",
+   "why": "Zero-caller root. The immediate/local-lane twin of the LIVE llm_unit_order_squad_split (0x0046e76c, called by llm_strat_input_update): the UI path issues only the replicated-lane order, so the _enqueue mirror was never wired. THE ONLY ONE OF THESE EIGHT THAT WITHDRAWS A SECTION-5 ROW -- it forward-reaches the owned llm_strat_order_enqueue.",
    "added_by": "X-TL-DRAIN step 2, 2026-09-12 (EN v404)"
   }
  ],

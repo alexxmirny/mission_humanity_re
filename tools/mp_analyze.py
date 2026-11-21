@@ -297,6 +297,9 @@ REGION_NAMES = [
     "progress",  # game_progress[8][300] {available, acquired, f3} -- the research/invention table (D38 row 10)
     # (2026-09-27): sim-read (ai_plan_unit_training, building eligibility) and never hashed. Every
     # writer is sim or session setup; no per-peer byte, so no mask. Appended (the contract).
+    "storage_policy",  # Whole canonical host-native span; runtime length is the bound extent.
+    "order_tasks",  # Whole pointer-free canonical route/reservation span; runtime length is the bound extent.
+    "order_campaign",  # Exact campaign-global allocator and per-planet world incarnations; member visits never rewind it.
 ]
 # Mirrors the DLL's hash_region::excluded flag. NOTE the frame-rate-dependent regions (the
 # six clock doubles, frame_ring, fps_estimate) ARE in this set: the harness has always
@@ -384,6 +387,187 @@ def hash_manifest_rows(header_text=None):
     return [(n, rid[r], int(o), int(ln), ex == "true") for n, r, o, ln, ex in rows]
 
 
+# Canonical framing matches mh_common/include/mh_{storage_policy,order_tasks}.h.
+# Flat seeds contain RAW canonical regions, not their SPOL/QORD save envelopes.
+STORAGE_POLICY_MAGIC = 0x31525053  # SPR1
+STORAGE_POLICY_SCHEMA = 1
+STORAGE_POLICY_HEADER_BYTES = 32
+ORDER_TASKS_MAGIC = 0x31524F51  # QOR1
+ORDER_TASKS_SCHEMA = 2
+ORDER_TASKS_HEADER_BYTES = 128
+ORDER_TASKS_ROW_BYTES = 240 + 32 * 48
+ORDER_TASKS_LEGACY_SCHEMA = 1
+ORDER_TASKS_LEGACY_HEADER_BYTES = 96
+ORDER_TASKS_LEGACY_ROW_BYTES = 192 + 32 * 48
+ORDER_TASKS_LAYOUTS = {
+    ORDER_TASKS_LEGACY_SCHEMA: (ORDER_TASKS_LEGACY_HEADER_BYTES, ORDER_TASKS_LEGACY_ROW_BYTES),
+    ORDER_TASKS_SCHEMA: (ORDER_TASKS_HEADER_BYTES, ORDER_TASKS_ROW_BYTES),
+}
+ORDER_CAMPAIGN_MAGIC = 0x4D414351  # QCAM
+ORDER_CAMPAIGN_SCHEMA = 1
+ORDER_CAMPAIGN_BYTES = 160
+
+
+def seed_region_layout(blob=None, entries=None, allow_legacy=False):
+    """[(name, stock_va_or_None, raw_offset, actual_len)] for a flat seed.
+
+    Native descriptors carry minimum headers, not cap-dependent whole allocation sizes.
+    Decode each canonical header at its actual boundary; no native owner must be last.
+    QORD1/QORD2 raw schemas select their own header/row stride; recognized descriptor
+    minima remain recording-specific. QCAM has its independent schema1.
+    This validates framing/header geometry, not the C++ codecs' actor/route semantics.
+    None requests descriptor minima only. Explicit legacy mode allows an absent native
+    suffix at an EXACT region boundary, never a truncated header/payload or invented owner.
+    """
+    if entries is None:
+        manifest = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "data", "hash_manifest.json"
+        )
+        with open(manifest, encoding="utf-8-sig") as fh:
+            entries = json.load(fh)["regions"]
+    minima = {
+        "STORAGE_POLICY": (STORAGE_POLICY_HEADER_BYTES,),
+        "ORDER_TASKS": (ORDER_TASKS_LEGACY_HEADER_BYTES, ORDER_TASKS_HEADER_BYTES),
+        "ORDER_CAMPAIGN": (ORDER_CAMPAIGN_BYTES,),
+    }
+    out, off, seen = [], 0, set()
+    policy_shape = task_shape = task_world = campaign_ids = None
+    for row in entries:
+        size = row["size"]
+        if type(size) is not int or size <= 0:
+            raise ValueError("invalid seed descriptor length: %r" % row)
+        if "region" not in row:
+            addr = int(row["addr"], 16)
+        else:
+            region = row["region"]
+            if (
+                region not in minima
+                or region in seen
+                or "addr" in row
+                or row.get("offset") != 0
+                or size not in minima[region]
+            ):
+                raise ValueError("unsupported native seed descriptor: %r" % row)
+            seen.add(region)
+            addr = None
+            if blob is not None:
+                if allow_legacy and len(blob) == off:
+                    # Keep validating later descriptors. A following stock row is still
+                    # mandatory; only an entirely native suffix may be absent.
+                    continue
+                minimum_header = 8 if region == "ORDER_TASKS" else size
+                if len(blob) - off < minimum_header:
+                    raise ValueError("truncated %s seed header" % row["name"])
+                if region == "STORAGE_POLICY":
+                    magic, schema, players, buildings, units, width, height, actual = (
+                        struct.unpack_from("<8I", blob, off)
+                    )
+                    empty = not (players or buildings or units or width or height)
+                    if (
+                        magic != STORAGE_POLICY_MAGIC
+                        or schema != STORAGE_POLICY_SCHEMA
+                        or (
+                            not empty
+                            and (
+                                not 1 <= players <= 8
+                                or not 1 <= buildings <= 65535
+                                or not 1 <= units <= 65535
+                                or width > 256
+                                or height > 256
+                                or bool(width) != bool(height)
+                            )
+                        )
+                        or actual
+                        != STORAGE_POLICY_HEADER_BYTES + 16 * players * (buildings + units)
+                        or actual > 0xFFFFFFFF - 16
+                    ):
+                        raise ValueError("invalid storage-policy seed shape/header")
+                    policy_shape = (players, buildings, units, width, height)
+                    size = actual
+                elif region == "ORDER_TASKS":
+                    schema = struct.unpack_from("<I", blob, off + 4)[0]
+                    if schema not in ORDER_TASKS_LAYOUTS:
+                        raise ValueError("unsupported order-task seed schema")
+                    header_bytes, row_bytes = ORDER_TASKS_LAYOUTS[schema]
+                    if len(blob) - off < header_bytes:
+                        raise ValueError("truncated %s seed header" % row["name"])
+                    words = struct.unpack_from("<%dI" % (header_bytes // 4), blob, off)
+                    (
+                        magic,
+                        schema,
+                        players,
+                        units,
+                        width,
+                        height,
+                        system,
+                        planet,
+                        incarnation,
+                        actual,
+                    ) = words[:10]
+                    buildings = words[18]
+                    empty = not (players or buildings or units or width or height)
+                    high_water = words[10:18]
+                    frontier = words[19:27] if schema == ORDER_TASKS_SCHEMA else (0,) * 8
+                    reserved = words[27:] if schema == ORDER_TASKS_SCHEMA else words[19:]
+                    if (
+                        magic != ORDER_TASKS_MAGIC
+                        or (
+                            not empty
+                            and (
+                                not 1 <= players <= 8
+                                or not 1 <= buildings <= 65535
+                                or not 1 <= units <= 65535
+                                or width > 256
+                                or height > 256
+                                or bool(width) != bool(height)
+                            )
+                        )
+                        or actual != header_bytes + row_bytes * players * units
+                        or actual > 0xFFFFFFFF - 16
+                        or any(reserved)
+                        or any(high_water[players:])
+                        or any(frontier[players:])
+                        or any(frontier[i] > high_water[i] for i in range(min(players, 8)))
+                        or (
+                            not width
+                            and (
+                                system or planet or incarnation or any(high_water) or any(frontier)
+                            )
+                        )
+                        or (width and (not incarnation or planet >= 32))
+                    ):
+                        raise ValueError("invalid order-task seed shape/header")
+                    task_shape = (players, buildings, units, width, height)
+                    task_world = (system, planet, incarnation)
+                    size = actual
+                else:
+                    words = struct.unpack_from("<40I", blob, off)
+                    ids = words[4:36]
+                    live_ids = [value for value in ids if value]
+                    if (
+                        words[0] != ORDER_CAMPAIGN_MAGIC
+                        or words[1] != ORDER_CAMPAIGN_SCHEMA
+                        or words[3]
+                        or any(words[36:40])
+                        or any(value > words[2] for value in ids)
+                        or len(live_ids) != len(set(live_ids))
+                    ):
+                        raise ValueError("invalid order-campaign seed header")
+                    campaign_ids = ids
+        if blob is not None and off + size > len(blob):
+            raise ValueError("truncated seed region %s" % row["name"])
+        out.append((row["name"], addr, off, size))
+        off += size
+    if policy_shape is not None and task_shape is not None and policy_shape != task_shape:
+        raise ValueError("seed policy/order-task reserved roster or map dimensions differ")
+    if task_shape is not None and task_shape[3] and campaign_ids is not None:
+        if campaign_ids[task_world[1]] != task_world[2]:
+            raise ValueError("seed order-task world does not match campaign incarnation")
+    if blob is not None and off != len(blob):
+        raise ValueError("seed has %d bytes, framed manifest consumes %d" % (len(blob), off))
+    return out
+
+
 # mp:D29 -- the harness's configuration line (mh_harness/config1.h format_config_line):
 #   ; [harness] configuration (1): spine ABSENT, registry=mh.dll, rebased=0 owned=0,
 #     uncovered=none, manifest fp=XXXXXXXX
@@ -397,7 +581,8 @@ def hash_manifest_fingerprint(header_text=None):
     region rid/offset/len/excluded as u32 LE + the name's bytes). It is what every world blob and
     (since TL-GATE-D25FX) every UI-REC oracle is stamped with, so a fixture captured under another
     manifest is refused as STALE before its numbers are compared. Verified against the DLL: the
-    pre-D25 header gives BD36D78E, the value the 2026-09-11/12 fixtures carry."""
+    pre-D25 header gives BD36D78E, the value the 2026-09-11/12 fixtures carry.
+    Native spans fingerprint their minimum descriptor length, not the cap-dependent payload length."""
     rows = hash_manifest_rows(header_text)
     h = FNV32_OFFSET
 
@@ -454,7 +639,11 @@ def world_format(header_text=None):
 
 
 def world_schema_fingerprint(schema=None, fmt=None):
-    """mh::state::blob::schema_fingerprint<world_policy>(), in Python -- see the module note above."""
+    """mh::state::blob::schema_fingerprint<world_policy>(), in Python -- see the module note above.
+
+    Block len is the static schema descriptor (the native minimum), not its runtime payload size.
+    Actual block header/payload lengths are validated by the reader, not folded into this schema.
+    """
     schema = (
         schema if schema is not None else json.load(open(WORLD_SNAPSHOT_SCHEMA, encoding="utf-8"))
     )
@@ -2345,10 +2534,12 @@ def rebase_harness(seg, base, close=None):
     return seg
 
 
-def load_peer(path):
+def load_peer(path, *, harness_only=False):
+    """Load complete peer evidence, or just the full rebased harness for hash-only consumers."""
     logs = discover(path)
     peer = {"path": path, "logs": logs}
-    peer["net_menu"] = menu_phase_net(path)
+    if not harness_only:
+        peer["net_menu"] = menu_phase_net(path)
     # SES1: the directory's own declaration of which match it is, independent of the log prose.
     if os.path.isdir(path):
         peer["session"] = read_session_json(path)
@@ -2358,6 +2549,8 @@ def load_peer(path):
         win = segment_window(path)
         if win is not None:
             rebase_harness(peer["harness"], win[0], win[1])
+    if harness_only:
+        return peer
     if "lockstep" in logs:
         peer["lockstep_rows"] = parse_lockstep(logs["lockstep"])
     if "net" in logs:
@@ -2826,6 +3019,310 @@ def _selftest_menu_armed():
     return bad
 
 
+def _selftest_seed_region_layout():
+    bad = 0
+
+    def arm(name, ok):
+        nonlocal bad
+        print("   seed %-59s %s" % (name, "ok" if ok else "FAIL"))
+        bad += not ok
+
+    for schema, (header_bytes, row_bytes) in ORDER_TASKS_LAYOUTS.items():
+        label = "QORD%d " % schema
+        entries = [
+            {"name": "stock", "addr": "0x1000", "size": 4},
+            {"name": "storage_policy", "region": "STORAGE_POLICY", "offset": 0, "size": 32},
+            {"name": "order_tasks", "region": "ORDER_TASKS", "offset": 0, "size": header_bytes},
+            {"name": "order_campaign", "region": "ORDER_CAMPAIGN", "offset": 0, "size": 160},
+            {"name": "tail", "addr": "0x2000", "size": 4},
+        ]
+        policy = bytearray(288)
+        struct.pack_into(
+            "<8I",
+            policy,
+            0,
+            STORAGE_POLICY_MAGIC,
+            STORAGE_POLICY_SCHEMA,
+            2,
+            3,
+            5,
+            8,
+            8,
+            len(policy),
+        )
+        tasks = bytearray(header_bytes + 10 * row_bytes)
+        struct.pack_into(
+            "<10I", tasks, 0, ORDER_TASKS_MAGIC, schema, 2, 5, 8, 8, 9, 4, 7, len(tasks)
+        )
+        struct.pack_into("<2I", tasks, 40, 9, 3)
+        struct.pack_into("<I", tasks, 72, 3)
+        if schema == ORDER_TASKS_SCHEMA:
+            struct.pack_into("<2I", tasks, 76, 9, 1)
+        campaign = bytearray(ORDER_CAMPAIGN_BYTES)
+        struct.pack_into("<3I", campaign, 0, ORDER_CAMPAIGN_MAGIC, ORDER_CAMPAIGN_SCHEMA, 7)
+        struct.pack_into("<I", campaign, 16 + 4 * 4, 7)
+        blob = b"head" + policy + tasks + campaign + b"tail"
+        task_offset = 4 + len(policy)
+        campaign_offset = task_offset + len(tasks)
+        expected = [
+            ("stock", 0x1000, 0, 4),
+            ("storage_policy", None, 4, len(policy)),
+            ("order_tasks", None, task_offset, len(tasks)),
+            ("order_campaign", None, campaign_offset, len(campaign)),
+            ("tail", 0x2000, campaign_offset + len(campaign), 4),
+        ]
+        arm(
+            label + "three variable owners followed by stock",
+            seed_region_layout(blob, entries) == expected,
+        )
+        other_entries = [dict(row) for row in entries]
+        other_entries[2]["size"] = (
+            ORDER_TASKS_HEADER_BYTES
+            if schema == ORDER_TASKS_LEGACY_SCHEMA
+            else ORDER_TASKS_LEGACY_HEADER_BYTES
+        )
+        arm(
+            label + "raw schema determines allocation, not descriptor minimum",
+            seed_region_layout(blob, other_entries) == expected,
+        )
+
+        empty = bytearray(32 + header_bytes + 160)
+        struct.pack_into(
+            "<8I", empty, 0, STORAGE_POLICY_MAGIC, STORAGE_POLICY_SCHEMA, 0, 0, 0, 0, 0, 32
+        )
+        struct.pack_into(
+            "<10I", empty, 32, ORDER_TASKS_MAGIC, schema, 0, 0, 0, 0, 0, 0, 0, header_bytes
+        )
+        struct.pack_into(
+            "<2I", empty, 32 + header_bytes, ORDER_CAMPAIGN_MAGIC, ORDER_CAMPAIGN_SCHEMA
+        )
+        arm(
+            label + "valid unstarted owners retain exact minima",
+            [r[3] for r in seed_region_layout(empty, entries[1:4])] == [32, header_bytes, 160],
+        )
+        arm(
+            label + "empty owner uses raw schema with either recognized descriptor",
+            [r[3] for r in seed_region_layout(empty, other_entries[1:4])]
+            == [32, header_bytes, 160],
+        )
+
+        def refuses(name, data, rows=entries, legacy=False):
+            try:
+                seed_region_layout(data, rows, allow_legacy=legacy)
+            except ValueError:
+                arm(label + name, True)
+            else:
+                arm(label + name, False)
+
+        def word(offset, value, source=blob):
+            changed = bytearray(source)
+            struct.pack_into("<I", changed, offset, value)
+            return changed
+
+        refuses("SPOL truncation does not absorb following owners", word(4 + 28, 289))
+        refuses("bad magic", word(task_offset, 0))
+        refuses("unsupported schema", word(task_offset + 4, 3))
+        refuses("allocation formula is enforced", word(task_offset + 36, len(tasks) + 4))
+        refuses(
+            "reserved header word",
+            word(task_offset + (108 if schema == ORDER_TASKS_SCHEMA else 76), 1),
+        )
+        refuses("unused player high-water", word(task_offset + 40 + 2 * 4, 1))
+        refuses("map bounds", word(task_offset + 16, 257))
+        refuses("paired map dimensions", word(task_offset + 20, 0))
+        refuses("active world requires incarnation", word(task_offset + 32, 0))
+        refuses("planet bounds", word(task_offset + 28, 32))
+        refuses("SPOL reservations must agree", word(task_offset + 72, 4))
+        refuses("QCAM bad magic", word(campaign_offset, 0))
+        refuses("QCAM stays schema1", word(campaign_offset + 4, ORDER_TASKS_SCHEMA))
+        refuses("QCAM reserved tail", word(campaign_offset + 144, 1))
+        refuses("QCAM world IDs cannot exceed allocator", word(campaign_offset + 8, 6))
+        refuses("QCAM duplicate live world IDs", word(campaign_offset + 16, 7))
+        refuses("exact QCAM world incarnation", word(task_offset + 32, 6))
+        for cut in (1, 7, header_bytes - 1):
+            refuses("truncated header at byte%d" % cut, blob[: task_offset + cut], entries[:3])
+        refuses("truncated body", blob[: campaign_offset - 1], entries[:3])
+        refuses("truncated QCAM header", blob[: campaign_offset + 159], entries[:4])
+        refuses(
+            "partial native header is not legacy",
+            blob[: task_offset + header_bytes - 1],
+            entries[:3],
+            True,
+        )
+        refuses("strict old stock-only seed", b"head", entries[:4])
+        refuses("legacy native suffix cannot hide stock", b"head", legacy=True)
+        arm(
+            label + "explicit old stock-only seed",
+            seed_region_layout(b"head", entries[:4], True) == [("stock", 0x1000, 0, 4)],
+        )
+        arm(
+            label + "explicit old SPOL suffix boundary",
+            len(seed_region_layout(blob[:task_offset], entries[:4], True)) == 2,
+        )
+        refuses("legacy mode never ignores trailing bytes", blob + b"x", legacy=True)
+        refuses("duplicate canonical descriptor", None, entries[:2] + entries[1:2])
+        wrong = [dict(row) for row in entries]
+        wrong[2]["size"] = row_bytes
+        refuses("descriptor must retain recognized minimum", None, wrong)
+
+        # Reserved roster owners before world entry have rows but no world or sequence state.
+        dormant = bytearray(blob)
+        struct.pack_into("<2I", dormant, 4 + 20, 0, 0)
+        struct.pack_into("<5I", dormant, task_offset + 16, 0, 0, 0, 0, 0)
+        dormant[task_offset + 40 : task_offset + 72] = bytes(32)
+        if schema == ORDER_TASKS_SCHEMA:
+            dormant[task_offset + 76 : task_offset + 108] = bytes(32)
+        arm(
+            label + "reserved roster before world entry",
+            seed_region_layout(dormant, entries) == expected,
+        )
+        refuses("unstarted world has no system", word(task_offset + 24, 1, dormant))
+        refuses("unstarted world has no planet", word(task_offset + 28, 1, dormant))
+        refuses("unstarted world has no incarnation", word(task_offset + 32, 1, dormant))
+        refuses("unstarted world has no high-water", word(task_offset + 40, 1, dormant))
+        if schema == ORDER_TASKS_SCHEMA:
+            refuses("unused player frontier", word(task_offset + 76 + 2 * 4, 1))
+            refuses("frontier cannot exceed high-water", word(task_offset + 76, 10))
+            refuses("unstarted world has no frontier", word(task_offset + 76, 1, dormant))
+
+    return int(bad)
+
+
+def _selftest_minority_cleanup(root):
+    import contextlib
+    import io
+
+    bad = 0
+    for name, mismatch, defect, expected_rc in (
+        ("post-cleanup divergence", 5, None, 0),
+        ("pre-cleanup divergence", 4, None, 1),
+        ("certified mirror differs from process", None, "mirror", 1),
+        ("missing producer certificate", None, "missing", 2),
+        ("later import invalidates boundary", None, "import", 2),
+        ("later process import", None, "process_import", 2),
+        ("noncanonical duplicate hash", None, "numeric", 2),
+        ("survivor fault after clean prefix", None, "fault", 2),
+        ("post-exit silence below rounded boundary", None, "post_silence", 0),
+        ("only post-exit lockstep samples", None, "post_only", 0),
+        ("cleanup step was never published", None, "post_unpublished", 0),
+        ("in-match silence before cleanup", None, "pre_silence", 1),
+    ):
+        folder = os.path.join(root, "minority_" + name.replace(" ", "_"))
+        paths = []
+        for role, slot in (("host", 0), ("client1", 1)):
+            path = os.path.join(folder, role)
+            _fx_peer(path, steps=6, interval=0.01, role=role, mismatch_at=mismatch)
+            process = os.path.join(path, "mh_harness.log")
+            with open(process, "a") as fh:
+                fh.write(
+                    "; [harness] configuration (2): registry=libmh.dll, manifest fp=58CAC8A6\n"
+                )
+            with open(process) as fh:
+                lines = fh.readlines()
+            with open(os.path.join(path, "mh_match_harness.log"), "w") as fh:
+                fh.write(
+                    "; [match] segment OPEN test (step_base=0). generation=2 match="
+                    + "1" * 32
+                    + "\n"
+                )
+                fh.write("; kind note: SNAPCAP/SNAPIMP retain the native hash function\n")
+                for line in lines:
+                    if line.startswith("5 ") and not (defect == "missing" and slot == 1):
+                        fh.write(
+                            "; FAILOVER-CLEANUP phase=5 match="
+                            + "1" * 32
+                            + " local=%d remove=2 generation=2 base=0 last=4 first=5 flags=" % slot
+                            + ",".join(["00000007"] * 4 + ["00000000"] * 4)
+                            + "\n"
+                        )
+                    if (
+                        defect == "post_unpublished"
+                        and line.split()[0].isdigit()
+                        and int(line.split()[0]) >= 5
+                    ):
+                        continue
+                    if defect == "mirror" and slot == 1 and line.startswith("4 "):
+                        fields = line.split()
+                        fields[3] = "0000000000000001"
+                        line = " ".join(fields) + "\n"
+                    fh.write(line)
+                    if defect == "numeric" and slot == 1 and line.startswith("4 "):
+                        fh.write("4 0000000000000001 0000000000000001 0000000000000001 extra\n")
+                if defect == "import" and slot == 1:
+                    fh.write("SNAPIMP 6 0000000000000001\n")
+            if defect == "process_import" and slot == 1:
+                with open(process, "a") as tail:
+                    tail.write("SNAPIMP 6 0000000000000001\n")
+            with open(os.path.join(path, "session.json"), "w") as fh:
+                json.dump(
+                    {"match_id": "1" * 32, "slot": slot, "reason": "gameover", "process_dir": role},
+                    fh,
+                )
+            with open(os.path.join(path, "mh_uidrive.log"), "w") as fh:
+                fh.write("; [script] COMPLETE\n")
+            with open(os.path.join(path, "peer_runtime.json"), "w") as fh:
+                json.dump(
+                    dict(
+                        schema=1,
+                        process_dir=role,
+                        alive=True,
+                        markers_checked=True,
+                        markers=["mh_crash_1.marker"] if defect == "fault" and slot == 1 else [],
+                        crash_reports=[],
+                    ),
+                    fh,
+                )
+            with open(os.path.join(path, "mh_net.log"), "a") as fh:
+                fh.write("[00:00:02.000] net: failover MINORITY (ends) -- 2 of 4\n")
+                fh.write("[00:00:02.001] ; U64: removed human slot 2 (failover verdict)\n")
+                fh.write("[00:00:02.002] ; on_gameover ENTER sess=3 outcome=8 gclk=50\n")
+            if defect in ("post_silence", "post_only", "pre_silence", "post_unpublished"):
+                # The first cleanup hash is step5 (50ms); the sampled clock may
+                # still truncate to39ms after leaving the last shared body.
+                rows = [
+                    (20, 10, 40, 3),
+                    (40, 39, 12000 if defect == "pre_silence" else 40, 3),
+                    (12060, 39, 12020, 2),
+                    (12560, 49, 12520, 2),
+                ]
+                with open(os.path.join(path, "mh_lockstep.log"), "w") as fh:
+                    fh.write("# " + " ".join(LOCKSTEP_COLS + ["sess"]) + "\n")
+                    for wall, clock, silence, session in rows:
+                        if defect == "post_only" and session == 3:
+                            continue
+                        fh.write(
+                            f"{wall} {clock} {clock + 1} 30 50 50 50 10 0 0 10 10"
+                            f" {silence} {session}\n"
+                        )
+            paths.append(path)
+        ns = argparse.Namespace(
+            paths=paths,
+            freeze_ms=200,
+            min_common=4,
+            json=os.path.join(folder, "out.json"),
+            allow_mismatch=False,
+            minority_cleanup=True,
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = analyse(ns)
+        with open(ns.json) as fh:
+            verdict = json.load(fh)
+        ok = rc == expected_rc
+        if expected_rc == 0:
+            ok = ok and verdict["d26_expected_end_step"] == 5 and verdict["desync"]["overlap"] == 4
+        elif expected_rc == 1:
+            if defect == "pre_silence":
+                ok = ok and verdict["environmental"] and verdict["run_invalid"]
+                ok = ok and verdict["desync"]["first_mismatch"] is None
+            else:
+                ok = ok and verdict["desync"]["first_mismatch"]["step"] == 4
+        else:
+            ok = ok and bool(verdict.get("refused"))
+        print("   minority %-53s %s" % (name, "ok" if ok else "FAIL"))
+        bad += not ok
+    return bad
+
+
 def selftest():
     import io
     import shutil
@@ -3150,9 +3647,14 @@ def selftest():
                 sys.stdout = keep
             ok = (rc or 0) == want_rc and want_text in buf.getvalue()
             if check_regions:
-                cl = load_peer(dirs[1])["harness"]
-                hs = load_peer(dirs[0])["harness"]
-                ok = ok and cl["regions"].get(25) == hs["regions"].get(25) and cl["step_base"] == k
+                for harness_only in (False, True):
+                    cl = load_peer(dirs[1], harness_only=harness_only)["harness"]
+                    hs = load_peer(dirs[0], harness_only=harness_only)["harness"]
+                    ok = (
+                        ok
+                        and cl["regions"].get(25) == hs["regions"].get(25)
+                        and cl["step_base"] == k
+                    )
             print("   %-64s %s" % (name, "ok" if ok else "FAIL -- rc=%s" % (rc,)))
             bad += 0 if ok else 1
 
@@ -3429,8 +3931,11 @@ def selftest():
             and r.get("refused") == "hash_kind_mismatch"
             and r["verdict"].startswith("REFUSED: hash kind mismatch: ship is kind 2"),
         )
+        print("   -- canonical seed framing arms")
+        bad += _selftest_seed_region_layout()
         print("   -- mp:X3c --resync-verify arms")
         bad += resync_selftest()
+        bad += _selftest_minority_cleanup(root)
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print("mp_analyze --selftest: %s" % ("PASS" if not bad else "%d ARM(S) FAILED" % bad))
@@ -3574,6 +4079,9 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s, d2
     `d26_step` (PT-CAP9-U8b): the EXPECTED end's boundary step (expected_match_end). Silence that opens at or
     after that step's game clock is what a peer that LEFT the match looks like (its lockstep log keeps rows
     while the other peer is no longer sending), not a link that died inside it, so it is not counted.
+    With a certified/expected boundary, known non-lockstep samples are outside
+    that match even when their truncated clock is below the boundary's raw clock.
+    Legacy rows without a session column remain eligible (fail closed).
     """
     reasons = []
     end_clock_ms = None
@@ -3597,13 +4105,22 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s, d2
     def _ls(p, key):
         return (p.get("lockstep_analysis") or {}).get(key, 0)
 
-    def _maxsil(p):
-        if end_clock_ms is None:
-            return _ls(p, "max_since_rx_ms")
-        pre = [
-            r["since_rx_ms"] for r in (p.get("lockstep_rows") or []) if r["clock_ms"] < end_clock_ms
+    def _before_end(p):
+        rows = p.get("lockstep_rows") or []
+        if d26_step is None:
+            return rows
+        # A certified first-cleanup step may never publish a hash: mode already
+        # left3. Its observed session state still excludes post-exit silence.
+        return [
+            r
+            for r in rows
+            if r.get("sess", 3) == 3 and (end_clock_ms is None or r["clock_ms"] < end_clock_ms)
         ]
-        return max(pre) if pre else 0
+
+    def _maxsil(p):
+        if d26_step is None:
+            return _ls(p, "max_since_rx_ms")
+        return max((r["since_rx_ms"] for r in _before_end(p)), default=0)
 
     silent = [(p["role"], _maxsil(p)) for p in peers if _maxsil(p) >= rx_timeout]
     gos = [e["gameover_gclk_ms"] for e in ends if e["gameover_gclk_ms"] is not None]
@@ -3639,12 +4156,12 @@ def environmental_verdict(peers, first_mismatch_step, first_mismatch_clock_s, d2
     for p in peers:
         if _maxsil(p) < rx_timeout:
             continue
-        win = _silence_window(p.get("lockstep_rows") or [])
+        win = _silence_window(_before_end(p))
         cover = None
         if win:
             lo, hi = win[0] - SILENCE_COVER_TOL_MS, win[1] + SILENCE_COVER_TOL_MS
             for q in peers:
-                for gap, clk in _freezes(q.get("lockstep_rows") or []):
+                for gap, clk in _freezes(_before_end(q)):
                     if lo <= clk <= hi:
                         cover = (q["role"], gap, clk)
                         break
@@ -3789,6 +4306,164 @@ def expected_match_end(peers):
     )
 
 
+_FAILOVER_CLEANUP_RE = re.compile(
+    r"^; FAILOVER-CLEANUP phase=([45]) match=([0-9a-fA-F]{32}) local=(\d+) remove=(\d+) "
+    r"generation=(\d+) base=(\d+) last=(\d+) first=(\d+) "
+    r"flags=([0-9A-F]{8}(?:,[0-9A-F]{8}){7})$"
+)
+_HASH_ROW_RE = re.compile(r"^(\d+) [0-9A-F]{16} [0-9A-F]{16} [0-9A-F]{16}$")
+_MINORITY_AXIS_BREAK_RE = re.compile(
+    r"^; console: H(?:STOP|GO|RESET|LOAD)\b|^SNAPIMP\b|"
+    r"^; \[capture\] CLOSE .*successful-world-import|^; SNAPSHOT IMPORT .* OK|^; \[world_in\]"
+)
+
+
+def certified_minority_end(peers):
+    """Validate native pre-cleanup certificates; never infer a boundary from a later game-over."""
+    if len(peers) < 2:
+        raise ValueError("minority cleanup needs at least two compared producers")
+    proofs = {}
+    matches, slots, fingerprints = set(), set(), set()
+    for peer in peers:
+        role = peer["role"]
+        meta, har = peer.get("session") or {}, peer.get("harness") or {}
+        match, slot = meta.get("match_id"), meta.get("slot")
+        if not isinstance(match, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", match):
+            raise ValueError("%s: missing full session match ID" % role)
+        if type(slot) is not int or not 0 <= slot < 8 or slot in slots:
+            raise ValueError("%s: missing or duplicate native player ID" % role)
+        matches.add(match.lower())
+        slots.add(slot)
+        fp = har.get("manifest_fp")
+        if not fp or har.get("config") not in {"1", "2"}:
+            raise ValueError("%s: missing armed configuration/manifest" % role)
+        fingerprints.add(fp)
+        path = os.path.join(peer["path"], "mh_match_harness.log")
+        if not os.path.isfile(path):
+            path = match_session_log(peer["path"])
+        if not path:
+            raise ValueError("%s: no owned match harness stream" % role)
+        with open(har["path"], encoding="utf-8", errors="replace") as fh:
+            if any(_MINORITY_AXIS_BREAK_RE.search(line) for line in fh):
+                raise ValueError("%s: process producer reset/import invalidates its axis" % role)
+        health_path = os.path.join(peer["path"], "peer_runtime.json")
+        try:
+            with open(health_path, encoding="utf-8") as fh:
+                health = json.load(fh)
+        except (OSError, ValueError) as exc:
+            raise ValueError("%s: missing owned terminal liveness/crash evidence" % role) from exc
+        if (
+            not isinstance(health, dict)
+            or health.get("schema") != 1
+            or not meta.get("process_dir")
+            or health.get("process_dir") != meta["process_dir"]
+            or health.get("alive") is not True
+            or health.get("markers_checked") is not True
+            or health.get("markers") != []
+            or health.get("crash_reports") != []
+        ):
+            raise ValueError("%s: survivor health is unavailable, gone or faulted" % role)
+        rows, scopes, certificates = [], [], []
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.rstrip()
+                if line.startswith("; FAILOVER-CLEANUP REFUSED") or _MINORITY_AXIS_BREAK_RE.search(
+                    line
+                ):
+                    raise ValueError("%s: reset/import/refused boundary in match stream" % role)
+                if "segment OPEN " in line:
+                    base = SEG_OPEN_RE.search(line)
+                    scope = re.search(r"\bgeneration=(\d+) match=([0-9a-fA-F]{32})\b", line)
+                    if not base or not scope:
+                        raise ValueError("%s: missing segment generation/identity" % role)
+                    scopes.append((int(base[1]), int(scope[1]), scope[2].lower()))
+                row = _HASH_ROW_RE.fullmatch(line)
+                if row is None and line and line.split()[0].lstrip("+-").isdigit():
+                    raise ValueError("%s: noncanonical numeric hash publication" % role)
+                if row:
+                    step = int(row[1])
+                    if rows and step <= rows[-1]:
+                        raise ValueError("%s: duplicate or rewound hash publication" % role)
+                    rows.append(step)
+                if "FAILOVER-CLEANUP phase=" in line:
+                    marker = _FAILOVER_CLEANUP_RE.fullmatch(line)
+                    if not marker:
+                        raise ValueError("%s: malformed first-cleanup certificate" % role)
+                    phase, mid, local, victim, gen, base, last, first, flags = marker.groups()
+                    cert = dict(
+                        phase=int(phase),
+                        match=mid.lower(),
+                        local=int(local),
+                        remove=int(victim),
+                        generation=int(gen),
+                        base=int(base),
+                        last=int(last),
+                        first=int(first),
+                        flags=[int(x, 16) for x in flags.split(",")],
+                    )
+                    if not rows or rows[-1] != cert["last"]:
+                        raise ValueError(
+                            "%s: certificate is not after its last published hash" % role
+                        )
+                    certificates.append(cert)
+        if len(scopes) != 1 or len(certificates) != 1:
+            raise ValueError("%s: no unique segment/first-cleanup certificate" % role)
+        cert = certificates[0]
+        if (
+            cert["phase"] != 5
+            or cert["match"] != match.lower()
+            or cert["local"] != slot
+            or not 0 <= cert["remove"] < 8
+            or cert["remove"] == slot
+            or cert["generation"] <= 0
+            or scopes[0] != (cert["base"], cert["generation"], cert["match"])
+            or cert["first"] != cert["last"] - cert["base"] + 1
+            or cert["first"] <= 1
+        ):
+            raise ValueError("%s: cleanup phase/identity/generation/axis disagreement" % role)
+        net = (peer.get("net") or []) + (peer.get("net_match") or [])
+        if not any("failover MINORITY" in line for line in net) or not any(
+            re.search(r"on_gameover(?: ENTER sess=\d+)? outcome=8\b", line) for line in net
+        ):
+            raise ValueError("%s: no minority verdict and real connection-lost outcome" % role)
+        if not any("U64: removed human slot" in line for line in net):
+            raise ValueError("%s: first cleanup was not followed by native removal" % role)
+        ws = parse_worldsync(net)
+        if ws["begins"] or ws["imports"] or ws["aborts"]:
+            raise ValueError("%s: world-sync makes the publication axis ambiguous" % role)
+        uidrive = os.path.join(peer["path"], "mh_uidrive.log")
+        if not os.path.isfile(uidrive):
+            raise ValueError("%s: missing input-producer evidence" % role)
+        with open(uidrive, encoding="utf-8", errors="replace") as fh:
+            if any("TIMEOUT at step" in line or "; [script] ABORT at step" in line for line in fh):
+                raise ValueError("%s: native input producer aborted" % role)
+        scoped = parse_harness(path)
+        if kind_of(scoped.get("hash_kind")) != kind_of(har.get("hash_kind")):
+            raise ValueError("%s: match mirror and process disagree on hash kind" % role)
+        if scoped.get("manifest_fp") and scoped["manifest_fp"] != fp:
+            raise ValueError("%s: match mirror and process disagree on manifest" % role)
+        rebase_harness(scoped, cert["base"])
+        for key in ("steps", "regions", "rd", "breakdown"):
+            har[key] = scoped[key]
+        har["path"] = peer["logs"]["harness"] = path
+        cert["published_rows"] = rows
+        proofs[role] = cert
+    if len(matches) != 1 or len(fingerprints) != 1:
+        raise ValueError("minority producers disagree on match/manifest")
+    cutoff = min(cert["first"] for cert in proofs.values())
+    for peer in peers:
+        cert = proofs[peer["role"]]
+        rows = cert.pop("published_rows")
+        prefix = [s for s in rows if s < cert["base"] + cutoff]
+        if len(prefix) != cutoff - 1 or any(
+            s != cert["base"] + i + 1 for i, s in enumerate(prefix)
+        ):
+            raise ValueError("%s: missing pre-cleanup hash publication" % peer["role"])
+        if any(s not in peer["harness"]["steps"] for s in range(1, cutoff)):
+            raise ValueError("%s: incomplete rebased match prefix" % peer["role"])
+    return cutoff, proofs
+
+
 def main():
     ap = argparse.ArgumentParser(description="MP run analyzer")
     ap.add_argument("paths", nargs="*")
@@ -3808,6 +4483,12 @@ def main():
         "this the pair is NO DATA and the run is not clean -- otherwise a peer that died on launch "
         "yields mismatch=0 and a vacuous 'ALL PAIRS IDENTICAL'. Raise it (e.g. to ~the requested step "
         "count) to also reject runs that only got part-way.",
+    )
+    ap.add_argument(
+        "--minority-cleanup",
+        action="store_true",
+        help="require native match-owned first-cleanup certificates and compare their entire strict "
+        "shared prefix; missing/ambiguous certificates or rewinds refuse, never guess an end",
     )
     ap.add_argument(
         "--allow-mismatch",
@@ -4023,6 +4704,18 @@ def analyse(args):
         pr["role"] = role_of(pr, "peer%d" % i)
 
     out = {"inputs": args.paths, "peers": [], "freeze_ms": args.freeze_ms}
+    cleanup_end = None
+    if getattr(args, "minority_cleanup", False):
+        try:
+            cleanup_end = certified_minority_end(peers)
+        except ValueError as exc:
+            out["refused"] = "minority_cleanup: %s" % exc
+            out["run_invalid"] = True
+            print("\nREFUSED: " + out["refused"])
+            if args.json:
+                with open(args.json, "w", encoding="utf-8") as fh:
+                    json.dump(out, fh, indent=2)
+            return 2
     print("=" * 72)
     print("MP RUN ANALYSIS")
     print("=" * 72)
@@ -4440,6 +5133,11 @@ def analyse(args):
         # boundary is a property of the MATCH (all peers), not of one pair, and every pair's diff
         # must be truncated at the same step or the pairwise rollup would disagree with itself.
         d26_step, d26_reason = expected_match_end(harness_peers)
+        if cleanup_end is not None:
+            d26_step, out["minority_cleanup"] = cleanup_end
+            d26_reason = (
+                "certified first unilateral MINORITY cleanup; every earlier hash remains strict"
+            )
         if d26_step is not None:
             print(
                 "\nD26: EXPECTED match end at step %d (%s) -- the comparison below is TRUNCATED "

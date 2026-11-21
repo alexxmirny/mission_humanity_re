@@ -2,6 +2,13 @@
  "_what": "PT-CAP8 S1: the DLL byte patches that overlap a v0.2.2 / v0.2.3 cap manifest site and are ALLOWED to, because they COMPOSE: the hook keeps its site, its install guard compares against the bytes actually present (the applied relocation manifest's relocated bytes, via mh::patch::overlay_applied) and its stub replicates the displaced instruction against mh_caps_base[X]. Every cap_set_overlaps row of tools/data/inmem_composition_census.json must be listed here; `check_inmem_composition.py --strict` additionally greps `source` for patch_bytes_guarded_caps(<install_token>, ...) -- RED until PT-CAP8 S1 Slice C converts the three installs (spec section 4).",
  "allowed": [
   {
+   "patch": "selected_target_order_witness",
+   "site": "0x00466bf3",
+   "source": "src/mh_dll/mh/ui/target_line_order_events.cpp",
+   "install_token": "p.site",
+   "why": "EXIT_CANCEL observer steals the complete nine-byte MOV word [eax+disp32],0x23 at0x00466bf0, including the statically relocated UNITS-base operand. Preflight requires live UNITS base+offsetof(state) and the entire opcode/immediate; install uses the caps-aware guard. The thunk replays the captured validated displacement before APPLIED; guarded rollback restores those same installed bytes. Unit limit toggles do not move the base."
+  },
+  {
    "patch": "turret_clip_fix",
    "site": "0x00462abb",
    "source": "src/mh_dll/mh/seams/net_lockstep.cpp",
@@ -56,6 +63,14 @@
    "source": "src/mh_dll/mh/seams/combat_proto.cpp",
    "install_token": "ADDR_SOA_LOAD",
    "why": "soldiers array base inside the displaced MOVZX EDX, byte [eax+disp32] (0x491166, 7 bytes): the cave replays the displaced bytes as the manifest left them"
+  }
+  ,
+  {
+   "patch": "order_tasks_native_executor",
+   "site": "0x00466ce4",
+   "source": "src/mh_dll/mh/seams/order_tasks_native.cpp",
+   "install_token": "p.contract->address",
+   "why": "F-entry seven-byte IMUL EDX,[EBP-34h],imm32 at00466ce1 displaces the UNITS player-row stride at00466ce4. Preflight captures caps::row_bytes(UNITS), the caps-aware guard overlays the applied immediate, and the thunk reproduces that stride multiplication. Task admission separately uses caps::orders and current roster geometry."
   }
  ],
  "embedded": [

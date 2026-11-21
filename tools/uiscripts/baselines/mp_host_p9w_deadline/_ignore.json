@@ -1,0 +1,4 @@
+{
+  "_why": "The receiver-side deadline checker and real below-quorum transition are the oracle. Preserve first-frame review capture without an unrelated flight/reveal phase assertion or a simulation fence that alters the network storm.",
+  "_unjudged": ["capture_m1_launched.png"]
+}

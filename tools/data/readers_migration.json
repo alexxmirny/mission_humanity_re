@@ -7,7 +7,7 @@
     "docs/symbols.md",
     "tools/data/en_functions.json",
     "tools/data/call_graph_no_crt.json",
-    "tmp/state_matrix.json"
+    "input:state_matrix.json"
   ],
   "_reclassified_out": [],
   "_select_report": {
@@ -4882,9 +4882,9 @@
     },
     {
       "addr": "0x0046e7d6",
-      "name": "llm_unit_order_disembark_soldiers_enqueue",
+      "name": "llm_unit_order_squad_split_enqueue",
       "size_bytes": 106,
-      "signature": "void llm_unit_order_disembark_soldiers_enqueue(uint player_idx, int unit_idx)",
+      "signature": "void llm_unit_order_squad_split_enqueue(uint player_idx, int unit_idx)",
       "tags": [],
       "proto_committed": true,
       "reachable_from_root": false,

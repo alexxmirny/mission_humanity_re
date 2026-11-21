@@ -46,6 +46,7 @@ gameclock 6000
 # submit, and submitted with a plain Enter.
 layout 00000409
 key 0x1c shift
+chatready
 type _NUCLEAR BOMB
 field chat _NUCLEAR BOMB
 key 0x1c

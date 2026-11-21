@@ -1,0 +1,4 @@
+{
+  "_why": "Only the QPC-derived FPS digits are volatile; pinning the game clock does not pin ImGui FPS. Labels, controls, heat map and all other pixels remain judged.",
+  "capture_heat_plan__b.png": [[269, 44, 31, 12]]
+}

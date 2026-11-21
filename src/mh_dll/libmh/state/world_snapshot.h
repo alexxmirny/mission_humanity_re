@@ -142,6 +142,8 @@ enum world_err : int {
     // failure this exists to end, so the capture refuses rather than truncating.
     WORLD_ERR_FIXUP         = -23,
     WORLD_ERR_FIXUP_CAPTURE = -24,
+    // Canonical policy/routes/campaign disagree, contain a transient handoff, or are quarantined.
+    WORLD_ERR_NATIVE_STATE = -25,
     // mp:X3c: the resync import's own refusals. All three are returned with the world UNTOUCHED
     // (the admission log is consulted before the first byte is written).
     WORLD_ERR_RESYNC_RING_SHORT   = -30, // the admission log no longer reaches n_src(S)+1 for some source
@@ -187,20 +189,24 @@ uint64_t canonical_hash();
 // reads -- caught at capture, in the process that still has the truth in front of it.
 int capture(void *buf, size_t cap, size_t *out_len, const capture_params &p);
 
-// Write a captured world back through live_base(). Validation is complete BEFORE the first byte is
-// written, so a rejected import cannot leave a half-answered world.
+// Write a captured world back through live_base(). Validation is complete BEFORE the first byte
+// written by this byte importer. Current-schema input uses the strict shared engine unchanged.
+// A stored QORD1 world is recognized only by the current table's exact fingerprint with the
+// order_tasks descriptor changed 128 -> 96; its complete old region is migrated privately and
+// cross-validated against incoming policy/campaign/world before substituting the full QORD2 span.
+// Every other descriptor, block order and payload length must match exactly. Input bytes, stored
+// hashes and trailer offsets are never changed; an old oracle is not a current-schema oracle.
 //
-// THE BYTE HALF ONLY: this deliberately does NOT import the nav trailer. `net_selftest worldtest`
-// compares imported memory against the blob payload byte-for-byte (arm C) and against the blob's own
-// content hash (arm B), and rebuilding a heap graph here would move both -- LIB-WORLD's oracle would
-// be measuring the fixup instead of the fixture. The trailer is applied by import_nav() below, which
-// the C entry (state/spine.cpp) calls in its re-derive sequence and worldtest does not.
-int import(const void *blob, size_t n);
+// THE BYTE HALF ONLY: this does NOT import nav/fixup/overflow trailers. The scene entry callers
+// keep their existing preflight/fixup/re-derive sequence. Their existing post-copy allocation,
+// nav and lifecycle failure surfaces are not an all-world transaction supplied by this function.
+// Real scene/spine hosts supply a publication notice; pure byte-engine callers need none.
+int import(const void *blob, size_t n, void (*before_apply)() = nullptr);
 
 // import() with the session-begun latch answered "allowed" (mp:X3c). Nothing else differs: the
 // same validation, the same byte engine. Use ONLY from the resync entry (state/spine.cpp), which
 // owns the keep-local save/restore that makes importing over a live session safe.
-int import_resync(const void *blob, size_t n);
+int import_resync(const void *blob, size_t n, void (*before_apply)() = nullptr);
 
 // Apply the FORMAT 2 nav trailer: rebuild the map-region pool, both lists, BY_INDEX and the grid's
 // pointer dwords from the carried slot indices. Call AFTER import(), and INSTEAD OF

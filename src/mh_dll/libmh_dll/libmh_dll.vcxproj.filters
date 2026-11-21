@@ -1130,6 +1130,9 @@
     <ClCompile Include="..\libmh\sim\sim_order_issue_0xf_adjacent.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_tasks.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_path_alloc_slot.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
@@ -1293,6 +1296,9 @@
       <Filter>libmh\sim</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_storage_accepts_unit_type.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_bulk_rally.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_storage_can.cpp">
@@ -1673,6 +1679,9 @@
     <ClCompile Include="..\libmh\state\boot_snapshot.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\state\boot_snapshot_export.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\state\hook_api.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
@@ -1691,6 +1700,12 @@
     <ClCompile Include="..\libmh\state\nav_trailer.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_origin.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_runtime.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\state\rebind_arming.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
@@ -1707,6 +1722,9 @@
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\spine_exports.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\storage_policy_runtime.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\world_fixup.cpp">

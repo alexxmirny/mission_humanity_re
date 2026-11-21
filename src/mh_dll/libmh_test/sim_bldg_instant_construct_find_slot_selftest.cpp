@@ -361,7 +361,7 @@ void test_dispatch_argument_values() {
     ck(g_fs.dispatch_args.size() == 1 && g_fs.dispatch_args[0][1] == (PLAYER | OWNER_TAG),
        "arg 2 (EDX) = (uint16_t)(player | 0x40) -- an OR, so PLAYER=3 gives 0x43, not 0x40 "
        "(0x0046d4e9 OR AL,0x40 / 0x0046d4eb MOVZX EDX,AX). NOTE the BUILDING tag is 0x40 where the "
-       "unit-side wrapper llm_unit_order_disembark_soldiers uses 0x80");
+       "unit-side wrapper llm_unit_order_squad_split uses 0x80");
     ck(g_fs.dispatch_args.size() == 1 && g_fs.dispatch_args[0][2] == ORDER_CODE &&
            g_fs.dispatch_args[0][3] == ORDER_CODE,
        "args 3 and 4 (EBX, ECX) are BOTH 0xea (0x0046d4dc / 0x0046d4e1)");

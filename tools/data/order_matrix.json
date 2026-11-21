@@ -2285,7 +2285,7 @@
    ]
   },
   {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "addr": "0x0046e76c",
    "routes": [
     {
@@ -2311,7 +2311,7 @@
    ]
   },
   {
-   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "name": "llm_unit_order_squad_split_enqueue",
    "addr": "0x0046e7d6",
    "routes": [
     {
@@ -5129,9 +5129,9 @@
     "llm_strat_unit_set_state_of",
     "llm_unit_force_disembark",
     "llm_unit_set_order_param",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "llm_unit_state_is_boarding",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
     "utils_assert_stack_capacity"
    ],
    "gated_functions": [
@@ -5160,9 +5160,9 @@
     "llm_strat_unit_spawn_on_tile",
     "llm_strat_unit_squad_pick_lead_soldier_in_direction",
     "llm_unit_set_order_param",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "llm_unit_state_is_boarding",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
     "map_fow_UpdateFoWPlus_impl"
    ],
    "issuers": [
@@ -5198,8 +5198,8 @@
     "llm_strat_unit_order_move_relative_enqueue",
     "llm_strat_unit_order_scatter_from_spawn",
     "llm_strat_unit_reset_order_and_target",
-    "llm_unit_order_disembark_soldiers",
-    "llm_unit_order_disembark_soldiers_enqueue"
+    "llm_unit_order_squad_split",
+    "llm_unit_order_squad_split_enqueue"
    ],
    "issue_domains": [
     "ai",
@@ -7923,6 +7923,30 @@
    "handler_resolution": "block"
   },
   {
+   "function": "llm_unit_squad_split_docked",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
+   "function": "llm_unit_squad_split_field",
+   "routes": [
+    {
+     "lane": "unit",
+     "case": null,
+     "coverage_class": "ai-soak"
+    }
+   ],
+   "coverage_class": "ai-soak",
+   "handler_resolution": "block"
+  },
+  {
    "function": "llm_unit_state_is_boarding",
    "routes": [
     {
@@ -7972,30 +7996,6 @@
    ],
    "coverage_class": "ui-scripted",
    "handler_resolution": "case"
-  },
-  {
-   "function": "llm_unit_transport_unload_docked",
-   "routes": [
-    {
-     "lane": "unit",
-     "case": null,
-     "coverage_class": "ai-soak"
-    }
-   ],
-   "coverage_class": "ai-soak",
-   "handler_resolution": "block"
-  },
-  {
-   "function": "llm_unit_transport_unload_field",
-   "routes": [
-    {
-     "lane": "unit",
-     "case": null,
-     "coverage_class": "ai-soak"
-    }
-   ],
-   "coverage_class": "ai-soak",
-   "handler_resolution": "block"
   },
   {
    "function": "map_ApplyAreaToMap",

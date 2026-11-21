@@ -1,3 +1,4 @@
+#include "seams/strategic_input_native.h"
 //
 // MP seam wiring -- connect mh.exe's four dead transport stubs to the A0 TCP transport
 // (net_transport.cpp). See mh_seam_export.h and the lobby RE.
@@ -27,23 +28,35 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <stdint.h>
 #include <string.h>
+#include <cstdlib>
 
 #include "include/mh_net_export.h"
 #include "state/region_runtime.h" // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                   // where it IS, not where the binary put it
+#include "seams/participant_boundary_hosted.h"
 #include "include/mh_seam_export.h"
-#include "include/mh_harness_export.h"      // D18: MH_Harness_LateArm -- the harness work that needs to
-                                            // know which implementation owns an entry, so it runs here
-#include "include/mh_mpmenu_export.h"       // MH_Menu_Install (mp_menu.cpp) -- restore the MP menu button
-#include "include/mh_langpack_export.h"     // MH_LangPack_Install (lang_pack.cpp) -- mods:LANG1 [lang] pack=
-#include "include/mh_capture_export.h"      // MH_Capture_Install (gfx_capture.cpp) -- UI frame capture
-#include "include/mh_overlay_export.h"      // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
-#include "include/mh_keyrepeat_export.h"    // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
-#include "include/mh_pause_export.h"        // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
-#include "include/mh_sndtrace_export.h"     // MH_SndTrace_Install (snd_trace.cpp) -- [log] snd_trace sound-request trace
-#include "include/mh_viewwrap_export.h"     // MH_ViewWrap_Install (view_wrap.cpp) -- RES3 biased sprite wrap window
-#include "include/mh_bigmap_export.h"       // MH_BigMap_Install (ui_bigmap.cpp) -- mods:MM4 click + draw-before-cursor
-#include "include/mh_mapzoom_export.h"      // MH_MapZoom_Install (ui_map_zoom.cpp) -- RES2 wheel zoom, cursor anchor, torus minimum
+#include "include/mh_harness_export.h"   // D18: MH_Harness_LateArm -- the harness work that needs to
+                                         // know which implementation owns an entry, so it runs here
+#include "include/mh_mpmenu_export.h"    // MH_Menu_Install (mp_menu.cpp) -- restore the MP menu button
+#include "include/mh_langpack_export.h"  // MH_LangPack_Install (lang_pack.cpp) -- mods:LANG1 [lang] pack=
+#include "include/mh_capture_export.h"   // MH_Capture_Install (gfx_capture.cpp) -- UI frame capture
+#include "include/mh_mod_export.h"       // MH_Mods_Boot_Splice_Install (mod_resource_overlay.cpp) -- mods:DATAEXT1 [mods] enabled
+#include "include/mh_overlay_export.h"   // MH_Overlay_Install (gfx_overlay.cpp) -- debug overlay
+#include "include/mh_keyrepeat_export.h" // MH_KeyRepeat_Install (ui_keyrepeat.cpp) -- U24 modal key-repeat fix
+#include "include/mh_pause_export.h"     // MH_Pause_Install (ui_pause.cpp) -- D19 pause-screen (mode 5) hotkey
+#include "include/mh_sndtrace_export.h"  // MH_SndTrace_Install (snd_trace.cpp) -- [log] snd_trace sound-request trace
+#include "include/mh_viewwrap_export.h"  // MH_ViewWrap_Install (view_wrap.cpp) -- RES3 biased sprite wrap window
+#include "include/mh_bigmap_export.h"    // MH_BigMap_Install (ui_bigmap.cpp) -- mods:MM4 click + draw-before-cursor
+#include "include/mh_mapzoom_export.h"   // MH_MapZoom_Install (ui_map_zoom.cpp) -- RES2 wheel zoom, cursor anchor, torus minimum
+#include "include/mh_unitselect_export.h"
+#include "seams/storage_policy.h"
+#include "seams/order_tasks_hosted.h"
+#include "seams/order_tasks_native.h"
+#include "seams/lobby_speed.h"
+#include "seams/avi_lifecycle.h"
+#include "ui/selected_targets.h"
+#include "ui/target_line_intents.h"
+#include "seams/ui_storage_controls.h"
 #include "include/mh_uiwheel_export.h"      // MH_UiWheel_Install (ui_wheel.cpp) -- D15 wheel scrolls menu / dialog / side-panel lists
 #include "include/mh_fontguard_export.h"    // MH_FontGuard_Install (gfx_font_guard.cpp) -- F2 glyph-table bounds guard
 #include "include/mh_chatinput_export.h"    // MH_ChatInput_Install (ui_chat_input.cpp) -- F3 layout-aware typed input
@@ -75,44 +88,46 @@
 #include "ui/lobby_ping.h"                  // mp:L1b: per-slot SRTT column, ticked from the lobby's own frame
 #include "ui/player_strings.h"              // mods:LANG4: mh.dll's own text, loaded with the pack
 #include "mh_net_proto/session_info.h"      // F3c: the REFUSED announce kind + its decoder
-#include "include/mh_run_context.h"         // MH_RunDir (per-run log folder), MH_ExeDir (installation files)
-#include "include/mh_config_dir.h"          // RL3: <config dir>mh_net.ini
-#include "include/mh_log_rotate.h"          // SES2: the shared size cap + one-generation rotation
-#include "include/mh_log_sink.h"            // LOG1: the async log sink every log line goes through
-#include "addr/mh_addrs.gen.h"              // generated EN VAs (tools/gen_dll_addrs.py)
-#include "addr/mh_export.gen.h"             // mh::exp::addr_llm_strat_new_game_init (mods:G17)
-#include "../../mh_net_udp/udp_stats.h"     // mp:D30: mh::netstats::order_is_late
-#include "addr/mh_patches.gen.h"            // promotable-function extents (the C1 interlock table)
-#include "addr/mh_tombstones.gen.h"         // ledger-dead body extents (the X-TOMB dead table)
-#include "include/mh_hostapi_bind.h"        // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
-#include "state/host_api.h"                 // LIB-ABI: libmh_set_host_api + the unbound-walk (libmh's half)
-#include "lockstep/turn_engine.h"           // mp:U52: fixes()/set_fixes() -- the lobby MODE push
-#include "state/host_bind.h"                // SB-BIND: the state ABI (region count / bound count)
-#include "state/host_events.h"              // LIFT-EVQ: event_sink_dispatch_count (the [hostevt] line)
-#include "state/host_in.h"                  // LIB-REF-IN: the inbound surface's arm-time report
-#include "include/mh_libmh_hook_bind.h"     // F4D: MH_LibMH_BindHookApi -- the hook table's rc
-#include "include/mh_module_bind.h"         // F4D: MH_LibmhModule_IsBound -- which configuration
-#include "state/hook_api.h"                 // F4D: libmh_hook_api_unbound -- and its unbound walk
-#include "hook/host_event_sink.h"           // LIFT-EVQ: bind_host_event_sink + unknown count
-#include "addr/mh_rebind.gen.h"             // LIB-REBIND R11: report_arming at the arm-time report
-#include "en_guard.h"                       // EN-only build gate
-#include "net_internal.h"                   // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
-#include "config/ini_read.h"                // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "config/gameplay.h"                // PT-SET1: host-synced gameplay settings (boot apply)
-#include "seams/map_transfer.h"             // mp:X2: the map download, its Start gate and its resolve seam
-#include "hook/detour.h"                    // install_jmp / install_trampoline (shared toolkit)
-#include "hook/promoted.h"                  // mp:Q3: promoted_owner_of -- the order recorder's route
-#include "hook/hookpoint.h"                 // D5/R7: the named hook points -- the C10 session-begin observer
-#include "hook/tombstone.h"                 // X-TOMB: trap-fill every body we claim dead
-#include "hook/export.h"                    // set_export_logger (P0-EXPORT arm reporting)
-#include "desync/desync_watch.h"            // D21: runtime desync detector (install / session_reset)
-#include "desync/world_sync.h"              // mp:X3c: world resync hooks (net_lockstep mirror, harness callback)
-#include "seams/door_watch.h"               // the garage-door watchdog (observe only) on the [desync] step
-#include "seams/replay_boundary.h"          // hotfix rc9.4: the state-replacement notes (segment seeds)
-#include "orders/order_queue.h"             // mp:X3c: promotion_active -- the admission tap lives in the promoted container
-#include "sim/sim_step.h"                   // ROOTS-LIVE: the promoted root D21 must chain onto
-#include "hook/patch.h"                     // patch_bytes_guarded (S7 browser-row format string)
-#include "hook/watcall.h"                   // call_watcall1 (Watcom __watcall(EAX) bridge)
+#include "mh_net_proto/lobby_speed.h"
+#include "include/mh_run_context.h" // MH_RunDir (per-run log folder), MH_ExeDir (installation files)
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
+#include "include/mh_log_rotate.h"  // SES2: the shared size cap + one-generation rotation
+#include "include/mh_log_sink.h"    // LOG1: the async log sink every log line goes through
+#include "addr/mh_addrs.gen.h"      // generated EN VAs (tools/gen_dll_addrs.py)
+#include "mods/save_meta.h"
+#include "addr/mh_export.gen.h"         // mh::exp::addr_llm_strat_new_game_init (mods:G17)
+#include "../../mh_net_udp/udp_stats.h" // mp:D30: mh::netstats::order_is_late
+#include "addr/mh_patches.gen.h"        // promotable-function extents (the C1 interlock table)
+#include "addr/mh_tombstones.gen.h"     // ledger-dead body extents (the X-TOMB dead table)
+#include "include/mh_hostapi_bind.h"    // LIB-ABI: the thunk-backed host-callback table (mh.dll's host half)
+#include "state/host_api.h"             // LIB-ABI: libmh_set_host_api + the unbound-walk (libmh's half)
+#include "lockstep/turn_engine.h"       // mp:U52: fixes()/set_fixes() -- the lobby MODE push
+#include "state/host_bind.h"            // SB-BIND: the state ABI (region count / bound count)
+#include "state/host_events.h"          // LIFT-EVQ: event_sink_dispatch_count (the [hostevt] line)
+#include "state/host_in.h"              // LIB-REF-IN: the inbound surface's arm-time report
+#include "include/mh_libmh_hook_bind.h" // F4D: MH_LibMH_BindHookApi -- the hook table's rc
+#include "include/mh_module_bind.h"     // F4D: MH_LibmhModule_IsBound -- which configuration
+#include "state/hook_api.h"             // F4D: libmh_hook_api_unbound -- and its unbound walk
+#include "hook/host_event_sink.h"       // LIFT-EVQ: bind_host_event_sink + unknown count
+#include "addr/mh_rebind.gen.h"         // LIB-REBIND R11: report_arming at the arm-time report
+#include "en_guard.h"                   // EN-only build gate
+#include "net_internal.h"               // shared spine: PROLOGUE, TEV_*, init-written globals, net_diag decls
+#include "config/ini_read.h"            // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "config/gameplay.h"            // PT-SET1: host-synced gameplay settings (boot apply)
+#include "seams/map_transfer.h"         // mp:X2: the map download, its Start gate and its resolve seam
+#include "hook/detour.h"                // install_jmp / install_trampoline (shared toolkit)
+#include "hook/promoted.h"              // mp:Q3: promoted_owner_of -- the order recorder's route
+#include "hook/hookpoint.h"             // D5/R7: the named hook points -- the C10 session-begin observer
+#include "hook/tombstone.h"             // X-TOMB: trap-fill every body we claim dead
+#include "hook/export.h"                // set_export_logger (P0-EXPORT arm reporting)
+#include "desync/desync_watch.h"        // D21: runtime desync detector (install / session_reset)
+#include "desync/world_sync.h"          // mp:X3c: world resync hooks (net_lockstep mirror, harness callback)
+#include "seams/door_watch.h"           // the garage-door watchdog (observe only) on the [desync] step
+#include "seams/replay_boundary.h"      // hotfix rc9.4: the state-replacement notes (segment seeds)
+#include "orders/order_queue.h"         // mp:X3c: promotion_active -- the admission tap lives in the promoted container
+#include "sim/sim_step.h"               // ROOTS-LIVE: the promoted root D21 must chain onto
+#include "hook/patch.h"                 // patch_bytes_guarded (S7 browser-row format string)
+#include "hook/watcall.h"               // call_watcall1 (Watcom __watcall(EAX) bridge)
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -238,8 +253,9 @@ extern "C" const char *MH_MP_JoinRefusedReason(void);                           
 extern "C" void        MH_MP_HostResetSessionIdentity(void);                        // net_discovery -- U13 host: fresh tag + join gate on leave
 extern "C" void        MH_MP_ResetHostMirror(void);                                 // launch.cpp -- U13 host: reset peer-mirror edge on leave
 void                  *g_lobby_tramp = nullptr;
-void                   host_send_map(void); // fwd (defined near the recv seam, where ADDR_CUR_MAP is in scope)
-bool                   g_map_recv = false;  // client: host's selected map has arrived (entry gate)
+void                   host_send_map(void);       // fwd (defined near the recv seam, where ADDR_CUR_MAP is in scope)
+bool                   g_map_recv        = false; // client: host's selected map has arrived (entry gate)
+bool                   g_map_start_bound = false; // late lobby previews cannot replace an adopted Start
 
 
 int g_hold_start = 0; // [net] hold_start=1: manual host does NOT auto-enter at 2 slots (dev
@@ -267,6 +283,11 @@ extern "C" int MH_MP_MapReceived(void); // client: host's real map has arrived (
 // only the net side can answer: is this announce about US?
 // Payload: [0]=is_join, [1]=affected player id, [2..]=name (NUL-terminated ANSI).
 void on_announce_recv(int /*sender*/, const unsigned char *buf, int len) {
+    if (buf && len > 0 && buf[0] == mh_net_proto::ANNOUNCE_LOBBY_SPEED) {
+        // Both transports admit this subtype only from the actual host connection.
+        mh::seams::lobby_speed::receive(buf, len);
+        return;
+    }
     if (!buf || len < 3) return;
     // mp:F3c: the third kind is ADDRESSED, not rendered. "Your JOIN was refused: <reason>" is for
     // the peer whose id is byte [1] and for nobody else -- the others log it (the host never seated
@@ -429,6 +450,7 @@ void on_lobby_dispatch() {
     // mp:L1b: refresh the lobby slot-row panel's per-slot ping cells from THIS tick, both roles --
     // see ui/lobby_ping.cpp for why this has to be lobby-tick-driven rather than present-hook-driven.
     mh::ui::lobby_ping_tick();
+    mh::seams::lobby_speed::tick();
     mh::ui::lobby_team_tick(); // mp:U51: TEAM spinners + MODE selector from the slot records (both roles)
     // mp:L1f: ...and on the HOST, publish what only the host can measure, so every client can paint
     // the rows its single star-topology connection makes it blind to. Lobby-only by construction
@@ -579,14 +601,25 @@ void on_lobby_dispatch() {
         if ((tc++ % 600) == 0) MH_Seam_TraceDump(is_host ? "host-lobby" : "client-lobby");
     }
 }
+void on_lobby_dispatch_post() {
+    mh::seams::maps::lobby_gate_after_dispatch(*g_a.is_host);
+}
 __declspec(naked) void lobby_dispatch_detour() {
     __asm {
         pushad
         pushfd
+        cld
         call on_lobby_dispatch
         popfd
         popad
-        jmp  dword ptr [g_lobby_tramp] // stolen 8-byte prologue + jmp back to dispatch+8
+        call dword ptr [g_lobby_tramp] // argument-less native dispatcher; plain RET, EAX is its callback result
+        pushad
+        pushfd
+        cld
+        call on_lobby_dispatch_post
+        popfd
+        popad
+        ret
     }
 }
 
@@ -655,6 +688,7 @@ void dump_players_state(const char *tag) {
 constexpr uintptr_t ADDR_SESSION_BEGIN_MULTI = mh::addr::llm_strat_session_begin_multi;
 void               *g_sbm_tramp              = nullptr;
 void                on_session_begin_multi() {
+    mh::participant_boundary::hosted::observe_session_begin();
     // Manual-menu MP fix: the HOST's net player count DAT_005d54bc gets reset 2->0 in the async gap
     // between begin_map_load and this call, so session_begin_multi would build a mode-2 (skirmish, solo)
     // game instead of mode-3 lockstep. Force it to the real connected count (peers + self) here, right
@@ -727,13 +761,18 @@ __declspec(naked) void new_game_init_detour() {
 // and each route crosses exactly one of them. The refusal is PRE-CHECKED so a promoted run does not file a
 // refused install into the enumerated interlock summary (a gated artifact).
 void install_cfg_newgame_restore() {
-    mh::hook::register_callback(mh::hook::point::new_game_init_observer, &MH_Cfg_NewGameRestore);
+    const bool observer     = mh::hook::register_callback(mh::hook::point::new_game_init_observer, &MH_Cfg_NewGameRestore);
+    bool       retail_ready = false;
     // SILENT on both outcomes: the arm log's sequence is a gated artifact (check_arm_order), and the first
     // restore line in mh_net.log ("; G17: new-game cfg tables ...") is the affirmative evidence.
-    if (mh::hook::detour_refusal(ADDR_NEW_GAME_INIT, entry_claim::exclusive, mh::hook::WATCOM_PROLOGUE) ==
-        mh::hook::refuse_reason::none)
-        install_trampoline(ADDR_NEW_GAME_INIT, (void *)new_game_init_detour, &g_ngi_tramp, 8,
-                           entry_claim::exclusive, "the new-game cfg-table restore (G17)");
+    const bool promoted = mh::hook::promoted_owner_of(ADDR_NEW_GAME_INIT) != nullptr;
+    if (!promoted && mh::hook::detour_refusal(ADDR_NEW_GAME_INIT, entry_claim::exclusive, mh::hook::WATCOM_PROLOGUE) == mh::hook::refuse_reason::none &&
+        memcmp(reinterpret_cast<const void *>(ADDR_NEW_GAME_INIT), &mh::exp::entry_llm_strat_new_game_init, 8) == 0)
+        retail_ready = install_trampoline(ADDR_NEW_GAME_INIT, (void *)new_game_init_detour, &g_ngi_tramp, 8,
+                                          entry_claim::exclusive, "the new-game cfg-table restore (G17)");
+    const bool campaign_ready = replay_boundary_install_mod_new_game() &&
+                                replay_boundary_install_mod_continue();
+    mh::mods::save::set_new_game_ready(observer && (promoted || retail_ready) && campaign_ready);
 }
 
 // ---- D21: the SHIP-path per-step hook for the runtime desync detector ---------------------------
@@ -827,55 +866,111 @@ __declspec(naked) void desync_sim_step_detour() {
     }
 }
 
-// mp:Q3: the order recording's dispatch hook (desync/order_capture.h). Same naked shape as the sim_step
-// detour above; the body reads the due-now queue inside the desync module.
-void                  *g_ordrec_tramp = nullptr;
-void                   on_ordrec_dispatch() { mh::desync::on_order_dispatch(); }
+// Actual dispatch observation. MHOR queue phases have their own unconditional post-AI hook below.
+void *g_ordrec_tramp          = nullptr;
+bool  g_target_dispatch_armed = false;
+void  on_ordrec_dispatch() {
+    mh::ui::selected_targets::detail::observe_dispatch();
+    // Dispatcher observation remains independent of the MHOR queue phases.
+}
 __declspec(naked) void ordrec_dispatch_detour() {
     __asm {
-        pushad
         pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
         call on_ordrec_dispatch
-        popfd
+        fxrstor [esp]
+        mov esp, ebx
         popad
-        jmp  dword ptr [g_ordrec_tramp]
+        popfd
+        jmp dword ptr [g_ordrec_tramp]
     }
 }
 
-// `[desync] order_record` (on at `[log] level=debug`). One writer per stream: when mh_harness.dll's own
-// order_mode is non-zero it owns llm_strat_order_queue_dispatch (record or replay) and this stays off.
-// The hook is the harness recorder's two routes, chosen the same way: the promoted body's observer when
-// a promotion owns the entry (D18), else a trampoline on the original's entry.
-void install_order_record(bool desync_armed) {
-    const int want = mh_ini_get_int("desync", "order_record", 0, g_ini);
-    if (!desync_armed) {
-        if (want) seam_log("; [desync] ORDER RECORD off: it rides the [desync] step hook, which is not armed\n");
-        return;
+void                  *g_ordrec_phase_tramp = nullptr;
+void                   on_ordrec_phase() { mh::desync::on_order_phase_entry(); }
+__declspec(naked) void ordrec_phase_detour() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
+        call on_ordrec_phase
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        jmp dword ptr [g_ordrec_phase_tramp]
     }
-    const char *refused = nullptr;
-    if (MH_HarnessModule_IsBound() && mh_ini_get_int("harness", "enable", 0, g_ini) &&
-        mh_ini_get_int("harness", "order_mode", 0, g_ini) != 0)
-        refused = "mh_harness.dll's own [harness] order_mode owns the dispatch stream this run (one writer per "
-                  "stream; its mh_orders.bin / mh_match_orders.bin are the recording)";
-    if (!mh::desync::configure_order_record(want, refused)) return;
-    constexpr uintptr_t ADDR = mh::addr::llm_strat_order_queue_dispatch;
-    const char         *how  = nullptr;
-    if (mh::hook::promoted_owner_of(ADDR)) {
+}
+
+// One dispatcher observer, independent of logging. Compose with the harness owner
+// rather than overwriting its singleton promoted callback or competing for its entry.
+bool install_dispatch_observation(bool desync_armed) {
+    if (g_target_dispatch_armed) return true;
+    const int   want       = mh_ini_get_int("desync", "order_record", 0, g_ini);
+    const bool  instrument = MH_HarnessModule_IsBound() && mh_ini_get_int("harness", "enable", 0, g_ini);
+    const char *refused    = instrument && mh_ini_get_int("harness", "order_mode", 0, g_ini) != 0
+                                 ? "mh_harness.dll's order recorder/replay owns this stream"
+                                 : nullptr;
+    const bool  recording  = mh::desync::configure_order_record(desync_armed ? want : 0, refused);
+    if (recording) {
+        // The harness owns its own phases when order_mode != 0 (recording was refused above).
+        // Native and translated paths are disjoint even if sim_step is promoted later.
+        bool phase_armed = mh::hook::promoted_owner_of(
+                               mh::hook::point_target(mh::hook::point::sim_step_post_ai)) != nullptr;
+        if (!phase_armed)
+            phase_armed = mh::hook::arm_observer(mh::hook::point::sim_step_post_ai,
+                                                 reinterpret_cast<void *>(&ordrec_phase_detour), &g_ordrec_phase_tramp);
+        if (phase_armed && MH_LibmhModule_IsBound())
+            phase_armed = mh::hook::register_callback(mh::hook::point::sim_step_post_ai_observer,
+                                                      &on_ordrec_phase);
+        if (!phase_armed) {
+            mh::desync::configure_order_record(0, nullptr);
+            seam_log("; [desync] ORDER RECORD REFUSED: MHOR v2 post-AI phase unavailable\n");
+            return false;
+        }
+    }
+    if (want && !desync_armed)
+        seam_log("; [desync] ORDER RECORD off: its step hook is not armed; target observation remains active\n");
+    constexpr uintptr_t address       = mh::addr::llm_strat_order_queue_dispatch;
+    const char         *entry         = mh::hook::entry_owner_of(address);
+    const bool          harness_entry = instrument && entry &&
+                               ::strcmp(entry, mh::hook::point_who(mh::hook::point::order_dispatch)) == 0;
+    const bool harness_callback = instrument && mh::hook::callback_of(mh::hook::point::dispatch_observer);
+    if (harness_entry || harness_callback) {
+        seam_log("; selected-target dispatch observation composed with the harness owner\n");
+        g_target_dispatch_armed = true;
+        return true;
+    }
+    const char *how = nullptr;
+    if (mh::hook::promoted_owner_of(address)) {
         if (mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_ordrec_dispatch))
-            how = "the promoted body's dispatch observer (D18)";
-    } else if (mh::hook::arm_observer(mh::hook::point::order_dispatch, (void *)ordrec_dispatch_detour,
-                                      &g_ordrec_tramp)) {
-        how = "a trampoline on llm_strat_order_queue_dispatch's entry";
+            how = "the promoted dispatch observer";
+    } else if (mh::hook::arm_observer(mh::hook::point::order_dispatch,
+                                      reinterpret_cast<void *>(&ordrec_dispatch_detour), &g_ordrec_tramp)) {
+        how = "the native dispatch entry";
     }
-    if (how) {
-        char b[200];
-        wsprintfA(b, "; [desync] ORDER RECORD armed via %s\n", how);
-        seam_log(b);
-    } else {
+    if (!how) {
         mh::desync::configure_order_record(0, nullptr);
-        seam_log("; [desync] ORDER RECORD off: the dispatch entry is unavailable (the [interlock] summary names "
-                 "its owner)\n");
+        return false;
     }
+    char message[200];
+    wsprintfA(message, "; selected-target dispatch observation armed via %s; order recording=%d\n", how, recording ? 1 : 0);
+    seam_log(message);
+    g_target_dispatch_armed = true;
+    return true;
 }
 
 // Arm the detector and give it whichever hook this run leaves available. Reports BOTH outcomes by
@@ -901,9 +996,12 @@ void install_desync_watch() {
     door_watch_install();
     mh::desync::set_replay_plugins(+[]() -> int { return MH_LibmhModule_IsBound() != 0 ? 2 : 1; }, &door_watch_tick);
     const bool desync_armed = mh::desync::install(g_ini) != 0;
-    install_order_record(desync_armed); // mp:Q3 -- silent unless [desync] order_record is on
-    if (!desync_armed) return;          // it has already said why
-    replay_boundary_install();          // hotfix rc9.4 -- silent unless the replay record is on
+    if (!install_dispatch_observation(desync_armed)) {
+        seam_log("; fatal: required selected-target command observation refused\n");
+        std::abort();
+    }
+    if (!desync_armed) return; // it has already said why
+    replay_boundary_install(); // hotfix rc9.4 -- silent unless the replay record is on
     if (install_trampoline(ADDR_DESYNC_SIM_STEP, (void *)desync_sim_step_detour, &g_desync_tramp, 8,
                            mh::hook::entry_claim::exclusive,
                            "the D21 desync sampler's sim_step hook")) {
@@ -1174,6 +1272,7 @@ void                on_lobby_finalize() {
         const int cause = MH_MP_ConsumeExitCause();
         mp_session_close(cause == 2 ? "link_lost" : cause == 3 ? "join_refused"
                                                                               : "host_left");
+        if (mh::seams::lobby_speed::match_percent() == 0) mh::seams::lobby_speed::clear();
         if (cause == 3) mh::ui::browser_notice_arm_refused(MH_MP_JoinRefusedReason()); // F3c: the reason, verbatim
         else mh::ui::browser_notice_arm(cause);                                        // U23: tell the player WHY, on the destination screen
         return;
@@ -1182,6 +1281,7 @@ void                on_lobby_finalize() {
     MH_Net_SendLeave();
     if (g_ls_log) seam_log("; U12: client leaving lobby (Cancel) -> sent LEAVE to host\n");
     mp_session_close("leave"); // SES1: our own Cancel -- the last line of this match's directory
+    if (mh::seams::lobby_speed::match_percent() == 0) mh::seams::lobby_speed::clear();
 }
 __declspec(naked) void finalize_detour() {
     __asm {
@@ -1463,11 +1563,24 @@ struct Pushback {
 Pushback g_pushback;
 
 extern "C" int MH_MP_MapReceived(void) { return g_map_recv ? 1 : 0; }
+
+// Main-thread adoption for lobby previews and the Start-bound authoritative map.
+extern "C" int MH_MP_AdoptMapHeader(const uint8_t *header, size_t size, int start_bound) {
+    if (g_map_start_bound && !start_bound) return 1; // consumed preview, no longer authoritative
+    if (size != MAP_DATA1_SIZE || !mh::seams::maps::validate_network_header(header, size)) return 0;
+    memcpy((void *)ADDR_CUR_MAP, header, size);
+    g_map_recv = true;
+    if (start_bound) g_map_start_bound = true;
+    return 1;
+}
 // U29: forget the departed lobby's map. The received-map flag is one of the three gates the manual
 // client's entry driver reads, and after a host-left it keeps reporting the CLOSED lobby's map --
 // which is also why the phantom lobby panel kept repainting the new host's map name (the recv seam
 // memcpy's MAP_MSG_TYPE straight into current_map_data, no lobby dispatch required).
-extern "C" void MH_MP_ResetMapReceived(void) { g_map_recv = 0; }
+extern "C" void MH_MP_ResetMapReceived(void) {
+    g_map_recv        = false;
+    g_map_start_bound = false;
+}
 
 // Client-side map drain (called from the reliable menu-tick driver once slots have synced). The client
 // sits on the intro-wait screen where its LOBBY dispatch stops polling, so the host's map datagram (0x21)
@@ -1483,8 +1596,7 @@ extern "C" void MH_MP_ClientPollMap(void) {
         if (!MH_Net_Recv(&sender, buf, &len)) return; // queue drained
         const int disp = mh::netstats::client_poll_disposition(buf[0], len, MAP_MSG_TYPE, 1 + (int)MAP_DATA1_SIZE);
         if (disp == 0) {
-            memcpy((void *)ADDR_CUR_MAP, buf + 1, MAP_DATA1_SIZE);
-            g_map_recv = true;
+            if (!MH_MP_AdoptMapHeader(buf + 1, MAP_DATA1_SIZE, 0)) continue;
             return;
         }
         // X3c-FIX: in a LIVE match (SESSION_MODE 3) an in-game datagram (types 1..5 -- the lockstep stream) is
@@ -1705,8 +1817,7 @@ extern "C" int MH_Seam_PollRecv(void) {
         // Intercept the host's map-propagation datagram: copy into current_map_data + fetch the next real
         // message so the lobby dispatch never sees the custom type.
         if (len >= 1 + (int)MAP_DATA1_SIZE && (unsigned char)g_a.rx_type[0] == MAP_MSG_TYPE) {
-            memcpy((void *)ADDR_CUR_MAP, g_a.rx_type + 1, MAP_DATA1_SIZE);
-            g_map_recv = true;
+            if (!MH_MP_AdoptMapHeader(reinterpret_cast<const uint8_t *>(g_a.rx_type + 1), MAP_DATA1_SIZE, 0)) continue;
             continue;
         }
         // Phase 2c thread-1 residual: log what the LOBBY recv delivers -- the host enters the game slightly
@@ -1947,22 +2058,35 @@ static void late_order_scan(int sender, const unsigned char *buf, int len) {
 
 extern "C" int MH_Seam_GameRecv(int *out_sender, unsigned char *buf, int *inout_len) {
     lazy_start();                                     // idempotent (g_tried_init); starts the transport on the first frame
+    mh::desync::service_localization();               // main-thread RX polling continues while the sim waits for peers
     const int cap = inout_len ? *inout_len : RX_SIZE; // game preloads capacity (0x3f8) in *inout_len
     for (;;) {
-        int len = cap;
-        if (g_pushback.valid) { // X3c-FIX: the packet ClientPollMap parked (see there)
+        int   len      = cap;
+        auto &boundary = mh::participant_boundary::hosted::owner();
+        if (boundary.receive(out_sender, buf, &len)) {
+            if (len == 0) {
+                if (inout_len) *inout_len = 0;
+                return 0; // only the executing suffix blocks recursive RX globally
+            }
+        } else if (g_pushback.valid && !boundary.blocks_sender(g_pushback.sender)) {
             g_pushback.valid = false;
             len              = g_pushback.len < cap ? g_pushback.len : cap;
             memcpy(buf, g_pushback.buf, (size_t)len);
             if (out_sender) *out_sender = g_pushback.sender;
-        } else if (!MH_Net_IsStarted() || !MH_Net_Recv(out_sender, buf, &len)) {
-            if (inout_len) *inout_len = 0;
-            return 0; // queue empty
+        } else {
+            int32_t    blocked[mh::participant_boundary::MAX_PLAYERS];
+            const auto n = boundary.blocked_senders(blocked, mh::participant_boundary::MAX_PLAYERS);
+            if (!MH_Net_IsStarted() || !MH_Net_RecvExcept(out_sender, buf, &len, blocked, int(n))) {
+                if (inout_len) *inout_len = 0;
+                return 0;
+            }
         }
         if (len > 0 && is_ingame_type(buf[0])) { // a real in-game lockstep message
             if (inout_len) *inout_len = len;
-            late_order_scan(out_sender ? *out_sender : -1, buf, len); // mp:D30 -- both configurations
-            if (g_ls_log) {
+            // The suffix was already sampled/logged on physical arrival.
+            if (!boundary.receive_continuation())
+                late_order_scan(out_sender ? *out_sender : -1, buf, len);
+            if (g_ls_log && !boundary.receive_continuation()) {
                 int sender = out_sender ? *out_sender : -1;
                 if (buf[0] == 2 && len >= 9) {
                     double h;
@@ -2217,13 +2341,15 @@ static void MH_Net_Arm(void) {
 // boundary is checkable by grep rather than by reading (mh/ui/lobby_ui.h says why each exists). They
 // must precede install_mp_bootstrap, because its installs log through the first of them.
 static void MH_UI_Arm(void) {
-    mh::ui::set_logger(seam_log);                            // the module's diagnostic lines
-    mh::ui::set_diag_flag(&g_ls_log);                        // [net] lockstep_log, BY POINTER
-    mh::ui::set_client_session_gate(ui_client_session_gate); // the slide take-over's one net question
-    install_mp_bootstrap();                                  // Workstream U Phase 1: synth discovery + no-op connect stubs + scrollbar guard
-    MH_LangPack_Install();                                   // mods:LANG1: [lang] pack=<id> -> lang\<id>\mh_ex (before the menu asks which art it has)
-    {                                                        // mods:LANG4: lang\<id>\mh_strings.txt, before anything draws a line of ours
-        char drop[48];                                       // TEST ONLY: stage a deleted key's English fallback
+    mh::ui::set_logger(seam_log);                                 // the module's diagnostic lines
+    mh::ui::set_diag_flag(&g_ls_log);                             // [net] lockstep_log, BY POINTER
+    mh::ui::set_client_session_gate(ui_client_session_gate);      // the slide take-over's one net question
+    mh::ui::set_map_file_resolver(mh::seams::maps::preview_file); // mods:MAPGEN2: which file the lobby preview reads on this peer
+    install_mp_bootstrap();                                       // Workstream U Phase 1: synth discovery + no-op connect stubs + scrollbar guard
+    MH_LangPack_Install();                                        // mods:LANG1: [lang] pack=<id> -> lang\<id>\mh_ex (before the menu asks which art it has)
+    MH_Mods_Boot_Splice_Install();                                // mods:DATAEXT1: [mods] enabled=<ids> -> the boot splice at the first-pack call (the heavy arm runs there, post-loader-lock/pre-first-pack)
+    {                                                             // mods:LANG4: lang\<id>\mh_strings.txt, before anything draws a line of ours
+        char drop[48];                                            // TEST ONLY: stage a deleted key's English fallback
         mh::config::read_ini_string("lang", "test_drop_string", "", drop, sizeof(drop), g_ini);
         mh::ui::strings_load(MH_ExeDir(), MH_LangPack_Id(), drop);
     }
@@ -2285,6 +2411,20 @@ static int MH_Core_Arm(void) {
     // site inside a promoted body refuses the manifest) and BEFORE every detour/byte patch below (whichever arrives second is
     // the one refused; the three composing hooks use patch_bytes_guarded_caps). Always logs one `; [caps]` line.
     MH_Caps_Install(g_ini);
+    // Final row capacity must precede every detector/recorder/incremental-hash attachment.
+    // Map dimensions remain explicitly unmapped until the real world is established.
+    if (!mh::storage_policy::hosted::reserve_after_caps()) {
+        seam_log("; fatal: cannot reserve deterministic storage policy\n");
+        std::abort();
+    }
+    mh::state::bind(mh::state::RID_STORAGE_POLICY,
+                    static_cast<uint32_t>(reinterpret_cast<uintptr_t>(
+                        mh::storage_policy::hosted::region_data_mut())),
+                    mh::storage_policy::hosted::region_bytes());
+    if (!mh::order_tasks::hosted::bind_regions()) {
+        seam_log("; fatal: cannot bind deterministic strategic orders\n");
+        std::abort();
+    }
     MH_InMemPatch_Install(g_ini);
 
     // ---- THE NET ARM (F3 ruling Q1) -------------------------------------------------------------
@@ -2381,15 +2521,28 @@ static int MH_Core_Arm(void) {
                   probe ? " -- probe armed, one malformed broadcast is coming" : "");
         seam_log(m);
     }
-    MH_KeyRepeat_Install();    // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
-    MH_SndTrace_Install();     // [log] snd_trace=1: observe-only mh_snd.log (every llm_snd_play request + outcome; default off, best-effort)
-    MH_Pause_Install();        // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
-    MH_ViewWrap_Install();     // RES3: the render call sites of llm_strat_pixel_delta_wrapped take the biased window (best-effort; sim callers stay stock)
-    MH_MapZoom_Install();      // RES2: wheel zoom anchored at the cursor + the torus minimum zoom + our resampler (best-effort; after the pause hook: they share one detour)
-    MH_UiWheel_Install();      // D15: the wheel scrolls menu / dialog lists, the info screen pages and the strategic side-panel lists (best-effort; after the zoom: shares the pre-input hook)
-    MH_BigMap_Install();       // mods:MM4: big-map click (pre-input hook) + the draw spliced in front of the stock cursor draw (best-effort)
-    MH_FontGuard_Install();    // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
-    MH_ChatInput_Install();    // F3: layout-aware key translate + in-game chat codec + the pinned [input] codepage (best-effort)
+    MH_KeyRepeat_Install(); // U24: modal key pump -> one dispatch per keystroke in menu/lobby text fields (best-effort)
+    MH_SndTrace_Install();  // [log] snd_trace=1: observe-only mh_snd.log (every llm_snd_play request + outcome; default off, best-effort)
+    MH_Pause_Install();     // D19: [pause] key -> enter the orphaned mode-5 PAUSE screen from the strategic view (best-effort)
+    MH_ViewWrap_Install();  // RES3: the render call sites of llm_strat_pixel_delta_wrapped take the biased window (best-effort; sim callers stay stock)
+    MH_MapZoom_Install();   // RES2: wheel zoom anchored at the cursor + the torus minimum zoom + our resampler (best-effort; after the pause hook: they share one detour)
+    if (!MH_UnitSelect_Install() || !mh::ui::selected_targets::install() ||
+        !mh::ui::storage_controls::install_original_hooks() ||
+        !mh::seams::lobby_speed::install_native_recompute() || !mh::avi_lifecycle::install()) {
+        seam_log("; fatal: required gameplay/AVI lifecycle hook contract refused\n");
+        std::abort();
+    }
+    MH_UiWheel_Install();               // D15: the wheel scrolls menu / dialog lists, the info screen pages and the strategic side-panel lists (best-effort; after the zoom: shares the pre-input hook)
+    mh::ui::map_preview_install(g_ini); // mods:MAPGEN2: the right panel's page spinner + map preview ([ui] map_preview; silent refusals leave the picker + lobby stock)
+    MH_BigMap_Install();                // mods:MM4: big-map click (pre-input hook) + the draw spliced in front of the stock cursor draw (best-effort)
+    MH_FontGuard_Install();             // F2: bounds-guard glyph_table[code_unit] in llm_gfx_font_layout_text + the [fonts] probe (best-effort)
+    if (!mh::seams::strategic_input_native::initialize() || !MH_ChatInput_Install() ||
+        !mh::seams::strategic_input_native::install())
+        FatalAppExitW(0, mh::ui::tr(mh::ui::Str::STRATEGIC_INPUT_UNAVAILABLE));
+    if (!mh::order_tasks::native::install()) {
+        seam_log("; fatal: required strategic order executor hooks refused\n");
+        std::abort();
+    }
     MH_CheatGate_Install();    // CH1: the SP cheat console (Shift+Enter line) refused in a lockstep match + the redacted chat submit log (best-effort)
     MH_DiploEcho_Install();    // U39: the diplomacy dialog's optimistic relation write NOPed -- the 0xf4 commit is the hashed cell's only writer (best-effort)
     MH_DiploRows_Install();    // U46: the diplomacy Apply advances its spinner rows for every non-self slot, like the builder (best-effort)

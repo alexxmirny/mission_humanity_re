@@ -6,6 +6,7 @@
 // header derivation above already carries the step-by-step address ranges.
 //
 #include "sim/sim_unit_teardown_mapped.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -96,6 +97,7 @@ void unit_teardown_mapped(const sim_view &v, sim_store &own, const unit_teardown
     u.move_microstep = 0;
 
     // ---- (11) AI notify, always (0x004877a1-0x004877bb) ----------------------------------------------
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::unit, p, uint32_t(unit_index), false);
     c.ai_notify_object_removed(p | 0x80u, unit_index, 0);
 }
 

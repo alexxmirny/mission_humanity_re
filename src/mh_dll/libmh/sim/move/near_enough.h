@@ -55,12 +55,14 @@ enum class ne_stop { no,
 //    map_w() / map_h() -> int32_t (the map extent in tiles).
 // `p` = the marshal's player, `idx` = the stuck member's unit index, `near_r` = move_near_enough R (clamped 0..10, 0 = off).
 template <class W>
-inline ne_stop near_enough_check(W &w, uint32_t p, int32_t idx, int near_r) {
+inline ne_stop near_enough_check(W &w, uint32_t p, int32_t idx, int near_r, bool owned_patrol = false) {
     const auto *u = w.unit(p, idx);
     if (!u) return ne_stop::no;
-    if (!ne_is_plain_move(u->order)) return ne_stop::no;
+    const bool patrol = u->order == 16 && owned_patrol;
+    if (!ne_is_plain_move(u->order) && !patrol) return ne_stop::no;
     const int x = u->x, y = u->y, gx = u->goal_x, gy = u->goal_y;
     if (x == gx && y == gy) return ne_stop::on_goal;
+    if (patrol) return ne_stop::no; // Exact accepted placement only; never radius completion across a wall.
     if (near_r <= 0) return ne_stop::no;
     if (w.pass(static_cast<uint32_t>(gx), static_cast<uint32_t>(gy)) != 0) return ne_stop::no;
     const auto &t = w.tile(static_cast<uint32_t>(gx), static_cast<uint32_t>(gy));

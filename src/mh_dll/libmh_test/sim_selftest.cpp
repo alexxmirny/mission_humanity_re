@@ -491,7 +491,7 @@ void run_sort_sites_by_dist_tests();
 void run_spawn_ai_base_tests();
 // X-TL-DRAIN step 4 (2026-09-12). The three original CALLERS whose translation dissolves the inbound
 // surface's X-TL exclusion class. Two are offline-only by necessity and one is offline-as-well:
-// llm_unit_order_disembark_soldiers' shadow site is VACUOUS by construction (void return, no writes,
+// llm_unit_order_squad_split' shadow site is VACUOUS by construction (void return, no writes,
 // its one outward call must be inert), llm_strat_bldg_instant_construct_find_slot's armable site is
 // reachable only by a player confirming a building placement, and llm_strat_bldg_init_all's site is
 // reachable once per boot and compares only the callee's region. See each file's own banner.

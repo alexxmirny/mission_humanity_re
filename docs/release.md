@@ -210,6 +210,13 @@ line lands there:
 `master` stays the development line; nothing from it reaches the release branch except by an
 explicit cherry-pick.
 
+**0.2.2 final (user decision, 2026-11-21):** the final release takes one last
+fast-forward of `release/v0.2.2` to the completed feature tree. From that cut onward,
+the branch is **hotfix-only**; `master` carries subsequent feature work. Do not
+fast-forward the release branch to later `master` or include post-0.2.2 features in
+a hotfix. The Tiled extension, comprehensive example mod, non-overwriting English
+language pack, project website and replaceable-AI API target later releases.
+
 ## 1. The version convention
 
 **`vMAJOR.MINOR.PATCH`, optionally with a pre-release suffix: `v0.1.0`, `v0.1.0-rc1`, `v0.2.0-beta`.**
@@ -601,7 +608,9 @@ Pages is in **branch** (`legacy`) mode, decided 2026-09-23 (dist V021). The mani
 committed file on a **dedicated orphan branch (`gh-pages`), never `main`**: `build_public_seed.py`
 REPLACES `main`'s tree wholesale on every publish, so a manifest committed there is deleted by the
 NEXT release — a break that arrives one release after the change that caused it. The branch holds
-only `channels/**`, the bridge `manifest.json` (+ `.minisig`), `.nojekyll` and a one-page `index.html`.
+only `channels/**`, the bridge `manifest.json` (+ `.minisig`), `.nojekyll`, a one-page `index.html` and,
+since 2026-10-26, the generated game wiki under `wiki/` (mods:E4; built locally from the retail data and
+pushed by hand — no release workflow touches it).
 
 - **With Actions**, each workflow's `publish-pages` job does the commit + build + read-back (the
   [Pages](#pages) section), gated on `MH_PAGES_BRANCH`.

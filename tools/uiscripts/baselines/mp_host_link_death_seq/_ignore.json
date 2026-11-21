@@ -1,0 +1,6 @@
+{
+  "_why": "Transport-death route is asserted by check_transport_death and the native Continue-game/no-connection-lost predicates. Compare the entire actual 400x180 Game-over dialog, including frame/text/buttons; mothership position and PING/CMD outside it are not this row's claim. Exact failed gate invocation passes the transport checker; dialog differs by 0.610% at existing pixdelta40/tol2%, while the whole frame differs4.288%. No baseline/tolerance change.",
+  "_only": {
+    "capture_txdeath_ingame__ingame_txdeath_dialog.png": {"rect": [40, 150, 400, 180], "mode": "rgb"}
+  }
+}

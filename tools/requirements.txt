@@ -39,6 +39,11 @@ matplotlib==3.9.2
 # --- ledger schema (the migration-ledger schema's second guard) ---
 jsonschema==4.23.0
 
+# --- game wiki (src/formats/wiki): the static-site templates. NOT derived by lint_requirements.py
+#     (it scans tools/ only), so this pin is by hand. PyYAML (facing.yaml) and Pillow (art) are
+#     pinned above. Installed version at pin time: Jinja2 3.1.6 (pulls MarkupSafe).
+Jinja2==3.1.6
+
 # --- lint gate: ruff is invoked by lint_repo.py as a CLI (`ruff format --check`, `ruff check`), NOT
 #     imported, so lint_requirements.py does not derive it. Pinned here so a fresh `pip install -r`
 #     gives the exact ruff the repo tree is formatted against -- an unpinned ruff drifts the gate

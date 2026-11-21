@@ -60,6 +60,11 @@ void              set_fp2(uint64_t fp2);
 bool              enabled(); // action == 1
 const ws::config &cfg();
 
+// Main-thread frame service: expire/abort active host transfers even while the
+// sim is parked; cooldown remains simulation-step based.
+void service_frame(uint32_t now_ms, uint32_t host_step);
+bool peer_watchdog_held(int peer, uint32_t now_ms);
+
 // New match: drop every in-flight transfer, free the receive buffer, zero the machines and the history.
 void session_reset();
 

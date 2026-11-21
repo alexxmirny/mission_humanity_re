@@ -345,7 +345,7 @@ void reimpl_probe_install() {
     mh::sim::install_promotion_batch_h(ours_run());
 
     // X-TL-P (2026-09-12): X-TL-DRAIN's three bodies -- llm_strat_bldg_init_all,
-    // llm_strat_bldg_instant_construct_find_slot, llm_unit_order_disembark_soldiers. Installing
+    // llm_strat_bldg_instant_construct_find_slot, llm_unit_order_squad_split. Installing
     // them is what returns report_promotion_reconciliation's section 5 to zero rows: step 4 flipped
     // all three to `state: verified` while their ORIGINALS stayed reachable (from llm_boot_stage_tick
     // and llm_strat_input_update), which is exactly the `ours != running` split X-SPINE closed on.

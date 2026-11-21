@@ -32,10 +32,10 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: land the host's mothership (shift+right-click), then run
+# in the match: land the host's mothership (Ctrl+right-click), then run
 absent Network players
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 40000
 log cap ai done
 end

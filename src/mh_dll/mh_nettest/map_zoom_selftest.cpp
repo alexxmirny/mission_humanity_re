@@ -28,6 +28,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include "ui/target_line_routes.h"
+#include "ui/target_line_painter.h"
 
 #include "gfx/cpu_scale.h"
 #include "gfx/heat_xf.h"
@@ -427,6 +431,209 @@ void test_heat_geometry() {
     check("H9: a view wider than the map draws every slot (the wrapped copies too)", total == want_cols * want_rows);
 }
 
+// Fold inside map_zoom_selftest.cpp's existing anonymous namespace.
+namespace routes = mh::ui::selected_targets::detail;
+static routes::route_collection route_test_paths;
+static routes::route_geometry   route_test_geometry;
+void                            test_route_geometry() {
+    using mh::gfx::stratview::point;
+    auto      &paths           = route_test_paths;
+    auto      &geometry        = route_test_geometry;
+    const auto saved           = routes::options();
+    routes::options()          = {};
+    routes::options().grouping = routes::grouping_mode::shared_command;
+    mh::gfx::stratview::world_view view{};
+    view.width     = 1024;
+    view.height    = 768;
+    view.map_width = view.map_height = 64;
+    view.span_x = view.span_y = 2048;
+    view.shown                = {0, 0, 1024, 768};
+    auto path                 = [&](unsigned at, point origin) -> routes::route_path                                            &{
+        auto &p       = paths.paths[at];
+        p             = {};
+        p.cycle_begin = routes::no_cycle;
+        p.canonical   = true;
+        p.actor       = static_cast<uint16_t>(at + 1);
+        p.actor_life  = 1;
+        p.generation  = 1;
+        p.source = p.origin = p.ground_origin = origin;
+        return p;
+    };
+    auto node = [](routes::route_path &p, unsigned index, point position, unsigned sequence,
+                   routes::line_role role = routes::line_role::movement) {
+        auto &n  = p.nodes[index];
+        n        = {};
+        n.visual = n.ground = position;
+        n.command           = {1, 2, 3, sequence, 0, true};
+        n.known             = true;
+        n.role              = role;
+        p.count             = (std::max)(p.count, index + 1);
+    };
+    auto count = [&](bool markers) {
+        unsigned n = 0;
+        for (unsigned i = 0; i < geometry.count; ++i)
+            n += markers ? geometry.items[i].marker : geometry.items[i].stem;
+        return n;
+    };
+    paths.count = 1;
+    auto &p     = path(0, {128, 128});
+    node(p, 0, {384, 128}, 1);
+    node(p, 1, {384, 384}, 2, routes::line_role::attack);
+    node(p, 2, {640, 384}, 3);
+    check("routes: three short legs retained by total24-tile length", routes::build_route_geometry(view, paths, false, geometry) && count(false) == 3 && count(true) == 3);
+    routes::options().minimum_tiles = 64;
+    check("routes: short whole chain retains every marker", routes::build_route_geometry(view, paths, false, geometry) && count(false) == 0 && count(true) == 3);
+    check("routes: reveal restores every short leg", routes::build_route_geometry(view, paths, true, geometry) && count(false) == 3);
+    p.nodes[1].known = false;
+    check("routes: hidden attack breaks both adjacent connectors, retains known suffix marker", routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && count(true) == 2);
+    p.nodes[1].known = true;
+    view.shown       = {0, 0, 500, 500};
+    check("routes: any offscreen future node reveals every connector", routes::build_route_geometry(view, paths, false, geometry) && count(false) == 3);
+    view.shown  = {0, 0, 1024, 768};
+    paths.count = 2;
+    auto &a     = path(0, {96, 128});
+    auto &b     = path(1, {160, 128});
+    node(a, 0, {256, 128}, 1);
+    node(b, 0, {256, 128}, 1);
+    node(a, 1, {256, 384}, 2);
+    node(b, 1, {512, 128}, 3);
+    node(a, 2, {512, 384}, 4);
+    node(b, 2, {512, 384}, 4);
+    check("routes: common prefix once; later matching point does not reconverge", routes::build_route_geometry(view, paths, true, geometry) && count(false) == 5 && count(true) == 5);
+    check("routes: shared prefix starts at all-member ground centroid", geometry.items[0].origin.x == 128 && geometry.items[0].origin.y == 128);
+    a.nodes[0] = a.nodes[2];
+    b.nodes[0] = b.nodes[2];
+    a.count = b.count = 1;
+    check("routes: genuinely shared active command may merge once divergent predecessors are consumed",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && count(true) == 1);
+    a.count = b.count = 1;
+    a.origin = a.ground_origin = a.source = {2032, 128};
+    b.origin = b.ground_origin = b.source = {16, 128};
+    check("routes: offscreen seam member participates in torus centroid", routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && geometry.items[0].origin.x == 0);
+    // Legacy native intents expose actual per-actor planner endpoints, not the
+    // canonical shared request. Proven issue identity overrides goal proximity.
+    auto &native_a     = path(0, {128, 128});
+    auto &native_b     = path(1, {160, 128});
+    native_a.canonical = native_b.canonical = false;
+    node(native_a, 0, {384, 128}, 0);
+    node(native_b, 0, {576, 128}, 0);
+    native_a.nodes[0].command = native_b.nodes[0].command = {};
+    native_a.nodes[0].command.legacy = native_b.nodes[0].command.legacy = 77;
+    check("routes: native shared formation goals retain one all-member centroid",
+                                     routes::build_route_geometry(view, paths, true, geometry) &&
+                                         count(false) == 1 && count(true) == 1 && geometry.items[0].origin.x == 144);
+    native_a.nodes[0].role = native_b.nodes[0].role = routes::line_role::patrol;
+    node(native_a, 1, {128, 384}, 0, routes::line_role::patrol);
+    node(native_b, 1, {192, 384}, 0, routes::line_role::patrol);
+    native_a.nodes[1].command = native_b.nodes[1].command = native_a.nodes[0].command;
+    native_a.cycle_begin = native_b.cycle_begin = 0;
+    check("routes: native shared patrol keeps one representative endpoint pair",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(true) == 2);
+    routes::options().grouping = routes::grouping_mode::subgroups;
+    auto &canonical_attack     = path(0, {128, 128});
+    auto &legacy_attack        = path(1, {160, 128});
+    legacy_attack.canonical    = false;
+    node(canonical_attack, 0, {384, 128}, 11, routes::line_role::attack);
+    node(legacy_attack, 0, {384, 128}, 0, routes::line_role::attack);
+    canonical_attack.nodes[0].entity = legacy_attack.nodes[0].entity = 0x40010005u;
+    canonical_attack.nodes[0].target_life                            = 7;
+    canonical_attack.nodes[0].life_domain                            = routes::target_life_domain::canonical;
+    canonical_attack.nodes[0].grouping_life                          = 19;
+    legacy_attack.nodes[0].target_life = legacy_attack.nodes[0].grouping_life = 19;
+    legacy_attack.nodes[0].life_domain                                        = routes::target_life_domain::presentation;
+    check("routes: canonical/presentation target lives group through certified current presentation identity",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && geometry.items[0].origin.x == 144);
+    legacy_attack.nodes[0].target_life   = 7;
+    legacy_attack.nodes[0].grouping_life = 20;
+    check("routes: accidental equal integers from different lifetime domains do not group",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 2);
+    legacy_attack.canonical     = true;
+    legacy_attack.nodes[0]      = canonical_attack.nodes[0];
+    paths.count                 = 3;
+    auto &secondary_channel     = path(2, {128, 128});
+    secondary_channel.canonical = false;
+    secondary_channel.actor     = canonical_attack.actor;
+    node(secondary_channel, 0, {384, 128}, 0, routes::line_role::attack);
+    secondary_channel.nodes[0].entity      = 0x40010005u;
+    secondary_channel.nodes[0].target_life = secondary_channel.nodes[0].grouping_life = 19;
+    secondary_channel.nodes[0].life_domain                                            = routes::target_life_domain::presentation;
+    check("routes: same-actor primary and secondary channels weight the source centroid only once",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && geometry.items[0].origin.x == 144);
+    secondary_channel.family = routes::source_family::building;
+    secondary_channel.origin = secondary_channel.ground_origin = secondary_channel.source = {96, 128};
+    check("routes: unit and selected-building same-slot sources remain distinct centroid members",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 1 && geometry.items[0].origin.x == 128);
+    routes::options().grouping = routes::grouping_mode::shared_command;
+    paths.count                = 1;
+    auto &cycle                = path(0, {128, 128});
+    node(cycle, 0, {384, 128}, 1, routes::line_role::patrol);
+    node(cycle, 1, {384, 384}, 2, routes::line_role::patrol);
+    node(cycle, 2, {128, 384}, 3, routes::line_role::patrol);
+    cycle.cycle_begin               = 0;
+    routes::options().minimum_tiles = 20;
+    check("routes: patrol length counts approach plus one whole circuit", routes::build_route_geometry(view, paths, false, geometry) && count(false) == 4 && count(true) == 3);
+    const auto  &closing          = geometry.items[geometry.count - 1];
+    const auto  &first_cycle_edge = geometry.items[2];
+    const double closure_length   = std::hypot(double(closing.destination.x - closing.origin.x), double(closing.destination.y - closing.origin.y));
+    const double winding          = (closing.arc + closure_length) / closing.phase_period -
+                           first_cycle_edge.arc / first_cycle_edge.phase_period;
+    check("routes: cyclic phase closes both trains in a three-period winding",
+                                     std::abs(winding / 3.0 - std::round(winding / 3.0)) < 1e-6);
+    const auto  &approach        = geometry.items[0];
+    const double approach_length = std::hypot(double(approach.destination.x - approach.origin.x), double(approach.destination.y - approach.origin.y));
+    check("routes: approach and fitted circuit meet at the same normalized phase",
+                                     std::abs((approach.arc + approach_length) / approach.phase_period -
+                                              first_cycle_edge.arc / first_cycle_edge.phase_period) < 1e-6);
+    paths.count = 2;
+    auto &ca    = path(0, {128, 128});
+    auto &cb    = path(1, {128, 128});
+    node(ca, 0, {384, 128}, 1, routes::line_role::patrol);
+    node(cb, 0, {384, 128}, 1, routes::line_role::patrol);
+    node(ca, 1, {384, 384}, 2, routes::line_role::patrol);
+    node(cb, 1, {384, 384}, 2, routes::line_role::patrol);
+    node(ca, 2, {128, 384}, 3, routes::line_role::patrol);
+    node(cb, 2, {704, 512}, 4, routes::line_role::patrol);
+    ca.cycle_begin = cb.cycle_begin = 0;
+    check("routes: different circuits retain their shared prefix exactly once",
+                                     routes::build_route_geometry(view, paths, true, geometry) && count(false) == 6 && count(true) == 4);
+    const auto edge_to = [&](point origin, point destination) -> const routes::route_primitive                            *{
+        for (unsigned i = 0; i < geometry.count; ++i) {
+            const auto &edge = geometry.items[i];
+            if (edge.stem && edge.origin.x == origin.x && edge.origin.y == origin.y &&
+                edge.destination.x == destination.x && edge.destination.y == destination.y) return &edge;
+        }
+        return nullptr;
+    };
+    const auto *common = edge_to({384, 128}, {384, 384});
+    const auto *branch = edge_to({384, 384}, {704, 512});
+    check("routes: differently fitted cyclic suffix inherits shared-junction phase",
+                                     common && branch &&
+                                         std::abs((common->arc + 256) / common->phase_period - branch->arc / branch->phase_period) < 1e-6 &&
+                                         std::abs(common->phase_period - branch->phase_period) > 0.001);
+    unsigned closed_circuits = 0;
+    for (unsigned i = 0; i < geometry.count; ++i) {
+        const auto &edge = geometry.items[i];
+        if (!edge.stem || edge.destination.x != 384 || edge.destination.y != 128) continue;
+        if (edge.origin.x == 128 && edge.origin.y == 128) continue; // approach, not a closure
+        ++closed_circuits;
+        const double length    = std::hypot(double(edge.destination.x - edge.origin.x), double(edge.destination.y - edge.origin.y));
+        const double end_phase = (edge.arc + length) / edge.phase_period;
+        check("routes: each shared-prefix patrol circuit closes without a seam reset",
+                                         common && std::abs((end_phase - common->arc / common->phase_period) / 3.0 -
+                                                            std::round((end_phase - common->arc / common->phase_period) / 3.0)) < 1e-6);
+    }
+    check("routes: both distinct patrol closing seams were asserted", closed_circuits == 2);
+    paths.count = routes::route_selection_capacity;
+    for (unsigned actor = 0; actor < paths.count; ++actor) {
+        auto &full = path(actor, {128, 128});
+        for (unsigned j = 0; j < routes::explicit_route_capacity; ++j)
+            node(full, j, {128 + int((j % 8) * 32), 128 + int((j / 8) * 32)}, actor * 32 + j + 1);
+    }
+    check("routes: all32 accepted nodes for all200 actors survive", routes::build_route_geometry(view, paths, true, geometry) && count(false) == 6400 && count(true) == 6400);
+    routes::options() = saved;
+}
+
+
 } // namespace
 
 int run_mapzoomtest() {
@@ -439,6 +646,7 @@ int run_mapzoomtest() {
     test_wheel();
     test_resampler();
     test_heat_geometry();
+    test_route_geometry();
     printf("  [timing, informational]\n");
     time_case(1760, 1024, 2.0, 3);
     time_case(1760, 1024, 2.0, 0);

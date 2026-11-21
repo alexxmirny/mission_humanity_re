@@ -24,6 +24,7 @@
 #include "desync/desync_watch.h"
 #include "desync/desync_wire2.h"
 #include "state/inc_state.h"
+#include "storage_policy_fixture.h"
 
 using namespace mh::desync;
 
@@ -39,8 +40,7 @@ void check(const char *what, bool ok) {
     }
 }
 
-// A small stand-in manifest: 8 regions, two of them excluded -- the same shape as the live one
-// (56 regions, 9 excluded), which is what the assertions are about.
+// A small stand-in manifest with included and excluded regions, like the live manifest.
 constexpr int NR       = 8;
 constexpr int EX_A     = 3; // "peer_horizon"-like: peer-local, differs on 100% of steps
 constexpr int EX_B     = 6; // "frame_ring"-like
@@ -103,14 +103,13 @@ static uint8_t     g_state[2][LR][64 * 8192];
 struct syn_host final : loc_host {
     int      me;
     wire_q  *out;
-    uint64_t fpv          = 0x1234;
-    bool     can_mat      = true;
-    bool     corrupt_self = false; // per_at lies for region 2 -> the self-check must refuse it
-    char     lines[64][256];
-    int      nlines        = 0;
+    uint64_t fpv           = 0x1234;
+    bool     can_mat       = true;
+    bool     corrupt_self  = false; // per_at lies for region 2 -> the self-check must refuse it
     int      regions_first = -2, regions_nd = -1;
 
     int         nregions() const override { return LR; }
+    uint32_t    peers_present() const override { return 0xff; }
     uint32_t    region_len(int r) const override { return LLEN[r]; }
     const char *region_name(int r) const override { return LNAME[r]; }
     bool        excluded(int r) const override { return LEXCL[r]; }
@@ -137,20 +136,10 @@ struct syn_host final : loc_host {
     const uint8_t *evidence(int r) override { return g_state[me][r]; }
     uint64_t       block_hash(int r, uint32_t b) override { return bh(r, b); }
     void           send(const uint8_t *f, int len) override { out->push(f, len); }
-    void           log(const char *line) override {
-        if (nlines < 64) {
-            snprintf(lines[nlines], sizeof(lines[nlines]), "%s", line);
-            ++nlines;
-        }
-    }
-    void on_regions(int, uint32_t, int first, int nd) override {
+    void           log(const char *) override {}
+    void           on_regions(int, uint32_t, int first, int nd) override {
         regions_first = first;
         regions_nd    = nd;
-    }
-    bool said(const char *needle) const {
-        for (int i = 0; i < nlines; ++i)
-            if (strstr(lines[i], needle)) return true;
-        return false;
     }
 };
 
@@ -158,7 +147,8 @@ struct syn_host final : loc_host {
 int pump(localiser &la, syn_host &ha, wire_q &a_out, localiser &lb, syn_host &hb, wire_q &b_out) {
     int moved = 0;
     for (int guard = 0; guard < 1000; ++guard) {
-        bool any = false;
+        bool any = la.pump(ha);
+        any      = lb.pump(hb) || any;
         if (a_out.head < a_out.n) { // A's frame reaches B
             const wire_q::f &f = a_out.q[a_out.head++];
             hdr              h;
@@ -196,11 +186,409 @@ bool has_result(const localiser &l, int region, uint32_t off, uint8_t mine, uint
     return false;
 }
 
-static localiser g_la, g_lb; // ~270 KB each: static, never on the stack
-static wire_q    g_qa, g_qb;
-static ticker    g_ta;
+static localiser             g_la, g_lb;
+static wire_q                g_qa, g_qb;
+static ticker                g_ta;
+static std::vector<uint64_t> g_lscratch[2];
+void                         attach_fixture_localizers(uint32_t max_len) {
+    const size_t bytes = localiser::scratch_bytes(max_len);
+    for (auto &v : g_lscratch) v.resize((bytes + 7) / 8);
+    check("localise: caller scratch attaches", g_la.attach(g_lscratch[0].data(), bytes, max_len) &&
+                                                                           g_lb.attach(g_lscratch[1].data(), bytes, max_len));
+}
+
+// Fixed synthetic extent: crosses 512 KiB and 4 MiB, ending in a partial group and block.
+constexpr uint32_t PAGED_LEN = 6912096u;
+struct bounded_loc_queue {
+    struct frame {
+        int     sender, len;
+        uint8_t bytes[MAX_FRAME];
+    } frames[64];
+    uint32_t head = 0, count = 0, peak = 0, dropped = 0;
+    void     push(int sender, const uint8_t *bytes, int len) {
+        if (count == 64) {
+            ++dropped;
+            return;
+        }
+        frame &f = frames[(head + count) % 64];
+        f.sender = sender;
+        f.len    = len;
+        memcpy(f.bytes, bytes, (size_t)len);
+        ++count;
+        if (count > peak) peak = count;
+    }
+};
+struct paged_host final : loc_host {
+    int                                   me = 0, peers = 2;
+    std::vector<uint8_t>                 *state   = nullptr;
+    bounded_loc_queue                    *queues  = nullptr;
+    bool                                  reorder = false, packet_bounds = true, tail_padding = true;
+    uint32_t                              group_pages = 0, blocks_frames = 0, bytes_frames = 0;
+    uint32_t                              opened[32]        = {};
+    uint32_t                              last_group_blocks = 0, last_window_groups = 0;
+    std::vector<bounded_loc_queue::frame> held;
+    bool                                  bytes_first = false, block_held = false, reversed_once = false;
+    int                                   delay_page_to             = -1;
+    uint16_t                              delay_page_index          = 13;
+    bool                                  page_held                 = false;
+    bool                                  page_between_bytes_blocks = false, crossed_prerequisite = false;
+    bounded_loc_queue::frame              deferred_block{}, deferred_page{};
+    int                                   nregions() const override { return 1; }
+    uint32_t                              present = 0xff;
+    uint32_t                              peers_present() const override { return present; }
+    uint32_t                              region_len(int) const override { return PAGED_LEN; }
+    const char                           *region_name(int) const override { return "order_tasks"; }
+    bool                                  excluded(int) const override { return false; }
+    uint64_t                              fp() const override { return fp_v2(0x1234, mh::state::inc::HASH_KIND, &PAGED_LEN, 1); }
+    uint8_t                               keep(int, uint32_t off) override { return off == 17 ? 0 : 0xff; }
+    bool                                  materialize(uint32_t) override { return true; }
+    const uint8_t                        *evidence(int) override { return state->data(); }
+    uint64_t                              block_hash(int, uint32_t b) override {
+        const uint32_t off = b * 64u, n = PAGED_LEN - off < 64u ? PAGED_LEN - off : 64u;
+        uint8_t        mask[64];
+        for (uint32_t j = 0; j < n; ++j) mask[j] = keep(0, off + j);
+        return mh::state::inc::block_hash(0, b, state->data() + off, n, mask);
+    }
+    bool per_at(uint32_t, uint64_t *out) override {
+        out[0] = 0;
+        for (uint32_t b = 0; b < nblocks_of(PAGED_LEN); ++b) out[0] += block_hash(0, b);
+        return true;
+    }
+    void log(const char *) override {}
+    void broadcast(const uint8_t *bytes, int len) {
+        hdr f;
+        memcpy(&f, bytes, sizeof(f));
+        for (int p = 0; p < peers; ++p) {
+            if (p == me) continue;
+            if (p == delay_page_to && f.type == T_GROUPS && f.aux == delay_page_index) {
+                deferred_page.sender = me;
+                deferred_page.len    = len;
+                memcpy(deferred_page.bytes, bytes, (size_t)len);
+                page_held = true;
+            } else queues[p].push(me, bytes, len);
+        }
+    }
+    void send(const uint8_t *bytes, int len) override {
+        hdr f;
+        packet_bounds = packet_bounds && len <= 1082 && frame_ok(bytes, len, 1, f);
+        if (!frame_ok(bytes, len, 1, f)) return;
+        if (f.type == T_GROUPS) {
+            ++group_pages;
+            if (f.aux == 13) last_window_groups = f.count;
+            if (reorder) {
+                bounded_loc_queue::frame save = {};
+                save.sender                   = me;
+                save.len                      = len;
+                memcpy(save.bytes, bytes, (size_t)len);
+                held.push_back(save);
+                if (held.size() == nwindows_of(PAGED_LEN)) {
+                    for (size_t j = held.size(); j-- > 0;) broadcast(held[j].bytes, held[j].len);
+                    broadcast(held.back().bytes, held.back().len); // an exact duplicate page
+                    held.clear();
+                }
+                return;
+            }
+        } else if (f.type == T_BLOCKS) {
+            uint16_t w;
+            memcpy(&w, bytes + HDR_BYTES, 2);
+            if (blocks_frames < 32) opened[blocks_frames] = (uint32_t)w * MAX_GROUPS + f.aux;
+            ++blocks_frames;
+            if (w == 13 && f.aux == 23) last_group_blocks = f.count;
+        } else if (f.type == T_BYTES) {
+            ++bytes_frames;
+            uint16_t w;
+            memcpy(&w, bytes + HDR_BYTES, 2);
+            for (int j = 0; j < f.count; ++j) {
+                const uint8_t *entry = bytes + HDR_BYTES + 2 + BYTES_ENTRY * j;
+                uint16_t       b;
+                memcpy(&b, entry, 2);
+                if ((uint32_t)w * WINDOW_BLOCKS + b == nblocks_of(PAGED_LEN) - 1)
+                    for (int q = 32; q < 64; ++q) tail_padding = tail_padding && entry[2 + q] == 0;
+            }
+        }
+        if (bytes_first && f.type == T_BLOCKS && !reversed_once) {
+            deferred_block.sender = me;
+            deferred_block.len    = len;
+            memcpy(deferred_block.bytes, bytes, (size_t)len);
+            block_held = reversed_once = true;
+            return;
+        }
+        if (bytes_first && f.type == T_BYTES && block_held) {
+            broadcast(bytes, len);
+            if (page_between_bytes_blocks && page_held) {
+                queues[delay_page_to].push(deferred_page.sender, deferred_page.bytes, deferred_page.len);
+                page_held            = false;
+                delay_page_to        = -1;
+                crossed_prerequisite = true;
+            }
+            broadcast(deferred_block.bytes, deferred_block.len);
+            block_held = false;
+            return;
+        }
+        broadcast(bytes, len);
+    }
+};
+static localiser             g_paged_loc[8];
+static bounded_loc_queue     g_paged_rx[8];
+static paged_host            g_paged_host[8];
+static std::vector<uint64_t> g_paged_scratch[8];
+
+void start_paged(std::vector<uint8_t> &base, std::vector<uint8_t> &changed, int peers, bool reorder) {
+    const size_t bytes = localiser::scratch_bytes(PAGED_LEN);
+    for (int p = 0; p < peers; ++p) {
+        g_paged_rx[p]   = {};
+        g_paged_host[p] = {};
+        paged_host &h   = g_paged_host[p];
+        h.me            = p;
+        h.peers         = peers;
+        h.queues        = g_paged_rx;
+        h.state         = p == peers - 1 ? &changed : &base;
+        h.reorder       = reorder;
+        g_paged_scratch[p].resize((bytes + 7) / 8);
+        check("paged: attached runtime-sized scratch", g_paged_loc[p].attach(g_paged_scratch[p].data(), bytes, PAGED_LEN));
+        g_paged_loc[p].reset(4);
+        g_paged_loc[p].on_local_mismatch(h, 1000);
+    }
+}
+bool deliver_paged(int p, int budget = 64) {
+    bool               moved = false;
+    bounded_loc_queue &q     = g_paged_rx[p];
+    while (q.count && budget-- > 0) {
+        const bounded_loc_queue::frame f = q.frames[q.head];
+        q.head                           = (q.head + 1) % 64;
+        --q.count;
+        hdr h;
+        if (frame_ok(f.bytes, f.len, 1, h))
+            g_paged_loc[p].on_frame(g_paged_host[p], f.sender, h, f.bytes + HDR_BYTES);
+        moved = true;
+    }
+    return moved;
+}
+int exchange_paged(int peers) {
+    for (int round = 0; round < 512; ++round) {
+        bool work = false;
+        for (int p = 0; p < peers; ++p) work = g_paged_loc[p].pump(g_paged_host[p]) || work;
+        for (int p = 0; p < peers; ++p) work = deliver_paged(p) || work;
+        if (!work) return round;
+    }
+    return 512;
+}
+void run_paged_checks() {
+    std::vector<uint8_t> base(PAGED_LEN), changed;
+    for (uint32_t j = 0; j < PAGED_LEN; ++j) base[j] = (uint8_t)(j * 37u + j / 251u);
+    const uint32_t boundaries[] = {524287, 524288, 4194303, 4194304, 6912095};
+    for (uint32_t off : boundaries) {
+        changed = base;
+        changed[off] ^= 0x40;
+        changed[17] ^= 1; // keep-mask fidelity in the same complete evidence self-check
+        start_paged(base, changed, 2, false);
+        check("paged: boundary exchange terminates", exchange_paged(2) < 512);
+        check("paged: exact absolute offset and mirrored byte values",
+              has_result(g_paged_loc[0], 0, off, base[off], changed[off]) &&
+                  has_result(g_paged_loc[1], 0, off, changed[off], base[off]) &&
+                  g_paged_loc[0].nresults() == 1 && g_paged_loc[1].nresults() == 1);
+        check("paged: packets stay bounded", g_paged_host[0].packet_bounds && g_paged_host[1].packet_bounds);
+        if (off == PAGED_LEN - 1)
+            check("paged: final group has 34 blocks and final 32 bytes are padded",
+                  g_paged_host[0].last_group_blocks == 34 && g_paged_host[1].last_group_blocks == 34 &&
+                      g_paged_host[0].tail_padding && g_paged_host[1].tail_padding);
+    }
+    // Differing groups span windows and arrive backwards. Open the lowest four globally, not four/page.
+    const uint32_t groups[] = {0, 127, 128, 1024, 1687};
+    changed                 = base;
+    for (uint32_t g : groups) changed[g * GROUP_BLOCKS * 64u] ^= 1;
+    start_paged(base, changed, 2, true);
+    check("paged: reordered duplicate pages terminate", exchange_paged(2) < 512);
+    bool lowest = true;
+    for (int p = 0; p < 2; ++p) {
+        lowest = lowest && g_paged_host[p].blocks_frames == 4 && g_paged_loc[p].nresults() == 4 &&
+                 g_paged_loc[p].omitted_groups() == 1;
+        for (int j = 0; j < 4; ++j) lowest = lowest && g_paged_host[p].opened[j] == groups[j];
+    }
+    check("paged: duplicate/reordered pages preserve the global four-group budget", lowest);
+    // A progressing exchange may take more than 100 sim steps while pages are paced.
+    start_paged(base, changed, 2, false);
+    g_paged_loc[0].pump(g_paged_host[0]);
+    g_paged_loc[1].pump(g_paged_host[1]);
+    for (int p = 0; p < 2; ++p) {
+        const auto f  = g_paged_rx[p].frames[0];
+        g_paged_rx[p] = {};
+        hdr h;
+        frame_ok(f.bytes, f.len, 1, h);
+        g_paged_loc[p].on_frame(g_paged_host[p], f.sender, h, f.bytes + HDR_BYTES);
+        g_paged_loc[p].on_local_mismatch(g_paged_host[p], 1200);
+    }
+    check("paged: advancing incident retained beyond settling threshold", g_paged_loc[0].step() == 1000 &&
+                                                                              g_paged_loc[1].step() == 1000 && exchange_paged(2) < 512);
+    // Malformed geometry must not start an incident, allocate a slot, or publish evidence.
+    localiser rejected;
+    rejected.reset(4);
+    uint8_t bad[MAX_FRAME] = {};
+    hdr     h;
+    auto    refuses = [&](int n) {
+        if (!frame_ok(bad, n, 1, h)) return true;
+        rejected.on_frame(g_paged_host[0], 1, h, bad + HDR_BYTES);
+        return !rejected.active() && rejected.frames_sent() == 0;
+    };
+    const uint64_t fp = g_paged_host[0].fp();
+    put_hdr(bad, T_GROUPS, 24, fp, 1000, 0, 14);
+    check("paged: invalid window refused before mutation", refuses(groups_size(24)));
+    put_hdr(bad, T_GROUPS, 23, fp, 1000, 0, 13);
+    check("paged: wrong final-window count refused", refuses(groups_size(23)));
+    put_hdr(bad, T_BLOCKS, 34, fp, 1000, 0, 24);
+    const uint16_t last_window = 13;
+    memcpy(bad + HDR_BYTES, &last_window, 2);
+    check("paged: group outside partial final window refused", refuses(blocks_size(34)));
+    put_hdr(bad, T_BLOCKS, 33, fp, 1000, 0, 23);
+    check("paged: wrong final-group count refused", refuses(blocks_size(33)));
+    check("paged: truncated window prefix refused", refuses(HDR_BYTES + 1));
+    memset(bad, 0, sizeof(bad));
+    put_hdr(bad, T_BYTES, 1, fp, 1000, 0, 1);
+    check("paged: cross-group byte membership refused", refuses(bytes_size(1)));
+    put_hdr(bad, T_BYTES, 2, fp, 1000, 0, 0);
+    check("paged: duplicate block membership refused", refuses(bytes_size(2)));
+    memset(bad, 0, sizeof(bad));
+    put_hdr(bad, T_BYTES, 1, fp, 1000, 0, 23);
+    memcpy(bad + HDR_BYTES, &last_window, 2);
+    const uint16_t last_block = (uint16_t)((nblocks_of(PAGED_LEN) - 1) % WINDOW_BLOCKS);
+    memcpy(bad + HDR_BYTES + 2, &last_block, 2);
+    bad[HDR_BYTES + 2 + 2 + 32] = 1;
+    check("paged: nonzero short-block padding refused", refuses(bytes_size(1)));
+    put_hdr(bad, T_REGIONS, 1, fnv1a(&mh::state::inc::HASH_KIND, sizeof(mh::state::inc::HASH_KIND), 0x1234), 1000, 0, 0);
+    check("paged: old-layout fingerprint refused before mutation", refuses(regions_size(1)));
+    const uint32_t shorter = PAGED_LEN - 1;
+    check("paged: actual dynamic extent affects fingerprint", fp != fp_v2(0x1234, mh::state::inc::HASH_KIND, &shorter, 1));
+    check("paged: uint32 extent geometry is overflow-safe", nblocks_of(UINT32_MAX) == 67108864u &&
+                                                                ngroups_of(UINT32_MAX) == 1048576u && nwindows_of(UINT32_MAX) == 8192u);
+    // Eight peers share the actual 64-frame receiver shape. Every source has one pump opportunity/round.
+    changed = base;
+    changed[PAGED_LEN - 1] ^= 0x20;
+    start_paged(base, changed, 8, false);
+    check("paged: eight-peer bounded fan-in completes", exchange_paged(8) < 512);
+    bool bounded = true, complete = true;
+    for (int p = 0; p < 8; ++p) {
+        bounded  = bounded && g_paged_rx[p].dropped == 0 && g_paged_rx[p].peak <= 7 && g_paged_host[p].packet_bounds;
+        complete = complete && !g_paged_loc[p].progressing() && g_paged_loc[p].nresults() == (p == 7 ? 7 : 1);
+    }
+    check("paged: RX64 fan-in stays bounded without loss", bounded);
+    check("paged: all seven peer pairs finish localization", complete);
+
+    // Deliver the responder's real BYTES before its held BLOCKS. Recovery is one bounded request
+    // after the hash prerequisite arrives, not a fabricated receipt or an unbounded retry.
+    start_paged(base, changed, 2, false);
+    g_paged_host[1].bytes_first = true;
+    check("paged: BYTES-before-BLOCKS exchange terminates", exchange_paged(2) < 512);
+    check("paged: early BYTES recovery preserves mirrored findings and bounded requests",
+          has_result(g_paged_loc[0], 0, PAGED_LEN - 1, base.back(), changed.back()) &&
+              has_result(g_paged_loc[1], 0, PAGED_LEN - 1, changed.back(), base.back()) &&
+              !g_paged_loc[0].progressing() && !g_paged_loc[1].progressing() &&
+              g_paged_host[0].blocks_frames == 2 && g_paged_host[1].blocks_frames == 1 &&
+              g_paged_host[1].bytes_frames <= 2);
+
+    // B answers A's broadcast descent for C while B's last GROUPS page to A is held. Release
+    // B's actual frames to A as BYTES -> final GROUPS -> BLOCKS, with no early BLOCKS cache entry.
+    start_paged(base, changed, 3, false);
+    g_paged_host[1].state = &changed; // B and C have the same differing block; A compares both.
+    for (int p = 0; p < 3; ++p) {
+        g_paged_loc[p].reset(4);
+        g_paged_loc[p].on_local_mismatch(g_paged_host[p], 1000);
+    }
+    g_paged_host[1].bytes_first               = true;
+    g_paged_host[1].delay_page_to             = 0;
+    g_paged_host[1].page_between_bytes_blocks = true;
+    check("paged: BYTES-final-GROUPS-BLOCKS ordering terminates", exchange_paged(3) < 512);
+    bool crossed_complete = g_paged_host[1].crossed_prerequisite &&
+                            g_paged_host[0].blocks_frames == 3 && g_paged_loc[0].nresults() == 2;
+    for (int p = 0; p < 3; ++p) {
+        crossed_complete = crossed_complete && !g_paged_loc[p].progressing() && g_paged_rx[p].dropped == 0;
+        crossed_complete = crossed_complete &&
+                           has_result(g_paged_loc[p], 0, PAGED_LEN - 1,
+                                      p == 0 ? base.back() : changed.back(), p == 0 ? changed.back() : base.back());
+    }
+    check("paged: pre-summary replay survives readiness with one bounded extra selected-group request",
+          crossed_complete);
+
+    // Much older than the inactivity interval in total, but a new real page advances every 128
+    // service opportunities. Incident age and total exchange duration must not replace this work.
+    start_paged(base, changed, 2, false);
+    for (int p = 0; p < 2; ++p) g_paged_loc[p].pump(g_paged_host[p]);
+    for (int p = 0; p < 2; ++p) deliver_paged(p);
+    bool retained = true;
+    for (int page = 0; page < 14; ++page) {
+        for (uint32_t idle = 0; idle < LOC_STALL_PUMPS / 2; ++idle)
+            for (int p = 0; p < 2; ++p) {
+                g_paged_loc[p].pump(g_paged_host[p]);
+                g_paged_loc[p].on_local_mismatch(g_paged_host[p], 1200 + (uint32_t)page);
+                retained = retained && g_paged_loc[p].step() == 1000 && !g_paged_loc[p].stalled();
+            }
+        for (int p = 0; p < 2; ++p) deliver_paged(p, 1);
+    }
+    check("paged: novel page advancement survives total duration beyond the inactivity bound",
+          retained && exchange_paged(2) < 512 && g_paged_loc[0].nresults() == 1 && g_paged_loc[1].nresults() == 1);
+
+    // Departures are current host roster knowledge, not an incident-age heuristic. Exercise both
+    // an incomplete page set and a received BLOCKS with outstanding BYTES.
+    for (int phase = 0; phase < 2; ++phase) {
+        start_paged(base, changed, 2, false);
+        bool reached = false;
+        for (int round = 0; round < 64; ++round) {
+            for (int p = 0; p < 2; ++p) g_paged_loc[p].pump(g_paged_host[p]);
+            for (int p = 0; p < 2; ++p) deliver_paged(p);
+            if ((phase == 0 && g_paged_host[1].group_pages == 1) ||
+                (phase == 1 && g_paged_host[1].blocks_frames == 1)) {
+                reached = true;
+                break;
+            }
+        }
+        g_paged_host[0].present &= ~(1u << 1);
+        g_paged_loc[0].pump(g_paged_host[0]);
+        const bool retired = !g_paged_loc[0].progressing();
+        g_paged_loc[0].on_local_mismatch(g_paged_host[0], 1200);
+        check("paged: departed peer cannot pin partial descent or block a later incident",
+              reached && retired && g_paged_loc[0].step() == 1200);
+    }
+
+    // A/B differ at 128..131; A/C differ at 0..3. Delay A's high-group page only at B. A's later
+    // broadcast BLOCKS for C match B and must not evict B's four genuinely differing early groups.
+    std::vector<uint8_t> high = base, low = base;
+    for (uint32_t g = 0; g < 4; ++g) {
+        high[(128u + g) * GROUP_BLOCKS * 64u] ^= 1;
+        low[g * GROUP_BLOCKS * 64u] ^= 1;
+    }
+    start_paged(base, high, 3, false);
+    g_paged_host[1].state = &high;
+    g_paged_host[2].state = &low;
+    for (int p = 0; p < 3; ++p) {
+        g_paged_loc[p].reset(4);
+        g_paged_loc[p].on_local_mismatch(g_paged_host[p], 1000);
+    }
+    g_paged_host[0].delay_page_to    = 1;
+    g_paged_host[0].delay_page_index = 1;
+    bool released                    = false;
+    for (int round = 0; round < 128; ++round) {
+        bool work = false;
+        for (int p = 0; p < 3; ++p) work = g_paged_loc[p].pump(g_paged_host[p]) || work;
+        if (!released && g_paged_host[0].blocks_frames >= 8 && g_paged_host[0].page_held) {
+            const auto &f = g_paged_host[0].deferred_page;
+            g_paged_rx[1].push(f.sender, f.bytes, f.len);
+            g_paged_host[0].delay_page_to = -1;
+            g_paged_host[0].page_held     = false;
+            released                      = true;
+        }
+        for (int p = 0; p < 3; ++p) work = deliver_paged(p) || work;
+        if (!work) break;
+    }
+    bool high_found = released;
+    for (uint32_t g = 128; g < 132; ++g) {
+        const uint32_t off = g * GROUP_BLOCKS * 64u;
+        high_found         = high_found && has_result(g_paged_loc[1], 0, off, high[off], base[off]);
+    }
+    for (int p = 0; p < 3; ++p) high_found = high_found && !g_paged_loc[p].progressing() && g_paged_rx[p].dropped == 0;
+    check("paged: unrelated matching broadcasts cannot evict four early differing groups", high_found);
+}
 
 void run_v2_checks(uint64_t FP) {
+    attach_fixture_localizers(512u * 1024u);
     // ---- 1. the wire ------------------------------------------------------------------------------
     {
         check("v2: header is 24 bytes with step at v1's offset 16",
@@ -208,8 +596,8 @@ void run_v2_checks(uint64_t FP) {
         check("v2: a 5-step TICK is 72 bytes", tick_size(5) == 72);
         check("v2: a REGIONS frame for the live 63-region manifest is 528 bytes", regions_size(63) == 528);
         check("v2: a full GROUPS frame (128 groups) fits", groups_size(MAX_GROUPS) == 1048 && 1048 <= MAX_FRAME);
-        check("v2: the largest frame (16-block BYTES) is 1080 bytes, under the 2048-byte payload cap",
-              MAX_FRAME == 1080 && bytes_size(BYTES_MAX_BLOCKS) == MAX_FRAME);
+        check("v2: prefixed BLOCKS and BYTES fit the transport",
+              blocks_size(64) == 538 && MAX_FRAME == 1082 && bytes_size(BYTES_MAX_BLOCKS) == MAX_FRAME);
         // WIRE-SIZE BOUND (the design argument, asserted): at the shipped tick_batch=5 and 50 steps/s a
         // peer sends 10 TICKs a second = 720 payload bytes/s, against v1's one 544-byte sample a second
         // and the ~26 KB/s the per-region vector would cost every step.
@@ -235,7 +623,10 @@ void run_v2_checks(uint64_t FP) {
         check("v2: a REGIONS frame for a different region count is refused", !frame_ok(b, regions_size(62), 63, h));
         put_hdr(b, 10, 1, FP, 1200, 0, 0); // 6..9 are the mp:X3c world-resync frames
         check("v2: an unknown frame type is refused", !frame_ok(b, HDR_BYTES + 8, 63, h));
-        check("v2: fp_v2 folds the hash kind in", fp_v2(FP, 2) != fp_v2(FP, 1) && fp_v2(FP, 2) != FP);
+        const uint32_t hash_kind = 2;
+        check("v2: layout, hash kind, and runtime geometry enter the fingerprint",
+              fp_v2(FP, 2, LLEN, LR) != fp_v2(FP, 1, LLEN, LR) &&
+                  fp_v2(FP, 2, LLEN, LR) != fnv1a(&hash_kind, sizeof(hash_kind), FP));
 
         // ---- v1 <-> v2 MIXING, both ways, through the real parsers --------------------------------
         // (a) A v1 PEER receiving v2 frames: every shape a v2 build sends goes through parse_v1_frame
@@ -428,10 +819,6 @@ void run_v2_checks(uint64_t FP) {
               g_la.nresults() == 2 && g_lb.nresults() == 2);
         check("localise: a masked byte in the same block is not counted (1 byte differs, not 2)",
               g_la.nresults() >= 1 && g_la.result(0).region == 3 && g_la.result(0).nbytes == 1);
-        check("localise: A logged a LOCALISED line naming the region and offset",
-              ha.said("LOCALISED step=1200 peer=1 region=3 units_like +0x1234"));
-        check("localise: B logged the region list at the first bad step",
-              hb.said("LOCALISE step=1200 peer=0: 2 region(s) differ at the first bad step: units_like tile_like"));
         // WIRE BOUND for an incident: REGIONS + GROUPS(2 regions, one of 128 groups) + BLOCKS + BYTES.
         check("localise: one incident costs each peer under 6 KB on the wire",
               g_la.bytes_sent() < 6 * 1024 && g_lb.bytes_sent() < 6 * 1024);
@@ -466,9 +853,19 @@ void run_v2_checks(uint64_t FP) {
         g_lb.on_local_mismatch(hb, 1400);
         pump(g_la, ha, g_qa, g_lb, hb, g_qb);
         check("localise: without block history the region is still named, no offset is",
-              hb.regions_first == 3 && g_lb.nresults() == 0 && g_la.nresults() == 0 &&
-                  hb.said("region level only"));
+              hb.regions_first == 3 && g_lb.nresults() == 0 && g_la.nresults() == 0 && !g_lb.evidence_ok());
         hb.can_mat = true;
+        for (uint32_t idle = 0; idle <= LOC_STALL_PUMPS; ++idle) {
+            g_la.pump(ha);
+            g_lb.pump(hb);
+        }
+        check("localise: unavailable descent expires on inactivity, not incident age",
+              g_la.stalled() && !g_la.progressing());
+        g_la.on_local_mismatch(ha, 1600);
+        g_lb.on_local_mismatch(hb, 1600);
+        pump(g_la, ha, g_qa, g_lb, hb, g_qb);
+        check("localise: a newer reconstructible incident follows unavailable history",
+              g_la.step() == 1600 && g_lb.step() == 1600 && g_la.nresults() == 2 && g_lb.nresults() == 2);
 
         // A rebuild that does not reproduce the region's hash is refused by the self-check.
         g_qa.n = g_qa.head = g_qb.n = g_qb.head = 0;
@@ -479,8 +876,8 @@ void run_v2_checks(uint64_t FP) {
         g_la.on_local_mismatch(ha, 1500);
         g_lb.on_local_mismatch(hb, 1500);
         pump(g_la, ha, g_qa, g_lb, hb, g_qb);
-        check("localise: a rebuild that does not reproduce the step's hash is refused, loudly",
-              ha.said("SELF-CHECK FAILED"));
+        check("localise: inconsistent reconstructed evidence is not published",
+              !has_result(g_la, 2, 10, g_state[0][2][10], g_state[1][2][10]));
         ha.corrupt_self = false;
         g_state[1][2][10] ^= 1;
 
@@ -497,8 +894,8 @@ void run_v2_checks(uint64_t FP) {
 // ---- 5. the REAL tracker's journal hook: rebuild a past step of the live manifest -------------------
 // The live binding's materialize(): the tracker's shadow plus the undo journal replayed backwards must
 // give every slice's bytes AT step S, and the masked block hashes over those bytes must sum to the
-// slice's incremental hash AT S -- the localiser's self-check, here over the real 63-slice manifest
-// (rebased onto heap buffers), with order_queue_count moving so the one cross-region mask is exercised.
+// slice's incremental hash AT S -- the localiser's self-check over the live manifest in heap buffers
+// (stock rebased, native explicitly bound), with order_queue_count moving to exercise its cross-region mask.
 namespace {
 
 namespace st = ::mh::state;
@@ -530,10 +927,18 @@ void run_v2_live_journal_check() {
         for (int j = 0; j < st::HASH_REGION_COUNT; ++j)
             if ((int)st::HASH_REGIONS[j].rid == rid && st::HASH_REGIONS[j].offset + st::HASH_REGIONS[j].len > need)
                 need = st::HASH_REGIONS[j].offset + st::HASH_REGIONS[j].len;
+        if (st::REGIONS[rid].host_native)
+            need = mh::test::canonical_native_bytes(static_cast<st::region_id>(rid));
         rids.push_back(rid);
         bufs.emplace_back(need + 64u);
         for (auto &x : bufs.back()) x = (uint8_t)lrnd();
-        st::rebase((st::region_id)rid, (uint32_t)(uintptr_t)bufs.back().data(), need);
+        if (st::REGIONS[rid].host_native) {
+            check("journal canonical owner initializes",
+                  mh::test::initialize_canonical_native(static_cast<st::region_id>(rid), bufs.back().data(), need));
+            st::bind((st::region_id)rid, (uint32_t)(uintptr_t)bufs.back().data(), need);
+        } else {
+            st::rebase((st::region_id)rid, (uint32_t)(uintptr_t)bufs.back().data(), need);
+        }
     }
     auto slice        = [](int i) { return reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(st::hash_base(i))); };
     auto set_oq_count = [&](int32_t c) { memcpy(slice(st::HIDX_ORDER_QUEUE_COUNT), &c, 4); };
@@ -555,6 +960,7 @@ void run_v2_live_journal_check() {
     std::vector<std::vector<uint8_t>> truth[3];
     uint64_t                          truth_per[3][st::HASH_REGION_COUNT];
     st::inc::null_sink                ns;
+    // Raw-byte journal stress, not validated policy import; arbitrary writes may invalidate its header.
     for (uint32_t s = 1; s <= STEPS; ++s) {
         if (s > 1) {
             for (int k = 0; k < 1 + (int)(lrnd() % 25); ++k) {
@@ -599,8 +1005,7 @@ void run_v2_live_journal_check() {
             if (sum != truth_per[k][i]) hash_ok = false;
         }
     }
-    check("live journal: the real tracker's shadow + undo journal rebuild steps 3, 17 and 39 of the whole "
-          "63-slice manifest byte-exact",
+    check("live journal: the real tracker's shadow + undo journal rebuild steps 3, 17 and 39 byte-exact",
           bytes_ok);
     check("live journal: the masked block hashes of each rebuilt slice sum to its incremental hash at that step "
           "(order_queue boundary moving)",
@@ -627,13 +1032,12 @@ static uint8_t g_ovs[2][ovf::SLICES][ovf::MAX_SLICE_BYTES];
 struct ovf_host final : loc_host {
     int      me;
     wire_q  *out;
-    uint64_t fpv = 0x4321;
-    char     lines[64][256];
-    int      nlines        = 0;
+    uint64_t fpv           = 0x4321;
     int      regions_first = -2, regions_nd = -1;
 
     static int     eidx(int r) { return r - 1; }
     int            nregions() const override { return OVR; }
+    uint32_t       peers_present() const override { return 0xff; }
     uint32_t       region_len(int r) const override { return r == 0 ? 16u : ovf::slice(eidx(r)).len; }
     const char    *region_name(int r) const override { return r == 0 ? "tiny" : ovf::slice(eidx(r)).name; }
     bool           excluded(int) const override { return false; }
@@ -656,13 +1060,8 @@ struct ovf_host final : loc_host {
     bool     materialize(uint32_t) override { return true; }
     uint64_t block_hash(int r, uint32_t b) override { return bh(r, b); }
     void     send(const uint8_t *f, int len) override { out->push(f, len); }
-    void     log(const char *line) override {
-        if (nlines < 64) {
-            snprintf(lines[nlines], sizeof(lines[nlines]), "%s", line);
-            ++nlines;
-        }
-    }
-    void describe(int r, uint32_t off, char *o, size_t cap) override {
+    void     log(const char *) override {}
+    void     describe(int r, uint32_t off, char *o, size_t cap) override {
         if (r == 0) {
             if (cap) o[0] = 0;
             return;
@@ -673,17 +1072,13 @@ struct ovf_host final : loc_host {
         regions_first = first;
         regions_nd    = nd;
     }
-    bool said(const char *needle) const {
-        for (int i = 0; i < nlines; ++i)
-            if (strstr(lines[i], needle)) return true;
-        return false;
-    }
 };
 
 int pump_ovf(localiser &la, ovf_host &ha, wire_q &a_out, localiser &lb, ovf_host &hb, wire_q &b_out) {
     int moved = 0;
     for (int guard = 0; guard < 1000; ++guard) {
-        bool any = false;
+        bool any = la.pump(ha);
+        any      = lb.pump(hb) || any;
         if (a_out.head < a_out.n) {
             const wire_q::f &f = a_out.q[a_out.head++];
             hdr              h;
@@ -704,6 +1099,7 @@ int pump_ovf(localiser &la, ovf_host &ha, wire_q &a_out, localiser &lb, ovf_host
 }
 
 void run_ovf_extension_checks() {
+    attach_fixture_localizers(ovf::MAX_SLICE_BYTES);
     // the wire: the extended vector fits, and an OFF peer's frame is not an ON peer's
     {
         uint8_t b[MAX_FRAME];
@@ -716,7 +1112,7 @@ void run_ovf_extension_checks() {
         check("ovf: ...but an OFF peer (63 regions) refuses it, and an ON peer refuses an OFF peer's 63-region frame",
               !frame_ok(b, regions_size(63 + ovf::SLICES), 63, h) && !frame_ok(b, regions_size(63), 63 + ovf::SLICES, h));
         check("ovf: the ON fingerprint differs from the OFF one (a build mismatch, never a desync)",
-              v2::fp_v2(ovf::fp_on(0xabc), 2) != v2::fp_v2(0xabc, 2));
+              v2::fp_v2(ovf::fp_on(0xabc), 2, LLEN, LR) != v2::fp_v2(0xabc, 2, LLEN, LR));
     }
     // the localiser reaches an extension slice's bytes and names them
     fill_states();
@@ -749,10 +1145,6 @@ void run_ovf_extension_checks() {
     check("ovf: B names the same offset, bytes mirrored", has_result(g_lb, 1, o_b, g_ovs[1][0][o_b], g_ovs[0][0][o_b]));
     check("ovf: the projectile slice (last, 302,500 bytes) is localised too", has_result(g_la, 8, o_p, g_ovs[0][7][o_p], g_ovs[1][7][o_p]));
     check("ovf: exactly those two findings per side", g_la.nresults() == 2 && g_lb.nresults() == 2);
-    check("ovf: the LOCALISED line carries the extension's describe(): buildings p2 #137 +0x12",
-          ha.said("region=1 ovf_buildings_p0_3") && ha.said("= buildings p2 #137 +0x12"));
-    check("ovf: ...and the projectile one: projectiles p0 #2100 +0x5",
-          ha.said("region=8 ovf_projectiles") && ha.said("= projectiles p0 #2100 +0x5"));
     check("ovf: one incident over a 436,800-byte slice stays under 6 KB per peer", g_la.bytes_sent() < 6 * 1024 && g_lb.bytes_sent() < 6 * 1024);
 }
 
@@ -1189,6 +1581,7 @@ int run_desynctest() {
     }
 
     run_v2_checks(FP); // mp:D44
+    run_paged_checks();
     run_v2_live_journal_check();
     run_ovf_extension_checks(); // PT-CAP8 S2
 

@@ -277,10 +277,12 @@ struct span_index {
         s = static_cast<span *>(std::malloc(sizeof(span) * WORLD_SNAPSHOT_BLOCK_COUNT));
         if (s == nullptr) return false;
         for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
-            const snapshot_block &b  = WORLD_SNAPSHOT_BLOCKS[i];
-            const uint32_t        lb = live_base(b.rid);
-            if (lb == 0 || b.len == 0) continue;
-            s[n++] = {lb, b.len, b.rid};
+            const snapshot_block &b = WORLD_SNAPSHOT_BLOCKS[i];
+            if (REGIONS[b.rid].host_native) continue; // never an address-census/fixup target
+            const uint32_t lb  = live_base(b.rid);
+            const uint32_t len = canonical_region_len(b.rid);
+            if (lb == 0 || len == 0) continue;
+            s[n++] = {lb, len, b.rid};
         }
         for (int i = 1; i < n; ++i) { // insertion sort: ~830 entries, once per capture
             const span v = s[i];
@@ -336,8 +338,12 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
     size_t off = sizeof(blob_header);
     for (int bi = 0; bi < WORLD_SNAPSHOT_BLOCK_COUNT && rc == 0; ++bi) {
         const snapshot_block &b       = WORLD_SNAPSHOT_BLOCKS[bi];
+        const uint32_t        len     = canonical_region_len(b.rid);
         const uint8_t        *payload = blob + off + 8u;
-        off += 8u + b.len;
+        off += 8u + len;
+        // Advance first so subsequent blocks stay aligned. Scalar record arrays
+        // and pointer-free native payloads must never acquire address fixups.
+        if (REGIONS[b.rid].host_native || is_pointer_free_region(b.rid)) continue;
         if (is_zeroed_on_import(b.rid)) {
             ++zeroed_blocks;
             continue;
@@ -353,10 +359,11 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
         int      nh = 0;
         {
             const int64_t blk_lo = static_cast<int64_t>(live_base(b.rid));
-            const int64_t blk_hi = blk_lo + static_cast<int64_t>(b.len);
+            const int64_t blk_hi = blk_lo + static_cast<int64_t>(len);
             for (int h = 0; h < HASH_REGION_COUNT && rc == 0; ++h) {
+                if (REGIONS[HASH_REGIONS[h].rid].host_native) continue;
                 const int64_t lo = static_cast<int64_t>(mh::state::hash_base(h));
-                const int64_t hi = lo + static_cast<int64_t>(HASH_REGIONS[h].len);
+                const int64_t hi = lo + static_cast<int64_t>(hash_len(h));
                 if (hi <= blk_lo || lo >= blk_hi) continue;
                 if (nh >= 512) { // an unmasked hashed window would be unsafe: refuse, never truncate
                     rc = -1;
@@ -371,7 +378,7 @@ int fixup_capture(const uint8_t *blob, uint8_t *out, size_t cap, size_t *out_len
         }
         if (rc != 0) break;
         const bool os_handle = is_os_handle_region(b.rid);
-        for (uint32_t o = 0; o + 4u <= b.len; o += 4u) {
+        for (uint32_t o = 0; o + 4u <= len; o += 4u) {
             const uint32_t v = rd32(payload + o);
             if (v < 0x10000u && !os_handle) continue;
             if (os_handle) { // an OS handle is not an address: forced PRESERVE, whatever it holds
@@ -561,12 +568,16 @@ int fixup_prepare(const void *blob, size_t n, fixup_plan &plan, const module_res
         std::memcpy(&e, ep + i * sizeof(e), sizeof(e));
         if (e.block >= WORLD_SNAPSHOT_BLOCK_COUNT) return WORLD_ERR_FIXUP;
         const snapshot_block &b = WORLD_SNAPSHOT_BLOCKS[e.block];
-        if (uint64_t(e.offset) + 4u > b.len) return WORLD_ERR_FIXUP;
+        // No trailer, including old heuristic captures, may rewrite scalar record arrays.
+        if (REGIONS[b.rid].host_native || is_pointer_free_region(b.rid) ||
+            uint64_t(e.offset) + 4u > canonical_region_len(b.rid))
+            return WORLD_ERR_FIXUP;
         if (e.kind < FIXUP_REGION || e.kind > FIXUP_PRESERVE) return WORLD_ERR_FIXUP;
         if (e.kind == FIXUP_REGION) {
             if (e.arg >= static_cast<uint32_t>(mh::state::RID_COUNT)) return WORLD_ERR_FIXUP;
-            const region_id pr      = static_cast<region_id>(e.arg);
-            bool            carried = false;
+            const region_id pr = static_cast<region_id>(e.arg);
+            if (REGIONS[pr].host_native) return WORLD_ERR_FIXUP;
+            bool carried = false;
             for (int q = 0; q < WORLD_SNAPSHOT_BLOCK_COUNT; ++q)
                 if (WORLD_SNAPSHOT_BLOCKS[q].rid == pr) {
                     carried = true;

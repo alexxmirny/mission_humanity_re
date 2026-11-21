@@ -98,4 +98,58 @@ logsel e_left
 rawmouse sabs 640 400
 gameclock +100
 log res4 COMPLETE -- ui_scale=150: frame, row counts, cursor mapping, HUD click, minimap, edge scroll
+# Preserve the original scaled-input workload above; inspect the real compact row afterward.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+mark qol_storage150
+clickv 108
+present Load game
+settled Load game
+cursorhold 310 143 10
+cursor 310 143
+press 310 143
+release 310 143
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+winsize 1280 800
+winclient 1280 800
+camto 54 4
+gameclock +100
+simclick 208 176
+selectedtype 39
+rawmouse sabs 1240 428
+scurpos 1240 428
+gameclock +100
+# Keep the independent owned cursor outside the strict control-art rectangle.
+rawmouse sabs 800 400
+scurpos 800 400
+pcapture qol_storage150_off
+capture qol_storage150_frame_off
+rawmouse sabs 1240 428
+scurpos 1240 428
+rawmouse down l
+gameclock +100
+rawmouse up l
+gameclock +300
+rawmouse sabs 800 400
+scurpos 800 400
+pcapture qol_storage150_on
+capture qol_storage150_frame_on
+rawmouse sabs 1240 428
+scurpos 1240 428
+rawmouse down l
+gameclock +100
+rawmouse up l
+gameclock +300
+rawmouse sabs 800 400
+scurpos 800 400
+pcapture qol_storage150_off_again
 end

@@ -27,4 +27,30 @@ curpos 600 1056 0
 rawmouse sabs 600 500
 curpos 600 500 0
 log res_crop COMPLETE -- 1920x1080 cropped from 1920x1088: composition and the pointer across the cut
+
+# TARGETVIS1: preserve the existing composition/pointer workload above. Then
+# exercise a target in dirty cell1705 of the genuinely cropped60x34 native grid.
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+camto 54 4
+gameclock +100
+simclick 208 176
+retry 1500 1 1 selectedtype 39
+logsel qol_highindex_selected
+cursorhold 1800 1000 6
+capture qol_highindex__before
+simrclick 800 900
+gameclock +100
+cursorhold 1800 1000 6
+capture qol_highindex__rally
+gameclock +200
+cursorhold 1800 1000 6
+capture qol_highindex__phase
+simclick 650 650
+gameclock +100
+logsel qol_highindex_deselected
+cursorhold 1800 1000 6
+capture qol_highindex__deselected
 end

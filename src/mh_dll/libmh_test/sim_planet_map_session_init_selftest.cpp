@@ -88,6 +88,10 @@ void run_planet_map_session_init_tests() {
     // =================================================================================================
     {
         fx.reset();
+        // The event queue is process-global; earlier fixtures may emit presentation records.
+        // Isolate this action without filtering its strict count/channel/kind assertion below.
+        libmh_event preceding[8];
+        while (libmh_poll_events(preceding, 8) != 0) {}
         fx.map_width  = 57; // distinct, non-power-of-two, unrelated to map_height
         fx.map_height = 33;
 

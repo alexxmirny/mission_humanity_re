@@ -4,10 +4,10 @@
 //
 #include "sim/libtrans/sim_lt_cfg_planet.h"
 
+#include <cstddef>
 #include <cstring> // std::strcpy / std::memcpy -- see the header banner's string-copy derivation
 
-#include "addr/mh_calls.gen.h"   // mh::host().cfg_ReadMapFile
-#include "state/boot_snapshot.h" // LIB-BOOT: the tlo lookup over the IMPORTED registry
+#include "addr/mh_calls.gen.h" // mh::host().cfg_ReadMapFile
 #include "state/host_api.h"
 #include "state/host_events.h" // LIFT-TABLE S3: the graphics tail crosses as ONE invalidate record
 
@@ -17,15 +17,6 @@ const cfg_planet_construct_calls &live_cfg_planet_construct_calls() {
     static const cfg_planet_construct_calls gc = {
         // Table param is void* (C facade); the member keeps the typed signature -- adapt.
         +[](mh::game::mh_cfg_struct_map_header *hdr) { return mh::host().cfg_ReadMapFile(hdr); },
-        // LIB-BOOT (2026-09-10): was `mh::call::cfg_GetTloIndex`, and it was the last VA call in
-        // this file. cfg_GetTloIndex @0x004b9582 is 116 bytes of case-insensitive lookup over the
-        // 8-entry _G_LLM_TLO_REGISTRY -- a region with MEASURED ZERO WRITERS, i.e. baked image data
-        // rather than parser output. So the site was never really a call we needed; it was a table
-        // we did not have. The snapshot carries that table in its DERIVED form (the `char *` names
-        // materialised inline, because standalone there is no image for them to point into) and the
-        // lookup is ours. Hosted, boot::tlo_index_for reads the live registry and returns exactly
-        // what the original returned; the lib_trans selftest pins that equivalence.
-        +[](char *file_name) { return mh::state::boot::tlo_index_for(file_name); },
     };
     return gc;
 }
@@ -98,30 +89,10 @@ void cfg_final_planet_Construct(sim_store &own, const cfg_planet_construct_calls
 
     (void)c.read_map_file(&map_header); // 0x0045b8f9 -- return value discarded, matching the original
 
-    // ---- THE GRAPHICS TAIL LEAVES (LIFT-TABLE S3, 2026-09-09) ------------------------------------
-    //
-    // 0x0045b8fe to the end of the body is one CONTIGUOUS graphics tail with nothing sim beneath it
-    // (field census 2026-09-09): tlo_index -> the 8-way switch -> `SHL AL,6` ->
-    // soldier_sprite_bank_offset -> the `index == 0x1f` guard -> 8x FillBankData. Its outputs are
-    // read by renderers and bank loaders only, and S2 has just taken every one of those bytes out
-    // of the determinism hash -- which is what makes a host-owned writer legal rather than a
-    // notify:1 entry writing hashed state. It is now ONE record, and the switch, the shift, the two
-    // Planets[] byte stores and all eight FillBankData calls live in the hosted sink
-    // (seams/host_event_sink.cpp, LIBMH_EVK_INV_PLANET_GFX_SETUP).
-    //
-    // 0x0045b904/0x0045b912: cfg_GetTloIndex reads map_header.tlo_name (just filled by
-    // cfg_ReadMapFile) and returns the tileset's index. THE LOOKUP STAYS HERE and the resolved
-    // index crosses in the record, because tlo_name is a stack local of THIS frame: handing the
-    // host a pointer to it works under mh.dll, whose sink dispatches synchronously at emit, and
-    // dangles under a NULL-callback host, which drains at the frame edge. An identity crosses; a
-    // pointer into a dead frame does not (R4, and R7's two consumptions are why it matters).
-    //
-    // The store into planet.tlo_index is GONE from libmh with the rest of the tail -- the host
-    // writes it. Standalone, with no sink bound, the two graphics bytes stay 0: unhashed since S2,
-    // and no translated body reads either of them (the R3b gate measures this, it is not asserted).
-    const uint8_t tlo_index = c.get_tlo_index(map_header.tlo_name);
+    // The filename is copied into the record; the header remains a stack local.
     mh::state::evt::inv_planet_gfx_setup(static_cast<int32_t>(planet_data->index),
-                                         static_cast<int32_t>(tlo_index));
+                                         reinterpret_cast<const char *>(map_header_raw) +
+                                             offsetof(mh::game::mh_cfg_struct_map_header, tlo_name));
 }
 
 } // namespace detail

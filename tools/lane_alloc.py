@@ -8,7 +8,7 @@ lane % 100, until the 2026-09-29 band widening, tooling TL-BANDS200). The mutex 
 MACHINE-WIDE with no path component, so two lanes carrying the same number are two game instances
 sharing one single-instance guard, and the second one DIES AT BOOT: a clean `_exit()` with no window,
 no frame, no WER report and no line in any log except the `; EXIT utils_abort(status=0)` witness.
-Most lane runners also derive the lane's game port as `LOCAL_PORT_BASE + lane`, so a duplicate
+Most lane runners also derive the lane's game port as `lane_port(lane)`, so a duplicate
 number is usually a duplicate port as well.
 
 WHY THIS FILE EXISTS (fork F4H, 2026-09-13). The numbers used to be hand-picked constants sitting
@@ -61,17 +61,14 @@ LANE_MAX = 999
 # old 99 ceiling, the capture suite sat at 81 lanes with ZERO headroom, and every hand-run block had
 # been shrunk to its floor to pay for the last few rows (the history is in git: 36 -> 48 -> 56 -> 60
 # -> 63 -> 70 -> 71 -> 73 -> 75 -> 79 -> 81 in ten days). With the 3-digit mutex the suite gets a
-# block sized for the 200-row port band with room to spare, and the hand-run blocks move to 800+,
-# where `PORT_BASE + lane` lands in their own port band (LANE_PORT_LO..LANE_PORT_HI below) instead
-# of on a registry row's game port.
+# block of 400 lanes, and the hand-run blocks move to 800+, where `lane_port(lane)`
+# lands in their own port band (LANE_PORT_LO..LANE_PORT_HI below).
 BLOCKS = {
     # The capture suite: one lane per PEER (a share_lanes row costs none), so its demand is the
     # registry's peer count and it is the only block that grows on its own. 400 lanes for a registry
-    # capped at PORT_BAND (200) rows: at the measured ~0.85 lanes per row it is ~2x the demand of a
-    # FULL band, so the row band, not this block, is the limit that will bite first.
+    # capped at PORT_BAND rows. The live peer demand is checked independently of the row count.
     "suite": (0, 400),
-    # 401..800: unallocated. Deliberately: a lane there would derive PORT_BASE + lane inside the
-    # HOST2/SHIM_CTL row bands. --check refuses a port-derived block anywhere but 800..999.
+    # 401..800: unallocated. --check refuses a port-derived block outside 800..999.
     # test_ui --soak, one lane per --soak-slot. migration_ab runs one plan entry's record + its
     # three verification arms on disjoint slots (--jobs 1 since 2026-09-19; 6 = room for --jobs 2).
     "soak": (800, 6),
@@ -84,7 +81,7 @@ BLOCKS = {
     # --sp-determinism's single lane.
     "sp_det": (816, 1),
     # --det-local's blitted host+client pair (provision_lanes numbers from the base) -- exactly two.
-    # det_arms.DET_LOCAL_PORT is PORT_BASE + its first lane (it was a hand-picked 6620, i.e. ROW 20's
+    # det_arms.DET_LOCAL_PORT is lane_port of its first lane (it was a hand-picked 6620, i.e. ROW 20's
     # game port, before TL-BANDS200).
     "det_local": (817, 2),
     # The U28 3-peer barrier's LOCAL third peer.
@@ -105,7 +102,7 @@ BLOCKS = {
     # client2 det3, client3 this. Placed past scratch so no existing number moves.
     "det4": (828, 1),
     # tooling:TL-RIG-PARALLEL -- tools/rig_parallel.py's ALL-LOCAL arm slots: PAR_LANES_PER_SLOT (4) consecutive lanes
-    # per slot (host + up to three clients), PAR_SLOTS (6) slots. Slot k's game port is PORT_BASE + its first lane
+    # per slot (host + up to three clients), PAR_SLOTS (6) slots. Slot k's game port is lane_port of its first lane
     # (peers of one match share it), so every slot owns a distinct lane set, mutex set and port.
     "par": (829, 24),
     # --sp-fixed-determinism's single lane (the gate's spdet_fixed unit runs beside spdet, so it cannot share sp_det's).
@@ -116,7 +113,7 @@ PAR_SLOTS = 6
 
 
 # THE PORT BANDS. Every registry row owns one port per band at `<band base> + row index`, and the
-# port-derived single-lane runners bind `PORT_BASE + lane`. These mirror test_ui.py's constants and
+# port-derived single-lane runners bind `lane_port(lane)`. These mirror test_ui.py's constants and
 # --check asserts they still do -- a copy that drifts is the failure this whole file is about. The
 # rig firewall rule is DERIVED from RIG_PORT_LO..RIG_PORT_HI (tools/provision_rig.py), so it cannot
 # drift from the bands either.
@@ -124,24 +121,32 @@ PAR_SLOTS = 6
 # Moved 6600/6700/6800/6900 x 100 -> 10000/10200/10400/10600 x 200 on 2026-09-29 (TL-BANDS200). The
 # old layout capped the registry at 99 rows (row 99's game port was 6699, the hand-run shim control
 # port, and row 98's was 6698, --relay-shim-listen-port's default), and it had hand-run defaults
-# INSIDE it: det_arms' 6620 (row 20) and fixture_replay's 6633 (row 33). 10000..10999 is clear of
+# INSIDE it: det_arms' 6620 (row 20) and fixture_replay's 6633 (row 33). 10000..11223 is clear of
 # every fixed port the tree names (6501/6502 game + RTT probe, 6633, 6698/6699, 7100 relay, 8000
 # collector, 8080 ReVa, 39xxx net_shim selftests) and of Windows' dynamic range (49152+; this box's
 # only administered exclusion is 50000-50059).
-PORT_BAND = 200  # each base below owns base .. base+199; a registry longer than this is refused
-# test_ui.LOCAL_PORT_BASE -- the capture suite's game port is PORT_BASE + row index
+PORT_BAND = 256  # each row band owns base .. base+PORT_BAND-1
 PORT_BASE = 10000
-SHIM_PORT_BASE = 10200  # test_ui.LOCAL_SHIM_PORT_BASE
-HOST2_PORT_BASE = 10400  # test_ui.LOCAL_HOST2_PORT_BASE
-SHIM_CTL_PORT_BASE = 10600  # test_ui.LOCAL_SHIM_CTL_PORT_BASE -- per-row shim control port
+SHIM_PORT_BASE = PORT_BASE + PORT_BAND
+HOST2_PORT_BASE = SHIM_PORT_BASE + PORT_BAND
+SHIM_CTL_PORT_BASE = HOST2_PORT_BASE + PORT_BAND
 ROW_BANDS = (
     ("game", PORT_BASE),
     ("shim", SHIM_PORT_BASE),
     ("host2", HOST2_PORT_BASE),
     ("shim_ctl", SHIM_CTL_PORT_BASE),
 )
-# The fifth band: PORT_BASE + lane for the port-derived single-lane blocks (lanes 800..999).
-LANE_PORT_LO, LANE_PORT_HI = PORT_BASE + 800, PORT_BASE + LANE_MAX
+# The fifth band follows the row bands; retain lane IDs 800..999 without overlap.
+LANE_MIN = 800
+LANE_PORT_ORIGIN = SHIM_CTL_PORT_BASE + PORT_BAND - LANE_MIN
+LANE_PORT_LO, LANE_PORT_HI = LANE_PORT_ORIGIN + LANE_MIN, LANE_PORT_ORIGIN + LANE_MAX
+
+
+def lane_port(lane_no):
+    """Game port for a lane-number-derived runner."""
+    return LANE_PORT_ORIGIN + lane_no
+
+
 # What the rig's inbound firewall rule must allow for the harness bands (provision_rig.py adds the
 # fixed 6500-6799 range for the VM default port and the hand-run tools beside it).
 RIG_PORT_LO, RIG_PORT_HI = PORT_BASE, LANE_PORT_HI
@@ -173,7 +178,7 @@ def row_port_collisions(rows):
     return bad
 
 
-# The blocks whose lane number IS a port offset (PORT_BASE + lane). det_local derives ONE port from
+# The blocks whose lane number IS a port offset (lane_port). det_local derives ONE port from
 # its first lane (both peers of its match share it); det3 pins the VM topology's 6501 instead.
 PORT_DERIVED = ("soak", "tact", "ui_play", "sp_det", "sp_det_fixed", "det_local", "sweep", "par")
 
@@ -200,13 +205,13 @@ def lane(name, index=0):
 
 
 def par_slot_lanes(slot, n=PAR_LANES_PER_SLOT):
-    """The `n` lane numbers of parallel slot `slot` (0..PAR_SLOTS-1) and its game port (PORT_BASE + first lane)."""
+    """The `n` lane numbers of parallel slot `slot` (0..PAR_SLOTS-1) and its game port (lane_port of first lane)."""
     if not 0 <= slot < PAR_SLOTS or not 1 <= n <= PAR_LANES_PER_SLOT:
         raise IndexError(
             "par slot %d / %d lanes outside %d x %d" % (slot, n, PAR_SLOTS, PAR_LANES_PER_SLOT)
         )
     nos = [lane("par", slot * PAR_LANES_PER_SLOT + i) for i in range(n)]
-    return nos, PORT_BASE + nos[0]
+    return nos, lane_port(nos[0])
 
 
 def lanes(name):
@@ -506,16 +511,17 @@ def check(demand=None, blocks=None, verbose=True):
                 )
         # Per-ROW ports over the whole registry, in registry order (a subset run's indices are a
         # prefix-compatible renumbering, always < len(TESTS), so the full registry is the worst case).
-        if len(test_ui.TESTS) > PORT_BAND:
+        physical = test_ui.ui_suite_common.physical_tests(test_ui.TESTS)
+        if len(physical) > PORT_BAND:
             bad.append(
                 "the registry has %d rows but each port band holds %d -- row ports would cross into "
-                "the next band" % (len(test_ui.TESTS), PORT_BAND)
+                "the next band" % (len(physical), PORT_BAND)
             )
         bad += row_port_collisions(
-            [(t["name"], test_ui.row_ports(ti, t)) for ti, t in enumerate(test_ui.TESTS)]
+            [(t["name"], test_ui.row_ports(ti, t)) for ti, t in enumerate(physical)]
         )
     _base, cap = blocks["suite"]
-    # THE PORT-DERIVED BLOCKS BIND PORT_BASE + lane, so moving a lane block moves a port with it --
+    # THE PORT-DERIVED BLOCKS BIND lane_port(lane), so moving a lane block moves a port with it --
     # checked here rather than left to be discovered. A derived port landing in a ROW band is the
     # port-shaped version of the same bug: two concurrent runs on one port, the second one's bind
     # fails 10013, and the symptom reads as a discovery failure. Every derived port must sit in the
@@ -528,7 +534,7 @@ def check(demand=None, blocks=None, verbose=True):
         if name not in blocks:
             continue
         for n in range(blocks[name][0] + 1, blocks[name][0] + blocks[name][1] + 1):
-            p = PORT_BASE + n
+            p = lane_port(n)
             if p in row_ports_all:
                 bad.append(
                     "block %r lane %d derives port %d, inside a registry row band" % (name, n, p)
@@ -553,7 +559,7 @@ def check(demand=None, blocks=None, verbose=True):
         for role, base in ROW_BANDS:
             print("  %-10s %5d..%-5d" % (role, base, base + PORT_BAND - 1))
         print(
-            "  %-10s %5d..%-5d  (PORT_BASE + lane, lanes 800..%d)"
+            "  %-10s %5d..%-5d  (lane_port(lane), lanes 800..%d)"
             % ("lane", LANE_PORT_LO, LANE_PORT_HI, LANE_MAX)
         )
     return bad
@@ -621,6 +627,24 @@ def selftest():
     hit = any("overlaps band shim" in b for b in bp)
     print("  %-34s %s" % ("two overlapping row bands", "CAUGHT" if hit else "MISSED"))
     ok = ok and hit
+    # Exercise the whole band including the first and last row, not just live row roles.
+    import test_ui  # noqa: PLC0415
+
+    rows = [
+        (str(i), test_ui.row_ports(i, {"shim": True, "host_lanes": [1]})) for i in range(PORT_BAND)
+    ]
+    ports = {p for _, roles in rows for p in roles.values()}
+    endpoints = (
+        not row_port_collisions(rows)
+        and len(ports) == len(ROW_BANDS) * PORT_BAND
+        and all(base in ports and base + PORT_BAND - 1 in ports for _, base in ROW_BANDS)
+        and lane_port(LANE_MIN) == LANE_PORT_LO
+        and lane_port(LANE_MAX) == LANE_PORT_HI
+        and not any(lane_port(n) in ports for n in range(LANE_MIN, LANE_MAX + 1))
+        and not band_problems()
+    )
+    print("  %-34s %s" % ("row and lane band endpoints", "ok" if endpoints else "XX"))
+    ok = ok and endpoints
     hit = mutex_name(132) != mutex_name(32) and len(mutex_name(LANE_MAX)) == 7
     print("  %-34s %s" % ("lane 132 != lane 32, name fits 7", "ok" if hit else "XX"))
     ok = ok and hit

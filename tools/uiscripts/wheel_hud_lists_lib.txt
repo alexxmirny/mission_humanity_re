@@ -138,3 +138,132 @@ clickl Yes
 screensettled
 settled value:110
 
+mark qol_storage
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+# Restore the old segment's retained2x zoom with four real wheel detents, not a state write.
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+camto 54 4
+gameclock +100
+simclick 208 176
+logsel qol_storage_selected
+capture qol_storage__auto_off
+retry 1500 1 1 selectedtype 39
+simclick 997 285
+gameclock +300
+loggoal qol_healthy_before_repair @0:19
+capture qol_storage__auto_on
+simrclick 500 400
+gameclock +300
+capture qol_storage__rally
+gameclock +200
+capture qol_storage__rally_phase
+# Persist configured settings, then exercise the real loader before the paid repair.
+savegame qolstorage
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+clickv 108
+present Load game
+settled Load game
+listtop 0x00651073 0
+cursorhold 310 129 10
+cursor 310 129
+press 310 129
+release 310 129
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+# Normalize the reloaded view too; native load can reset the cumulative wheel counter.
+cursorhold 500 300 6
+rawmouse wheel -480
+gameclock +300
+retry 1500 1 1 zoom 100
+camto 54 4
+gameclock +100
+simclick 208 176
+logsel qol_storage_reloaded
+capture qol_storage__reloaded
+retry 1500 1 1 selectedtype 39
+loggoal qol_damaged_before_repair @0:23
+simclick 943 285
+# Native pulse is20 seconds; actual world admission was measured at25.63 seconds.
+gameclock +28000
+loggoal qol_repaired_after @0:23
+loggoal qol_healthy_after @0:19
+loggoal qol_damaged_after @0:21
+# After unit23 leaves, healthy19 is the actual second docked row: (21,19,22,20).
+loggoal qol_manual_before @0:19
+simclick 940 390
+gameclock +16000
+loggoal qol_manual_after @0:19
+# Explicit bulk exit is independent of Auto and HP. Leave the partial repair
+# unfinished, turn Auto off, then change rally AFTER accepted departures.
+simclick 997 285
+gameclock +300
+loggoal qol_bulk_before @0:21
+simclick 890 285
+gameclock +300
+loggoal qol_bulk_committed @0:21
+simrclick 620 480
+gameclock +36000
+loggoal qol_bulk_after @0:21
+simclick 650 650
+gameclock +100
+logsel qol_storage_deselected
+# Reuse the launched aircraft: arrived/idle must have no stale rally movement stem.
+key 0x02
+gameclock +100
+logsel qol_air_selected
+loggoal qol_air_idle
+capture qol_air_idle
+simrclick 620 480
+gameclock +300
+loggoal qol_air_commanded
+# Move the cursor off the actual goal so its sprite cannot hide the endpoint.
+cursorhold 700 600 4
+capture qol_air_move
+gameclock +200
+capture qol_air_phase
+simclick 650 650
+logsel qol_air_deselected
+capture qol_air_cleared
+# Status-line hints reuse the completed storage session after its existing captures.
+camto 54 4
+gameclock +100
+simclick 208 176
+retry 1500 1 1 selectedtype 39
+cursorhold 997 285 8
+capture qol_auto_hint__off
+cursorhold 890 285 8
+capture qol_auto_hint__units_out
+cursorhold 940 285 8
+capture qol_auto_hint__repair
+cursorhold 600 100 8
+capture qol_auto_hint__cleared
+# Close this new session normally to finalize/compress its state recording.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+end

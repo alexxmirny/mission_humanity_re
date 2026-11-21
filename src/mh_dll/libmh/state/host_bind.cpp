@@ -21,12 +21,9 @@
 //    observes the difference -- EXCEPT bind_relocated() below, which refuses to move exactly those
 //    ten, because a window that overruns its symbol overruns onto its NEIGHBOURS.
 //
-// 3. THE HOSTED BIND IS A NO-OP BY CONSTRUCTION, not by measurement. mh::state::bind() derives
-//    `moved` from whether the base actually differs from the stock one, so binding the default
-//    table writes the same bases back and leaves every `moved` flag false -- translate() stays on
-//    its identity path, ai::island_move() can still claim its 48 regions later, and statetest's
-//    "nothing has moved" premise still holds. The determinism/UI arm confirms that; it does not
-//    establish it.
+// 3. THE STOCK BIND IS A NO-OP BY CONSTRUCTION. Host-native regions have no original-image
+//    address and are omitted from the default table. Their host owner binds them separately;
+//    neither stock binding nor relocation may erase that answer or count it as a stock move.
 //
 #include "state/host_bind.h"
 
@@ -49,27 +46,26 @@ size_t default_binds(libmh_region_bind *out, size_t cap) {
     // answer, so this returns the honest one: NOTHING, and no entries written.
     //
     // ZERO IS A DISTINCT CODE HERE, not an ambiguous one, and that is why the refusal composes with
-    // the existing contract instead of colliding with it. `libmh_default_binds` returns the FULL
-    // count and writes min(cap, count) entries, so the documented way to ask "how big a buffer do I
-    // need" is to call it with cap 0 -- which hosted returns RID_COUNT and standalone returns 0.
-    // A standalone host therefore learns "there is no default table" from the same call it would
-    // have used to size one, and it cannot mistake that for "no regions": libmh_region_count() is
-    // unchanged and still reports RID_COUNT. The host must then answer for every region itself
-    // through libmh_bind_regions, and libmh_bound_count() stays below libmh_region_count() until it
-    // does -- which is the existing "did every region get an answer?" check, unmodified.
+    // the existing contract: hosted returns the stock-only count and writes min(cap, count)
+    // entries. A cap-0 query returns that count hosted and zero standalone. Zero therefore means
+    // "no default table", not "no regions": libmh_region_count() still includes every stock and
+    // host-native region. The standalone host supplies all bindings explicitly; hosted startup
+    // supplies native bindings separately from the stock defaults.
     (void)out;
     (void)cap;
     return 0;
 #else
-    const size_t n = static_cast<size_t>(RID_COUNT);
-    for (size_t i = 0; i < n && i < cap; ++i) {
+    size_t n = 0;
+    for (int i = 0; i < RID_COUNT; ++i) {
         const region_id r = static_cast<region_id>(i);
-        out[i].region_id  = static_cast<uint32_t>(i);
-        out[i].base       = reinterpret_cast<void *>(static_cast<uintptr_t>(base_of(r)));
-        out[i].size       = reach_of(r);
-        // 0 = "the host declares no capacity". The registry carries no element stride, so the
-        // stock table cannot honestly claim one; SB-BIND T2 is where a cap-raised host does.
-        out[i].count = 0;
+        if (REGIONS[i].host_native) continue;
+        if (n < cap) {
+            out[n].region_id = static_cast<uint32_t>(i);
+            out[n].base      = reinterpret_cast<void *>(static_cast<uintptr_t>(base_of(r)));
+            out[n].size      = reach_of(r);
+            out[n].count     = 0; // stock table declares no array capacity
+        }
+        ++n;
     }
     return n;
 #endif // MH_LIBMH_BUILD
@@ -83,6 +79,12 @@ int bind_all(const libmh_region_bind *binds, size_t n) {
     for (size_t i = 0; i < n; ++i) {
         if (binds[i].region_id >= static_cast<uint32_t>(RID_COUNT)) return -2;
         if (binds[i].base == nullptr && binds[i].size != 0) return -3;
+        const region_id r = static_cast<region_id>(binds[i].region_id);
+        if (REGIONS[r].host_native) {
+            const uintptr_t base = reinterpret_cast<uintptr_t>(binds[i].base);
+            if (base == 0 || binds[i].size < REGIONS[r].size || base > UINT32_MAX ||
+                binds[i].size - 1u > UINT32_MAX - base) return -4;
+        }
     }
     for (size_t i = 0; i < n; ++i) {
         const region_id r = static_cast<region_id>(binds[i].region_id);
@@ -127,7 +129,7 @@ int bind_stock() {
     // of the report line read its own success as a failure.
     int before = 0;
     for (int i = 0; i < RID_COUNT; ++i)
-        if (is_rebased(static_cast<region_id>(i))) ++before;
+        if (!REGIONS[i].host_native && is_rebased(static_cast<region_id>(i))) ++before;
 
     // The table is a function-local static, not a stack array: 823 entries is ~13 KB, and this runs
     // once at init on a thread nothing else has yet.
@@ -137,7 +139,7 @@ int bind_stock() {
 
     int after = 0;
     for (int i = 0; i < RID_COUNT; ++i)
-        if (is_rebased(static_cast<region_id>(i))) ++after;
+        if (!REGIONS[i].host_native && is_rebased(static_cast<region_id>(i))) ++after;
 
     g_moved_before_bind = before;
     g_moved_after_bind  = after;
@@ -193,6 +195,7 @@ int bind_relocated(void *arena, size_t bytes, const relocation_opts &opts,
     uint32_t need = 0;
     for (int i = 0; i < RID_COUNT; ++i) {
         const region_id r = static_cast<region_id>(i);
+        if (REGIONS[i].host_native) continue;
         if (!movable_under(r, opts.armed_walkers) || is_rebased(r)) continue;
         if (opts.pin_stock && std::strcmp(REGIONS[i].name, opts.pin_stock) == 0) continue;
         need = align16(need) + REGIONS[i].reach;
@@ -250,6 +253,7 @@ int bind_relocated(void *arena, size_t bytes, const relocation_opts &opts,
     uint32_t       off  = 0;
     for (int i = 0; i < RID_COUNT; ++i) {
         const region_id r = static_cast<region_id>(i);
+        if (REGIONS[i].host_native) continue; // the native owner retains its binding and bytes
         // A HOST ANSWERS FOR EVERY REGION, including the ones it does not move. Binding the stock
         // base for those is a no-op by construction (bind() derives `moved` from whether the base
         // differs) and it is what keeps `bound_count() == RID_COUNT` true -- i.e. what keeps "did
@@ -349,9 +353,9 @@ int bind_relocated(void *arena, size_t bytes, const relocation_opts &opts,
     // over bytes nobody watches -- so the run reports how many slices actually sit on moved
     // regions, and the acceptance asserts on it rather than on `relocated` alone.
     for (int i = 0; i < HASH_REGION_COUNT; ++i)
-        if (is_rebased(HASH_REGIONS[i].rid)) ++rep.hash_slices;
+        if (!REGIONS[HASH_REGIONS[i].rid].host_native && is_rebased(HASH_REGIONS[i].rid)) ++rep.hash_slices;
     for (int i = 0; i < TACT_HASH_REGION_COUNT; ++i)
-        if (is_rebased(TACT_HASH_REGIONS[i].rid)) ++rep.tact_slices;
+        if (!REGIONS[TACT_HASH_REGIONS[i].rid].host_native && is_rebased(TACT_HASH_REGIONS[i].rid)) ++rep.tact_slices;
 
     g_relocated_count = rep.relocated;
     return finish(rep.relocated);

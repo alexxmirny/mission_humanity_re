@@ -639,7 +639,7 @@
     "class": "TL"
    },
    {
-    "name": "llm_unit_order_disembark_soldiers_enqueue",
+    "name": "llm_unit_order_squad_split_enqueue",
     "class": "TL"
    }
   ]
@@ -661,7 +661,7 @@
     "class": "TL"
    },
    {
-    "name": "llm_unit_order_disembark_soldiers",
+    "name": "llm_unit_order_squad_split",
     "class": "TL"
    }
   ]

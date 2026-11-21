@@ -2603,7 +2603,7 @@
     {
       "name": "_G_LLM_STRAT_DIR8_OFFSET_TABLE",
       "en": "0x00ae4b50",
-      "note": "SIM1D first slice (2026-08-13). Was `undefined`, previously read as two separate raw tables (_G_LLM_STRAT_DIR8_OFFSET_TABLE for dx, DAT_00ae4b54 for dy) by llm_unit_transport_unload_field's 8-direction neighbor scan. Retyped in Ghidra to llm_strat_dir8_offset[8] (int32 dx, int32 dy per entry, 8-byte stride) -- DAT_00ae4b54 is entry[0].dy, not a second table; the array is bounded exactly by the next real symbol MESSAGE_TIME @0xae4b90 (0x40 = 8*8 bytes). Added for MF_VIEW (sim_view::dir8_offsets)."
+      "note": "SIM1D first slice (2026-08-13). Was `undefined`, previously read as two separate raw tables (_G_LLM_STRAT_DIR8_OFFSET_TABLE for dx, DAT_00ae4b54 for dy) by llm_unit_squad_split_field's 8-direction neighbor scan. Retyped in Ghidra to llm_strat_dir8_offset[8] (int32 dx, int32 dy per entry, 8-byte stride) -- DAT_00ae4b54 is entry[0].dy, not a second table; the array is bounded exactly by the next real symbol MESSAGE_TIME @0xae4b90 (0x40 = 8*8 bytes). Added for MF_VIEW (sim_view::dir8_offsets)."
     },
     {
       "name": "_G_LLM_STRAT_DIR8_STEP_OFFSETS",
@@ -4309,12 +4309,14 @@
     {
       "name": "_G_LLM_TILE_DRAWN_MAP",
       "en": "0x00713920",
-      "note": "TACT-READY R8, SHARED VIEW/INPUT REGION written by tactical code. NOT tactical-only -- strategic and UI code write it too, so the tactical translation shares ownership rather than owning it. Ghidra type byte[300]. Writers (measured, tmp/state_matrix.json): llm_tact_frame(3), llm_map_minimap_render(2), llm_tact_render_view(2), llm_ui_debug_stats_overlay_draw(2), llm_tact_frame_cursor_and_reset(1) +2 more; 0 read site(s)."
+      "size": 1018,
+      "note": "Shared strategic/tactical cached fog shade and repaint-bit map. Canonical EN byte[1018] ends immediately before the separate VIS-minus-six label at 0x00713d1a. Video may relocate to 4096 logical cells; use the shared live binding, not this stock extent. Coordinated tooling:TL-TILEMAP-EXTENT migration."
     },
     {
       "name": "_G_LLM_TILE_VIS_MAP",
       "en": "0x00713d20",
-      "note": "TACT-READY R8, SHARED VIEW/INPUT REGION written by tactical code. NOT tactical-only -- strategic and UI code write it too, so the tactical translation shares ownership rather than owning it. Ghidra type byte[300]. Writers (measured, tmp/state_matrix.json): llm_tact_door_update_tile_state(4), llm_tact_frame(3), llm_tact_view_metrics_init(2), llm_ui_debug_stats_overlay_draw(2), llm_tact_render_view(2) +5 more; 1 read site(s)."
+      "size": 1024,
+      "note": "Shared strategic/tactical screen-tile damage map, not fog visibility. Canonical EN byte[1024] ends at sprite metadata 0x00714120. Video may relocate to 4096 logical cells with separate folded-prefix backing and trailing wide-read padding; use the shared live binding/capacity. Preserve all six VIS-minus labels. Coordinated tooling:TL-TILEMAP-EXTENT migration."
     },
     {
       "name": "_G_LLM_TILE_VIS_MAP_M1",

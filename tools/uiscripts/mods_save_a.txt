@@ -1,0 +1,13 @@
+# DATAEXT1: fresh campaign under mod set A; save via the game's actual game_SaveGame.
+delsave dxsavea
+delsave dxsaveb
+delsave dxfresh
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock +1000
+savegame dxsavea
+capture dx_save_a
+end

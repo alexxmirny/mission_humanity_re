@@ -76,20 +76,16 @@ def check(host_dir, client_dir):
     if missing:
         return False, ["  check_order_record: FAIL -- missing: %s" % ", ".join(missing)]
     hclk, cclk = _clock(hc), _clock(cc)
-    # mh.dll hands its batch over at the START of a step, so a client the runner KILLS (this row's
-    # normal end) leaves files that end on a whole step. One shape does not: a session the harness stop
-    # closes IN PLACE (`[session] HARNESS_STOP`, pre-body in the stop step) ends with that step's clock and
-    # none of its orders -- the harness's post-stop latch records exactly that one body. Only then is the
-    # client's final step left out.
-    stopped = "[session] HARNESS_STOP" in _read(os.path.join(client_dir, "mh_net.log"))
-    n = min(len(hclk), len(cclk) - (1 if stopped else 0))
-    hs = mod.by_step(o for o in mod.load(ho) if o.step <= n)
-    cs = mod.by_step(o for o in mod.load(co) if o.step <= n)
-    diff = [
-        s
-        for s in sorted(set(hs) | set(cs))
-        if [o.raw for o in hs.get(s, [])] != [o.raw for o in cs.get(s, [])]
-    ]
+    import mh_order_stream as order_stream
+
+    n = min(len(hclk), len(cclk))
+    try:
+        host = order_stream.load(ho, first_step=1, steps=len(hclk))
+        client = order_stream.load(co, first_step=1, steps=len(cclk))
+    except (OSError, ValueError) as e:
+        return False, ["  check_order_record: REFUSED -- %s" % e]
+    hs = {s.step: s.records for s in host if s.phase == order_stream.ENTRY and s.step <= n}
+    diff = sorted({a.step for a, b in zip(host[: 2 * n], client[: 2 * n]) if a != b})
     compared = sum(len(v) for v in hs.values())
     clk_diff = [i + 1 for i in range(n) if hclk[i] != cclk[i]]
     ok = n >= 1 and not diff and not clk_diff and compared >= MIN_ORDERS
@@ -120,9 +116,20 @@ def selftest():
     fails = 0
     tmp = tempfile.mkdtemp(prefix="chk_ordrec_")
     try:
+        import mh_order_stream as order_stream
 
         def rec(step, b):
-            return struct.pack("<i", step) + bytes([b]) * 0x44
+            return (step, bytes([b]) * 68)
+
+        def stream(*records, steps=10):
+            grouped = {}
+            for step, raw in records:
+                grouped.setdefault(step, []).append(raw)
+            return order_stream.encode(
+                order_stream.Sample(s, p, tuple(grouped.get(s, ())))
+                for s in range(1, steps + 1)
+                for p in (order_stream.HASH, order_stream.ENTRY)
+            )
 
         def plant(name, files):
             d = os.path.join(tmp, name)
@@ -132,9 +139,9 @@ def selftest():
                     fh.write(gzip.compress(data) if gz else data)
             return d
 
-        hdr = struct.pack("<II", 0x524F484D, 1)
+        hdr = stream()
         clk = b"".join(struct.pack("<d", 1.0 + i) for i in range(10))
-        good_orders = hdr + rec(3, 1) + rec(4, 1) + rec(4, 2)
+        good_orders = stream(rec(3, 1), rec(4, 1), rec(4, 2))
         host = plant(
             "h", {"mh_match_orders.bin": (good_orders, False), "mh_match_clock.bin": (clk, False)}
         )
@@ -153,19 +160,19 @@ def selftest():
             (
                 "a differing order fails",
                 host,
-                client("c3", orders=hdr + rec(3, 1) + rec(4, 9) + rec(4, 2)),
+                client("c3", orders=stream(rec(3, 1), rec(4, 9), rec(4, 2))),
                 False,
             ),
             (
                 "a missing order fails",
                 host,
-                client("c4", orders=hdr + rec(3, 1) + rec(4, 1)),
+                client("c4", orders=stream(rec(3, 1), rec(4, 1))),
                 False,
             ),
             (
                 "an order on the wrong step fails",
                 host,
-                client("c5", orders=hdr + rec(3, 1) + rec(5, 1) + rec(4, 2)),
+                client("c5", orders=stream(rec(3, 1), rec(5, 1), rec(4, 2))),
                 False,
             ),
             (
@@ -189,29 +196,27 @@ def selftest():
                 False,
             ),
             (
-                "orders past the common steps are ignored",
+                "missing paired samples fail even if clocks are present",
                 host,
-                client("c9", orders=good_orders + rec(11, 7), clock=clk),
-                True,
+                client("c9", orders=stream(rec(3, 1), steps=9), clock=clk),
+                False,
             ),
             (
                 "a killed client's final step IS compared",
                 host,
-                client("c10", orders=hdr + rec(3, 1) + rec(4, 1), clock=clk[:32]),
+                client("c10", orders=stream(rec(3, 1), rec(4, 1), steps=4), clock=clk[:32]),
                 False,
             ),
             (
-                "after a HARNESS_STOP the client's final step is not",
+                "HARNESS_STOP does not excuse a missing ENTRY or missing clock pair",
                 host,
-                stopped(
-                    client("c11", orders=hdr + rec(3, 1) + rec(4, 1) + rec(4, 2), clock=clk[:32])
-                ),
-                True,
+                stopped(client("c11", orders=stream(rec(3, 1), steps=3), clock=clk[:32])),
+                False,
             ),
             (
                 "...but the one before it is",
                 host,
-                stopped(client("c12", orders=hdr + rec(3, 1), clock=clk[:40])),
+                stopped(client("c12", orders=stream(rec(3, 1), steps=5), clock=clk[:40])),
                 False,
             ),
         ]

@@ -283,17 +283,15 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 4. Cross-TU state → spine `inline` var; document who writes/reads it.
 5. Run the gate (below). If the arm-log gains a line, note it as the new expected baseline delta.
 
-## The gate (ONCE per session — before session end or a merge to `master`)
+## The gate (light before commits; full before long-lived merges and releases)
 
-> **ONE COMMAND since 2026-09-10:** `python tools/run_gate.py` runs every step below OVERLAPPED —
-> build first, then determinism on the VMs concurrently with the local units (suite,
-> both A/B/C recorded sessions, selftests, lint) under a core budget (default: logical CPUs − 1,
-> the user's call). One rig lease for the whole run (children pass through), per-unit logs in
-> `tmp/gate/`, a final verdict table. `--skip det,spdet` on a box without the rig; `--list` for the
-> roster. The steps below remain the reference and the by-hand form. The recorded-session arms and
-> the suite's tactical-journal tail are themselves parallel since the same date (arms A∥B, one lane
-> each; journals pooled) — a serial re-run for debugging is `--jobs 1` / the single-arm
-> `--ui-replay`.
+> **Commit checkpoint:** `python tools/run_gate.py --light`. Use `--smoke` while iterating;
+> the bare gate selects the full profile for long-lived branch merges and releases.
+> Build first, then overlap the selected determinism, replay, selftest, lint and UI units
+> under a core budget (default: logical CPUs − 1). One rig lease covers the run; children
+> pass through it. Per-unit logs and the final verdict are in `tmp/gate/`.
+> `--list` prints the roster. The steps below remain the reference and the by-hand form;
+> a serial replay for debugging uses `--jobs 1` / the single-arm `--ui-replay`.
 >
 > **TWO PROFILES since 2026-09-29 (user; tooling:TL-GATE12).** `python tools/run_gate.py --light` is
 > the **iteration checkpoint**; the bare `run_gate.py` (profile `full`) is for **big checkpoints,
@@ -315,15 +313,57 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > light/full history or the escalation clock. `--plan --files a,b` plans for a hypothetical change
 > (any profile) without a git diff.
 >
-> **LIGHT GATE FITS ITS CAP (TL-LIGHT-WALL-CAP).** The critical path is the selftests unit (ASan + plain
-> in ONE `run_selftests.py` process: the host-global `selftest` lease and net_selftest's fixed ports
-> forbid running the two halves as parallel units on one box, so they cannot be split here). It already
-> starts at t0; what changed is that the `loopback` token (six wall-bound suites, ~320 s across both
-> passes) is now earned only by `mh_net/`, `mh_net_udp/`, the loopback selftest sources and
-> `seams/adaptive_window*` — `mh/seams/net_*` no longer brings it back (no loopback suite drives them;
-> it keeps `u19j_gpfg3` and the net UI rows). The skipped-loopback variant schedules by its own record
-> key (`selftests_noloop`). A transport-source change still costs ~574 s against the 540 s cap
-> (build ~45 s + 529 s); lifting that needs a per-pass skip in `run_selftests.py` (tracker note).
+> **LIGHT GATE COST POLICY (TL-GATE12).** ASan and plain remain in one `run_selftests.py`
+> process: the host-global lease and fixed ports forbid splitting them on one host. Change-aware
+> loopback selection and all required replay/UI arms remain unchanged.
+>
+> On2026-11-06 the user approved ending the current optimization iteration and relaxing its failing
+> cost limits. The complete twelve-unit/thirty-three-row run passed all correctness checks but
+> measured579.3s against540s; that checkpoint raised the light wall cap to660s. `res_notice_seq` measured103s
+> including admission, so its `budget_s` changes60→80 (the unchanged1.5x red line becomes120s).
+> No script, required step, repeat, loss profile, watchdog, pixel tolerance or CPU ceiling changed.
+> The original RED receipt is retained; reassessing those same measurements under the approved
+> policy is not a new execution and must be reported as such. Full/release caps were unchanged
+> at that checkpoint; the measured expanded-release policy below now supersedes its release cap.
+>
+> The rc15 final iteration measured707.7s. Its generated-filter mismatch and six stale
+> target-line color references were corrected separately, with targeted rechecks rather than
+> another full light run. Under the same user authorization, light wall660→780s,
+> `overlay_seq` budget100→240s (measured228s), and `res_crop_1080` budget30→60s
+> (measured72s). The1.5x cost multiplier is unchanged. The existing three-times-budget
+> walker backstop consequently increases for the expanded overlay row; frame watchdogs,
+> required arms, repeats, loss profiles, pixel checks and CPU ceilings are unchanged.
+> Keep the original failed execution and the subsequent targeted proofs/policy reassessment
+> separate; a reassessment is not a fresh green gate run.
+>
+> On2026-11-10, after folding notice200% scaling/modal into one load, ordinary LIGHT
+> passes all11correctness units in707.3s (below780s). Only charged `graceful_quit`
+> 133.9s and `screen_seq`321.2s exceed their old cost limits. User-authorized,
+> measured x1.3 seeds rounded upward change their budgets40→175s and180→420s.
+> The16screen startup/module variants remain independent; the TCP terminal-leave
+> proof stays its own match. CPU admission remains charged; no checks, captures,
+> explicit timeouts or1.5x rule change. The budget-derived three-times-budget
+> walker backstop inherits the new budgets. No ordinary/full/release wall cap changed at that
+> checkpoint. Original RED: `tmp/gate_repair/post_fold_light_1/`; a fresh ordinary
+> checkpoint and release certification must be distinguished from that execution.
+>
+> **WIDE LIGHT CHECKPOINT.** For a mechanical migration whose change-selected UI coverage is
+> suite-sized, explicitly use `run_gate.py --light --wide-light`. It requires retained UI rows
+> beyond the base smoke set. After the2400s coordinator completed only60/93selected roots
+> (including a1955s twelve-map sequence), the user-authorized finite allowance is5400s gate
+> wall and4800s lint/UI coordinator bounds. These are policy ceilings, not measured greens.
+> Ordinary light stays780s and full1500s; release now uses the measured expanded policy below. Four completed slow scenario budgets
+> are separately measured and documented in the registry; no wait, workload, watchdog, pixel
+> check, CPU admission rule or correctness assertion is relaxed. The receipt records its
+> cost mode/cap; a wide run
+> does not compare against or replace the ordinary light-green cost baseline and never grants
+> full-gate freshness. `--skip` remains partial coverage, not a resumed complete gate.
+>
+> **FIXED-STEP NEGATIVE CONTROL.** `spdet_fixed` compares fixed-step idle, loaded and idle-again
+> runs, then requires the variable-step control to differ. Both loaded arms use the same existing
+> headless 60 FPS cap and measured CPU load. CPU consumption alone can leave every 10 ms game-clock
+> quantum serviced; the control must therefore show an actual compared clock difference, not merely
+> a live burner or a changed state hash. No wall-clock pin is used.
 >
 > **RELEASE TIER (user 2026-10-01).** UI registry rows marked `tier: release` (the fix-off negative arms,
 > the P17 watchdog / alt-tab rows, the `*_retail` twins) are skipped by a bare `test_ui.py` and by the
@@ -331,6 +371,30 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > the summary. `python tools/run_gate.py --release` (full profile only) passes `--release-tier` to the
 > suite and runs them; naming a row (`test_ui.py <name>`, the light smoke's change-aware rows) always
 > runs it. Run `--release` before a release. A skipped row's budget does not count toward the cost rules.
+> **Expanded release reassessment (2026-11-11, user-authorized after folding).** Actual
+> RELEASE3 completed all212UI rows: suite7489s / gate7585s, but still had functional
+> failures. Those remain RED; they are not budget overruns. Complete cost-only rows
+> receive measured charged time x1.3 rounded up to5s, including admission as before.
+> Cost includes CPU admission before a game's execution-only `timeout` begins.
+> That native bound is not a ceiling for the charged cost budget; admission wait
+> and folded child costs remain charged. The native deadlines do not grow merely
+> because a loaded gate's expected cost does.
+>
+> | Release-only envelope | Previous | New |
+> | --- | ---: | ---: |
+> | Suite cost cap |1410s|9750s|
+> | Gate cost cap |2700s|9900s|
+> | Suite observer |9000s|12000s|
+> | Lint observer |900s|3600s|
+> | Selftest observer |1200s|2400s|
+>
+> Cost caps use the complete measurements x1.3 with finite rounding. Lint/selftests
+> still hit observers after actual bounded admission folds; the larger observers
+> permit remaining checks, never turn an assertion failure green. Ordinary caps,
+> CPU credits, meaningful behavioral deadlines/checks and1.5x rule stay. Eleven outer
+> scenario observers rise only to their measured row budgets to preserve budget<=observer;
+> budget-derived three-times-budget walker backstops also inherit row changes. Receipts
+> name the suite/gate caps; growth comparisons never mix bare and release tiers.
 >
 > **THE RELEASE GATE'S RIG UNITS (tooling:TL-RELGATE-FOLD, user 2026-10-17; 64.8 min before).** `--release` adds
 > the host-migration / elimination arms to the full gate. They run in two places. **The VM chain** (one after
@@ -351,6 +415,11 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > `:1177`) only checks the leaver's return code. Mutation hooks for these arms: `det_arms.py --net-extra
 > hub_migration=0` (a positive arm must go red) and `--harness-extra-peer N:rng_perturb_slot=1;rng_perturb_step=1200`
 > (a survivor diverges: "IDENTICAL" must go red).
+>
+> The host-victim conquest setup has one designated client author its synthetic
+> victim-owned commands, not both survivors independently controlling the same
+> host-owned units. Both survivors receive/process the authoritative setup;
+> the real defeat, abrupt crash, full hash prefix, election and stall checks stay.
 >
 > * **light, always:** build (plain selftest exes only), `det` + `spdet` (both determinism oracles),
 >   `abc_tutorial` + `abc_spcamp` (the soak/campaign replays), `inmem`, `lint`, the PLAIN selftest
@@ -373,6 +442,11 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 >   and the reason for every addition without running anything; a changed source no rule maps is
 >   NAMED, not silently dropped (the map is `LIGHT_RULES`, and `--selftest` fails a rule naming a row
 >   that left the registry).
+>   For an explicitly scoped, understood INI-registry diff, language-only additions/removals/changes
+>   select `lang_seq`, not unrelated video rows. Video/mixed/malformed/unknown deltas retain broad
+>   coverage. `--diff-base HEAD` scopes a commit's actual working-tree changes; inspect `--plan`
+>   before using an override. Invalid/non-ancestor bases and failed file enumeration refuse the run;
+>   a stale default full-green base remains conservative and is not silently reset.
 > * **escalation:** only an un-skipped FULL pass writes `last_full_green.json`. The light gate prints
 >   the distance from it and says **FULL GATE DUE** past 60 commits or 3 days (or with none on record);
 >   `run_gate.py --full-status` exits 3 in that state, and the worktree loop's `land` step refuses on it
@@ -380,11 +454,163 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > * **cost:** its own wall cap (`LIGHT_GATE_WALL_MAX`), its own records
 >   (`tmp/gate/last_light_timings.json`, `last_light_green_timings.json`), and the smoke rows keep
 >   their per-row `budget_s` reds. The summary lists the full units it SKIPPED.
-> * **scheduling (both profiles):** longest-first with backfill plus ONE reservation (EASY): when the
->   top-priority pending unit does not fit the free cores, a lower one may start only if it is expected
->   to finish before the blocked unit could start, or fits in the cores that unit will not need.
->   `--plan` prints the simulated timeline from the recorded durations (same `pick_units` the
->   dispatcher calls). A `--skip` run keeps the durations it did not re-measure in the record.
+>   The selftest runner prints `[time]` for every actual executable/suite invocation, including
+>   sanitizer mode, plain repetition, monotonic elapsed seconds and exit status. Preserve this
+>   output when diagnosing cost; an aggregate pass duration does not identify a slow suite.
+>   `run_selftests.py --exe-jobs 2` overlaps audited chains **within** each mode.
+>   Under shared gate admission the paired transport lease starts only after standalone/CPU
+>   helpers finish; no credits are held across that join. Loopback's transitive origin/rehome arms overlap snapshot's39800+ ports, so those
+>   remain serial. Ordinary `uqmatchtest` waits for the second transport chain to finish:
+>   it and bulk's lossy arm both bind39710..39711. The wait holds no admission lease.
+>   Other ordinary shared-file/config/recorder suites retain their order. Nonzero custom
+>   port shifts use roster-serial execution because the shift is not universal.
+>   The host-global lease and ASan-before-plain barrier remain mandatory.
+>   Each mode's instrumentation/roster preflight shares one short three-credit lease
+>   across both images, released before any suite/build/join admission.
+>   Default direct runs use one lane and preserve roster order.
+>   Each contiguous same-credit serial run holds one CPU lease; a price change releases it.
+>   No lease spans a sibling/mode barrier or external-lock wait. Phase admission wait is
+>   reported once; per-suite execution, exit code and every adjacent repeat remain visible.
+>   The roster's optional `gate_credits` is an estimate in thirds of a core: ordinary hosted
+>   suites retain six credits, audited serial standalone suites three, and the six wait-bound
+>   transport suites three. Their two concurrent audited lanes reserve a six-credit aggregate
+>   pool; low mean CPU consumption does not cover retry/failover bursts against wall-time
+>   deadlines. The global admission capacity, retry ceilings and behavioral deadlines do not
+>   change. Source-audited synchronous `inchashtest` and CPU-only `bgscaletest` use three;
+>   recorder writers and device suites retain six when unbounded.
+>   Gate-owned selftest roots use the same queried aggregate
+>   HARD_CAP mechanism as UI roots; only under that enforced flag does each hosted suite contribute
+>   at most three credits. Unbounded/direct runs retain the roster's6/3 estimates. Device/readback
+>   output remains visible so new SKIPs cannot be mistaken for exercised coverage. Neither thread
+>   count nor wall duration alone establishes CPU demand. Losses, repeats, deadlines and mode
+>   barriers do not change. A request wider than capacity refuses instead of being clamped.
+> * **SP evidence:** a failed arm, missing log or reused process directory refuses before comparison.
+>   Hashes belong to that successful process's own session, never the newest unrelated match.
+>   The fixed-step load arm starts CPU stress after game entry, measures actual burner CPU time,
+>   and compares only subsequent steps, retaining the existing 90% sample floor in both the
+>   fixed-step positive and variable-step negative controls. A completed UI walk without live CPU
+>   load is a failure, not a determinism proof. Process exit is a signal-state query; unknown
+>   liveness never licenses DLL redeployment or killing another runner's shim.
+> * **scheduling (both profiles):** one gate-owned admission broker initially uses VM/bootstrap
+>   priority and latest-safe-start deadlines with FIFO/LPT ties and EASY backfill.
+>   After 30 seconds of eligible waiting, the oldest request reserves actual credits;
+>   no new backfill may prolong that wait based only on estimated end times.
+>   VM-slot-blocked requests age only after becoming eligible. Opaque units retain their CPU/VM reservations;
+>   UI, lint, selftests and fixed-SP coordinators charge startup, then acquire actual leaves.
+>   Short coordinator bootstraps rank before unrelated opaque local work without pretending
+>   their startup lasts a whole suite; unaged VM work retains its earlier priority.
+>   UI longest-first hints use measured child execution work, never admission queue time.
+>   Numeric history survives focused runs separately from current-only verdict receipts;
+>   partial-step and diagnostic retry results cannot replace a complete successful row's cost.
+>   Light feeds four solo and three network workers into the same seven-core broker ceiling.
+>   Only measured, source-audited local/default full `lobby_seq` and `lobby_host_seq` rows use
+>   one-third-core estimates; these never start a match. Unbounded gameplay rows retain one core.
+>   Gate-owned UI and selftest roots additionally enforce Windows Job Object **HARD_CAP** CPU rate over
+>   their entire descendant tree, adjusted to the sum of active leaf credits before granting
+>   work or refunding capacity. Default local gameplay leaves then reserve two thirds of a core;
+>   this is an enforced allocation, not repricing an unbounded workload from its mean CPU.
+>   The folded `resync_seq` is a timing-benchmark exception: its two native peers plus UDP shim
+>   reserve six credits (two cores), not the default two-thirds-core tree cap. All four matches,
+>   the shipped pacing, rate assertions, admission-inclusive costs and seven-core gate ceiling stay.
+>   The CPU rate is rounded down and queried back after every change; unsupported/failed application
+>   fails the owner before unbounded work starts. Cancellation refunds still wait for zero-active
+>   containment. An idle coordinator has a minimal housekeeping allowance; actual game/checker
+>   work requires an admitted leaf. Visible, nonlocal, partial-step or configuration-overridden
+>   leaves retain one-core reservations. Direct runs outside bounded gate roots remain unchanged.
+>   Short instrumentation/roster preflights explicitly retain bootstrap priority after
+>   acquiring the host-global lease; long suite phases never inherit that priority.
+>   Complete UI and fixed-SP lane provisioning have bootstrap priority, never their game/load arms.
+>   Completed passing roots supply execution-only leaf duration hints (one-second minimum, longest
+>   repeated observation), separate from admission waits and all verdict/budget calculations.
+>   Cancelled/unfinished/failed-root records never train hints; missing history uses the declared
+>   estimate. `last_admission.json` records each effective prediction and the actual root verdicts.
+>   Formatter/compiler workers and Cargo are charged without recursively reserving their parent.
+>   Lint assigns whole serialized-script lanes to balanced worker partitions inside
+>   live gates. Each worker admits at most eight consecutive ordinary three-credit
+>   checks under one lease, then releases; controller and wider checks remain
+>   independently admitted. No lease waits for another worker or nested admission.
+>   Same-script order, all checks and the final declaration-order report stay unchanged;
+>   direct/covered/serial-fix runs retain their existing execution path.
+>   Existing cost windows order unaged admission by latest safe start inside VM/bootstrap
+>   bands, with FIFO/LPT ties. Execution-only hints include declared sequential successors;
+>   aging never adds capacity, skips work, or changes a verdict. Read-only post-build contract
+>   verifiers run at most four-wide within the configured core count, and all report their results.
+>   Light replay roots use an enforced one-core descendant Job cap, including when all three
+>   arms are required; no replay arm is removed to buy concurrency. Full-profile reservations
+>   remain unchanged. Local terminal-marker polling is responsive (one second for harness
+>   completion, 250 ms for script completion), with the same step and watchdog requirements.
+>   Closure-probe scans reuse lexical references only for the same unchanged invocation-local
+>   source tree; both ledgers still independently classify and resolve every source and edge.
+>   Bounded selftest roots can share one enforced third-core allocation between the two audited
+>   transport lanes. Their complete bodies run concurrently; memory/ordinary suites retain
+>   independent allocations, the ASan/plain barrier and host-global lease remain, and the
+>   bulk/`uqmatchtest` socket conflict still fences the complete second transport lane.
+>   ASan requests forecast that same required plain transport plan after the mode barrier,
+>   rather than treating the first half as if it could finish at the entire root's deadline.
+>   Wiring discovery and channel ownership borrow one fresh source/roster snapshot per check;
+>   every planted mutation still starts a fresh complete check.
+>   Const-view checks capture the selected x86 compiler environment once, then keep each
+>   positive/negative compile and its output directory independent.
+>   Complete-tree wiring negatives reuse one independent copied tree and byte-restore every
+>   touched file between mutations; each arm still walks and parses the entire fixture.
+>   The path residual selftest reuses only the clean arm's decoded instructions; every
+>   mutated image still receives a fresh full decode and residual scan.
+>   Accessor mutation arms share only invocation-local function/status/fingerprint inputs;
+>   every changed declaration still recomputes its join and currency classification.
+>   Lane provisioning holds one one-core lease for serial full rebuilds. The same CLI parser,
+>   validation and boot lock run in process; native fixture children inherit covered admission.
+>   Full resets, lane settings and per-lane wall receipts remain; no lease reacquisition per lane.
+>   Fixed-SP acquires the game plus the original burner count **before** launching the arm.
+>   Every root starts behind a barrier opened only after mandatory kill-on-close containment.
+>   An abandoned active lease cancels its root; every cancellation refund is fenced until
+>   the job reports zero active processes, including a sibling that finishes during cancellation.
+>   Normal root teardown reaps and reports remaining owned tool workers (for example MSVC's
+>   idle `vctip.exe`) before returning capacity; it does not kill unrelated global processes.
+>   Command errors, unfinished leases and failed rundown remain failures.
+>   `tmp/gate/last_admission.json` records queue/start/end/credits and local process-tree CPU
+>   accounting; it does not measure the VMs' CPU usage.
+>   When an exception escapes an active lease, its credential-redacted original
+>   traceback is flushed to process stderr before cancellation can kill the owner.
+>   The broker retains the authenticated owner/request label and bounded cause in
+>   both leaf and root errors; buffered row output is not failure attribution.
+>   Job accounting includes `wrapper_pid`, observed `wrapper_returncode` and
+>   `timed_out` (whether the gate's timeout path ran), not an inferred game exit code.
+>   Cancellation still kills only that owner and holds its credits until rundown.
+>   `--plan` labels its old whole-unit projection explicitly: it is **not** a prediction of
+>   dynamic leaf admission. A `--skip` run keeps durations it did not re-measure.
+>   `screen_seq`'s explicitly independent fresh-process steps use private lanes/ports in one
+>   provisioning pass. Dependent save sequences and lane borrowers stay serial. The public row
+>   retains its budget and one verdict; its elapsed span includes admission and gaps between
+>   children, while every child verdict, wait and execution duration remains in the one timing
+>   record. Diagnostic reruns retain first-run evidence. The suite is still one coordinator.
+>   Terminal results and self-driven-exit evidence are frozen before runner teardown.
+>   Every completed peer is stopped before offline log pulls, BMP conversion and PNG
+>   comparison, so finished games do not keep simulating during evidence analysis.
+>   Error terminal records are published only after their synchronous diagnostics and captures;
+>   native local teardown still confirms exit within the same two bounded waits.
+>   Capture PNGs use lossless compression level1, trading disk space for encoding CPU.
+>   Their decoded RGB frame is judged directly, one capture at a time; PNG artifacts,
+>   masks, structural checks and pixel tolerances remain intact. Hash-only postchecks
+>   retain the complete rebased harness without parsing other streams they never consume;
+>   their independent feature/desync scans and hash/region comparisons still run.
+>   Native endpoint tables and retained process handles
+>   provide local readiness/liveness without launching PowerShell for each observation.
+>   An expected network-fault verdict never excuses a UI child failure. The unguarded gone-peer
+>   arm ends on its actual native outcome; the guarded continuation horizon stays unchanged.
+>   Canonical wide hashes load whole little-endian words using unaligned-safe `memcpy`; other
+>   byte orders retain explicit little-endian assembly. Carry, tail length tag, seed, prime,
+>   masks and stream coverage are unchanged. The tactical split-invariance test pins old
+>   asymmetric word/tail hashes at every alignment; this is not a new hash-input epoch.
+>   Carry insertion and the same prime's product use unsigned32 limbs to avoid general
+>   x86 shift/multiply helpers; arbitrary stream splits retain identical results.
+>   Disjoint bulk input keeps its accumulator local until the call boundary; overlapping input
+>   retains per-word publication. Both paths preserve intermediate carry state and guard-page bounds.
+>   Strategic tile verdicts pack eight records into 56 bytes, preserving the frozen field order,
+>   masks and full extent while avoiding per-field virtual calls and bytewise hash assembly.
+>   Tactical verdicts share the packer but retain their existing window; PERSIST remains flat.
+>   Stock-address lookup uses a generated prefix-end index but still returns the first original
+>   region containing the whole mathematical window, including zero-size endpoint requests.
+>   Translation borrows the process-wide live table once per call, never across calls.
 >   The replays are NOT paced: headless lanes use the null backend with `no_present=1`, which cuts the
 >   blit the `fps_limit` limiter sits on, so an arm runs as fast as one core allows (CPU = wall,
 >   measured 2026-09-29) and its gate time is CONTENTION — measured alone, ship-arm spcamp 234 s and
@@ -392,9 +618,8 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 >
 > **Not after every change** (user, 2026-07-26). While iterating, run only steps **1, 2 and 5**
 > (build + transport selftests + lint — seconds), plus the single UI scenario your change touches if
-> there is one:
-> `python tools/ui_test.py --host 192.168.0.37:<script>.txt`. Run the whole thing below before you
-> commit to `master` or wrap up the session.
+> there is one. Ordinary commits require `run_gate.py --light` plus checks covering the change;
+> the full gate is for the merge/release and freshness cases described above.
 >
 > **COST IS A VERDICT (the gate-diet routine, 2026-09-24).** Prose figures for what the gate costs
 > went stale three times, so the gate now measures itself and goes RED on growth:
@@ -412,9 +637,11 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 >
 > A cost red is fixed like any red: find what grew (the timeline, the scenario's own log), and either
 > make it cheaper or raise its `budget_s` with the measured number that justifies it — never just the
-> number. The suite's multi-peer pool is `run_gate.py --suite-net-jobs` (wait-bound, priced at
-> `NET_JOB_WEIGHT` of a core per job); `--suite-jobs` stays the CPU-bound solo pool. Read the current numbers from the
-> record, not from prose.
+> number. The suite's multi-peer pool is `run_gate.py --suite-net-jobs`; each active local row
+> reserves one estimated core, including helpers and offline evidence processing. Measured
+> descendant-Job CPU for representative 2/3/5-game rows was 0.44/0.71/0.73 core after tile
+> batching and early rundown; the former one-third price classified FPS rather than actual CPU. The solo pool
+> remains `--suite-jobs`. Read current timings from the record, not from prose.
 >
 > **Transport changes (option A, user 2026-10-03).** When the `loopback` token IS earned, the light
 > gate runs the six loopback suites in the PLAIN pass only (`run_selftests.py --asan-skip-suites`);
@@ -456,6 +683,10 @@ unlock. `release_package.py --selftest` cross-checks its list against the C++ ta
 > and the folder is what keeps them apart; a swapped pair is refused by name at mh.dll's bind.
 > The trap: "libmh.dll" names TWO different binaries, and the one that ships beside mh.dll cannot
 > run standalone. Gate step 4c runs it.
+>
+> Before building or launching runtime units, `run_gate.py` validates patch ownership,
+> the generated DLL patch header and the in-memory composition census. Stale source
+> contracts fail immediately; this preflight is timed and does not replace full lint.
 >
 > `run_gate.py` checks two things straight after the build, both of which need binaries and so cannot
 > be lint rows:

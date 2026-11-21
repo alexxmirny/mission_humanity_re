@@ -34,6 +34,10 @@
 #include "orders/admission_log.h"
 #include "orders/order_queue.h" // promotion_active
 #include "state/world_snapshot.h"
+#include "ui/selected_targets.h"
+#include "seams/lobby_speed.h"
+#include "seams/participant_boundary_hosted.h"
+#include "include/mh_unitselect_export.h"
 
 namespace mh::desync::world_sync {
 namespace {
@@ -78,6 +82,40 @@ uint32_t wide_roster() {
     return ws::roster_word_wide(f);
 }
 
+bool removal_admission_changed(uint64_t generation) {
+    const auto &authority = mh::participant_boundary::hosted::owner();
+    return authority.pending() || authority.admission_generation() != generation;
+}
+bool carried_roster_matches(const void *blob, size_t n, uint32_t expected) {
+    if (!blob || n < sizeof(w::blob_header)) return false;
+    w::blob_header h;
+    memcpy(&h, blob, sizeof(h));
+    size_t left = h.base.payload_len;
+    if (left > n - sizeof(h)) return false;
+    const auto *p = static_cast<const uint8_t *>(blob) + sizeof(h);
+    for (uint32_t i = 0; i < h.base.block_count; ++i) {
+        if (left < 8) return false;
+        uint32_t rid, len;
+        memcpy(&rid, p, 4);
+        memcpy(&len, p + 4, 4);
+        p += 8;
+        left -= 8;
+        if (len > left) return false;
+        if (rid == mh::state::RID_STRAT_PLAYERS) {
+            constexpr size_t stride = 0x740; // native profile; status_flags is its first byte
+            if (len < 7 * stride + 1) return false;
+            uint8_t flags[PLAYERS];
+            for (int slot = 0; slot < PLAYERS; ++slot) flags[slot] = p[slot * stride];
+            // The byte engine still verifies the entire canonical RID order/framing before stores,
+            // so a later duplicate/missing/schema block cannot bypass this admission.
+            return ws::roster_word_wide(flags) == expected;
+        }
+        p += len;
+        left -= len;
+    }
+    return false;
+}
+
 bool peer_active(int p) {
     int       ids[16];
     const int n = MH_Net_ActivePeerIds(ids, 16);
@@ -101,6 +139,7 @@ struct hostpeer {
     bool     capture_due;
     int      last_skip;
     uint32_t last_skip_step;
+    uint64_t admission_generation;
 };
 hostpeer           g_hp[PLAYERS];
 ws::roster_tracker g_roster;
@@ -131,6 +170,10 @@ void host_abort_actions(int p, const ws::action &a, uint32_t step) {
 void host_do_capture(int p, uint32_t S, uint64_t digest_prev) {
     hostpeer &hp   = g_hp[p];
     hp.capture_due = false;
+    if (removal_admission_changed(hp.admission_generation) || wide_roster() != hp.f.roster_at_begin) {
+        host_abort_actions(p, ws::fsm_abort(hp.f, g_cfg, WS_ABORT_ROSTER), S);
+        return;
+    }
 
     uint32_t n_src[LIBMH_RESYNC_SOURCES];
     mh::orders::admission::counts(n_src);
@@ -177,6 +220,11 @@ void host_do_capture(int p, uint32_t S, uint64_t digest_prev) {
         host_abort_actions(p, ws::fsm_step(g_cfg, hp.f, e), S);
         return;
     }
+    if (removal_admission_changed(hp.admission_generation) || wide_roster() != hp.f.roster_at_begin) {
+        HeapFree(GetProcessHeap(), 0, blob);
+        host_abort_actions(p, ws::fsm_abort(hp.f, g_cfg, WS_ABORT_ROSTER), S);
+        return;
+    }
     const uint64_t sum  = fnv1a(blob, got);
     const int      sent = MH_Net_SnapshotSend(p, blob, (int)got); // COPIES (mh_net_module.h)
     HeapFree(GetProcessHeap(), 0, blob);
@@ -217,6 +265,10 @@ void host_step(uint32_t next_step, uint64_t digest_now) {
         hostpeer &hp = g_hp[p];
         if (hp.f.state == ws::P_IDLE) continue;
         if (hp.f.state == ws::P_BEGUN || hp.f.state == ws::P_SENT) {
+            if (removal_admission_changed(hp.admission_generation) || roster != hp.f.roster_at_begin) {
+                host_abort_actions(p, ws::fsm_abort(hp.f, g_cfg, WS_ABORT_ROSTER), next_step);
+                continue;
+            }
             // R5: a PENDING overflow reset destroyed admitted records; the counters no longer mean anything.
             uint32_t                           n[LIBMH_RESYNC_SOURCES];
             mh::orders::admission::plan_report pr;
@@ -284,6 +336,8 @@ struct minority {
     DWORD        import_ms;
     uint32_t     poll_steps;
     uint32_t     pend_peak, pend_peak_step, feed_calls; // ORDER_PENDING high-water mark during the staged catch-up
+    uint32_t     roster_at_begin;
+    uint64_t     admission_generation;
 };
 minority g_m;
 
@@ -297,6 +351,16 @@ void m_end() {
     mh::orders::admission::stage_cancel();
     m_free();
     memset(&g_m, 0, sizeof(g_m));
+}
+
+void m_abort_roster(uint32_t step) {
+    uint8_t        b[MAX_FRAME];
+    const uint32_t s = g_m.meta ? g_m.meta_step : g_m.incident;
+    send_frame(b, ws_put_abort(b, g_fp2, s, g_m.host_id, WS_ABORT_ROSTER));
+    MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX);
+    WSAY("; [worldsync] ABORT before publication: participant admission/roster changed at step=%lu\n",
+         (unsigned long)step);
+    m_end(); // accepted participant work belongs to its authority, not this transfer
 }
 
 void m_send_done(uint32_t s, uint32_t live_step, int rc, uint32_t ff_ms) {
@@ -346,10 +410,16 @@ void m_on_begin(int sender, uint32_t incident) {
     }
     m_end();
     MH_Net_SnapshotCancel(MH_SNAP_DISCARD_RX); // a partial or delivered earlier transfer must not steer this one
-    g_m.st       = M_BEGUN;
-    g_m.host_id  = sender;
-    g_m.incident = incident;
-    g_m.begin_ms = GetTickCount();
+    g_m.st                   = M_BEGUN;
+    g_m.host_id              = sender;
+    g_m.incident             = incident;
+    g_m.begin_ms             = GetTickCount();
+    g_m.roster_at_begin      = wide_roster();
+    g_m.admission_generation = mh::participant_boundary::hosted::owner().admission_generation();
+    if (removal_admission_changed(g_m.admission_generation)) {
+        m_abort_roster(incident);
+        return;
+    }
     WSAY("; [worldsync] BEGIN rx from=%d incident=%lu -- keep playing, polling channel C\n", sender, (unsigned long)incident);
 }
 
@@ -410,6 +480,10 @@ bool m_step(uint32_t next_step) {
         WSAY("; [worldsync] TRANSFER DROPPED at step %lu (%s)\n", (unsigned long)next_step,
              g_m.abort_rx ? "host aborted" : "this match left mode 3 (R4)");
         m_end();
+        return false;
+    }
+    if (removal_admission_changed(g_m.admission_generation) || wide_roster() != g_m.roster_at_begin) {
+        m_abort_roster(next_step);
         return false;
     }
     if ((int)(GetTickCount() - g_m.begin_ms) > g_cfg.timeout_ms + 10000) {
@@ -502,6 +576,13 @@ bool m_step(uint32_t next_step) {
             return false;
         }
     }
+    // Final receiver-owned fence: channel C can beat the sender's ABORT.
+    if (removal_admission_changed(g_m.admission_generation) || wide_roster() != g_m.roster_at_begin ||
+        !carried_roster_matches(g_m.buf, g_m.blob_len, g_m.roster_at_begin)) {
+        if (g_h.horizon_hold) g_h.horizon_hold(0);
+        m_abort_roster(next_step);
+        return false;
+    }
     libmh_resync_report rep;
     memset(&rep, 0, sizeof(rep));
     rep.struct_size = sizeof(rep);
@@ -510,7 +591,7 @@ bool m_step(uint32_t next_step) {
     const int imp_ms = f.QuadPart ? (int)((t1.QuadPart - t0.QuadPart) * 1000 / f.QuadPart) : 0;
     if (rc != 0) {
         if (g_h.horizon_hold) g_h.horizon_hold(0);
-        m_fail(S, next_step, rc, "libmh_import_world_resync refused (world untouched)");
+        m_fail(S, next_step, rc, "libmh_import_world_resync failed; publication may be partial");
         return false;
     }
     mh::caps::canon_scatter(); // PT-CAP8 (D1): the import wrote the stock mirror -> publish it to the wide arrays (no-op unless relocated)
@@ -519,6 +600,9 @@ bool m_step(uint32_t next_step) {
         WSAY("; [worldsync] overflow records applied rc=%d (%d records)\n", orc, mh::caps::ovf::record_count(ovf_tr, ovf_len));
     }
     mh::caps::orders::finish_scatter(); // PT-CAP9-U7c: the order counts the import carried (queue / pending / staging past their windows) come back with their tails, or stay clamped (logged)
+    MH_UnitSelect_Reset();
+    mh::ui::selected_targets::reset();
+    mh::seams::lobby_speed::enforce();
     // From here the world IS the host's world at S. The re-admission is staged: arm-time cannot fail
     // (plan() passed before the first write); the per-step feed can, and aborts by name.
     mh::desync::rewind_for_world_sync(S, g_m.mb.digest_prev);
@@ -573,6 +657,30 @@ void configure(const char *ini_path, int action, uint64_t fp2, void (*log)(const
 bool              enabled() { return g_on; }
 const ws::config &cfg() { return g_cfg; }
 tallies           counters() { return g_t; }
+
+bool peer_watchdog_held(int peer, uint32_t now_ms) {
+    return g_on && is_host() && peer >= 0 && peer < PLAYERS &&
+           ws::watchdog_held(g_cfg, g_hp[peer].f.state, g_hp[peer].begin_ms, now_ms);
+}
+
+void service_frame(uint32_t now_ms, uint32_t host_step) {
+    if (!g_on || !is_host()) return;
+    const uint32_t roster = wide_roster();
+    for (int p = 0; p < PLAYERS; ++p) {
+        hostpeer &hp = g_hp[p];
+        if (hp.f.state != ws::P_BEGUN && hp.f.state != ws::P_SENT) continue;
+        if (removal_admission_changed(hp.admission_generation) || roster != hp.f.roster_at_begin) {
+            host_abort_actions(p, ws::fsm_abort(hp.f, g_cfg, WS_ABORT_ROSTER), host_step);
+            continue;
+        }
+        ws::event e{ws::E_FRAME};
+        e.elapsed_ms   = (int)(now_ms - hp.begin_ms);
+        e.roster       = roster;
+        e.session_mode = session_mode();
+        e.peer_active  = peer_active(p) && (player_flags(p) & 0x06) == 0x06;
+        host_abort_actions(p, ws::fsm_step(g_cfg, hp.f, e), host_step);
+    }
+}
 
 void session_reset() {
     if (!g_on) return;
@@ -644,11 +752,16 @@ void on_tick_verdict(const v2::tick_verdict &v, uint32_t host_step) {
         if (r != ws::SKIP_BUSY && r != ws::SKIP_CONFIRM) skip_log(r, "");
         return;
     }
-    ws::event e{ws::E_INCIDENT};
+    const auto &authority = mh::participant_boundary::hosted::owner();
+    if (authority.pending()) return;
+    const uint32_t roster_now = wide_roster();
+    const uint64_t generation = authority.admission_generation();
+    ws::event      e{ws::E_INCIDENT};
     e.a                = v.step;
-    e.roster           = g_roster.word;
+    e.roster           = roster_now;
     const ws::action a = ws::fsm_step(g_cfg, hp.f, e);
     if (a.kind != ws::A_SEND_BEGIN) return;
+    hp.admission_generation = generation;
     uint8_t b[MAX_FRAME];
     send_frame(b, ws_put_begin(b, g_fp2, v.step, p));
     hp.begin_ms          = GetTickCount();
@@ -680,7 +793,16 @@ void on_frame(int sender, const uint8_t *buf, int len, uint32_t host_step) {
         }
         case T_WS_ABORT: {
             ws_abort_body b;
-            if (ws_get_abort(buf, len, g_fp2, h, b)) m_on_abort(h.step, b.reason);
+            if (ws_get_abort(buf, len, g_fp2, h, b)) {
+                if (is_host() && sender >= 0 && sender < PLAYERS && b.reason == WS_ABORT_ROSTER) {
+                    auto &hp = g_hp[sender];
+                    if ((hp.f.state == ws::P_BEGUN || hp.f.state == ws::P_SENT) &&
+                        (h.step == hp.f.begin_step || h.step == hp.f.capture_step))
+                        host_abort_actions(sender, ws::fsm_abort(hp.f, g_cfg, b.reason), host_step);
+                } else if (!is_host() && sender == g_m.host_id) {
+                    m_on_abort(h.step, b.reason);
+                }
+            }
             break;
         }
         case T_WS_DONE: {

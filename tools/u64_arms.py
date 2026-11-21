@@ -4,9 +4,10 @@
 Reached as `python tools/det_arms.py --determinism --u64 <arm> [--u64-relay] [--u53-config1]`; this module is
 the runner half (lane provisioning, argv, the incident knobs) and tools/check_u64_failure.py is the verdict.
 
-TOPOLOGY (the rig has two VMs and this box): host = vms[0] (id 0, the HUB), client1 = vms[1], client2 = the det3
-local lane, client3 = the det4 local lane (lane_alloc block `det4`). Peers of one match share the host's port
-(DET3_PORT). The host plays as a LIVE, UNDEFEATED hub (mp_host_u64.txt): every incident is a knob, not a gesture.
+TOPOLOGY (the rig has two VMs and this box): host = vms[0] (native id0, the HUB), client1 = vms[1],
+client2 = the det3 local lane, client3 = the det4 local lane (lane_alloc block `det4`). Client labels
+are launch roles, not native player IDs; checkers use match-owned session.json identities.
+Peers of one match share DET3_PORT. The host is live/undefeated (mp_host_u64.txt); incidents are knobs.
 
 THE KNOBS (what the plan's "shim delays" became, and why):
   * a peer's process ends abruptly:  `[harness] exit_process_at_step=N;exit_process_mode=0` (TerminateProcess) on the host
@@ -21,7 +22,7 @@ THE KNOBS (what the plan's "shim delays" became, and why):
 
 ARMS (name: what happens / what must hold):
   base4      no incident: 4 peers IDENTICAL, every peer logs the same epoch + ranking (the topology works at all).
-  elect4     the host dies at step 600, delays (c1 60, c2 0, c3 30 ms): client2 (NOT the lowest id) must be elected.
+  elect4     the host dies at step 600, delays (c1 240, c2 0, c3 120 ms): client2 (NOT the lowest id) must be elected.
   newhub     elect4, then the ELECTED hub dies too (step 1400): a second failover among the two left, 3 of 3 of its epoch.
   double     the host AND the rank-1 candidate die together (step 600): 2 of 4 survive, an even split -- Q1: BOTH survivors end
              ("connection lost"), consistently and promptly; nobody hangs, nobody plays on alone.
@@ -66,9 +67,11 @@ def _step_regex(n):
 
 
 EXIT_STEP = 600
-# The delays that make client2 the cheapest hub among {c1, c2, c3}: edges c1c2 60, c2c3 30, c1c3 90 ms (+ the LAN base).
-# cost(c) = the two largest edges at c: c1 150, c2 90, c3 120 -> c2, then c3, then c1.
-DELAYS = {1: 60, 2: 0, 3: 30}
+# Nominal edges c1c2 240, c2c3 120, c1c3 360 ms (+ measured LAN/scheduling cost).
+# Election costs c1 600, c2 360, c3 480 retain c2 > c3 > c1 with 120 ms nominal separation.
+# The former 30 ms separation was smaller than observed startup sampling variation.
+# Keep the fixed-winner and held-ranking checks: an unmet shaping precondition still fails.
+DELAYS = {1: 240, 2: 0, 3: 120}
 
 ARMS = {
     "base4": dict(
@@ -215,11 +218,26 @@ def run(args, cfg, arm, config1=False, relayed=False):
         if p != "host"
     ]
     net_peer = ["%d:mesh_test_delay_ms=%d" % (i, d) for i, d in sorted(spec["delay"].items()) if d]
+    harness_extra = (
+        "region_hash_step=1;synth_move=0;gameover_step=100000;gameover_stop=0"
+        if spec.get("conq")
+        else "region_hash_step=1"
+    )
+    if spec.get("minority"):
+        from mp_analyze import REGION_NAMES
+
+        incident = min(crash.values())
+        harness_extra += ";rdump_rid=%d;rdump_lo=%d;rdump_hi=%d" % (
+            REGION_NAMES.index("strat_players"),
+            max(1, incident - 2),
+            incident + 8,
+        )
     shim = None
     if spec.get("partition_at"):
         trig = [
             {
                 "cmd": "blackhole on",
+                "fast": True,
                 "when": [["c2", "mh_harness.log", _step_regex(spec["partition_at"])]],
             }
         ]
@@ -227,11 +245,10 @@ def run(args, cfg, arm, config1=False, relayed=False):
             trig.append(
                 {
                     "cmd": "blackhole off",
+                    "fast": True,
                     "after_prev": True,  # mp:U65: never in the same poll as the cut
-                    # evidence-gated, not step-gated: the det poll is 8 s, the sim runs ~100 steps/s, so a step bound can
-                    # fire in the SAME poll as the cut (the first heal arm: a 0.5 s blip, no failover at all). The heal
-                    # waits until the new hub's failover is over on the game side, and still lands inside the old host's
-                    # 10 s link timeout.
+                    # Service the real failover-over event within250ms, before the old host's
+                    # unchanged10s link watchdog retires its obsolete connections.
                     "when": [["c2", "mh_net.log", r"U63 failover over"]],
                 }
             )
@@ -286,11 +303,7 @@ def run(args, cfg, arm, config1=False, relayed=False):
             net_extra=";".join(net_parts),
             timeout=max(args.timeout, 600 + steps),
             extra_ini=[] if config1 else [D.PROMOTE_INI],
-            harness_extra=D.with_det_hash_kind(
-                "region_hash_step=1;synth_move=0;gameover_step=100000;gameover_stop=0"
-                if spec.get("conq")
-                else "region_hash_step=1"
-            ),
+            harness_extra=D.with_det_hash_kind(harness_extra),
             harness_extra_host=host_extra,
             harness_extra_peer=peer_extra + list(getattr(args, "harness_extra_peer", None) or ()),
             net_extra_peer=net_peer + list(getattr(args, "net_extra_peer", None) or ()),

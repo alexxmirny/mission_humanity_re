@@ -11,6 +11,7 @@
 // the answer is a new member here plus an accessor, not a `ptr<>` at the use site.
 //
 #include "sim/sim_state.h"
+#include "state/host_api.h"
 
 #include "addr/mh_bldg_type_callbacks.gen.h" // the extracted per-building-TYPE registry (SIM1-BLDGCB)
 
@@ -1063,8 +1064,15 @@ sim_state state() {
     // `state()` is a friend, which is what makes this reachable. It MUST match v.caps -- the view
     // and the store index the same rosters, and a disagreement between them would put a read and a
     // write on the same (player, slot) into different records.
-    own.caps_ = v.caps;
+    own.caps_                    = v.caps;
+    own.storage_policy_observer_ = +[](void *, const mh_storage_policy_request *request,
+                                       mh_storage_policy_result *result) -> int32_t {
+        return mh::host().storage_policy(request, result);
+    };
 
+    own.order_tasks_observer_ = +[](void *, const mh_order_tasks_request *q, mh_order_tasks_result *r) -> int32_t {
+        return mh::host().order_tasks(q, r);
+    };
     return sim_state{v, own};
 }
 

@@ -5,6 +5,7 @@
 // unbacked-enum literal derivation.
 //
 #include "sim/sim_unit_state_move_walker.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 #include "sim/move/blocked.h"               // mods:M1H lane C: the blocked-unit protocol (3b/3c/3d), shared with the retail splice
 #include "sim/move/group_speed.h"           // mods:M1H lane C: the walk half of move_group_speed (4a)
@@ -132,6 +133,7 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
 
         // 0x0047ca09-0x0047ca26: the sub-tile animation just finished -- settle at the current tile.
         own.passable_at(u.x, u.y) = 0;
+        if (!order_tasks_adapter::primary_access(v, own)) return;
 
         // 0x0047ca32-0x0047cd42: re-check the combat order this microstep-completion may have earned.
         if (u.order == MOVE_WALKER_STATE_ATTACK_UNIT || u.order == MOVE_WALKER_STATE_ATTACK_UNIT_RETURN) {
@@ -146,10 +148,12 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                 }
                 c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_STILL_CHASING);
                 if (u.order == MOVE_WALKER_STATE_ATTACK_UNIT_RETURN &&
-                    (u.x != u.home_x || u.y != u.home_y)) {
+                    (u.x != u.home_x || u.y != u.home_y) &&
+                    !order_tasks_adapter::suppress_home(own, player, uint32_t(unit_index))) {
                     c.unit_order_move_auto(player, unit_index, u.home_x, u.home_y);
                 }
                 c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+                order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
             } else {
                 // 0x0047ca88-0x0047cc65: target still alive -- in weapon range?
                 const int32_t target_class =
@@ -195,6 +199,7 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                 }
                 c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
                 c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_STILL_CHASING);
+                order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
             } else {
                 // 0x0047cd91-0x0047ce36: target still standing -- fire if in range, else do nothing.
                 const int32_t target_class =
@@ -228,12 +233,17 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
     }
 
     if (path_at(u.path_cursor).heading == 0) {
+        const auto task = order_tasks_adapter::capture(v, own);
         // ---- 0x0047cf28-0x0047d17d: path exhausted (terminal sentinel) -------------------------------
-        const bool at_goal = (u.x == u.goal_x && u.y == u.goal_y);
+        const bool at_goal      = (u.x == u.goal_x && u.y == u.goal_y);
+        const auto placement    = u.order == UNIT_STATE_PATROL_SWAP && !at_goal
+                                      ? order_tasks_adapter::placement_patrol(own, player, unit_index)
+                                      : order_tasks_adapter::ground_patrol_placement{};
+        const bool owned_patrol = placement.eligible && placement.group == uint32_t(u.move_group_id);
         const bool should_settle =
             at_goal || u.order == MOVE_WALKER_STATE_ATTACK_BUILDING ||
             u.order == MOVE_WALKER_STATE_ATTACK_UNIT || u.order == MOVE_WALKER_STATE_ATTACK_UNIT_RETURN ||
-            u.order == UNIT_STATE_PATROL_SWAP || u.order == MOVE_WALKER_STATE_SQUAD_MERGE;
+            (u.order == UNIT_STATE_PATROL_SWAP && !owned_patrol) || u.order == MOVE_WALKER_STATE_SQUAD_MERGE;
 
         if (!should_settle) {
             // 0x0047cfa0-0x0047cfc2: still genuinely mid-journey with an exhausted buffer -- re-plan.
@@ -294,6 +304,7 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                                            reinterpret_cast<uint32_t *>(&u.target_fine_y));
         }
 
+        order_tasks_adapter::terminal(own, task, u);
         if (u.x == u.goal_x && u.y == u.goal_y) {
             c.unit_notify_status(player, unit_index, MOVE_WALKER_NOTIFY_GOAL_REACHED);
         } else {
@@ -335,8 +346,13 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
             if (detour_requested < 0)
                 detour_requested = c.path_step_check_and_request_detour(old_x, old_y, static_cast<int32_t>(new_x),
                                                                         static_cast<int32_t>(new_y));
-            const mvc::blocked_params bp = mvc::make_blocked_params(mf.block_wait_ms, mf.keep_sidestep, mf.repath_cooldown_ms, mf.block_reset_moving,
-                                                                    mf.replan_detour_cap, mf.enter_queue);
+            mvc::blocked_params bp = mvc::make_blocked_params(mf.block_wait_ms, mf.keep_sidestep, mf.repath_cooldown_ms, mf.block_reset_moving,
+                                                              mf.replan_detour_cap, mf.enter_queue);
+            if (bp.keep && u.order == UNIT_STATE_PATROL_SWAP &&
+                (detour_requested || u.path_blocked_retry_count >= bp.wait_limit)) {
+                const auto placement = order_tasks_adapter::placement_patrol(own, player, unit_index);
+                bp.owned_patrol      = placement.eligible && placement.group == uint32_t(u.move_group_id);
+            }
             if (!bp.active()) {
                 if (detour_requested != 0) {
                     u.path_blocked_retry_count = 0xc9;
@@ -354,7 +370,7 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                 mvc::twin_hit(mvc::TS_BLOCKED);
                 // mods:M1DT 4a: who stands on the destination tile (an own unit; walking = a ground mover in state 0x0f)
                 mvc::blocker_info bi;
-                if (bp.reset_moving) {
+                if (bp.reset_moving || bp.owned_patrol) {
                     const auto &bt = own.tile_object_at(new_x, new_y);
                     if (bt.building != 0 && bt.class_owner == static_cast<uint8_t>(player | 0x80u) && bt.building < v.caps.units) {
                         const unit &bu    = own.unit_at(player, bt.building);
@@ -363,6 +379,9 @@ void unit_state_move_walker(const sim_view &v, sim_store &own, const unit_state_
                         bi.walking_friend = bu.state == 0x0f && v.cfg_units[bu.unit_proto_id].move_op_code == 0x0f && (eb >> 63) == 0 && (eb << 1) != 0;
                     }
                 }
+                mvc::libmh_world<unit_state_move_walker_calls> mw{v, own, c};
+                bp.patrol_yielded = mvc::patrol_yield(mw, player, u, detour_requested != 0, bp, bi, mf.queue_flank_guard);
+                if (bp.patrol_yielded) detour_requested = 2;
                 switch (mvc::blocked_decide(u, detour_requested != 0, bp, [&](uint32_t slot, int entry) -> path_waypoint & { return own.path_buffer_at(player, static_cast<int32_t>(slot), entry); }, bi)) {
                     case mvc::blocked_next::wait: u.activity_clock += MOVE_WALKER_BLOCKED_ACTIVITY_BUMP; break;
                     case mvc::blocked_next::replan:

@@ -6,14 +6,14 @@
   "frame_cuts": [
    "llm_strat_frame_sim_only"
   ],
-  "scopes": 83,
+  "scopes": 96,
   "buckets": {
    "clean": 43,
    "crossed": 10,
-   "blind": 10,
-   "readback": 20
+   "blind": 24,
+   "readback": 19
   },
-  "readback_pairs": 43,
+  "readback_pairs": 42,
   "crossed_pairs": 101
  },
  "scopes": [
@@ -456,6 +456,18 @@
    "readback": []
   },
   {
+   "channel": "event",
+   "kind": "LIBMH_EVK_UNIT_WEAPON_FIRED",
+   "kind_no": 23,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
    "channel": "invalidate",
    "kind": "LIBMH_EVK_INV_TACT_ACTIVE_COUNT_HUD",
    "kind_no": null,
@@ -530,45 +542,6 @@
    "frame_cuts_crossed": [],
    "bucket": "clean",
    "readback": []
-  },
-  {
-   "channel": "invalidate",
-   "kind": "LIBMH_EVK_INV_PLANET_GFX_SETUP",
-   "kind_no": null,
-   "dispatch": [
-    "cfg_final_planet_FillBankData"
-   ],
-   "targets_absent_from_graph": [],
-   "reachable_fns": 1,
-   "write_symbols": 1,
-   "frame_cuts_crossed": [],
-   "bucket": "readback",
-   "readback": [
-    {
-     "region": "PLANETS",
-     "symbol": "Planets",
-     "readers": [
-      "SwitchToPlanet",
-      "game_AddPlanetToAvailable",
-      "game_HandleInvasion",
-      "game_SaveGame",
-      "llm_game_land_players_on_planet",
-      "llm_game_load",
-      "llm_game_session_clear_system_presence_flag",
-      "llm_prod_bldg_depart_finalize",
-      "llm_progress_finalize_acquire",
-      "llm_progress_propagate_unlocks",
-      "llm_strat_bldg_completion_dispatch",
-      "llm_strat_invasion_chance_roll",
-      "llm_strat_planet_transition_finalize",
-      "llm_strat_player_presence_lost",
-      "llm_strat_prod_set_transfer_destination",
-      "llm_strat_production_complete",
-      "llm_strat_sim_tick",
-      "llm_strat_unit_state_ascend_to_orbit"
-     ]
-    }
-   ]
   },
   {
    "channel": "invalidate",
@@ -1231,6 +1204,162 @@
    ],
    "targets_absent_from_graph": [],
    "reachable_fns": 1,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "invalidate",
+   "kind": "LIBMH_EVK_INV_PLANET_GFX_SETUP",
+   "kind_no": 31,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_UNIT_ORDER_COMMITTED",
+   "kind_no": 24,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ATTACK_GROUP_BEGIN",
+   "kind_no": 25,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ATTACK_GROUP_END",
+   "kind_no": 26,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_ADMITTED",
+   "kind_no": 27,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ATTACK_TARGET_ASSIGNED",
+   "kind_no": 28,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_APPLIED",
+   "kind_no": 29,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_DISCARDED",
+   "kind_no": 30,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_WORLD_RESET",
+   "kind_no": 31,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_UNIT_PRIMARY_TERMINAL",
+   "kind_no": 32,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_MOVE_GROUP_REVOKED",
+   "kind_no": 33,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_METADATA_BEFORE",
+   "kind_no": 34,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
+   "write_symbols": 0,
+   "frame_cuts_crossed": [],
+   "bucket": "blind",
+   "readback": []
+  },
+  {
+   "channel": "order_observation",
+   "kind": "LIBMH_EVK_ORDER_METADATA_AFTER",
+   "kind_no": 35,
+   "dispatch": [],
+   "targets_absent_from_graph": [],
+   "reachable_fns": 0,
    "write_symbols": 0,
    "frame_cuts_crossed": [],
    "bucket": "blind",

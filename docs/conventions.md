@@ -199,6 +199,66 @@ recur, and (b) does it mutate a database:
 
 ---
 
+## Temporary data and cleanup
+
+Use `tools/tmp_lifecycle.py` before creating task scratch. Normal gate, UI, rig and selftest
+runners create owned runs automatically; manual tools must use the returned work directory or
+explicit output arguments and register other exact paths. Legacy/unmanaged folders are not
+automatically adopted or deleted.
+
+|Data|Home|
+|---|---|
+|Disposable output|`tmp/runs/<purpose>/<task-or-routine>/<UTC-unique-id>`|
+|Private measured/generator inputs|`workdir/tool_inputs`|
+|Mutable gate/UI histories and ownership records|`workdir/tool_state`|
+|Needed originals, evidence and report uploads|Machine-local private evidence root|
+|Redistributable canonical fixtures/journals/baselines|Existing versioned locations|
+
+`tools/tool_paths.py` resolves `input:` and `evidence:` references in supported consumers.
+`MH_TOOL_INPUT_ROOT`, `MH_TOOL_STATE_ROOT` and `MH_EVIDENCE_ROOT` configure persistent roots;
+none may resolve inside `tmp`. A provenance string is not automatically an executable URI in
+every tool. Keep immutable fixture metadata historical; update live consumers and handoffs.
+
+```text
+python tools/tmp_lifecycle.py new --purpose research --task mp-U72
+# Use the emitted ID, MH_TMP_WORK_DIR and environment for the task's outputs.
+python tools/tmp_lifecycle.py register --id ID --path REQUIRED_FILE --role evidence
+python tools/tmp_lifecycle.py finish --id ID --verdict PASS
+python tools/tmp_lifecycle.py plan --out OUTSIDE_TMP/cleanup.jsonl
+# Use the emitted owner-plan path and its SHA, not the entries file's SHA.
+python tools/tmp_lifecycle.py apply --plan OWNER_PLAN --approved-sha OWNER_PLAN_SHA
+```
+
+Alternatively, `run --purpose PURPOSE --task TASK -- COMMAND ...` owns a command's lifetime.
+`new` is a sticky manual owner: explicitly finish it. Register `generated`, `input`, `source`
+and `evidence` roles truthfully; generated paths outside `tmp` are never deleted by the janitor.
+At completion select only concretely needed material, verify its private copy and SHA, and
+update exact live references. Do not mirror an entire run without a retention purpose.
+
+Final verdict means children reaped, postchecks and cost checks complete. Passing children
+await their enclosing adjudicator. Failed/interrupted/human data remain retained; disposal
+requires `finish --reviewed --reason ...` using the original verdict. `protect --path ... --reason ...`
+adds an identity-bound hold; `release --path ... --reason ...` explicitly ends it. A hold or an
+existing alias does not prove its required contents exist.
+
+Plans bind exact metadata/snapshot bytes, payload identities/hashes, verified keepers and all
+registered consumers/holds. Apply rechecks under run locks and host leases; mutation or a new
+consumer invalidates authorization. Cleanup never follows reparse targets, never deletes outside
+`tmp`, defers unreviewed hardlinks/aliases, and prunes directories only when empty. Receipts and
+deletion journals live outside the removal tree. No TTL or file-age heuristic authorizes deletion.
+
+Full/release gate preflight cleans disposable runs and requires 16 GiB free before build
+(`TMP_FULL_HEADROOM_BYTES`, based on retained release-growth evidence plus headroom).
+`--plan` is read-only; light/smoke runs do not auto-clean. Unknown legacy output stops preflight
+for an explicit decision. This is completion/on-demand/pre-full cleanup, not another service.
+
+`drain_reports.py` defaults to the private evidence store and serializes per-store updates.
+An archived report ID requires keeper path, SHA and receipt; a discarded ID requires explicit
+approval. Neither `drained_at` nor a missing local ZIP alone prevents or authorizes re-fetching.
+Review retention when the task closes. Another local path is not disaster-recovery backup.
+
+---
+
 ## Documentation and generated docs
 
 - `docs/symbols.md` and `docs/structs.md` are **fully generated** symbol and struct tables. Never

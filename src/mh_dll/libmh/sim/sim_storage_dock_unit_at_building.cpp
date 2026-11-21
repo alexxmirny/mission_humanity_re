@@ -7,6 +7,7 @@
 // what surfaced the park_y offset hazard documented in the header.
 //
 #include "sim/sim_storage_dock_unit_at_building.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -83,6 +84,8 @@ void storage_dock_unit_at_building(const sim_view &v, sim_store &own,
 
     // 0x0046384e-0x00463858: fire the UI refresh event, unconditionally, every call.
     c.set_event(kEventBuildProjectsRefresh);
+    order_tasks_adapter::request(own, mh::order_tasks::host_protocol::operation::cancel_actor, player, uint32_t(unit_idx));
+    own.storage_policy(mh::storage_policy::operation::cancel, player, unit_idx);
 }
 
 } // namespace detail

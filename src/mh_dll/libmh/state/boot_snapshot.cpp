@@ -34,7 +34,7 @@ const region_id RID_TLO_        = RID_TLO_REGISTRY;
 // Read the live 72-byte table into g_tlo. ONLY legal while the region still sits at its stock base:
 // once a host has bound it somewhere else the `char *`s in it are whatever that host allocated, and
 // dereferencing them would be a wild read. A rebased-and-not-yet-imported table stays zeroed, which
-// is the fail-safe direction -- tlo_index_for then returns the original's own default.
+// keeps an unimported table empty; the serialized block remains part of the boot schema.
 void materialise_tlo() {
     if (g_tlo_valid) return;
     std::memset(g_tlo, 0, sizeof(g_tlo));
@@ -237,33 +237,4 @@ void reset_session_latch_for_test() {
     g_session_begun = false;
 }
 
-// ---- cfg_GetTloIndex, over the imported table ------------------------------------------------------
-//
-// The original @0x004b9582 walks the 8-entry registry with a case-insensitive compare and returns 1
-// (Jungle) when nothing matches -- the `if (7 < i) return 1;` fallthrough, transcribed here. This is
-// what closes the sim/libtrans/sim_lt_cfg_planet.cpp census site: the lookup was always ours to do,
-// it just had no data of its own to do it over.
-uint8_t tlo_index_for(const char *file_name) {
-    materialise_tlo();
-    if (file_name == nullptr) return 1u;
-    for (uint32_t i = 0; i < TLO_ENTRIES; ++i) {
-        const char *a = file_name;
-        const char *b = g_tlo[i].name;
-        for (;; ++a, ++b) {
-            char ca = *a, cb = *b;
-            if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca - 'A' + 'a');
-            if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb - 'A' + 'a');
-            if (ca != cb) break;
-            if (ca == '\0') return g_tlo[i].index;
-        }
-    }
-    return 1u;
-}
-
 } // namespace mh::state::boot
-
-// ---- the C export (libmh.h) ------------------------------------------------------------------------
-
-extern "C" int libmh_import_snapshot(const void *blob, size_t n) {
-    return mh::state::boot::import(blob, n);
-}

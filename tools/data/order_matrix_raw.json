@@ -25,12 +25,12 @@
    },
    {
     "site": "0x00466c77",
-    "callee": "llm_unit_transport_unload_docked",
+    "callee": "llm_unit_squad_split_docked",
     "callee_addr": "0x004891d8"
    },
    {
     "site": "0x00466c85",
-    "callee": "llm_unit_transport_unload_field",
+    "callee": "llm_unit_squad_split_field",
     "callee_addr": "0x00488a8b"
    },
    {
@@ -2802,7 +2802,7 @@
    ]
   },
   {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "addr": "0x0046e76c",
    "sites": [
     {
@@ -2822,7 +2822,7 @@
    ]
   },
   {
-   "name": "llm_unit_order_disembark_soldiers_enqueue",
+   "name": "llm_unit_order_squad_split_enqueue",
    "addr": "0x0046e7d6",
    "sites": [
     {

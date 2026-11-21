@@ -195,6 +195,11 @@ void bind(HMODULE self) {
     host.abi             = LIBMH_MODULE_ABI;
     host.run_dir         = MH_RunDir();
     const int module_abi = mod_init(&host);
+    if (static_cast<unsigned>(module_abi) != LIBMH_MODULE_ABI) {
+        mod_log("; [modules] libmh: initialization refused; no spine pointers published.\n");
+        FreeLibrary(h);
+        return;
+    }
 
     g_module = h;
     for (int i = 0; i < MH_LIBMH_CONTRACT_COUNT; ++i) g_libmh_fn[i] = t[i];

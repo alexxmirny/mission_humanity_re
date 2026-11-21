@@ -1,0 +1,39 @@
+# DATAEXT1: dedicated libmh-bound capture label; scenario steps mirror mods_assets_solo.txt.
+# DATAEXT1: select the new mod-only map and capture its preview, start a fresh local game,
+# land the mother and capture the result. The post-check requires actual mounted BANKI, bank,
+# tileset and map loads and verifies the preview and load resolve the same snapshot bytes.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture mods_sp_picker
+clickl Ok
+
+present Network players
+settled Start
+capture mg_lobby
+dump
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+simstep 300
+capture mg_start
+simresume
+simrclick 480 330 ctrl
+simstep 600
+capture mg_landed
+log mod assets: selected, loaded and landed
+end

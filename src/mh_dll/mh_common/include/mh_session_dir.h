@@ -348,6 +348,7 @@ struct MH_SessionRecord {
     // its own values and closes with the host's. tools/replay_match_segment.py replays a match with them.
     char gameplay[2048];
     char gameplay_src[16];
+    int  lobby_speed_pct; // 0=native campaign/no match override; 100..200=frozen lobby match
 };
 
 // RL15: the session close `reason` (gameover|leave|host_left|link_lost|timeout|quit|rolled) plus
@@ -512,7 +513,9 @@ inline int mh_session_json(const MH_SessionRecord *r, char *dst, int cap) {
     at = mh_sd_put_json(dst, cap, at, r->gameplay);
     at = mh_sd_put(dst, cap, at, "\",\n  \"gameplay_src\": \"");
     at = mh_sd_put_json(dst, cap, at, r->gameplay_src);
-    at = mh_sd_put(dst, cap, at, "\"\n}\n");
+    at = mh_sd_put(dst, cap, at, "\",\n  \"lobby_speed_pct\": ");
+    at = mh_sd_put_int(dst, cap, at, r->lobby_speed_pct);
+    at = mh_sd_put(dst, cap, at, "\n}\n");
     return at;
 }
 

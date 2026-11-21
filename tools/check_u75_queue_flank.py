@@ -40,13 +40,15 @@ import re
 import sys
 import tempfile
 
+import tmp_runs
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-import check_cancel_task  # noqa: E402  (net_log_lines)
-import check_storage_purge  # noqa: E402  (harness_log_lines)
+import check_cancel_task
+import check_storage_purge
 
-SAVE_DIR = os.path.join(REPO, "tmp", "u75")
+SAVE_DIR = None  # The suite supplies its owned cross-row comparison directory.
 KEY = "move_queue_flank_guard"
 CARRIER = re.compile(r"; move carrier \[net\] " + KEY + r"=(-?\d+): (.*)$")
 HIT_SHIP = re.compile(r"; move hits .*\bqueue_flank=(\d+)")
@@ -457,6 +459,11 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    global SAVE_DIR
+    ap.add_argument(
+        "--work-dir",
+        help="Explicit shared directory for ship/lib comparisons; defaults to the owned row",
+    )
     ap.add_argument("--arm", choices=["ship", "ship_off", "lib", "lib_off"])
     ap.add_argument(
         "--vs",
@@ -468,6 +475,7 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    SAVE_DIR = a.work_dir or tmp_runs.current_output("u75")
     if not a.arm or len(a.run_dir) != 1:
         ap.error(
             "usage: check_u75_queue_flank.py --arm ship|ship_off|lib|lib_off <session-run-dir>"

@@ -4,7 +4,7 @@
 #   a. an empty tile 22 tiles off the view's left edge: a deferred move; frames b_arrived after the unit walked there;
 #   b. a tile in the unexplored dark: the same move ("tile not visible" arm);
 #   c. control: the SAME tile as (a) clicked on the bare world (Tab released) -> the unit's goal is the same tile;
-#   d. a double click on the overlay -> the confirmed move; e. Shift held -> the confirmed move;
+#   d. a double click on the overlay -> the confirmed move; e. Ctrl held -> the confirmed move;
 #   f. an enemy building on the overlay -> an attack order (control: the same building clicked on the bare world, same goal);
 #   h. a building armed for placement -> cancelled, no order (arming drops the unit selection, as in the stock game);
 #   g. nothing selected -> no order.
@@ -34,25 +34,25 @@ gameclock +100
 logsel selected
 loggoal selected
 # a. the overlay, camera-centred: pixel (407,357) is tile (54,62), the world tile at screen (304,304)
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 407 357 10
 screensettled
 capture bigmap_orders__a_held
 simrclick 407 357
 cursorhold 407 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +8000
 loggoal a_overlay
 screensettled
 capture bigmap_orders__b_arrived
 # b. a tile in the unexplored dark (pixel (230,170) = tile (29,35)): the "tile not visible" arm, the same deferred move
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 230 170 10
 screensettled
 simrclick 230 170
 cursorhold 230 170 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
 loggoal b_far
@@ -62,34 +62,35 @@ simrclick 304 304
 cursorhold 600 400 10
 gameclock +3000
 loggoal c_control
+screensettled
 # d. a double click on the overlay (pixel (350,430) = tile (46,8)): the confirmed move
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 350 430 10
 screensettled
 rclick 350 430
 rclick 350 430
 cursorhold 350 430 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
 loggoal d_double
-# e. Shift held for the click (pixel (414,357) = tile (55,62), visible): the confirmed move
-hotkeydown Tab
+# e. Ctrl held for the click (pixel (414,357) = tile (55,62), visible): the confirmed move
+rawkey 0x0f down
 cursorhold 414 357 10
 screensettled
-simrclick 414 357 shift
+simrclick 414 357 ctrl
 cursorhold 414 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
-loggoal e_shift
+loggoal e_ctrl
 # f. an enemy building (the crashed ship, pixel (456,371) = tile (61,0)): an attack order
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 456 371 10
 screensettled
 simrclick 456 371
 cursorhold 456 371 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +4000
 loggoal f_attack
@@ -112,12 +113,12 @@ gameclock +100
 logbuild h_armed
 loggoal h_armed
 capture bigmap_orders__c_armed
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 414 357 10
 screensettled
 simrclick 414 357
 cursorhold 414 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +3000
 logbuild h_cancelled
@@ -125,14 +126,82 @@ loggoal h_cancelled
 capture bigmap_orders__d_cancelled
 # g. nothing selected (arming a building dropped the unit selection already): the overlay right click gives no order
 logsel g_none
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 407 357 10
 screensettled
 simrclick 407 357
 cursorhold 407 357 10
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 gameclock +1000
 loggoal g_none
 capture bigmap_orders__f_nothing
+# New selection proof uses a fresh saved world AFTER the unchanged order/capture workload.
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+cursorhold 600 400 6
+screensettled
+gameclock +600
+camto 45 53
+mark qol_selection
+# Same-type selection: exact rosters in the independently reloaded saved world.
+simclick 735 445
+logsel qol_single5
+simdoubleclick 735 445
+logsel qol_plain
+capture bigmap_orders__qol_plain
+simclick 727 622
+logsel qol_seed2
+camto 45 47
+cursorhold 600 400 6
+logsel qol_shift_before
+capture bigmap_orders__qol_shift_before
+simdoubleclick 735 637 shift
+logsel qol_shift_union
+capture bigmap_orders__qol_shift_union
+simdoubleclick 735 637
+logsel qol_replace_offscreen
+capture bigmap_orders__qol_replace_offscreen
+camto 45 53
+cursorhold 600 400 6
+# Ctrl retains native single-unit toggle semantics, including each half of a double-click.
+simclick 727 622
+logsel qol_ctrl_seed2
+rawkey 0x1d down
+keystate 0x1d 1
+simclick 735 445
+logsel qol_ctrl_add5
+simclick 735 445
+logsel qol_ctrl_remove5
+simdoubleclick 735 445
+logsel qol_ctrl_double
+rawkey 0x1d up
+keystate 0x1d 0
+# A normal world move supplies the selected-unit target frame without disturbing old captures.
+simclick 735 445
+simrclick 304 304
+gameclock +100
+loggoal qol_current_move
+capture bigmap_orders__qol_move_target
+gameclock +300
+loggoal qol_ground_normalized @0:5
+capture qol_ground_normalized
+gameclock +200
+capture qol_ground_phase
+simclick 300 300
+logsel qol_ground_deselected
+capture qol_ground_cleared
 end

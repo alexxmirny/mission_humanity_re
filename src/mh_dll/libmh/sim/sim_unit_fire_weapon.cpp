@@ -166,11 +166,15 @@ void unit_fire_weapon(const sim_view &v, sim_store &own, const unit_fire_weapon_
         // Shared by the case-2/6 and case-1/5/8 bodies (0x0048c408-0x0048c536): identical argument
         // shape, only mount_x/mount_y/own_elevation/target_elevation differ by which recompute ran.
         const auto fire_projectile = [&]() {
-            c.projectile_spawn(
+            return c.projectile_spawn(
                 mount_x, mount_y, own_elevation, static_cast<uint32_t>(target_fine_x),
                 static_cast<uint32_t>(target_fine_y), target_elevation, static_cast<int32_t>(wid),
                 static_cast<uint8_t>(target_class), static_cast<uint16_t>(target_ref), target_index,
                 static_cast<uint32_t>(player) | 0x80u, unit_index);
+        };
+        const auto notify_fired = [&]() {
+            mh::state::emit_event(LIBMH_EVC_EVENT, LIBMH_EVK_UNIT_WEAPON_FIRED, player,
+                                  unit_index, static_cast<int32_t>(target_ref), target_index);
         };
 
         // Shared ammo/pocket/reload_timer/enabled bookkeeping, identical in case 1/5/8 (0x0048c53b-
@@ -195,7 +199,7 @@ void unit_fire_weapon(const sim_view &v, sim_store &own, const unit_fire_weapon_
             case 6: {
                 // case 2/6 body (0x0048c342-0x0048c414): a first, sound-less, ammo-less shot.
                 recompute_mount_or_soldier_pos(1);
-                fire_projectile();
+                if (fire_projectile()) notify_fired();
                 [[fallthrough]];
             }
             case 1:
@@ -210,7 +214,7 @@ void unit_fire_weapon(const sim_view &v, sim_store &own, const unit_fire_weapon_
                     // sink re-runs that exact pair synchronously at emit.
                     c.snd_play_at(w.sound_fire, fine_to_tile(mount_x), fine_to_tile(render_y));
                 }
-                fire_projectile();
+                if (fire_projectile()) notify_fired();
                 consume_ammo_and_reload();
                 break;
             }
@@ -271,6 +275,7 @@ void unit_fire_weapon(const sim_view &v, sim_store &own, const unit_fire_weapon_
                                     w.power[player], ring_count,
                                     static_cast<uint32_t>(w.area_damage_owner_filter), killer_info,
                                     unit_index);
+                notify_fired();
 
                 consume_ammo_and_reload();
                 break;

@@ -1,0 +1,11 @@
+# Per-clip still time in seconds, {Res-relative clip ref: seconds}; beats the defaults in stills.py
+# (50% of the clip; 3% for unit turntable clips, which start on the front view).
+# Review: tmp/wiki_art/review/stills_units_*.png (python -m src.formats.wiki.art --sheets).
+# Alien ground vehicles: the clip starts on the REAR (exhausts), 0.60 s is the side-front 3/4 view.
+times:
+  obcy_p/czol1.avi: 0.6
+  obcy_p/czol2.avi: 0.6
+  obcy_p/czol3.avi: 0.6
+  obcy_p/raki1.avi: 0.6
+  obcy_p/raki2.avi: 0.6
+  obcy_p/raki3.avi: 0.6

@@ -147,11 +147,11 @@ inline int choose_victim(int head, int count, int cap, GetFrame get) {
 // heads. The merge cannot reorder, so none of that can bite; the only frames missing from the
 // delivered stream are the ones lane H explicitly evicted.
 //
-// WHY IT IS INDICES AND NOT FRAMES. This structure owns sequence numbers and ring arithmetic and
-// nothing else: `push` returns the POSITION in a lane the caller should write its frame at, `pop`
-// returns the position it should read. The caller keeps the storage -- which is what lets the two
-// lanes have DIFFERENT slot sizes, and that is where the memory question answers itself rather than
-// being answered by a constant. A lane-H frame is exactly BARE_HORIZON_LEN bytes BY CONSTRUCTION (the
+// WHY IT IS INDICES AND NOT FRAMES. This structure owns arrival links and free positions, not payloads:
+// `push` returns the POSITION in a lane the caller should write its frame at, `pop` returns the
+// position it should read. Stable positions also let a held producer stay queued while other producers
+// fund its final simulation step. The caller keeps differently sized lane storage. A lane-H frame is
+// exactly BARE_HORIZON_LEN bytes BY CONSTRUCTION (the
 // classifier admits nothing else), so lane H does not need the full-datagram slot the old single ring
 // gave every frame. See net_transport.cpp for the sizes that fall out.
 
@@ -165,55 +165,33 @@ struct push_result {
     int  evicted_pos = -1;              // which position that was (valid iff evicted)
 };
 
-// What `pop` decided: which lane's head is next in ARRIVAL order.
+// What `pop` decided: the next eligible frame in ARRIVAL order.
 struct pop_result {
     bool ok    = false;
     lane which = lane::must_keep;
     int  pos   = -1;
 };
 
-// Arrival-order comparison done as a SIGNED difference rather than `a < b`, so a wrapped sequence
-// counter still orders correctly. At the measured flood (~1570 frames/s) a uint32 wraps in about a
-// month of continuous play, which no match reaches -- but a comparison that is only correct because
-// of an assumption about session length is a comparison waiting to be wrong.
-inline bool seq_before(uint32_t a, uint32_t b) {
-    return static_cast<int32_t>(a - b) < 0;
-}
-
 template <int CAP_H, int CAP_M>
 class lane_queue {
+    static_assert(CAP_H > 0 && CAP_M > 0, "both receive lanes need storage");
+
 public:
     static constexpr int cap_h = CAP_H;
     static constexpr int cap_m = CAP_M;
 
     void reset() {
-        head_h_ = count_h_ = head_m_ = count_m_ = 0;
-        next_seq_                               = 0;
-        high_water_ = high_h_ = high_m_ = 0;
+        first_ = last_ = first_h_ = last_h_ = 0;
+        free_h_ = free_m_ = used_h_ = used_m_ = 0;
+        count_h_ = count_m_ = high_water_ = high_h_ = high_m_ = 0;
         evicted_ = refused_ = 0;
-        // epoch_ is deliberately NOT touched here -- reset() is the transport boundary (a fresh dial
-        // or a torn-down link), not a match boundary, and the epoch counts match boundaries only. See
-        // reset_counters() below.
+        // The transport boundary empties frames, not the match-boundary epoch.
     }
 
-    // THE MATCH-BOUNDARY RESET (mp:U41b). `reset()` is the TRANSPORT boundary: it empties the lanes,
-    // which is right when the link is torn down and wrong when it is not -- a host_rematch keeps the
-    // link up, and frames already queued belong to whoever reads them next. So this one keeps every
-    // queued frame, its sequence and its lane, and restarts only the PER-MATCH counters: evicted and
-    // refused go to zero, and each high-water restarts at the depth that is ACTUALLY there (not zero,
-    // which would be a high-water below the current depth -- a number that cannot have happened).
-    //
-    // mp:U41d -- THE EPOCH. rematch_rollup's magnitude proof (does match 2's high-water read lower
-    // than match 1's) is luck-dependent: whether it does depends on how deep either match happened to
-    // queue, which is exactly the kind of thing a real reset should NOT have to rely on. `epoch_` is
-    // a marker only THIS function can move -- incremented here and nowhere else, so its value is
-    // proof that reset_counters() itself ran, not evidence reconstructed from traffic that could have
-    // happened for other reasons. A build that skips the call (the mutation qmatchtest arms) leaves
-    // the epoch exactly where match 1 left it.
     void reset_counters() {
         high_h_     = count_h_;
         high_m_     = count_m_;
-        high_water_ = count_h_ + count_m_;
+        high_water_ = depth();
         evicted_ = refused_ = 0;
         ++epoch_;
     }
@@ -226,79 +204,118 @@ public:
     int      high_water_m() const { return high_m_; }
     long     evicted() const { return evicted_; }
     long     refused() const { return refused_; }
-    unsigned epoch() const { return epoch_; } // mp:U41d -- bumps ONLY inside reset_counters()
+    unsigned epoch() const { return epoch_; }
 
     push_result push(lane l) {
         push_result r;
-        // `bulk` is T2's class and never reaches the game queue; if one ever did, treating it as
-        // must_keep is the safe direction -- `lane_evictable` says only H may lose a frame.
-        if (l == lane::supersedable) {
-            if (count_h_ >= CAP_H) {
-                r.evicted     = true;
-                r.evicted_pos = head_h_;
-                head_h_       = next_pos(head_h_, CAP_H);
-                --count_h_;
-                ++evicted_;
-            }
-            r.pos         = (head_h_ + count_h_) % CAP_H;
-            seq_h_[r.pos] = next_seq_++;
-            ++count_h_;
-            r.which    = lane::supersedable;
-            r.accepted = true;
-        } else {
-            if (count_m_ >= CAP_M) {
-                ++refused_;
-                return r; // accepted stays false -- the caller must report this, not swallow it
-            }
-            r.pos         = (head_m_ + count_m_) % CAP_M;
-            seq_m_[r.pos] = next_seq_++;
-            ++count_m_;
-            r.which    = lane::must_keep;
-            r.accepted = true;
+        const bool  h = l == lane::supersedable;
+        if (h && count_h_ == CAP_H) {
+            const int id  = first_h_;
+            r.evicted     = true;
+            r.evicted_pos = id - 1;
+            release(id);
+            ++evicted_;
+        } else if (!h && count_m_ == CAP_M) {
+            ++refused_;
+            return r;
         }
+        int &free = h ? free_h_ : free_m_;
+        int &used = h ? used_h_ : used_m_;
+        int  id;
+        if (free) {
+            id   = free;
+            free = node_at(id).next;
+        } else {
+            id = (h ? 0 : CAP_H) + ++used;
+        }
+        node &n = node_at(id);
+        n       = {};
+        n.prev  = last_;
+        if (last_) node_at(last_).next = id;
+        else first_ = id;
+        last_ = id;
+        if (h) {
+            n.hprev = last_h_;
+            if (last_h_) node_at(last_h_).hnext = id;
+            else first_h_ = id;
+            last_h_ = id;
+            ++count_h_;
+        } else {
+            ++count_m_;
+        }
+        r.accepted = true;
+        r.which    = h ? lane::supersedable : lane::must_keep;
+        r.pos      = h ? id - 1 : id - CAP_H - 1;
         note_depth();
         return r;
     }
 
-    pop_result pop() {
-        pop_result r;
-        const bool have_h = count_h_ > 0, have_m = count_m_ > 0;
-        if (!have_h && !have_m) return r;
-        // THE MERGE. Lower arrival sequence first, always -- this single line is the whole
-        // "delivery order is unchanged" claim.
-        const bool take_h = have_h && (!have_m || seq_before(seq_h_[head_h_], seq_m_[head_m_]));
-        if (take_h) {
-            r.pos   = head_h_;
-            head_h_ = next_pos(head_h_, CAP_H);
-            --count_h_;
-            r.which = lane::supersedable;
-        } else {
-            r.pos   = head_m_;
-            head_m_ = next_pos(head_m_, CAP_M);
-            --count_m_;
-            r.which = lane::must_keep;
+    pop_result pop() { return first_ ? take(first_) : pop_result{}; }
+
+    // Do not dequeue, copy, rotate or reorder a blocked producer. A later eligible frame can be
+    // removed without making the held head consume every reusable slot in its lane.
+    template <class Eligible>
+    pop_result pop_eligible(Eligible eligible) {
+        for (int id = first_; id; id = node_at(id).next) {
+            const bool h = id <= CAP_H;
+            if (eligible(h ? lane::supersedable : lane::must_keep,
+                         h ? id - 1 : id - CAP_H - 1))
+                return take(id);
         }
-        r.ok = true;
-        return r;
+        return {};
     }
 
 private:
-    static int next_pos(int p, int cap) { return (p + 1) % cap; }
-    void       note_depth() {
-        const int d = depth();
-        if (d > high_water_) high_water_ = d;
+    // All backing storage stays zero-initialized; links are index+1, with zero as the sentinel.
+    struct node {
+        int prev, next, hprev, hnext;
+    };
+    node &node_at(int id) { return nodes_[id - 1]; }
+
+    void release(int id) {
+        node &n = node_at(id);
+        if (n.prev) node_at(n.prev).next = n.next;
+        else first_ = n.next;
+        if (n.next) node_at(n.next).prev = n.prev;
+        else last_ = n.prev;
+        const bool h = id <= CAP_H;
+        if (h) {
+            if (n.hprev) node_at(n.hprev).hnext = n.hnext;
+            else first_h_ = n.hnext;
+            if (n.hnext) node_at(n.hnext).hprev = n.hprev;
+            else last_h_ = n.hprev;
+            --count_h_;
+        } else {
+            --count_m_;
+        }
+        int &free = h ? free_h_ : free_m_;
+        n.next    = free;
+        free      = id;
+    }
+
+    pop_result take(int id) {
+        pop_result r;
+        const bool h = id <= CAP_H;
+        r.ok         = true;
+        r.which      = h ? lane::supersedable : lane::must_keep;
+        r.pos        = h ? id - 1 : id - CAP_H - 1;
+        release(id);
+        return r;
+    }
+
+    void note_depth() {
+        if (depth() > high_water_) high_water_ = depth();
         if (count_h_ > high_h_) high_h_ = count_h_;
         if (count_m_ > high_m_) high_m_ = count_m_;
     }
 
-    uint32_t seq_h_[CAP_H] = {};
-    uint32_t seq_m_[CAP_M] = {};
-    int      head_h_ = 0, count_h_ = 0;
-    int      head_m_ = 0, count_m_ = 0;
-    uint32_t next_seq_   = 0;
+    node     nodes_[CAP_H + CAP_M] = {};
+    int      first_ = 0, last_ = 0, first_h_ = 0, last_h_ = 0;
+    int      free_h_ = 0, free_m_ = 0, used_h_ = 0, used_m_ = 0;
+    int      count_h_ = 0, count_m_ = 0;
     int      high_water_ = 0, high_h_ = 0, high_m_ = 0;
     long     evicted_ = 0, refused_ = 0;
-    unsigned epoch_ = 0; // mp:U41d -- incremented ONLY by reset_counters(); never by reset()
+    unsigned epoch_ = 0;
 };
 
 } // namespace mh::net::queue_policy

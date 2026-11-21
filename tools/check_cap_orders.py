@@ -29,9 +29,9 @@ Clauses (all must hold; the figures in [brackets] are what a clause compares):
   python tools/check_cap_orders.py --arm on|off --shape sp|mp [--slack N] [--need-hw-q N] [--need-hw-staging N] [--records 1|2] [--applied N] [--allow-refusal] [--hwq-exact N] <run-dir> [<run-dir> ...]
   (--records: staging records per order -- 2 for move orders (order + 0xfb echo), 1 for the status-bit orders of the capo_kind=1 rows)
   --save N (PT-CAP9-U7c): the save row. The harness saved in the fire step while the queue held the whole burst (N records, pending/staging empty) and loaded
-  the file back capo_save_gap steps later; clauses S1-S4: the save/load returned 1 in later steps, the queue count and the records (digest) survive, the planet file
-  ends in a footer whose trailer carries queue records 300..N-1 (`orders N-300`), the container is stamped, the load logged `queue count N restored`
-  and nothing was DROPPED / REFUSED.
+  the file back capo_save_gap steps later; clauses S1-S4: the save/load returned 1 in later steps, the queue count and record digest survive,
+  the current container passes full policy+caps preflight, SPFT precedes MHOF, its trailer carries queue records 300..N-1 (`orders N-300`),
+  the load restores that queue range, and nothing is DROPPED / REFUSED.
   python tools/check_cap_orders.py --selftest
 """
 
@@ -41,6 +41,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import check_cap_save  # noqa: E402  (shared current save framing)
 
 STAMP = re.compile(r"^\[[\d:.]+\]\s*")
 FIRE_RE = re.compile(
@@ -80,8 +81,6 @@ SAVE_LINE_RE = re.compile(
     r"qcap=(?P<qcap>\d+) digest=(?P<d>[0-9A-Fa-f]+)"
 )
 SAVE_RC_RE = re.compile(r"; CAPO SAVE rc step=(?P<step>\d+) save=(?P<s>\d+) load=(?P<l>\d+)")
-SAVE_FILE_RE = re.compile(r"; CAP SAVE FILE name=\S+ size=(?P<size>\d+) fnv=\w+ stamped=(?P<st>\d)")
-SAVE_PLANET_RE = re.compile(r"; CAP SAVE PLANET file=\S+ size=\d+ footer=(?P<f>\d) footer_len=\d+")
 TRAILER_RE = re.compile(
     r"\[caps\] save: planet (?P<pl>-?\d+) trailer (?P<n>\d+) records \((?P<b>\d+) bytes\) v2 path (?P<path>\d+) orders (?P<o>\d+)"
 )
@@ -135,14 +134,10 @@ def save_problems(net, harness, n_orders):
         )
     if int(l.group("p")) != 0 or int(l.group("s")) != 0:
         bad.append("clause S2: pending/staging not empty right after the load")
-    files = [m for m in (SAVE_FILE_RE.match(ln) for ln in harness) if m]
-    planets = [m for m in (SAVE_PLANET_RE.match(ln) for ln in harness) if m]
-    if not files or files[-1].group("st") != "1":
-        bad.append(
-            "clause S3: the container is not stamped (an OFF build would run 150 stale orders)"
-        )
-    if not planets or planets[-1].group("f") != "1":
-        bad.append("clause S3: the planet file does not end in an MHOF footer")
+    bad += [
+        "clause S3: " + problem
+        for problem in check_cap_save.current_framing_problems(net, harness, current_raised=True)
+    ]
     tr = [m for m in (TRAILER_RE.search(ln) for ln in net) if m]
     tail = n_orders - 300
     if not tr:
@@ -152,8 +147,14 @@ def save_problems(net, harness, n_orders):
             "clause S3: the trailer carries %s queue records, expected %d (records 300..%d)"
             % (tr[-1].group("o"), tail, n_orders - 1)
         )
-    if not any("[caps] load: planet file overflow" in ln and "applied" in ln for ln in net):
+    applied = [m for m in (check_cap_save.APPLIED_RE.search(ln) for ln in net) if m]
+    if not applied:
         bad.append("clause S3: no `[caps] load: planet file overflow N records applied`")
+    elif tr and not any(int(m.group("n")) == int(tr[-1].group("n")) for m in applied):
+        bad.append(
+            "clause S3: the load applied %s overflow records, the save wrote %s"
+            % (",".join(m.group("n") for m in applied), tr[-1].group("n"))
+        )
     rs = [m for m in (RESTORED_RE.search(ln) for ln in net) if m]
     if (
         not rs
@@ -711,8 +712,8 @@ def selftest():
     sv_h = [
         "; CAPO SAVE before-save step=2100 rc=0 q=450 p=0 s=0 qcap=4096 digest=0123456789ABCDEF",
         "; CAPO SAVE after-save step=2100 rc=1 q=450 p=0 s=0 qcap=4096 digest=0123456789ABCDEF",
-        "; CAP SAVE FILE name=capord size=900000 fnv=DEADBEEF stamped=1",
-        "; CAP SAVE PLANET file=save\\temp\\save01.dat size=400000 footer=1 footer_len=30000",
+        "; CAP SAVE FILE name=capord size=900000 fnv=DEADBEEF header_valid=1 raised=1 policy=1",
+        "; CAP SAVE PLANET file=save\\temp\\save01.dat size=400000 footer=1 footer_len=39000 policy_tail=1 policy_len=40",
         "; CAPO SAVE after-load step=2120 rc=1 q=450 p=0 s=0 qcap=4096 digest=0123456789ABCDEF",
         "; CAPO SAVE rc step=2120 save=1 load=1",
     ]
@@ -720,6 +721,8 @@ def selftest():
         "; [caps] save: planet 1 trailer 540 records (39000 bytes) v2 path 0 orders 150",
         "; [caps] load: planet file overflow 540 records applied",
         "; [caps] orders: queue count 450 restored (records 300..449 came from the MHOV blob)",
+        "; [storage-save] container accepted members=00000002 policy=00000002 caps=00000002 version=5",
+        "; [caps] load: raised save accepted",
     ]
     expect(
         "a good save run is green",
@@ -772,13 +775,6 @@ def selftest():
                 450,
             ),
             "not EMPTY",
-        ),
-    )
-    expect(
-        "an unstamped container is RED",
-        has(
-            save_problems(sv_n, [x.replace("stamped=1", "stamped=0") for x in sv_h], 450),
-            "not stamped",
         ),
     )
     expect(

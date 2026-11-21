@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn every_key_the_ui_code_names_has_an_english_string() {
         // (`relay.` is not a family here: `relay.example.org` is a literal in a test.)
-        const FAMILIES: [&str; 19] = [
+        const FAMILIES: [&str; 20] = [
             "menu.",
             "page.",
             "msg.",
@@ -333,6 +333,7 @@ mod tests {
             "problem.",
             "action.",
             "dialog.",
+            "keys.",
         ];
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut files = vec![src.join("app.rs"), src.join("widgets.rs")];
@@ -345,6 +346,7 @@ mod tests {
                 }
             }
         }
+        let schema = Schema::builtin();
         let en = |k: &str| tr_opt_in(Locale::En, k).is_some();
         let mut missing = Vec::new();
         for f in files {
@@ -356,7 +358,7 @@ mod tests {
                         c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.'
                     })
                     && FAMILIES.iter().any(|p| lit.starts_with(p));
-                if keyish && !en(lit) {
+                if keyish && !en(lit) && !(lit.starts_with("keys.") && schema.row(lit).is_some()) {
                     missing.push(format!(
                         "{}: {lit}",
                         f.file_name().unwrap().to_string_lossy()

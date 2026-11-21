@@ -438,8 +438,8 @@ struct dispatch_calls {
     int32_t (*llm_unit_state_is_boarding)(int32_t);
     void (*llm_unit_status_bit_clear)(int32_t, int32_t, uint8_t);
     void (*llm_unit_status_bit_set)(int32_t, int32_t, uint8_t);
-    void (*llm_unit_transport_unload_docked)(uint32_t, uint32_t);
-    void (*llm_unit_transport_unload_field)(uint32_t, uint32_t);
+    void (*llm_unit_squad_split_docked)(uint32_t, uint32_t);
+    void (*llm_unit_squad_split_field)(uint32_t, uint32_t);
     // Hand-appended, not generated -- see the note above. One measured varargs SHAPE, so an ordinary
     // pointer: (dst, format, name, reason).
     int32_t (*w_sprintf__vss)(void *, const wchar_t *, const wchar_t *, const wchar_t *);

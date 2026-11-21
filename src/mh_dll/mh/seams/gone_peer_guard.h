@@ -27,6 +27,9 @@ constexpr uintptr_t SITE        = 0x0049c330u;
 constexpr uintptr_t KICK        = 0x0049dc16u; // llm_net_send_lockstep_kick, __watcall, side_id in EAX
 constexpr int       LEN_EBP_OFF = -0x38;       // llm_net_lockstep_dispatch's `len` local
 constexpr uint32_t  CAPACITY    = 0x3f8u;      // _G_LLM_NET_SEND_BUF, the recv cap dispatch passes
+// EN native unknown-outer-tag arm: E8 36 99 02 00 at 0x0049d314 calls the outcome dialog.
+// Its return address identifies that branch without another patch site (read-only ReVA proof).
+constexpr uintptr_t GARBLED_RETURN = 0x0049d319u;
 // The guard. Read off the stock EN image (MD5 b3b389e8...) and cross-checked against the committed
 // call-site index (tools/data/en_addr_index.json: 0049c330 -> llm_net_send_lockstep_kick) and the
 // label at 0049c335; gpfgtest re-derives the rel32 and the disp8 from SITE/KICK/LEN_EBP_OFF.
@@ -39,6 +42,7 @@ extern uintptr_t g_kick;
 // Diagnostics: how many times the thunk ran, and the last length it snapshot.
 extern unsigned g_fires;
 extern uint32_t g_last_len;
+extern bool     g_enabled;
 
 // The splice target. NOT callable from C++: it expects EAX = side_id and EBP = the dispatch frame,
 // exactly as the displaced `call` left them.

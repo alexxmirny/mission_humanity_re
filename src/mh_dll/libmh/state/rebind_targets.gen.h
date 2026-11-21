@@ -628,7 +628,7 @@ int32_t unit_update_target_tracking(uint32_t player, int32_t unit_idx);
 int32_t unit_walk_step_allowed(uint32_t param_1, int32_t param_2);
 void unit_weapon_reload_tick(uint8_t weapon_slot, double delta_time, double game_clock_unread);
 void unload_docked(uint32_t player, uint32_t unit_index);
-void unload_field(uint32_t transport_player, uint32_t transport_unit_index);
+void unload_field(uint32_t squad_player, uint32_t squad_unit_index);
 void update_fow_plus(uint32_t player, uint32_t x, uint32_t y, uint8_t sight);
 void update_fow_plus_impl();
 void update_resource_stats(uint32_t player, uint32_t amount, uint32_t res_id);

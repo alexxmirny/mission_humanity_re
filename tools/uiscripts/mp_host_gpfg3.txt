@@ -16,10 +16,9 @@
 #
 # WHAT EACH ARM THEN DOES. Guarded (the ship default): the thunk snapshots the datagram across the
 # kick, logs `; [net] gone-peer frame guard FIRED #1: ...`, and the advert parses as the advert it
-# was -- this peer keeps playing. Unguarded (`gone_peer_frame_guard=0`): the kick's six bytes
-# overwrite the head of the 9-byte advert, the parse lands on a mantissa byte at offset 6 as an
-# outer tag, and the default arm raises outcome 7 (NETWORK_ERROR) -- this peer's match ends, and
-# the `absent Continue game` below never resolves. tools/check_gone_peer_guard.py reads which.
+# was -- this peer keeps playing. The dedicated u19j_unguarded scripts observe the native outcome
+# dialog after a corrupt advert raises outcome 7 (NETWORK_ERROR), rather than timing out on the
+# guarded continued-play clause below. tools/check_gone_peer_guard.py proves the corruption cause.
 #
 # TOPOLOGY: the DET3 one (host on rig VM A, the other survivor on rig VM B, the FENCED peer as the
 # local det3_client2 lane) -- local 3-peer discovery cannot seat a second 127.0.0.1 client. All

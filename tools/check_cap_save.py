@@ -4,17 +4,17 @@ tools/check_cap_save.py -- patching:PT-CAP8 S3 (slice G): the RAISED-CAPS SAVE (
 
 A raised world (records past the vanilla window: buildings [100,500), the five sub-rosters, projectiles [1500,4000)) must round-trip
 through a save, and a save that carries such records must be REFUSED, with a message, by a build whose raise is OFF. The mechanism
-is mh/caps/ovf_save.{h,cpp} + the four splices of mh/patch/caps_install.cpp (docs/save-format.md "Raised-caps trailer"). The row is
-`cap_save_seq` (tools/uiscripts/registry.yaml), three PROCESSES on one lane; each step is judged by one mode of this checker:
+is the composed storage-policy save carrier plus the existing overflow codec. The row is
+`cap_save_seq` (tools/uiscripts/registry.yaml), four PROCESSES on one lane; each step has one mode:
 
   --step save      raise ON. The harness fixture (cap_* + cap_prj_synth + cap_save_at) fills the roster past every vanilla cap, stamps
                    600 projectile records into the pool slots 1500.., saves `capovf` through game_SaveGame and loads it back through
                    llm_game_load in the SAME step. Clauses:
-                   1  mh_net.log: `[caps] relocation APPLIED`, `[caps] limits ON (`, and `[caps] save splices: ... armed` x4.
+                   1  mh_net.log: `[caps] relocation APPLIED` and `[caps] limits ON (`.
                    2  mh_harness.log: `; CAP SAVE ... rc=1` and `; CAP LOAD ... rc=1`; the two digests are EQUAL; the counts (ovf, bldg_ovf,
                       prj_ovf) are EQUAL; bldg_ovf > 0 and prj_ovf >= --prj (default 600: records past slot 1500 survive, which closes PT-CAP1).
-                   3  mh_net.log: `[caps] save: planet P trailer N records` with N == ovf (every overflow record is in the trailer), `[caps]
-                      save: container stamped`, `[caps] load: raised save accepted` and `[caps] load: planet file overflow N records applied`.
+                   3  Current policy+caps header, SPFT before MHOF, full-container preflight acceptance; the trailer and actual load
+                      carry N == ovf records. Full native/member framing and CRC validation precede acceptance.
                    4  no `[caps] ... REFUSED`, no `*** DESYNC` banner.
   --step refuse    raise OFF, the committed fixture tools/uiscripts/saves/capovf.sav loaded from the main menu. Clauses: relocation APPLIED
                    and the limits stay OFF; `[caps] load REFUSED: the save is a raised-caps save and [caps] raise is OFF` and `showing the
@@ -29,13 +29,11 @@ is mh/caps/ovf_save.{h,cpp} + the four splices of mh/patch/caps_install.cpp (doc
                    means that member has no trailer and NO such line may appear -- the rc2 save keeps its 8 records in the embedded planet-4 member, the
                    current planet is 8; ovftest (7a) applies those 8 from the committed save); no `[caps] ... REFUSED`, no `GUARD HIT` and no non-zero `guard=0x` in the orders census; no
                    DESYNC; and the game PLAYED: the per-step hash log reaches step >= --plays (default 300) past the load.
-  --step off       raise OFF (the shipped default): the SAME harness save + load-back with NO fixture. A raise-OFF save is byte-for-byte what
-                   master wrote because every hook returns before touching the file: the planet file the container embeds
-                   (`save/temp/save<planet>.dat`) has NO {len, 'MHOF'} footer (`; CAP SAVE PLANET ... footer=0`), the container header is not
-                   stamped, no trailer / stamp / refusal line exists, the load-back returned 1 (the load tail's tell/seek/read/seek on a
-                   footer-less file is invisible) and the overflow digest and counts are 0. (The container is no byte witness against a
-                   master build: two consecutive saves of one state differ, the LZW writer keeps stale dictionary state; the zero-write
-                   proof of every hook is `net_selftest ovftest` (5a).) The positive control is `--step save`: footer=1 there.
+  --step off       raise OFF (the shipped default): the SAME native save/load-back with no overflow fixture. Current saves still
+                   require storage-policy support: MSP1 header, SPFT policy tail and SPCF manifest, including all-default settings.
+                   No MHOF/overflow application or raised acceptance is allowed. The real preflight validates every member and
+                   manifest, then the native load returns 1 with equal zero-overflow counts and digest. This is NOT byte-identical
+                   to a pre-policy save; an older reader must reject its required-support header before applying state.
 
   python tools/check_cap_save.py --step save|refuse|vanilla [--prj N] <run-dir> [<run-dir> ...]
   python tools/check_cap_save.py --step old --records N [--plays S] <run-dir>
@@ -63,9 +61,6 @@ SAVE_RE = re.compile(
 LOAD_RE = re.compile(
     r"; CAP LOAD step=(?P<step>\d+) name=(?P<name>\S+) rc=(?P<rc>\d+) digest=(?P<digest>[0-9A-Fa-f]{16}) ovf=(?P<ovf>\d+) bldg_ovf=(?P<bldg>\d+) prj_ovf=(?P<prj>\d+)"
 )
-SPLICES_RE = re.compile(
-    r"; \[caps\] save splices: trailer (?P<t>[A-Za-z ]+?), container stamp (?P<s>[A-Za-z ]+?), version check (?P<v>[A-Za-z ]+?), refusal message (?P<m>[A-Za-z ]+)$"
-)
 TRAILER_RE = re.compile(
     r"; \[caps\] save: planet (?P<p>-?\d+) trailer (?P<n>\d+) records \((?P<b>\d+) bytes\)"
 )
@@ -73,17 +68,39 @@ APPLIED_RE = re.compile(r"; \[caps\] load: planet file overflow (?P<n>\d+) recor
 REFUSE_VERSION = "; [caps] load REFUSED: the save is a raised-caps save and [caps] raise is OFF"
 REFUSE_SHOWN = "; [caps] load REFUSED: showing the raised-limits message"
 FILE_RE = re.compile(
-    r"; CAP SAVE FILE name=(?P<name>\S+) size=(?P<size>\d+) fnv=(?P<fnv>[0-9A-Fa-f]{8}) stamped=(?P<st>\d)"
+    r"; CAP SAVE FILE name=(?P<name>\S+) size=(?P<size>\d+) fnv=(?P<fnv>[0-9A-Fa-f]{8}) header_valid=(?P<valid>[01]) raised=(?P<raised>[01]) policy=(?P<policy>[01])$"
 )
 PLANET_RE = re.compile(
-    r"; CAP SAVE PLANET file=(?P<file>\S+) size=(?P<size>\d+) footer=(?P<foot>\d) footer_len=(?P<len>\d+)"
+    r"; CAP SAVE PLANET file=(?P<file>\S+) size=(?P<size>\d+) footer=(?P<foot>[01]) footer_len=(?P<len>\d+) policy_tail=(?P<policy>[01]) policy_len=(?P<policy_len>\d+)$"
+)
+CONTAINER_RE = re.compile(
+    r"; \[storage-save\] container accepted members=(?P<members>[0-9A-Fa-f]{8}) policy=(?P<policy>[0-9A-Fa-f]{8}) caps=(?P<caps>[0-9A-Fa-f]{8}) version=(?P<version>-?\d+)$"
 )
 ACCEPTED = "; [caps] load: raised save accepted"
-STAMPED = "; [caps] save: container stamped"
 
 
 def strip(lines):
-    return [STAMP.sub("", ln.strip()) for ln in lines]
+    # Session/process chunks can overlap and arrive in either order. Each bounded
+    # run is shorter than half a day: the largest circular clock gap is outside it.
+    # Order stamped events across midnight before dropping their timestamps.
+    timed, plain = [], []
+    for index, line in enumerate(lines):
+        match = re.match(r"^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]", line.strip())
+        if match:
+            h, m, s, ms = map(int, match.groups())
+            timed.append((((h * 60 + m) * 60 + s) * 1000 + ms, index, line))
+        else:
+            plain.append(line)
+    if timed:
+        day = 24 * 60 * 60 * 1000
+        marks = sorted({t[0] for t in timed})
+        gap = max(
+            range(len(marks)),
+            key=lambda i: (marks[(i + 1) % len(marks)] - marks[i]) % day,
+        )
+        start = marks[(gap + 1) % len(marks)]
+        plain.extend(t[2] for t in sorted(timed, key=lambda t: ((t[0] - start) % day, t[1])))
+    return [STAMP.sub("", ln.strip()) for ln in plain]
 
 
 def _common_banners(net, want_limits):
@@ -97,18 +114,6 @@ def _common_banners(net, want_limits):
         bad.append("clause 1: no `[caps] limits ON (` in mh_net.log (the raise never turned on)")
     if not want_limits and on:
         bad.append("clause 1: `[caps] limits ON (` in a raise=OFF step (the ini leaked the raise)")
-    sp = [m for m in (SPLICES_RE.search(ln) for ln in net) if m]
-    if not sp:
-        bad.append("clause 1: no `[caps] save splices:` line (the S3 splices were never installed)")
-    else:
-        for k, name in (
-            ("t", "trailer"),
-            ("s", "container stamp"),
-            ("v", "version check"),
-            ("m", "refusal message"),
-        ):
-            if sp[-1].group(k) != "armed":
-                bad.append("clause 1: the %s splice is `%s`, not armed" % (name, sp[-1].group(k)))
     for ln in net:
         if "[caps]" in ln and "WARNING" in ln:
             bad.append("clause 1: " + ln)
@@ -119,9 +124,69 @@ def _crash(net, harness):
     return ["clause 4: " + ln for ln in net + harness if "*** DESYNC" in ln]
 
 
+def current_framing_problems(net, harness, *, current_raised):
+    """Require current-writer metadata AND the actual reader's full preflight."""
+    net, harness = strip(net), strip(harness)
+    bad = []
+    files = [m for m in (FILE_RE.match(ln) for ln in harness) if m]
+    if not files:
+        bad.append("clause 3: no current `; CAP SAVE FILE` line")
+    else:
+        f = files[-1]
+        if (
+            f.group("valid") != "1"
+            or f.group("policy") != "1"
+            or f.group("raised") != str(int(current_raised))
+        ):
+            bad.append("clause 3: saved container header requirements do not match this step")
+    planets = [m for m in (PLANET_RE.match(ln) for ln in harness) if m]
+    current_bit = 0
+    if not planets:
+        bad.append("clause 3: no current `; CAP SAVE PLANET` line")
+    else:
+        p = planets[-1]
+        if p.group("policy") != "1" or int(p.group("policy_len")) <= 0:
+            bad.append("clause 3: the saved planet file has no nonempty SPFT policy tail")
+        if current_raised:
+            if p.group("foot") != "1" or int(p.group("len")) <= 0:
+                bad.append("clause 3: the saved planet file does not end in an overflow footer")
+        elif p.group("foot") != "0" or int(p.group("len")) != 0:
+            bad.append("clause 3: the raise-OFF planet file carries an overflow footer")
+        planet = re.search(r"(?:^|[\\/])save(?P<planet>\d{1,2})\.dat$", p.group("file"))
+        if planet is None or not 0 <= int(planet.group("planet")) < 32:
+            bad.append("clause 3: the saved planet file has no valid planet index")
+        else:
+            current_bit = 1 << int(planet.group("planet"))
+    accepted = [m for m in (CONTAINER_RE.match(ln) for ln in net) if m]
+    if not accepted:
+        bad.append("clause 3: no full-container preflight acceptance")
+    else:
+        a = accepted[-1]
+        members, policy, caps = (int(a.group(k), 16) for k in ("members", "policy", "caps"))
+        if (
+            not members
+            or not policy
+            or policy & ~members
+            or caps & ~members
+            or not 1 <= int(a.group("version")) <= 5
+            or (not current_raised and caps != 0)
+            or (
+                current_bit
+                and (
+                    not members & current_bit
+                    or not policy & current_bit
+                    or bool(caps & current_bit) != current_raised
+                )
+            )
+        ):
+            bad.append("clause 3: full-container preflight requirements are inconsistent")
+    return bad
+
+
 def save_problems(net, harness, prj_min=600):
     net, harness = strip(net), strip(harness)
     bad = _common_banners(net, True)
+    bad += current_framing_problems(net, harness, current_raised=True)
     for ln in net:
         if "[caps]" in ln and "REFUSED" in ln:
             bad.append("clause 4: " + ln)
@@ -167,11 +232,6 @@ def save_problems(net, harness, prj_min=600):
         )
     if int(s.group("ovf")) < int(s.group("bldg")) + int(s.group("prj")):
         bad.append("clause 2: ovf total %s is less than bldg_ovf + prj_ovf" % s.group("ovf"))
-    pl = [m for m in (PLANET_RE.match(ln) for ln in harness) if m]
-    if not pl or pl[-1].group("foot") != "1":
-        bad.append(
-            "clause 3: the saved planet file does not end in an overflow footer (`; CAP SAVE PLANET ... footer=1`)"
-        )
     tr = [m for m in (TRAILER_RE.search(ln) for ln in net) if m]
     if not tr:
         bad.append(
@@ -182,12 +242,8 @@ def save_problems(net, harness, prj_min=600):
             "clause 3: no trailer carries all %s overflow records (trailers: %s)"
             % (s.group("ovf"), ",".join(m.group("n") for m in tr))
         )
-    if not any(ln.startswith(STAMPED) for ln in net):
-        bad.append("clause 3: no `[caps] save: container stamped`")
     if not any(ln.startswith(ACCEPTED) for ln in net):
-        bad.append(
-            "clause 3: no `[caps] load: raised save accepted` (the stamped header never reached version_check)"
-        )
+        bad.append("clause 3: no `[caps] load: raised save accepted`")
     ap = [m for m in (APPLIED_RE.search(ln) for ln in net) if m]
     if not ap:
         bad.append(
@@ -215,6 +271,10 @@ def refuse_problems(net, harness):
         bad.append("clause 3: an overflow trailer was APPLIED with the raise OFF")
     if any(ln.startswith("; CAP ") and ("SAVE" in ln or "LOAD" in ln) for ln in harness):
         bad.append("clause 3: the harness saved / loaded in a refuse step")
+    if any(STEP_LINE.match(ln) for ln in harness):
+        bad.append("clause 3: simulation started after a refused save")
+    if any(CONTAINER_RE.match(ln) for ln in net):
+        bad.append("clause 3: full-container preflight accepted a refused save")
     bad += _crash(net, harness)
     return bad
 
@@ -287,18 +347,14 @@ def old_problems(net, harness, records, plays=OLD_PLAYS_STEPS):
 
 
 def off_problems(net, harness):
-    """The raise-OFF save: no trailer, no stamp (the hooks write nothing, so the file is what master wrote)."""
+    """Default-off caps still persist required policy; no overflow may be applied."""
     net, harness = strip(net), strip(harness)
     bad = []
     if not any("[caps] relocation APPLIED" in ln for ln in net):
         bad.append("clause 1: no `[caps] relocation APPLIED` in mh_net.log")
     if any("[caps] limits ON (" in ln for ln in net):
         bad.append("clause 1: `[caps] limits ON (` in a raise=OFF step (the ini leaked the raise)")
-    sp = [m for m in (SPLICES_RE.search(ln) for ln in net) if m]
-    if not sp or any(sp[-1].group(k) != "armed" for k in "tsvm"):
-        bad.append(
-            "clause 1: all four S3 splices must be armed (a raise-OFF save must be written through LIVE hooks that write nothing)"
-        )
+    bad += current_framing_problems(net, harness, current_raised=False)
     sv = [m for m in (SAVE_RE.match(ln) for ln in harness) if m]
     lo = [m for m in (LOAD_RE.match(ln) for ln in harness) if m]
     fl = [m for m in (FILE_RE.match(ln) for ln in harness) if m]
@@ -310,15 +366,10 @@ def off_problems(net, harness):
     for tag, m in (("save", sv[-1]), ("load", lo[-1])):
         if int(m.group("rc")) != 1:
             bad.append("clause 2: the %s returned %s, not 1" % (tag, m.group("rc")))
-        if int(m.group("ovf")) != 0:
-            bad.append(
-                "clause 2: %s counted %s overflow records with the raise OFF"
-                % (tag, m.group("ovf"))
-            )
+        if any(int(m.group(k)) != 0 for k in ("ovf", "bldg", "prj")):
+            bad.append("clause 2: %s counted overflow records with the raise OFF" % tag)
     if sv[-1].group("digest").upper() != lo[-1].group("digest").upper():
         bad.append("clause 2: the digest moved across the save/load")
-    if fl[-1].group("st") != "0":
-        bad.append("clause 2: the saved container carries the raised stamp with the raise OFF")
     for ln in net:
         if (
             ln.startswith("; [caps] save: ")
@@ -327,15 +378,6 @@ def off_problems(net, harness):
             or ("[caps]" in ln and "REFUSED" in ln)
         ):
             bad.append("clause 3: " + ln)
-    pl = [m for m in (PLANET_RE.match(ln) for ln in harness) if m]
-    if not pl:
-        bad.append(
-            "clause 4: no `; CAP SAVE PLANET` line (the planet file was not found after the save)"
-        )
-    elif pl[-1].group("foot") != "0":
-        bad.append(
-            "clause 4: the raise-OFF planet file ends in an overflow footer (the trailer was written with the raise OFF)"
-        )
     bad += _crash(net, harness)
     return bad
 
@@ -343,7 +385,7 @@ def off_problems(net, harness):
 # ---- the four splice sites against the clean exe -------------------------------------------------------------------------
 SITES = {  # name: (VA, 5 bytes, the call target)
     "ADDR_SAVE_CLOSE": (0x004480E0, "E8EC760800", 0x004CF7D1),
-    "ADDR_HDR_WRITE": (0x0044725C, "E8F68C0800", 0x004CFF57),
+    "ADDR_CONTAINER_CLOSE": (0x004475C5, "E807820800", 0x004CF7D1),
     "ADDR_HDR_READ": (0x004476B4, "E89F860800", 0x004CFD58),
     "ADDR_LOADFAIL_MSG": (0x004BB76D, "E8380F0000", 0x004BC6AA),
 }
@@ -372,7 +414,7 @@ def source_sites():
             r"const uint8_t\s+%s_EXPECT\[5\]\s*=\s*\{([^}]*)\}"
             % {
                 "ADDR_SAVE_CLOSE": "SAVE_CLOSE",
-                "ADDR_HDR_WRITE": "HDR_WRITE",
+                "ADDR_CONTAINER_CLOSE": "CONTAINER_CLOSE",
                 "ADDR_HDR_READ": "HDR_READ",
                 "ADDR_LOADFAIL_MSG": "LOADFAIL_MSG",
             }[name],
@@ -545,10 +587,9 @@ def run(run_dir, step, prj, records=0, plays=OLD_PLAYS_STEPS):
 
 GOOD_NET = [
     "; [caps] relocation APPLIED (3945 sites, 2 sections, base .mhcapd=0x040C0000) in 10.1 ms; limits OFF",
-    "; [caps] save splices: trailer armed, container stamp armed, version check armed, refusal message armed",
     "; [caps] limits ON (gameplay settings): buildings 500, storage 127, turrets 127, mines 127, labs 127, productions 127, projectiles 4000",
-    "; [caps] save: planet 3 trailer 1060 records (203124 bytes)",
-    "; [caps] save: container stamped (a member planet carries an overflow trailer)",
+    "; [caps] save: planet 31 trailer 1060 records (203124 bytes)",
+    "; [storage-save] container accepted members=80000000 policy=80000000 caps=80000000 version=5",
     "; [caps] load: raised save accepted",
     "; [caps] load: planet file overflow 1060 records applied",
 ]
@@ -556,15 +597,15 @@ GOOD_HARNESS = [
     "; CAP PRJ SYNTH step=2800 stamped=600 slots 1500..2099 (row 4000)",
     "; CAP SAVE step=2800 name=capovf rc=1 digest=0123456789ABCDEF ovf=1060 bldg_ovf=460 prj_ovf=600",
     "; CAP LOAD step=2800 name=capovf rc=1 digest=0123456789ABCDEF ovf=1060 bldg_ovf=460 prj_ovf=600",
-    "; CAP SAVE PLANET file=save\\temp\\save31.dat size=306616 footer=1 footer_len=203124",
+    "; CAP SAVE PLANET file=save\\temp\\save31.dat size=306616 footer=1 footer_len=203124 policy_tail=1 policy_len=128",
+    "; CAP SAVE FILE name=capovf size=330678 fnv=DEADBEEF header_valid=1 raised=1 policy=1",
 ]
 REFUSE_NET = [
     "; [caps] relocation APPLIED (3945 sites, 2 sections, base .mhcapd=0x040C0000) in 10.1 ms; limits OFF",
-    "; [caps] save splices: trailer armed, container stamp armed, version check armed, refusal message armed",
     REFUSE_VERSION,
     REFUSE_SHOWN,
 ]
-VANILLA_NET = GOOD_NET[:3]
+VANILLA_NET = GOOD_NET[:2]
 PLAYS_LOG = [
     "1 40938BDCDC770859 1F46C09AC9E17F4B 4485456729C22EAC",
     "6000 4093A2FB94C8F3C7 E7919E21190E2E76 93093FB5EC6CEC3C",
@@ -655,27 +696,20 @@ def selftest():
     )
     expect(
         "save: no PLANET line is RED",
-        has(save_problems(GOOD_NET, GOOD_HARNESS[:3]), "does not end in an overflow footer"),
+        has(save_problems(GOOD_NET, GOOD_HARNESS[:3]), "CAP SAVE PLANET"),
     )
     expect(
         "save: a trailer that lost records is RED",
         has(
-            save_problems(mut(GOOD_NET, 3, "1060 records", "1000 records"), GOOD_HARNESS),
+            save_problems(mut(GOOD_NET, 2, "1060 records", "1000 records"), GOOD_HARNESS),
             "no trailer carries all",
         ),
     )
     expect(
         "save: a load that applied fewer records is RED",
         has(
-            save_problems(mut(GOOD_NET, 6, "1060 records", "1000 records"), GOOD_HARNESS),
+            save_problems(mut(GOOD_NET, 5, "1060 records", "1000 records"), GOOD_HARNESS),
             "load applied",
-        ),
-    )
-    expect(
-        "save: no stamp is RED",
-        has(
-            save_problems([x for x in GOOD_NET if "stamped" not in x], GOOD_HARNESS),
-            "container stamped",
         ),
     )
     expect(
@@ -683,13 +717,6 @@ def selftest():
         has(
             save_problems([x for x in GOOD_NET if "accepted" not in x], GOOD_HARNESS),
             "raised save accepted",
-        ),
-    )
-    expect(
-        "save: an unarmed splice is RED",
-        has(
-            save_problems(mut(GOOD_NET, 1, "stamp armed", "stamp NOT armed"), GOOD_HARNESS),
-            "container stamp splice",
         ),
     )
     expect(
@@ -721,10 +748,10 @@ def selftest():
     )
     expect(
         "refuse: an applied trailer is RED",
-        has(refuse_problems(REFUSE_NET + [GOOD_NET[6]], PLAYS_LOG), "APPLIED"),
+        has(refuse_problems(REFUSE_NET + [GOOD_NET[5]], PLAYS_LOG), "APPLIED"),
     )
     expect(
-        "refuse: limits ON is RED", has(refuse_problems(REFUSE_NET + [GOOD_NET[2]], []), "leaked")
+        "refuse: limits ON is RED", has(refuse_problems(REFUSE_NET + [GOOD_NET[1]], []), "leaked")
     )
     expect(
         "refuse: a harness save is RED",
@@ -745,12 +772,12 @@ def selftest():
     )
     expect(
         "vanilla: an applied trailer is RED",
-        has(vanilla_problems(VANILLA_NET + [GOOD_NET[6]], PLAYS_LOG), "applied"),
+        has(vanilla_problems(VANILLA_NET + [GOOD_NET[5]], PLAYS_LOG), "applied"),
     )
-    OLD_NET = GOOD_NET[:3] + [ACCEPTED, "; [caps] load: planet file overflow 8 records applied"]
+    OLD_NET = GOOD_NET[:2] + [ACCEPTED, "; [caps] load: planet file overflow 8 records applied"]
     expect("old: the good logs are green", old_problems(OLD_NET, PLAYS_LOG, 8) == [])
     expect(
-        "old: records 0 and nothing applied is green", old_problems(OLD_NET[:4], PLAYS_LOG, 0) == []
+        "old: records 0 and nothing applied is green", old_problems(OLD_NET[:3], PLAYS_LOG, 0) == []
     )
     expect(
         "old: records 0 but a trailer applied is RED",
@@ -762,11 +789,11 @@ def selftest():
     )
     expect(
         "old: no trailer applied is RED",
-        has(old_problems(OLD_NET[:4], PLAYS_LOG, 8), "not applied"),
+        has(old_problems(OLD_NET[:3], PLAYS_LOG, 8), "not applied"),
     )
     expect(
         "old: not accepted is RED",
-        has(old_problems(OLD_NET[:3] + OLD_NET[4:], PLAYS_LOG, 8), "not accepted"),
+        has(old_problems(OLD_NET[:2] + OLD_NET[3:], PLAYS_LOG, 8), "not accepted"),
     )
     expect(
         "old: a REFUSED line is RED",
@@ -803,11 +830,14 @@ def selftest():
     )
 
     # the raise-OFF arm
-    off_net = [GOOD_NET[0], GOOD_NET[1]]
+    off_net = [
+        GOOD_NET[0],
+        "; [storage-save] container accepted members=80000000 policy=80000000 caps=00000000 version=5",
+    ]
     off_h = [
         "; CAP SAVE step=1500 name=capovf rc=1 digest=CBF29CE484222325 ovf=0 bldg_ovf=0 prj_ovf=0",
-        "; CAP SAVE FILE name=capovf size=330678 fnv=DEADBEEF stamped=0",
-        "; CAP SAVE PLANET file=save\\temp\\save31.dat size=306616 footer=0 footer_len=0",
+        "; CAP SAVE FILE name=capovf size=330678 fnv=DEADBEEF header_valid=1 raised=0 policy=1",
+        "; CAP SAVE PLANET file=save\\temp\\save31.dat size=306616 footer=0 footer_len=0 policy_tail=1 policy_len=128",
         "; CAP LOAD step=1500 name=capovf rc=1 digest=CBF29CE484222325 ovf=0 bldg_ovf=0 prj_ovf=0",
     ]
     expect("off: the good logs are green", off_problems(off_net, off_h) == [])
@@ -823,10 +853,6 @@ def selftest():
     expect(
         "off: a missing PLANET line is RED",
         has(off_problems(off_net, off_h[:2] + off_h[3:]), "PLANET"),
-    )
-    expect(
-        "off: a stamped container is RED",
-        has(off_problems(off_net, mut(off_h, 1, "stamped=0", "stamped=1")), "stamp"),
     )
     expect(
         "off: a trailer line is RED",
@@ -846,13 +872,79 @@ def selftest():
         has(off_problems(off_net, mut(off_h, 3, "rc=1", "rc=0")), "load returned"),
     )
     expect(
-        "off: the raise leaking is RED", has(off_problems(off_net + [GOOD_NET[2]], off_h), "leaked")
-    )
-    expect(
-        "off: an unarmed splice is RED",
-        has(off_problems(mut(off_net, 1, "stamp armed", "stamp NOT armed"), off_h), "four S3"),
+        "off: the raise leaking is RED", has(off_problems(off_net + [GOOD_NET[1]], off_h), "leaked")
     )
     expect("off: no CAP lines is RED", has(off_problems(off_net, []), "cap_save_at never"))
+    expect(
+        "refuse: a process that starts simulation is RED",
+        bool(refuse_problems(REFUSE_NET, PLAYS_LOG)),
+    )
+    expect(
+        "current: footer presence without full validation is RED",
+        bool(
+            current_framing_problems(
+                [x for x in GOOD_NET if not CONTAINER_RE.match(x)],
+                GOOD_HARNESS,
+                current_raised=True,
+            )
+        ),
+    )
+    expect(
+        "current: requirements for a different planet are RED",
+        bool(
+            current_framing_problems(
+                [x.replace("caps=80000000", "caps=40000000") for x in GOOD_NET],
+                GOOD_HARNESS,
+                current_raised=True,
+            )
+        ),
+    )
+    expect(
+        "current: another legacy member need not carry policy",
+        current_framing_problems(
+            [x.replace("members=80000000", "members=C0000000") for x in GOOD_NET],
+            GOOD_HARNESS,
+            current_raised=True,
+        )
+        == [],
+    )
+    expect(
+        "off: required policy must include the current planet",
+        bool(
+            current_framing_problems(
+                [x.replace("policy=80000000", "policy=40000000") for x in off_net],
+                off_h,
+                current_raised=False,
+            )
+        ),
+    )
+
+    current_admission = next(x for x in GOOD_NET if CONTAINER_RE.match(x))
+    legacy_admission = current_admission.replace("policy=80000000", "policy=00000000").replace(
+        "caps=80000000", "caps=00000000"
+    )
+    base_net = [x for x in GOOD_NET if not CONTAINER_RE.match(x)]
+    for label, source_time, reload_time in (
+        ("same day", "12:00:00.000", "12:00:01.000"),
+        ("midnight", "23:59:59.000", "00:00:01.000"),
+    ):
+        # The real reader concatenates the later session before the earlier process.
+        events = [
+            f"[{reload_time}] {current_admission}",
+            f"[{source_time}] {legacy_admission}",
+        ]
+        expect(
+            label + ": later raised reload wins over legacy source",
+            not save_problems(base_net + events, GOOD_HARNESS),
+        )
+        invalid_reload = [
+            f"[{reload_time}] {legacy_admission}",
+            f"[{source_time}] {current_admission}",
+        ]
+        expect(
+            label + ": later invalid reload cannot borrow earlier acceptance",
+            bool(save_problems(base_net + invalid_reload, GOOD_HARNESS)),
+        )
 
     # the four sites against a fake image: planted drift must go red
     real = {}
@@ -880,7 +972,7 @@ def selftest():
     expect("sites: the fake clean image is green", sites_problems(reader()) == [])
     expect(
         "sites: a drifted site is RED",
-        has(sites_problems(reader(drift=0x0044725C)), "ADDR_HDR_WRITE"),
+        has(sites_problems(reader(drift=0x004475C5)), "ADDR_CONTAINER_CLOSE"),
     )
     expect(
         "sites: a wrong version index is RED", has(sites_problems(reader(idx=4)), "version index")

@@ -434,6 +434,19 @@ __declspec(naked) void drag_draw_thunk() {
 
 } // namespace
 
+extern "C" int MH_ViewWrap_IsBiased(uintptr_t call_site) {
+    if (!mh::en_build_ok()) return 0;
+    for (const site &s : SITES) {
+        if (s.addr != call_site) continue;
+        const uint8_t *const code = reinterpret_cast<const uint8_t *>(call_site);
+        if (code[0] != 0xe8) return 0;
+        int32_t relative;
+        memcpy(&relative, code + 1, sizeof(relative));
+        return call_site + 5 + static_cast<intptr_t>(relative) == reinterpret_cast<uintptr_t>(&wrap_thunk);
+    }
+    return 0;
+}
+
 extern "C" int MH_ViewWrap_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
 

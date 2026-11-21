@@ -12,6 +12,8 @@ gamemode 2
 gameclock +300
 gameclock +200
 capture m1h_f18
-gameclock +44920
+# FC starts at step 1500 and may observe until 1541 + nd_tail(1100).
+# Finish after that observation window, before stop_step=2900; do not truncate retail.
+simstep 2800
 log m1h_f18: probe finished
 end

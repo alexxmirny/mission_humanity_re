@@ -44,7 +44,7 @@ absent Network players
 # 6000 is past saturation, the value res_picker needed for the same reason. Both peers use
 # the SAME number so a lockstep pair also captures the same sim moment.
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 22000
 simclick 890 215
 gameclock 23000

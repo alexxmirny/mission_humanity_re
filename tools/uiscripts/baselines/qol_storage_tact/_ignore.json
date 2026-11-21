@@ -1,0 +1,9 @@
+{
+  "_why": "The storage-preservation excursion keeps the loaded campaign's real system instead of rewriting world identity to select another mission. Both actual native and bound system-2 missions run eight units for 30 tactical frames and return through a successful planet reload. All161363 threshold-changing pixels are in the different mission's world; the complete160x480 tactical sidebar is byte-identical to the existing reference. Assert that HUD in exact RGB. check_storage_qol independently requires the real entry world, successful save, running mission, completed return, full policy equality and restored Auto pixels. No reference or tolerance is changed.",
+  "_only": {
+    "capture_qol_tact__mission.png": {
+      "mode": "rgb",
+      "rect": [480, 0, 160, 480]
+    }
+  }
+}

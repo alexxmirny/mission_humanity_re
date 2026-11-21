@@ -1,0 +1,11 @@
+{% extends "_base.html" %}
+{% block head %}<meta http-equiv="refresh" content="0; url={{ target }}">
+<link rel="canonical" href="{{ target }}">{% endblock %}
+{% block body %}
+<article class="entity k-building">
+<h1>{{ c.name(e) }}</h1>
+<p class="meta"><span class="badge">{{ S.kinds[e.kind] }}</span> <code class="cfg">{{ e.cfg_name }}</code></p>
+<p>{{ S.upgrade_of }}</p>
+<p>{{ S.upgrade_moved }} <a href="{{ target }}">{{ c.name(base) }} - {{ c.level_title(e) }}</a></p>
+</article>
+{% endblock %}

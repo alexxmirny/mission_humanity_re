@@ -69,7 +69,7 @@
    "source": "the capture's own pointer census, cross-read offline against the registry (2026-09-11)"
   },
   "the resolved TLO index": {
-   "why": "Not a region at all since LIFT-TABLE S3: the index crosses host-side inside LIBMH_EVK_INV_PLANET_GFX_SETUP. The blob carries the tileset NAME (current_map_data.tlo_name at +0x11c, and Planets[].tlo_file at +0x20e which IS hashed); resolving the name to an index is libmh's own body calling cfg_GetTloIndex (sim/libtrans/sim_lt_cfg_planet.cpp:113) over LIB-BOOT's imported registry.",
+   "why": "Not a region: the resolved index is host graphics state since LIFT-TABLE S3. Since TILESET1, LIBMH_EVK_INV_PLANET_GFX_SETUP carries the owned tileset name, and tileset_runtime resolves the stock index or custom profile on the host. The map header name (RID_CURRENT_MAP_DATA) and Planets[].tlo_file remain part of the blob; the resolved index is not its output.",
    "source": "tools/data/libmh_call_ledger.json, cfg_ReadMapFile DEFER-BLOB contract"
   },
   "tile_objects_ptr @0x005d0ad0": {

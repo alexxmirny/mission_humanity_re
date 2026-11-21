@@ -369,6 +369,7 @@
     <ClCompile Include="sim\sim_order_dispatch_bldg.cpp" />
     <ClCompile Include="sim\sim_order_enqueue.cpp" />
     <ClCompile Include="sim\sim_order_issue_0xf_adjacent.cpp" />
+    <ClCompile Include="sim\sim_order_tasks.cpp" />
     <ClCompile Include="sim\sim_path_alloc_slot.cpp" />
     <ClCompile Include="sim\sim_path_attach_slot.cpp" />
     <ClCompile Include="sim\sim_path_group_steps.cpp" />
@@ -424,6 +425,7 @@
     <ClCompile Include="sim\sim_state.cpp" />
     <ClCompile Include="sim\sim_step.cpp" />
     <ClCompile Include="sim\sim_storage_accepts_unit_type.cpp" />
+    <ClCompile Include="sim\sim_storage_bulk_rally.cpp" />
     <ClCompile Include="sim\sim_storage_can.cpp" />
     <ClCompile Include="sim\sim_storage_cancel_pending_docked.cpp" />
     <ClCompile Include="sim\sim_storage_dock.cpp" />
@@ -550,18 +552,22 @@
     <ClCompile Include="sim\sim_weapon_projectile_spawn.cpp" />
     <ClCompile Include="sim\sim_xtl_promote.cpp" />
     <ClCompile Include="state\boot_snapshot.cpp" />
+    <ClCompile Include="state\boot_snapshot_export.cpp" />
     <ClCompile Include="state\hook_api.cpp" />
     <ClCompile Include="state\host_api.cpp" />
     <ClCompile Include="state\host_bind.cpp" />
     <ClCompile Include="state\host_events.cpp" />
     <ClCompile Include="state\host_in.cpp" />
     <ClCompile Include="state\nav_trailer.cpp" />
+    <ClCompile Include="state\order_tasks_origin.cpp" />
+    <ClCompile Include="state\order_tasks_runtime.cpp" />
     <ClCompile Include="state\rebind_arming.cpp" />
     <ClCompile Include="state\rebind_shims.cpp" />
     <ClCompile Include="state\rebind_traps.gen.cpp" />
     <ClCompile Include="state\rebind_verify.gen.cpp" />
     <ClCompile Include="state\spine.cpp" />
     <ClCompile Include="state\spine_exports.cpp" />
+    <ClCompile Include="state\storage_policy_runtime.cpp" />
     <ClCompile Include="state\world_fixup.cpp" />
     <ClCompile Include="state\world_snapshot.cpp" />
     <ClCompile Include="tact\tact_active_unit_count_hud_draw.cpp" />
@@ -685,7 +691,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;MH_WORLD_LIVE_OWNER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>..\libmh;..\mh;..\mh\include;..\mh_common;..\mh_common\include;..\..\mh_net_proto\include</AdditionalIncludeDirectories>

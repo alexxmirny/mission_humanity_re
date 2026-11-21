@@ -59,7 +59,8 @@ capture p7_name
 
 # back to the menu through the pack's own Powrot button, then TUTORIAL (value 116) up to the WELCOME
 # modal -- the tutorial script's Polish message text (Extermination's, on MH's script) and its Start
-# button. THE SIM DOES NOT TICK BEHIND THE MODAL, so the frame is static.
+# button. Welcome pauses AFTER two strategic startup frames. Pin their wall clock using the same
+# fixture as tutorial_enter; retain the shipping20ms SP quantum and current minimap, not retail timing.
 clickl Powrót
 settled value:116
 clickv 116

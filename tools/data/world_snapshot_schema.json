@@ -1,12 +1,12 @@
 {
  "_generated_by": "tools/gen_world_snapshot.py --refresh",
  "_do_not_hand_edit": "verdicts are derived; the reasons live in world_snapshot_dispositions.json",
- "universe": 845,
- "carried": 829,
- "carried_bytes": 7711960,
+ "universe": 848,
+ "carried": 832,
+ "carried_bytes": 7713722,
  "excluded": 16,
  "unaccounted": 0,
- "hash_backed_regions": 53,
+ "hash_backed_regions": 56,
  "overlapping_blocks": [
   {
    "a": "MESSAGE_TIME",
@@ -3268,7 +3268,7 @@
    "rid": 548,
    "id": "TILE_DRAWN_MAP",
    "name": "_G_LLM_TILE_DRAWN_MAP",
-   "len": 300
+   "len": 1018
   },
   {
    "rid": 549,
@@ -3310,7 +3310,7 @@
    "rid": 555,
    "id": "TILE_VIS_MAP",
    "name": "_G_LLM_TILE_VIS_MAP",
-   "len": 300
+   "len": 1024
   },
   {
    "rid": 556,
@@ -5003,6 +5003,30 @@
    "id": "STRAT_AI_SCAN_TARGET_COUNT",
    "name": "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT",
    "len": 4
+  },
+  {
+   "rid": 845,
+   "id": "STORAGE_POLICY",
+   "name": "storage_policy",
+   "len": 32,
+   "host_native": true,
+   "pointer_free": true
+  },
+  {
+   "rid": 846,
+   "id": "ORDER_TASKS",
+   "name": "order_tasks",
+   "len": 128,
+   "host_native": true,
+   "pointer_free": true
+  },
+  {
+   "rid": 847,
+   "id": "ORDER_CAMPAIGN",
+   "name": "order_campaign",
+   "len": 160,
+   "host_native": true,
+   "pointer_free": true
   }
  ],
  "exclusions": [

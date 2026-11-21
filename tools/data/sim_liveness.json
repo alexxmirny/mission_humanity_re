@@ -2254,12 +2254,12 @@
    "ours": "bldg_order_restart_construction_enqueue"
   },
   {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "addr": "0x0046e76c",
    "tier": "T1",
    "ledger_promoted": true,
    "route": "entry_seam",
-   "why": "mh_export_install_llm_unit_order_disembark_soldiers called from install_promotion_xtl (sim/sim_xtl_promote.cpp); SHIP_PROMOTE_SIM_XTL=1",
+   "why": "mh_export_install_llm_unit_order_squad_split called from install_promotion_xtl (sim/sim_xtl_promote.cpp); SHIP_PROMOTE_SIM_XTL=1",
    "tu": "sim/sim_unit_order_disembark_soldiers.cpp",
    "no_route": false,
    "root_reached": true,
@@ -4620,7 +4620,7 @@
    "ours": "notify_ui"
   },
   {
-   "name": "llm_unit_transport_unload_field",
+   "name": "llm_unit_squad_split_field",
    "addr": "0x00488a8b",
    "tier": "T1",
    "ledger_promoted": false,
@@ -4646,7 +4646,7 @@
    "ours": "squad_pick_lead_soldier_in_direction"
   },
   {
-   "name": "llm_unit_transport_unload_docked",
+   "name": "llm_unit_squad_split_docked",
    "addr": "0x004891d8",
    "tier": "T1",
    "ledger_promoted": false,

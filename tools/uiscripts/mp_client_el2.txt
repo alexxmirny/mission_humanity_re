@@ -3,7 +3,7 @@
 # This peer is the one the field report called "eliminated with no building at 6 s". It joins,
 # enters the match on the host's Start, sits with its mother AIRBORNE while the host lands its own
 # (that is the eb1c9f9d snapshot: `ua1=1 ba1=0` next to `ua0=0 ba0=1`), then lands its own mother
-# at gameclock 6000 -- the same shift+right-click gesture the host used, which is the ONLY thing
+# at gameclock 6000 -- the same Ctrl+right-click gesture the host used, which is the ONLY thing
 # that places a human's starting building -- and finally ESC-quits the running match exactly as the
 # field joiner did (mp_client_gquit.txt's walk: ESC -> Quit game (113='q') -> Yes (121='y')). The
 # quit is what wrote the field's `mode=1 gate=eliminated` line, and this walk makes the same line
@@ -39,7 +39,7 @@ gamemode 2
 
 # the host lands at 3000; we stay airborne through that (the field snapshot), then land at 6000.
 gameclock 6000
-rclick 480 330 shift
+rclick 480 330 ctrl
 
 # past the landing, then quit like the field joiner did. The deploy is not instant: measured on
 # the rig, a click at 6000 landed at 9799 (approach + descent, ~3.8 s of sim), and the D21 watch

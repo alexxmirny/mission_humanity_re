@@ -39,14 +39,16 @@ use crate::theme;
 use crate::widgets;
 
 /// Per-page UI state (not persisted).
-#[derive(Clone, Debug, Default)]
+#[derive(Default)]
 pub struct RenderState {
     /// The selected Settings sub-tab id; empty = the first one.
     pub subtab: String,
-    /// The hotkey row currently waiting for a key press.
+    /// The generic hotkey row currently waiting for a key press.
     pub capturing: Option<String>,
-    /// Row descriptions inline (true) or on hover only (false, the default).
+    /// Row descriptions inline or on hover.
     pub detailed: bool,
+    /// Physical strategic binding capture and editor state.
+    pub bindings: super::binding_editor::State,
 }
 
 /// What the footer asks the page to do. The launcher's pages use the shell's save bar instead; this
@@ -90,6 +92,7 @@ pub fn problem_text(p: &Problem) -> String {
         Problem::BadHotkey => tr("problem.bad_hotkey").to_string(),
         Problem::BadChars => tr("problem.bad_chars").to_string(),
         Problem::BadAddress => tr("problem.bad_address").to_string(),
+        Problem::Binding(text) => text.clone(),
     }
 }
 
@@ -125,10 +128,17 @@ pub fn show_settings(ui: &mut Ui, model: &mut Model, state: &mut RenderState) {
         .collect();
     let sel = tabs.iter().position(|(id, _)| *id == state.subtab);
     if let Some(i) = widgets::seg(ui, &labels, sel) {
-        state.subtab = tabs[i].0.clone();
-        state.capturing = None;
+        if state.subtab != tabs[i].0 {
+            state.bindings.cancel();
+            state.capturing = None;
+            state.subtab = tabs[i].0.clone();
+        }
     }
     ui.add_space(4.0);
+    if state.subtab == "bindings" {
+        super::binding_editor::show_model(ui, model, &mut state.bindings);
+        return;
+    }
     let groups: Vec<(String, Vec<Row>)> = model
         .schema()
         .groups_in_subtab(&state.subtab)

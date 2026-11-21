@@ -61,6 +61,7 @@ KNOWN_WAIT_OPS = frozenset(
         "disabled",
         "hovered",
         "gamemode",
+        "chatready",
         "tactsel",
         "bldgsel",
         "sessions",
@@ -72,6 +73,9 @@ KNOWN_WAIT_OPS = frozenset(
         "race",
         "team",
         "lobbymode",
+        "lobbyspeed",
+        "lobbypage",  # mods:MAPGEN2: the lobby right-panel page spinner
+        "pickpage",  # mods:MAPGEN2: the map picker right-panel page spinner
         "retryready",
         "lobbygen",
         "lobbyping",
@@ -79,6 +83,7 @@ KNOWN_WAIT_OPS = frozenset(
         "gameclock",
         "stalled",
         "simstep",
+        "soadone",
         "field",
         "wmsg",
         "wlobby",
@@ -94,6 +99,12 @@ KNOWN_WAIT_OPS = frozenset(
         "gzdone",
         "mapsize",
         "mring",
+        "buildarmed",
+        "selectedtype",
+        "bldgready",
+        "prodstart",
+        "unitcount",
+        "unittravel",
     }
 )
 # ACTION ops: fire once, never a synchronization mechanism themselves (a `cursorhold`/`keyhold`
@@ -111,8 +122,14 @@ KNOWN_ACTION_OPS = frozenset(
         "release",
         "presshold",
         "rclick",
+        "ordermove",
+        "hudbuild",
+        "hudprod",
+        "hudinfo",
         "simclick",
+        "simdoubleclick",
         "simrclick",
+        "simresume",
         "wmclick",
         "winsize",
         "winmin",
@@ -125,6 +142,7 @@ KNOWN_ACTION_OPS = frozenset(
         "rawkey",
         "cursorhold",
         "key",
+        "keywidget",
         "keyhold",
         "hotkey",
         "hotkeydown",
@@ -143,6 +161,7 @@ KNOWN_ACTION_OPS = frozenset(
         "mark",
         "logsel",
         "loggoal",  # mods:MM4C
+        "logcfg",
         "logbuild",
         "logbldgs",  # mods:A1 fixture ops
         "liftoff",

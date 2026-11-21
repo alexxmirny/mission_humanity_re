@@ -30,12 +30,12 @@ THE FIVE CLAUSES, and each exists because a weaker gate would pass on a broken m
 
   4. IT LANDED IN ORDER, AND FAST. Both peers' `SESSION_END ... final_clock_ms=` must agree to
      within `--max-drop-steps` lockstep steps (the step length is read from the survivor's own
-     mh_lockstep.log, not assumed), and the survivor's SESSION_END must follow the quitter's
-     broadcast within `--max-drop-wall-ms`. The CLOCK agreement is the real statement -- an
-     in-order drop ends the match at the same sim clock on both peers -- and the wall bound is what
-     separates the shipping behaviour from the opt-out it replaced: measured 2026-09-18, the same
-     walk with `[net] graceful_leave=0` put 56.7 s between those two events, against 0.187 s with
-     the knob on.
+     mh_lockstep.log, not assumed). Its end must follow the quitter's park-completion/pre-removal
+     boundary within `--max-drop-wall-ms`; the completed-broadcast record is still required.
+     That record is written AFTER the sending call's local teardown, so a receiver can finish first.
+     Both bounds remain strict: 0 <= end - pre-call boundary <= max-drop-wall-ms. The CLOCK
+     agreement proves in-order removal; the wall cap rejects the retail silence timeout (56.7 s
+     measured with graceful_leave=0, versus 0.187 s with it on).
 
   5. IT DID NOT END THROUGH THE GARBLED-STREAM ARM (`--expect-no-network-error`, mp:U19e). The
      survivor's log may carry neither `; [rx] garbled:` nor an `on_gameover ENTER ... outcome=7`,
@@ -95,6 +95,11 @@ import tempfile
 # net.fast_drop, session.end). Keep the two copies textually identical: lint_log_formats arm A
 # compares these literals against that registry.
 BROADCAST = "; U17 graceful-leave: broadcast self-removal side="
+PARK = "; U19b graceful-leave: survivors "
+PARK_RE = re.compile(
+    re.escape(PARK) + r"(?:PARKED|VALVE-UNPARKED|SESSION-ENDED|NO-SURVIVORS) after \d+ ms -- "
+    r"H_d=-?\d+ ms P=-?\d+ ms lookahead=-?\d+ ms survivors=\d+\s*$"
+)
 RELINK = "; U40 relink: re-initialising the transport"
 FAST_DROP = "; U17 fast-drop: transport-dead peer"
 SESSION_END = "SESSION_END"  # the registry needle (net.session_end); no channel tag, on purpose
@@ -433,22 +438,27 @@ def check(
             )
 
     if arm == "on" and b_i is not None:
-        b_ts, s_ts = ts_ms(b_line), ts_ms(s_line)
-        if b_ts is None or s_ts is None:
-            out.append("wall gap: NOT MEASURABLE (a line carries no timestamp)")
-        else:
-            gap = wall_delta_ms(b_ts, s_ts)
-            out.append("wall gap broadcast -> survivor SESSION_END: %d ms" % gap)
-            if gap > max_drop_wall_ms:
-                bad.append(
-                    "the survivor took %d ms to end its match, over the %d ms budget -- that is the "
-                    "shape of the retail silence timeout, not of an in-order drop"
-                    % (gap, max_drop_wall_ms)
-                )
-            elif gap < 0:
-                bad.append(
-                    "the survivor's SESSION_END precedes the quitter's broadcast by %d ms" % -gap
-                )
+        p_i, p_line = first_hit(quitter, PARK)
+        if p_i is None or p_i >= b_i or not PARK_RE.search(p_line):
+            raise Refusal("missing, malformed or unpaired park-completion/pre-removal boundary")
+        p_ts, b_ts, s_ts = ts_ms(p_line), ts_ms(b_line), ts_ms(s_line)
+        if p_ts is None or b_ts is None or s_ts is None:
+            raise Refusal("a pre-removal, completed-broadcast or SESSION_END timestamp is missing")
+        if wall_delta_ms(p_ts, b_ts) < 0:
+            raise Refusal("completed broadcast precedes its pre-removal boundary")
+        gap = wall_delta_ms(p_ts, s_ts)
+        out.append("wall gap pre-removal -> survivor SESSION_END: %d ms" % gap)
+        if gap > max_drop_wall_ms:
+            bad.append(
+                "the survivor took %d ms to end its match, over the %d ms budget -- that is the "
+                "shape of the retail silence timeout, not of an in-order drop"
+                % (gap, max_drop_wall_ms)
+            )
+        elif gap < 0:
+            bad.append(
+                "the survivor's SESSION_END precedes the quitter's pre-removal boundary by %d ms"
+                % -gap
+            )
 
     # ---- clause 5: the survivor did not end through the garbled-stream arm (U19e) ---------------
     if expect_no_network_error and arm == "on":
@@ -534,6 +544,9 @@ def check(
 # mistake in the fixture itself shows up as a green that should be red rather than the reverse.
 GREEN_QUITTER = [
     "[01:59:45.684] ; U40: match over -> client link released; the next browser refresh re-dials the host",
+    "[01:59:45.685] "
+    + PARK
+    + "PARKED after 200 ms -- H_d=3290 ms P=3290 ms lookahead=30 ms survivors=1",
     "[01:59:45.686] ; on_gameover ENTER sess=2 outcome=0 gclk=3259 (downgrade=0)",
     "[01:59:45.686] " + BROADCAST + "1 before quit-to-menu",
 ]
@@ -586,7 +599,16 @@ def _plant_shared(root, with_this_match=True, ses8=False):
             "final_clock_ms=12489 stall=0",
         ],
     )
-    put(c, "20260924T053210Z_menu_solo", ["[08:32:32.899] " + BROADCAST + "1 before quit-to-menu"])
+    put(
+        c,
+        "20260924T053210Z_menu_solo",
+        [
+            "[08:32:32.898] "
+            + PARK
+            + "PARKED after 200 ms -- H_d=12490 ms P=12490 ms lookahead=30 ms survivors=1",
+            "[08:32:32.899] " + BROADCAST + "1 before quit-to-menu",
+        ],
+    )
     put(
         c,
         "20260924T053216Z_c70ed5a5_1_solo",
@@ -629,7 +651,12 @@ def _plant_shared(root, with_this_match=True, ses8=False):
         put(
             c,
             n["cm"],
-            ["[08:33:00.650] " + BROADCAST + "1 before quit-to-menu"],
+            [
+                "[08:33:00.650] "
+                + PARK
+                + "PARKED after 200 ms -- H_d=3480 ms P=3480 ms lookahead=30 ms survivors=1",
+                "[08:33:00.650] " + BROADCAST + "1 before quit-to-menu",
+            ],
         )
         put(
             c,
@@ -655,6 +682,48 @@ def selftest():
         GREEN_SURVIVOR,
         True,
     )
+    arm(
+        "green: remote end precedes sender teardown completion, not its send",
+        [
+            ln.replace("[01:59:45.686]", "[01:59:45.872]") if BROADCAST in ln else ln
+            for ln in GREEN_QUITTER
+        ],
+        GREEN_QUITTER_SESSION,
+        GREEN_SURVIVOR,
+        True,
+    )
+    for name, menu in (
+        ("missing", [ln for ln in GREEN_QUITTER if PARK not in ln]),
+        ("malformed", [ln.replace("PARKED after 200 ms", "unknown") for ln in GREEN_QUITTER]),
+        (
+            "untimestamped",
+            [ln.removeprefix("[01:59:45.685] ") if PARK in ln else ln for ln in GREEN_QUITTER],
+        ),
+        (
+            "unpaired",
+            [ln for ln in GREEN_QUITTER if PARK not in ln]
+            + [ln for ln in GREEN_QUITTER if PARK in ln],
+        ),
+    ):
+        arm(
+            "red: " + name + " pre-removal boundary",
+            menu,
+            GREEN_QUITTER_SESSION,
+            GREEN_SURVIVOR,
+            False,
+        )
+    for name, stamp, want in (
+        ("one millisecond before actual pre-call boundary", "01:59:45.684", False),
+        ("exact unchanged wall cap", "01:59:50.685", True),
+        ("one millisecond beyond unchanged wall cap", "01:59:50.686", False),
+    ):
+        arm(
+            name,
+            GREEN_QUITTER,
+            GREEN_QUITTER_SESSION,
+            [ln.replace("01:59:45.871", stamp) for ln in GREEN_SURVIVOR],
+            want,
+        )
     arm(
         "red: no broadcast at all (knob off / detour unarmed)",
         [ln for ln in GREEN_QUITTER if BROADCAST not in ln],

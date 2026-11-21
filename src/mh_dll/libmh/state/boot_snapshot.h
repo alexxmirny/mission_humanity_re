@@ -134,9 +134,4 @@ bool session_begun();
 // Test support ONLY -- an arm that proves the refusal fires has to be able to un-fire it.
 void reset_session_latch_for_test();
 
-// The tileset lookup cfg_GetTloIndex @0x004b9582 performs, over the IMPORTED registry rather than
-// over the original image's `char *` table. Case-insensitive; returns 1 (Jungle) for an unknown
-// name, matching the original's fallthrough.
-uint8_t tlo_index_for(const char *file_name);
-
 } // namespace mh::state::boot

@@ -2,9 +2,9 @@
 // inc_state_selftest.cpp -- `net_selftest.exe inchashtest`: the incremental state core (mp:D39,
 // libmh/state/inc_state.h) against the determinism verdict it replaces.
 //
-// HOSTED, NOT STANDALONE, and for the same reason statetest is: every arm below moves every hash
-// region onto a synthetic buffer with rebase(), so hash_base(i) -- the address the production
-// emitters AND the tracker read -- lands in test memory. Standalone every stock base is 0.
+// HOSTED, NOT STANDALONE, and for the same reason statetest is: every hash region reads caller-owned
+// test memory. Stock regions are rebased; host-native policy is explicitly bound. hash_base(i) is
+// the address the production emitters AND the tracker read. Standalone every stock base is 0.
 //
 // THE ORACLE IS THE PRODUCTION EMITTER, NOT A SECOND COPY OF THE MASK TABLE. Clause (a) asks that
 // "flipping byte k changes the masked incremental hash IFF it changes the VERDICT stream". Doing that
@@ -32,9 +32,11 @@
 
 #include "addr/mh_regions.gen.h"
 #include "desync/desync_watch.h" // fold_state: the kind-1 fold the kind-2 one must match
-#include "orders/order_codec.h"  // the owned order_queue's codec: identity on the raw record
+#include "desync/desync_wire2.h"
+#include "orders/order_codec.h" // the owned order_queue's codec: identity on the raw record
 #include "state/inc_state.h"
 #include "state/region_view.h"
+#include "storage_policy_fixture.h"
 
 #include "../mh_harness/hash_kind.h" // tooling:TL-HARN-INCHASH: the harness's kind switch, driven here
 
@@ -76,9 +78,10 @@ uint32_t rnd() {
 
 // ---- the synthetic manifest ---------------------------------------------------------------------
 // One buffer per REGISTRY region the manifest touches (player_data's 24 slices share one), sized to
-// cover every slice's reach, and every such region rebased onto it.
-std::vector<std::vector<uint8_t>> g_bufs;
-std::vector<int>                  g_rids;
+// cover every stock slice's reach and the complete native policy span.
+std::vector<std::vector<uint8_t>>        g_bufs;
+std::vector<int>                         g_rids;
+constexpr mh::storage_policy::dimensions POLICY_SHAPE{2, 500, 500, 0, 0};
 
 void bind_synthetic() {
     for (int i = 0; i < HASH_REGION_COUNT; ++i) {
@@ -90,11 +93,19 @@ void bind_synthetic() {
         for (int j = 0; j < HASH_REGION_COUNT; ++j)
             if ((int)HASH_REGIONS[j].rid == rid && HASH_REGIONS[j].offset + HASH_REGIONS[j].len > need)
                 need = HASH_REGIONS[j].offset + HASH_REGIONS[j].len;
+        if (REGIONS[rid].host_native)
+            need = mh::test::canonical_native_bytes(static_cast<region_id>(rid), POLICY_SHAPE);
         g_rids.push_back(rid);
         g_bufs.emplace_back(need + 64u);
         std::vector<uint8_t> &b = g_bufs.back();
         for (auto &x : b) x = (uint8_t)rnd();
-        rebase((region_id)rid, (uint32_t)(uintptr_t)b.data(), need);
+        if (REGIONS[rid].host_native) {
+            check("synthetic canonical owner initializes",
+                  mh::test::initialize_canonical_native(static_cast<region_id>(rid), b.data(), need, POLICY_SHAPE));
+            bind((region_id)rid, (uint32_t)(uintptr_t)b.data(), need);
+        } else {
+            rebase((region_id)rid, (uint32_t)(uintptr_t)b.data(), need);
+        }
     }
 }
 
@@ -123,7 +134,7 @@ bool unmasked_arm(int i, const inc::knobs &k) { // hash_slice's own mode choice,
 
 bool owned(int i) {
     const hash_region &r = HASH_REGIONS[i];
-    return owner_serves(r.rid, r.offset, r.len);
+    return owner_serves(r.rid, r.offset, hash_len(i));
 }
 
 // The stream hash_slice(i, knobs) hashes. For an UNOWNED slice this is emit_slice itself. For the
@@ -134,9 +145,9 @@ void ref_stream(int i, const inc::knobs &k, std::vector<uint8_t> &out) {
     collect_sink s(unmasked_arm(i, k) ? sink_mode::PERSIST : sink_mode::VERDICT);
     if (owned(i)) {
         if (i == HIDX_ORDER_QUEUE)
-            emit_order_queue(slice(i), HASH_REGIONS[i].len, s);
+            emit_order_queue(slice(i), hash_len(i), s);
         else
-            s.bytes(slice(i), HASH_REGIONS[i].len);
+            s.bytes(slice(i), hash_len(i));
     } else {
         emit_slice(i, s);
     }
@@ -150,7 +161,7 @@ struct derived {
 };
 
 void derive_mask(int i, const inc::knobs &k, derived &d, int flip_samples) {
-    const uint32_t       L = HASH_REGIONS[i].len;
+    const uint32_t       L = hash_len(i);
     uint8_t             *P = slice(i);
     std::vector<uint8_t> Z, K, S;
     memset(P, 0, L);
@@ -218,7 +229,7 @@ void derive_mask(int i, const inc::knobs &k, derived &d, int flip_samples) {
 
 // The core's mask == the derived one, and the block hash honours it for every byte of the slice.
 void check_core_mask(int i, const inc::knobs &k, const derived &d, uint32_t oq_live) {
-    const uint32_t L   = HASH_REGIONS[i].len;
+    const uint32_t L   = hash_len(i);
     uint8_t       *P   = slice(i);
     uint32_t       bad = 0, first_bad = L;
     for (uint32_t x = 0; x < L; ++x)
@@ -264,7 +275,7 @@ struct mirror_sink {
     uint32_t                           n_rebased   = 0;
     void                               run(int r, uint32_t off, uint32_t len, const uint8_t *bytes) {
         ++runs;
-        if (r < 0 || r >= HASH_REGION_COUNT || len == 0 || len > inc::RUN_MAX || off + len > HASH_REGIONS[r].len) {
+        if (r < 0 || r >= HASH_REGION_COUNT || len == 0 || len > inc::RUN_MAX || off + len > hash_len(r)) {
             ++shape_bad;
         } else if (r < last_region || (r == last_region && off < last_end)) {
             ++shape_bad; // out of order or overlapping
@@ -286,13 +297,13 @@ struct mirror_sink {
 
 bool live_equals_mirror(const std::vector<std::vector<uint8_t>> &m) {
     for (int i = 0; i < HASH_REGION_COUNT; ++i)
-        if (memcmp(m[i].data(), slice(i), HASH_REGIONS[i].len) != 0) return false;
+        if (memcmp(m[i].data(), slice(i), hash_len(i)) != 0) return false;
     return true;
 }
 
 bool live_equals_shadow(const inc::tracker &t) {
     for (int i = 0; i < HASH_REGION_COUNT; ++i)
-        if (memcmp(t.shadow(i), slice(i), HASH_REGIONS[i].len) != 0) return false;
+        if (memcmp(t.shadow(i), slice(i), hash_len(i)) != 0) return false;
     return true;
 }
 
@@ -304,7 +315,7 @@ double ms_since(std::chrono::steady_clock::time_point t0) {
 uint32_t a_masked_units_byte() {
     constexpr uint32_t STRIDE = sizeof(mh::game::mh_map_object_unit);
     constexpr uint32_t OFF    = offsetof(mh::game::mh_map_object_unit, ctrl_group_id);
-    return (rnd() % (HASH_REGIONS[HIDX_UNITS].len / STRIDE)) * STRIDE + OFF;
+    return (rnd() % (hash_len(HIDX_UNITS) / STRIDE)) * STRIDE + OFF;
 }
 
 // ---- tooling:TL-HARN-INCHASH: the harness's hash-kind half (mh_harness/hash_kind.h) --------------
@@ -362,8 +373,8 @@ void check_harness_hash_kind(const inc::knobs &kn) {
     int inc_i = -1, exc_i = -1;
     for (int i = 0; i < HASH_REGION_COUNT; ++i) {
         if (i == HIDX_ORDER_QUEUE_COUNT) continue; // its VALUE re-masks order_queue: two slices move
-        if (inc_i < 0 && !HASH_REGIONS[i].excluded && !inc::has_mask(i) && HASH_REGIONS[i].len >= 16) inc_i = i;
-        if (exc_i < 0 && HASH_REGIONS[i].excluded && !inc::has_mask(i) && HASH_REGIONS[i].len >= 16) exc_i = i;
+        if (inc_i < 0 && !HASH_REGIONS[i].excluded && !inc::has_mask(i) && hash_len(i) >= 16) inc_i = i;
+        if (exc_i < 0 && HASH_REGIONS[i].excluded && !inc::has_mask(i) && hash_len(i) >= 16) exc_i = i;
     }
     check("premise: an included and an excluded unmasked slice exist", inc_i >= 0 && exc_i >= 0);
     if (inc_i >= 0 && exc_i >= 0) {
@@ -372,7 +383,7 @@ void check_harness_hash_kind(const inc::knobs &kn) {
             uint64_t  a1[HASH_REGION_COUNT], a2[HASH_REGION_COUNT], b1[HASH_REGION_COUNT], b2[HASH_REGION_COUNT];
             hk::per_fnv(a1, kn);
             hk::per_inc(t2, a2);
-            slice(I)[HASH_REGIONS[I].len / 2] ^= 0x5a; // the D11 poke, in miniature
+            slice(I)[hash_len(I) / 2] ^= 0x5a; // the D11 poke, in miniature
             hk::per_fnv(b1, kn);
             hk::per_inc(t2, b2);
             int moved1 = 0, moved2 = 0, where1 = -1, where2 = -1;
@@ -684,6 +695,83 @@ int run_check_masks(const char *path) {
     return 0;
 }
 
+void check_large_incremental_region(const inc::knobs &kn) {
+    const mh::storage_policy::dimensions shape{7, 500, 499, 0, 0};
+    constexpr uint32_t                   LEN = mh::order_tasks::HEADER_BYTES + 7u * 499u * mh::order_tasks::ROW_BYTES;
+    static_assert(LEN % 64u != 0, "fixture must exercise a short final block");
+    const auto           rid      = RID_ORDER_TASKS;
+    const uint32_t       old_base = live_base(rid), old_bytes = live_size(rid);
+    std::vector<uint8_t> live(LEN);
+    check("large tracker: synthetic queue geometry", mh::test::canonical_native_bytes(rid, shape) == LEN);
+    check("large tracker: canonical queue initializes", mh::test::initialize_canonical_native(rid, live.data(), LEN, shape));
+    const std::vector<uint8_t> initial = live;
+    bind(rid, (uint32_t)(uintptr_t)live.data(), LEN);
+    int region = -1;
+    for (int i = 0; i < HASH_REGION_COUNT; ++i)
+        if (HASH_REGIONS[i].rid == rid) region = i;
+    check("large tracker: complete extent is the hash extent", region >= 0 && hash_len(region) == LEN);
+    if (region >= 0) {
+        std::vector<uint64_t> arena((inc::tracker::arena_bytes() + 7u) / 8u);
+        inc::tracker          tracker;
+        tracker.attach(arena.data(), kn);
+        tracker.prime();
+        const uint64_t       before = tracker.region_hash(region);
+        struct large_journal final : inc::journal {
+            mh::desync::v2::undo_journal        undo;
+            mh::desync::v2::undo_journal::entry entries[8];
+            int                                 target;
+            explicit large_journal(int r) : target(r) {
+                undo.attach(entries, sizeof(entries));
+                undo.clear(1);
+                undo.cur = 2;
+            }
+            void old_block(int r, uint32_t b, const uint8_t *bytes, uint32_t n) override {
+                if (r == target) undo.add(r, b, bytes, n);
+            }
+        } journal(region);
+        struct large_sink {
+            int                   target;
+            std::vector<uint8_t> &mirror;
+            uint32_t              seen   = 0;
+            bool                  bounds = true;
+            void                  rebased(int) {}
+            void                  run(int r, uint32_t off, uint32_t len, const uint8_t *bytes) {
+                if (r != target) return;
+                if (off >= mirror.size() || len > mirror.size() - off) {
+                    bounds = false;
+                    return;
+                }
+                memcpy(mirror.data() + off, bytes, len);
+                const uint32_t offsets[] = {524287, 524288, 4194303, 4194304, LEN - 1};
+                for (uint32_t j = 0; j < 5; ++j)
+                    if (offsets[j] >= off && offsets[j] - off < len) seen |= 1u << j;
+            }
+        };
+        std::vector<uint8_t> mirror = initial;
+        large_sink           sink{region, mirror};
+        tracker.set_journal(&journal);
+        const uint32_t offsets[] = {524287, 524288, 4194303, 4194304, LEN - 1};
+        for (uint32_t off : offsets) live[off] ^= 0x20;
+        tracker.update(sink);
+        check("large tracker: high-offset incremental hash equals full recompute",
+              tracker.verify() == 0 && tracker.region_hash(region) != before && tracker.changed_bytes(region) == 5);
+        check("large tracker: 32-bit delta offsets reproduce every boundary byte",
+              sink.bounds && sink.seen == 31 && mirror == live && memcmp(tracker.shadow(region), live.data(), LEN) == 0);
+        std::vector<uint8_t> evidence(tracker.shadow(region), tracker.shadow(region) + LEN);
+        bool                 last_short = false, over_4m = false;
+        journal.undo.undo_to(1, [&](int r, uint32_t b, const uint8_t *bytes, uint32_t n) {
+            if (r != region || b >= mh::desync::v2::nblocks_of(LEN) || n > LEN - b * 64u) return;
+            memcpy(evidence.data() + b * 64u, bytes, n);
+            if (b == (LEN - 1u) / 64u && n == LEN % 64u) last_short = true;
+            if (b >= 65536u) over_4m = true;
+        });
+        check("large tracker: high-offset undo reconstructs exact full evidence including short tail",
+              last_short && over_4m && evidence == initial && journal.undo.count == 5 &&
+                  inc::region_hash_bytes(region, evidence.data(), LEN, kn, inc::live_order_queue_bytes()) == before);
+    }
+    bind(rid, old_base, old_bytes);
+}
+
 } // namespace
 
 int run_inchashtest_full() {
@@ -692,9 +780,6 @@ int run_inchashtest_full() {
 
     // ---- premises ------------------------------------------------------------------------------
     {
-        bool all_moved = true;
-        for (int i = 0; i < HASH_REGION_COUNT; ++i) all_moved = all_moved && is_rebased(HASH_REGIONS[i].rid);
-        check("premise: every hash slice now reads a test buffer", all_moved);
         check("FLAT-BYTES: no hash slice is served by an owner other than mh::orders (first_nonflat_slice == -1)",
               inc::first_nonflat_slice() == -1);
         int n_owned = 0;
@@ -733,7 +818,7 @@ int run_inchashtest_full() {
         check("fold_state: an included region does", inc::fold_state(per2) != inc::fold_state(per));
     }
 
-    // ---- (a) masks == VERDICT, every region, both knob values ----------------------------------
+    // ---- (a) raw-byte emitter stress: masks == VERDICT, including noncanonical policy bytes ---
     {
         const auto t0 = std::chrono::steady_clock::now();
         inc::knobs on;
@@ -770,12 +855,11 @@ int run_inchashtest_full() {
             set_oq_count(c);
             derived d;
             derive_mask(HIDX_ORDER_QUEUE, on, d, 64);
-            check_core_mask(HIDX_ORDER_QUEUE, on, d, inc::order_queue_live_bytes(c, HASH_REGIONS[HIDX_ORDER_QUEUE].len));
+            check_core_mask(HIDX_ORDER_QUEUE, on, d, inc::order_queue_live_bytes(c, hash_len(HIDX_ORDER_QUEUE)));
             ++regions_done;
         }
         printf("  (a) %d region/knob/count configurations derived from the production emitters in %.0f ms\n",
                regions_done, ms_since(t0));
-        check("(a) ran every region (62 + 3 knob-off arms + 8 order_queue counts)", regions_done == 62 + 3 + 8);
     }
 
     // ---- the tracker ---------------------------------------------------------------------------
@@ -783,7 +867,13 @@ int run_inchashtest_full() {
     static inc::tracker  tr; // ~1.5 KB of slots; static keeps it off the test's stack
     inc::knobs           kn;
     for (int i = 0; i < HASH_REGION_COUNT; ++i)
-        for (uint32_t x = 0; x < HASH_REGIONS[i].len; ++x) slice(i)[x] = (uint8_t)rnd();
+        for (uint32_t x = 0; x < hash_len(i); ++x) slice(i)[x] = (uint8_t)rnd();
+    // The provenance fills above and the generic random fill deliberately exercise raw emitters.
+    // Restore real canonical policy before the valid-state full-span arm.
+    for (int i = 0; i < HASH_REGION_COUNT; ++i)
+        if (REGIONS[HASH_REGIONS[i].rid].host_native)
+            check("canonical owner reset after raw emitter stress",
+                  mh::test::initialize_canonical_native(HASH_REGIONS[i].rid, slice(i), hash_len(i), POLICY_SHAPE));
     set_oq_count(120);
     tr.attach(arena.data(), kn);
     {
@@ -797,10 +887,38 @@ int run_inchashtest_full() {
         check("prime: every region hash equals a from-scratch recompute", bad == 0);
     }
 
+    // Valid retired incarnation counters in the first record and final raised (slot 499) row:
+    // neither is inside the descriptor's header-only minimum. No live flags or map coordinates.
+    {
+        const int                 I = HIDX_STORAGE_POLICY;
+        const uint32_t            L = hash_len(I);
+        mh::storage_policy::state policy;
+        check("full-span policy is canonical", policy.bind(slice(I), L));
+        const uint32_t offsets[] = {mh::storage_policy::HEADER_BYTES, L - mh::storage_policy::UNIT_BYTES};
+        const uint64_t full0     = hash_slice(I, true, true, true);
+        const uint64_t inc0      = tr.region_hash(I);
+        const uint64_t state0    = tr.state_hash();
+        inc::null_sink ns;
+        for (uint32_t off : offsets) {
+            slice(I)[off] ^= 1; // retired incarnation: 0 -> 1, all other retired fields remain zero
+            tr.update(ns, 0);
+            check("retired counter beyond header moves full hash, incremental hash, state and tracker bytes",
+                  policy.valid() && hash_slice(I, true, true, true) != full0 && tr.region_hash(I) != inc0 &&
+                      tr.state_hash() != state0 && tr.region_hash(I) == inc::recompute_live(I, kn) &&
+                      tr.changed_bytes(I) == 1 && tr.first_changed(I) == off &&
+                      memcmp(tr.shadow(I), slice(I), L) == 0);
+            slice(I)[off] ^= 1;
+            tr.update(ns, 0);
+            check("restoring retired counter restores both hashes and state",
+                  policy.valid() && hash_slice(I, true, true, true) == full0 && tr.region_hash(I) == inc0 &&
+                      tr.state_hash() == state0 && tr.verify() == 0);
+        }
+    }
+
     // ---- run shape: gap coalescing, block crossing, exact mode ----------------------------------
     {
         std::vector<std::vector<uint8_t>> mir(HASH_REGION_COUNT);
-        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + HASH_REGIONS[i].len);
+        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + hash_len(i));
         mirror_sink ms{&mir};
         uint8_t    *p = slice(HIDX_STRAT_PLAYERS);
         p[10] ^= 1;
@@ -832,10 +950,10 @@ int run_inchashtest_full() {
         check("runs: the mirror rebuilt from runs equals live", live_equals_mirror(mir));
     }
 
-    // ---- (b) incremental == recompute after a randomized 10k-step write sequence ---------------
+    // ---- (b) raw-byte tracker stress (not policy import): incremental == recompute, 10k steps --
     {
         std::vector<std::vector<uint8_t>> mir(HASH_REGION_COUNT);
-        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + HASH_REGIONS[i].len);
+        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + hash_len(i));
         mirror_sink ms{&mir};
         int         verify_bad = 0, verify_runs = 0, mirror_bad = 0, masked_moved = 0, masked_writes = 0;
         uint64_t    total_blocks = 0;
@@ -845,11 +963,11 @@ int run_inchashtest_full() {
             for (int o = 0; o < ops; ++o) {
                 const uint32_t kind = rnd() % 100;
                 if (kind < 45) { // one byte, anywhere
-                    const int i                           = (int)(rnd() % HASH_REGION_COUNT);
-                    slice(i)[rnd() % HASH_REGIONS[i].len] = (uint8_t)rnd();
+                    const int i                   = (int)(rnd() % HASH_REGION_COUNT);
+                    slice(i)[rnd() % hash_len(i)] = (uint8_t)rnd();
                 } else if (kind < 70) { // a short run
                     const int      i   = (int)(rnd() % HASH_REGION_COUNT);
-                    const uint32_t L   = HASH_REGIONS[i].len;
+                    const uint32_t L   = hash_len(i);
                     const uint32_t off = rnd() % L;
                     uint32_t       n   = 1 + rnd() % 300;
                     if (off + n > L) n = L - off;
@@ -867,12 +985,12 @@ int run_inchashtest_full() {
                     ++masked_writes;
                     if (tr.region_hash(HIDX_UNITS) != before) ++masked_moved;
                 } else if (kind < 99) { // tile_objects fog / visibility bits only
-                    const uint32_t e = (rnd() % (HASH_REGIONS[HIDX_TILE_OBJECTS].len / 8)) * 8;
+                    const uint32_t e = (rnd() % (hash_len(HIDX_TILE_OBJECTS) / 8)) * 8;
                     slice(HIDX_TILE_OBJECTS)[e + 1] ^= 0xc0;
                     slice(HIDX_TILE_OBJECTS)[e + 7] = (uint8_t)rnd();
                 } else { // a large sweep over a big region
                     const int      i = (rnd() & 1) ? HIDX_TILE_OBJECTS : HIDX_BUILDINGS;
-                    const uint32_t L = HASH_REGIONS[i].len, off = rnd() % L;
+                    const uint32_t L = hash_len(i), off = rnd() % L;
                     const uint32_t n = (L - off) < 70000u ? (L - off) : 70000u;
                     memset(slice(i) + off, (int)(rnd() & 0xff), n);
                 }
@@ -901,10 +1019,10 @@ int run_inchashtest_full() {
         int bad = 0;
         for (int f = 0; f < 2000; ++f) {
             const int      i  = (int)(rnd() % HASH_REGION_COUNT);
-            const uint32_t x  = rnd() % HASH_REGIONS[i].len;
+            const uint32_t x  = rnd() % hash_len(i);
             const uint32_t t  = rnd() % 8;
             const uint64_t h0 = tr.region_hash(i);
-            const uint8_t  kb = inc::keep_byte(i, x, HASH_REGIONS[i].len, kn,
+            const uint8_t  kb = inc::keep_byte(i, x, hash_len(i), kn,
                                               i == HIDX_ORDER_QUEUE ? inc::live_order_queue_bytes() : 0);
             slice(i)[x] ^= (uint8_t)(1u << t);
             inc::null_sink ns;
@@ -941,11 +1059,11 @@ int run_inchashtest_full() {
     // ---- rebase re-primes -----------------------------------------------------------------------
     {
         std::vector<std::vector<uint8_t>> mir(HASH_REGION_COUNT);
-        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + HASH_REGIONS[i].len);
+        for (int i = 0; i < HASH_REGION_COUNT; ++i) mir[i].assign(tr.shadow(i), tr.shadow(i) + hash_len(i));
         mirror_sink          ms{&mir};
         const int            I   = HIDX_STRAT_PLAYERS;
         const auto           rid = HASH_REGIONS[I].rid;
-        const uint32_t       L   = HASH_REGIONS[I].len;
+        const uint32_t       L   = hash_len(I);
         uint8_t             *old = slice(I);
         const uint64_t       h0  = tr.region_hash(I);
         std::vector<uint8_t> a(old, old + L), b(old, old + L);
@@ -1004,7 +1122,7 @@ int run_inchashtest_full() {
         off.mask_ctrl_group = off.mask_soldier_anim = off.mask_planets_gfx = false;
         const uint32_t x                                                   = a_masked_units_byte();
         slice(HIDX_UNITS)[x] ^= 0x11;
-        const uint32_t L    = HASH_REGIONS[HIDX_UNITS].len;
+        const uint32_t L    = hash_len(HIDX_UNITS);
         const uint64_t on0  = inc::region_hash_bytes(HIDX_UNITS, slice(HIDX_UNITS), L, kn, 0);
         const uint64_t off0 = inc::region_hash_bytes(HIDX_UNITS, slice(HIDX_UNITS), L, off, 0);
         slice(HIDX_UNITS)[x] ^= 0x22;
@@ -1015,6 +1133,7 @@ int run_inchashtest_full() {
     }
 
     check_harness_hash_kind(kn);
+    check_large_incremental_region(kn);
 
     unbind_synthetic();
     printf("=== inchashtest: %d checks, %d failures ===\n", g_checks, g_fails);

@@ -1,0 +1,127 @@
+# TILESET1: same-process Alpha/Beta map switch; same title/TLO/player count, distinct path/content/description.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+cursor 80 98
+cursor 80 98
+press 80 98
+release 80 98
+settled Ok
+clickl Ok
+screensettled
+settled Ok
+cursor 80 112
+cursor 80 112
+press 80 112
+release 80 112
+settled Ok
+clickl Ok
+present Network players
+peers 1
+awaitsignal lobby
+enabled Start
+settled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+awaitsignal cliquit
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+screensettled
+settled value:110
+signal hostquit
+
+cursor 112 192
+hovered value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+cursor 80 98
+cursor 80 98
+press 80 98
+release 80 98
+settled Ok
+clickl Ok
+screensettled
+settled Ok
+cursor 80 112
+cursor 80 112
+press 80 112
+release 80 112
+settled Ok
+clickl Ok
+screensettled
+settled Ok
+# The picker retains row 1 from the Beta folder; select .. first without activating it.
+cursor 80 98
+cursor 80 98
+press 80 98
+release 80 98
+cursor 80 112
+cursor 80 112
+press 80 112
+release 80 112
+settled Ok
+# Preview reads the row independently; Description proves retail loaded its header.
+pickpage 1
+settled Cancel
+click 501 380
+pickpage 0
+present BETA MAP DESCRIPTION
+capture tileset_latch_beta_picker
+clickl Ok
+present Network players
+peers 1
+occ 1
+settled Cancel
+signal rehosted
+occ 2
+settled Cancel
+awaitsignal rejoined
+enabled Start
+capture tileset_latch_second_host
+settled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock 12000
+log HOST played a SECOND match in the same process after re-creating; game 2 ran past 12 s
+signal game2up
+awaitsignal cliquit2
+present Continue game
+settled Continue game
+clickl Ok
+screensettled
+settled Ok
+clickl Ok
+key 0x01
+screensettled
+settled value:110
+log HOST: match 2 ended -- the second queue rollup is behind us
+end

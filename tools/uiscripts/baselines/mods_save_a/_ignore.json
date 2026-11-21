@@ -1,0 +1,13 @@
+{
+  "_why": "This row verifies actual native save/provenance, not an unpinned terrain or Mother/target animation phase. In the broad 2026-11-05 run, 35906 changed pixels were in the world and 287 in the minimap; the complete stable sidebar below remained byte-identical. Require a real textured strategic frame and exact stable HUD; retain check_mod_save_runtime for the successful save and exact mounted A identity/digest. Target-stroke and Auto pixels are judged by their dedicated gameplay captures, not relaxed here.",
+  "_structural": {
+    "capture_dx_save_a.png": {
+      "ref": "capture_dx_save_a.png",
+      "view_rect": [0, 0, 480, 448],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [480, 250, 160, 198],
+      "hud_tol": 0.0
+    }
+  }
+}

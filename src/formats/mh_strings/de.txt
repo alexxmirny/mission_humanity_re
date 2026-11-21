@@ -19,7 +19,8 @@ refuse.codepage = Codepage %u/%u
 refuse.newer_protocol = Protokoll %u > %u
 refuse.older_protocol = Protokoll %u < %u
 refuse.malformed = ungültige Beitrittsanfrage
-refuse.no_match_id = altes Protokoll (keine match_id)
+refuse.old_protocol = altes Spielprotokoll
+refuse.host_generation = Host-Generation %u < %u
 refuse.newer_than_host = Protokoll neuer als beim Host
 refuse.not_our_lobby = nicht unsere Lobby
 refuse.cp_mismatch = Eingabe-Codepage passt nicht
@@ -27,6 +28,7 @@ refuse.unknown = unbekannt
 refuse.caps = Limits können nicht erhöht werden
 refuse.build = Host hat %s, du hast %s: bitte aktualisieren
 refuse.gameplay = Gameplay-Einstellungen weichen ab (%s/%s): bitte aktualisieren
+refuse.content = unterschiedliche Spielinhalte (Mods?)
 relay.outdated = Relay veraltet (Protokoll %u < %u)
 
 # map transfer
@@ -70,5 +72,34 @@ lobby.team_4 = T4
 lobby.mode_ffa = Modus: Jeder gegen jeden
 lobby.mode_team = Modus: Teams
 
+# right panel page spinner (mods:MAPGEN2)
+page.description = Ansicht: Beschreibung
+page.preview = Ansicht: Vorschau
+page.settings = Ansicht: Einstellungen
+page.settings_title = Spieleinstellungen
+page.settings_host_only = Spieleinstellungen (vom Host festgelegt)
+page.preview_not_received = Karte noch nicht empfangen
+page.preview_none = Keine Vorschau verfügbar
+
 # raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
 caps.load_refused = Dieser Spielstand nutzt erhöhte Limits. Aktiviere im Launcher "Raised limits", um ihn zu laden.
+# the .sav mod-metadata carrier: one deferred notice, the load continues (mh/mods/save_meta.cpp)
+mods.save_mismatch = Spielstand wurde mit anderen Mods erstellt - wird trotzdem geladen
+mods.save_legacy = Spielstand ohne Mod-Daten - passt evtl. nicht zu den aktiven Mods
+mods.save_tileset_missing = Diesem Spielstand fehlt ein Tileset. Aktiviere dessen Mod, um ihn zu laden.
+mods.config_refused = Mods abgelehnt; Originalressourcen aktiv
+mods.config_details = Details stehen in mh_video.log
+tileset.summary_overflow = Kartenbeschreibung überschreitet das Anzeigelimit
+tileset.unknown = Unbekanntes Tileset
+lobby.speed = Geschwindigkeit: %d%%
+storage.auto_dispatch = automatisches Ausrücken
+
+keys.input_unavailable = Die strategische Steuerung konnte nicht sicher installiert werden. Spiel und Mod müssen zueinander passen.
+orders.queue_full = %u Einheit(en): Befehlswarteschlange voll (32 Einträge)
+orders.after_patrol = %u Einheit(en): Nach einer Endlospatrouille ist kein endlicher Befehl möglich
+orders.degenerate = %u Einheit(en): Patrouille benötigt verschiedene Punkte
+orders.target = %u Einheit(en): Ziel nicht mehr verfügbar
+orders.unsupported = %u Einheit(en): Diese Aktion kann nicht eingereiht werden
+orders.actor_unavailable = %u Einheit(en): Einheit für eingereihte Befehle nicht verfügbar
+orders.world_unavailable = %u Einheit(en): Eingereihter Befehl ist in der aktuellen Welt nicht gültig
+orders.blocked = %u Einheit(en): Befehl blockiert; Route zum Fortsetzen ersetzen

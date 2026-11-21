@@ -32,15 +32,14 @@ uint32_t libmh_abi_version(void);
 
 /* ---- the state ABI (SB-BIND) ------------------------------------------------------------ */
 
-/* D4: the HOST tells libmh where the state is. One entry per top-level registry region; inside
- * mh.exe the host binds the stock .bss addresses (nothing moves), a standalone host binds memory
- * it allocated. `count` forwards the runtime capacity so compile-time caps stop being load-bearing
- * (the 500-buildings composition defect). The region ids and the authoritative table layout are
- * generated from tools/data/state_regions.json -- SB-BIND owns finalizing this struct. */
+/* D4: the HOST tells libmh where the state is. One entry per top-level registry region. Stock
+ * regions may use the original image's addresses; host-native regions have no original address
+ * and always require an explicit owner allocation. `count` forwards runtime array capacity.
+ * Region ids and descriptor minima are generated from the registry inputs. */
 typedef struct libmh_region_bind {
     uint32_t region_id; /* generated id, addr/mh_regions.gen.h */
     void    *base;      /* where this region's bytes live in the host */
-    uint32_t size;      /* bytes -- the region's REACH, not what its symbol measures (see below) */
+    uint32_t size;      /* stock REACH; host-native complete runtime span, at least its descriptor minimum */
     uint32_t count;     /* element count where the region is an array; 0 = not an array */
 } libmh_region_bind;
 
@@ -53,9 +52,9 @@ size_t libmh_region_count(void); /* SB-BIND */
  * allocated only `size` bytes would be handed a null on load). `count` is 0 throughout: the registry
  * carries no element stride, so the stock table declares no capacity and the compile-time caps stand.
  *
- * Writes min(cap, libmh_region_count()) entries and returns the FULL count, so passing cap 0 is the
- * legal way to ask how big a buffer to allocate. This is what mh.exe's host binds -- unchanged, it
- * makes libmh_bind_regions a no-op, which is the property the hosted arm rests on.
+ * Host-native regions are OMITTED: they have no stock default. Writes min(cap, stock_count) entries
+ * in registry order and returns stock_count, so cap 0 sizes this stock-only table. Binding it is an
+ * identity no-op for stock regions and preserves every separately bound native owner.
  *
  * IN THE STANDALONE LIBRARY THIS RETURNS 0 AND WRITES NOTHING, and that is part of the contract
  * rather than a failure (LIB-REF-SPLIT). The "stock, in-binary answer" is the one answer a build
@@ -74,12 +73,13 @@ size_t libmh_default_binds(libmh_region_bind *out, size_t cap); /* SB-BIND */
  *   -1  `binds` is null and n != 0
  *   -2  an entry names a region_id >= libmh_region_count()
  *   -3  an entry has a null base with a non-zero size
+ *   -4  a host-native entry is null, below its minimum span, or outside the 32-bit address range
  * On any error NOTHING is bound -- the table is validated in full before the first write, so a
  * rejected call cannot leave the registry half-answered. */
 int libmh_bind_regions(const libmh_region_bind *binds, size_t n); /* SB-BIND */
 
-/* How many regions have been answered for. The hosted arm asserts this reaches
- * libmh_region_count() at init; a standalone host uses it the same way. */
+/* How many regions have been answered for. Readiness requires libmh_region_count(), including
+ * explicit host-native bindings; the stock default table alone cannot establish readiness. */
 int libmh_bound_count(void); /* SB-BIND */
 
 /* ---- host callbacks (LIB-ABI) ----------------------------------------------------------- */

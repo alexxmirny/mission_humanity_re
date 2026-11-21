@@ -7,7 +7,7 @@
     "docs/symbols.md",
     "tools/data/en_functions.json",
     "tools/data/call_graph_no_crt.json",
-    "tmp/state_matrix.json"
+    "input:state_matrix.json"
   ],
   "_reclassified_out": [],
   "_select_report": {
@@ -4234,8 +4234,8 @@
         "llm_unit_set_order_param",
         "llm_unit_status_bit_clear",
         "llm_unit_status_bit_set",
-        "llm_unit_transport_unload_docked",
-        "llm_unit_transport_unload_field"
+        "llm_unit_squad_split_docked",
+        "llm_unit_squad_split_field"
       ],
       "creates_units": [
         "llm_strat_unit_create",
@@ -5044,9 +5044,9 @@
     },
     {
       "addr": "0x0046e76c",
-      "name": "llm_unit_order_disembark_soldiers",
+      "name": "llm_unit_order_squad_split",
       "size_bytes": 105,
-      "signature": "void llm_unit_order_disembark_soldiers(uint player, int unit_idx)",
+      "signature": "void llm_unit_order_squad_split(uint player, int unit_idx)",
       "tags": [],
       "proto_committed": true,
       "reachable_from_root": false,
@@ -10603,9 +10603,9 @@
     },
     {
       "addr": "0x00488a8b",
-      "name": "llm_unit_transport_unload_field",
+      "name": "llm_unit_squad_split_field",
       "size_bytes": 1491,
-      "signature": "void llm_unit_transport_unload_field(uint transport_player, uint transport_unit_index)",
+      "signature": "void llm_unit_squad_split_field(uint transport_player, uint transport_unit_index)",
       "tags": [],
       "proto_committed": true,
       "reachable_from_root": true,
@@ -10667,9 +10667,9 @@
     },
     {
       "addr": "0x004891d8",
-      "name": "llm_unit_transport_unload_docked",
+      "name": "llm_unit_squad_split_docked",
       "size_bytes": 841,
-      "signature": "void llm_unit_transport_unload_docked(uint player, uint unit_index)",
+      "signature": "void llm_unit_squad_split_docked(uint player, uint unit_index)",
       "tags": [],
       "proto_committed": true,
       "reachable_from_root": true,
@@ -10695,7 +10695,7 @@
       "state": "verified",
       "evidence_tier": "T1",
       "promoted": false,
-      "notes": "SIM1D-V (2026-08-16): offline oracle sim_unit_transport_unload_selftest.cpp (18 cases, shared with _field) -- tail sets cur_x/y from the walked node (opposite of field's leave-untouched), probe_slot/soldier_proto_id reused unchanged across splits, unconditional unlink even on spawn failure, per-iteration RECOMPUTED energy/experience share (diverges from field's hoisted-once value under IEEE754 rounding -- the key field/docked contrast), unbounded loop (no 8-cap, unlike field), ctrl-group gates, player-width masking. Mutation-tested via the shared file's build (see llm_unit_transport_unload_field's note for the one plain-build-silent case, which was in field's own loop bound, not this function); all docked-specific assertions confirmed via named failures."
+      "notes": "SIM1D-V (2026-08-16): offline oracle sim_unit_transport_unload_selftest.cpp (18 cases, shared with _field) -- tail sets cur_x/y from the walked node (opposite of field's leave-untouched), probe_slot/soldier_proto_id reused unchanged across splits, unconditional unlink even on spawn failure, per-iteration RECOMPUTED energy/experience share (diverges from field's hoisted-once value under IEEE754 rounding -- the key field/docked contrast), unbounded loop (no 8-cap, unlike field), ctrl-group gates, player-width masking. Mutation-tested via the shared file's build (see llm_unit_squad_split_field's note for the one plain-build-silent case, which was in field's own loop bound, not this function); all docked-specific assertions confirmed via named failures."
     },
     {
       "addr": "0x00489521",

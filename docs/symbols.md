@@ -754,8 +754,8 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0046e6a9` | `llm_strat_bldg_order_mine_rescan_enqueue` | `void llm_strat_bldg_order_mine_rescan_enqueue(ushort target_id, ushort player)` | todo:dead |
 | `0x0046e6ea` | `llm_strat_bldg_order_purge_dead_docked` | `void llm_strat_bldg_order_purge_dead_docked(uint player, ushort bldg_idx)` |  |
 | `0x0046e72b` | `llm_strat_bldg_order_purge_dead_docked_enqueue` | `void llm_strat_bldg_order_purge_dead_docked_enqueue(ushort target_id, ushort player)` | todo:dead |
-| `0x0046e76c` | `llm_unit_order_disembark_soldiers` | `void llm_unit_order_disembark_soldiers(uint player, int unit_idx)` |  |
-| `0x0046e7d6` | `llm_unit_order_disembark_soldiers_enqueue` | `void llm_unit_order_disembark_soldiers_enqueue(uint player_idx, int unit_idx)` |  |
+| `0x0046e76c` | `llm_unit_order_squad_split` | `void llm_unit_order_squad_split(uint player, int unit_idx)` |  |
+| `0x0046e7d6` | `llm_unit_order_squad_split_enqueue` | `void llm_unit_order_squad_split_enqueue(uint player_idx, int unit_idx)` |  |
 | `0x0046e840` | `llm_strat_bldg_order_shuttle_depart` | `void llm_strat_bldg_order_shuttle_depart(uint param_1, ushort param_2, undefined4 a2)` |  |
 | `0x0046e88f` | `llm_strat_bldg_order_shuttle_depart_enqueue` | `void llm_strat_bldg_order_shuttle_depart_enqueue(ushort player, ushort bldg_idx, undefined4 planet_idx)` |  |
 | `0x0046e8de` | `llm_strat_order_issue_0xd5` | `void llm_strat_order_issue_0xd5(uint param_1, ushort param_2, undefined4 a2, undefined4 param_4)` | todo:dead |
@@ -1004,10 +1004,10 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x00488876` | `llm_tact_move_find_reachable_dest` | `int llm_tact_move_find_reachable_dest(int start_col, int start_row, uint * inout_dest_col, uint * inout_dest_row)` | conf:high todo:globals |
 | `0x004888f4` | `llm_strat_unit_release_path_and_targets` | `void llm_strat_unit_release_path_and_targets(ushort player, int unit_idx, undefined4 * out_cleared_pair)` |  |
 | `0x00488a22` | `llm_strat_unit_notify_ui` | `void llm_strat_unit_notify_ui(uint side, uint unit_index)` | conf:high |
-| `0x00488a8b` | `llm_unit_transport_unload_field` | `void llm_unit_transport_unload_field(uint transport_player, uint transport_unit_index)` |  |
+| `0x00488a8b` | `llm_unit_squad_split_field` | `void llm_unit_squad_split_field(uint squad_player, uint squad_unit_index)` |  |
 | `0x0048905e` | `llm_strat_unit_squad_pick_lead_soldier_in_direction` | `uint llm_strat_unit_squad_pick_lead_soldier_in_direction(int param_1, uint param_2, undefined4 a2)` | conf:med |
 | `0x00489164` | `llm_math_manhattan_dist` | `int llm_math_manhattan_dist(int x0, int y0, int x1, int y1)` |  |
-| `0x004891d8` | `llm_unit_transport_unload_docked` | `void llm_unit_transport_unload_docked(uint player, uint unit_index)` |  |
+| `0x004891d8` | `llm_unit_squad_split_docked` | `void llm_unit_squad_split_docked(uint player, uint unit_index)` |  |
 | `0x00489521` | `llm_strat_unit_change_proto_and_energy` | `void llm_strat_unit_change_proto_and_energy(ushort player, int unit_idx, short proto_delta, int unused, double energy_delta)` | conf:med |
 | `0x00489595` | `llm_strat_unit_soldier_remove_last` | `void llm_strat_unit_soldier_remove_last(uint player, int unit_index)` |  |
 | `0x0048967b` | `llm_strat_unit_soldier_unlink` | `void llm_strat_unit_soldier_unlink(ushort player, int unit_idx, uint soldier_idx)` | conf:med |
@@ -3593,14 +3593,14 @@ The `llm_` / `_G_LLM_` marker convention these names follow is in
 | `0x0071009c` | `_G_LLM_GFX_DDRAW_AUX` | `?` |
 | `0x00712120` | `_G_LLM_TACT_VIEW_TILE_SURFACE_ROW_PTRS` | `undefined` |
 | `0x00712920` | `_G_LLM_TACT_VIEW_TILE_FB_ROW_PTRS` | `undefined` |
-| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[300]` |
+| `0x00713920` | `_G_LLM_TILE_DRAWN_MAP` | `byte[1018]` |
 | `0x00713d1a` | `_G_LLM_TILE_VIS_MAP_M6` | `byte` |
 | `0x00713d1b` | `_G_LLM_TILE_VIS_MAP_M5` | `byte` |
 | `0x00713d1c` | `_G_LLM_TILE_VIS_MAP_M4` | `byte` |
 | `0x00713d1d` | `_G_LLM_TILE_VIS_MAP_M3` | `byte` |
 | `0x00713d1e` | `_G_LLM_TILE_VIS_MAP_M2` | `byte` |
 | `0x00713d1f` | `_G_LLM_TILE_VIS_MAP_M1` | `byte` |
-| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[300]` |
+| `0x00713d20` | `_G_LLM_TILE_VIS_MAP` | `byte[1024]` |
 | `0x00714120` | `_G_LLM_SPRITE_META` | `gfx_sprite_meta[22000]` |
 | `0x00824fa0` | `_G_LLM_STRAT_MINIMAP_VIEWPORT_BOX_W` | `int` |
 | `0x00824fa4` | `_G_LLM_GFX_BAR_SPRITE_FILL_COLOR` | `ushort` |

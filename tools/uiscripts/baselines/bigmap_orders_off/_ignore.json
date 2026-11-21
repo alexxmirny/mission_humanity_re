@@ -1,0 +1,7 @@
+{
+  "_why": "The disabled-order claim is that overlay clicks leave native goal/selection unchanged and emit no order (mandatory check_bigmap --orders-off). The held frame compares every overlay pixel and all seven border pixels in exact RGB; measured extra target strokes start at x663, outside it. The released frame compares the complete unchanged sidebar; its world connector phase is not the no-order contract. No tolerance change.",
+  "_only": {
+    "capture_bigmap_orders_off__a_held.png": {"mode": "rgb", "rect": [201, 137, 462, 462]},
+    "capture_bigmap_orders_off__b_after.png": {"mode": "rgb", "rect": [864, 0, 160, 768]}
+  }
+}

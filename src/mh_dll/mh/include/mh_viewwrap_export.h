@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 //
 // RES3 / D13c -- sprite placement on the torus: the biased wrap window.
 //
@@ -24,6 +25,9 @@ extern "C" {
 // Read [video] wrap_window from mh_net.ini and splice the render sites. EN-only. Returns the number of sites
 // spliced (0 when off, refused, or the image is not the expected build).
 int MH_ViewWrap_Install(void);
+
+// Query the actual installed render call, not the requested ini setting. Unknown sites return 0.
+int MH_ViewWrap_IsBiased(uintptr_t call_site);
 
 #ifdef __cplusplus
 }

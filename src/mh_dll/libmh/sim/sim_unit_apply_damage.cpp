@@ -4,6 +4,7 @@
 // against mh_structs.gen.h's static_asserts for every field offset touched.
 //
 #include "sim/sim_unit_apply_damage.h"
+#include "sim/sim_order_tasks.h"
 
 #include <cstring>
 
@@ -99,6 +100,7 @@ void unit_apply_damage(const sim_view &v, sim_store &own, const unit_apply_damag
     const bool lethal = (u.energy <= 0.0) || (truncate_toward_zero(u.energy) < 0);
 
     if (lethal) {
+        order_tasks_adapter::retire(own, mh::order_tasks::object_kind::unit, *v.cur_player, *v.cur_index, true);
         u.energy = 0.0; // (0x0047e405-0x0047e411)
 
         // ---- HQ energy credit (0x0047e418-0x0047e437): the OWNING player's OWN unit slot 0 (HQ/
@@ -143,6 +145,7 @@ void unit_apply_damage(const sim_view &v, sim_store &own, const unit_apply_damag
     }
 
     // ---- tail: refresh damage-smoke fx + HUD/info-panel (0x0047e5e2-0x0047e608) --------------------
+    own.storage_policy(mh::storage_policy::operation::cancel, *v.cur_player, *v.cur_index);
     c.unit_update_damage_smoke(*v.cur_player, *v.cur_index);
     c.unit_notify_ui(*v.cur_player, *v.cur_index);
 }

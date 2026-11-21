@@ -287,7 +287,10 @@ MESSAGES = {
 
 
 def check(roots=(SRC, TOOLS), say=print):
-    hits, files_seen = scan(roots)
+    return _check_scan(roots, *scan(roots), say=say)
+
+
+def _check_scan(roots, hits, files_seen, *, say):
     fails = []
 
     if not files_seen:
@@ -348,13 +351,13 @@ def selftest():
         ok = ok and cond
 
     sink = []
-    rc = check((SRC, TOOLS), say=sink.append)
+    hits, seen = scan((SRC, TOOLS))
+    rc = _check_scan((SRC, TOOLS), hits, seen, say=sink.append)
     expect("real tree passes (zero survivors)", rc == 0)
     if rc:
         for line in sink:
             print("    %s" % line)
 
-    _, seen = scan((SRC, TOOLS))
     expect("the walker actually visits the real tree", seen > 100)
 
     root = _selftest_root("f2drop_selftest_")

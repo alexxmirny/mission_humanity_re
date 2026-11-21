@@ -54,6 +54,8 @@ import os
 import re
 import sys
 
+import tool_paths
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(REPO, "tools", "data")
 REGIONS_H = os.path.join(REPO, "src", "mh_dll", "mh", "addr", "mh_regions.gen.h")
@@ -71,7 +73,7 @@ STATE_FILES = {
 # `    RID_STRAT_ADVISOR_PHASE = 298,` -- the enum, which is the COMPLETE set. The REGIONS[] table
 # further down the same header is NOT: it carries only the regions with a measured base/extent, so
 # keying on it reported 133 of sim_resid's 141 written regions as unregistered.
-RID_ENUM = re.compile(r"^\s*(RID_[A-Z0-9_]+)\s*=\s*\d+\s*,", re.M)
+RID_ENUM = re.compile(r"^\s*(RID_[A-Z0-9_]+)\s*=\s*\d+\s*,", re.MULTILINE)
 # `ptr<const unit>(RID_UNITS)` / `ptr<unit>(RID_UNITS)` -- the const-ness of T is the whole verdict.
 PTR_RESOLVE = re.compile(r"\bptr\s*<\s*(const\s+)?([^>]+?)\s*>\s*\(\s*(RID_[A-Z0-9_]+)\s*\)")
 
@@ -121,7 +123,7 @@ def load_addr_taken(names):
     list) that no binding is owed for. What it buys is that the need is VISIBLE at slice time
     instead of surfacing as a deferral halfway through a translation.
     """
-    path = os.path.join(REPO, "tmp", "state_matrix.json")
+    path = tool_paths.input_path("state_matrix.json", repo=REPO)
     if not os.path.isfile(path):
         return None
     m = json.load(open(path, encoding="utf-8"))
@@ -146,7 +148,7 @@ def load_bindings(state_file):
     src = open(path, encoding="utf-8").read()
     # Comments carry example code (`v.X = ptr<const T>(RID_Y)` appears in several explanations), so
     # a raw scan would credit a binding the compiler never sees. Strip them first.
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
     src = re.sub(r"//[^\n]*", "", src)
     writes, reads = set(), set()
     for is_const, _ty, rid in PTR_RESOLVE.findall(src):

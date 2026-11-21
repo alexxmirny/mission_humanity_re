@@ -64,6 +64,7 @@ MODIFIERS = {}
 for _s in _MOD_STEMS:
     MODIFIERS[_s + "_MUL"] = F32
     MODIFIERS[_s + "_ADD"] = F32 if _s == "UNIT_SPEED" else INT
+MODIFIER_DEFAULTS = {key: (1.0 if key.endswith("_MUL") else 0.0) for key in MODIFIERS}
 
 # Per-class body grammar: keyword -> (kind, field).
 CLASS_GRAMMAR = {
@@ -247,52 +248,67 @@ CAPS = {
     ("BUILDING", "anims"): ("slot", 12), ("BUILDING", "components"): ("slot", 8),
     ("BUILDING", "anim_p"): ("slot", 8), ("BUILDING", "unit_name"): ("slot", 20),
     ("BUILDING", "unit_quant"): ("slot", 20), ("BUILDING", "capacity"): ("slot", 10),
-    ("BUILDING", "extract_fuel"): ("slot", 4), ("BUILDING", "resources"): ("count", 7),
+    ("BUILDING", "extract_fuel"): ("slot", 10), ("BUILDING", "resources"): ("count", 7),
     ("UPGRADE", "objects"): ("slot", 16),
-    ("SYSTEM", "planets"): ("slot1", 32),
+    ("SYSTEM", "planets"): ("slot", 32),
     ("PROGRESS", "depends"): ("count", 16), ("PROJECT", "resources"): ("count", 4),
+    ("*", "__string__"): ("bytes", 127), ("PLANET", "map"): ("bytes", 31),
+    ("TEXT", "value"): ("utf16", 119), ("TEXT", "__pool__"): ("utf16", 150000),
+    ("TEXT", "__scratch__"): ("utf16", 256),
+    ("TEXT", "__info_scratch__"): ("utf16", 256), ("TEXT", "__info_fixed__"): ("utf16", 33),
+    ("TEXT", "__resource_label__"): ("utf16", 19),
+    ("ANIM", "__pool__"): ("frames", 2480),
+    ("SPRITE", "__id__"): ("count", 22000),
+    ("UNIT", "__count__"): ("count", 99), ("BUILDING", "__count__"): ("count", 99),
+    ("WEAPON", "__count__"): ("count", 31), ("PROJECT", "__count__"): ("count", 99),
+    ("UPGRADE", "__count__"): ("count", 99), ("PROGRESS", "__count__"): ("count", 299),
+    ("SYSTEM", "__count__"): ("count", 3), ("PLANET", "__count__"): ("count", 30),
+    ("TREE", "__count__"): ("count", 99), ("STONE", "__count__"): ("count", 99),
 }
+for _cls in ("UNIT", "BUILDING", "PLANET", "PROJECT"):
+    for _field in ("info_txt", "info_flc"):
+        CAPS[(_cls, _field)] = ("bytes", 63)
 
-# Class-count / budget growth guards (retail is well under each).
-CLASS_CAPS = {"WEAPON": 32, "UPGRADE": 100}
-ANIM_FRAME_BUDGET = 2501   # sum of ANIM LENGTHs (Anim[2501] frame pool)
+# Retail tables reserve index zero; CAPS count limits exclude that sentinel.
+CLASS_CAPS = {cls: limit for (cls, field), (mode, limit) in CAPS.items()
+              if field == "__count__" and mode == "count"}
+ANIM_FRAME_BUDGET = CAPS[("ANIM", "__pool__")][1]
 
 # Cross-reference fields: (cls, field) -> registry universe name (see
 # validate.build_registry). Every entry measured 0-miss on retail.
 REF = {
-    # art = sprites | anims
-    ("UNIT", "sprite"): "art", ("UNIT", "sprite_shadow"): "art",
-    ("UNIT", "frame"): "art", ("UNIT", "frame_2"): "art", ("UNIT", "anim_explo"): "art",
-    ("BUILDING", "frame"): "art", ("BUILDING", "frame_2"): "art", ("BUILDING", "anims"): "art",
-    ("WEAPON", "fire_explo"): "art", ("WEAPON", "target_explo"): "art",
-    ("WEAPON", "smoke_sprite"): "art", ("WEAPON", "bullet_anims"): "art",
-    # sprite-only
-    ("BUILDING", "components"): "sprite",
-    ("ANIM", "sprite"): "sprite",   # an ANIM animates LENGTH frames from this base sprite
-    # icons
-    ("UNIT", "icon"): "icon", ("BUILDING", "icon"): "icon",
-    ("PLANET", "icon"): "icon", ("PROJECT", "icon"): "icon", ("SYSTEM", "icon"): "icon",
-    # define refs (type codes, ai ids, soldier types, sounds — all DEFINE'd)
-    ("UNIT", "type"): "define", ("UNIT", "independent"): "define",
-    ("UNIT", "soldier_type"): "define", ("UNIT", "aiunit"): "define",
-    ("UNIT", "sound_explo"): "define", ("UNIT", "sound_move"): "define",
-    ("BUILDING", "type"): "define", ("BUILDING", "aibld"): "define",
-    ("BUILDING", "sound_explo"): "define", ("BUILDING", "sound_click"): "define",
-    ("WEAPON", "type"): "define", ("WEAPON", "homing"): "define",
-    ("WEAPON", "target"): "define", ("WEAPON", "sound_fire"): "define",
-    ("WEAPON", "sound_target"): "define",
-    ("PROGRESS", "type"): "define", ("UPGRADE", "type"): "define", ("PROJECT", "type"): "define",
-    # invention refs (define | progress name)
-    ("UNIT", "invention"): "invention", ("BUILDING", "invention"): "invention",
-    ("PLANET", "invention"): "invention", ("UPGRADE", "invention"): "invention",
-    ("PROJECT", "invention"): "invention", ("SYSTEM", "invention"): "invention",
-    # object-name refs
-    ("UNIT", "weapons"): "weapon", ("BUILDING", "weapon"): "weapon",
-    ("BUILDING", "upgrade"): "building",
-    ("UNIT", "equivalent"): "unit_or_bldg", ("BUILDING", "equivalent"): "unit_or_bldg",
-    ("SYSTEM", "planets"): "planet", ("UPGRADE", "objects"): "obj",
+    ("ANIM", "sprite"): "sprite",
+    ("UNIT", "sprite"): "sprite", ("UNIT", "sprite_shadow"): "sprite",
+    ("UNIT", "frame"): "sprite", ("UNIT", "frame_2"): "sprite",
+    ("UNIT", "anim_explo"): "anim", ("UNIT", "equivalent"): "building",
+    ("UNIT", "weapons"): "weapon", ("UNIT", "sprite_type"): "define",
+    ("BUILDING", "frame"): "sprite", ("BUILDING", "frame_2"): "sprite",
+    ("BUILDING", "components"): "sprite", ("BUILDING", "anims"): "anim",
+    ("BUILDING", "equivalent"): "unit", ("BUILDING", "upgrade"): "building",
+    ("BUILDING", "weapon"): "weapon", ("BUILDING", "unit_name"): "unit",
+    ("WEAPON", "fire_explo"): "anim", ("WEAPON", "target_explo"): "anim",
+    ("WEAPON", "smoke_sprite"): "anim", ("WEAPON", "bullet_anims"): "anim",
+    ("TREE", "sprite"): "sprite", ("STONE", "sprite"): "sprite",
+    ("SYSTEM", "planets"): "planet", ("UPGRADE", "objects"): "upgrade_object",
     ("PROGRESS", "depends"): "progress",
 }
+for _cls in ("UNIT", "BUILDING", "PLANET", "UPGRADE", "PROJECT", "SYSTEM"):
+    REF[(_cls, "invention")] = "progress"
+for _cls in ("UNIT", "BUILDING", "PLANET", "PROJECT", "SYSTEM"):
+    REF[(_cls, "icon")] = "icon"
+for _cls, _fields in {
+    "UNIT": ("type", "independent", "soldier_type", "aiunit", "sound_explo", "sound_move"),
+    "BUILDING": ("type", "aibld", "sound_explo", "sound_click"),
+    "WEAPON": ("type", "homing", "target", "sound_fire", "sound_target"),
+    "PROGRESS": ("type",), "UPGRADE": ("type",), "PROJECT": ("type",),
+}.items():
+    for _field in _fields:
+        REF[(_cls, _field)] = "define"
+for _cls in ("UNIT", "BUILDING", "PROJECT"):
+    REF[(_cls, "resources")] = "resource_define"
+for _field in ("capacity", "extract_fuel"):
+    REF[("BUILDING", _field)] = "resource_define"
+
 
 # Asset-file fields (checked only with --assets-root; not a name registry).
 ASSET_FIELDS = {("PLANET", "map"): ".MP"}
@@ -310,3 +326,67 @@ PROTECTED_PREFIXES = ("S_RAMKA", "A_SLAD_")   # at least one name each must exis
 
 TREE_BANK_RANGE = range(50, 57)   # each PLANET loads exactly one 50..56 tree bank
 SPRITE_ID_CAP = 22000             # global sprite-id space bound (DEF_BANK arithmetic)
+
+# Scalar limits directly proven by constructor/consumer access.
+DOMAIN = {
+    ("TEXT", "__id__"): (0, 805), ("TEXT", "__resource_label_id__"): (73, 76),
+    ("TEXT", "__info_header_id__"): (736, 736),
+    ("ANIM", "length"): (1, 2147483647), ("ANIM", "repeat"): (1, 2147483647),
+    ("UNIT", "trace"): (0, 5), ("BUILDING", "trace"): (0, 5),
+    ("PROJECT", "type"): (0, 1), ("UNIT", "type"): (1, 24), ("UNIT", "independent"): (0, 2),
+    ("UNIT", "aiunit"): (0, 11), ("BUILDING", "component_quant"): (0, 7),
+    ("BUILDING", "sprite_quantity"): (1, 11),
+    ("UNIT", "resources"): (1, 4), ("BUILDING", "resources"): (1, 4),
+    ("PROJECT", "resources"): (1, 9), ("BUILDING", "capacity"): (0, 9),
+    ("BUILDING", "extract_fuel"): (0, 9),
+    ("BUILDING", "housing_capacity"): (0, 50),
+}
+
+# Dispatcher modifier expressions: (class, canonical field, multiplier,
+# addend, result requires signed int32 conversion). Retail quirks are explicit.
+TRANSFORMS = [
+    ("WEAPON", "power", "WEAPON_POWER_MUL", "WEAPON_POWER_ADD", True),
+    ("UNIT", "sight", "UNIT_SIGHT_MUL", "UNIT_SIGHT_ADD", True),
+    ("UNIT", "energy", "UNIT_ENERGY_MUL", "UNIT_ENERGY_ADD", True),
+    ("UNIT", "resources", "UNIT_RESOURCE_MUL", "UNIT_RESOURCE_ADD", True),
+    ("UNIT", "step_speed", "UNIT_SPEED_MUL", "UNIT_SPEED_ADD", False),
+    ("UNIT", "turn_speed", "UNIT_SPEED_MUL", "UNIT_SPEED_ADD", False),
+    ("UNIT", "build_time", "UNIT_BUILD_TIME_MUL", "UNIT_BUILD_TIME_MUL", False),
+    ("BUILDING", "sight", "BUILDING_SIGHT_MUL", "BUILDING_SIGHT_ADD", True),
+    ("BUILDING", "energy", "BUILDING_ENERGY_MUL", "BUILDING_ENERGY_ADD", True),
+    ("BUILDING", "human", "BUILDING_HUMAN_MUL", "BUILDING_HUMAN_ADD", True),
+    ("BUILDING", "builder", "BUILDING_BUILDER_MUL", "BUILDING_BUILDER_ADD", True),
+    ("BUILDING", "build_time", "BUILDING_BUILD_TIME_MUL", "BUILDING_BUILD_TIME_ADD", False),
+    ("BUILDING", "electric_power", "BUILDING_POWER_MUL", "BUILDING_ENERGY_ADD", True),
+]
+
+# Production-completion reason TEXT IDs and the first matching housing type
+# (alien, human) for each reason. See sim_reason_to_housing_bldg.
+HOUSING_REASONS = [(0, -1, -1), (15, 7, 27), (16, 8, 28), (17, 10, 30), (18, 9, 29)]
+
+# BUILDING.TYPE constructor dispatch groups (resolved DEFINE values).
+BUILDING_KINDS = [("mine", 2), ("mine", 22), ("port", 12), ("port", 32),
+                  ("mother", 6), ("mother", 26), ("shuttle", 13), ("shuttle", 33), ("silo", 16), ("silo", 36)]
+# Main bases and civilian records are not build-menu entries and use the
+# zero-duration guarded online-toggle callback. Mothers can deploy and build.
+BUILDING_KINDS += [("nonconstructible", value) for value in (14, 34, 18, 38)]
+# Tick2's generic default and human airfield have unguarded time subtraction.
+_TICK2_SPECIAL = {5, 6, 7, 8, 9, 10, 12, 13, 14, 18,
+                  25, 26, 27, 28, 29, 30, 32, 33, 34, 38}
+BUILDING_KINDS += [("tick_strict", value) for value in range(1, 40)
+                   if value not in _TICK2_SPECIAL]
+# Airfield and alien helipad callbacks seed sentinel holes; only the listed
+# positions at or below SPRITE_QUANTITY can advance in their mapped paths.
+BUILDING_KINDS += [(f"strict_count_slot_{slot}", 29) for slot in (1, 2, 4, 5, 6)]
+BUILDING_KINDS += [(f"guarded_count_slot_{slot}", 10) for slot in (1, 3)]
+# Explicit per-category cfg animation slots used by zero-guarded tick2 paths.
+_GUARDED_ANIM_SLOTS = {
+    7: (2, 3, 4, 5), 8: (2, 3, 4, 5), 27: (2, 3, 4, 5, 8),
+    28: (3, 4, 5, 6), 30: (3, 4, 5, 6), 9: (3, 4, 5, 6),
+    12: (2, 3, 4, 5, 6), 32: (2,), 13: (2, 3, 4, 5, 6, 10),
+    33: (3, 4, 5, 6), 6: (1, 4, 5), 26: (1, 4, 5),
+    14: (1,), 34: (1,), 18: (1,), 38: (1,),
+}
+BUILDING_KINDS += [(f"guarded_slot_{slot}", kind)
+                   for kind, slots in _GUARDED_ANIM_SLOTS.items() for slot in slots]
+

@@ -97,6 +97,22 @@ void dispatch_lockstep_extend(const sim_view &v, sim_store &own, const dispatch_
 // owner_and_kind decode inside the switch).
 void dispatch_admin_order(const sim_view &v, sim_store &own, const dispatch_calls &c, const dispatch_ctx &x) {
     const order &rec = own.order_at(x.slot);
+    // Recognized settings are consumed once even when their payload/actor/incarnation is
+    // rejected. They must never enter the native sparse admin switch or its unit HP gates.
+    if ((rec.owner_and_kind & 0xf0u) == 0 &&
+        (rec.order_code == mh::storage_policy::RALLY_COMMAND ||
+         rec.order_code == mh::storage_policy::AUTO_COMMAND)) {
+        mh_storage_policy_request request{};
+        mh_storage_policy_result  result{};
+        request.operation = static_cast<uint32_t>(mh::storage_policy::operation::consume_setting);
+        request.player    = rec.owner_and_kind;
+        request.slot      = rec.unit_index;
+        request.args[0]   = rec.order_code;
+        request.args[1]   = static_cast<uint16_t>(rec.param0);
+        std::memcpy(request.args + 2, rec.args, sizeof rec.args);
+        own.storage_policy_request(request, result);
+        return;
+    }
 
     switch (decode_admin_order(rec.order_code)) {
         case admin_arm::DEFAULT: // unrecognised order_code (and the scan's over-read byte, which is

@@ -1,3 +1,4 @@
+#include "seams/strategic_input_native.h"
 //
 // ddraw_own.cpp -- PT-GFX1: mh.dll's own DirectDraw v1 ([video] backend=own|gdi|null|d3d11).
 //
@@ -978,6 +979,7 @@ LRESULT CALLBACK owned_wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (!w) release_clip();
             break;
         case WM_KILLFOCUS:
+            mh::seams::strategic_input_native::focus_lost();
             release_clip();
             break;
         case WM_NCDESTROY: {

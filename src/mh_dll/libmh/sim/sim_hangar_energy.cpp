@@ -77,7 +77,8 @@ void hangar_recharge_pulse(const sim_view &v, sim_store &own, uint32_t player, i
 
         // ---- payment gate (0x0047b287-0x0047b295): nonzero result = payment failed, skip this unit
         // entirely (no partial charge, no damage-smoke call).
-        const int32_t pay_result = c.unit_try_pay_action_cost(player, unit_idx);
+        const double  policy_energy_before = unit_of(v, player, unit_idx).energy;
+        const int32_t pay_result           = c.unit_try_pay_action_cost(player, unit_idx);
         if (pay_result != 0) {
             continue;
         }
@@ -102,6 +103,8 @@ void hangar_recharge_pulse(const sim_view &v, sim_store &own, uint32_t player, i
 
         // ---- unconditional on this success path only (0x0047b351-0x0047b358) -------------------------
         c.unit_update_damage_smoke(player, unit_idx);
+        own.storage_policy(mh::storage_policy::operation::paid_repair, player, unit_idx,
+                           policy_energy_before);
     }
 }
 

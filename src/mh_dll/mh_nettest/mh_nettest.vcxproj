@@ -73,7 +73,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\mh_mapgen\include;..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -107,7 +107,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\mh_mapgen\include;..\mh_common\include;..\libmh;..\mh\include;..\mh;..\mh_common;..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -133,6 +133,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="net_selftest.cpp" />
+    <ClCompile Include="game_generation_selftest.cpp" />
     <ClCompile Include="mh_calls_selftest.gen.cpp" />
     <ClCompile Include="mh_export_selftest.gen.cpp" />
     <ClCompile Include="watchdog_selftest.cpp" />
@@ -148,6 +149,8 @@
     <ClCompile Include="log_rotate_selftest.cpp" />
     <ClCompile Include="log_sink_selftest.cpp" />
     <ClCompile Include="ini_read_selftest.cpp" />
+    <ClCompile Include="mod_catalog_selftest.cpp" />
+    <ClCompile Include="cfg_patch_selftest.cpp" />
     <ClCompile Include="gameplay_selftest.cpp" />
     <ClCompile Include="info_avi_selftest.cpp" />
     <ClCompile Include="info_guard_selftest.cpp" />
@@ -235,10 +238,24 @@
     <ClCompile Include="..\libmh\save\save_state.cpp" />
     <ClCompile Include="..\libmh\save\save_live.cpp" />
     <ClCompile Include="..\mh_common\lzw.cpp" />
+    <ClCompile Include="..\mh_common\storage_policy.cpp" />
+    <ClCompile Include="..\mh_common\strategic_bindings.cpp">
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_tasks.cpp" />
+    <ClCompile Include="..\mh_common\air_patrol.cpp" />
+    <ClCompile Include="..\mh_common\order_tasks_reservations.cpp" />
+    <ClCompile Include="..\mh_common\mh_order_tasks_dispatch.cpp" />
+    <ClCompile Include="..\mh_common\order_witness.cpp" />
+    <ClCompile Include="..\mh_common\storage_policy_save.cpp" />
     <ClCompile Include="..\mh_net\net_key.cpp" />
     <ClCompile Include="..\mh_net\net_transport.cpp" />
     <ClCompile Include="..\mh_common\run_context.cpp" />
     <ClCompile Include="..\mh_common\mh_log_sink.cpp" />
+    <ClCompile Include="..\mh_common\mod_catalog.cpp" />
+    <ClCompile Include="..\mh_common\tileset_catalog.cpp" />
+    <ClCompile Include="..\mh_common\cfg_patch.cpp" />
+    <ClCompile Include="..\mh_common\bnk.cpp" />
     <ClCompile Include="..\mh\en_guard.cpp" />
     <ClCompile Include="..\mh\hook\detour.cpp" />
     <ClCompile Include="..\mh\hook\patch.cpp" />
@@ -249,6 +266,7 @@
     <ClCompile Include="..\mh\caps\orders.cpp" />
     <ClCompile Include="..\mh\caps\ovf.cpp" />
     <ClCompile Include="..\mh\caps\ovf_save.cpp" />
+    <ClCompile Include="..\mh\mods\save_meta.cpp" />
     <ClCompile Include="..\mh\caps\path_pool.cpp" />
     <ClCompile Include="..\mh\patch\inmem_patch.cpp" />
     <ClCompile Include="..\mh\patch\inmem_install.cpp" />
@@ -256,6 +274,7 @@
     <ClCompile Include="inmem_patch_selftest.cpp" />
     <ClCompile Include="caps_selftest.cpp" />
     <ClCompile Include="ovf_selftest.cpp" />
+    <ClCompile Include="mods_save_selftest.cpp" />
     <ClCompile Include="gone_peer_guard_selftest.cpp" />
     <ClCompile Include="hostapi_c_compile.c" />
     <ClCompile Include="hostapi_selftest.cpp" />
@@ -273,6 +292,7 @@
     <ClCompile Include="..\libmh\state\host_bind.cpp" />
     <ClCompile Include="..\libmh\state\spine_exports.cpp" />
     <ClCompile Include="..\libmh\state\host_events.cpp" />
+    <ClCompile Include="..\libmh\state\storage_policy_runtime.cpp" />
     <ClCompile Include="..\libmh\state\host_in.cpp" />
     <ClCompile Include="..\libmh\state\rebind_arming.cpp" />
     <ClCompile Include="..\libmh\state\rebind_shims.cpp" />
@@ -1392,6 +1412,10 @@
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Precise</FloatingPointModel>
     </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_bulk_rally.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_prod_shuttle_complete.cpp">
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
       <FloatingPointModel>Precise</FloatingPointModel>
@@ -2494,6 +2518,21 @@
     <ClCompile Include="..\mh\ui\player_strings.cpp" />
     <ClCompile Include="..\mh\ui\text_wrap.cpp" />
     <ClCompile Include="..\mh\ui\lobby_widgets.cpp" />
+    <ClCompile Include="..\mh\ui\map_preview.cpp" />
+    <ClCompile Include="..\mh\ui\lobby_speed_widget.cpp" />
+    <ClCompile Include="..\mh\ui\selected_targets.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_painter.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_routes.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_debug.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_intents.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_order_events.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_weapon_events.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_deferred_events.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_attack_events.cpp" />
+    <ClCompile Include="..\mh\ui\target_line_attack_provenance.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\mpm_io.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\preview.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\rules_io.cpp" />
     <ClCompile Include="..\mh\ui\lobby_ping.cpp" />
     <ClCompile Include="..\mh\ui\lobby_announce.cpp" />
     <ClCompile Include="..\mh\seams\standalone.cpp" />
@@ -2501,6 +2540,8 @@
     <ClCompile Include="..\mh\seams\net_discovery.cpp" />
     <ClCompile Include="..\mh\seams\map_transfer.cpp" />
     <ClCompile Include="..\mh\seams\net_lockstep.cpp" />
+    <ClCompile Include="..\mh\seams\participant_boundary_hosted.cpp" />
+    <ClCompile Include="..\mh\seams\participant_boundary_native.cpp" />
     <ClCompile Include="..\mh\seams\gameplay_hooks.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_blocked.cpp" />
     <ClCompile Include="..\mh\seams\move_proto_nudge.cpp" />
@@ -2509,6 +2550,9 @@
     <ClCompile Include="..\mh\config\gameplay.cpp" />
     <ClCompile Include="..\mh\seams\mp_menu.cpp" />
     <ClCompile Include="..\mh\seams\lang_pack.cpp" />
+    <ClCompile Include="..\mh\seams\mod_resource_overlay.cpp" />
+    <ClCompile Include="..\mh\seams\tileset_runtime.cpp" />
+    <ClCompile Include="..\mh\seams\tileset_save_preflight.cpp" />
     <ClCompile Include="..\mh\seams\ui_options_scale.cpp" />
     <ClCompile Include="..\mh\seams\gfx_capture.cpp" />
     <ClCompile Include="module_bind_compiled_in.cpp" />
@@ -2550,6 +2594,33 @@
     <ClCompile Include="..\mh\seams\ui_pause.cpp" />
     <ClCompile Include="..\mh\seams\strat_pre_input.cpp" />
     <ClCompile Include="..\mh\seams\ui_map_zoom.cpp" />
+    <ClCompile Include="..\mh\seams\ui_unit_double_select.cpp" />
+    <ClCompile Include="..\mh\gfx\strat_world_view.cpp" />
+    <ClCompile Include="..\mh\seams\storage_policy_hosted.cpp" />
+    <ClCompile Include="..\mh\seams\order_tasks_hosted.cpp" />
+    <ClCompile Include="..\mh\seams\order_tasks_native.cpp" />
+    <ClCompile Include="..\mh\seams\strategic_input.cpp" />
+    <ClCompile Include="..\mh\seams\strategic_keyboard_native.cpp" />
+    <ClCompile Include="..\mh\seams\strategic_input_native.cpp" />
+    <ClCompile Include="..\mh\seams\strategic_mouse_native.cpp" />
+    <ClCompile Include="..\mh\seams\strategic_input_hooks.cpp" />
+    <ClCompile Include="..\libmh\state\order_tasks_runtime.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_origin.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_tasks.cpp">
+      <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="..\mh\seams\storage_policy_save_hosted.cpp" />
+    <ClCompile Include="..\mh\seams\ui_storage_controls.cpp" />
+    <ClCompile Include="..\mh\seams\storage_bulk_rally.cpp" />
+    <ClCompile Include="..\mh\seams\lobby_speed.cpp" />
+    <ClCompile Include="..\mh\seams\avi_lifecycle.cpp" />
     <ClCompile Include="..\mh\seams\ui_wheel.cpp" />
     <ClCompile Include="..\mh\seams\view_wrap.cpp" />
     <ClCompile Include="..\mh\seams\launch.cpp" />

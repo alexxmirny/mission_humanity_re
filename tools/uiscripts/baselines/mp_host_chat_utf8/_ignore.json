@@ -1,11 +1,11 @@
 {
-  "_why": "mp:MP-LANG. capture_h1_client_line.png is an IN-GAME frame: the map view differs between runs and chat lines are drawn in the sender's faction colour, picked per match. The claim is the glyph SHAPES of both lines in the band (the host's own echo and the client's UTF-8 line, decoded on the RU-pack host), so only the top-left two-line text band is compared, colour-blind (ink mode). Terrain in the band is below the ink threshold (measured: 0 ink pixels past x=155). FLAKE FIX (2026-09-29): capture_h_lobby.png carries mp:L1b's lobby ping cell on the seated rows (mh/ui/lobby_ping.cpp: 'D <srtt ms>'), a live SRTT MEASUREMENT -- 'D 0' solo, 'D 1' when the box is busy (the 2/9 reds: 19 px, bbox x 351..354 y 129..135, the digit alone). Masked: the cell's whole column on the two seated rows ([322,106,44,36], mp_client_el2's rect) -- the text is laid out by width, so 'D 224' starts 12 px left of 'D 0' and the 'D' moves with the digits (a digits-only mask went red the first time a baseline held a 3-digit value). mp:U50 (2026-10-02): the ping became its own widget right of the flag; the ping-cell rects moved left to x=313 with their right edge unchanged.",
+  "_why": "MP-LANG: compare complete glyph shapes of both asserted UTF-8 chat lines, colour-blind (ink mode), within160x40. Both actual and historical text end atx149, leaving10px margin. On2026-11-11 two TERRAIN pixels at(212,32) and(212,39), outside every glyph, crossed the existing luminance64 threshold; widening tolerance or rebaselining that animated terrain would not test text. The text ROI excludes it; both Unicode wmsg assertions and tol0 stay unchanged. The lobby's existing[313,106,53,36] mask covers only the two seated rows' live SRTT widget, whose variable-width digits move the D label; it is unchanged.",
   "_only": {
     "capture_h1_client_line.png": {
       "rect": [
         0,
         0,
-        220,
+        160,
         40
       ],
       "mode": "ink"

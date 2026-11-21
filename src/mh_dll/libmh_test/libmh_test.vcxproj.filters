@@ -1136,6 +1136,9 @@
     <ClCompile Include="..\libmh\sim\sim_order_issue_0xf_adjacent.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_order_tasks.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_path_alloc_slot.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
@@ -1299,6 +1302,9 @@
       <Filter>libmh\sim</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_storage_accepts_unit_type.cpp">
+      <Filter>libmh\sim</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\sim\sim_storage_bulk_rally.cpp">
       <Filter>libmh\sim</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\sim\sim_storage_can.cpp">
@@ -1679,6 +1685,9 @@
     <ClCompile Include="..\libmh\state\boot_snapshot.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\state\boot_snapshot_export.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\state\hook_api.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
@@ -1697,6 +1706,12 @@
     <ClCompile Include="..\libmh\state\nav_trailer.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_origin.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\order_tasks_runtime.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
     <ClCompile Include="..\libmh\state\rebind_arming.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
@@ -1713,6 +1728,9 @@
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\spine_exports.cpp">
+      <Filter>libmh\state</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libmh\state\storage_policy_runtime.cpp">
       <Filter>libmh\state</Filter>
     </ClCompile>
     <ClCompile Include="..\libmh\state\world_fixup.cpp">
@@ -1963,6 +1981,7 @@
     <ClCompile Include="lockstep_selftest.cpp" />
     <ClCompile Include="nav_trailer_selftest.cpp" />
     <ClCompile Include="net_session_selftest.cpp" />
+    <ClCompile Include="order_tasks_selftest.cpp" />
     <ClCompile Include="orders_selftest.cpp" />
     <ClCompile Include="resync_selftest.cpp" />
     <ClCompile Include="save_selftest.cpp" />
@@ -2237,6 +2256,7 @@
     <ClCompile Include="sim_unit_update_anim_selftest.cpp" />
     <ClCompile Include="sim_weapon_damage_selftest.cpp" />
     <ClCompile Include="sim_weapon_scatter_offset_selftest.cpp" />
+    <ClCompile Include="storage_policy_selftest.cpp" />
     <ClCompile Include="tact_active_unit_count_hud_draw_selftest.cpp" />
     <ClCompile Include="tact_ambient_sound_selftest.cpp" />
     <ClCompile Include="tact_calc_dir24_selftest.cpp" />
@@ -2303,6 +2323,27 @@
       <Filter>mh_nettest</Filter>
     </ClCompile>
     <ClCompile Include="..\mh_common\lzw.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\storage_policy.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_tasks.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\air_patrol.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_tasks_reservations.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\mh_order_tasks_dispatch.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\storage_policy_save.cpp">
+      <Filter>mh_common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_common\order_witness.cpp">
       <Filter>mh_common</Filter>
     </ClCompile>
   </ItemGroup>

@@ -1,0 +1,38 @@
+# mp:U19j negative: identical lobby/freeze setup, then observe the native outcome dialog.
+# The causal checker must still prove the post-drop garbled advert and leader outcome 7.
+# Basename deliberately retains the existing lobby baselines; no dialog is dismissed.
+
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+peers 2
+occ 3
+awaitsignal seated1
+awaitsignal seated2
+lobbyping 2
+enabled Start
+settled Start
+capture u19j_host_lobby
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 500
+awaitsignal freezing
+screen 0x00653dc3
+present Continue game
+settled Continue game
+dump
+end

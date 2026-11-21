@@ -167,7 +167,7 @@ inline constexpr mh::hook::owner_range tombstone_tail_caps[] = {
     {"llm_strat_order_queue_dispatch",                     0x00466892u, 0x004672abu},
     {"llm_strat_bldg_instant_construct_find_slot",         0x0046d229u, 0x0046d24eu},
     {"llm_strat_bldg_instant_construct_find_slot_enqueue", 0x0046d514u, 0x0046d539u},
-    {"llm_unit_order_disembark_soldiers",                  0x0046e76cu, 0x0046e7a1u},
+    {"llm_unit_order_squad_split",                         0x0046e76cu, 0x0046e7a1u},
     {"llm_strat_bldg_order_load_resource",                 0x0046ebd8u, 0x0046ec26u},
     {"llm_strat_bldg_order_unload_resource",               0x0046ec92u, 0x0046ecd2u},
     {"llm_strat_order_set_player_control_mode",            0x0046f97eu, 0x0046f9adu},

@@ -61,7 +61,16 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from itertools import groupby
+
+import gate_admission
+import tmp_runs
+
+_REPORT_LOCK = threading.Lock()
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_BAT = os.path.join(REPO, "src", "mh_dll", "mh_nettest", "build_selftest.bat")
@@ -91,6 +100,12 @@ SUITES = tuple(r["suite"] for r in _ROSTER["suites"])
 # suite -> the executable that answers to it, and the exes in roster order. Both derived, so adding
 # a third exe is a roster edit and nothing here.
 SUITE_EXE = {r["suite"]: r["exe"] for r in _ROSTER["suites"]}
+SUITE_CREDITS = {
+    r["suite"]: r.get("gate_credits", 6 if r["exe"] == "net_selftest" else 3)
+    for r in _ROSTER["suites"]
+}
+if any(type(c) is not int or c <= 0 for c in SUITE_CREDITS.values()):
+    raise ValueError("selftest gate_credits must be positive integer thirds of a core")
 EXES = tuple(dict.fromkeys(r["exe"] for r in _ROSTER["suites"]))
 
 # The ones that operate big graphs of heap buffers, i.e. whose failure mode includes DYING.
@@ -99,7 +114,7 @@ EXES = tuple(dict.fromkeys(r["exe"] for r in _ROSTER["suites"]))
 FLAKY = tuple(_ROSTER["flaky"])
 
 
-def assert_roster(exe):
+def assert_roster(exe, env):
     """The exe's OWN suite list must equal the roster's, for this exe, BEFORE anything runs.
 
     This is the assertion the tuple could never make. `run_suite` checks an exit code, so a suite
@@ -117,7 +132,7 @@ def assert_roster(exe):
         for r in _ROSTER["suites"]
         if r["exe"] == os.path.splitext(os.path.basename(exe))[0]
     }
-    r = subprocess.run([exe, "--list-suites"], capture_output=True, text=True, cwd=REPO)
+    r = subprocess.run([exe, "--list-suites"], capture_output=True, text=True, cwd=REPO, env=env)
     if r.returncode != 0:
         print(f"[FAIL] {exe} --list-suites exited {r.returncode} -- cannot verify the roster")
         return False
@@ -178,7 +193,8 @@ def build(asan):
         + (["--net-only"] if NET_ONLY else [])
     )
     t0 = time.time()
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
+    with gate_admission.lease("selftest:build:" + label, seconds=120, credits=21) as held:
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO, env=held.covered_env())
     dt = time.time() - t0
     if r.returncode != 0:
         print(f"[FAIL] build ({label}) exited {r.returncode}")
@@ -213,6 +229,23 @@ def is_instrumented(exe):
         return b"clang_rt.asan" in fh.read()
 
 
+def preflight(exes, *, asan):
+    """Check both images under one short lease, released before any suite admission."""
+    mode = "asan" if asan else "plain"
+    with gate_admission.lease(
+        "selftest:preflight:" + mode, seconds=1, credits=3, bootstrap=True
+    ) as held:
+        env = held.covered_env()
+        for exe in exes.values():
+            if asan and not is_instrumented(exe):
+                print(f"[FAIL] {exe} is NOT instrumented -- the ASan build staged a plain exe.")
+                print("       Refusing to report a clean ASan pass from an uninstrumented binary.")
+                return False
+            if not assert_roster(exe, env):
+                return False
+    return True
+
+
 STATE_MASKS = os.path.join(REPO, "tools", "data", "state_masks.json")
 
 
@@ -228,9 +261,14 @@ def check_state_masks(exe):
     about one exe, not a 33rd/34th suite). Regenerate with:
     `<exe> inchashtest --dump-masks tools/data/state_masks.json`.
     """
-    r = subprocess.run(
-        [exe, "inchashtest", "--check-masks", STATE_MASKS], capture_output=True, text=True, cwd=REPO
-    )
+    with gate_admission.lease("selftest:state-masks", seconds=1, credits=6) as held:
+        r = subprocess.run(
+            [exe, "inchashtest", "--check-masks", STATE_MASKS],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            env=held.covered_env(),
+        )
     if r.returncode == 0:
         return True
     out = (r.stdout + r.stderr).strip()
@@ -269,24 +307,204 @@ def failure_report(out):
     return shown + mid + lines[tail_from:]
 
 
-def run_suite(exe, suite, tag):
+def suite_credits(suite):
+    cfg = gate_admission.configuration()
+    price = SUITE_CREDITS[suite]
+    # Only an enforced aggregate job allocation licenses the narrower hosted share.
+    return min(price, gate_admission.CORE) if cfg is not None and cfg["cpu_bound"] else price
+
+
+def run_suite(exe, suite, tag, phase=None):
     """Run one suite once. Returns True on a clean exit. Never parses output for a verdict."""
-    r = subprocess.run([exe, suite], capture_output=True, text=True, cwd=REPO)
-    if r.returncode == 0:
-        return True
-    out = (r.stdout + r.stderr).strip()
-    # A crash and a failed check are different findings and want different next steps, so say which.
-    # Windows returns the status as a large negative int through Python; 0xC0000374 is heap
-    # corruption, 0xC0000005 an access violation.
-    kind = "CRASH" if (r.returncode < 0 or r.returncode > 255) else "failed check(s)"
-    print(f"[FAIL] {tag} {suite}: exit {r.returncode} ({kind})")
-    if out:
-        print("      " + "\n      ".join(failure_report(out)))
-    elif kind == "CRASH":
-        print(
-            "      (no output -- stdout is lost on abnormal exit, which is what a crash looks like)"
+    # Unbounded runs retain roster estimates; bounded roots enforce aggregate active credits.
+    credits = suite_credits(suite)
+    requested = time.perf_counter()
+    admission = (
+        gate_admission.lease("selftest:" + tag + ":" + suite, credits=credits)
+        if phase is None
+        else nullcontext(phase)
+    )
+    with admission as held:
+        started = time.perf_counter()
+        r = subprocess.run(
+            [exe, suite], capture_output=True, text=True, cwd=REPO, env=held.covered_env()
         )
-    return False
+        elapsed = time.perf_counter() - started
+    waited = started - requested
+    report = [
+        f"[time] {tag} {os.path.basename(exe)} {suite}: {elapsed:.3f}s exit={r.returncode} admission_wait={waited:.3f}s"
+    ]
+    if r.returncode != 0:
+        out = (r.stdout + r.stderr).strip()
+        # Keep the complete failing trace; the terminal summary intentionally filters it.
+        path = os.path.join(
+            tmp_runs.current_output("selftest_failures"),
+            tag.replace("/", "_").replace(" ", "_"),
+            os.path.basename(exe) + "." + suite + ".log",
+        )
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(out)
+            report.append("      full failing output: " + os.path.relpath(path, REPO))
+        except OSError as exc:
+            report.append("      [FAIL] cannot retain full failing output: " + str(exc))
+        # A crash and a failed check are different findings; keep the original exit-code verdict.
+        kind = "CRASH" if (r.returncode < 0 or r.returncode > 255) else "failed check(s)"
+        report.append(f"[FAIL] {tag} {suite}: exit {r.returncode} ({kind})")
+        if out:
+            report.append("      " + "\n      ".join(failure_report(out)))
+        elif kind == "CRASH":
+            report.append(
+                "      (no output -- stdout is lost on abnormal exit, which is what a crash looks like)"
+            )
+    elif suite in ("scalefiltertest", "uilayouttest"):
+        # These own real device/readback arms with conditional SKIPs. Keep their
+        # actual output visible so a constrained run cannot masquerade as exercised coverage.
+        report.append((r.stdout + r.stderr).strip())
+    with _REPORT_LOCK:
+        print("\n".join(report), flush=True)
+    return r.returncode == 0
+
+
+def _transport_lanes(suites):
+    return (
+        tuple(s for s in ("udploopbacktest", "udpsnaptest") if s in suites),
+        tuple(
+            s for s in ("meshtest", "udpbulktest", "udprelaytest", "udprelinktest") if s in suites
+        ),
+    )
+
+
+def _shared_transport_plan(suites, *, asan, repeats, jobs):
+    cfg = gate_admission.configuration()
+    if (
+        jobs == 1
+        or os.environ.get("MH_SELFTEST_PORT_SHIFT", "0") != "0"
+        or not cfg
+        or not cfg["cpu_bound"]
+        or cfg["covered"]
+    ):
+        return None
+    lanes = _transport_lanes(suites)
+    if not all(lanes):
+        return None
+    mode = "asan" if asan else "plain"
+    seconds = min(
+        86400,
+        30 * max(sum(repeats if not asan and s in FLAKY else 1 for s in lane) for lane in lanes),
+    )
+    return f"selftest:{mode}:network-pair", seconds
+
+
+def _run_pass(exes, suites, *, asan, repeats, jobs, successors=()):
+    """Audited independent lanes within each mode; ordinary shared fixtures stay serial."""
+
+    def run(selected, *, shared=None, following=()):
+        ok = True
+        # One lease per contiguous same-price serial run, not max-price coverage
+        # across heterogeneous suites. This also preserves full-ASan/--exe-jobs1
+        # order. Serial-group leases never span joins, barriers or external lock waits;
+        # the explicitly shared transport pool instead covers both active socket lanes.
+        mode = "asan" if asan else "plain"
+        phases = []
+        for price, names in groupby(selected, key=suite_credits):
+            names = tuple(names)
+            invocations = sum(repeats if not asan and s in FLAKY else 1 for s in names)
+            phases.append(
+                (
+                    price,
+                    names,
+                    f"selftest:{mode}:serial:{names[0]}..{names[-1]}",
+                    min(86400, 30 * invocations),
+                )
+            )
+        for i, (price, names, label, seconds) in enumerate(phases):
+            requested = time.perf_counter()
+            admission = (
+                gate_admission.lease(
+                    label,
+                    credits=price,
+                    seconds=seconds,
+                    tail=[(p[2], p[3]) for p in phases[i + 1 :]]
+                    + list(following)
+                    + list(successors),
+                )
+                if shared is None
+                else nullcontext(shared)
+            )
+            with admission as held:
+                with _REPORT_LOCK:
+                    print(
+                        f"[phase] {mode} {len(names)} suites credits={price} "
+                        f"admission_wait={time.perf_counter() - requested:.3f}s",
+                        flush=True,
+                    )
+                for suite in names:
+                    count = repeats if not asan and suite in FLAKY else 1
+                    for i in range(count):
+                        tag = mode if count == 1 else f"plain[{i + 1}/{count}]"
+                        ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag, phase=held)
+        return ok
+
+    if jobs == 1 or os.environ.get("MH_SELFTEST_PORT_SHIFT", "0") != "0":
+        return run(suites)
+    if set(exes) - {"net_selftest", "libmh_selftest"}:
+        raise ValueError("--exe-jobs 2 requires a resource audit for each additional executable")
+    # Loopback's transitive origin/rehome binds overlap snapshot's39800+ ports.
+    # The second transport lane uses disjoint39600/39700/40100+ or ephemeral ports.
+    udp_a, udp_b = _transport_lanes(suites)
+    computational = tuple(s for s in ("inchashtest", "bgscaletest") if s in suites)
+    independent = set(udp_a + udp_b + computational)
+    if any(SUITE_EXE[s] != "net_selftest" for s in independent):
+        raise ValueError("audited independent suite changed executable")
+    hosted = tuple(s for s in suites if SUITE_EXE[s] == "net_selftest" and s not in independent)
+    memory = tuple(s for s in suites if SUITE_EXE[s] == "libmh_selftest")
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="selftest-exe") as pool:
+        shared = _shared_transport_plan(suites, asan=asan, repeats=repeats, jobs=jobs)
+        if shared is not None:
+            # Both audited socket lanes need one core each even when their mean
+            # CPU use is low: retry/failover deadlines still run in wall time.
+            # Memory/ordinary work retains its own allocation; the bulk/uqmatch
+            # fence still waits for the entire second transport lane.
+            if any(suite_credits(s) != 3 for s in udp_a + udp_b):
+                raise ValueError("shared transport pool requires one-core suites")
+            label, seconds = shared
+            first = pool.submit(run, memory + computational, following=[(label, seconds)])
+
+            def run_networks():
+                # Never hold admission while joining another admitted lane:
+                # an aged full-capacity reservation must be able to drain us.
+                first.result()
+                with (
+                    gate_admission.lease(
+                        label, credits=6, seconds=seconds, tail=successors
+                    ) as held,
+                    ThreadPoolExecutor(max_workers=2, thread_name_prefix="selftest-net") as net,
+                ):
+                    a = net.submit(run, udp_a, shared=held)
+
+                    b = net.submit(run, udp_b, shared=held)
+                    return all([a.result(), b.result()])
+
+            second = pool.submit(run_networks)
+        else:
+            second = pool.submit(run, memory + computational + udp_b)
+            first = pool.submit(run, udp_a)
+
+        def run_hosted():
+            # uqmatchtest and bulk's lossy arm BOTH bind39710..39711. Release
+            # admission before waiting; ordinary neighbors and adjacent repeats stay serial.
+            split = hosted.index("uqmatchtest") if "uqmatchtest" in hosted else len(hosted)
+            ok = run(hosted[:split])
+            if split < len(hosted):
+                second.result()
+                ok &= run(hosted[split:])
+            return ok
+
+        ordinary = pool.submit(run_hosted)
+        results = [future.result() for future in (first, second, ordinary)]
+    return all(results)
 
 
 def main():
@@ -308,6 +526,14 @@ def main():
         type=int,
         default=3,
         help="plain-pass repeats for the crash-prone suites (default 3)",
+    )
+    ap.add_argument(
+        "--exe-jobs",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="within-mode executable lanes, then audited UDP lanes (default 1); ordinary "
+        "hosted work, adjacent repeats, preparation, ASan/plain barriers and outer lease stay serial",
     )
     ap.add_argument(
         "--build-only",
@@ -377,20 +603,27 @@ def main():
         exes = get(asan=True)
         if exes is None:
             return 1
-        # EVERY exe is checked, not just the first: an uninstrumented binary reports no memory
-        # errors, which reads exactly like a clean pass, and "the second exe was not instrumented"
-        # would be invisible for exactly the spine suites the ASan pass exists for.
-        for name, exe in exes.items():
-            if not is_instrumented(exe):
-                print(f"[FAIL] {exe} is NOT instrumented -- the ASan build staged a plain exe.")
-                print("       Refusing to report a clean ASan pass from an uninstrumented binary.")
-                return 1
-            if not assert_roster(exe):
-                return 1
+        if not preflight(exes, asan=True):
+            return 1
         if not args.build_only:
             asan_list = tuple(x for x in run_list if x not in asan_skip)
-            for suite in asan_list:
-                ok &= run_suite(exes[SUITE_EXE[suite]], suite, "asan")
+            # The required plain transport chain needs time AFTER the ASan barrier.
+            # Forecast that same plan; never overlap the modes or advance a verdict.
+            next_mode = (
+                _shared_transport_plan(
+                    run_list, asan=False, repeats=args.repeats, jobs=args.exe_jobs
+                )
+                if args.which != "asan"
+                else None
+            )
+            ok &= _run_pass(
+                exes,
+                asan_list,
+                asan=True,
+                repeats=1,
+                jobs=args.exe_jobs,
+                successors=[next_mode] if next_mode is not None else (),
+            )
             print(
                 f"[{'ok' if ok else 'FAIL'}] ASan pass ({len(asan_list)} suites, {len(exes)} exes)"
             )
@@ -402,27 +635,25 @@ def main():
         exes = get(asan=False)
         if exes is None:
             return 1
-        for exe in exes.values():
-            if not assert_roster(exe):
-                return 1
+        if not preflight(exes, asan=False):
+            return 1
         if args.build_only:
             print(f"run_selftests: BUILT in {time.time() - t0:.0f}s (--build-only; no suite ran)")
             return 0
-        for suite in run_list:
-            reps = args.repeats if suite in FLAKY else 1
-            for i in range(reps):
-                tag = f"plain[{i + 1}/{reps}]" if reps > 1 else "plain"
-                ok &= run_suite(exes[SUITE_EXE[suite]], suite, tag)
-        print(
-            f"[{'ok' if ok else 'FAIL'}] plain pass ({len(run_list)} suites across {len(exes)} exes, "
-            f"{args.repeats}x {'/'.join(FLAKY)})"
-        )
+        plain_ok = _run_pass(exes, run_list, asan=False, repeats=args.repeats, jobs=args.exe_jobs)
         # mp:D42. One extra assertion beyond the roster, against the plain exe only (this is a
         # keep_byte-vs-committed-file comparison, not something ASan instrumentation could catch
         # differently) -- see check_state_masks for why it is not a SUITES row.
         if "net_selftest" in exes:
-            ok &= check_state_masks(exes["net_selftest"])
+            plain_ok &= check_state_masks(exes["net_selftest"])
+        ok &= plain_ok
+        print(
+            f"[{'ok' if plain_ok else 'FAIL'}] plain pass ({len(run_list)} suites across {len(exes)} exes, "
+            f"{args.repeats}x {'/'.join(FLAKY)})"
+        )
 
+    if not ok:
+        tmp_runs.register(tmp_runs.current_output("selftest_failures"), role="evidence")
     half = "" if args.which == "both" else f" ({args.which} half only)"
     print(f"run_selftests: {'PASS' if ok else 'FAIL'} in {time.time() - t0:.0f}s{half}")
     return 0 if ok else 1
@@ -440,6 +671,7 @@ if __name__ == "__main__":
     # than the fuller run_rig_tool wrapper.
     import hostlock
 
+    gate_admission.relinquish_startup()
     _holder = f"run_selftests:{os.getpid()}"
     _cur = hostlock.held_by("selftest")
     if _cur:
@@ -448,4 +680,4 @@ if __name__ == "__main__":
             "to finish before staging (this run will not start until it is free)..."
         )
     with hostlock.lease("selftest", _holder):
-        sys.exit(main())
+        sys.exit(tmp_runs.run_cli(main, "selftests", adjudicator=True))

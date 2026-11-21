@@ -35,10 +35,11 @@ THE ASSERTIONS (--check, the lint_repo row):
                                                              exemption somebody pastes forward
 
 A MACHINE INVOKER is something that runs the tool with no human in the loop: a `lint_repo.py` row,
-a `run_gate.py` unit, a `.vcxproj` custom-build step, or a `.claude/workflows/*.js` script. Python
-invokers are matched on the QUOTED file name (`"foo.py"`), which is how every row in lint_repo and
-run_gate is actually built -- prose that names a tool in a comment does not match. The other three
-are matched on the PATH form (`tools/foo.py`), i.e. a command line rather than a mention.  # CITATION-OK
+a `run_gate.py` unit, a `.vcxproj` custom-build step, a `.claude/workflows/*.js` script, or a
+UI registry post_check command. Python invokers are matched on the QUOTED file name (`"foo.py"`),
+which is how every row in lint_repo and run_gate is built. Project and workflow invokers are matched
+on the PATH form (`tools/foo.py`). UI registry invokers use only the structured command executable,  # CITATION-OK
+not descriptions, comments, or command arguments.
 
 Reachability then runs through the keep set itself: a keep tool that another keep tool executes
 (quoted name) or imports (module name -- `import foo` / `from foo import`, never a path grep) is
@@ -77,6 +78,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+import ui_registry
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DISPOSITIONS = "tools/data/tool_dispositions.json"
@@ -164,6 +167,30 @@ def machine_invokers(root, tools):
             rx = _quoted(t) if path.endswith(".py") else _path_form(t)
             if rx.search(txt):
                 hits.setdefault(t, []).append(rel)
+    # test_ui executes only cmd[0] of each post_check, after merging folded steps. Use the
+    # registry loader (including YAML anchors and tags), never scan its prose or arguments.
+    registry = os.path.join(root, "tools", "uiscripts", "registry.yaml")
+    if os.path.isfile(registry):
+        rows = ui_registry.load(path=registry)["tests"]
+        rel = os.path.relpath(registry, root).replace("\\", "/")
+        for row in rows:
+            step_key = "solo_steps" if row.get("solo_steps") else "multi_steps"
+            steps = row.get(step_key)
+            effective = (
+                (ui_registry.merge_step(row, step, step_key) for step in steps) if steps else (row,)
+            )
+            for item in effective:
+                cmd = item.get("post_check")
+                if not cmd:
+                    continue
+                commands = cmd if isinstance(cmd[0], (list, tuple)) else [cmd]
+                for command in commands:
+                    if not command:
+                        continue
+                    # test_ui joins the slash-separated path to REPO; only top-level tools count.
+                    parts = command[0].split("/")
+                    if len(parts) == 2 and parts[0] == "tools" and parts[1] in tools:
+                        hits.setdefault(parts[1], []).append(rel)
     return {t: sorted(set(v)) for t, v in hits.items()}
 
 
@@ -192,6 +219,16 @@ def tool_refs(root, tools):
     MODULE name, anchored at the start of a line -- not a path grep, which would count every
     docstring that happens to mention a sibling."""
     out = {}
+    patterns = {
+        u: (
+            _quoted(u),
+            re.compile(
+                r"^[ \t]*(?:from[ \t]+%s[ \t]+import|import[ \t]+%s)\b" % (u[:-3], u[:-3]),
+                re.M,
+            ),
+        )
+        for u in tools
+    }
     for t in tools:
         # SELF is excluded, for the reason every zero-survivor gate in this tree excludes itself:
         # the selftest fixtures below quote `lint_repo.py` and `run_gate.py` to shape a planted
@@ -203,16 +240,14 @@ def tool_refs(root, tools):
             out[t] = set()
             continue
         txt = _read(os.path.join(root, "tools", t))
+        # Only these lines can match the anchored import rule. Keep the original
+        # regex semantics, but do not rescan every source line once per sibling.
+        imports = "\n".join(re.findall(r"^[ \t]*(?:from|import)[ \t]+.*$", txt, re.M))
         seen = set()
-        for u in tools:
+        for u, (quoted, imported) in patterns.items():
             if u == t:
                 continue
-            stem = u[:-3]
-            if _quoted(u).search(txt) or re.search(
-                r"^[ \t]*(?:from[ \t]+%s[ \t]+import|import[ \t]+%s)\b" % (stem, stem),
-                txt,
-                re.M,
-            ):
+            if (u in txt and quoted.search(txt)) or imported.search(imports):
                 seen.add(u)
         out[t] = seen
     return out
@@ -590,6 +625,93 @@ def selftest():
         if not hit:
             print("     wanted %r, got: %s" % (needle, bad or "(no complaint at all)"))
             ok = False
+
+    # Registry invokers: executable positions only, including inherited/overridden folded
+    # steps and both command forms. The planted tree deliberately has no real registry.
+    registry = """anchors:
+  shared: &shared [tools/anchored.py, --arg, tools/argument.py]  # CITATION-OK: planted paths
+sim_scenarios: []
+uirec_scenarios: []
+tact_scenarios: []
+tests:
+  - name: direct
+    kind: solo
+    desc: 'tools/description.py is prose, not a command'  # CITATION-OK: planted path
+    budget_s: 1
+    script: direct.txt
+    post_check: *shared
+    # tools/comment.py is not an invoker either; CITATION-OK: planted path
+  - name: folded
+    kind: solo
+    desc: folded steps
+    budget_s: 1
+    post_check: [tools/inherited.py]  # CITATION-OK: planted path
+    solo_steps:
+      - name: first
+        script: first.txt
+      - name: second
+        script: second.txt
+        post_check: [[tools/nested.py], [tools/second.py]]  # CITATION-OK: planted paths
+  - name: multi
+    kind: multi
+    desc: folded matches
+    budget_s: 1
+    no_hash_why: fixture
+    multi_steps:
+      - name: first
+        host: host.txt
+        clients: [client.txt]
+        post_check: [tools/multi.py]  # CITATION-OK: planted path
+      - name: second
+        host: host2.txt
+        clients: [client2.txt]
+        post_check: [tools/second.py]  # CITATION-OK: planted path
+"""
+    invoked = {"anchored.py", "inherited.py", "nested.py", "second.py", "multi.py"}
+    mentioned = {"argument.py", "description.py", "comment.py"}
+    extra_tools = {name: "# fixture\n" for name in invoked | mentioned}
+    registry_rows = dict(base_rows)
+    registry_rows.update({name: dict(KEEP_ROW) for name in invoked | mentioned})
+    tmp = tempfile.mkdtemp(prefix="tooldisp_")
+    try:
+        _plant(
+            tmp,
+            dict(base_tools, **extra_tools),
+            registry_rows,
+            LINT_OK,
+            GATE_OK,
+            {"tools/uiscripts/registry.yaml": registry},
+        )
+        found = machine_invokers(tmp, invoked | mentioned)
+        bad = check(tmp, verbose=False)
+        registry_path = "tools/uiscripts/registry.yaml"
+        good = all(found.get(name) == [registry_path] for name in invoked)
+        good = good and all(name not in found for name in mentioned)
+        good = good and all(
+            any("tools/%s is KEEP but nothing runs it" % name in b for b in bad)
+            for name in mentioned
+        )
+        good = good and all(
+            not any("tools/%s is KEEP but nothing runs it" % name in b for b in bad)
+            for name in invoked
+        )
+        print("  %-42s %s" % ("structured registry invokers", "green" if good else "RED"))
+        if not good:
+            print("     invokers: %s; complaints: %s" % (found, bad))
+            ok = False
+        registry_rows["nested.py"] = dict(KEEP_ROW, hand_run=True)
+        with open(os.path.join(tmp, DISPOSITIONS), "w", encoding="utf-8") as fh:
+            json.dump({"_meta": "selftest", "rows": registry_rows}, fh)
+        bad = check(tmp, verbose=False)
+        good = any(
+            "marked hand_run, but tools/uiscripts/registry.yaml invokes it" in b for b in bad
+        )
+        print("  %-42s %s" % ("registry invoker rejects hand_run", "green" if good else "RED"))
+        if not good:
+            print("     complaints: %s" % bad)
+            ok = False
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
     # ---- the LEDGER arm (fork F5M S4b): the withhold rule equals the archive class -------------
     # Planted in BOTH directions plus the ordering trap, because each one fails differently and

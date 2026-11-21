@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 #include "../../libmh/include/libmh_host_events.h"
 
@@ -19,6 +20,15 @@ namespace mh::state {
 // overflow). The one emit path -- every channel helper below funnels here.
 void emit_event(uint16_t channel, uint16_t kind, int32_t a = 0, int32_t b = 0, int32_t c = 0,
                 int32_t d = 0);
+
+// Owned canonical command; args names thirteen int32 values copied during this call.
+void emit_order_observation(uint16_t kind, uint16_t flags, uint16_t unit_index,
+                            uint16_t owner_and_kind, int16_t param0,
+                            uint16_t order_code, const int32_t *args);
+
+mh::order_witness::store &order_witnesses();
+void                      emit_primary_terminal(uint32_t player, uint32_t slot, uint16_t state);
+void                      reset_order_witnesses_if_unchanged(uint32_t generation_before_publication);
 
 // Channel helpers, so call sites read as what they mean.
 inline void emit_invalidate(uint16_t kind, int32_t a = 0, int32_t b = 0) {
@@ -241,12 +251,22 @@ inline void inv_tact_sprite_banks() { emit_invalidate(LIBMH_EVK_INV_TACT_SPRITE_
 inline void inv_all_sprite_banks() { emit_invalidate(LIBMH_EVK_INV_ALL_SPRITE_BANKS); }
 inline void inv_sprite_pix_offsets() { emit_invalidate(LIBMH_EVK_INV_SPRITE_PIX_OFFSETS); }
 
-// LIFT-TABLE S3: the per-planet graphics tail of cfg_final_planet_Construct. NOT signature-
-// identical to a fine entry, because the record replaces a WHOLE tail (the tlo_index store, the
-// 8-way bank_count/bank_id switch, the soldier_sprite_bank_offset shift and the eight
-// FillBankData calls) rather than one call -- the sel_panel_init / active_count_hud shape.
-inline void inv_planet_gfx_setup(int32_t planet_index, int32_t tlo_index) {
-    emit_invalidate(LIBMH_EVK_INV_PLANET_GFX_SETUP, planet_index, tlo_index);
+// The event owns all twelve token bytes, independent of the caller's lifetime.
+inline void inv_planet_gfx_setup(int32_t planet_index, const char *token) {
+    uint32_t words[3] = {};
+    if (token) {
+        unsigned i = 0;
+        for (; i < 12 && token[i]; ++i)
+            words[i / 4] |= static_cast<uint32_t>(static_cast<uint8_t>(token[i])) << ((i % 4) * 8);
+        // Byte 13 is available in the validated map-header backing. If a
+        // 12-byte prefix is followed by more text, carry an invalid empty token,
+        // never a valid-looking truncated identity.
+        if (i == 12 && token[12]) words[0] = words[1] = words[2] = 0;
+    }
+    int32_t payload[3];
+    std::memcpy(payload, words, sizeof(payload));
+    emit_event(LIBMH_EVC_INVALIDATE, LIBMH_EVK_INV_PLANET_GFX_SETUP, planet_index,
+               payload[0], payload[1], payload[2]);
 }
 
 // LIFT-TABLE S4: the planet-map palette block. No payload -- nine literal colour triples in a fixed

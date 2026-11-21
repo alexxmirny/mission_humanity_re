@@ -579,13 +579,16 @@ void stop_sampling();
 // so at ship that edge never executes.
 void on_sim_step();
 
+// Main-thread network/resync wait service; drains bounded RX and sends at most one paced incident frame.
+void service_localization();
+
 // The same boundary, with the per-region hashes and the state-only fold ALREADY COMPUTED by the
 // caller in manifest order (`n` must be the live HASH_REGION_COUNT). Reuses them verbatim, so a run
 // that was hashing anyway pays for one walk instead of two. Falls back to its own hash, once and
 // loudly, if the offered manifest is not ours.
 void on_sim_step_hashed(const uint64_t *per, int n, uint64_t state);
 
-// Scene replay without libmh.dll (desync/scene_dump.h): import a recorded scene dump into this process.
+// Scene replay in either configuration: rederive, scatter once, and restore any raised tails.
 // -> 0 or a negative world/fixup/nav code (-23 = the dump was recorded by a different build).
 int import_scene(const void *blob, unsigned n);
 
@@ -593,11 +596,11 @@ int import_scene(const void *blob, unsigned n);
 bool detected();
 
 // mp:Q3: the order recording (order_capture.h). configure_order_record runs after install() -- it needs
-// this module's step hook, so with the module unarmed it stays off and says why. on_order_dispatch is
-// the seam's dispatch hook body: it reads the due-now queue (an address, so it lives here) and hands it
+// this module's step hook, so with the module unarmed it stays off and says why. on_order_phase_entry is
+// the seam's post-AI/pre-count-gate body: it reads the due-now queue (an address, so it lives here) and hands it
 // over. Returns whether the recording is on.
 bool configure_order_record(int enabled, const char *refused);
-void on_order_dispatch();
+void on_order_phase_entry();
 
 // mp:X3c: the world resync imported a blob captured at the host's step `capture_step` and this peer must
 // now count as being at step capture_step - 1 (the step counter advances just after, so the body that runs

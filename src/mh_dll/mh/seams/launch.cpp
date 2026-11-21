@@ -36,18 +36,23 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "mods/save_meta.h"
 #include "include/mh_launch_export.h"
-#include "include/mh_module_bind.h"  // MH_LibmhModule_IsBound (--tactical: original mission_start when libmh is absent)
-#include "include/mh_net_export.h"   // MH_Net_PeerCount / MH_Net_IsStarted (F-gate peer wait)
-#include "include/mh_seam_export.h"  // MH_Seam_StartTransport (bring the transport up at the menu)
-#include "include/mh_run_context.h"  // MH_RunDir (per-run log folder)
-#include "include/mh_config_dir.h"   // RL3: <config dir>mh_net.ini
-#include "include/mh_log_sink.h"     // LOG1: async log sink
-#include "include/lobby_session.h"   // llm_net_session_entry (retail lobby session-list record)
-#include "addr/mh_addrs.gen.h"       // generated EN VAs (tools/gen_dll_addrs.py)
-#include "addr/mh_structs.gen.h"     // mp:D36 -- mh_cfg_final_struct_Planet (Planets[31]'s string slots)
-#include "config/ini_read.h"         // TL-HARN4: read_ini_string -- strips a trailing `;comment`
-#include "config/gameplay.h"         // PT-SET1: host-synced gameplay settings (publish / adopt)
+#include "include/mh_module_bind.h" // MH_LibmhModule_IsBound (--tactical: original mission_start when libmh is absent)
+#include "include/mh_net_export.h"  // MH_Net_PeerCount / MH_Net_IsStarted (F-gate peer wait)
+#include "include/mh_seam_export.h" // MH_Seam_StartTransport (bring the transport up at the menu)
+#include "include/mh_run_context.h" // MH_RunDir (per-run log folder)
+#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
+#include "include/mh_log_sink.h"    // LOG1: async log sink
+#include "include/lobby_session.h"  // llm_net_session_entry (retail lobby session-list record)
+#include "addr/mh_addrs.gen.h"      // generated EN VAs (tools/gen_dll_addrs.py)
+#include "addr/mh_structs.gen.h"    // mp:D36 -- mh_cfg_final_struct_Planet (Planets[31]'s string slots)
+#include "config/ini_read.h"        // TL-HARN4: read_ini_string -- strips a trailing `;comment`
+#include "config/gameplay.h"        // PT-SET1: host-synced gameplay settings (publish / adopt)
+#include "seams/lobby_speed.h"
+
+// Private seam-family notification; this force-entry TU intentionally does not include net_internal.h.
+void mp_session_speed_frozen();
 #include "state/region_runtime.h"    // SB-HOSTFREE: live_base/ptr -- a movable region is read
                                      // where it IS, not where the binary put it
 #include "addr/mh_calls.gen.h"       // typed __watcall wrappers (map_SavePlanetToDisk, --tactical)
@@ -56,6 +61,7 @@
 #include "hook/watcall.h"            // call_watcall1 (Watcom __watcall(EAX) bridge)
 #include "tact/tact_mission_start.h" // mh::tact::mission_start -- the --tactical verb enters OURS
 #include "seams/map_transfer.h"      // mp:X2/X2b -- maps::host_start_blocked, the Start refusal
+#include "mh_net_proto/start_map.h"  // Start binds the selected map to its slots/settings
 #include "seams/boot_residue.h"      // mp:D45 -- the boot-snapshot restore arithmetic
 
 using mh::hook::call_watcall1;
@@ -177,16 +183,17 @@ bool g_fired      = false; // one-shot latch
 // F-gate (MP): hold at the menu until the peer(s) connect, so all peers enter mode-3 together. N1: the
 // host waits for N-1 clients (MH_Net_PeerCount = #clients); each client waits for 1 (its single host
 // connection). Computed per-role in on_menu_tick from mp_players(); no longer a fixed constant.
-bool            g_mp_armed      = false;          // transport started + role globals set (once, at menu-idle)
-int             g_mp_wait_ticks = 0;              // menu-idle frames spent waiting for the peer (for a heartbeat log)
-bool            g_manual_mp     = false;          // manual-menu MP active (button->browser / host create): run the lobby driver
-extern "C" int  MH_MP_MapReceived(void);          // net_seams -- client: host's selected map has arrived (entry gate)
-extern "C" void MH_MP_ResetMapReceived(void);     // net_seams -- U29: forget the dead lobby's map on exit
-extern "C" void MH_Seam_ClearStartReceived(void); // net_discovery -- U29: disarm a stale FLAG_START on exit
-extern "C" void MH_MP_ClientPollMap(void);        // net_seams -- client: drain the transport for the host's map datagram
-extern "C" void MH_Seam_SaveHostSlots(void);      // net_seams -- snapshot lobby slots at entry (transition clears them)
-extern "C" int  MH_Net_LocalPlayerId(void);       // net_transport -- this peer's own/assigned id (host-assign or declared)
-extern "C" int  MH_Net_IdAssigned(void);          // net_transport -- 1 once this client's id is settled (WELCOME arrived)
+bool            g_mp_armed      = false;                                                   // transport started + role globals set (once, at menu-idle)
+int             g_mp_wait_ticks = 0;                                                       // menu-idle frames spent waiting for the peer (for a heartbeat log)
+bool            g_manual_mp     = false;                                                   // manual-menu MP active (button->browser / host create): run the lobby driver
+extern "C" int  MH_MP_MapReceived(void);                                                   // net_seams -- client: host's selected map has arrived (entry gate)
+extern "C" int  MH_MP_AdoptMapHeader(const uint8_t *header, size_t size, int start_bound); // validated main-thread map publication
+extern "C" void MH_MP_ResetMapReceived(void);                                              // net_seams -- U29: forget the dead lobby's map on exit
+extern "C" void MH_Seam_ClearStartReceived(void);                                          // net_discovery -- U29: disarm a stale FLAG_START on exit
+extern "C" void MH_MP_ClientPollMap(void);                                                 // net_seams -- client: drain the transport for the host's map datagram
+extern "C" void MH_Seam_SaveHostSlots(void);                                               // net_seams -- snapshot lobby slots at entry (transition clears them)
+extern "C" int  MH_Net_LocalPlayerId(void);                                                // net_transport -- this peer's own/assigned id (host-assign or declared)
+extern "C" int  MH_Net_IdAssigned(void);                                                   // net_transport -- 1 once this client's id is settled (WELCOME arrived)
 
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0; // SES1: per-SESSION -- U14 peer-table deltas are match telemetry
@@ -459,7 +466,7 @@ void mp_force_entry(bool is_host) {
     char *pz = (char *)(ADDR_PLANETS + 0x1f * PLANET_STRIDE);
     str_copy(pz + PZ_PATH, md + MD_PATH, 128);
     str_copy(pz + PZ_MAPNAME, md + MD_MAPNAME, 32);
-    str_copy(pz + PZ_TLO, md + MD_TLONAME, 12);
+    str_copy(pz + PZ_TLO, md + MD_TLONAME, 13);
     for (int i = 0; i < 4; ++i) {
         ((int *)(pz + PZ_SRCMUL))[i] = 1;
         ((int *)(pz + PZ_SRCADD))[i] = 0;
@@ -797,7 +804,9 @@ void mp_clear_match_residue() {
 // (the same instant mp:D45 uses: stages 5..8, incl. llm_strat_bldg_init_defaults which writes Building, have all
 // completed and no session has begun), and put them back at the top of llm_strat_new_game_init -- BEFORE its body,
 // because that body copies the baseline column [8] of Weapon/Unit into the per-player columns, and a restore
-// after it would leave the save's columns. new_game_init is the single point every new-game route crosses
+// after it would leave the save's columns. Fresh campaign additionally restores before the System[1] planet
+// selection in session_state_reset; the late new_game_init carrier handles the other new-game routes.
+// new_game_init is the common initialization point every new-game route crosses
 // (SP campaign, tutorial, every MP start on host and joiner, D17 --newgame / --mp-*); a Load, the flag-1 soft
 // planet transition and --tactical never reach it, so they keep the save's tables. Two carriers share
 // MH_Cfg_NewGameRestore: the retail detour armed in net_seams.cpp (shipped config, [config] mode=original) and the
@@ -820,6 +829,10 @@ cfg_keep g_cfg_keep[] = {
     {mh::state::RID_UPGRADES, "upgrades", nullptr, 0},
 };
 bool g_cfg_captured = false;
+// The fresh campaign call restores before System[1] selects the start planet.
+// Its subsequent new_game_init observer consumes this marker, so the logical
+// New Game retains one G17 log and one provenance transition.
+bool g_cfg_campaign_prepared = false;
 
 uint64_t cfg_fnv(const uint8_t *p, uint32_t n) {
     uint64_t h = 1469598103934665603ull;
@@ -891,28 +904,58 @@ extern "C" void MH_MP_CaptureBootResidue(void) {
 }
 
 // mods:G17 -- the restore itself, called at the top of llm_strat_new_game_init by BOTH carriers (the retail detour in
-// net_seams.cpp and the libmh observer). Idempotent: a second call in one new-game route finds nothing to do.
+// net_seams.cpp and the libmh observer). A fresh campaign has already restored at its earlier call site;
+// its late callback only consumes the prepared marker. Other routes restore here.
 // The logged pair per table is "bytes differing from the boot capture BEFORE / AFTER": 0/0 in a fresh process
 // (the fix writes nothing there), N/0 after a Load with the fix, N/N with [net] cfg_newgame_restore_fix=0.
 // Silent before the capture exists (the boot-time call from llm_strat_mode_init runs before the INIT.CFG parse).
 extern "C" void MH_Cfg_NewGameRestore(void) {
+    if (g_cfg_campaign_prepared) {
+        g_cfg_campaign_prepared = false;
+        return;
+    }
     if (!g_cfg_captured) return;
     static int s_enabled = -1;
     if (s_enabled < 0) s_enabled = net_ini_int("cfg_newgame_restore_fix", 1) != 0 ? 1 : 0;
     char msg[320];
-    int  o = wsprintfA(msg, "; G17: new-game cfg tables %s (before/after, bytes differing from boot):",
+    int  o                     = wsprintfA(msg, "; G17: new-game cfg tables %s (before/after, bytes differing from boot):",
                       s_enabled ? "restored" : "KEPT ([net] cfg_newgame_restore_fix=0)");
+    bool boot_config_confirmed = true;
     for (cfg_keep &k : g_cfg_keep) {
-        if (k.snap == nullptr) continue;
+        if (k.snap == nullptr || k.len == 0) {
+            boot_config_confirmed = false;
+            continue;
+        }
         uint8_t *live = mh::state::ptr<uint8_t>(k.rid);
-        if (live == nullptr) continue;
+        if (live == nullptr) {
+            boot_config_confirmed = false;
+            continue;
+        }
         const uint32_t before = cfg_diff_bytes(live, k.snap, k.len);
         if (s_enabled && before != 0) memcpy(live, k.snap, k.len);
         const uint32_t after = before == 0 ? 0 : cfg_diff_bytes(live, k.snap, k.len);
+        if (after != 0) boot_config_confirmed = false;
         o += wsprintfA(msg + o, " %s=%lu/%lu", k.name, (unsigned long)before, (unsigned long)after);
     }
     lg("%s", msg);
+    mh::mods::save::on_new_game(boot_config_confirmed);
 }
+
+// The shared campaign call-site owner invokes this only for reset_flag=0,
+// before planet_session_begin/session_state_reset reads System[1]. The same
+// restore keeps the fix-off knob and all-seven-tables transaction intact.
+// A normal fresh call immediately reaches new_game_init, which consumes the
+// marker; the existing late carrier remains responsible for other entry paths.
+} // namespace
+
+void cfg_prepare_campaign_new_game() {
+    g_cfg_campaign_prepared = false;
+    if (!g_cfg_captured) return;
+    MH_Cfg_NewGameRestore();
+    g_cfg_campaign_prepared = true;
+}
+
+namespace {
 
 // mp:RM1 -- THE MANUAL-LOBBY ENTRY PREP RUNS ONCE PER LOBBY, NOT ONCE PER PROCESS. Two latches made
 // it once-per-process, and that is the writer of the 2026-09-20 rematch residue (session report
@@ -1164,6 +1207,7 @@ void log_lobby_state(bool is_host, const char *when) {
 // is REFUSED, never papered over with local values (silent rules mismatch = desync): the caller must not
 // enter the match when this returns false.
 bool mp_client_refuse_start(const char *reason) {
+    mh::seams::lobby_speed::clear();
     g_start_adopt         = StartAdopt::REFUSED;
     g_start_refuse_reason = reason;
     g_start_refuse_posted = true;
@@ -1181,14 +1225,22 @@ bool mp_client_adopt_start() {
     unsigned char hs[SLOT_STRIDE * 8];
     const int     n = MH_Seam_TakeStartSlots(hs, sizeof(hs));
     if (n != (int)sizeof(hs)) return mp_client_refuse_start("no host Start");
-    unsigned char                   gb[MH_NET_MAX_PAYLOAD];
-    const int                       gl = MH_Seam_TakeStartGameplay(gb, sizeof(gb));
+    unsigned char  gb[MH_NET_MAX_PAYLOAD];
+    const int      gl           = MH_Seam_TakeStartGameplay(gb, sizeof(gb));
+    size_t         gameplay_len = 0;
+    const uint8_t *start_map    = nullptr;
+    if (gl <= 0 || !mh_net_proto::start_map_split(gb, size_t(gl), gameplay_len, start_map))
+        return mp_client_refuse_start("no host Start map");
     mh_net_proto::GameplaySet       gs;
-    const mh_net_proto::GameplayErr ge = gl > 0 ? mh_net_proto::gameplay_set_decode(gb, (size_t)gl, gs) : mh_net_proto::GameplayErr::Truncated;
+    const mh_net_proto::GameplayErr ge = mh_net_proto::gameplay_set_decode(gb, gameplay_len, gs);
     if (gl <= 0 || ge != mh_net_proto::GameplayErr::Ok) {
         mh::gameplay::note(gl > 0 ? mh_net_proto::gameplay_err_text(ge) : "the host's START carried no gameplay trailer");
         return mp_client_refuse_start("no host settings");
     }
+    if (!mh::seams::lobby_speed::validate_start(gs))
+        return mp_client_refuse_start("invalid required lobby speed");
+    if (!MH_MP_AdoptMapHeader(start_map, mh_net_proto::START_MAP_BYTES, 1))
+        return mp_client_refuse_start("invalid host Start map");
     int occ;
     {
         // DIFF BEFORE OVERWRITING, and log it. Adopting the host's array makes the peers agree
@@ -1245,7 +1297,13 @@ bool mp_client_adopt_start() {
         mh::gameplay::log_raise_refused(); // mh_net.log: the rig checker reads this one
         return mp_client_refuse_start("cannot raise limits");
     }
+    if (!mh::seams::lobby_speed::freeze_start(gs))
+        return mp_client_refuse_start("cannot freeze lobby speed");
+    mp_session_speed_frozen();
     mh::gameplay::log_applied_hash();
+    lg("; Start map ADOPTED: bytes=%u map=%.31s players=%d route=common",
+       unsigned(mh_net_proto::START_MAP_BYTES), (const char *)(ADDR_CUR_MAP + MD_MAPNAME),
+       *(const int *)(ADDR_CUR_MAP + MD_PCOUNT));
     g_start_adopt = StartAdopt::ADOPTED;
     return true;
 }
@@ -1314,18 +1372,13 @@ void          mp_lobby_entry_tick(bool is_host) {
     // client can only enter by retail's own 0x0a route -- the route GH1 fixed. Read once per process.
     static const int settle_ticks = net_ini_int("entry_settle_ticks", ENTRY_SETTLE_TICKS);
     if (++g_entry_ticks < settle_ticks) return;
-    // Manual-menu client: don't enter until the host's selected map has propagated (else the client
-    // session_begins on its own synth map and desyncs). The host broadcasts current_map_data each lobby
-    // frame; net_seams intercepts it into current_map_data and flags MH_MP_MapReceived. (Force-entry: the
-    // host still sends its fixed map, so this is satisfied there too.)
-    if (!is_host && g_verb == VERB_NONE && g_manual_mp && !MH_MP_MapReceived()) { // MANUAL client only --
-        if ((++g_entry_hb % 60) == 0) lg("; --mp-join: waiting for host map to propagate before entry");
-        return; // force-entry uses its fixed map + no map broadcast, so it must NOT wait on this gate
-    }
+    // Manual Start carries its authoritative map in the same published snapshot
+    // as slots/settings. A periodic preview is neither necessary nor sufficient
+    // for admission; the common adopt below validates it on both entry routes.
     // U2: the MANUAL client must not auto-enter at slot-sync either -- it enters only when the host clicks
     // Start (net_seams sets this on the host's FLAG_START). Force-entry (verb) keeps its auto-enter.
     if (!is_host && g_verb == VERB_NONE && g_manual_mp && !MH_Seam_ClientStartReceived()) {
-        if ((++g_entry_hb % 60) == 0) lg("; --mp-join: slots+map ready -- waiting for host Start (U2)");
+        if ((++g_entry_hb % 60) == 0) lg("; --mp-join: slots ready -- waiting for host Start (U2)");
         return;
     }
     // U28: the Start gate has just opened, so the host's AUTHORITATIVE slot array is published. Adopt
@@ -1479,18 +1532,6 @@ void enter_tactical() {
     //    here would be worse than in the game: this verb feeds the tactical determinism oracle, and
     //    a stale restore is exactly the shape of a green run that proves nothing (TACT-WRITERS,
     //    2026-08-24).
-    // 2b. WHICH MISSION. `system` overrides CurrentSystem so all six shipped POZ files are reachable
-    //     from ONE save -- the shipped set is POZ1L..POZ3O and a save pins exactly one system, so
-    //     without this a per-mission table needs a save per system that may not exist. 0 = leave the
-    //     save's own value alone, which is the shipping default and changes nothing.
-    //     It is set BEFORE mission_start because that is the only reader that matters here; it is not
-    //     restored afterwards, so a run that overrides is a MEASUREMENT run and not a game.
-    int sys_override = ini_int("tactical", "system", 0);
-    if (sys_override > 0) {
-        lg("; --tactical: [tactical] system=%d OVERRIDES CurrentSystem (was %d) -- measurement run",
-           sys_override, *(const int *)ADDR_CURRENT_SYSTEM);
-        *(int *)ADDR_CURRENT_SYSTEM = sys_override;
-    }
 
     int      planet  = *(const int *)ADDR_PLANET_INDEX;
     uint32_t save_ok = mh::call::map_SavePlanetToDisk((uint32_t)planet, 1u);
@@ -1499,6 +1540,18 @@ void enter_tactical() {
            "planet; refusing to enter tactical mode",
            planet);
         return;
+    }
+    lg("; --tactical: map_SavePlanetToDisk(planet=%d) -> %u before mission-system override",
+       planet, (unsigned)save_ok);
+
+    // 3b. The measurement-only mission override belongs AFTER saving the strategic
+    // world under its real system/queue-owner identity, immediately before mission_start.
+    // 0 preserves the save's own system. An override run is not a gameplay save.
+    int sys_override = ini_int("tactical", "system", 0);
+    if (sys_override > 0) {
+        lg("; --tactical: [tactical] system=%d OVERRIDES CurrentSystem (was %d) -- measurement run",
+           sys_override, *(const int *)ADDR_CURRENT_SYSTEM);
+        *(int *)ADDR_CURRENT_SYSTEM = sys_override;
     }
 
     // 4. In. mission_start is void(void) and reads only the globals set above.
@@ -1792,8 +1845,9 @@ constexpr unsigned  INTRO_SKIP_CAP_MS     = 2000u;
 
 DWORD g_intro_wait_t0 = 0; // GetTickCount at the first frame we could have skipped on
 
-// The audio thread by id: the pump closes its own handle as soon as the thread exists (seen on every
-// rig boot), so the task's handle slot cannot say whether it is still running.
+// Native teardown clears the descriptor handle even while its worker is alive (G388).
+// This TID query is only the skip-timing hint; AVI lifetime owns a retained creation handle
+// and independently fences every context free on actual worker rundown.
 int intro_audio_thread_alive() {
     const DWORD tid = *(volatile const DWORD *)(ADDR_BOOT_TASK + 0xc);
     if (tid == 0) return 0;
@@ -1968,12 +2022,29 @@ void on_begin_map_load() {
     // Placed before the client/skirmish early-outs below on purpose: they decide the HOST's prep,
     // and the residue is every peer's. A REFUSED Start (above) enters nothing, so clears nothing.
     mp_clear_match_residue();
-    if (!is_host) return;               // client: nothing else to prep/send here
-    if (MH_Net_PeerCount() < 1) return; // skirmish-vs-AI (no network client): leave the proven path alone
-    // ONE-SHOT PER LOBBY, not per process: this used to be a function-static `host_done`, which is
-    // the mp:RM1 writer on the host side (see MH_MP_RearmLobbyEntry).
+    if (!is_host) return;
     if (g_host_start_done) return;
-    g_host_start_done             = true;
+    mh_net_proto::GameplaySet gp = mh::gameplay::local_set();
+    if (!mh::seams::lobby_speed::overlay_start(gp)) {
+        mh::gameplay::note("Start REFUSED: invalid registered lobby speed");
+        g_bml_refuse = 1;
+        return;
+    }
+    mh::gameplay::apply(gp, mh::gameplay::Source::PUBLISHED);
+    if (mh::gameplay::raise_refused()) {
+        mh::gameplay::log_raise_refused();
+        g_bml_refuse = 1;
+        return;
+    }
+    if (!mh::seams::lobby_speed::freeze_start(gp)) {
+        mh::gameplay::note("Start REFUSED: cannot freeze lobby speed");
+        g_bml_refuse = 1;
+        return;
+    }
+    mh::gameplay::log_applied_hash();
+    mp_session_speed_frozen();
+    g_host_start_done = true;
+    if (MH_Net_PeerCount() < 1) return; // Peerless host-vs-AI has already frozen the selected speed.
     int occ                       = lobby_slots_occupied();
     *(int *)ADDR_NET_PLAYERSIDE() = 0; // host drives player 0
     *(int *)ADDR_NET_LOCALIDX     = 0;
@@ -1990,28 +2061,36 @@ void on_begin_map_load() {
     // player's last click may not take effect, but the two peers still agree, which is the difference
     // between a UX annoyance and a step-1 desync). The bytes are exactly what build_players_detour
     // will restore on this side, so both peers build from one array.
-    // PT-SET1: the START frame = the slot array + the gameplay-settings trailer. The host applies its OWN
-    // values first (PUBLISHED: the match it is about to load runs on exactly what it ships) and the
-    // clients adopt the same set at their entry. Ini is read once at boot, so the set is final here.
+    // Start is one transaction: authoritative slots, settings, selected map.
+    // A separately throttled lobby preview can be missing or out of date when
+    // the host leaves the lobby; it must not decide which map the client loads.
     {
-        unsigned char fr[SLOT_STRIDE * 8 + mh_net_proto::GAMEPLAY_MAX_ENCODED];
+        unsigned char fr[SLOT_STRIDE * 8 + mh_net_proto::START_TRAILER_MAX_ENCODED];
         memcpy(fr, (const void *)ADDR_LOBBY_SLOTS, SLOT_STRIDE * 8);
-        const mh_net_proto::GameplaySet gp = mh::gameplay::local_set();
-        mh::gameplay::apply(gp, mh::gameplay::Source::PUBLISHED);
-        mh::gameplay::log_applied_hash();
         // [net] start_gameplay_trailer=0 (C_DEV, GH1 test knob): send the START WITHOUT the settings, to
         // prove the joiner refuses it rather than playing its own values.
         const size_t tl = net_ini_int("start_gameplay_trailer", 1) != 0 ? mh_net_proto::gameplay_set_encode(gp, fr + SLOT_STRIDE * 8) : 0;
         char         trailer_note[48];
         wsprintfA(trailer_note, "START trailer sent: %d B", (int)tl);
         mh::gameplay::note(trailer_note);
-        if (tl == 0 && net_ini_int("start_gameplay_trailer", 1) != 0) lg("; gameplay: FAILED to encode the trailer -- the START carries slots only (clients keep their own values)");
-        static_assert(SLOT_STRIDE * 8 + mh_net_proto::GAMEPLAY_MAX_ENCODED <= MH_NET_MAX_PAYLOAD, "START frame exceeds the payload cap");
-        MH_Net_SendStart(fr, (int)(SLOT_STRIDE * 8 + tl));
+        if (tl == 0 && net_ini_int("start_gameplay_trailer", 1) != 0) lg("; gameplay: FAILED to encode settings -- clients will refuse this Start");
+        const size_t trailer_len = mh_net_proto::start_map_append(
+            fr + SLOT_STRIDE * 8, sizeof(fr) - SLOT_STRIDE * 8, tl, (const uint8_t *)ADDR_CUR_MAP);
+        if (!trailer_len) {
+            g_bml_refuse      = 1;
+            g_host_start_done = false;
+            mh::gameplay::note("Start REFUSED: cannot encode selected map");
+            return;
+        }
+        static_assert(SLOT_STRIDE * 8 + mh_net_proto::START_TRAILER_MAX_ENCODED <= MH_NET_MAX_PAYLOAD, "START frame exceeds the payload cap");
+        lg("; Start map SENT: bytes=%u map=%.31s players=%d",
+           unsigned(mh_net_proto::START_MAP_BYTES), (const char *)(ADDR_CUR_MAP + MD_MAPNAME),
+           *(const int *)(ADDR_CUR_MAP + MD_PCOUNT));
+        MH_Net_SendStart(fr, (int)(SLOT_STRIDE * 8 + trailer_len));
         g_entry_started = true;
         lg("; U2: host Start -> begin_map_load: prep + slot snapshot done, FLAG_START sent with %d B "
-           "of authoritative slots + %d B gameplay trailer (occ=%d)",
-           SLOT_STRIDE * 8, (int)tl, occ);
+           "of authoritative slots + %d B gameplay trailer + %u B map envelope (occ=%d)",
+           SLOT_STRIDE * 8, (int)tl, unsigned(mh_net_proto::START_MAP_SUFFIX_BYTES), occ);
     }
 }
 

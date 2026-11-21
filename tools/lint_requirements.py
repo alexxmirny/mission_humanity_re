@@ -69,7 +69,10 @@ def local_module_names():
     for sub in ("tools", "src"):
         d = REPO / sub
         if d.exists():
-            stems |= {p.stem for p in d.rglob("*.py")}
+            pys = list(d.rglob("*.py"))
+            stems |= {p.stem for p in pys}
+            # package dirs too (`from src.formats.mapkit import ...`, `from mapkit import ...`)
+            stems |= {q.name for p in pys for q in p.relative_to(REPO).parents if q.name}
     try:
         with open(REPO / "tools" / "data" / "tool_dispositions.json", encoding="utf-8") as fh:
             stems |= {t[:-3] for t in json.load(fh)["rows"] if t.endswith(".py")}

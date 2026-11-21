@@ -49,6 +49,8 @@
 #include "config/ini_read.h"       // TL-HARN4: read_ini_string -- strips a trailing `;comment` (unconditional
                                    // -- unlike config.h's selector this needs no MH_LIBMH_BUILD split)
 
+#include "lockstep/participant_removal.h"
+
 namespace mh::lockstep {
 
 // The invasion-alert line the sim tick prints, folded into ONE injectable call because formatting it
@@ -108,6 +110,7 @@ const game_calls &live_calls() {
         MH_INTERNAL_CALL(llm_net_lockstep_dispatch, mh::lockstep::dispatch),
         // STAYS ENTRY-ROUTED: a mh::orders seam, outside the rule's scope (see rx_dispatch.cpp).
         MH_LIBMH_BIND(llm_strat_order_schedule),
+        participant::poll,
     };
     return gc;
 }
@@ -392,6 +395,7 @@ void sim_tick(const engine_state &st, const game_calls &calls, const reimpl_fixe
             *st.game_clock_w    = *st.sim_step_interval + *st.game_clock_w;
             if (*st.order_pending_count != 0) calls.order_release_due(*st.game_clock_w);
             calls.sim_step();
+            if (calls.participant_poll) calls.participant_poll();
             // The single-player catch-up cap (reimpl_fixes::sp_step_cap): drop the rest of a long stall.
             if (fx.sp_step_cap > 0 && *st.session_mode != SESSION_MP_LOCKSTEP && ++steps_run >= fx.sp_step_cap) {
                 *const_cast<double *>(st.total_game_time) = *st.game_clock_w; // a real mutable global, see engine_state
@@ -405,6 +409,7 @@ void sim_tick(const engine_state &st, const game_calls &calls, const reimpl_fixe
         if (x87_below_or_unordered(0.0, *st.game_time_delta)) {
             *st.game_clock_w = *st.total_game_time;
             calls.sim_step();
+            if (calls.participant_poll) calls.participant_poll();
         }
     }
 
@@ -438,6 +443,7 @@ void advance_sim_clock(const engine_state &st, const game_calls &calls) {
     }
     calls.invasion_due_check(); // writes zero regions -- real
     calls.sim_step();           // the whole sim -- inert in the shadow arm
+    if (calls.participant_poll) calls.participant_poll();
 }
 
 // llm_net_lockstep_pump @0x0049c088, MINUS its first statement -- see the wrapper below for why the

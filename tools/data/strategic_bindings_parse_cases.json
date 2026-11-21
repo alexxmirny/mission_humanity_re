@@ -1,0 +1,1104 @@
+{
+  "schema": 1,
+  "stage": "resolved binding value AFTER shared INI comment stripping; outer ASCII space/tab trimming only",
+  "max_text_bytes": 94,
+  "cases": [
+    {
+      "text": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041",
+      "accepted": false
+    },
+    {
+      "text": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041",
+      "accepted": false
+    },
+    {
+      "text": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041",
+      "accepted": false
+    },
+    {
+      "text": " \t0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041\t ",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "Escape",
+      "accepted": true,
+      "physical": 1,
+      "modifiers": 0
+    },
+    {
+      "text": "Esc",
+      "accepted": true,
+      "physical": 1,
+      "modifiers": 0
+    },
+    {
+      "text": "Backspace",
+      "accepted": true,
+      "physical": 14,
+      "modifiers": 0
+    },
+    {
+      "text": "Tab",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "Enter",
+      "accepted": true,
+      "physical": 28,
+      "modifiers": 0
+    },
+    {
+      "text": "Space",
+      "accepted": true,
+      "physical": 57,
+      "modifiers": 0
+    },
+    {
+      "text": "Home",
+      "accepted": true,
+      "physical": 199,
+      "modifiers": 0
+    },
+    {
+      "text": "End",
+      "accepted": true,
+      "physical": 207,
+      "modifiers": 0
+    },
+    {
+      "text": "Insert",
+      "accepted": true,
+      "physical": 210,
+      "modifiers": 0
+    },
+    {
+      "text": "Ins",
+      "accepted": true,
+      "physical": 210,
+      "modifiers": 0
+    },
+    {
+      "text": "Delete",
+      "accepted": true,
+      "physical": 211,
+      "modifiers": 0
+    },
+    {
+      "text": "Del",
+      "accepted": true,
+      "physical": 211,
+      "modifiers": 0
+    },
+    {
+      "text": "Up",
+      "accepted": true,
+      "physical": 200,
+      "modifiers": 0
+    },
+    {
+      "text": "Down",
+      "accepted": true,
+      "physical": 208,
+      "modifiers": 0
+    },
+    {
+      "text": "Left",
+      "accepted": true,
+      "physical": 203,
+      "modifiers": 0
+    },
+    {
+      "text": "Right",
+      "accepted": true,
+      "physical": 205,
+      "modifiers": 0
+    },
+    {
+      "text": "PageUp",
+      "accepted": true,
+      "physical": 201,
+      "modifiers": 0
+    },
+    {
+      "text": "PgUp",
+      "accepted": true,
+      "physical": 201,
+      "modifiers": 0
+    },
+    {
+      "text": "Prior",
+      "accepted": true,
+      "physical": 201,
+      "modifiers": 0
+    },
+    {
+      "text": "PageDown",
+      "accepted": true,
+      "physical": 209,
+      "modifiers": 0
+    },
+    {
+      "text": "PgDn",
+      "accepted": true,
+      "physical": 209,
+      "modifiers": 0
+    },
+    {
+      "text": "Next",
+      "accepted": true,
+      "physical": 209,
+      "modifiers": 0
+    },
+    {
+      "text": "CapsLock",
+      "accepted": true,
+      "physical": 58,
+      "modifiers": 0
+    },
+    {
+      "text": "Caps",
+      "accepted": true,
+      "physical": 58,
+      "modifiers": 0
+    },
+    {
+      "text": "1",
+      "accepted": true,
+      "physical": 2,
+      "modifiers": 0
+    },
+    {
+      "text": "2",
+      "accepted": true,
+      "physical": 3,
+      "modifiers": 0
+    },
+    {
+      "text": "3",
+      "accepted": true,
+      "physical": 4,
+      "modifiers": 0
+    },
+    {
+      "text": "4",
+      "accepted": true,
+      "physical": 5,
+      "modifiers": 0
+    },
+    {
+      "text": "5",
+      "accepted": true,
+      "physical": 6,
+      "modifiers": 0
+    },
+    {
+      "text": "6",
+      "accepted": true,
+      "physical": 7,
+      "modifiers": 0
+    },
+    {
+      "text": "7",
+      "accepted": true,
+      "physical": 8,
+      "modifiers": 0
+    },
+    {
+      "text": "8",
+      "accepted": true,
+      "physical": 9,
+      "modifiers": 0
+    },
+    {
+      "text": "9",
+      "accepted": true,
+      "physical": 10,
+      "modifiers": 0
+    },
+    {
+      "text": "0",
+      "accepted": true,
+      "physical": 11,
+      "modifiers": 0
+    },
+    {
+      "text": "Q",
+      "accepted": true,
+      "physical": 16,
+      "modifiers": 0
+    },
+    {
+      "text": "W",
+      "accepted": true,
+      "physical": 17,
+      "modifiers": 0
+    },
+    {
+      "text": "E",
+      "accepted": true,
+      "physical": 18,
+      "modifiers": 0
+    },
+    {
+      "text": "R",
+      "accepted": true,
+      "physical": 19,
+      "modifiers": 0
+    },
+    {
+      "text": "T",
+      "accepted": true,
+      "physical": 20,
+      "modifiers": 0
+    },
+    {
+      "text": "Y",
+      "accepted": true,
+      "physical": 21,
+      "modifiers": 0
+    },
+    {
+      "text": "U",
+      "accepted": true,
+      "physical": 22,
+      "modifiers": 0
+    },
+    {
+      "text": "I",
+      "accepted": true,
+      "physical": 23,
+      "modifiers": 0
+    },
+    {
+      "text": "O",
+      "accepted": true,
+      "physical": 24,
+      "modifiers": 0
+    },
+    {
+      "text": "P",
+      "accepted": true,
+      "physical": 25,
+      "modifiers": 0
+    },
+    {
+      "text": "A",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "S",
+      "accepted": true,
+      "physical": 31,
+      "modifiers": 0
+    },
+    {
+      "text": "D",
+      "accepted": true,
+      "physical": 32,
+      "modifiers": 0
+    },
+    {
+      "text": "F",
+      "accepted": true,
+      "physical": 33,
+      "modifiers": 0
+    },
+    {
+      "text": "G",
+      "accepted": true,
+      "physical": 34,
+      "modifiers": 0
+    },
+    {
+      "text": "H",
+      "accepted": true,
+      "physical": 35,
+      "modifiers": 0
+    },
+    {
+      "text": "J",
+      "accepted": true,
+      "physical": 36,
+      "modifiers": 0
+    },
+    {
+      "text": "K",
+      "accepted": true,
+      "physical": 37,
+      "modifiers": 0
+    },
+    {
+      "text": "L",
+      "accepted": true,
+      "physical": 38,
+      "modifiers": 0
+    },
+    {
+      "text": "Z",
+      "accepted": true,
+      "physical": 44,
+      "modifiers": 0
+    },
+    {
+      "text": "X",
+      "accepted": true,
+      "physical": 45,
+      "modifiers": 0
+    },
+    {
+      "text": "C",
+      "accepted": true,
+      "physical": 46,
+      "modifiers": 0
+    },
+    {
+      "text": "V",
+      "accepted": true,
+      "physical": 47,
+      "modifiers": 0
+    },
+    {
+      "text": "B",
+      "accepted": true,
+      "physical": 48,
+      "modifiers": 0
+    },
+    {
+      "text": "N",
+      "accepted": true,
+      "physical": 49,
+      "modifiers": 0
+    },
+    {
+      "text": "M",
+      "accepted": true,
+      "physical": 50,
+      "modifiers": 0
+    },
+    {
+      "text": "-",
+      "accepted": true,
+      "physical": 12,
+      "modifiers": 0
+    },
+    {
+      "text": "=",
+      "accepted": true,
+      "physical": 13,
+      "modifiers": 0
+    },
+    {
+      "text": "[",
+      "accepted": true,
+      "physical": 26,
+      "modifiers": 0
+    },
+    {
+      "text": "]",
+      "accepted": true,
+      "physical": 27,
+      "modifiers": 0
+    },
+    {
+      "text": "Semicolon",
+      "accepted": true,
+      "physical": 39,
+      "modifiers": 0
+    },
+    {
+      "text": "'",
+      "accepted": true,
+      "physical": 40,
+      "modifiers": 0
+    },
+    {
+      "text": "`",
+      "accepted": true,
+      "physical": 41,
+      "modifiers": 0
+    },
+    {
+      "text": "\\",
+      "accepted": true,
+      "physical": 43,
+      "modifiers": 0
+    },
+    {
+      "text": ",",
+      "accepted": true,
+      "physical": 51,
+      "modifiers": 0
+    },
+    {
+      "text": ".",
+      "accepted": true,
+      "physical": 52,
+      "modifiers": 0
+    },
+    {
+      "text": "/",
+      "accepted": true,
+      "physical": 53,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadDecimal",
+      "accepted": true,
+      "physical": 83,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadEnter",
+      "accepted": true,
+      "physical": 156,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadAdd",
+      "accepted": true,
+      "physical": 78,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadSubtract",
+      "accepted": true,
+      "physical": 74,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadMultiply",
+      "accepted": true,
+      "physical": 55,
+      "modifiers": 0
+    },
+    {
+      "text": "NumpadDivide",
+      "accepted": true,
+      "physical": 181,
+      "modifiers": 0
+    },
+    {
+      "text": "NumLock",
+      "accepted": true,
+      "physical": 69,
+      "modifiers": 0
+    },
+    {
+      "text": "ScrollLock",
+      "accepted": true,
+      "physical": 70,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad0",
+      "accepted": true,
+      "physical": 82,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad1",
+      "accepted": true,
+      "physical": 79,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad2",
+      "accepted": true,
+      "physical": 80,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad3",
+      "accepted": true,
+      "physical": 81,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad4",
+      "accepted": true,
+      "physical": 75,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad5",
+      "accepted": true,
+      "physical": 76,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad6",
+      "accepted": true,
+      "physical": 77,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad7",
+      "accepted": true,
+      "physical": 71,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad8",
+      "accepted": true,
+      "physical": 72,
+      "modifiers": 0
+    },
+    {
+      "text": "Numpad9",
+      "accepted": true,
+      "physical": 73,
+      "modifiers": 0
+    },
+    {
+      "text": "F1",
+      "accepted": true,
+      "physical": 59,
+      "modifiers": 0
+    },
+    {
+      "text": "F2",
+      "accepted": true,
+      "physical": 60,
+      "modifiers": 0
+    },
+    {
+      "text": "F3",
+      "accepted": true,
+      "physical": 61,
+      "modifiers": 0
+    },
+    {
+      "text": "F4",
+      "accepted": true,
+      "physical": 62,
+      "modifiers": 0
+    },
+    {
+      "text": "F5",
+      "accepted": true,
+      "physical": 63,
+      "modifiers": 0
+    },
+    {
+      "text": "F6",
+      "accepted": true,
+      "physical": 64,
+      "modifiers": 0
+    },
+    {
+      "text": "F7",
+      "accepted": true,
+      "physical": 65,
+      "modifiers": 0
+    },
+    {
+      "text": "F8",
+      "accepted": true,
+      "physical": 66,
+      "modifiers": 0
+    },
+    {
+      "text": "F9",
+      "accepted": true,
+      "physical": 67,
+      "modifiers": 0
+    },
+    {
+      "text": "F10",
+      "accepted": true,
+      "physical": 68,
+      "modifiers": 0
+    },
+    {
+      "text": "F11",
+      "accepted": true,
+      "physical": 87,
+      "modifiers": 0
+    },
+    {
+      "text": "F12",
+      "accepted": true,
+      "physical": 88,
+      "modifiers": 0
+    },
+    {
+      "text": "F13",
+      "accepted": true,
+      "physical": 100,
+      "modifiers": 0
+    },
+    {
+      "text": "F14",
+      "accepted": true,
+      "physical": 101,
+      "modifiers": 0
+    },
+    {
+      "text": "F15",
+      "accepted": true,
+      "physical": 102,
+      "modifiers": 0
+    },
+    {
+      "text": "F16",
+      "accepted": true,
+      "physical": 103,
+      "modifiers": 0
+    },
+    {
+      "text": "F17",
+      "accepted": true,
+      "physical": 104,
+      "modifiers": 0
+    },
+    {
+      "text": "F18",
+      "accepted": true,
+      "physical": 105,
+      "modifiers": 0
+    },
+    {
+      "text": "F19",
+      "accepted": true,
+      "physical": 106,
+      "modifiers": 0
+    },
+    {
+      "text": "F20",
+      "accepted": true,
+      "physical": 107,
+      "modifiers": 0
+    },
+    {
+      "text": "F21",
+      "accepted": true,
+      "physical": 108,
+      "modifiers": 0
+    },
+    {
+      "text": "F22",
+      "accepted": true,
+      "physical": 109,
+      "modifiers": 0
+    },
+    {
+      "text": "F23",
+      "accepted": true,
+      "physical": 110,
+      "modifiers": 0
+    },
+    {
+      "text": "F24",
+      "accepted": true,
+      "physical": 118,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_41",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_31",
+      "accepted": true,
+      "physical": 2,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_A",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_F1",
+      "accepted": true,
+      "physical": 59,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_Tab",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_0x41",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "0x41",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 0
+    },
+    {
+      "text": "0x9",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "0x09",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "0x0009",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_9",
+      "accepted": true,
+      "physical": 10,
+      "modifiers": 0
+    },
+    {
+      "text": "VK_0009",
+      "accepted": true,
+      "physical": 15,
+      "modifiers": 0
+    },
+    {
+      "text": "Scan:41",
+      "accepted": true,
+      "physical": 65,
+      "modifiers": 0
+    },
+    {
+      "text": "Scan:e0:48",
+      "accepted": true,
+      "physical": 200,
+      "modifiers": 0
+    },
+    {
+      "text": "Scan:48",
+      "accepted": true,
+      "physical": 72,
+      "modifiers": 0
+    },
+    {
+      "text": " Ctrl+Alt+N\t",
+      "accepted": true,
+      "physical": 49,
+      "modifiers": 3
+    },
+    {
+      "text": "control+shift+a",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 5
+    },
+    {
+      "text": "Alt+Shift+Ctrl+F24",
+      "accepted": true,
+      "physical": 118,
+      "modifiers": 7
+    },
+    {
+      "text": "Ctrl+VK_41",
+      "accepted": true,
+      "physical": 30,
+      "modifiers": 1
+    },
+    {
+      "text": "Shift+NumpadEnter",
+      "accepted": true,
+      "physical": 156,
+      "modifiers": 4
+    },
+    {
+      "text": "",
+      "accepted": true,
+      "physical": 0,
+      "modifiers": 0
+    },
+    {
+      "text": "none",
+      "accepted": true,
+      "physical": 0,
+      "modifiers": 0
+    },
+    {
+      "text": " \tNoNe\t ",
+      "accepted": true,
+      "physical": 0,
+      "modifiers": 0
+    },
+    {
+      "text": "Ctrl +A",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl+ A",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl+",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl++A",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl+Ctrl+A",
+      "accepted": false
+    },
+    {
+      "text": "Scan:0",
+      "accepted": false
+    },
+    {
+      "text": "Scan:80",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:00",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:80",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:2A",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:36",
+      "accepted": false
+    },
+    {
+      "text": "Scan:2A",
+      "accepted": false
+    },
+    {
+      "text": "Scan:36",
+      "accepted": false
+    },
+    {
+      "text": "Scan:1D",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:1D",
+      "accepted": false
+    },
+    {
+      "text": "Scan:38",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:38",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:5B",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:5C",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:5D",
+      "accepted": false
+    },
+    {
+      "text": "0x",
+      "accepted": false
+    },
+    {
+      "text": "0x00",
+      "accepted": false
+    },
+    {
+      "text": "0x100",
+      "accepted": false
+    },
+    {
+      "text": "0x41junk",
+      "accepted": false
+    },
+    {
+      "text": "VK_",
+      "accepted": false
+    },
+    {
+      "text": "VK_00",
+      "accepted": false
+    },
+    {
+      "text": "VK_100",
+      "accepted": false
+    },
+    {
+      "text": "VK_FF",
+      "accepted": false
+    },
+    {
+      "text": "VK_41junk",
+      "accepted": false
+    },
+    {
+      "text": "Scan:048",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:048",
+      "accepted": false
+    },
+    {
+      "text": "Scan:E0:48junk",
+      "accepted": false
+    },
+    {
+      "text": "F25",
+      "accepted": false
+    },
+    {
+      "text": "F1junk",
+      "accepted": false
+    },
+    {
+      "text": "A\n",
+      "accepted": false
+    },
+    {
+      "text": "A ;comment",
+      "accepted": false
+    },
+    {
+      "text": ";",
+      "accepted": false
+    },
+    {
+      "text": " A",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl+none",
+      "accepted": false
+    }
+  ],
+  "role_cases": [
+    {
+      "text": "Ctrl",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 1
+    },
+    {
+      "text": "Control",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 1
+    },
+    {
+      "text": "Alt",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 2
+    },
+    {
+      "text": "Shift",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 4
+    },
+    {
+      "text": "none",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 0
+    },
+    {
+      "text": " NONE\t",
+      "kind": "modifier",
+      "accepted": true,
+      "value": 0
+    },
+    {
+      "text": "",
+      "kind": "modifier",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl+Shift",
+      "kind": "modifier",
+      "accepted": false
+    },
+    {
+      "text": "MouseLeft",
+      "kind": "modifier",
+      "accepted": false
+    },
+    {
+      "text": "None+Ctrl",
+      "kind": "modifier",
+      "accepted": false
+    },
+    {
+      "text": "Shift\n",
+      "kind": "modifier",
+      "accepted": false
+    },
+    {
+      "text": "MouseLeft",
+      "kind": "button",
+      "accepted": true,
+      "value": 1
+    },
+    {
+      "text": "MouseRight",
+      "kind": "button",
+      "accepted": true,
+      "value": 2
+    },
+    {
+      "text": " mousEleft\t",
+      "kind": "button",
+      "accepted": true,
+      "value": 1
+    },
+    {
+      "text": "none",
+      "kind": "button",
+      "accepted": false
+    },
+    {
+      "text": "",
+      "kind": "button",
+      "accepted": false
+    },
+    {
+      "text": "Ctrl",
+      "kind": "button",
+      "accepted": false
+    },
+    {
+      "text": "MouseMiddle",
+      "kind": "button",
+      "accepted": false
+    }
+  ]
+}

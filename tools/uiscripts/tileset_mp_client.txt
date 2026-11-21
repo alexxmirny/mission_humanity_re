@@ -1,0 +1,28 @@
+# TILESET1: join the matching mod set and run the standard two-peer movement workload.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+
+# joined lobby: tell the host we are really here, then wait for its Start
+present Network players
+signal lobby
+settled Cancel
+capture tileset_join_lobby
+absent Network players
+# gated on the SIM exactly as mp_client_start.txt gates it (gameclock 6000, past the reveal)
+gameclock 6000
+capture tileset_join_world
+gameclock 16000
+log CLIENT completed TILESET1 matching session
+end

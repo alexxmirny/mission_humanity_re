@@ -1,0 +1,17 @@
+{
+  "_why": "QoL compact-row captures judge the actual native/scaled control surface, including Auto text, color, latch and gradient. Measured Off versus Off-again: zero differing pixels in the presented row, 13129 outside it from unrelated world animation. Existing res4 frame, composition, filler and input checks retain their full original coverage. No claimed control pixels are masked.",
+  "_only": {
+    "capture_qol_storage150_off.png": {"rect": [1040, 414, 240, 27]},
+    "capture_qol_storage150_on.png": {"rect": [1040, 414, 240, 27]},
+    "capture_qol_storage150_off_again.png": {"rect": [1040, 414, 240, 27]},
+    "capture_qol_storage150_frame_off.png": {"rect": [1056, 276, 160, 18]},
+    "capture_qol_storage150_frame_on.png": {"rect": [1056, 276, 160, 18]}
+  },
+  "_tol": {
+    "capture_qol_storage150_off.png": 0.0,
+    "capture_qol_storage150_on.png": 0.0,
+    "capture_qol_storage150_off_again.png": 0.0,
+    "capture_qol_storage150_frame_off.png": 0.0,
+    "capture_qol_storage150_frame_on.png": 0.0
+  }
+}

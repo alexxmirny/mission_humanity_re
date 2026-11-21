@@ -6,6 +6,7 @@
 // re-derivation, and the unbacked-order-literal note.
 //
 #include "sim/sim_path_solver.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "addr/mh_rebind.gen.h"    // LIB-REBIND: the config-selected binder (SIM1-P clause 2)
@@ -34,6 +35,7 @@ void path_write_from_solver(const sim_view &v, sim_store &own, uint32_t param_1,
     // 0x0049583e: every use of param_1 in this function re-reads it as a 16-bit word, i.e. every use
     // is `param_1 & 0xffff` -- masked once here rather than at each call site.
     const uint32_t player = param_1 & 0xffffu;
+    const auto     task   = order_tasks_adapter::capture(own, player, uint32_t(unit_index));
 
     // 0x0049583e-0x00495858: prev_dir seeds from the unit's CURRENT move_heading, read once before the
     // solver-dir walk begins -- the FIRST iteration's remap-match check is against THIS heading.
@@ -41,12 +43,13 @@ void path_write_from_solver(const sim_view &v, sim_store &own, uint32_t param_1,
 
     int32_t idx = 0; // 0x0049585b: the path-buffer write cursor.
 
-    // 0x00495862-0x00495867: the FRONTIER buffer -- llm_strat_pathtrace_dirs_get()'s own return
-    // value, walked as a raw byte* exactly like the decompile's local_24 (NOT sim_view::pathtrace_dirs
-    // /pathtrace_dir_at(), a DIFFERENT global -- see the header banner / _CONTEXT.md).
-    const uint8_t *dirs = static_cast<const uint8_t *>(MH_LIBMH_BIND(llm_strat_pathtrace_dirs_get)());
-    // 0x0049586d: incremented ONCE before its first dereference, so element [0] (a count/header byte
-    // the frontier owns) is skipped and the walk starts at element [1].
+    // 0x00495862-0x00495867: the getter returns the shared 0x0066a380 frontier,
+    // also exposed by sim_view::pathtrace_dirs. Retain its base for complete
+    // direction-trace certification before an owned plane uses a projected endpoint.
+    const uint8_t *frontier = static_cast<const uint8_t *>(MH_LIBMH_BIND(llm_strat_pathtrace_dirs_get)());
+    const uint8_t *dirs     = frontier;
+    // 0x0049586d: skip the trace's initial direction, written before its initial tile advance
+    // (0066ada0). It is not a count/header byte; encoding continues from direction element [1].
     ++dirs;
 
     // 0x00495873-0x0049596c: the one-shot special case. Only attempted when the FIRST candidate is
@@ -113,6 +116,14 @@ void path_write_from_solver(const sim_view &v, sim_store &own, uint32_t param_1,
         } while (dirs[0] < 0x18 && idx < 299); // 0x00495a38-0x00495a43
     }
 
+    // Legitimate owned zero-length travel uses an actually empty encoded route, never
+    // the legacy fabricated one-step fallback. Unmanaged paths are unchanged.
+    const auto &actor = unit_of(v, player, unit_index);
+    if (task.present && task.phase != mh::order_tasks::phase::blocked &&
+        order_tasks_adapter::travel(task) && actor.x == actor.goal_x && actor.y == actor.goal_y) {
+        idx           = 0;
+        wrote_special = false;
+    }
     // 0x00495a49-0x00495a64: the final terminator write, ALWAYS performed regardless of which path
     // got here (the one-shot special case or the walk's natural/forced exit).
     own.path_buffer_at(player, path_slot_id, idx).heading = 0xff;
@@ -126,6 +137,7 @@ void path_write_from_solver(const sim_view &v, sim_store &own, uint32_t param_1,
     // no record reference is held across a call into original code) rather than reusing an earlier
     // reference.
     own.unit_at(player, unit_index).path_cursor = 0;
+    order_tasks_adapter::direction_assigned(v, own, task, player, own.unit_at(player, unit_index), frontier);
 }
 
 // llm_strat_path_find_free_slot @0x00495f1b. A pure query: no write anywhere in this function, so it

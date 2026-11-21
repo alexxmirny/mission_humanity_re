@@ -15,10 +15,9 @@ row), every time the lobby's own per-frame tick refreshes the column.
   python tools/check_lobby_ping.py <h> <c1> <c2> \
       --published --every-slot --agree 250                     # mp:L1f, the 3-peer shape
 
-`<run dir>` is a session directory holding mh_net.log, or any directory above one (the newest
-mh_net.log under it wins) -- the same CONTENT-FIRST search check_net_indicator.py uses, because the
-same trap applies here: tools/test_ui.py hands a post_check the "menu" session directory, and the
-lobby ping lines belong to whichever session actually held the lobby open.
+`<run dir>` is a process or metadata-owned session directory; evidence never
+comes from another boot. A container selects its newest process, not an older
+one merely because that older log has the desired sample.
 
 WHAT "SANE" MEANS: at least one `; [lobbyping]` line was written at all (the tick ran and saw an
 occupied human slot), and at least one of them has measured=1 with srtt_ms >= 0 (some connected
@@ -47,6 +46,10 @@ import os
 import re
 import sys
 import tempfile
+import json
+
+import _rundir
+from check_graceful_quit import wall_delta_ms
 
 SAMPLE_RE = re.compile(
     r"; \[lobbyping\] slot=(-?\d+) pid=(-?\d+) measured=(\d+) srtt_ms=(-?\d+)"
@@ -56,75 +59,66 @@ SAMPLE_RE = re.compile(
 PUB_RE = re.compile(r"; \[lobbypub\] entries=(\d+) bytes=(\d+)")
 
 
-def find_log(target):
-    """Same content-first search as check_net_indicator.find_log -- see that docstring. The lobby
-    ping lines are written to the SAME mh_net.log, from the SAME per-session log writer
-    (net_seams.cpp), so a target that is itself a session directory widens to its siblings (the
-    lane's other session runs) when its own log carries no `[lobbyping]` line; otherwise the newest
-    log anywhere under the target wins, so a run where the column really never drew still fails on
-    its own merits rather than on a missing file."""
+def _log_paths(target):
+    target = os.path.abspath(target)
     if os.path.isfile(target):
-        return target
-
-    # mp:L1f -- THE TARGET'S OWN LOG WINS WHENEVER IT CARRIES THE CONTENT, checked before any
-    # widening. The widening below exists for a real case (the lobby lines can land in a SIBLING
-    # session directory to the one test_ui names) but it is a menace when several peers' logs are
-    # POOLED: three sibling directories, each holding its own mh_net.log, resolved to ONE log --
-    # the newest -- for all three targets, and the 3-peer run then read 20 lines three times and
-    # reported "0 host publications" because the host's log was never opened (measured on the first
-    # green mp:L1f rig run, 2026-09-22). A directory that answers the question itself is never
-    # ambiguous, so it is answered first.
+        return [target]
+    if _rundir.parse(target):
+        try:
+            dirs = _rundir.process_and_sessions(target)
+        except ValueError:
+            return []
+        return [
+            os.path.join(d, "mh_net.log")
+            for d in dirs
+            if os.path.isfile(os.path.join(d, "mh_net.log"))
+        ]
     own = os.path.join(target, "mh_net.log")
     if os.path.isfile(own):
-        try:
-            with open(own, "r", encoding="utf-8", errors="replace") as fh:
-                if "[lobbyping]" in fh.read():
-                    return own
-        except OSError:
-            pass
+        return [own]
+    # Preserve container inputs, but select one boot before looking at content.
+    processes, legacy = [], []
+    for root, _dirs, files in os.walk(target):
+        if _rundir.is_process_dir(root):
+            processes.append(root)
+        if "mh_net.log" in files:
+            legacy.append(os.path.join(root, "mh_net.log"))
+    if processes:
+        return _log_paths(max(processes, key=_rundir.sort_key))
+    return [max(legacy, key=os.path.getmtime)] if legacy else []
 
-    roots = [target]
-    if os.path.isfile(os.path.join(target, "mh_net.log")):
-        roots.append(os.path.dirname(os.path.abspath(target)))
-    cands = []
-    for d in roots:
-        if not os.path.isdir(d):
-            continue
-        for root, _dirs, files in os.walk(d):
-            if "mh_net.log" in files:
-                cands.append(os.path.join(root, "mh_net.log"))
-    if not cands:
-        return None
-    cands = sorted(set(cands), key=os.path.getmtime, reverse=True)
-    for p in cands:
-        try:
-            with open(p, "r", encoding="utf-8", errors="replace") as fh:
-                if "[lobbyping]" in fh.read():
-                    return p
-        except OSError:
-            continue
-    return cands[0]
+
+def find_log(target):
+    """A display path within the selected boot; no content-driven sibling fallback."""
+    paths = _log_paths(target)
+    for path in paths:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            if "[lobbyping]" in fh.read():
+                return path
+    return paths[0] if paths else None
 
 
 def run_timeline(target):
-    """The target's own mh_net.log followed by those of its later-stamped sibling directories."""
-    target = os.path.abspath(target)
-    if os.path.isfile(target):
-        paths = [target]
-    elif os.path.isfile(os.path.join(target, "mh_net.log")):
-        parent, stamp = os.path.dirname(target), os.path.basename(target)
-        paths = [
-            os.path.join(parent, d, "mh_net.log")
-            for d in sorted(os.listdir(parent))
-            if d >= stamp and os.path.isfile(os.path.join(parent, d, "mh_net.log"))
-        ]
-    else:
-        paths = []
-    parts = []
-    for p in paths:
-        with open(p, "r", encoding="utf-8", errors="replace") as fh:
-            parts.append(fh.read())
-    return NL.join(parts)
+    """Merge overlapping owned logs by event time, including one midnight wrap."""
+    rows, seen = [], set()
+    anchor = None
+    for path in _log_paths(target):
+        previous = 0.0
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.rstrip("\r\n")
+                if line in seen:
+                    continue
+                seen.add(line)
+                stamp = re.match(r"\[(\d\d):(\d\d):(\d\d\.\d+)\]", line)
+                if stamp:
+                    h, m, s = stamp.groups()
+                    wall = (int(h) * 3600 + int(m) * 60 + float(s)) * 1000
+                    if anchor is None:
+                        anchor = wall
+                    previous = wall_delta_ms(anchor, wall)
+                rows.append((previous, len(rows), line))
+    return NL.join(line for _time, _order, line in sorted(rows))
 
 
 NL = chr(10)
@@ -333,15 +327,8 @@ def selftest():
         ),
     ]
     fails = []
-    # ONE ISOLATED TemporaryDirectory PER CASE, not siblings sharing a parent -- find_log() widens a
-    # session-directory target to ITS SIBLINGS on purpose (the real usage this mirrors: the lobby
-    # ping lines can land in a sibling session directory to the one the runner names), which means
-    # two cases sharing a parent can answer each other's question. A case whose OWN log carries no
-    # `[lobbyping]` line at all (this file's "no lines" / never-measured-looking-empty cases) would
-    # silently read an EARLIER case's real content instead -- exactly the trap
-    # check_net_indicator.py's find_log docstring names ("A run of a DIFFERENT scenario could answer
-    # this one's question -- which it did, once, silently"). Isolating each case's tmp root removes
-    # the ambiguity rather than relying on every case's fixture happening to carry the tag.
+    # Isolated roots keep each planted scenario independent. Real process/session
+    # inputs below additionally exercise ownership instead of widening to siblings.
     for name, text, argv, want in cases:
         with tempfile.TemporaryDirectory() as tmp:
             d = os.path.join(tmp, "run")
@@ -414,6 +401,80 @@ def selftest():
             print("  %-38s exit %d (want %d)" % (name, got, want))
             if got != want:
                 fails.append("%s: exit %d, wanted %d%s%s" % (name, got, want, NL, r.stdout))
+    promotion = "[00:00:10.000] net: udp path DIRECT -- peer 2 (promotion 1)" + NL
+    own_sample = (
+        "[00:00:11.000] ; [lobbyping] slot=1 pid=1 measured=1 srtt_ms=4 relayed=0 src=self" + NL
+    )
+    earlier = own_sample.replace("00:00:11", "00:00:09")
+    owned_cases = [
+        ("owned session has post-promotion direct sample", promotion, own_sample, "", False, 0),
+        ("session target resolves its process promotion", promotion, own_sample, "", True, 0),
+        (
+            "later foreign boot cannot supply missing evidence",
+            promotion + earlier,
+            "",
+            own_sample,
+            False,
+            1,
+        ),
+        (
+            "overlapping earlier session sample is not post-promotion",
+            promotion,
+            earlier,
+            "",
+            False,
+            1,
+        ),
+        (
+            "published measurement cannot replace own evidence",
+            promotion,
+            own_sample.replace("src=self", "src=host"),
+            "",
+            False,
+            1,
+        ),
+        (
+            "owned chronology spans midnight",
+            promotion.replace("00:00:10.000", "23:59:59.500")
+            + "[00:00:02.000] later process event"
+            + NL,
+            own_sample.replace("00:00:11.000", "00:00:00.500"),
+            "",
+            False,
+            0,
+        ),
+    ]
+    for name, process_text, session_text, foreign_text, use_session, want in owned_cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            process = os.path.join(tmp, "2026-11-11T00-00-01Z_menu_solo")
+            session = os.path.join(tmp, "2026-11-11T00-00-02Z_1234abcd_test_host")
+            other = os.path.join(tmp, "2026-11-11T00-00-03Z_menu_solo")
+            for directory, text in (
+                (process, process_text),
+                (session, session_text),
+                (other, foreign_text),
+            ):
+                os.makedirs(directory)
+                with open(os.path.join(directory, "mh_net.log"), "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            with open(os.path.join(session, "session.json"), "w", encoding="utf-8") as fh:
+                json.dump({"process_dir": os.path.basename(process)}, fh)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    os.path.abspath(__file__),
+                    session if use_session else process,
+                    "--path-follows",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            print("  %-38s exit %d (want %d)" % (name, result.returncode, want))
+            if result.returncode != want:
+                fails.append(
+                    "%s: exit %d, wanted %d%s%s"
+                    % (name, result.returncode, want, NL, result.stdout)
+                )
     for f in fails:
         print("SELFTEST FAIL: %s" % f)
     print("check_lobby_ping --selftest: %s" % ("PASS" if not fails else "FAIL (%d)" % len(fails)))
@@ -498,10 +559,10 @@ def main():
     # occupied slot carried a number ON ITS OWN SCREEN), which a pooled string cannot answer -- a
     # single peer measuring everything would satisfy it. The older clauses still read the pool.
     per_log = []
-    for p in logs:
-        with open(p, "r", encoding="utf-8", errors="replace") as f:
-            t = f.read()
-        per_log.append((p, SAMPLE_RE.findall(t), PUB_RE.findall(t)))
+    for target, p in zip(a.targets, (find_log(t) for t in a.targets)):
+        if p:
+            t = run_timeline(target)
+            per_log.append((p, SAMPLE_RE.findall(t), PUB_RE.findall(t)))
     log = ", ".join(logs)
 
     samples = [s for _p, ss, _pp in per_log for s in ss]
@@ -663,9 +724,8 @@ def main():
         # promoted the link to direct 12 s before its first sample, and its cell said "R" for the
         # whole lobby while the host's said "D". Read each log in order; only a log whose LAST path
         # event is a promotion has a claim to make.
-        # ONE TIMELINE PER TARGET: the promotion is logged in the process ("menu") dir's mh_net.log
-        # and the lobby samples can land in the match SESSION dir beside it, so read the target's
-        # own log plus its later-stamped siblings, in stamp order (check_browser_rows.run_logs).
+        # Promotions and cells can be in overlapping process/session logs. Read
+        # only this boot's owned timeline in event order, never sibling boots.
         promoted_logs = 0
         for p, t in ((tg, run_timeline(tg)) for tg in a.targets):
             last_direct = t.rfind("net: udp path DIRECT")

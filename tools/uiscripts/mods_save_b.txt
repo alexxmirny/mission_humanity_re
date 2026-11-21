@@ -1,0 +1,27 @@
+# Load A under B through the menu, resave, then start a fresh game under B.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+wmsg different mods
+gameclock +1000
+savegame dxsaveb
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock +1000
+savegame dxfresh
+capture dx_fresh_b
+end

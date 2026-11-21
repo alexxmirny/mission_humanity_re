@@ -47,7 +47,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;MH_LIBMH_BUILD;MH_SPINE_IN_IMAGE;MH_WORLD_LIVE_OWNER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)..\libmh;$(ProjectDir)..\mh;$(ProjectDir)..\mh\include;$(ProjectDir)..\mh_common;$(ProjectDir)..\mh_common\include;$(ProjectDir)..\..\mh_net_proto\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

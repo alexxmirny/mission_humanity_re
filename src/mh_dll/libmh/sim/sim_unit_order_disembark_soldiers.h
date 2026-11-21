@@ -1,16 +1,20 @@
 //
-// sim/sim_unit_order_disembark_soldiers.h -- llm_unit_order_disembark_soldiers @0x0046e76c
+// sim/sim_unit_order_disembark_soldiers.h -- llm_unit_order_squad_split @0x0046e76c
 // (RI-SIM, X-TL-DRAIN step 4).
 //
-// `void __watcall llm_unit_order_disembark_soldiers(uint player, int unit_idx)` -- player in EAX,
-// unit_idx in EDX, matching the committed prototype (sig_llm_unit_order_disembark_soldiers).
-// Translated from the DISASSEMBLY (tmp/decomp/llm_unit_order_disembark_soldiers_0046e76c.asm).
+// `void __watcall llm_unit_order_squad_split(uint player, int unit_idx)` -- player in EAX,
+// unit_idx in EDX, matching the committed prototype (sig_llm_unit_order_squad_split).
+// Translated from the DISASSEMBLY (tmp/decomp/llm_unit_order_squad_split_0046e76c.asm).
 //
 // ---- WHAT IT IS ---------------------------------------------------------------------------------
 //
-// The order-issue wrapper for "this transport/squad unit lets its soldiers out": if the unit's TYPE
-// carries soldiers at all, issue order 0x32 against it; otherwise do nothing at all. Six
-// instructions of guard and one dispatch.
+// The order-issue wrapper for the SQUAD SPLIT (hotkey Z, sole caller llm_strat_input_update on
+// scancode 0x2c, first unit of ctrl group 0): if the unit's TYPE carries soldiers at all, issue
+// order 0x32 against it; otherwise do nothing at all. Six instructions of guard and one dispatch.
+// The dispatch splits the squad record into 1-soldier units (llm_unit_squad_split_field, or
+// llm_unit_squad_split_docked when the squad is PARKED in storage). Nothing is "disembarked": the
+// Ghidra name was corrected 2026-10-26 (re:RE-DB37); this file and its C++ identifiers keep the old
+// disembark_soldiers spelling.
 //
 // It is being translated because it is one of the two remaining original callers of
 // `llm_strat_order_dispatch`, a body libmh owns -- the edge that kept that function in the inbound
@@ -85,14 +89,14 @@ const unit_order_disembark_soldiers_calls &inert_unit_order_disembark_soldiers_c
 
 namespace detail {
 
-// llm_unit_order_disembark_soldiers @0x0046e76c.
+// llm_unit_order_squad_split @0x0046e76c.
 void unit_order_disembark_soldiers(const sim_view &v, const unit_order_disembark_soldiers_calls &c,
                                    uint32_t player, int32_t unit_idx);
 
 
 } // namespace detail
 
-// Live wrapper: matches sig_llm_unit_order_disembark_soldiers exactly.
+// Live wrapper: matches sig_llm_unit_order_squad_split exactly.
 void unit_order_disembark_soldiers(uint32_t player, int32_t unit_idx);
 
 } // namespace mh::sim

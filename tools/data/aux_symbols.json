@@ -1327,6 +1327,7 @@
     "_G_LLM_TACT_MINE_BLAST_DURATION",
     "_G_LLM_TACT_MINE_BLAST_FIRST_FRAME",
     "_G_LLM_TACT_MINE_BLAST_FRAME_COUNT",
+    "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
     "_G_LLM_TACT_MINE_BLAST_SOUND_ID",
     "_G_LLM_TACT_MINE_BLAST_TIME_END",
     "_G_LLM_TACT_MOVE_COST_MAP",
@@ -1366,7 +1367,6 @@
     "_G_LLM_TACT_QUIT_TILE_ROW",
     "_G_LLM_TACT_SAVED_WINDOW_WIDTH",
     "_G_LLM_TACT_SCREENSHOT_COUNTER",
-    "_G_LLM_TACT_MINE_BLAST_SHAKE_STEP",
     "_G_LLM_TACT_SEE_ENEMY_FLAG",
     "_G_LLM_TACT_SEL_PANEL_ICON_COUNT",
     "_G_LLM_TACT_SEL_PANEL_ICON_GFX",
@@ -1506,7 +1506,6 @@
     "_G_LLM_UI_BLDG_UNITS_SCROLL_LIST",
     "_G_LLM_UI_BLDG_UPGRADE_REPAIR_PENDING_ROW",
     "_G_LLM_UI_BLDG_WORKER_ADJ_BTNS",
-    "_G_LLM_UI_BLDG_WORKER_POOL_COUNTER",
     "_G_LLM_UI_BLIT_FLAG",
     "_G_LLM_UI_BUILD_MENU_ITEM_PENDING",
     "_G_LLM_UI_CAPACITY_WARN_RATIO",
@@ -1608,8 +1607,14 @@
     "_G_LLM_UI_MODAL_STEP_DEADLINE_MS",
     "_G_LLM_UI_MODAL_STEP_NEXT_MS",
     "_G_LLM_UI_MOUSE_EVENT_KIND",
+    "_G_LLM_UI_MOUSE_LEFT_DOWN_LATCH",
+    "_G_LLM_UI_MOUSE_LEFT_HOLD_MS",
     "_G_LLM_UI_MOUSE_LEFT_PRESS_EDGE",
+    "_G_LLM_UI_MOUSE_LEFT_PRESS_X",
+    "_G_LLM_UI_MOUSE_LEFT_PRESS_Y",
     "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE",
+    "_G_LLM_UI_MOUSE_LEFT_RELEASE_X",
+    "_G_LLM_UI_MOUSE_LEFT_RELEASE_Y",
     "_G_LLM_UI_MOUSE_RIGHT_PRESS_EDGE",
     "_G_LLM_UI_MOUSE_RIGHT_RELEASE_EDGE",
     "_G_LLM_UI_MP_BROWSER_LIST_WIDGET",
@@ -2500,6 +2505,7 @@
     "llm_strat_ai_engage_candidate_add",
     "llm_strat_ai_engage_filter_and_commit_target",
     "llm_strat_ai_engage_partition_turret_candidates",
+    "llm_strat_ai_engage_prune_unseen_candidates",
     "llm_strat_ai_engage_rank_candidates_by_range",
     "llm_strat_ai_engage_select_and_commit",
     "llm_strat_ai_engage_sort_candidates_by_dist",
@@ -3446,6 +3452,7 @@
     "llm_system_get_available_planet",
     "llm_tact_active_unit_count_hud_draw",
     "llm_tact_ambient_sound_tick",
+    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_blink_overlay_clear",
     "llm_tact_calc_approach_dir24_to_tile_stamp",
     "llm_tact_calc_dir24",
@@ -3503,7 +3510,6 @@
     "llm_tact_quantize_facing_dir",
     "llm_tact_render_view",
     "llm_tact_save_screenshot",
-    "llm_tact_blast_wipe_brighten_step",
     "llm_tact_scroll_target_proximity_tick",
     "llm_tact_select_next_unit",
     "llm_tact_selection_clear_unless_ctrl",
@@ -3760,9 +3766,10 @@
     "llm_ui_icon_draw_vclipped",
     "llm_ui_icon_group_dispatch",
     "llm_ui_icon_rect_hit_test",
-    "llm_ui_icon_rect_hit_test_cached",
+    "llm_ui_icon_rect_hit_test_release_pos",
     "llm_ui_icon_rect_hit_test_rmb",
     "llm_ui_icon_rect_hit_test_rmb_cached",
+    "llm_ui_icon_table_unpack",
     "llm_ui_info_media_draw_p1",
     "llm_ui_info_media_draw_p2",
     "llm_ui_info_media_frame_tick",
@@ -3909,20 +3916,19 @@
     "llm_unit_ctrl_group_flash_observer",
     "llm_unit_ctrl_group_recall",
     "llm_unit_force_disembark",
-    "llm_unit_order_disembark_soldiers",
-    "llm_unit_order_disembark_soldiers_enqueue",
+    "llm_unit_order_squad_split",
+    "llm_unit_order_squad_split_enqueue",
     "llm_unit_recruit",
     "llm_unit_set_order_param",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "llm_unit_state_is_boarding",
     "llm_unit_state_is_busy",
     "llm_unit_status_bit_clear",
     "llm_unit_status_bit_set",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
     "llm_util_empty_return_stub",
     "llm_util_memmove",
     "llm_util_memset16",
-    "llm_util_unpack_static_category_table",
     "llm_view_set_size_mode",
     "llm_wait_screen_frame",
     "llm_watcom_epilogue_004d601f",
@@ -8510,7 +8516,7 @@
      "LAB_00419b8e"
     ],
     "00419b98": [
-     "llm_util_unpack_static_category_table"
+     "llm_ui_icon_table_unpack"
     ],
     "00419bbe": [
      "LAB_00419bbe"
@@ -8912,7 +8918,7 @@
      "LAB_0041b75f"
     ],
     "0041b76c": [
-     "llm_ui_icon_rect_hit_test_cached"
+     "llm_ui_icon_rect_hit_test_release_pos"
     ],
     "0041b7a2": [
      "LAB_0041b7a2"
@@ -35979,13 +35985,13 @@
      "llm_strat_bldg_order_purge_dead_docked_enqueue"
     ],
     "0046e76c": [
-     "llm_unit_order_disembark_soldiers"
+     "llm_unit_order_squad_split"
     ],
     "0046e7cd": [
      "LAB_0046e7cd"
     ],
     "0046e7d6": [
-     "llm_unit_order_disembark_soldiers_enqueue"
+     "llm_unit_order_squad_split_enqueue"
     ],
     "0046e837": [
      "LAB_0046e837"
@@ -42318,7 +42324,7 @@
      "LAB_00488a82"
     ],
     "00488a8b": [
-     "llm_unit_transport_unload_field"
+     "llm_unit_squad_split_field"
     ],
     "00488b7a": [
      "LAB_00488b7a"
@@ -42393,7 +42399,7 @@
      "LAB_004891c5"
     ],
     "004891d8": [
-     "llm_unit_transport_unload_docked"
+     "llm_unit_squad_split_docked"
     ],
     "0048925c": [
      "LAB_0048925c"
@@ -67047,6 +67053,24 @@
     "004d5146": [
      "LAB_004d5146"
     ],
+    "004d516c": [
+     "llm_strat_ai_engage_prune_unseen_candidates"
+    ],
+    "004d5182": [
+     "LAB_004d5182"
+    ],
+    "004d51d3": [
+     "LAB_004d51d3"
+    ],
+    "004d51fc": [
+     "LAB_004d51fc"
+    ],
+    "004d5215": [
+     "LAB_004d5215"
+    ],
+    "004d5234": [
+     "LAB_004d5234"
+    ],
     "004d5245": [
      "llm_strat_ai_engage_rank_candidates_by_range"
     ],
@@ -68166,6 +68190,9 @@
     ],
     "004d8b82": [
      "LAB_004d8b82"
+    ],
+    "004d8b83": [
+     "LAB_004d8b83"
     ],
     "004d8b89": [
      "llm_strat_bldg_side_has_aircraft_producer"
@@ -84156,7 +84183,7 @@
      "DAT_0050be4f"
     ],
     "0050be53": [
-     "_G_LLM_UI_BLDG_WORKER_POOL_COUNTER"
+     "_G_LLM_UI_MOUSE_LEFT_HOLD_MS"
     ],
     "0050be57": [
      "DAT_0050be57"
@@ -84780,7 +84807,7 @@
      "_G_LLM_UI_BLDG_PANEL_REDRAWN_FLAG"
     ],
     "00519d38": [
-     "DAT_00519d38"
+     "_G_LLM_UI_MOUSE_LEFT_DOWN_LATCH"
     ],
     "00519d3c": [
      "_G_LLM_UI_MOUSE_LEFT_RELEASE_EDGE"
@@ -84810,16 +84837,16 @@
      "_G_LLM_UI_STAGED_CURSOR_Y"
     ],
     "00519d60": [
-     "DAT_00519d60"
+     "_G_LLM_UI_MOUSE_LEFT_PRESS_X"
     ],
     "00519d64": [
-     "DAT_00519d64"
+     "_G_LLM_UI_MOUSE_LEFT_PRESS_Y"
     ],
     "00519d68": [
-     "DAT_00519d68"
+     "_G_LLM_UI_MOUSE_LEFT_RELEASE_X"
     ],
     "00519d6c": [
-     "DAT_00519d6c"
+     "_G_LLM_UI_MOUSE_LEFT_RELEASE_Y"
     ],
     "00519d70": [
      "DAT_00519d70"
@@ -101746,7 +101773,7 @@
     [
      "00419b98",
      "00419c15",
-     "llm_util_unpack_static_category_table"
+     "llm_ui_icon_table_unpack"
     ],
     [
      "00419c16",
@@ -101831,7 +101858,7 @@
     [
      "0041b76c",
      "0041b7fc",
-     "llm_ui_icon_rect_hit_test_cached"
+     "llm_ui_icon_rect_hit_test_release_pos"
     ],
     [
      "0041b7fd",
@@ -105121,12 +105148,12 @@
     [
      "0046e76c",
      "0046e7d5",
-     "llm_unit_order_disembark_soldiers"
+     "llm_unit_order_squad_split"
     ],
     [
      "0046e7d6",
      "0046e83f",
-     "llm_unit_order_disembark_soldiers_enqueue"
+     "llm_unit_order_squad_split_enqueue"
     ],
     [
      "0046e840",
@@ -106386,7 +106413,7 @@
     [
      "00488a8b",
      "0048905d",
-     "llm_unit_transport_unload_field"
+     "llm_unit_squad_split_field"
     ],
     [
      "0048905e",
@@ -106401,7 +106428,7 @@
     [
      "004891d8",
      "00489520",
-     "llm_unit_transport_unload_docked"
+     "llm_unit_squad_split_docked"
     ],
     [
      "00489521",
@@ -112017,6 +112044,11 @@
      "004d50b3",
      "004d516b",
      "llm_strat_ai_engage_candidate_add"
+    ],
+    [
+     "004d516c",
+     "004d5244",
+     "llm_strat_ai_engage_prune_unseen_candidates"
     ],
     [
      "004d5245",

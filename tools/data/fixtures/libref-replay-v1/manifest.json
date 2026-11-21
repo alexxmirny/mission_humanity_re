@@ -4,25 +4,34 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "0e68df39981424033315936edac220309aa9e067",
-  "recorded": "2026-10-24",
+  "commit": "6a4e015db",
+  "recorded": "2026-11-10",
   "scenario_script": "sp_det.txt",
   "synth_seed": 20260911,
-  "host": "local lane ui_libref_rec (headless, isolated desktop mh_rig; scratch lane 96, port 6696), single peer",
-  "peers": "1 (single-player: host + 1 seated AI; no rig VMs)",
-  "run_dir": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-41-06Z_menu_solo",
-  "build": "0.0.0-dev+0e68df39",
-  "stream_from_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-42-07Z_menu_solo"
+  "host": "rc22 approved logical Move history/fixed patrol origin; dirty integrated ENv425 image, exact immutable six-module receipt tmp/rc22_followup/current_original_image_receipt.json; old constant QORD reference adjudicated separately; hosted reference, not independent native oracle",
+  "peers": "single local peer plus one seated AI",
+  "run_dir": "tmp/rc22_followup/fixture_origin_migration/runs/libref-replay-v1/record",
+  "build": "0.0.0-dev+4768d8fd",
+  "stream_from_run": "tmp/rc22_followup/fixture_origin_migration/runs/libref-replay-v1/replay1"
  },
  "replay_contract": {
   "flags": {
    "order_mode": 2,
    "replay_ai_off": 0,
-   "replay_suppress_enqueue": 1,
+   "replay_suppress_enqueue": 0,
+   "replay_dispatch_inject": 1,
    "pin_wallclock": 1,
    "fixed_step": 0,
    "region_hash_step": 1,
    "exit_on_stop": 1
+  },
+  "order_stream": {
+   "version": 2,
+   "native_record_bytes": 68,
+   "phases": [
+    "HASH",
+    "ENTRY"
+   ]
   },
   "record_flags": {
    "order_mode": 1,
@@ -36,14 +45,28 @@
    "synth_at": 60,
    "synth_every": 1,
    "pin_fpu": 1,
-   "seed_mode": 2
+   "seed_mode": 2,
+   "hash_kind": 1,
+   "rdump_rid": 42,
+   "rdump_lo": 1,
+   "rdump_hi": 5000,
+   "replay_ai_off": 0,
+   "replay_suppress_enqueue": 0
   },
   "semantics": [
-   "replay_ai_off=0: the AI RUNS inside the sim. Turning it off changes the battlefield -- measured: strat_players/units/tile_objects diverge from ~step 200, because the AI does more than enqueue orders and the recording only holds orders.",
-   "replay_suppress_enqueue=1: the immediate-lane enqueue returns 0 and appends nothing, so the INJECTED recording is the only thing that reaches the order queue. The check sits at the SINK (mh::orders::detail::enqueue), not at the game entry's promotion wrapper where it lived until 2026-09-11 -- a wrapper gate saw only callers that crossed 0x00466094 and missed every libmh-internal caller the rebind routes straight to our body, which is how the harness's own synth_move workload appended one order per step past it. A standalone replayer must therefore suppress AT THE SINK too, or it is not reproducing this flag. SCOPE: the immediate lane is the only appender in a non-lockstep session; the mode-3 lane reaches the queue via release_due, which this flag deliberately does NOT suppress.",
-   "the injector overwrites QUEUE[0..n] and sets COUNT at the TOP of each sim step, before the step is hashed.",
-   "exit_on_stop=1 exits ONE STEP BOUNDARY LATE (harness.cpp, LIB-REF-REC): the stop step's sim body runs before the process leaves, so the recorder -- which hangs off llm_strat_order_queue_dispatch's entry, inside the body -- snapshots the exit step like every other step. Before that fix mh_orders.bin stopped one step short of mh_clock.bin and the replay injected k=0 on the final step."
-  ]
+   "AI runs and every real source enqueue executes, including overflow/loss effects.",
+   "MHOR v2 HASH is the exact queue at the existing hash sample.",
+   "MHOR v2 ENTRY replaces the queue after AI and BEFORE the count gate, even when empty.",
+   "Only nonempty ENTRY dispatches; handler-generated orders execute once naturally.",
+   "net: the [net] keys the recording ran under (checked against its effective_config.json at pack). They set the step regime -- sim_step_ms is SIM_STEP_INTERVAL, and rig_fixed_step_loop=1 runs sim_tick's mode-3 fixed-step loop in single-player (one step per frame, delta = interval exactly). `replay` passes them back as --net-extra."
+  ],
+  "net": {
+   "sp_sim_step_ms": 0,
+   "improved_movement": 0,
+   "group_movement": 0,
+   "improved_combat": 0,
+   "soldier_origin_anim_fix": 0
+  }
  },
  "compare": {
   "channel": "state",
@@ -111,76 +134,143 @@
    "game_time_delta",
    "game_speed",
    "player_resources",
-   "progress"
+   "progress",
+   "storage_policy",
+   "order_tasks",
+   "order_campaign"
   ]
  },
  "step0": {
-  "world_content_hash": "A0DE4FD4D077ACD8",
-  "world_schema_fp": "AEFE4E28",
-  "lockstep_combined": "3F4C894EE1A074D9",
-  "lockstep_state": "F4D92A4D9966157D",
-  "game_clock": "3F947AE147AE147B",
+  "world_content_hash": "C65ADF8B158F5D49",
+  "world_schema_fp": "7EAA1059",
+  "lockstep_combined": "9CDAF75153DD8F09",
+  "lockstep_state": "D36DA3EBEA344A2A",
+  "game_clock": "3F9111276FB08000",
   "step": 1,
   "mask_flags": 7,
   "hash_sink_fp": "68AADCE3",
-  "hash_manifest_fp": "6451B93B",
-  "hash_slice_count": 63,
-  "hash_input_epoch": 1,
+  "hash_manifest_fp": "95DC868F",
+  "hash_slice_count": 66,
+  "hash_input_epoch": 2,
   "hash_kind": 1
  },
  "artifacts": {
   "clock": {
    "file": "clock.bin.zz",
    "raw_bytes": 40000,
-   "zlib_bytes": 20667,
-   "sha256_raw": "d321e317a3f6e54a9f18091d020e674d6305ca7a5e4419838a75d26a2c639c9c"
+   "zlib_bytes": 27966,
+   "sha256_raw": "bfcf3e8df9a8367bc296eab17a84449a67b88da8c047bac91e8da246a60de39c"
   },
   "world": {
    "file": "world.bin.zz",
-   "raw_bytes": 8312176,
-   "zlib_bytes": 487367,
-   "sha256_raw": "1eccc29e37ac57fd21401fe8a492360b81a113b73ebd6bf3eabf1808aa4a8687"
+   "raw_bytes": 15554882,
+   "zlib_bytes": 472182,
+   "sha256_raw": "c56c4686802a0094dd51c37e9671765005ab32091d38eaa38651e8025038f99b"
   },
   "orders": {
    "file": "orders.bin.zz",
-   "raw_bytes": 3371552,
-   "zlib_bytes": 178185,
-   "sha256_raw": "a827d28faf5ceeef67b87effdd9ade565ea6eb0494816af2ed3240d6968e1011"
+   "raw_bytes": 7615040,
+   "zlib_bytes": 139718,
+   "sha256_raw": "601bedd12f987423de52d7c75211802931f6fa15c0231d1d4777690335570a3e"
   },
   "hash_steps": {
    "file": "hash_steps.txt.zz",
    "raw_bytes": 278893,
-   "zlib_bytes": 140223,
-   "sha256_raw": "541f86d1fdf6efb285b4493c8caf0ac8574bba83db69facff89daab291f2e10b"
+   "zlib_bytes": 152028,
+   "sha256_raw": "e2c838a9aea29d8fce624cb93bdc221409b1a87ab03b4fe1fa945a2a0201ba4f"
   },
   "hash_regions": {
    "file": "hash_regions.txt.zz",
-   "raw_bytes": 5388893,
-   "zlib_bytes": 533047,
-   "sha256_raw": "558695aae048e4500e9b25591725a5c4796cdb21e811b1aab05e4cda44948340"
+   "raw_bytes": 5643893,
+   "zlib_bytes": 540555,
+   "sha256_raw": "2e6e384ce75453cf4e3a1d70d76f8a450a33e2a54551a63f8fcadf1bd7dd504a"
   }
  },
  "fidelity": {
   "re_record": "THE SIXTH RECORDING (2026-09-11, user ruling: the recorder exit-step fix and the suppression sink move, taken together in ONE re-record). `pack` rewrites this file wholesale, so the v1-v5 history is carried here in compressed form rather than lost: v1-v2 established the fixture; v3 was superseded by the INJECTOR TAIL-CLEAR (order_queue is hashed WHOLE, 300 slots of 0x44, while only [0, count) is live); v4 cleared the tail in the REPLAY injector only, and that asymmetry was itself a defect the verify guard correctly refused; v5 made the clear an unconditional step-level call in BOTH arms (harness.cpp order_queue_tail_clear), and the residue collapsed to the nine periodic instants. WHAT THE SIXTH CHANGES, and both halves are measured rather than argued. (2) THE RECORDER'S EXIT STEP: exit_on_stop used to ExitProcess from on_sim_step, i.e. at llm_strat_sim_step's ENTRY -- so the stop step's BODY never ran and order_record(), which hangs off llm_strat_order_queue_dispatch's entry inside that body, never snapshotted it. v5's mh_orders.bin therefore stopped at step 4999 while mh_clock.bin carried all 5000, the replay injected k=0 on the final step, and the standalone reference host came out one order short there. The exit is now deferred by one step boundary (consumed at the next on_sim_step or on_sim_tick, both provably after the body, with g_active already false so nothing of step N+1 is observed). MEASURED: mh_orders.bin is BYTE-IDENTICAL to v5 for its whole 3966632-byte prefix and gains exactly 1800 bytes = 25 records, all tagged step 5000, all of one identity (unit_index 1, owner_and_kind 0x80, param0 0x12, order_code 0x0B) -- the synth_move mothership move. mh_clock.bin is BYTE-IDENTICAL to v5 (5000 doubles both): the clock was never truncated, only the orders were. (3) SUPPRESSION AT THE SINK: replay_suppress_enqueue's check moved from mh::orders::promoted::enqueue (the thunk behind the game's 0x00466094 entry) to mh::orders::detail::enqueue. The wrapper gate saw only callers that crossed that entry, so every libmh-internal caller the rebind sends straight to our body walked past it -- including the harness's own synth_move workload, which appended one order per step the flag was supposed to have stopped. This CHANGES THE REPLAY TRAJECTORY (internal enqueues now return 0), which is why the hash streams legitimately moved and why a re-record was owed. THE RECORD ARM IS UNTOUCHED BY IT -- suppression is gated on order_mode==2 -- which is what the byte-identical prefix above independently confirms. THE RESIDUE SHRANK, and the guard was not relaxed to make it: verify PASSES fail-closed with attribute() untouched and --accept-marks NOT passed. 55 of 61 regions are identical across all 5000 steps (v5: 53), and the two declared marks are GONE -- the `units` blip at step 76 and the persistent `p1_local` AI-influence-grid mark from step 676 both had the un-suppressed workload order as their trigger, so closing the gate removed them at the source rather than excusing them. The nine periodic instants [75, 675, ... 4875] and their +0-step re-convergence remain, unchanged, as the sampling-instant mechanism attribute() has always described. counts-guard reproduces exactly (9 mid-step arrivals, 0 of them 0 -> n) and that run's mh_orders.bin and mh_clock.bin are byte-identical to the committed pair. world.bin is NOT byte-identical to v5 and that is expected: 66438 dwords differ, 60647 of them holding a user-space address in BOTH runs with a dominant constant delta of -5120 (a heap base shift), and registry_span_ptrs moves 107470 -> 106670 -- per-run pointer material, which the header counts precisely so it is visible rather than silent. The header's world-independent fields are unchanged, including lockstep_state = 52976C9B8B49D2A8, block_count 829, region_head_ptrs 11, and both build fingerprints. worldtest on the new blob: 13 checks, 0 failures. Same seed (20260911), scenario, flags and single-peer local lane as every recording since v1.",
   "counts_guard": {
    "checked": true,
-   "source_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-42-47Z_menu_solo",
-   "source_orders_sha256": "a827d28faf5ceeef67b87effdd9ade565ea6eb0494816af2ed3240d6968e1011",
+   "source_run": "tmp/rc22_followup/fixture_origin_migration/runs/libref-replay-v1/record",
+   "source_orders_sha256": "601bedd12f987423de52d7c75211802931f6fa15c0231d1d4777690335570a3e",
    "steps_measured": 5000,
+   "phase_samples": {
+    "HASH": 5000,
+    "ENTRY": 5000
+   },
    "midstep_arrival_steps": [
-    63,
-    563,
-    1063,
-    1563,
-    2063,
-    2563,
-    3063,
-    3563,
-    4063,
-    4563
+    75,
+    675,
+    1275,
+    1875,
+    2475,
+    3075,
+    3675,
+    4275,
+    4875
    ],
    "zero_to_n_steps": [],
-   "why": "A step whose top-of-step queue count is 0 but whose dispatch-entry count is not would never open the replay's count gate (dispatch is count-gated and the suppressed enqueue cannot raise it), so its orders would silently never execute. Measured, not assumed."
+   "empty_entry_steps": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59
+   ],
+   "why": "Every step has explicit HASH and ENTRY bytes; ENTRY sets the queue before the count gate."
   }
  }
 }

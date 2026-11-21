@@ -1,0 +1,40 @@
+# TILESET1: isolated lane, generated MARSH_01 map, start and save the custom graphics state.
+delsave tilesetproof
+delsave tilesetreload
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture tileset_save_picker_libmh
+clickl Ok
+present Network players
+settled Start
+capture tileset_save_label_libmh
+click 70 132
+present Computer
+enabled Start
+clickl Start
+absent Network players
+gamemode 2
+simstep 300
+capture tileset_save_world_libmh
+simresume
+savegame tilesetproof
+camto 31 9
+gameclock +100
+simrclick 176 272 ctrl
+bldgready 46
+camto 31 9
+gameclock +100
+capture tileset_complete_rock_libmh
+log TILESET1 custom terrain entered and saved
+end

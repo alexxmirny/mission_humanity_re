@@ -1,0 +1,37 @@
+{
+  "regions": [
+    {
+      "id": "STORAGE_POLICY",
+      "name": "storage_policy",
+      "base": 0,
+      "size": 32,
+      "extent": 32,
+      "owner": "island",
+      "host_native": true,
+      "pointer_free": true,
+      "source": "src/mh_dll/mh_common/include/mh_storage_policy.h"
+    },
+    {
+      "id": "ORDER_TASKS",
+      "name": "order_tasks",
+      "base": 0,
+      "size": 128,
+      "extent": 128,
+      "owner": "island",
+      "host_native": true,
+      "pointer_free": true,
+      "source": "src/mh_dll/mh_common/include/mh_order_tasks.h"
+    },
+    {
+      "id": "ORDER_CAMPAIGN",
+      "name": "order_campaign",
+      "base": 0,
+      "size": 160,
+      "extent": 160,
+      "owner": "island",
+      "host_native": true,
+      "pointer_free": true,
+      "source": "src/mh_dll/mh_common/include/mh_order_tasks.h"
+    }
+  ]
+}

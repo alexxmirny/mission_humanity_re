@@ -9,7 +9,8 @@
 namespace mh::desync::state_hub {
 namespace {
 
-void                   *g_arena = nullptr;
+void                   *g_arena       = nullptr;
+size_t                  g_arena_bytes = 0;
 mh::state::inc::tracker g_tr;
 bool                    g_primed_state = false; // the tracker holds a shadow that is one step old
 bool                    g_last_primed  = false;
@@ -32,6 +33,7 @@ struct fanout {
 
 bool enable(const char *who, void (*log)(const char *fmt, ...)) {
     if (g_arena) {
+        g_tr.require_extents();
         if (log) log("; [desync] STATE TRACKER shared with %s (one shadow, one update per step)\n", who);
         return true;
     }
@@ -46,6 +48,7 @@ bool enable(const char *who, void (*log)(const char *fmt, ...)) {
     // The SAME masks the in-band verdict uses (mask_ctrl_group=1, mask_soldier_anim=1,
     // mask_planets_gfx=1: hash_slice's defaults and the shipped harness's).
     g_tr.attach(g_arena, mh::state::inc::knobs{});
+    g_arena_bytes  = n;
     g_primed_state = false;
     if (log)
         log("; [desync] STATE TRACKER allocated for %s: %lu-byte arena (shadow + 64-B block hashes of %d "
@@ -55,7 +58,10 @@ bool enable(const char *who, void (*log)(const char *fmt, ...)) {
 }
 
 bool   allocated() { return g_arena != nullptr; }
-size_t arena_bytes() { return g_arena ? mh::state::inc::tracker::arena_bytes() : 0; }
+size_t arena_bytes() {
+    if (g_arena) g_tr.require_extents();
+    return g_arena_bytes;
+}
 
 void add_listener(listener *l) {
     for (int i = 0; i < g_nls; ++i)
@@ -71,6 +77,7 @@ bool step(uint32_t s) {
     g_last_primed = false;
     g_last_ticks  = 0;
     if (!g_arena) return false;
+    g_tr.require_extents(); // before listener callbacks use cached recorder/ring lengths
     listener *act[MAX_LISTENERS];
     int       n = 0;
     for (int i = 0; i < g_nls; ++i)
@@ -98,8 +105,11 @@ bool step(uint32_t s) {
     return true;
 }
 
-const mh::state::inc::tracker &tracker() { return g_tr; }
-bool                           last_primed() { return g_last_primed; }
-int64_t                        last_ticks() { return g_last_ticks; }
+const mh::state::inc::tracker &tracker() {
+    if (g_arena) g_tr.require_extents();
+    return g_tr;
+}
+bool    last_primed() { return g_last_primed; }
+int64_t last_ticks() { return g_last_ticks; }
 
 } // namespace mh::desync::state_hub

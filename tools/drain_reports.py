@@ -63,27 +63,32 @@ installs cwrsync -- a `cygwin1.dll`-linked rsync.exe) creates TWO traps for a na
      with either runtime, verified directly.
 
 Usage:
-  python tools/drain_reports.py                       # drain the VPS into tmp/drained_reports
-  python tools/drain_reports.py --out tmp/drained_reports --json
-  python tools/drain_reports.py --dry-run              # rsync -n; no local writes, no summaries
+  python tools/drain_reports.py                       # drain into the configured private evidence root / reports
+  python tools/drain_reports.py --out <private-store> --json
+  python tools/drain_reports.py --dry-run              # rsync -n; no payload/manifest changes, no summaries
   python tools/drain_reports.py --local-source DIR     # drain from a local dir instead of the VPS
                                                         # (no ssh at all -- ops testing / offline)
   python tools/drain_reports.py --selftest             # hermetic; a lint_repo row
 """
 
 import argparse
+import hashlib, hostlock
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+
+import tool_paths
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
-import machine_config  # noqa: E402
+import machine_config
 
-DEFAULT_OUT = os.path.join(REPO, "tmp", "drained_reports")
+DEFAULT_OUT = str(tool_paths.evidence_path("reports"))
 MANIFEST_NAME = ".drain_manifest.json"
 REMOTE_ROOT_SPEC = "/"  # bare slash = the rrsync-configured root itself (see module docstring)
 # With the ADMIN-key fallback there is no rrsync forced command, so "/" is the VPS's filesystem
@@ -228,13 +233,23 @@ def rsync_pull(rsync_exe, source_spec, local_dir, rsh=None, dry_run=False, extra
     argv = [rsync_exe, "-a", "--itemize-changes", "--stats", "--timeout=60"]
     if dry_run:
         argv.append("-n")
-    argv.extend(REPORT_FILTER)
-    argv.extend(extra_args)
-    if rsh is not None:
-        argv.extend(["-e", rsh])
-    argv.append(source_arg)
-    argv.append("./%s/" % leaf)
-    proc = subprocess.run(argv, cwd=parent, capture_output=True, text=True)
+    # Retention exclusions precede the report allow-list. Keep argv bounded even after
+    # years of adjudications; a cwd-relative filter path avoids rsync's drive-colon parsing.
+    patterns = [a[len("--exclude=") :] for a in extra_args if a.startswith("--exclude=")]
+    remaining = [a for a in extra_args if not a.startswith("--exclude=")]
+    with tempfile.TemporaryDirectory(prefix=".drain_filters_", dir=parent) as control:
+        if patterns:
+            name = os.path.join(control, "exclude.txt")
+            with open(name, "w", encoding="utf-8", newline="\n") as stream:
+                stream.write("\n".join(patterns) + "\n")
+            argv.append("--exclude-from=./%s/exclude.txt" % os.path.basename(control))
+        argv.extend(REPORT_FILTER)
+        argv.extend(remaining)
+        if rsh is not None:
+            argv.extend(["-e", rsh])
+        argv.append(source_arg)
+        argv.append("./%s/" % leaf)
+        proc = subprocess.run(argv, cwd=parent, capture_output=True, text=True)
     files_transferred = None
     for line in (proc.stdout or "").splitlines():
         if line.strip().startswith("Number of regular files transferred:"):
@@ -254,9 +269,54 @@ def load_manifest(out_dir):
         return {}
     try:
         with open(p, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+            result = json.load(f)
+    except (OSError, ValueError) as exc:
+        raise Refusal("Cannot read report retention manifest: %s" % exc) from exc
+    if not isinstance(result, dict):
+        raise Refusal("Report manifest must be an object")
+    return result
+
+
+def retention_exclusions(manifest):
+    """Only explicit archived/discarded decisions suppress a future pull; drained_at never does."""
+    exclusions = []
+    for ulid, entry in manifest.items():
+        if not isinstance(entry, dict):
+            raise Refusal("Malformed report manifest entry: " + ulid)
+        decision = entry.get("retention")
+        if decision is None:
+            continue
+        if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", ulid) or not isinstance(decision, dict):
+            raise Refusal("Malformed report retention decision")
+        month = decision.get("month", "")
+        action = decision.get("action")
+        if (
+            not isinstance(month, str)
+            or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month)
+            or action not in ("archived", "discarded")
+        ):
+            raise Refusal("Invalid report retention scope for " + ulid)
+        reference = decision.get("receipt" if action == "archived" else "approval")
+        if not isinstance(reference, str) or not reference.strip():
+            raise Refusal("Report retention needs an evidence/approval reference: " + ulid)
+        if action == "archived":
+            keeper = decision.get("keeper")
+            expected = decision.get("sha256", "")
+            if (
+                not isinstance(keeper, str)
+                or not isinstance(expected, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected)
+            ):
+                raise Refusal("Archived report lacks a keeper hash: " + ulid)
+            try:
+                with open(tool_paths.resolve_input(keeper, repo=REPO), "rb") as stream:
+                    actual = hashlib.file_digest(stream, "sha256").hexdigest()
+            except OSError as exc:
+                raise Refusal("Archived report keeper is unavailable: " + ulid) from exc
+            if actual != expected:
+                raise Refusal("Archived report keeper changed: " + ulid)
+        exclusions.append("--exclude=/%s/%s/" % (month, ulid))
+    return sorted(exclusions)
 
 
 def save_manifest(out_dir, manifest):
@@ -349,7 +409,15 @@ def summarize_new(out_dir, manifest, say=print):
 # ─────────────────────────────── orchestration ───────────────────────────────
 
 
-def drain(
+def drain(out_dir, local_source=None, host=None, key=None, dry_run=False, say=print):
+    """Serialize each store's pull/adjudication state across worktrees."""
+    identity = os.path.normcase(os.path.realpath(out_dir))
+    resource = "report-drain-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+    with hostlock.lease(resource, "drain_reports"):
+        return _drain(out_dir, local_source, host, key, dry_run, say)
+
+
+def _drain(
     out_dir,
     local_source=None,
     host=None,
@@ -359,6 +427,8 @@ def drain(
 ):
     """One full drain: resolve the transport, rsync-pull, summarize what's new. Returns a dict
     (JSON-serializable) describing what happened -- used by both --json and the selftest."""
+    manifest = load_manifest(out_dir)
+    exclusions = retention_exclusions(manifest)
     rsync_exe = find_rsync()
     if local_source is not None:
         source_spec = local_source.rstrip("\\/") + os.sep
@@ -379,7 +449,7 @@ def drain(
         source_spec = "%s:%s" % (host, ADMIN_ROOT_SPEC if is_admin else REMOTE_ROOT_SPEC)
 
     rc, out, err, files_transferred = rsync_pull(
-        rsync_exe, source_spec, out_dir, rsh=rsh, dry_run=dry_run
+        rsync_exe, source_spec, out_dir, rsh=rsh, dry_run=dry_run, extra_args=exclusions
     )
     if rc != 0:
         raise Refusal(
@@ -387,7 +457,6 @@ def drain(
             % (rc, source_spec, out.strip(), err.strip())
         )
 
-    manifest = load_manifest(out_dir)
     new_ulids = [] if dry_run else summarize_new(out_dir, manifest, say=say)
     if not dry_run:
         save_manifest(out_dir, manifest)
@@ -612,6 +681,85 @@ def selftest():
                 os.path.isfile(os.path.join(local, MANIFEST_NAME)),
             )
 
+            # Explicit disposition suppresses re-fetch, unlike a legacy drained_at entry.
+            manifest = load_manifest(local)
+            archived_id, discarded_id, legacy_id = (
+                "01AAAAAAAAAAAAAAAAAAAAAAAA",
+                "01BBBBBBBBBBBBBBBBBBBBBBBB",
+                "01CCCCCCCCCCCCCCCCCCCCCCCC",
+            )
+            keeper = os.path.join(tmp, "retained_report.zip")
+            shutil.copyfile(os.path.join(local, "2026-09", archived_id, "report.zip"), keeper)
+            with open(keeper, "rb") as stream:
+                keeper_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+            manifest[archived_id]["retention"] = {
+                "action": "archived",
+                "month": "2026-09",
+                "receipt": "isolated custody receipt",
+                "keeper": keeper,
+                "sha256": keeper_sha,
+            }
+            manifest[discarded_id]["retention"] = {
+                "action": "discarded",
+                "month": "2026-09",
+                "approval": "isolated operator decision",
+            }
+            _write_fixture_report(
+                remote, "2026-09", legacy_id, {"match_id": "legacy"}, "completed later"
+            )
+            manifest[legacy_id] = {"drained_at": "old"}
+            save_manifest(local, manifest)
+            for ulid in (archived_id, discarded_id, legacy_id):
+                shutil.rmtree(os.path.join(local, "2026-09", ulid))
+            later_id = "01EEEEEEEEEEEEEEEEEEEEEEEE"
+            _write_fixture_report(
+                remote, "2026-09", later_id, {"match_id": "new"}, "new after adjudication"
+            )
+            retained = drain(local, local_source=remote, say=lambda *_: None)
+            ck(
+                "archived report is not downloaded again",
+                not os.path.exists(os.path.join(local, "2026-09", archived_id)),
+            )
+            ck(
+                "explicitly discarded report is not downloaded again",
+                not os.path.exists(os.path.join(local, "2026-09", discarded_id)),
+            )
+            ck(
+                "drained_at alone never suppresses a missing report",
+                os.path.isfile(os.path.join(local, "2026-09", legacy_id, "report.zip")),
+            )
+            ck(
+                "new reports still arrive after retention decisions",
+                retained["new_reports"] == [later_id],
+            )
+            other = os.path.join(tmp, "independent_store")
+            independent = drain(other, local_source=remote, say=lambda *_: None)
+            ck(
+                "retention decisions are local to their store",
+                sorted(independent["new_reports"])
+                == sorted(
+                    (archived_id, discarded_id, legacy_id, "01DDDDDDDDDDDDDDDDDDDDDDDD", later_id)
+                ),
+            )
+            manifest_path = os.path.join(local, MANIFEST_NAME)
+            with open(manifest_path, "rb") as stream:
+                before_dry = stream.read()
+            drain(local, local_source=remote, dry_run=True, say=lambda *_: None)
+            with open(manifest_path, "rb") as stream:
+                ck(
+                    "dry-run preserves existing decisions byte-for-byte",
+                    stream.read() == before_dry,
+                )
+            bad = load_manifest(local)
+            del bad[discarded_id]["retention"]["approval"]
+            save_manifest(local, bad)
+            refused = False
+            try:
+                drain(local, local_source=os.path.join(tmp, "must_not_be_contacted"))
+            except Refusal as exc:
+                refused = "approval" in str(exc)
+            ck("malformed decision refuses before contacting a source", refused)
+
             # --dry-run must not write the manifest or print summaries, even on a fresh store.
             dry_local = os.path.join(tmp, "dry_store")
             printed_dry = []
@@ -632,7 +780,9 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument(
-        "--out", default=DEFAULT_OUT, help="local gitignored store (default: tmp/drained_reports)"
+        "--out",
+        default=DEFAULT_OUT,
+        help="private report store (default: configured evidence root / reports)",
     )
     ap.add_argument(
         "--local-source", help="drain from this local directory instead of the VPS (no ssh)"

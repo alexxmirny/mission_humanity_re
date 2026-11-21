@@ -1,0 +1,229 @@
+# TILESET1: walk 33 independent TLO identities, revisit first after 32-slot LRU eviction.
+# Sixteen visible rows; the last page clamps at top=17 for 33 maps.
+# Raw Input requires forced focus in a headless lane.
+rawfocus 1
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+listtop 0x0065025f 0
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+capture tileset_first
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 3
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 6
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 9
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 12
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 15
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursorhold 120 120 10
+rawmouse wheel -120
+listtop 0x0065025f 17
+cursor 120 112
+cursor 120 112
+press 120 112
+release 120 112
+settled Ok
+cursor 120 126
+cursor 120 126
+press 120 126
+release 120 126
+settled Ok
+cursor 120 140
+cursor 120 140
+press 120 140
+release 120 140
+settled Ok
+cursor 120 154
+cursor 120 154
+press 120 154
+release 120 154
+settled Ok
+cursor 120 168
+cursor 120 168
+press 120 168
+release 120 168
+settled Ok
+cursor 120 182
+cursor 120 182
+press 120 182
+release 120 182
+settled Ok
+cursor 120 196
+cursor 120 196
+press 120 196
+release 120 196
+settled Ok
+cursor 120 210
+cursor 120 210
+press 120 210
+release 120 210
+settled Ok
+cursor 120 224
+cursor 120 224
+press 120 224
+release 120 224
+settled Ok
+cursor 120 238
+cursor 120 238
+press 120 238
+release 120 238
+settled Ok
+cursor 120 252
+cursor 120 252
+press 120 252
+release 120 252
+settled Ok
+cursor 120 266
+cursor 120 266
+press 120 266
+release 120 266
+settled Ok
+cursor 120 280
+cursor 120 280
+press 120 280
+release 120 280
+settled Ok
+cursor 120 294
+cursor 120 294
+press 120 294
+release 120 294
+settled Ok
+cursor 120 308
+cursor 120 308
+press 120 308
+release 120 308
+settled Ok
+capture tileset_thirtythree
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 14
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 11
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 8
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 5
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 2
+cursorhold 120 120 10
+rawmouse wheel 120
+listtop 0x0065025f 0
+cursor 120 98
+cursor 120 98
+press 120 98
+release 120 98
+settled Ok
+capture tileset_evicted_revisit
+log TILESET1 33 terrain preview sequence complete
+end

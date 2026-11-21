@@ -5,6 +5,7 @@
 //
 #include "addr/mh_export.gen.h" // MH_EXPORT_REPLACE / the entry-thunk shapes
 #include "ai/ai_engage.h"
+#include "state/order_tasks_origin.h"
 
 
 namespace mh::ai {
@@ -127,7 +128,9 @@ bool engage_select_and_commit(const ai_view &v, const ai_store &own, const ai_ca
     const int32_t i = pick_first_survivable(v, own);
     if (i == *own.engage_scratch_count) return false;
 
-    const engage_candidate &c = own.engage_scratch[i];
+    const engage_candidate              &c = own.engage_scratch[i];
+    mh::order_tasks::origin::issue_guard reservation(uint32_t(player), uint32_t(unit_index), c.target_ref, uint32_t(c.target_index));
+    if (!reservation.allowed()) return reservation.yielded_to_due_edit();
     if (use_alt_commit != 0)
         gc.commit_attack_order_alt((uint32_t)player, unit_index, c.target_ref, c.target_index);
     else
@@ -188,7 +191,8 @@ int32_t scan_target_list_for_engage_candidates(int32_t player, uint16_t ai_group
 }
 
 bool engage_select_and_commit(int32_t player, int32_t unit_index, int32_t use_alt_commit) {
-    const ai_state st = state();
+    mh::order_tasks::origin::primary_scope origin{uint32_t(player), uint32_t(unit_index)};
+    const ai_state                         st = state();
     return detail::engage_select_and_commit(st.read, st.own, live_calls(), player, unit_index,
                                             use_alt_commit);
 }

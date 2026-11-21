@@ -31,7 +31,7 @@ clickl Start
 
 absent Network players
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 log HOST u47: match live, waiting for the joiner's info panel
 awaitsignal u47open
 log HOST u47: window open

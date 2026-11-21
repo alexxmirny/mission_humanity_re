@@ -71,6 +71,7 @@
 //
 #include "sim/rng_trace.h" // C-prime level 3: the handler-selection note
 #include "sim/sim_unit_tick.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_register_state_handlers.h" // note_first_dispatch -- the one-time
                                              // "whose handler did the tick call" line
 
@@ -204,6 +205,15 @@ void unit_tick(const sim_view &v, sim_store &own, const unit_tick_calls &c) {
                 own.state_loop_guard() = 0;
             }
         }
+        order_tasks_adapter::handler_budget_scope task_control(*v.cur_player, *v.cur_index);
+        // Service same-pass retirement/cleanup before honoring its persistent hold,
+        // matching the native pre-handler guard at0047C8DD.
+        const bool may_access = order_tasks_adapter::primary_access(v, own);
+        if (task_control.hold || order_tasks_adapter::held(own, *v.cur_player, *v.cur_index) ||
+            (!may_access && (u.state == 0x2e || u.state == 0x2f))) {
+            budget = 0.0;
+            break;
+        }
         // SIM1-DISPATCH (2026-08-22): one line, once per run, saying whether the entry this tick is
         // about to call is OURS or the game's. The table is filled by mh::sim::
         // register_state_handlers when `[promote] state_handlers=1`, and "we filled it" is an
@@ -227,7 +237,21 @@ void unit_tick(const sim_view &v, sim_store &own, const unit_tick_calls &c) {
                                     // that were looking at different squares of the map.
                                     (uint32_t)u.move_heading << 16 | (uint32_t)u.x << 8 |
                                         (uint32_t)u.y);
-        v.unit_state_funcs[u.state]();
+        auto       task      = order_tasks_adapter::capture(v, own);
+        const bool preparing = order_tasks_adapter::preparation(u.state);
+        if (task.present && preparing && task.phase != mh::order_tasks::phase::preparation) {
+            order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::preparation_started, u);
+            task = order_tasks_adapter::capture(v, own);
+        }
+        if (task_control.hold) {
+            budget = 0.0;
+            break;
+        }
+        v.unit_state_funcs[u.state](); // exactly ONE original dispatch
+        if (preparing && !order_tasks_adapter::preparation(u.state))
+            order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::preparation_finished, u);
+        // No barrier when the last finite leg retired: native final idle/plane behavior runs.
+        if (task_control.hold || order_tasks_adapter::held(own, *v.cur_player, *v.cur_index)) budget = 0.0;
     }
 
     // ---- EXIT (0x0047c8e5-0x0047c8f9): pending-damage application. Same NaN-inclusive idiom as the

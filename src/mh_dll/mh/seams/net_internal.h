@@ -202,6 +202,8 @@ inline void seam_paths_tick() { mh_run_path(g_log, MAX_PATH, "%smh_net.log", &g_
 // map's name, current_map_data.map_name). Both are final at the open: nothing renames the folder.
 void mp_session_open(const unsigned char *match_id, int slot, const char *mode, const char *map = nullptr);
 void mp_session_close(const char *reason);
+// Publish the speed actually frozen at Start, including an authoritative 100%.
+void mp_session_speed_frozen();
 // SES8: once per present (net_lockstep.cpp on_present) -- opens the single-player session.
 void mp_session_solo_tick();
 // RL15: once per present -- derive the presence state and publish presence.json if it changed.

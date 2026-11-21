@@ -13,7 +13,7 @@
 //      step, and that state is still right; a flipped payload byte stops decoding at the chunk before
 //      it; header + "every chunk from some KEYF on" (the mp:D43 tail cut) decodes on its own.
 //   3. THE LIVE PATH (desync/state_tracker + desync/state_recorder + the writer thread). Every hash
-//      region is rebased onto synthetic memory (as inchashtest does), the recorder is driven through
+//      region reads synthetic memory (stock rebased, native explicitly bound), the recorder is driven through
 //      the shared tracker for two matches -- with a region REBASED mid-match -- and the files it
 //      writes are decoded and compared, step by step, against a hash of the live memory at that step.
 //      Steps after match_end must not be recorded, and the second match must get its own file. Every
@@ -47,6 +47,7 @@
 #include "desync/state_tracker.h"
 #include "state/inc_state.h"
 #include "state/region_view.h"
+#include "storage_policy_fixture.h"
 
 #include "desync/state_miniz_config.h"
 #pragma warning(push, 0)
@@ -434,10 +435,18 @@ void bind_synthetic() {
         for (int j = 0; j < HASH_REGION_COUNT; ++j)
             if ((int)HASH_REGIONS[j].rid == rid && HASH_REGIONS[j].offset + HASH_REGIONS[j].len > need)
                 need = HASH_REGIONS[j].offset + HASH_REGIONS[j].len;
+        if (REGIONS[rid].host_native)
+            need = mh::test::canonical_native_bytes(static_cast<region_id>(rid));
         g_rids.push_back(rid);
         g_bufs.emplace_back(need + 64u);
         for (auto &x : g_bufs.back()) x = (uint8_t)rnd();
-        rebase((region_id)rid, (uint32_t)(uintptr_t)g_bufs.back().data(), need);
+        if (REGIONS[rid].host_native) {
+            check("synthetic canonical owner initializes",
+                  mh::test::initialize_canonical_native(static_cast<region_id>(rid), g_bufs.back().data(), need));
+            bind((region_id)rid, (uint32_t)(uintptr_t)g_bufs.back().data(), need);
+        } else {
+            rebase((region_id)rid, (uint32_t)(uintptr_t)g_bufs.back().data(), need);
+        }
     }
 }
 
@@ -461,6 +470,8 @@ uint64_t live_hash() {
     return h;
 }
 
+// Generic recording byte stress, not validated world/policy import: mutations may break canonical headers.
+// EMPTY32 keeps the region-table/schema checks below descriptor-sized without a runtime policy owner.
 void live_mutate(uint32_t step) {
     if (step % 5 == 0) return; // unchanged steps must still get (empty) STEP chunks
     const int nm = 1 + (int)(rnd() % 20);
@@ -871,19 +882,29 @@ bool        write_file(const std::string &path, const std::vector<uint8_t> &v);
 namespace oc = mh::desync::orders;
 
 struct ord_truth {
-    std::vector<oc::record> recs;
-    std::vector<uint64_t>   clock;
-    uint32_t                repeats = 0;
+    std::vector<uint8_t>  recs = {0x4d, 0x48, 0x4f, 0x52, 2, 0, 0, 0, 68, 0, 0, 0};
+    std::vector<uint64_t> clock;
+    uint32_t              repeats = 0;
 };
 
+void ord_truth_sample(std::vector<uint8_t> &out, uint32_t step, uint32_t phase,
+                      const std::vector<std::vector<uint8_t>> &records) {
+    for (uint32_t v : {step, phase, uint32_t(records.size())})
+        for (unsigned shift = 0; shift < 32; shift += 8) out.push_back(uint8_t(v >> shift));
+    for (const auto &r : records) out.insert(out.end(), r.begin(), r.end());
+}
 void ord_session(const std::string &dir, unsigned long gen, uint32_t steps, ord_truth &t) {
     std::vector<std::vector<uint8_t>> prev, cur;
     for (uint32_t s = 1; s <= steps; ++s) {
         uint64_t clk = 0x4000000000000000ULL + s * 977ULL;
-        oc::step(dir.c_str(), gen, true, clk);
+        oc::step(dir.c_str(), gen, true);
         t.clock.push_back(clk);
+        std::vector<uint8_t> hash_queue;
+        for (const auto &o : prev) hash_queue.insert(hash_queue.end(), o.begin(), o.end());
+        oc::hash(hash_queue.empty() ? nullptr : hash_queue.data(), int(prev.size()), clk);
+        ord_truth_sample(t.recs, s, 1u, prev);
         cur.clear();
-        if (s % 9 != 0) { // every 9th step: an empty queue (no records, as the harness writes)
+        if (s % 9 != 0) { // explicit empty ENTRY every ninth step
             for (size_t i = 0; i < prev.size() && cur.size() < 6; ++i)
                 if (rnd() % 4 != 0) cur.push_back(prev[i]);
             const int add = 1 + (int)(rnd() % 3);
@@ -895,12 +916,9 @@ void ord_session(const std::string &dir, unsigned long gen, uint32_t steps, ord_
         }
         std::vector<uint8_t> q;
         for (auto &o : cur) q.insert(q.end(), o.begin(), o.end());
-        oc::dispatch(q.empty() ? nullptr : q.data(), (int)cur.size());
+        oc::entry(q.empty() ? nullptr : q.data(), (int)cur.size());
+        ord_truth_sample(t.recs, s, 2u, cur);
         for (auto &o : cur) {
-            oc::record r;
-            r.step = (int32_t)s;
-            memcpy(r.order, o.data(), oc::ORDER_SIZE);
-            t.recs.push_back(r);
             for (auto &p : prev)
                 if (p == o) {
                     ++t.repeats;
@@ -911,12 +929,8 @@ void ord_session(const std::string &dir, unsigned long gen, uint32_t steps, ord_
     }
 }
 
-bool ord_file_is(const std::vector<uint8_t> &f, const std::vector<oc::record> &recs) {
-    if (f.size() != 8 + recs.size() * sizeof(oc::record)) return false;
-    uint32_t hdr[2];
-    memcpy(hdr, f.data(), 8);
-    return hdr[0] == oc::MAGIC && hdr[1] == oc::VERSION &&
-           (recs.empty() || memcmp(f.data() + 8, recs.data(), recs.size() * sizeof(oc::record)) == 0);
+bool ord_file_is(const std::vector<uint8_t> &f, const std::vector<uint8_t> &recs) {
+    return f == recs;
 }
 
 bool clock_file_is(const std::vector<uint8_t> &f, const std::vector<uint64_t> &c) {
@@ -924,7 +938,7 @@ bool clock_file_is(const std::vector<uint8_t> &f, const std::vector<uint64_t> &c
 }
 
 void test_order_capture() {
-    printf("--- mp:Q3: order recording (MHOR v1 + clock track, session-scoped, gzip at close) ---\n");
+    printf("--- mp:Q3: order recording (MHOR v2 HASH/ENTRY + clock track, session-scoped, gzip at close) ---\n");
     const std::string base = tmp_dir();
     const std::string dA = base + "\\ordA\\", dB = base + "\\ordB\\", dC = base + "\\ordC\\";
     for (const std::string &d : {dA, dB, dC}) CreateDirectoryA(d.substr(0, d.size() - 1).c_str(), nullptr);
@@ -933,26 +947,21 @@ void test_order_capture() {
     const int lines0 = g_ord_lines;
     check("configure: asked but refused (the harness owns the stream) stays off and says why",
           !oc::configure(1, "the harness owns it", &test_log) && g_ord_lines == lines0 + 1);
-    oc::step(dA.c_str(), 7, true, 1);
+    oc::step(dA.c_str(), 7, true);
     check("off: a step opens nothing", !oc::current().open && !exists(dA + oc::ORDERS_NAME));
     check("configure: on", oc::configure(1, nullptr, &test_log) && oc::enabled());
     oc::set_compress(false);
 
     // Session A: 200 steps (four flush batches), then the folder goes away -> close.
     ord_truth tA;
-    oc::dispatch(nullptr, 3); // before any session step: ignored
+    oc::entry(nullptr, 3); // before any session step: ignored
     ord_session(dA, 100, 200, tA);
-    {
-        uint8_t junk[oc::ORDER_SIZE] = {};
-        oc::dispatch(junk, oc::ORDER_QCAP + 1); // an impossible count: ignored, as the harness does
-        oc::dispatch(junk, -1);
-    }
     const oc::stats sA = oc::current();
     check("A: open while the folder is", sA.open && sA.files == 1 && sA.steps == 200);
     check("A: the counted repeats == the queue's carried-over orders", sA.repeats == tA.repeats && tA.repeats > 0);
-    oc::step(nullptr, 100, true, 0); // the session closed under us
+    oc::step(nullptr, 100, true); // the session closed under us
     check("A: a step with no folder closes the file", !oc::current().open);
-    check("A: mh_rec_orders.bin == MHOR v1 header + every step's queue, in order",
+    check("A: mh_rec_orders.bin == independent MHOR v2 HASH/ENTRY bytes, including empty",
           ord_file_is(read_raw(dA + oc::ORDERS_NAME), tA.recs));
     check("A: mh_rec_clock.bin == one pre-body clock per step, track[0] = step 1",
           clock_file_is(read_raw(dA + oc::CLOCK_NAME), tA.clock));
@@ -965,14 +974,15 @@ void test_order_capture() {
     oc::session_close("test close in place");
     const std::vector<uint8_t> fB = read_raw(dB + oc::ORDERS_NAME);
     for (uint32_t s = 0; s < 5; ++s) {
-        oc::step(dB.c_str(), 200, true, 5);
+        oc::step(dB.c_str(), 200, true);
         uint8_t o[oc::ORDER_SIZE] = {1};
-        oc::dispatch(o, 1);
+        oc::hash(o, 1, 5);
+        oc::entry(o, 1);
     }
     check("B: the file holds its 12 steps", ord_file_is(fB, tB.recs));
     check("B: a closed generation is never reopened (steps after a close in place are not recorded)",
           !oc::current().open && read_raw(dB + oc::ORDERS_NAME) == fB);
-    oc::step(dC.c_str(), 300, false, 5);
+    oc::step(dC.c_str(), 300, false);
     check("an unsettled folder read opens nothing", !oc::current().open);
 
     // Session C: compression on -> only the two .gz are left, and they gunzip to the expected bytes.
@@ -994,6 +1004,46 @@ void test_order_capture() {
         if (ok) printf("  wrote %s -- cross-check: python tools/mp_order_diff.py %s %s\n", g_write_orders, g_write_orders,
                        g_write_orders);
     }
+    namespace os = mh::order_stream;
+    os::reader reader;
+    check("v2 reader accepts independently encoded complete pairs", reader.reset(tA.recs.data(), tA.recs.size(), 300));
+    for (uint32_t step = 1; step <= 200; ++step) {
+        os::view h, e;
+        check("v2 reader retrieves HASH then ENTRY, including empty",
+              reader.next(step, os::phase::hash, h) && reader.next(step, os::phase::entry, e));
+    }
+    check("v2 reader reaches exact EOF after complete pairs", reader.exhausted());
+    os::view missing;
+    check("EOF never substitutes an empty sample", !reader.next(201, os::phase::hash, missing));
+    auto bad = tA.recs;
+    bad[4]   = 1;
+    check("legacy v1 is explicitly refused", !reader.reset(bad.data(), bad.size(), 300));
+    bad = tA.recs;
+    bad.pop_back();
+    check("partial payload is refused before queue publication", !reader.reset(bad.data(), bad.size(), 300));
+    bad.assign(tA.recs.begin(), tA.recs.begin() + 24); // empty HASH step 1 without ENTRY
+    check("missing ENTRY is refused", !reader.reset(bad.data(), bad.size(), 300));
+    bad     = tA.recs;
+    bad[20] = 0xff;
+    bad[21] = 0xff;
+    bad[22] = 0xff;
+    bad[23] = 0xff;
+    check("hostile count cannot overflow native reader", !reader.reset(bad.data(), bad.size(), 300));
+    std::vector<uint8_t>                    distinct = {0x4d, 0x48, 0x4f, 0x52, 2, 0, 0, 0, 68, 0, 0, 0};
+    const std::vector<std::vector<uint8_t>> a{std::vector<uint8_t>(68, 0x17)};
+    const std::vector<std::vector<uint8_t>> b{std::vector<uint8_t>(68, 0xb4)};
+    ord_truth_sample(distinct, 1u, 1u, a);
+    ord_truth_sample(distinct, 1u, 2u, b); // same count, NO shared payload/prefix
+    ord_truth_sample(distinct, 2u, 1u, {});
+    ord_truth_sample(distinct, 2u, 2u, {});
+    os::view dh, de, zh, ze;
+    check("same count different HASH/ENTRY payloads are preserved independently",
+          reader.reset(distinct.data(), distinct.size(), 300) &&
+              reader.next(1, os::phase::hash, dh) && reader.next(1, os::phase::entry, de) &&
+              dh.count == 1 && de.count == 1 && dh.records[0] == 0x17 && de.records[0] == 0xb4);
+    check("both empty phases remain real samples",
+          reader.next(2, os::phase::hash, zh) && reader.next(2, os::phase::entry, ze) &&
+              zh.count == 0 && ze.count == 0 && reader.exhausted());
     oc::configure(0, nullptr, &test_log);
     rm_tree(base);
 }

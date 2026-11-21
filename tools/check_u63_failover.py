@@ -89,13 +89,10 @@ def check(det_dir, negative=False, min_post=MIN_POST):
                 )
         found = False
         for sv in SURVIVORS:
-            tl = u53.timeline(logs[sv][0], sv)
-            out += tl
-            for t in tl:
-                mm = re.search(r"timeline \+\s*([\d.]+)s\s+on_gameover outcome=(\d+)", t)
-                if mm and mm.group(2) == "8":
+            out += u53.timeline(logs[sv][0], sv)
+            for secs, name, text in u53.timeline_events(logs[sv][0]):
+                if name == "on_gameover" and re.search(r"\boutcome=8\b", text):
                     found = True
-                    secs = float(mm.group(1))
                     if not 30.0 <= secs <= 90.0:
                         bad.append(
                             "%s reached outcome 8 at +%.1fs (expected ~58 s, window 30..90)"
@@ -104,6 +101,11 @@ def check(det_dir, negative=False, min_post=MIN_POST):
         if not found:
             bad.append("no survivor reached outcome 8 (U55's timeline did not reproduce)")
         return (not bad), out + ["FAIL: " + b for b in bad]
+
+    # Join order is not native player identity: either survivor can own slot1.
+    peer_ids = u53.native_peer_ids(det_dir, u53.PEERS)
+    native_peers = {slot: peer for peer, slot in peer_ids.items()}
+    out.append("match-owned native player slots: %r" % peer_ids)
 
     elected = {}
     notice = {}
@@ -143,11 +145,11 @@ def check(det_dir, negative=False, min_post=MIN_POST):
                 "    %s timeline: suspect %s, elected +%.2fs, DONE +%.2fs after the suspicion"
                 % (
                     sv,
-                    ("%.2fs after its first stall" % (t_susp - t_stall))
-                    if t_stall
+                    ("%.2fs after its first stall" % u53.elapsed_wall_seconds(t_stall, t_susp))
+                    if t_stall is not None
                     else "(no stall line)",
-                    t_elec - t_susp,
-                    t_done - t_susp,
+                    u53.elapsed_wall_seconds(t_susp, t_elec),
+                    u53.elapsed_wall_seconds(t_susp, t_done),
                 )
             )
     if None in elected.values():
@@ -160,9 +162,9 @@ def check(det_dir, negative=False, min_post=MIN_POST):
         if int(hid) not in (1, 2):
             bad.append("the elected hub %s is not a survivor" % hid)
         else:
-            elected_peer = SURVIVORS[int(hid) - 1] if int(hid) in (1, 2) else None
+            elected_peer = native_peers[int(hid)]
             other = SURVIVORS[0] if elected_peer == SURVIVORS[1] else SURVIVORS[1]
-            if elected_peer and "this player is the hub now" not in logs[elected_peer][0]:
+            if "this player is the hub now" not in logs[elected_peer][0]:
                 bad.append("%s was elected but never logged that it became the hub" % elected_peer)
             if "re-dialled player" not in logs[other][0]:
                 bad.append("%s never logged re-dialling the elected hub" % other)

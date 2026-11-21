@@ -31,15 +31,10 @@
 // something relocates it -- check_movable_addresses.py is the gate that would catch a regression
 // here). See src/mh_dll/libmh/state/region_runtime.h for the policy this follows.
 //
-// tooling:TL-TILEMAP-EXTENT (open, filed alongside mp:GX1): the registry currently declares BOTH
-// maps at their OLD, short extent -- 300 bytes -- even though the real extent is 1024
-// (`_G_LLM_TILE_VIS_MAP`) / 1018 (`_G_LLM_TILE_DRAWN_MAP`) and the game writes index 767 at a
-// 1024x768 window. Widening the registry entries is THAT row's job, not this one's: touching it
-// here would move the fixture fingerprint out from under a row this lane does not own. So every
-// write below is CLAMPED to whatever `mh::state::live_size()` answers right now (300, today) --
-// an interim narrowing, not a claim about the map's true size. The clamp becomes unnecessary
-// (harmless, since `i < live_size` will simply always hold) the day TL-TILEMAP-EXTENT widens the
-// registry entries; nothing here needs to change when that lands.
+// Logical capacity follows the current binding: stock DRAWN/VIS are 1018/1024 cells, while
+// video relocation publishes its enlarged MAX_TILES buffers. Keep independent bounds for
+// both arrays: short test bindings and future allocations must remain safe. Physical padding
+// for native wide reads is deliberately not part of either logical capacity.
 //
 #pragma once
 #include <cstdint>
@@ -69,8 +64,8 @@ inline void mark_ground_tiles_dirty(int x, int y, int w, int h) {
     uint8_t *const vis = mh::state::ptr<uint8_t>(mh::state::RID_TILE_VIS_MAP);
     if (vis == nullptr) return;
     uint8_t *const drawn     = mh::state::ptr<uint8_t>(mh::state::RID_TILE_DRAWN_MAP);
-    const uint32_t vis_len   = mh::state::live_size(mh::state::RID_TILE_VIS_MAP);   // TL-TILEMAP-EXTENT clamp
-    const uint32_t drawn_len = mh::state::live_size(mh::state::RID_TILE_DRAWN_MAP); // TL-TILEMAP-EXTENT clamp
+    const uint32_t vis_len   = mh::state::live_size(mh::state::RID_TILE_VIS_MAP);
+    const uint32_t drawn_len = mh::state::live_size(mh::state::RID_TILE_DRAWN_MAP);
 
     int col0 = x >> 5, col1 = (x + w - 1) >> 5;
     int row0 = y >> 5, row1 = (y + h - 1) >> 5;

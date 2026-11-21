@@ -4,6 +4,28 @@
   "entries": [
     {
       "va": "0x00498dc0",
+      "object": "libmh/Release/order_tasks_runtime.obj",
+      "signature": "89 45 c0 8d 49 00 8b b7",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE verified in the current standalone object, 2026-11-10. In capture_active, dumpbin shows section offsets 0x1DA: 89 45 C0 mov [ebp-40h],eax; 0x1DD: 8D 49 00 lea ecx,[ecx]; 0x1E0: 8B B7 F8 04 00 00 mov esi,[edi+4F8h]. The candidate at 0x1DC crosses the stack-store disp8 C0 and the three-byte identity LEA alignment padding; no operand contains 0x00498dc0. Exact object SHA256 c3e58e559661800e17e76434173b609a744c3366e03974bb1b97781650ce893c, byte offset 102442. Evidence retained in evidence:tmp_cleanup_2026-11-15/retained/rc22_followup/order_tasks_runtime.obj and order_tasks_runtime.disasm.txt. No actual VA dependency added.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-11-10"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/sim_unit_group_step_ground.obj",
+      "signature": "89 4d c0 8d 49 00 8b 87",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE independently verified in the current compiled object, 2026-11-08. In mh::sim::detail::unit_group_step_ground, dumpbin disassembly at section offsets 0xE1A/0xE1D/0xE20 is `89 4D C0 mov [ebp-40h],ecx`; `8D 49 00 lea ecx,[ecx]`; `8B 87 F0 00 00 00 mov eax,[edi+0F0h]`. The candidate bytes C0 8D 49 00 start at 0xE1C, crossing the stack-store disp8 and the three-byte identity LEA that pads the loop head to 0xE20. The loop backedge at 0xEA7 targets 0xE20, not any byte of the candidate. No instruction operand here contains 0x00498dc0, and the ground-step calls-struct does not bind the named mothership function. Retained exact object SHA256 3574633596b7a6d2593a5db8fccf9cb2c99d45acf06b28bb514885ddda83a784, object byte offset 49067; evidence evidence:tmp_cleanup_2026-11-15/retained/orderseq2/runtime/va_ground_step/{receipt.json,disasm.txt,sim_unit_group_step_ground.obj}. This licence applies only to this object and this eight-byte signature, not other occurrences of the same VA.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-11-08"
+    },
+    {
+      "va": "0x00498dc0",
       "object": "libmh/Release/sim_bldg_pay_costs.obj",
       "signature": "ff 33 c0 8d 49 00 83 f8",
       "names": [
@@ -1356,6 +1378,17 @@
       "why": "SAVE-DRIVER KEY MATERIAL -- a printed KEEP, not a removal (lib-ref-plan sec 3.8: LIB-VA0's zero holds 'or every survivor is on the PRINTED keep list; an unprinted keep is the failure mode'). These are save_table.gen.h's address columns: step::addr (a block's identity and, hosted, its resolution input) and step::write_at/read_at (the keys delegate_for() matches a caller-supplied step_delegate::at against). VERIFIED PURE MATCH KEYS STANDALONE, 2026-09-11: every standalone consumer either compares them only (block_owner_index, sliced_block, find_delegate) or routes them through at()/slice_at(), which refuse with nullptr standalone -- and all six call sites null-check before dereferencing (save_driver.cpp 171/204/670/691/749/763). Nothing standalone dereferences one. Re-keying them onto ordinals is filed as its own item; it would upgrade this keep to a literal zero.",
       "class": "save-driver key material",
       "adjudicated": "2026-09-11"
+    },
+    {
+      "va": "0x00498dc0",
+      "object": "libmh/Release/sim_path_solver.obj",
+      "signature": "ff 33 c0 8d 49 00 0f b6",
+      "names": [
+        "llm_strat_game_check_players_mothership_alive"
+      ],
+      "why": "BYTE COINCIDENCE independently verified in the current compiled object, 2026-11-09. In mh::sim::order_tasks_adapter::direction_assigned, COFF section 7 (.text$mn) offsets 0x2DB/0x2DD/0x2E0 disassemble as 33 C0 xor eax,eax; 8D 49 00 lea ecx,[ecx]; 0F B6 4C 01 01 movzx ecx,byte ptr [ecx+eax+1]. The candidate C0 8D 49 00 starts at section offset0x2DC, crossing the XOR tail and three-byte identity LEA alignment padding; the loop backedge targets0x2E0 after it. This is complete_direction_trace's index initialization and solver/encoded comparison loop, included through sim_order_tasks.h. No instruction operand contains0x00498dc0 and no COFF relocation lies within32bytes. Object SHA2561e25a773bec3c00537609493e145eeab36e453035b0251aea4513b083213c306; object-file candidate offset35739.",
+      "class": "alignment-nop-coincidence",
+      "adjudicated": "2026-11-09"
     }
   ]
 }

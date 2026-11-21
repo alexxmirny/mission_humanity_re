@@ -73,6 +73,7 @@ EXPORTS
     ?set_dispatch_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_extend_floor@lockstep@mh@@YAXP6ANN@Z@Z
     ?set_fixes@lockstep@mh@@YAXABUreimpl_fixes@12@@Z
+    ?set_game_speed_recompute_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_icon_counters@lockstep@mh@@YAXP6AXXZ0@Z
     ?set_land_players_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_logger@ai@mh@@YAXP6AXPBD@Z@Z
@@ -81,6 +82,7 @@ EXPORTS
     ?set_logger@save@mh@@YAXP6AXPBD@Z@Z
     ?set_new_game_init_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_session_begin_multi_observer@sim@mh@@YAXP6AXXZ@Z
+    ?set_sim_step_post_ai_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_sim_step_pre_hook@sim@mh@@YAHP6AXXZ@Z
     ?set_time_resync_instrument_hooks@sim@mh@@YAXP6AXXZ@Z
     ?sim_step_entry_thunk@sim@mh@@YAPAXXZ
@@ -98,14 +100,21 @@ EXPORTS
     libmh_bound_count
     libmh_hook_api_unbound
     libmh_host_api_unbound
+    libmh_import_world
     libmh_import_world_resync
     libmh_in_is_open
     libmh_in_open
     libmh_in_unbound
+    libmh_order_tasks_abort_load
+    libmh_order_tasks_begin_load
+    libmh_order_tasks_bind
+    libmh_order_tasks_enqueue_suppressed
+    libmh_order_tasks_published
     libmh_region_count
     libmh_set_event_sink
     libmh_set_hook_api
     libmh_set_host_api
+    libmh_set_order_observation_sink
     libmh_set_session_seed
     libmh_set_tact_host_api
     libmh_set_text_sink
@@ -126,9 +135,11 @@ EXPORTS
     ?group_issue_order@tact@mh@@YAXHIIII@Z
     ?last_trap@libmh_in@mh@@YAPBDXZ
     ?reset_session_latch_for_test@boot@state@mh@@YAXXZ
-    ?set_suppress_enqueue@orders@mh@@YAX_N@Z
     ?unit_enqueue_command@tact@mh@@YAHHHEHGGG@Z
-    libmh_import_world
+
+; Owned command observations for polling/callback hosts.
+    libmh_poll_order_observations
+    libmh_event_overflow_count
 
 ; The module-level entries (libmh/include/libmh_module.h). Not part of the spine contract:
 ; the ABI handshake and the loader-order probe, which mh.dll calls directly rather than

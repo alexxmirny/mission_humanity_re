@@ -910,7 +910,7 @@
    "header": "sim/sim_bldg_instant_construct_find_slot.h"
   },
   {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "domain": "sim",
    "entry": "libmh_issue_order",
    "impl": "mh::sim::unit_order_disembark_soldiers",
@@ -978,8 +978,8 @@
   ]
  },
  "_retired_2026_09_12_step4": {
-  "_why": "The whole X-TL exclusion class, discharged. These seven rows were excluded because every reaching edge was TRANSLATE-LATER -- an original caller a later batch would absorb. X-TL-DRAIN was that batch, and as of 2026-09-12 each of the seven has NO original caller left: llm_strat_bldg_init_all, llm_strat_bldg_instant_construct_find_slot, llm_unit_order_disembark_soldiers and llm_strat_order_queue_apply_and_dequeue are all `verified` ledger rows now. With no caller they are not inbound CANDIDATES at all, so the generator fails their disposition as STALE by name rather than leaving a dead exclusion behind. THE CLASS ITSELF IS NOW EMPTY (19 -> 0) and `_exclusion_codes` keeps its X-TL definition for the next time a batch needs it.",
-  "_where_the_edges_went": "UP one level, not away, and that is why this change also ADDS three covered rows. Translating a caller makes it an owned body, so ITS callers become the inbound edge: llm_strat_input_update (FE) now reaches libmh through llm_strat_bldg_instant_construct_find_slot and llm_unit_order_disembark_soldiers, and llm_boot_stage_tick (SESSION) through llm_strat_bldg_init_all. The commissioning measurement predicted exactly these two callers plus llm_strat_pathfind_dispatch_route_order, which needs no entry because it is itself a provably-dead pruned root. The cascade TERMINATES there: no further original caller is exposed.",
+  "_why": "The whole X-TL exclusion class, discharged. These seven rows were excluded because every reaching edge was TRANSLATE-LATER -- an original caller a later batch would absorb. X-TL-DRAIN was that batch, and as of 2026-09-12 each of the seven has NO original caller left: llm_strat_bldg_init_all, llm_strat_bldg_instant_construct_find_slot, llm_unit_order_squad_split and llm_strat_order_queue_apply_and_dequeue are all `verified` ledger rows now. With no caller they are not inbound CANDIDATES at all, so the generator fails their disposition as STALE by name rather than leaving a dead exclusion behind. THE CLASS ITSELF IS NOW EMPTY (19 -> 0) and `_exclusion_codes` keeps its X-TL definition for the next time a batch needs it.",
+  "_where_the_edges_went": "UP one level, not away, and that is why this change also ADDS three covered rows. Translating a caller makes it an owned body, so ITS callers become the inbound edge: llm_strat_input_update (FE) now reaches libmh through llm_strat_bldg_instant_construct_find_slot and llm_unit_order_squad_split, and llm_boot_stage_tick (SESSION) through llm_strat_bldg_init_all. The commissioning measurement predicted exactly these two callers plus llm_strat_pathfind_dispatch_route_order, which needs no entry because it is itself a provably-dead pruned root. The cascade TERMINATES there: no further original caller is exposed.",
   "rows": [
    {
     "name": "llm_strat_bldg_init_defaults",

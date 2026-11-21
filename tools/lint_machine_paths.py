@@ -341,6 +341,7 @@ def scan_published(relpath, blob, prefixes, tokens, exceptions):
     Returns (violations, exception_hits) -- exception_hits keyed by (path, needle)."""
     out = []
     hits = {}
+    has_colon = b":" in blob
     exc_here = [(n, w) for p, n, w in exceptions if p == relpath]
 
     def excused(s):
@@ -355,7 +356,7 @@ def scan_published(relpath, blob, prefixes, tokens, exceptions):
     def lineno(off):
         return blob.count(b"\n", 0, off) + 1
 
-    for m in QUAD_RE.finditer(blob):
+    for m in QUAD_RE.finditer(blob) if b"." in blob else ():
         quad = tuple(int(x) for x in m.groups())
         if not is_public_ipv4(*quad):
             continue
@@ -364,7 +365,7 @@ def scan_published(relpath, blob, prefixes, tokens, exceptions):
             continue
         out.append((relpath, lineno(m.start()), "public-ipv4", s))
 
-    for m in USERDIR_RE.finditer(blob):
+    for m in USERDIR_RE.finditer(blob) if has_colon else ():
         s = m.group(0).decode("latin1")
         if excused(s):
             continue
@@ -388,6 +389,9 @@ def scan_published(relpath, blob, prefixes, tokens, exceptions):
                     continue
                 out.append((relpath, i, "identity", t))
 
+    if not has_colon:
+        return out, hits
+
     try:
         text = blob.decode("utf-8")
     except UnicodeDecodeError:
@@ -395,7 +399,7 @@ def scan_published(relpath, blob, prefixes, tokens, exceptions):
 
     fallback = _ghidra_fallback_lines(text)
     for i, line in enumerate(text.splitlines(), 1):
-        if i in fallback:
+        if i in fallback or ":" not in line:
             continue
         for m in DRIVEPATH_RE.finditer(line):
             tok = m.group(0)

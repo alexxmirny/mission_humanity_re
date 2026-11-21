@@ -46,6 +46,12 @@
 #include "caps/ovf.h"
 #include "caps/orders.h"
 #include "caps/ovf_save.h"
+#include "mods/save_meta.h"
+#include "seams/map_transfer.h"
+#include "seams/replay_boundary.h"
+#include "seams/storage_policy_save.h"
+#include "caps/save_host.h"
+#include "hook/promoted.h"
 #include "caps/path_pool.h"
 #include "config/ini_read.h"
 #include "addr/mh_calls.gen.h"
@@ -101,36 +107,51 @@ void *g_load_tramp = nullptr;
 constexpr uintptr_t FN_FSEEK  = 0x004cfc13; // fseek(EAX file, EDX offset, EBX whence) -> 0 / -1
 constexpr uintptr_t FN_FTELL  = 0x004cfd07; // ftell(EAX file) -> pos / -1
 constexpr uintptr_t FN_FREAD  = 0x004cfd58; // utils_read_from_file
-constexpr uintptr_t FN_FWRITE = 0x004cff57; // utils_write_to_file
 constexpr uintptr_t FN_FCLOSE = 0x004cf7d1; // utils_close_file
 constexpr uintptr_t FN_MSGBOX = 0x004bc6aa; // llm_ui_dlg_msgbox_ok
 
 // The four call splices (each a 5-byte `E8 rel32`; the stub's tail JMPs to the original target).
 constexpr uintptr_t ADDR_SAVE_CLOSE        = 0x004480e0;                     // map_SavePlanetToDisk: CALL utils_close_file (EAX = the FILE)
-constexpr uintptr_t ADDR_HDR_WRITE         = 0x0044725c;                     // game_SaveGame: CALL utils_write_to_file of the 40-byte version header
 constexpr uintptr_t ADDR_HDR_READ          = 0x004476b4;                     // llm_game_load: CALL utils_read_from_file of the 40-byte version header
 constexpr uintptr_t ADDR_LOADFAIL_MSG      = 0x004bb76d;                     // llm_menu_loadgame_confirm: CALL llm_ui_dlg_msgbox_ok of the failure text
 const uint8_t       SAVE_CLOSE_EXPECT[5]   = {0xE8, 0xEC, 0x76, 0x08, 0x00}; // -> 0x004cf7d1
-const uint8_t       HDR_WRITE_EXPECT[5]    = {0xE8, 0xF6, 0x8C, 0x08, 0x00}; // -> 0x004cff57
 const uint8_t       HDR_READ_EXPECT[5]     = {0xE8, 0x9F, 0x86, 0x08, 0x00}; // -> 0x004cfd58
 const uint8_t       LOADFAIL_MSG_EXPECT[5] = {0xE8, 0x38, 0x0F, 0x00, 0x00}; // -> 0x004bc6aa
 
-// Game data the splices read (EN image, fixed addresses).
-constexpr uintptr_t ADDR_VERSION_TABLE = 0x005d08f4; // 6 x 40-byte version strings
-constexpr uintptr_t ADDR_VERSION_INDEX = 0x005d09e4; // this build's slot (EN: 5)
-constexpr uintptr_t ADDR_VERSION_TEMP  = 0x00a4f128; // G_LZW_TEMP_DATA: where llm_game_load reads the 40 bytes
-constexpr uintptr_t ADDR_PLANETS       = 0x00be6da0; // Planets[i] (0x427 each); +8 = system_index
-constexpr uintptr_t ADDR_PLANET_STATUS = 0x00e5836b; // G_PLANET_STATUS[i] (dword)
-constexpr uintptr_t ADDR_PLANET_INDEX  = 0x00e58366; // G_PLANET_INDEX (dword)
-constexpr uintptr_t ADDR_CUR_SYSTEM    = 0x00e58781; // CurrentSystem (dword)
-constexpr uintptr_t ADDR_PATH_DIR      = 0x005d03f0; // "save\"
-constexpr uintptr_t ADDR_PATH_SUB      = 0x005d04f0; // "temp\"
-constexpr uintptr_t ADDR_PATH_FMT      = 0x00500ccd; // "save%02d"
+// DATAEXT1 (mh/mods/save_meta): the OUTER-container mod-metadata carrier. Its three game sites: the
+// SUCCESSFUL close of game_SaveGame (0x004475c5, after the trailing media block -- the failure close
+// at 0x004473ef is NOT spliced, so a failed save never grows a carrier), the load-succeeded branch of
+// llm_menu_loadgame_confirm (0x004bb761, the CALL llm_menu_finish_enter_gameplay) and -- only when
+// install_save_splices did NOT land the composed header-read stub -- the header-read site itself
+// (see install_mod_save_hooks; ownership is tracked by g_caps_splices_mask, never guessed from bytes).
+constexpr uintptr_t ADDR_CONTAINER_CLOSE      = 0x004475c5;                     // game_SaveGame: CALL utils_close_file (EAX = the FILE)
+constexpr uintptr_t ADDR_LOAD_OK_PUMP         = 0x004bb761;                     // llm_menu_loadgame_confirm: CALL llm_menu_finish_enter_gameplay
+constexpr uintptr_t FN_PUMP                   = 0x004b8245;                     // llm_menu_finish_enter_gameplay
+const uint8_t       CONTAINER_CLOSE_EXPECT[5] = {0xE8, 0x07, 0x82, 0x08, 0x00}; // -> 0x004cf7d1 (verified against /eng/mh.exe)
+const uint8_t       LOAD_OK_PUMP_EXPECT[5]    = {0xE8, 0xDF, 0xCA, 0xFF, 0xFF}; // -> 0x004b8245 (verified against /eng/mh.exe)
+// ORDERSEQ1: successful CONTAINER read close, not member-output close00447b17.
+// EN llm_game_load004475de reaches this only after extraction has succeeded.
+constexpr uintptr_t ADDR_CONTAINER_LOAD_CLOSE      = 0x00447b24u;
+const uint8_t       CONTAINER_LOAD_CLOSE_EXPECT[5] = {0xe8, 0xa8, 0x7c, 0x08, 0x00};
+constexpr uintptr_t ADDR_CONTAINER_LOAD_BEGIN      = 0x00447785u;
+constexpr uintptr_t ADDR_PLANET_LOAD_BEGIN         = 0x00448222u;
+const uint8_t       CONTAINER_LOAD_BEGIN_EXPECT[5] = {0xe8, 0x5c, 0x0f, 0x00, 0x00};
+const uint8_t       PLANET_LOAD_BEGIN_EXPECT[5]    = {0xe8, 0xbf, 0x04, 0x00, 0x00};
+uintptr_t           g_native_first_block_read      = 0x004486e6u;
 
-uintptr_t g_fn_read   = FN_FREAD; // storage for `call dword ptr [..]` in the naked stubs
-uintptr_t g_fn_write  = FN_FWRITE;
-uintptr_t g_fn_close  = FN_FCLOSE;
-uintptr_t g_fn_msgbox = FN_MSGBOX;
+// The container FILE at the 40-byte header read: BOTH header-read stubs store ECX here (the game
+// loads it from [EBP-0x28] at 0x004476a2) BEFORE the read call clobbers it; the mod probe reads it
+// afterwards. extern "C" so the inline asm can name it.
+extern "C" uintptr_t g_hdr_read_file; // defined in mods/save_meta.cpp
+
+// Game data the splices read (EN image, fixed addresses).
+constexpr uintptr_t ADDR_VERSION_TEMP = 0x00a4f128; // G_LZW_TEMP_DATA: where llm_game_load reads the 40 bytes
+
+uintptr_t g_fn_read        = FN_FREAD; // storage for `call dword ptr [..]` in the naked stubs
+uintptr_t g_fn_close       = FN_FCLOSE;
+uintptr_t g_fn_msgbox      = FN_MSGBOX;
+uintptr_t g_fn_pump        = FN_PUMP; // DATAEXT1: llm_menu_finish_enter_gameplay, through load_ok_pump_stub
+uintptr_t g_fn_save_planet = ADDR_SAVE_PLANET;
 
 int32_t crt_tell(void *f) { return static_cast<int32_t>(mh::call::detail::s_u32_EAX(FN_FTELL, reinterpret_cast<uint32_t>(f))); }
 int     crt_seek(void *f, int32_t off, int whence) {
@@ -145,57 +166,11 @@ uint32_t crt_write(void *f, const void *src, uint32_t n) {
 }
 const mh::caps::ovf::file_io CRT_IO = {&crt_tell, &crt_seek, &crt_read, &crt_write};
 
-// A Win32 handle as a file_io: the member probe opens the planet files read-only on its own, so the game's FILE state is untouched.
-int32_t w32_tell(void *h) {
-    const DWORD p = SetFilePointer(static_cast<HANDLE>(h), 0, nullptr, FILE_CURRENT);
-    return p == INVALID_SET_FILE_POINTER ? -1 : static_cast<int32_t>(p);
-}
-int w32_seek(void *h, int32_t off, int whence) {
-    return SetFilePointer(static_cast<HANDLE>(h), off, nullptr, whence == 0 ? FILE_BEGIN : whence == 1 ? FILE_CURRENT
-                                                                                                       : FILE_END) == INVALID_SET_FILE_POINTER
-               ? -1
-               : 0;
-}
-uint32_t w32_read(void *h, void *dst, uint32_t n) {
-    DWORD got = 0;
-    return ReadFile(static_cast<HANDLE>(h), dst, n, &got, nullptr) ? got : 0;
-}
-uint32_t                     w32_write(void *, const void *, uint32_t) { return 0; }
-const mh::caps::ovf::file_io W32_IO = {&w32_tell, &w32_seek, &w32_read, &w32_write};
-
-template <class T>
-T rd(uintptr_t a) { return *reinterpret_cast<const T *>(a); }
-
-const uint8_t *version_slot() {
-    const uint32_t i = rd<uint32_t>(ADDR_VERSION_INDEX);
-    return reinterpret_cast<const uint8_t *>(ADDR_VERSION_TABLE + (i < 6u ? i : 0u) * mh::caps::ovf::VERSION_BYTES);
-}
-
-int32_t probe_system(void *, int i) { return rd<int32_t>(ADDR_PLANETS + 8u + static_cast<uintptr_t>(i) * 0x427u); }
-int32_t probe_status(void *, int i) { return rd<int32_t>(ADDR_PLANET_STATUS + static_cast<uintptr_t>(i) * 4u); }
-// The member path the container loop builds (0x44741a..0x4474e1): "save\" + "temp\" + sprintf("save%02d", i).
-bool probe_footer(void *, int i) {
-    char path[300];
-    char num[48];
-    _snprintf_s(path, sizeof(path), _TRUNCATE, "%s%s", reinterpret_cast<const char *>(ADDR_PATH_DIR), reinterpret_cast<const char *>(ADDR_PATH_SUB));
-    _snprintf_s(num, sizeof(num), _TRUNCATE, reinterpret_cast<const char *>(ADDR_PATH_FMT), i);
-    strncat_s(path, sizeof(path), num, _TRUNCATE);
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-    const bool ok = mh::caps::ovf::file_has_footer(W32_IO, h);
-    CloseHandle(h);
-    return ok;
-}
-mh::caps::ovf::member_probe make_probe() {
-    return {nullptr, &probe_system, &probe_status, &probe_footer, rd<int32_t>(ADDR_CUR_SYSTEM), rd<int32_t>(ADDR_PLANET_INDEX)};
-}
-
-uint8_t g_stamp[mh::caps::ovf::VERSION_BYTES];
 wchar_t g_refusal_text[mh::ui::STR_MAX];
 
 void on_save_entry() {
     mh::caps::canon_gather();
-    mh::caps::path::save_begin(); // PT-CAP9-U7b: the file gets a vanilla-shaped path free count (restored in on_save_tail / the next sim step)
+    mh::caps::path::save_begin(); // restored on EVERY result path at the common native save finalizer
 }
 // canon_scatter() zeroes the wide tails, THEN the trailer (if any) writes them back; the file position is restored. Runs after the LAST pool block.
 void on_load_arrays_done(void *file, int32_t *fail) {
@@ -204,23 +179,43 @@ void on_load_arrays_done(void *file, int32_t *fail) {
     mh::caps::orders::finish_scatter();                                                                     // PT-CAP9-U7c: the queue count the file carried (past 300) comes back with its tail records, or stays clamped (logged)
     mh::caps::path::after_load((mh::caps::ovf::last_load_features() & mh::caps::ovf::FEAT_PATH_ID16) != 0); // PT-CAP9-U4/U7b: the 16-bit path ids + free counts
 }
-void on_save_tail(void *file) {
-    mh::caps::ovf::save_tail(CRT_IO, file, rd<int32_t>(ADDR_PLANET_INDEX));
-    mh::caps::path::save_end();
+int on_save_tail(void *file) {
+    const bool ok = mh::storage_policy::save::write_planet(CRT_IO, file);
+    return ok ? 1 : 0;
 }
-// -> the stamp to write instead of the table slot, or null.
-const void *on_header_write() {
-    const mh::caps::ovf::member_probe mp = make_probe();
-    if (!mh::caps::ovf::stamp_needed(mp)) return nullptr;
-    mh::caps::ovf::make_stamp(version_slot(), g_stamp);
-    seam_log("; [caps] save: container stamped (a member planet carries an overflow trailer)\n");
-    return g_stamp;
+void on_save_restore() { mh::caps::savehost::restore(); }
+int  g_caps_splices_mask = 0; // install_save_splices' landed bits; bit 4 = the composed stub owns the header-read site
+void on_header_read() {
+    if (!mh::storage_policy::save::host_normalize_version(reinterpret_cast<void *>(ADDR_VERSION_TEMP)))
+        memset(reinterpret_cast<void *>(ADDR_VERSION_TEMP), 0, 40);
 }
-void on_header_read() { mh::caps::ovf::version_check(reinterpret_cast<uint8_t *>(ADDR_VERSION_TEMP), version_slot()); }
+int on_container_tail(void *file) {
+    return mh::storage_policy::save::host_finish_container(static_cast<int32_t>(reinterpret_cast<uintptr_t>(file)));
+}
+int on_container_loaded(void *file) noexcept {
+    try {
+        return mh::storage_policy::save::host_load_container(static_cast<int32_t>(reinterpret_cast<uintptr_t>(file)));
+    } catch (...) { return 0; }
+}
+int on_load_begin() noexcept {
+    try {
+        return mh::storage_policy::save::host_begin_load();
+    } catch (...) { return 0; }
+}
+void on_load_result(uintptr_t frame) {
+    auto &result     = *reinterpret_cast<uint32_t *>(frame - 0x14);
+    auto &file_value = *reinterpret_cast<int32_t *>(frame - 0x28);
+    if (file_value == 0) return;
+    if (result == 1 && !mh::storage_policy::save::host_load_planet(file_value)) result = 0;
+    mh::call::utils_close_file(reinterpret_cast<void *>(static_cast<uintptr_t>(file_value)));
+    file_value = 0;
+}
 // -> the text to show instead of the generic load-failure line, or null.
 const void *on_loadfail_text() {
-    if (!mh::caps::ovf::take_refused_raised()) return nullptr;
-    wcsncpy_s(g_refusal_text, mh::ui::tr(mh::ui::Str::CAPS_LOAD_REFUSED), _TRUNCATE);
+    const bool raised          = mh::caps::ovf::take_refused_raised();
+    const bool missing_tileset = mh::seams::maps::take_missing_save_tileset_refusal();
+    if (!raised && !missing_tileset) return nullptr;
+    wcsncpy_s(g_refusal_text, mh::ui::tr(raised ? mh::ui::Str::CAPS_LOAD_REFUSED : mh::ui::Str::MODS_SAVE_TILESET_MISSING), _TRUNCATE);
     // The box draws centred lines but never wraps (the 87-char English text ran off both edges as one line): break the text at the
     // space nearest the middle -- an embedded LF is honoured (measured on the rig, tmp/capraise/s3g/png/refused_en.png).
     {
@@ -230,7 +225,8 @@ const void *on_loadfail_text() {
             if (g_refusal_text[i] == L' ' && (best == 0 || (i > n / 2 ? i - n / 2 : n / 2 - i) < (best > n / 2 ? best - n / 2 : n / 2 - best))) best = i;
         if (best) g_refusal_text[best] = L'\n';
     }
-    seam_log("; [caps] load REFUSED: showing the raised-limits message\n");
+    seam_log(raised ? "; [caps] load REFUSED: showing the raised-limits message\n"
+                    : "; [mods] load REFUSED: showing the missing-tileset message\n");
     return g_refusal_text;
 }
 
@@ -271,33 +267,27 @@ __declspec(naked) void save_close_stub() {
         push eax
         call on_save_tail
         add  esp, 4
+        test eax, eax
+        jnz tail_ok
+        inc dword ptr [ebp - 0x24]
+    tail_ok:
         popfd
         popad
         jmp  dword ptr [g_fn_close]
     }
 }
-// game_SaveGame's 40-byte header write: EAX = the source. A raised container writes the stamp instead.
-__declspec(naked) void header_write_stub() {
-    __asm {
-        pushad
-        pushfd
-        call on_header_write
-        test eax, eax
-        jz   keep
-        mov  dword ptr [esp + 32], eax          // pushad's EAX slot (above the pushfd word)
-    keep:
-        popfd
-        popad
-        jmp  dword ptr [g_fn_write]
-    }
-}
-// llm_game_load's 40-byte header read: do the read, then look at what arrived (EAX = the read's result survives).
+// llm_game_load's 40-byte header read: do the read, then look at what arrived (EAX = the read's result
+// survives). ECX (the FILE) is captured BEFORE the read clobbers it: the mod-metadata probe needs the
+// handle. One stub serves both consumers -- the caps stamp check (armed only when the relocation
+// applied) and the mod probe -- so this site has exactly one writer per run.
 __declspec(naked) void header_read_stub() {
     __asm {
+        mov  dword ptr [g_hdr_read_file], ecx
         call dword ptr [g_fn_read]
         pushad
         pushfd
         call on_header_read
+        call mh_mods_save_on_header_probe
         popfd
         popad
         ret
@@ -318,6 +308,214 @@ __declspec(naked) void loadfail_msg_stub() {
         jmp  dword ptr [g_fn_msgbox]
     }
 }
+// game_SaveGame's SUCCESSFUL close (0x004475c5, after the trailing media block; the failure close at
+// 0x004473ef is not spliced): EAX = the FILE. Compose required metadata, then close once.
+// A metadata failure clears the native save result and resumes its common failure return.
+__declspec(naked) void container_close_stub() {
+    __asm {
+        pushad
+        pushfd
+        push eax
+        call on_container_tail
+        add  esp, 4
+        test eax, eax
+        jnz container_ok
+        mov dword ptr [ebp - 0x18], 0
+        mov dword ptr [esp + 36], 004475d1h
+    container_ok:
+        popfd
+        popad
+        jmp  dword ptr [g_fn_close]
+    }
+}
+// The original CALL's entry ESP points at00447b29, EAX is the opaque Watcom FILE.
+// pushfd+pushad adds36 bytes: [esp+28]=saved EAX, [esp+32]=flags,
+// [esp+36]=ORIGINAL CALL return. EBX captures that frame before aligned FXSAVE scratch.
+// On refusal the original close still runs once, but returns to00447b9f, which writes
+// [ebp-18]=0 before the common00447ba6 return. No apply callback/current-member load.
+__declspec(naked) void container_load_close_stub() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
+        push eax
+        call on_container_loaded
+        add esp, 4
+        cmp eax, 1
+        je container_loaded
+        mov dword ptr [ebx + 36], 00447b9fh
+    container_loaded:
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        jmp dword ptr [g_fn_close]
+    }
+}
+// Accepted native version/open only. Quarantine outgoing ownership before the first
+// incoming bulk write, including same-world reloads. Preflight/header/resource probes stay read-only.
+// EAX=destination, EDX=bytes, EBX=opaque FILE; all are restored before original reader.
+__declspec(naked) void container_load_begin_stub() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
+        call on_load_begin
+        cmp eax, 1
+        je container_begin_ok
+        mov dword ptr [ebx + 36], 00447994h
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        ret
+    container_begin_ok:
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        jmp dword ptr [g_native_first_block_read]
+    }
+}
+__declspec(naked) void planet_load_begin_stub() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
+        call on_load_begin
+        cmp eax, 1
+        je planet_begin_ok
+        mov dword ptr [ebp - 20h], 1
+        mov dword ptr [ebx + 36], 004485e5h
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        ret
+    planet_begin_ok:
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        jmp dword ptr [g_native_first_block_read]
+    }
+}
+// llm_menu_loadgame_confirm's load-succeeded branch: commit the probe's staged provenance and print
+// the queued notice once, BEFORE the menu hands over to the game (the save's own message queue is
+// already restored by then, so our entry is not overwritten by the file; still no modal, no net pump).
+__declspec(naked) void load_ok_pump_stub() {
+    __asm {
+        pushad
+        pushfd
+        call mh_mods_save_commit_and_notify
+        popfd
+        popad
+        jmp  dword ptr [g_fn_pump]
+    }
+}
+// Every native save exit, including NULL open, restores temporary path encoding exactly once.
+__declspec(naked) void planet_save_result_stub() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        call on_save_restore
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        mov eax, dword ptr [ebp - 0x14]
+        lea esp, [ebp - 0x10]
+        push 00448101h
+        ret
+    }
+}
+// Deferred FILE close: all block/tileset/apply failures converge here before epilogue.
+__declspec(naked) void planet_load_result_stub() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        push ebp
+        call on_load_result
+        add esp, 4
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        mov eax, dword ptr [ebp - 0x14]
+        lea esp, [ebp - 0x10]
+        push 0044865bh
+        ret
+    }
+}
+__declspec(naked) void container_planet_save_stub() {
+    __asm {
+        call dword ptr [g_fn_save_planet]
+        pushfd
+        test eax, eax
+        jnz saved
+        mov dword ptr [ebp - 0x18], 0
+        mov dword ptr [esp + 4], 004475d1h
+    saved:
+        popfd
+        ret
+    }
+}
+__declspec(naked) void tactical_planet_save_stub() {
+    __asm {
+        call dword ptr [g_fn_save_planet]
+        pushfd
+        test eax, eax
+        jnz saved
+        mov dword ptr [esp + 4], 0044d3a0h
+    saved:
+        popfd
+        ret
+    }
+}
+__declspec(naked) void container_member_guard_stub() {
+    __asm {
+        pushfd
+        cmp dword ptr [ebp - 0x20], 0
+        jz refused
+        mov dword ptr [esp + 4], 00447507h
+        popfd
+        ret
+    refused:
+        mov dword ptr [esp + 4], 004473ech
+        popfd
+        ret
+    }
+}
 // clang-format on
 
 // `E8 rel32` to `stub` from `site`.
@@ -327,20 +525,133 @@ void call_repl(uint8_t (&repl)[5], uintptr_t site, void (*stub)()) {
     memcpy(repl + 1, &rel, sizeof(rel));
 }
 
-// The four raised-caps-save splices. Returns a bitmask of the ones that landed (1 trailer, 2 stamp, 4 version check, 8 message).
+struct load_lifecycle_patch {
+    uintptr_t      site;
+    const uint8_t *original;
+    void (*stub)();
+    uint8_t replacement[5]{};
+    bool    owned = false;
+};
+load_lifecycle_patch g_load_lifecycle[] = {
+    {ADDR_CONTAINER_LOAD_BEGIN, CONTAINER_LOAD_BEGIN_EXPECT, &container_load_begin_stub},
+    {ADDR_PLANET_LOAD_BEGIN, PLANET_LOAD_BEGIN_EXPECT, &planet_load_begin_stub},
+    {ADDR_CONTAINER_LOAD_CLOSE, CONTAINER_LOAD_CLOSE_EXPECT, &container_load_close_stub},
+};
+bool install_load_lifecycle() {
+    for (auto &p : g_load_lifecycle) {
+        if (mh::hook::promoted_owner_of(p.site)) {
+            if (p.owned) return false;
+            continue;
+        }
+        if (p.owned) {
+            if (memcmp(reinterpret_cast<const void *>(p.site), p.replacement, sizeof(p.replacement))) return false;
+            continue;
+        }
+        call_repl(p.replacement, p.site, p.stub);
+        if (!mh::hook::patch_bytes_guarded(p.site, p.original, p.replacement, 5)) return false;
+        p.owned = true;
+    }
+    return true;
+}
+bool rollback_load_lifecycle() {
+    bool ok = true;
+    for (uint32_t i = uint32_t(sizeof(g_load_lifecycle) / sizeof(g_load_lifecycle[0])); i; --i) {
+        auto &p = g_load_lifecycle[i - 1];
+        if (!p.owned) continue;
+        // Never restore through a foreign replacement. Continue restoring other owned sites.
+        if (!mh::hook::patch_bytes_guarded(p.site, p.replacement, p.original, 5)) {
+            ok = false;
+            continue;
+        }
+        p.owned = false;
+        memset(p.replacement, 0, sizeof(p.replacement));
+    }
+    return ok;
+}
+// Required extensions are cap-independent; promoted bodies own matching host callbacks.
+bool required_call(uintptr_t site, const uint8_t *expected, void (*stub)()) {
+    if (mh::hook::promoted_owner_of(site)) return true;
+    uint8_t replacement[5];
+    call_repl(replacement, site, stub);
+    return mh::hook::patch_bytes_guarded(site, expected, replacement, 5);
+}
 int install_save_splices() {
     mh::caps::ovf::set_save_logger(&seam_log);
-    uint8_t repl[5];
-    int     m = 0;
-    call_repl(repl, ADDR_SAVE_CLOSE, &save_close_stub);
-    if (mh::hook::patch_bytes_guarded(ADDR_SAVE_CLOSE, SAVE_CLOSE_EXPECT, repl, 5)) m |= 1;
-    call_repl(repl, ADDR_HDR_WRITE, &header_write_stub);
-    if (mh::hook::patch_bytes_guarded(ADDR_HDR_WRITE, HDR_WRITE_EXPECT, repl, 5)) m |= 2;
-    call_repl(repl, ADDR_HDR_READ, &header_read_stub);
-    if (mh::hook::patch_bytes_guarded(ADDR_HDR_READ, HDR_READ_EXPECT, repl, 5)) m |= 4;
-    call_repl(repl, ADDR_LOADFAIL_MSG, &loadfail_msg_stub);
-    if (mh::hook::patch_bytes_guarded(ADDR_LOADFAIL_MSG, LOADFAIL_MSG_EXPECT, repl, 5)) m |= 8;
-    return m;
+    int        mask       = 0;
+    const bool save_tail  = required_call(ADDR_SAVE_CLOSE, SAVE_CLOSE_EXPECT, &save_close_stub);
+    bool       save_final = mh::hook::promoted_owner_of(0x004480fbu) != nullptr;
+    if (!save_final) {
+        const uint8_t expected[6] = {0x8b, 0x45, 0xec, 0x8d, 0x65, 0xf0};
+        uint8_t       jump[6]     = {0xe9, 0, 0, 0, 0, 0x90};
+        const int32_t rel         = static_cast<int32_t>(reinterpret_cast<uintptr_t>(&planet_save_result_stub) - (0x004480fbu + 5));
+        memcpy(jump + 1, &rel, 4);
+        save_final = mh::hook::patch_bytes_guarded(0x004480fbu, expected, jump, 6);
+    }
+    if (save_tail && save_final) mask |= 1;
+    bool load_final = mh::hook::promoted_owner_of(0x00448655u) != nullptr;
+    if (!load_final) {
+        const uint8_t close_expected[5]  = {0xe8, 0xe4, 0x71, 0x08, 0x00};
+        const uint8_t no_close[5]        = {0x90, 0x90, 0x90, 0x90, 0x90};
+        const uint8_t result_expected[6] = {0x8b, 0x45, 0xec, 0x8d, 0x65, 0xf0};
+        uint8_t       jump[6]            = {0xe9, 0, 0, 0, 0, 0x90};
+        const int32_t rel                = static_cast<int32_t>(reinterpret_cast<uintptr_t>(&planet_load_result_stub) - (0x00448655u + 5));
+        memcpy(jump + 1, &rel, 4);
+        load_final = mh::hook::patch_bytes_guarded(0x004485e8u, close_expected, no_close, 5) &&
+                     mh::hook::patch_bytes_guarded(0x00448655u, result_expected, jump, 6);
+    }
+    if (load_final) mask |= 2;
+    if (required_call(ADDR_HDR_READ, HDR_READ_EXPECT, &header_read_stub)) mask |= 4;
+    if (required_call(ADDR_LOADFAIL_MSG, LOADFAIL_MSG_EXPECT, &loadfail_msg_stub)) mask |= 8;
+    const uint8_t first_save[5] = {0xe8, 0x14, 0x0a, 0x00, 0x00};
+    if (required_call(0x0044719au, first_save, &container_planet_save_stub)) mask |= 16;
+    bool member_guard = mh::hook::promoted_owner_of(0x004474f5u) != nullptr;
+    if (!member_guard) {
+        const uint8_t expected[6]    = {0x83, 0x7d, 0xcc, 0x00, 0x75, 0x0c};
+        uint8_t       replacement[6] = {0, 0, 0, 0, 0, 0x90};
+        uint8_t       call[5];
+        call_repl(call, 0x004474f5u, &container_member_guard_stub);
+        memcpy(replacement, call, 5);
+        member_guard = mh::hook::patch_bytes_guarded(0x004474f5u, expected, replacement, 6);
+    }
+    if (member_guard) mask |= 32;
+    const uint8_t tactical[5] = {0xe8, 0x1f, 0xa8, 0xff, 0xff};
+    if (required_call(0x0044d38fu, tactical, &tactical_planet_save_stub)) mask |= 64;
+    if (required_call(ADDR_CONTAINER_CLOSE, CONTAINER_CLOSE_EXPECT, &container_close_stub)) mask |= 128;
+    g_caps_splices_mask = mask;
+    return mask;
+}
+
+// Provenance hooks share the required storage header/close owners in every caps configuration.
+// The promoted twins call the same hosted preflight/finish callbacks; no competing header stub.
+bool install_mod_save_hooks() {
+    mh::mods::save::set_logger(&seam_log);
+    // (the active-set source is wired ONCE by the resource boot arm after mount_snapshot -- not here)
+    // The same failure-dialog splice also carries missing-save-tileset refusals in stock/no-mod boots.
+    if (!(g_caps_splices_mask & 8)) {
+        uint8_t notice_repl[5];
+        call_repl(notice_repl, ADDR_LOADFAIL_MSG, &loadfail_msg_stub);
+        if (mh::hook::patch_bytes_guarded(ADDR_LOADFAIL_MSG, LOADFAIL_MSG_EXPECT, notice_repl, 5))
+            g_caps_splices_mask |= 8;
+        else
+            seam_log("; [mods] save missing-tileset failure notice hook NOT armed\n");
+    }
+    const bool probe_by_caps = (g_caps_splices_mask & 4) != 0; // the composed stub owns the site
+    uint8_t    repl[5];
+    int        m = 0;
+    if ((g_caps_splices_mask & 128) || required_call(ADDR_CONTAINER_CLOSE, CONTAINER_CLOSE_EXPECT, &container_close_stub)) m |= 2;
+    call_repl(repl, ADDR_LOAD_OK_PUMP, &load_ok_pump_stub);
+    if (mh::hook::patch_bytes_guarded(ADDR_LOAD_OK_PUMP, LOAD_OK_PUMP_EXPECT, repl, 5)) m |= 4;
+    const bool continuation = replay_boundary_install_mod_continue();
+    mh::mods::save::set_continue_ready(continuation);
+    const bool probe_ok = probe_by_caps || (m & 1);
+    const bool ok       = probe_ok && (m & 2) && (m & 4);
+    char       b[400];
+    _snprintf_s(b, sizeof(b), _TRUNCATE, "; [mods] save hooks: probe %s, container close %s, load notice %s, campaign continuation %s -- mods %s\n",
+                probe_by_caps ? "armed (caps stub)" : ((m & 1) ? "armed" : "NOT armed"), (m & 2) ? "armed" : "NOT armed",
+                (m & 4) ? "armed" : "NOT armed", continuation ? "armed" : "NOT armed", ok ? "may mount" : "HELD: whole-stock fallback");
+    seam_log(b);
+    mh::mods::save::set_hooks_ready(ok);
+    return ok;
 }
 
 void fmt_ms(char *out, size_t cap, uint32_t micros) {
@@ -349,7 +660,7 @@ void fmt_ms(char *out, size_t cap, uint32_t micros) {
 
 } // namespace
 
-extern "C" int MH_Caps_Install(const char *ini_path) {
+int caps_install_impl(const char *ini_path) {
     if (!ini_path) return 0;
     g_attempted = true;
     g_post_dump = mh_ini_get_int("caps", "post_match_dump", 0, ini_path) != 0;
@@ -534,10 +845,11 @@ extern "C" int MH_Caps_Install(const char *ini_path) {
 
     // D1 hooks. The load splice is a mid-body trampoline: check its six bytes by hand (the primitive's own
     // prologue guard is off for a non-entry) and refuse rather than splice an unknown instruction.
-    bool save_ok = mh::hook::install_trampoline(ADDR_SAVE_PLANET, (void *)save_entry_detour, &g_save_tramp, 8,
-                                                mh::hook::entry_claim::exclusive, "the caps canonical-mirror gather (planet save)");
-    bool load_ok = false;
-    if (memcmp(reinterpret_cast<const void *>(ADDR_LOAD_ARRAYS_END), LOAD_SPLICE_EXPECT, sizeof(LOAD_SPLICE_EXPECT)) == 0)
+    bool save_ok = mh::hook::promoted_owner_of(ADDR_SAVE_PLANET) != nullptr;
+    if (!save_ok) save_ok = mh::hook::install_trampoline(ADDR_SAVE_PLANET, (void *)save_entry_detour, &g_save_tramp, 8,
+                                                         mh::hook::entry_claim::exclusive, "the caps canonical-mirror gather (planet save)");
+    bool load_ok = mh::hook::promoted_owner_of(ADDR_LOAD_ARRAYS_END) != nullptr;
+    if (!load_ok && memcmp(reinterpret_cast<const void *>(ADDR_LOAD_ARRAYS_END), LOAD_SPLICE_EXPECT, sizeof(LOAD_SPLICE_EXPECT)) == 0)
         load_ok = mh::hook::install_trampoline(ADDR_LOAD_ARRAYS_END, (void *)load_arrays_detour, &g_load_tramp, 6,
                                                mh::hook::entry_claim::exclusive, "the caps canonical-mirror scatter (planet load)", 0);
     _snprintf_s(b, sizeof(b), _TRUNCATE, "; [caps] canonical-mirror hooks: save gather %s, load scatter %s\n",
@@ -545,11 +857,40 @@ extern "C" int MH_Caps_Install(const char *ini_path) {
     seam_log(b);
     if (!save_ok || !load_ok)
         seam_log("; [caps] WARNING: a mirror hook is missing -- saves/loads through the stock-shaped blocks are WRONG this run\n");
-    const int sv = install_save_splices();
-    _snprintf_s(b, sizeof(b), _TRUNCATE, "; [caps] save splices: trailer %s, container stamp %s, version check %s, refusal message %s\n",
-                (sv & 1) ? "armed" : "NOT armed", (sv & 2) ? "armed" : "NOT armed", (sv & 4) ? "armed" : "NOT armed", (sv & 8) ? "armed" : "NOT armed");
-    seam_log(b);
-    if (sv != 15) seam_log("; [caps] WARNING: a raised-save splice is missing -- a raised world will NOT round-trip through a save this run\n");
+    return rc;
+}
+
+namespace mh::caps::savehost {
+int32_t prepare() {
+    canon_gather();
+    path::save_begin();
+    return 1;
+}
+void    restore() { path::save_end(); }
+int32_t load_extensions(int32_t handle) {
+    int32_t failed = 0;
+    canon_scatter();
+    const int result = ovf::load_tail(CRT_IO, reinterpret_cast<void *>(static_cast<uintptr_t>(handle)), &failed);
+    orders::finish_scatter();
+    path::after_load((ovf::last_load_features() & ovf::FEAT_PATH_ID16) != 0);
+    return result >= 0 && failed == 0 ? 1 : 0;
+}
+} // namespace mh::caps::savehost
+
+
+// DATAEXT1: the mod hooks install AFTER the caps decision, in every configuration -- the relocation
+// gate must not gate the mod carrier. The wrapper FOLLOWS the definition, so caps_install_impl is
+// declared where the wrapper compiles.
+extern "C" int MH_Caps_Install(const char *ini_path) {
+    const int rc = caps_install_impl(ini_path);
+    if (!install_load_lifecycle() || install_save_splices() != 255 || !replay_boundary_install_storage_save()) {
+        if (!rollback_load_lifecycle())
+            seam_log("; [storage] load lifecycle rollback REFUSED: site no longer matches owned bytes\n");
+        seam_log("; [storage] required save carriers could not arm; refusing unsafe game execution\n");
+        TerminateProcess(GetCurrentProcess(), ERROR_INVALID_DATA);
+        return 0;
+    }
+    install_mod_save_hooks();
     return rc;
 }
 

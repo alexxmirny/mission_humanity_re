@@ -59,17 +59,18 @@ from __future__ import annotations
 
 import argparse
 import collections
-import copy
 import json
 import os
 import sys
 
+import tool_paths
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
-from call_graph import load_graph, reachable  # noqa: E402
+from call_graph import load_graph, reachable
 
-MATRIX = os.path.join(REPO, "tmp", "state_matrix.json")
+MATRIX = tool_paths.input_path("state_matrix.json", repo=REPO)
 REGIONS = os.path.join(REPO, "tools", "data", "state_regions.json")
 DISPOSITIONS = os.path.join(REPO, "tools", "data", "boot_snapshot_dispositions.json")
 SCHEMA = os.path.join(REPO, "tools", "data", "boot_snapshot_schema.json")
@@ -176,7 +177,7 @@ def rid_covering(rows, addr, size):
     a = int(addr, 16)
     n = max(size, 1)
     for r in rows:
-        if r["base"] <= a and a + n <= r["base"] + max(r["reach"], 1):
+        if not r.get("host_native") and r["base"] <= a and a + n <= r["base"] + max(r["reach"], 1):
             return r
     return None
 

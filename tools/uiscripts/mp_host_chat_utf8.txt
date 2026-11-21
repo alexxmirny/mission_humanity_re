@@ -49,12 +49,15 @@ gameclock 6000
 # Open the line, type the three scripts. The spaces are scancode 0x39 so no layout owns them.
 key 0x1c
 layout 00000419
+chatready
 type Привет
 key 0x39
 layout 00000415
+chatready
 type Łódź
 key 0x39
 layout default
+chatready
 type ok
 # 23 UTF-8 bytes: d09f d180 d0b8 d0b2 d0b5 d182 | 20 | c581 c3b3 64 c5ba | 20 | 6f 6b. Read BEFORE the
 # submit -- llm_chat_history_push clears the line.

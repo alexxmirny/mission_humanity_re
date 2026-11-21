@@ -4,6 +4,7 @@
 // being a draft.
 //
 #include "sim/resid/sim_planet_session_begin.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"                            // typed callables for the effectful originals we still call OUT to
 #include "sim/libtrans/sim_lt_progress_unlock_fixpoint.h" // the rebound propagate_unlocks
@@ -103,6 +104,16 @@ void planet_session_begin(const sim_view &v, sim_store &own,
 
     c.ui_message_queue_clear_all();
     c.map_read_map_pre(static_cast<uint32_t>(*v.planet_index));
+    // Fresh generation: map read published real geometry and cleared the old roster.
+    // Setup alone deliberately preserves same-sized worlds; reset even on system reset=1.
+    mh_storage_policy_request policy_extent{};
+    mh_storage_policy_result  policy_result{};
+    policy_extent.operation = static_cast<uint32_t>(mh::storage_policy::operation::map_extent);
+    policy_extent.args[0]   = static_cast<uint32_t>(*v.map_width);
+    policy_extent.args[1]   = static_cast<uint32_t>(*v.map_height);
+    own.storage_policy_request(policy_extent, policy_result);
+    own.storage_policy(mh::storage_policy::operation::reset_loaded_roster);
+    order_tasks_adapter::publish_fresh_world(v, own);
 
     // 0x00454221/0x0045422a: SP defaults -- local player is side 0, in local-player-slot 1.
     own.player_side_mut()       = 0; // PlayerSide -- DECLARED NEED (no prior writer)

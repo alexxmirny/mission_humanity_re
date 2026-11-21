@@ -12,6 +12,7 @@
 // `ptr<>` at the use site.
 //
 #include "tact/tact_state.h"
+#include "state/order_tasks_runtime.h"
 
 #include "tact/tact_dir24_approach.h"
 #include "tact/tact_ambient_sound.h"
@@ -321,6 +322,7 @@ tact_state state() {
                    ptr<int32_t>(RID_TACT_SIDEBAR_GROUP_SCROLL_ROW),
                    ptr<uint8_t>(RID_TACT_UNASSIGNED_UNIT_ROSTER), ptr<uint8_t>(RID_TACT_GROUP_UNIT_ROSTER),
                    ptr<uint8_t>(RID_MOUSE_BUTTONS_CUR), ptr<wchar_t>(RID_G_TEXT_TMP));
+    own.order_tasks_observer_ = &mh::order_tasks::runtime::request_host;
     return tact_state{v, own};
 }
 

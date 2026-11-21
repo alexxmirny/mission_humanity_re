@@ -26,7 +26,7 @@
  "sites": [
   {
    "file": "lockstep/rx_dispatch.cpp",
-   "line": 711,
+   "line": 789,
    "callee": "llm_strat_order_pending_enqueue",
    "module": "lockstep",
    "shape": "binder",
@@ -59,7 +59,7 @@
  "guarded_sites": [
   {
    "file": "save/save_live.cpp",
-   "line": 535,
+   "line": 559,
    "callee": "detail::g_load_tramp",
    "module": "save",
    "shape": "tramp",
@@ -69,7 +69,7 @@
   },
   {
    "file": "save/save_live.cpp",
-   "line": 1107,
+   "line": 1144,
    "callee": "detail::g_container_tramp",
    "module": "save",
    "shape": "tramp",
@@ -79,7 +79,7 @@
   },
   {
    "file": "save/save_live.cpp",
-   "line": 1291,
+   "line": 1328,
    "callee": "detail::g_container_load_tramp",
    "module": "save",
    "shape": "tramp",
@@ -89,7 +89,7 @@
   },
   {
    "file": "save/save_live.cpp",
-   "line": 1438,
+   "line": 1475,
    "callee": "detail::g_tramp",
    "module": "save",
    "shape": "tramp",

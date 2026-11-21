@@ -4,37 +4,31 @@ Three halves that MUST come from **one run**, because separately they describe d
 
 | half | file | what it is |
 | --- | --- | --- |
-| the recording | `orders.bin.zz` + `clock.bin.zz` | every order sitting in `order_queue` per step, tagged with its step (`mh_orders.bin`), and the per-step game clock as raw doubles (`mh_clock.bin`) so a real-time recording replays with its own deltas |
-| the step-0 world | `world.bin.zz` | every bound region at the instant before the first sim step (LIB-WORLD), so a standalone host starts without a cfg parser or a map reader |
-| the hash stream | `hash_steps.txt.zz` + `hash_regions.txt.zz` | LIB-REF's comparison target: the per-step `<step> <clock> <combined> <state>` lines and the per-region `R <step> <h0..h62>` lines |
+| the recording | `orders.bin.zz` + `clock.bin.zz` | MHOR v2's complete native queue snapshots at both HASH and post-AI/pre-count-gate ENTRY for every step, including empty queues; raw-double clocks preserve the recorded deltas |
+| the step-0 world | `world.bin.zz` | every bound region before the first simulation step, so standalone starts without a CFG parser or map reader |
+| the hash stream | `hash_steps.txt.zz` + `hash_regions.txt.zz` | per-step channels and all66 per-region columns (`R <step> <h0..h65>`) |
 
 `manifest.json` carries the provenance, the replay contract, and the fidelity measurements.
 `FIDELITY.md` is generated, not written — see below.
 
-## The contract LIB-REF inherits
+## The faithful replay contract
 
-**The replay configuration is part of the fixture, not a runner detail.** A standalone replayer must
-reproduce these *semantics*, not merely read the same bytes:
+**Configuration and sampling phases are part of the fixture.**
 
-- `replay_ai_off=0` — **the AI runs inside the sim.** Turning it off is not a neutral simplification:
-  measured, `strat_players` / `units` / `tile_objects` diverge from around step 200, because the AI
-  does more than enqueue orders and the recording only holds orders.
-- `replay_suppress_enqueue=1` — the immediate-lane enqueue returns 0 and appends nothing, so the
-  **injected recording is the only thing that reaches the order queue**. **The check sits at the
-  SINK** (`mh::orders::detail::enqueue`), not at the game entry's promotion wrapper where it lived
-  until 2026-09-11: a wrapper gate only saw callers that crossed `0x00466094`, so every
-  libmh-internal caller the rebind sends straight to our body walked past it — including the
-  harness's own `synth_move` workload, which appended one order per step the flag was supposed to
-  have stopped. A standalone replayer must therefore suppress **at the sink too**, or it is not
-  reproducing this flag (`libref_host` does, by default; `--no-suppress-enqueue` is the negative
-  arm and is *expected* to diverge — measured, at step 76, the first AI enqueue). **Scope:** the
-  immediate lane is the only appender in a non-lockstep session; the mode-3 lane reaches the queue
-  through `release_due`, which this flag deliberately does **not** suppress.
-- the injector overwrites `QUEUE[0..n]` and sets `COUNT` at the **top of each sim step**, before the
-  step is hashed.
+- `replay_ai_off=0`: AI runs normally. Disabling it changes more than the order queue.
+- `replay_suppress_enqueue=0`: real source enqueues, overflow and loss remain active. Do not
+  suppress at the entry wrapper, the sink or any other layer to make replay agree.
+- MHOR v2 carries exact68-byte native records in **HASH then ENTRY order on every step**,
+  including explicit empty phases. HASH replaces the queue at its existing hash sample;
+  ENTRY replaces it after AI and **before** the conditional dispatch count gate.
+- Only nonempty ENTRY dispatches. Handler-generated orders and canonical task direct-F execution
+  run once naturally; counts or a shared prefix cannot reconstruct either phase.
+- Require `HASH=5000 ENTRY=5000 missed=0 ai_off=0 suppress_enqueue=0` for these replay fixtures.
+  Old or incomplete faithful streams refuse explicitly.
 
-The full flag set is in `manifest.json` → `replay_contract.flags`, and `fixture_replay.py replay`
-reads it from there rather than from a copy in the tool.
+The generated manifest declares the stream version, both phases, native record size and effective
+record/replay flags. Preserve each profile's seed, step regime and process-local gameplay/audio
+configuration; an equal snapshot does not initialize unrecorded feature knobs.
 
 ## Compare `state`, never `combined`
 
@@ -50,21 +44,16 @@ the `state_excluded()` wall-clock/pacing regions. `combined` folds them in and i
 property of the **run**, not of the world. LIB-REF compares `state` and the per-region `R` columns.
 
 **And it compares them over the FULL region set: this fixture declares no exclusions.**
-Replay-vs-replay is bit-identical on all 63 regions at every step, so LIB-REF's oracle needs none.
-`FIDELITY.md` describes a *different* pair of runs (record vs replay) and its residue must not be
-carried into LIB-REF's comparison as an exclusion.
+Replay-vs-replay is bit-identical on all66 columns at every step. Record-versus-replay fidelity
+also compares every nonexcluded region without sampling allowances. Existing pacing exclusions
+remain explicit; `FIDELITY.md` is not permission to add gameplay masks.
 
-## The hash stream is the REPLAY's, not the record's
+## The hash stream and independent replay
 
-A record run and a replay run sample `order_queue` at different instants, so a
-record-stream-vs-replay comparison can never be clean however correct the fixture is — committing the
-record's stream would build a permanently-red instrument artifact into LIB-REF's oracle. The
-committed stream is what a **correct replayer** produces, and self-consistency is replay-vs-replay
-bit-identity.
-
-That alone would have a blind spot (a deterministically *broken* replay is also bit-identical with
-itself), so the record-vs-replay comparison is part of the acceptance and is **fail-closed**: see
-`FIDELITY.md` and `fixture_replay.py verify`.
+The committed stream is extracted from the first replay. A second independent replay must
+reproduce it exactly, and the original producer must agree on every nonexcluded region too.
+MHOR v2 preserves both sampling instants, so the old single-phase periodic queue-count residue
+is no longer an accepted explanation for a difference. `fixture_replay.py verify` fails closed.
 
 ## The keeper
 
@@ -77,59 +66,85 @@ itself), so the record-vs-replay comparison is part of the acceptance and is **f
 
 ## Re-recording it
 
-The fixture rots when the blob schema (`gen_world_snapshot.py`), the recording format, or the hash
-manifest moves. Every step below was executed end-to-end to produce the committed set (last: 2026-09-27,
-after mp:D38 row 10 appended hash region 63, `progress`; before that 2026-09-20, TL-GATE-D25FX, region 62.
-Both times the recording halves `orders.bin.zz`/`clock.bin.zz` came back BYTE-IDENTICAL to the 2026-09-11
-set; only the blob header's stamps and the hash stream moved). Step 1 must carry the committed
-`record_flags` verbatim -- this fixture's include `seed_mode=2`, which the command below omits.
+The fixture becomes stale when the world schema, faithful recording format, hash manifest or
+input epoch changes. The2026-11-10 QORD2 cutover genuinely recaptured all six5000-step profiles
+under manifest95DC868F, world schema7EAA1059, input epoch2 and66 regions, with AI/enqueues enabled.
+The producer is the shipping bound hosted execution profile, not an independent all-original
+oracle. Four replay profiles have two independent hosted replay arms; two live profiles have
+independent live arms. All six pass the actual standalone DLL importer/replayer with asset
+absence reverified. Exact producing source/configuration/module fences are retained in
+`evidence:tmp_cleanup_2026-11-15/retained/rc21_patrol/fixtures_recovery_20261110/source_receipt.json`
+and `evidence:tmp_cleanup_2026-11-15/retained/rc21_patrol/fixtures_finalF_20261110/source_receipt.json`.
+The approved2026-11-15 cleanup removed the old producer trees; these are selected receipts,
+not a claim that whole prior trees remain. Immutable fixture manifest `run_dir`, `source_run`
+and `stream_from_run` fields remain historical provenance, not live input paths.
 
-**A hash-manifest change means THIS procedure, in the same session, for all three fixtures and both
-UI-REC oracles — then the full gate.** The blob carries `hash_manifest_fp`; `replay_libref.py` headlines
+The2026-11-08 and2026-11-04/05 cuts are historical; preserved `fidelity.re_record` retains earlier
+lineage. Human-oracle migration separately requires complete freshly provisioned old/current
+Native EOF comparisons:18317 tutorial and30042 campaign rows, original gameplay/clocks/excusals
+preserved, and actual schema/observational-metadata differences explicitly evidenced.
+Do not replace whole-tape coverage with a passing bounded window.
+
+Current-image and metadata adjudication keepers are
+`evidence:tmp_cleanup_2026-11-15/retained/rc22_followup/current_original_image_receipt.json`,
+the individual `metadata_adjudication.json` files under
+`evidence:tmp_cleanup_2026-11-15/retained/rc22_followup/fixture_origin_migration/runs/libref-replay-v1/`
+and `libref-replay-v2/`, and the individual `campaign.json` / `tutorial.json` audits under
+`evidence:tmp_cleanup_2026-11-15/retained/rc22_followup/origin_metadata_audit/`.
+The preservation manifest identifies the selected oracle producer files; it does not attest
+retention of every original producer-directory member or substitute receipts for recordings.
+
+**A hash-manifest change means this procedure for every discoverable fixture and both UI-REC
+oracles in the same integration, then the appropriate fingerprint-wide gate.** The blob carries
 `STALE FIXTURE: captured under manifest X, current Y` and `tools/lint_fixture_currency.py` (a lint_repo row)
 stays red until the stamps match the generated header (dead-ends G248). The first gate after D25 read the
 stale set as three broken replays because nothing said "stale" above the fold.
 
-```
-# 0. a dedicated lane, headless -- a SCRATCH lane (lane_alloc block `scratch` = 96..98); 33 is inside
-#    the suite block since the 2026-09 re-allocation
-python tools/make_lane.py --name ui_libref_rec --lane 96 --port 6696 --headless
+```text
+# 0. Provision one dedicated, idle lane using current machine/lane configuration.
+#    Preserve prior fixture provenance and artifacts before replacing them.
 
-# 1. RECORD -- all three halves from ONE run. exit_on_stop=1 IS MANDATORY (see the traps).
+# 1. RECORD all halves from ONE genuine run. Use the manifest's record_flags,
+#    net configuration and audio fragment; keep seed_mode=2 and exit_on_stop=1.
 python tools/ui_test.py sp_det.txt --harness --steps 5000 \
-  --harness-extra "pin_wallclock=1;fixed_step=0;region_hash_step=1;order_mode=1;world_capture=1;\
-synth_move=1;synth_seed=20260911;synth_at=60;synth_every=1;exit_on_stop=1;pin_fpu=1" \
-  --host-dir <lane> --timeout-frames 400000 --timeout 2400 --headless --port 6696
+  --harness-extra "<record_flags>" --net-extra "<net>" \
+  --extra-ini <audio-fragment> --host-dir <lane> --port <port> \
+  --timeout-frames 400000 --timeout 2400 --headless
 
-# 2. pack the three halves + provenance
-python tools/fixture_replay.py pack <run_dir> --seed 20260911 --commit $(git rev-parse HEAD) \
-  --recorded <date> --script sp_det.txt --host "..." --peers "..." --record-flags '{...}'
+# 2. Pack actual output; use truthful producing-source provenance.
+python tools/fixture_replay.py pack <record> --out <fixture> \
+  --seed <seed> --commit <producing-base> --recorded <date> \
+  --script sp_det.txt --host "<source/configuration receipt>" --peers "<peers>" \
+  --record-flags "<record_flags JSON>" --fixed-step <0-or-1> --net "<net>"
 
-# 3. REPLAY #1 from the COMMITTED form -- its stream becomes the fixture's comparison target
-python tools/fixture_replay.py replay --lane <lane> --port 6696
-python tools/fixture_replay.py stream <replay1_run_dir>
-#    (`replay` returns the PROCESS run dir -- the `<ts>_menu_solo` one holding mh_harness.log -- not the
-#    per-session `<ts>_<sid>_0_solo` sibling; the same rule applies when picking a dir by hand)
-
-# 4. the 0 -> n guard: a RECORD run carrying an rdump of the order_queue_count slice over every
-#    step. Its recording must be byte-identical to the committed one; counts-guard refuses otherwise.
+# 3. Unpack and REPLAY #1 with the generated replay contract and SAME configuration.
+#    The direct driver keeps the audio fragment identical in every arm.
+python tools/fixture_replay.py unpack <fixture> --lane <lane>
 python tools/ui_test.py sp_det.txt --harness --steps 5000 \
-  --harness-extra "<the step-1 flags>;rdump_rid=42;rdump_lo=1;rdump_hi=5000" ...
-python tools/fixture_replay.py counts-guard <that_run_dir> --rid 42
+  --harness-extra "<record_flags overridden by replay_contract.flags>" \
+  --net-extra "<net>" --extra-ini <audio-fragment> \
+  --host-dir <lane> --port <port> --timeout-frames 400000 --timeout 2400 --headless
+python tools/fixture_replay.py stream <replay1> --fixture <fixture>
 
-# 5. REPLAY #2 -- the self-consistency proof
-python tools/fixture_replay.py replay --lane <lane> --port 6696
+# 4. Measure the ORIGINAL recording's exact two phases; no extra counts-dump run.
+python tools/fixture_replay.py counts-guard <record> --fixture <fixture>
 
-# 6. ACCEPT: integrity + the guard + replay-vs-replay bit-identity + the fail-closed fidelity table
-python tools/fixture_replay.py verify --replay-log <replay2>/mh_harness.log \
-  --against <record_run> --write-table
-#    A NEW downstream mark refuses until somebody localizes it. `--accept-marks` seeds the entry;
-#    the localization still has to be written by a human who looked (rdump the slice, diff the bytes).
+# 5. Repeat unpack + replay with a distinct fresh process, then verify.
+python tools/fixture_replay.py verify <fixture> --against <record> \
+  --replay-log <replay2>/mh_harness.log --write-table
+python tools/fixture_replay.py check <fixture>
 
-# 7. the world half, against the LIB-WORLD oracle, from the committed form
-python tools/fixture_replay.py unpack --lane <tmp> --world <tmp>/fixture_world.bin
-src/mh_dll/Release/libmh_selftest.exe worldtest <tmp>/fixture_world.bin
+# 6. Exercise all discoverable fixtures in the real standalone importer/replayer.
+python tools/replay_libref.py
 ```
+
+For live profiles, retain `order_mode=0`, perform two independent live runs and pass both
+`--live-log` arguments to `verify`; never inject an order recording. Use each fixture's actual
+scenario, not `sp_det.txt` for an all-AI soak. The stock-reference audio fragment sets
+`[snd] ack_cooldown_on_play=0`; the required stock gameplay knobs are declared in manifest `net`.
+An `[net]` section cannot be passed through `ui_test.py --extra-ini`: use `--net-extra`.
+Snapshot pre/post process directories, require successful child exit and exactly one fresh
+process, then bind its session membership. A newest-directory fallback is not provenance.
 
 **The `-v2` step regime (2026-09-30).** The same procedure records the fixed-step sets the standalone
 engine replays: add `fixed_step=1` to every run's harness extras, pass `--net-extra
@@ -151,27 +166,21 @@ got it). The clock track is then `0.02, 0.04, ...`, each entry the previous one 
   reference host came out one order short there. The exit is now latched and consumed at the next
   `on_sim_step` **or** `on_sim_tick` — both provably after the body, with `g_active` already false so
   nothing of step N+1 is hashed, clocked or counted. That bounds the deferral to exactly one body,
-  which is what keeps the mis-tagging trap above closed. Do **not** "simplify" it by snapshotting the
-  queue from the stop block instead: that is the *hash* instant, and `sim_step` runs `ai_players_tick`
-  between it and dispatch entry, so the exit step would get a different sampling point from the other
-  4999 — the very mechanism `attribute()` exists to account for, silently mis-stated for one row.
+  which keeps the mis-tagging trap above closed. Both final-step phases must still be captured;
+  do not replace dispatch ENTRY with the earlier HASH snapshot.
 - **`replay_ai_off=1` is the wrong flag** — see the contract above.
 - **Pin `synth_seed`.** `ui_test.py` draws one per invocation (`mp_run.synth_seed()`), so record and
-  replay would run different workloads. `synth_move=0` is also wrong for a fixture: it gave 1 order
-  in 400 steps (the order stream is what LIB-REF is replaying).
+  replay would run different workloads. Preserve `synth_move` per profile: the movement fixture
+  needs its synthetic stream; the all-AI soak deliberately uses0.
 - **The game reads the recording from next to the exe**, not from the run folder
   (`harness.cpp build_paths`: `g_orders_path`/`g_clock_path` use `g_dir`). `unpack` writes there.
 - **Read a red run through `mp_analyze`'s printed verdict.** A run with any environmental taint is
   re-run, never massaged.
 
-## Considered and rejected
+## Retired single-phase limitations
 
-- **Recording a session with no AI order source**, so the enqueue suppression would have nothing to
-  perturb. `sp_det.txt` needs a seated AI to start a match alone, and no AI-free single-peer scenario
-  is proven to exist. Not attempted; recorded here so the option is not silently dropped.
-- **Fixing the recording format** (two-phase record + two-phase inject) so the fixture would be
-  bit-faithful to the live record as well. The design is bounded — record the pre- and post-inject
-  halves separately instead of one merged stream, and replay them in the same two phases — but it
-  would spend a DLL change on a measured coin-flip: a second, independent perturbation (the AI
-  branching on the suppressed enqueue's return) fires at the same instants, and nothing measured
-  predicts whether the fix closes the mark. LIB-REF's oracle does not need it.
+Earlier recordings combined one sampling instant with enqueue suppression and attributed
+periodic record/replay differences. Those are historical diagnostics, not the current acceptance
+contract. The measured MHOR v2 cutover retains real AI/enqueues and both exact phases; it does not
+accept new marks, count-prefix reconstruction or a fallback to the old faithful format.
+

@@ -47,7 +47,7 @@ release 470 440
 gameclock +100
 logsel host_selected
 loggoal host_selected
-hotkeydown Tab
+rawkey 0x0f down
 gameclock +1500
 cursorhold 400 300 10
 capture m4_bigmap_held
@@ -63,11 +63,11 @@ cursorhold 300 200 10
 simrclick 300 200
 cursorhold 300 200 10
 log HOST clicked the big map: the camera moved on the host only, then a second order
-hotkeyup Tab
+rawkey 0x0f up
 gameclock +500
 cursorhold 400 300 10
 capture m5_bigmap_released
-hotkeydown Tab
+rawkey 0x0f down
 gameclock +2500
 cursorhold 400 300 10
 capture m6_bigmap_held_again
@@ -78,7 +78,7 @@ cursorhold 500 350 10
 release 500 350
 cursorhold 500 350 10
 log HOST holds the big map (2) -- the peers must still agree
-hotkeyup Tab
+rawkey 0x0f up
 gameclock +500
 # both peers read the Pioneer's goal at the same sim time, long after the last order has run
 gameclock 14000

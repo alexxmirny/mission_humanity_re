@@ -39,10 +39,12 @@ import re
 import sys
 import time
 
+import tool_paths
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
-import make_lane  # noqa: E402
-import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1 + pre-SES1)
+import _rundir
+import make_lane
 
 TS = re.compile(r"\[(\d\d):(\d\d):(\d\d)\.(\d\d\d)\]")
 
@@ -91,7 +93,7 @@ def _registry():
     """{lane name: [TESTS rows that may run on it]} -- a lane's owner plus every share_lanes row
     that borrows it. Empty (and labels degrade to the lane name) if test_ui will not import."""
     try:
-        import test_ui  # noqa: PLC0415 -- heavy; only the labeller needs it
+        import test_ui
     except Exception:
         return {}
     by_name = {t["name"]: t for t in test_ui.TESTS}
@@ -155,7 +157,7 @@ def label(run, lane, lanes):
 
 def critical_path():
     """Print the gate's critical path from run_gate's own record."""
-    rec_p = os.path.join(REPO, "tmp", "gate", "last_timings.json")
+    rec_p = str(tool_paths.state_path("gate/last_timings.json", repo=REPO))
     try:
         rec = json.load(open(rec_p, encoding="utf-8"))
     except (OSError, ValueError):
@@ -203,7 +205,7 @@ def critical_path():
 
 def gate_window():
     """(start_epoch, end_epoch) of the last gate run, or None without a usable record."""
-    rec_p = os.path.join(REPO, "tmp", "gate", "last_timings.json")
+    rec_p = str(tool_paths.state_path("gate/last_timings.json", repo=REPO))
     try:
         rec = json.load(open(rec_p, encoding="utf-8"))
         end = os.path.getmtime(rec_p)
@@ -216,7 +218,7 @@ def gate_window():
 def unit_utilization(rows, t0):
     """Per gate unit: its span (run_gate's record), the game-seconds its lanes ran inside it, and
     the average games in flight -- the unit's real core use, cpu-busy vs wait-bound (capped)."""
-    rec_p = os.path.join(REPO, "tmp", "gate", "last_timings.json")
+    rec_p = str(tool_paths.state_path("gate/last_timings.json", repo=REPO))
     try:
         units = json.load(open(rec_p, encoding="utf-8")).get("_units") or {}
     except (OSError, ValueError):

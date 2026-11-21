@@ -705,6 +705,36 @@
         "writer is sim or session setup; no per-peer byte, so no mask. Appended (the contract)."
       ],
       "excluded": false
+    },
+    {
+      "name": "storage_policy",
+      "region": "STORAGE_POLICY",
+      "offset": 0,
+      "size": 32,
+      "pre": [],
+      "inline": "Whole canonical host-native span; runtime length is the bound extent.",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_tasks",
+      "region": "ORDER_TASKS",
+      "offset": 0,
+      "size": 128,
+      "pre": [],
+      "inline": "Whole pointer-free canonical route/reservation span; runtime length is the bound extent.",
+      "cont": [],
+      "excluded": false
+    },
+    {
+      "name": "order_campaign",
+      "region": "ORDER_CAMPAIGN",
+      "offset": 0,
+      "size": 160,
+      "pre": [],
+      "inline": "Exact campaign-global allocator and per-planet world incarnations; member visits never rewind it.",
+      "cont": [],
+      "excluded": false
     }
   ],
   "tact_regions": [

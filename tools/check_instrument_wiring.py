@@ -86,6 +86,7 @@ usage:
 """
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -255,10 +256,8 @@ def namespace_at(text, idx):
     return None
 
 
-def discover(src):
-    """-> {ns: {...}} for every module that DECLARES a set_logger sink."""
-    text = sources(src)
-    rost = rosters(src)
+def discover(text, rost):
+    """Discover logger modules from borrowed, read-only source and roster facts."""
     mods = {}
     for rel, body in sorted(text.items()):
         if not rel.startswith(MODULE_TREES) or not rel.endswith(".h"):
@@ -328,11 +327,10 @@ def strip_comments(text):
     return "\n".join(out)
 
 
-def channel_writers(src):
-    """-> {channel filename: {image, ...}} over every TU that NAMES it in a string literal."""
-    rost = rosters(src)
+def channel_writers(text, rost):
+    """Find channel owners from the same borrowed, read-only tree snapshot."""
     out = {}
-    for rel, body in sorted(sources(src).items()):
+    for rel, body in sorted(text.items()):
         imgs = rost.get(rel, set())
         if not imgs:
             continue  # headers and test-only TUs: not part of any shipping image
@@ -347,7 +345,8 @@ def contract_slots(path):
 
 
 def check(src, contract, say=print):
-    mods = discover(src)
+    text, rost = sources(src), rosters(src)
+    mods = discover(text, rost)
     slots = contract_slots(contract)
     fails = []
     if not mods:
@@ -410,7 +409,7 @@ def check(src, contract, say=print):
             )
         )
     # 5 CHANNEL OWNERSHIP -- ruling Q4's closure condition, as a gate
-    writers = channel_writers(src)
+    writers = channel_writers(text, rost)
     if not writers:
         raise Refusal(
             "%s: NOT ONE `mh_*.log` channel writer was found. Assertion 5 scanned nothing, which "
@@ -484,217 +483,235 @@ def run(say=print):
 # the real src tree, breaks exactly one thing, and requires the SAME walker to go red.
 
 
-def _plant(tmp, edit):
-    dst = os.path.join(tmp, "src")
-    shutil.copytree(
-        os.path.join(REPO, "src", "mh_dll"),
-        dst,
-        ignore=shutil.ignore_patterns("Debug", "Release", "Release_asan", ".vs", "*.obj", "*.pdb"),
+@contextmanager
+def _plant(src, edit):
+    touched = (
+        "mh/seams/reimpl_probe.cpp",
+        "mh/seams/net_seams.cpp",
+        "libmh/libmh.vcxproj",
+        "mh/mh.vcxproj",
+        "mh_net/net_transport.cpp",
+        "mh/seams/video.cpp",
     )
-    edit(dst)
-    return dst
+    original = {}
+    for rel in touched:
+        with open(os.path.join(src, rel), "rb") as source:
+            original[rel] = source.read()
+    try:
+        edit(src)
+        yield src
+    finally:
+        for rel, raw in original.items():
+            with open(os.path.join(src, rel), "wb") as target:
+                target.write(raw)
 
 
 def selftest():
-    ok = True
-
-    def expect(name, cond, detail=""):
-        nonlocal ok
-        print(
-            "  [%s] %s%s"
-            % ("ok" if cond else "FAIL", name, (" -- " + detail) if detail and not cond else "")
+    with tempfile.TemporaryDirectory(prefix="instwire_") as fixture_tmp:
+        fixture_src = os.path.join(fixture_tmp, "src")
+        shutil.copytree(
+            os.path.join(REPO, "src", "mh_dll"),
+            fixture_src,
+            ignore=shutil.ignore_patterns(
+                "Debug", "Release", "Release_asan", ".vs", "*.obj", "*.pdb"
+            ),
         )
-        ok = ok and cond
+        ok = True
 
-    contract = os.path.join(REPO, "tools", "data", "libmh_contract.json")
+        def expect(name, cond, detail=""):
+            nonlocal ok
+            print(
+                "  [%s] %s%s"
+                % ("ok" if cond else "FAIL", name, (" -- " + detail) if detail and not cond else "")
+            )
+            ok = ok and cond
 
-    # --- the real tree ---------------------------------------------------------------------------
-    fails, rows, chan_rows = run(say=lambda *_: None)
-    expect("the real tree PASSES all five assertions", not fails, "; ".join(fails)[:400])
-    expect("at least six modules with a sink were discovered", len(rows) >= 6, str(len(rows)))
-    expect(
-        "at least one wiring CROSSES into libmh.dll and at least one stays in-image",
-        any(r[3] == "CROSSES" for r in rows) and any(r[3] == "in-image" for r in rows),
-        str([(r[0], r[3]) for r in rows]),
-    )
+        contract = os.path.join(REPO, "tools", "data", "libmh_contract.json")
 
-    def edit_file(dst, rel, old, new, count=1):
-        p = os.path.join(dst, rel)
-        t = open(p, encoding="utf-8").read()
-        assert old in t, "planted edit did not find its anchor in %s: %r" % (rel, old[:60])
-        open(p, "w", encoding="utf-8", newline="").write(t.replace(old, new, count))
+        # --- the real tree ---------------------------------------------------------------------------
+        fails, rows, chan_rows = run(say=lambda *_: None)
+        expect("the real tree PASSES all five assertions", not fails, "; ".join(fails)[:400])
+        expect("at least six modules with a sink were discovered", len(rows) >= 6, str(len(rows)))
+        expect(
+            "at least one wiring CROSSES into libmh.dll and at least one stays in-image",
+            any(r[3] == "CROSSES" for r in rows) and any(r[3] == "in-image" for r in rows),
+            str([(r[0], r[3]) for r in rows]),
+        )
 
-    # 1 WIRED: delete the save wiring -- the one the ORDER GATE cannot see.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        def edit_file(dst, rel, old, new, count=1):
+            p = os.path.join(dst, rel)
+            t = open(p, encoding="utf-8").read()
+            assert old in t, "planted edit did not find its anchor in %s: %r" % (rel, old[:60])
+            open(p, "w", encoding="utf-8", newline="").write(t.replace(old, new, count))
+
+        # 1 WIRED: delete the save wiring -- the one the ORDER GATE cannot see.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(
                 d, "mh/seams/reimpl_probe.cpp", "mh::save::set_logger(seam_log);", "/* gone */"
             ),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a DELETED wiring is RED (mh::save -- invisible to the arm-order gate)",
-            any(x.startswith("[save]") for x in f),
-            "; ".join(f)[:300],
-        )
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a DELETED wiring is RED (mh::save -- invisible to the arm-order gate)",
+                any(x.startswith("[save]") for x in f),
+                "; ".join(f)[:300],
+            )
 
-    # 1 WIRED (the other direction): a second arm wiring the same module.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        # 1 WIRED (the other direction): a second arm wiring the same module.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(
                 d,
                 "mh/seams/net_seams.cpp",
                 "mh::ui::set_logger(seam_log);",
                 "mh::ui::set_logger(seam_log); mh::ui::set_logger(seam_log);",
             ),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a DUPLICATED wiring is RED (two arms disagreeing about the sink)",
-            any(x.startswith("[ui]") for x in f),
-            "; ".join(f)[:300],
-        )
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a DUPLICATED wiring is RED (two arms disagreeing about the sink)",
+                any(x.startswith("[ui]") for x in f),
+                "; ".join(f)[:300],
+            )
 
-    # 2 ONE SINK: wire a module to something other than the process's one writer.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        # 2 ONE SINK: wire a module to something other than the process's one writer.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(
                 d,
                 "mh/seams/reimpl_probe.cpp",
                 "mh::orders::set_logger(seam_log);",
                 "mh::orders::set_logger(other_log);",
             ),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a wiring to a SECOND sink is RED", any("other_log" in x for x in f), "; ".join(f)[:300]
-        )
-
-    # 3 CROSSING: move a libmh-defined module's TU into mh.dll's roster without regenerating the
-    # contract -- the F4D/F4E hazard, and the one no compile catches.
-    def demote(d):
-        p = os.path.join(d, "libmh", "libmh.vcxproj")
-        t = open(p, encoding="utf-8").read()
-        needle = '<ClCompile Include="save\\save_live.cpp" />'
-        assert needle in t, "the libmh roster no longer names save_live.cpp -- re-anchor this arm"
-        open(p, "w", encoding="utf-8", newline="").write(t.replace(needle, ""))
-        p2 = os.path.join(d, "mh", "mh.vcxproj")
-        t2 = open(p2, encoding="utf-8").read()
-        anchor = '<ClCompile Include="seams\\net_seams.cpp" />'
-        open(p2, "w", encoding="utf-8", newline="").write(
-            t2.replace(
-                anchor,
-                anchor + '\n    <ClCompile Include="..\\libmh\\save\\save_live.cpp" />',
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a wiring to a SECOND sink is RED",
+                any("other_log" in x for x in f),
+                "; ".join(f)[:300],
             )
-        )
 
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(tmp, demote)
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a module moved OUT of libmh with a stale contract row is RED",
-            any(x.startswith("[save]") and "stale" in x for x in f),
-            "; ".join(f)[:300],
-        )
-
-    # 3 CROSSING, the OTHER direction: a module moved INTO libmh without a contract row. It
-    # compiles and links on both sides (the thunk is /alternatename'd only for rows that exist), so
-    # the only symptom at run time is a module that says nothing.
-    def promote(d):
-        p = os.path.join(d, "libmh", "libmh.vcxproj")
-        t = open(p, encoding="utf-8").read()
-        anchor = '<ClCompile Include="state\\rebind_arming.cpp" />'
-        assert anchor in t, (
-            "the libmh roster no longer names rebind_arming.cpp -- re-anchor this arm"
-        )
-        open(p, "w", encoding="utf-8", newline="").write(
-            t.replace(
-                anchor, anchor + '\n    <ClCompile Include="..\\mh\\desync\\desync_watch.cpp" />'
+        # 3 CROSSING: move a libmh-defined module's TU into mh.dll's roster without regenerating the
+        # contract -- the F4D/F4E hazard, and the one no compile catches.
+        def demote(d):
+            p = os.path.join(d, "libmh", "libmh.vcxproj")
+            t = open(p, encoding="utf-8").read()
+            needle = '<ClCompile Include="save\\save_live.cpp" />'
+            assert needle in t, (
+                "the libmh roster no longer names save_live.cpp -- re-anchor this arm"
             )
-        )
-        p2 = os.path.join(d, "mh", "mh.vcxproj")
-        t2 = open(p2, encoding="utf-8").read()
-        open(p2, "w", encoding="utf-8", newline="").write(
-            t2.replace('<ClCompile Include="desync\\desync_watch.cpp" />', "")
-        )
+            open(p, "w", encoding="utf-8", newline="").write(t.replace(needle, ""))
+            p2 = os.path.join(d, "mh", "mh.vcxproj")
+            t2 = open(p2, encoding="utf-8").read()
+            anchor = '<ClCompile Include="seams\\net_seams.cpp" />'
+            open(p2, "w", encoding="utf-8", newline="").write(
+                t2.replace(
+                    anchor,
+                    anchor + '\n    <ClCompile Include="..\\libmh\\save\\save_live.cpp" />',
+                )
+            )
 
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(tmp, promote)
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a module moved INTO libmh with no contract row is RED",
-            any(x.startswith("[desync]") and "no `mh_desync_set_logger` row" in x for x in f),
-            "; ".join(f)[:300],
-        )
+        with _plant(fixture_src, demote) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a module moved OUT of libmh with a stale contract row is RED",
+                any(x.startswith("[save]") and "stale" in x for x in f),
+                "; ".join(f)[:300],
+            )
 
-    # 5 CHANNEL OWNERSHIP: a SATELLITE starts writing one of ruling Q4's four advisory channels --
-    # the condition the F3 deferral named, and the moment that channel has to be gated.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        # 3 CROSSING, the OTHER direction: a module moved INTO libmh without a contract row. It
+        # compiles and links on both sides (the thunk is /alternatename'd only for rows that exist), so
+        # the only symptom at run time is a module that says nothing.
+        def promote(d):
+            p = os.path.join(d, "libmh", "libmh.vcxproj")
+            t = open(p, encoding="utf-8").read()
+            anchor = '<ClCompile Include="state\\rebind_arming.cpp" />'
+            assert anchor in t, (
+                "the libmh roster no longer names rebind_arming.cpp -- re-anchor this arm"
+            )
+            open(p, "w", encoding="utf-8", newline="").write(
+                t.replace(
+                    anchor,
+                    anchor + '\n    <ClCompile Include="..\\mh\\desync\\desync_watch.cpp" />',
+                )
+            )
+            p2 = os.path.join(d, "mh", "mh.vcxproj")
+            t2 = open(p2, encoding="utf-8").read()
+            open(p2, "w", encoding="utf-8", newline="").write(
+                t2.replace('<ClCompile Include="desync\\desync_watch.cpp" />', "")
+            )
+
+        with _plant(fixture_src, promote) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a module moved INTO libmh with no contract row is RED",
+                any(x.startswith("[desync]") and "no `mh_desync_set_logger` row" in x for x in f),
+                "; ".join(f)[:300],
+            )
+
+        # 5 CHANNEL OWNERSHIP: a SATELLITE starts writing one of ruling Q4's four advisory channels --
+        # the condition the F3 deferral named, and the moment that channel has to be gated.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(
                 d,
                 "mh_net/net_transport.cpp",
                 'wsprintfA(g_log_path, "%smh_net.log"',
                 'wsprintfA(g_log_path, "%smh_uidrive.log"',
             ),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a SATELLITE writing an ADVISORY channel is RED (ruling Q4's condition)",
-            any(x.startswith("[mh_uidrive.log]") and "ADVISORY" in x for x in f),
-            "; ".join(f)[:300],
-        )
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a SATELLITE writing an ADVISORY channel is RED (ruling Q4's condition)",
+                any(x.startswith("[mh_uidrive.log]") and "ADVISORY" in x for x in f),
+                "; ".join(f)[:300],
+            )
 
-    # 5 CHANNEL OWNERSHIP: a channel nobody has ruled on.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        # 5 CHANNEL OWNERSHIP: a channel nobody has ruled on.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(d, "mh/seams/video.cpp", '"%smh_video.log"', '"%smh_brandnew.log"'),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "an UNRULED new channel is RED",
-            any(x.startswith("[mh_brandnew.log]") for x in f),
-            "; ".join(f)[:300],
-        )
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "an UNRULED new channel is RED",
+                any(x.startswith("[mh_brandnew.log]") for x in f),
+                "; ".join(f)[:300],
+            )
 
-    # 5's comment discipline: the filename quoted INSIDE a comment is not a writer. Both real cases
-    # (net_diag.cpp:672, net_lockstep.cpp:1742) are trailing comments on live code lines, so this
-    # arm plants the same shape rather than a whole-line comment.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        src = _plant(
-            tmp,
+        # 5's comment discipline: the filename quoted INSIDE a comment is not a writer. Both real cases
+        # (net_diag.cpp:672, net_lockstep.cpp:1742) are trailing comments on live code lines, so this
+        # arm plants the same shape rather than a whole-line comment.
+        with _plant(
+            fixture_src,
             lambda d: edit_file(
                 d,
                 "mh_net/net_transport.cpp",
                 "const char *module_run_dir(void) {",
                 'const char *module_run_dir(void) { // g_log = "...mh_uidrive.log"',
             ),
-        )
-        f = check(src, contract, say=lambda *_: None)[0]
-        expect(
-            "a channel name QUOTED IN A COMMENT is not counted as a writer",
-            not f,
-            "; ".join(f)[:300],
-        )
+        ) as src:
+            f = check(src, contract, say=lambda *_: None)[0]
+            expect(
+                "a channel name QUOTED IN A COMMENT is not counted as a writer",
+                not f,
+                "; ".join(f)[:300],
+            )
 
-    # 4 NOT VACUOUS: an empty tree REFUSES rather than passing.
-    with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
-        empty = os.path.join(tmp, "empty")
-        os.makedirs(empty)
-        refused = False
-        try:
-            check(empty, contract, say=lambda *_: None)
-        except Refusal:
-            refused = True
-        expect("an EMPTY tree is REFUSED, not passed", refused)
+        # 4 NOT VACUOUS: an empty tree REFUSES rather than passing.
+        with tempfile.TemporaryDirectory(prefix="instwire_") as tmp:
+            empty = os.path.join(tmp, "empty")
+            os.makedirs(empty)
+            refused = False
+            try:
+                check(empty, contract, say=lambda *_: None)
+            except Refusal:
+                refused = True
+            expect("an EMPTY tree is REFUSED, not passed", refused)
 
-    print("check_instrument_wiring --selftest: %s" % ("PASS" if ok else "FAIL"))
-    return 0 if ok else 1
+        print("check_instrument_wiring --selftest: %s" % ("PASS" if ok else "FAIL"))
+        return 0 if ok else 1
 
 
 def main(argv=None):

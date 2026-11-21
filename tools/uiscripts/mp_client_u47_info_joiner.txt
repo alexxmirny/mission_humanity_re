@@ -29,7 +29,7 @@ absent Network players
 
 # land the mother (the host lands at 3000; same gesture as mp_client_el2.txt), then open the build tab
 gameclock 6000
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 20000
 capture u47_client_landed
 simclick 890 215

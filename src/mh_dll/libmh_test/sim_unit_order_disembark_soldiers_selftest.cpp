@@ -1,6 +1,6 @@
 //
 // sim_unit_order_disembark_soldiers_selftest.cpp -- `simtest` oracle for
-// llm_unit_order_disembark_soldiers @0x0046e76c (sim/sim_unit_order_disembark_soldiers.h/.cpp),
+// llm_unit_order_squad_split @0x0046e76c (sim/sim_unit_order_disembark_soldiers.h/.cpp),
 // X-TL-DRAIN step 4.
 //
 // THIS FILE IS THE FUNCTION'S ONLY ORACLE, and the reason is recorded rather than assumed. Its shadow
@@ -12,7 +12,7 @@
 // exactly the two things that matter: WHETHER the dispatch happens, and with WHICH four arguments.
 //
 // EVERY EXPECTED VALUE COMES FROM THE DISASSEMBLY
-// (tmp/decomp/llm_unit_order_disembark_soldiers_0046e76c.asm), re-cited per case:
+// (tmp/decomp/llm_unit_order_squad_split_0046e76c.asm), re-cited per case:
 //     0x0046e789  MOVZX EAX,word ptr [EBP-0x14]      player TRUNCATED to 16 bits for the roster read
 //     0x0046e79c  MOVZX EAX,word ptr [EAX+0xdd8c4a]  units[player][unit_idx].unit_proto_id
 //     0x0046e7a9  CMP dword ptr [EAX+0xe4a2bf],0x0   cfg Unit[proto].soldier_count

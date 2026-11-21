@@ -59,13 +59,18 @@ def strip_comments(text):
                     break
                 in_block, i = False, j + 2
                 continue
-            if line.startswith("//", i):
+            j = line.find("/", i)
+            if j < 0:
+                buf.append(line[i:])
                 break
-            if line.startswith("/*", i):
-                in_block, i = True, i + 2
+            buf.append(line[i:j])
+            if line.startswith("//", j):
+                break
+            if line.startswith("/*", j):
+                in_block, i = True, j + 2
                 continue
-            buf.append(line[i])
-            i += 1
+            buf.append("/")
+            i = j + 1
         out.append("".join(buf))
     return out
 
@@ -217,13 +222,14 @@ def main():
         print("%d failure(s)" % fails)
         return 1 if fails else 0
     if args.check:
-        probs, ok = check()
+        found = scan_tree()
+        probs, ok = check(found=found)
         if not ok:
             print("=== scan_pointer_slots: %d unadjudicated pointer slot(s) ===" % len(probs))
             for p in probs:
                 print("  %s" % p)
             return 1
-        n = len({"%s:%s" % (r, f) for r, f, _e, _p, _l in scan_tree()})
+        n = len({"%s:%s" % (r, f) for r, f, _e, _p, _l in found})
         print("scan_pointer_slots: ok -- all %d pointer-valued region slot(s) adjudicated" % n)
         return 0
     return report()

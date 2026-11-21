@@ -73,8 +73,8 @@ bool patch_browser_row_format(); // S7: the browser row's "occ/cap" count format
 void lobby_frame_snap_on_screen();
 
 // U8 Gap 2: the client adopted the host's map out of band, so re-run the two retail refreshes the
-// map-transfer path would have driven (map-info panel text + the slot rows). Latches on the map's
-// player count, so calling it every frame is free.
+// map-transfer path would have driven. Latches on map-info identity; only a player-count change
+// rebuilds slot rows. Calling it every frame performs only bounded in-memory comparisons.
 void lobby_refresh_for_map();
 
 // U16: the host's "<name> joined/left" broadcast. POST runs on the recv thread (the net handler has
@@ -106,6 +106,43 @@ void browser_notice_arm_relay(const char *line);
 // arms unconditionally regardless of transport, so a module=none host reaches a real "Network
 // players" screen with no working Start -- see lobby_notice.cpp for how one widget covers both.
 void browser_notice_arm_no_module();
+
+// ---- mods:MAPGEN2: the right panel's page spinner + the map preview (ui/map_preview.cpp) ------------------
+//
+// Arm time (net_seams.cpp, after the lobby installs): reads `[ui] map_preview` (default 1), and when on grows the
+// description/status box 120 -> 130 px, gives the map picker its DLL-owned children array (+ the "View: <page>"
+// spinner) and hands the lobby its pager (lobby_widgets.cpp reads map_preview_lobby_pager). Returns whether it
+// armed; every refusal leaves the picker and the lobby stock.
+bool map_preview_install(const char *ini_path);
+bool map_preview_on();
+// The page a screen is on: screen 1 = the map picker (0 Description, 1 Preview), 2 = the lobby (+ 2 Settings). -1 when off.
+int map_preview_page(int screen);
+
+// The net side's answer to "which file do I read for the lobby's map on THIS peer": 0 = read `out` (the host's own
+// file, a client's stored download or its identical local copy); non-zero = the map has not arrived yet. Injected
+// so this module names no net symbol (same shape as set_client_session_gate).
+void set_map_file_resolver(int (*fn)(const char *base, char *out, int cap));
+
+// Per present (lobby_notice.cpp's browser_notice_tick): the one switch back to page 1 per NEW status notice.
+void map_preview_tick();
+// A mod status notice just APPEARED on the status box (map transfer, the no-module line). Edge, not level.
+void map_preview_notice_posted();
+
+// What the status box's draw_cb should do this frame (see lobby_notice.cpp's status_draw).
+enum BoxKind { BOX_NORMAL   = 0,
+               BOX_PREVIEW  = 1,
+               BOX_SETTINGS = 2 };
+BoxKind map_preview_box(unsigned char *widget, const wchar_t **label_override);
+void    map_preview_box_after(); // after the empty box was drawn on BOX_PREVIEW: blit the thumbnail
+
+// The lobby's pager widget (null when off) -- lobby_widgets.cpp puts it in its children array right before Mode.
+void *map_preview_lobby_pager();
+// Is the lobby on its Settings page (Mode visible)? True when the feature is off (Mode is always there then).
+bool map_preview_lobby_settings_page();
+// lobby_widgets.cpp: the DLL-owned Mode widget (llm_ui_widget*), which the pager's draw positions inside the box.
+void *lobby_mode_widget();
+// lobby_widgets.cpp: re-derive the Mode widget's disabled/hidden bits (role + page). Called per lobby tick and by the pager's click.
+void lobby_mode_sync_flags();
 
 // Both notices repaint from the present hook -- the status-line buffer is not ours and retail
 // re-clears it (see lobby_notice.cpp). Cheap when idle.

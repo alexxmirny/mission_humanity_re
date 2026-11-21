@@ -1,0 +1,40 @@
+# mods:MAPGEN1 W4 -- generated-map smoke. 1 human + 1 Computer on the lane's ONLY map (a generated one, make_lane --maps-only,
+# so the lobby default / picker row 0 is ours), through the real menu (walk of cap_ai_solo.txt). The mother is landed with a
+# Ctrl+right-click, the match runs ~60 game seconds (gameclock is in sim milliseconds), one capture. Verdict: reaching the end marker (no TIMEOUT/crash).
+# Visible captures are reviewed by the user -- no baseline is committed for them.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+capture mg_lobby
+dump
+click 70 132
+present Computer
+enabled Start
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+capture mg_start
+simrclick 480 330 ctrl
+gameclock 6000
+capture mg_landed
+gameclock 33000
+capture mg_mid
+gameclock 66000
+capture mg_end
+log mapgen_solo: 60 game seconds played
+end

@@ -2,7 +2,7 @@
 """rig_phases.py -- tooling:TL-RIG-PHASES: per-phase wall time of a rig arm (det_arms / u64_arms -> ui_test.py).
 
 One arm = one `[phase] <name> <seconds>` line per phase + a `[phase] TOTAL` summary, and the same numbers as JSON
-(`<det_dir>/rig_phases.json`, plus one appended line in tmp/rig_phases/history.jsonl for the gate to pick up).
+(`<det_dir>/rig_phases.json`, plus an appended line in the owned run's phase history).
 MEASUREMENT ONLY: nothing here changes what a run does (the menu walk is never skipped).
 
 HOW THE MARKS ARRIVE. ui_test.py is a child process, so it appends `<name>\\t<epoch>` lines to the file named by
@@ -25,6 +25,8 @@ always sum to the arm's wall by construction; the independent cross-check is `ui
 import json
 import os
 import time
+
+import tmp_runs
 
 ENV = "MH_RIG_PHASE_FILE"
 # tooling:TL-RIG-PARALLEL -- the per-ARM scratch dir. Unset (the serial default) it is tmp/ui_test; tools/rig_parallel.py
@@ -61,8 +63,8 @@ def _repo():
 
 
 def scratch_dir():
-    """The arm's scratch root: $MH_RIG_SCRATCH when a parallel slot set it, else tmp/ui_test."""
-    d = os.environ.get(SCRATCH_ENV) or os.path.join(_repo(), "tmp", "ui_test")
+    """Use the explicitly supplied scratch root or this invocation's owned output."""
+    d = tmp_runs.scratch_dir(os.path.join(_repo(), "tmp", "ui_test"))
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -84,23 +86,20 @@ def run_wrapped(real, argv, timeout, *a, **kw):
     """Call `real(argv, timeout, ...)` (run_ui_test) with the mark file armed; fold its marks into the arm."""
     if _arm is None:
         begin("arm")
-    d = os.path.join(_repo(), "tmp", "rig_phases")
+    d = tmp_runs.current_output("rig_phases")
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, "marks.%d.txt" % os.getpid())
     try:
         os.remove(path)
     except OSError:
         pass
-    old = os.environ.get(ENV)
-    os.environ[ENV] = path
+    child_env = dict(kw.get("env") or os.environ)
+    child_env[ENV] = path
+    kw["env"] = child_env
     t = time.time()
     try:
         return real(argv, timeout, *a, **kw)
     finally:
-        if old is None:
-            os.environ.pop(ENV, None)
-        else:
-            os.environ[ENV] = old
         _arm["ui_test_s"] += time.time() - t
         try:
             with open(path, encoding="utf-8") as f:
@@ -158,7 +157,7 @@ def end(det_dir=None):
         if os.path.isdir(dd):
             with open(os.path.join(dd, "rig_phases.json"), "w", encoding="utf-8") as f:
                 json.dump(rec, f, indent=1)
-        hd = os.path.join(_repo(), "tmp", "rig_phases")
+        hd = tmp_runs.current_output("rig_phases")
         os.makedirs(hd, exist_ok=True)
         with open(os.path.join(hd, "history.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")

@@ -44,30 +44,35 @@ def _filetime_to_epoch(ft):
     return t / 10_000_000.0 - 11644473600.0  # 100ns ticks since 1601-01-01 -> Unix epoch seconds
 
 
-def process_still_running(pid):
-    """True iff `pid` is a process that is ACTUALLY STILL RUNNING; False if it can be opened but has
-    already exited; None if it cannot be opened at all (fully gone, or never existed).
-
-    OpenProcess succeeding is NOT "is it running" -- Windows keeps a process's kernel object alive,
-    and OpenProcess-able, for as long as ANY handle anywhere still references it (including a
-    deliberately-retained exit-code handle -- see ui_test.py's retain_exit_handle). GetExitCodeProcess's
-    STILL_ACTIVE sentinel is the only thing that actually distinguishes the two.
-    """
+def process_still_running(pid, *, handle=None):
+    """True/False/None for process liveness; a supplied exact process handle is borrowed, not closed."""
     try:
-        k32 = ctypes.windll.kernel32
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-        if not h:
-            return None
-        try:
-            code = ctypes.c_ulong(0)
-            if not k32.GetExitCodeProcess(h, ctypes.byref(code)):
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k32.WaitForSingleObject.restype = wintypes.DWORD
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        if handle is None:
+            h = k32.OpenProcess(0x00100000, False, int(pid))  # SYNCHRONIZE
+            if not h:
+                # Access denied and other failures are not evidence of exit.
+                return False if ctypes.get_last_error() == 87 else None
+        else:
+            h = handle
+            if not h:
                 return None
-            return code.value == STILL_ACTIVE
+        try:
+            status = k32.WaitForSingleObject(h, 0)
+            if status == 0:  # WAIT_OBJECT_0
+                return False
+            if status == 0x102:  # WAIT_TIMEOUT
+                return True
+            return None
         finally:
-            k32.CloseHandle(h)
-    except Exception:  # a diagnostic must never be the thing that fails a run
+            if handle is None:
+                k32.CloseHandle(h)
+    except Exception:
         return None
 
 
@@ -107,7 +112,13 @@ def process_created_at(pid):
 
 def process_terminate(pid):
     try:
-        k32 = ctypes.windll.kernel32
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        k32.TerminateProcess.restype = wintypes.BOOL
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        k32.CloseHandle.restype = wintypes.BOOL
         PROCESS_TERMINATE = 0x0001
         h = k32.OpenProcess(PROCESS_TERMINATE, False, int(pid))
         if not h:
@@ -121,17 +132,13 @@ def process_terminate(pid):
 
 
 def wait_gone(pid, timeout=5.0, poll=0.25):
-    """Block until `pid` is no longer running (or `timeout` elapses). Returns True iff it is gone.
-
-    tooling:TL-SUITE-TEARDOWN -- a caller's verdict path must know a peer is ACTUALLY down before it
-    returns, not merely that it sent a kill: `Stop-Process`/`proc.terminate()` return as soon as the
-    signal is ISSUED, not once Windows has torn the process down."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if not process_still_running(pid):
+    """Return True only when process exit/nonexistence is actually established."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process_still_running(pid) is False:
             return True
         time.sleep(poll)
-    return not process_still_running(pid)
+    return process_still_running(pid) is False
 
 
 # ---- the job object itself -------------------------------------------------------------------
@@ -414,11 +421,13 @@ def _selftest_kill_on_close():
 
     mut_pid = run(False)
     mut_gone = wait_gone(mut_pid, timeout=2, poll=0.2)
+    mut_running = process_still_running(mut_pid)
     process_terminate(mut_pid)  # clean up regardless of the outcome
-    if mut_gone:
+    if mut_gone or mut_running is not True:
         return (
             False,
-            "MUTATION: child pid %d died even with NO job assigned -- proves nothing" % mut_pid,
+            "MUTATION: child pid %d was not confirmed running without a job (liveness=%r)"
+            % (mut_pid, mut_running),
         )
     return True, ""
 
@@ -478,10 +487,90 @@ def _selftest_copy_refusal():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _selftest_unknown_wait():
+    """A failed liveness query must not release a lane."""
+    from unittest import mock
+
+    with mock.patch(__name__ + ".process_still_running", return_value=None):
+        if wait_gone(1, timeout=0):
+            return False, "unknown liveness was treated as exited"
+    return True, ""
+
+
+def _selftest_mapped_image_wait():
+    """A real child maps an image; wait for exit before overwriting it in the lane."""
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="win_job_image_")
+    proc = None
+    borrowed = None
+    try:
+        system_dll = os.path.join(os.environ["SystemRoot"], "System32", "version.dll")
+        image = os.path.join(tmp, "version.dll")
+        shutil.copy2(system_dll, image)
+        script = (
+            "import ctypes,sys,time; "
+            "dll=ctypes.WinDLL(sys.argv[1]); print('mapped',flush=True); sys.stdin.read(1); sys.exit(259)"
+        )
+        proc = subprocess.Popen(
+            [sys.executable, "-c", script, image],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        if proc.stdout.readline().strip() != "mapped":
+            return False, "child did not map the DLL"
+        if process_still_running(proc.pid) is not True or wait_gone(proc.pid, timeout=0):
+            return False, "live mapped-image process was treated as exited"
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        borrowed = k32.OpenProcess(0x00100000, False, proc.pid)
+        if not borrowed:
+            return False, "could not retain the mapped-image process"
+        for _ in range(2):
+            if process_still_running(proc.pid, handle=borrowed) is not True:
+                return False, "borrowed live handle was closed or treated as exited"
+        try:
+            shutil.copyfile(system_dll, image)
+            return False, "mapped image was unexpectedly writable"
+        except PermissionError:
+            pass
+        proc.stdin.write("x")
+        proc.stdin.flush()
+        if not wait_gone(proc.pid, timeout=5):
+            return False, "could not establish child process exit"
+        code = proc.wait(timeout=5)
+        if code != 259:
+            return False, "mapped-image child exited with %s rather than 259" % code
+        if process_still_running(proc.pid) is not False:
+            return False, "retained process handle was mistaken for a live process"
+        for _ in range(2):
+            if process_still_running(proc.pid, handle=borrowed) is not False:
+                return False, "borrowed exited-259 handle was closed or treated as running"
+        shutil.copyfile(system_dll, image)
+        return True, ""
+    finally:
+        if borrowed:
+            k32.CloseHandle(borrowed)
+        if proc is not None:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=5)
+            if proc.stdin:
+                proc.stdin.close()
+            if proc.stdout:
+                proc.stdout.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def selftest():
     """`python tools/win_job.py --selftest` -- offline (no rig, no game); see tooling:TL-SUITE-TEARDOWN."""
     fails = []
     for name, fn in (
+        ("unknown liveness is not exit", _selftest_unknown_wait),
+        ("mapped image: wait for child exit before redeploy", _selftest_mapped_image_wait),
         ("kill-on-close: ARM (job) dies, MUTATION (no job) survives", _selftest_kill_on_close),
         ("copy_or_refuse names a real child's held-open file", _selftest_copy_refusal),
     ):

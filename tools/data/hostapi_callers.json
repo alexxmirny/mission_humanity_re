@@ -1,6 +1,6 @@
 {
  "_generated_by": "tools/gen_hostapi_callers.py -- do not hand-edit; regenerate instead",
- "entry_count": 40,
+ "entry_count": 55,
  "rows": [
   {
    "name": "transport_send",
@@ -913,6 +913,223 @@
    }
   },
   {
+   "name": "order_tasks",
+   "category": "order-tasks",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "orders": [
+     "orders/order_queue.cpp"
+    ],
+    "sim": [
+     "sim/sim_state.cpp"
+    ],
+    "state": [
+     "state/order_tasks_origin.cpp",
+     "state/order_tasks_runtime.cpp"
+    ]
+   }
+  },
+  {
+   "name": "participant_body_boundary",
+   "category": "net",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "lockstep": [
+     "lockstep/participant_removal.h"
+    ]
+   }
+  },
+  {
+   "name": "participant_removal_admit",
+   "category": "net",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "lockstep": [
+     "lockstep/participant_removal.h"
+    ]
+   }
+  },
+  {
+   "name": "planet_load_extensions",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "planet_save_prepare",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "planet_save_restore",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_begin_load",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_finish_container",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_load_container",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_load_planet",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_normalize_version",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_policy",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "sim": [
+     "sim/sim_state.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_preflight_container",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_preflight_planet",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
+   "name": "storage_write_planet",
+   "category": "storage-policy",
+   "notify": false,
+   "n_direct": 0,
+   "n_transitive": 0,
+   "direct_by_domain": {},
+   "transitive_by_domain": {},
+   "site_modules": {
+    "save": [
+     "save/save_live.cpp"
+    ]
+   }
+  },
+  {
    "name": "utils_abort",
    "category": "fatal",
    "notify": false,
@@ -1215,8 +1432,12 @@
    "n_distinct_direct_callers": 8
   },
   "net": {
-   "n_callbacks": 2,
+   "n_callbacks": 4,
    "n_distinct_direct_callers": 17
+  },
+  "order-tasks": {
+   "n_callbacks": 1,
+   "n_distinct_direct_callers": 0
   },
   "platform": {
    "n_callbacks": 1,
@@ -1229,6 +1450,10 @@
   "sound": {
    "n_callbacks": 1,
    "n_distinct_direct_callers": 1
+  },
+  "storage-policy": {
+   "n_callbacks": 12,
+   "n_distinct_direct_callers": 0
   },
   "string": {
    "n_callbacks": 4,

@@ -35,12 +35,15 @@ capture c1_host_line
 
 key 0x1c
 layout 00000415
+chatready
 type Żółw
 key 0x39
 layout 00000419
+chatready
 type Мир
 key 0x39
 layout default
+chatready
 type hi
 # 17 UTF-8 bytes: c5bb c3b3 c582 77 | 20 | d09c d0b8 d180 | 20 | 68 69
 field chat hex:c5bbc3b3c5827720d09cd0b8d180206869

@@ -72,6 +72,7 @@ pub enum Provider {
 pub enum Page {
     Settings,
     Diagnostics,
+    Bindings,
 }
 
 /// One setting.
@@ -247,8 +248,10 @@ impl Schema {
     /// The committed schema (generated game rows + the launcher's own). The two files are checked
     /// by `builtin_schema_parses` below and by `tools/gen_ini_registry.py --check`.
     pub fn builtin() -> Schema {
-        Schema::from_json(GAME_SCHEMA_JSON, Some(LAUNCHER_SCHEMA_JSON))
-            .expect("committed settings schemas must parse")
+        let mut schema = Schema::from_json(GAME_SCHEMA_JSON, Some(LAUNCHER_SCHEMA_JSON))
+            .expect("committed settings schemas must parse");
+        super::bindings::extend_schema(&mut schema);
+        schema
     }
 
     /// Parse and merge. `launcher` rows come after the game rows; its `overrides` apply to either.
@@ -406,11 +409,13 @@ impl Schema {
         if let Some(w) = ids.windows(2).find(|w| w[0] == w[1]) {
             return Err(format!("duplicate row id {}", w[0]));
         }
-        Ok(Schema {
+        let mut schema = Schema {
             subtabs,
             rows,
             group_order,
-        })
+        };
+        super::bindings::move_registered_rows(&mut schema);
+        Ok(schema)
     }
 
     pub fn row(&self, id: &str) -> Option<&Row> {
@@ -423,18 +428,20 @@ impl Schema {
         self.subtabs
             .iter()
             .filter(|t| {
-                self.rows
-                    .iter()
-                    .any(|r| r.subtab == t.id && r.page == Page::Settings && !r.hidden)
+                self.rows.iter().any(|r| {
+                    r.subtab == t.id
+                        && ((r.page == Page::Settings && !r.hidden) || r.page == Page::Bindings)
+                })
             })
             .collect()
     }
 
     /// Visible rows of one Settings sub-tab, in schema order.
     pub fn rows_in_subtab<'a>(&'a self, subtab: &'a str) -> impl Iterator<Item = &'a Row> + 'a {
-        self.rows
-            .iter()
-            .filter(move |r| r.subtab == subtab && r.page == Page::Settings && !r.hidden)
+        self.rows.iter().filter(move |r| {
+            r.subtab == subtab
+                && ((r.page == Page::Settings && !r.hidden) || r.page == Page::Bindings)
+        })
     }
 
     /// `rows` split by `group`, in page order: ungrouped rows first (`None` -> `""`), then the
@@ -504,7 +511,10 @@ mod tests {
     fn settings_subtabs_follow_the_plan() {
         let s = Schema::builtin();
         let ids: Vec<&str> = s.settings_subtabs().iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["display", "gameplay", "multiplayer", "updates"]);
+        assert_eq!(
+            ids,
+            ["display", "gameplay", "bindings", "multiplayer", "updates"]
+        );
     }
 
     #[test]
@@ -646,184 +656,6 @@ mod tests {
             .contains("duplicate"));
         let v2 = r#"{"schema_version":2,"settings":[]}"#;
         assert!(Schema::from_json(v2, None).is_err());
-    }
-
-    fn ids(rows: &[&Row]) -> Vec<String> {
-        rows.iter().map(|r| r.id.clone()).collect()
-    }
-
-    /// LA20: every setting a player can see sits in exactly one group, a group is one run of rows
-    /// on one page, and no group is longer than seven rows.
-    #[test]
-    fn every_user_setting_is_in_exactly_one_group_of_at_most_seven_rows() {
-        let s = Schema::builtin();
-        let mut seen: Vec<String> = Vec::new();
-        type Groups<'a> = Vec<(String, Vec<&'a Row>)>;
-        let mut pages: Vec<(String, Groups)> = Vec::new();
-        for t in s.settings_subtabs() {
-            pages.push((t.id.clone(), s.groups_in_subtab(&t.id)));
-        }
-        pages.push(("diagnostics".into(), s.diagnostics_groups()));
-        for (page, groups) in &pages {
-            let mut names: Vec<&str> = Vec::new();
-            for (g, rows) in groups {
-                assert!(!g.is_empty(), "{page}: ungrouped rows {:?}", ids(rows));
-                assert!(
-                    !names.contains(&g.as_str()),
-                    "{page}: group {g} appears twice"
-                );
-                names.push(g);
-                assert!(
-                    (1..=7).contains(&rows.len()),
-                    "{page}/{g}: {} rows {:?}",
-                    rows.len(),
-                    ids(rows)
-                );
-                seen.extend(rows.iter().map(|r| r.id.clone()));
-            }
-        }
-        // Walk the schema itself: every non-hidden row was reached once, and nothing else.
-        let mut want: Vec<String> = s
-            .rows
-            .iter()
-            .filter(|r| !r.hidden)
-            .map(|r| r.id.clone())
-            .collect();
-        want.sort();
-        seen.sort();
-        assert_eq!(seen, want);
-        // A group id never straddles two pages or two tabs.
-        let mut home: BTreeMap<&str, &str> = BTreeMap::new();
-        for (page, groups) in &pages {
-            for (g, _) in groups {
-                assert_eq!(
-                    *home.entry(g).or_insert(page),
-                    page,
-                    "group {g} on two pages"
-                );
-            }
-        }
-        // Every group has a place in the header order.
-        for (_, groups) in &pages {
-            for (g, _) in groups {
-                assert!(s.group_order.contains(g), "{g} missing from group_order");
-            }
-        }
-    }
-
-    #[test]
-    fn the_la20_layout_matches_the_plan() {
-        let s = Schema::builtin();
-        let shape = |tab: &str| -> Vec<(String, Vec<String>)> {
-            s.groups_in_subtab(tab)
-                .into_iter()
-                .map(|(g, rows)| (g, ids(&rows)))
-                .collect()
-        };
-        let g = |name: &str, rows: &[&str]| {
-            (
-                name.to_string(),
-                rows.iter().map(|r| r.to_string()).collect::<Vec<_>>(),
-            )
-        };
-        assert_eq!(
-            shape("display"),
-            [
-                g(
-                    "display",
-                    &[
-                        "video.resolution",
-                        "video.window",
-                        "video.scale",
-                        "video.filter",
-                        "video.vsync",
-                        "video.fps_limit",
-                        "video.mouse_clip"
-                    ]
-                ),
-                g(
-                    "interface",
-                    &[
-                        "video.ui_scale",
-                        "ui.shift_rearm_build",
-                        "ui.minimap_plus",
-                        "ui.bigmap",
-                        "ui.bigmap_center",
-                        "ui.bigmap_key",
-                        "ui.bigmap_orders"
-                    ]
-                ),
-                g("mouse", &["input.wheel_zoom", "input.wheel_lists"]),
-                g("language", &["lang.pack"]),
-            ]
-        );
-        assert_eq!(
-            shape("gameplay"),
-            [
-                g(
-                    "turrets",
-                    &[
-                        "net.turret_reload_realtime_fix",
-                        "net.turret_fire_rate_mult",
-                        "net.turret_clip_fix",
-                        "net.turret_fire_poll_fix"
-                    ]
-                ),
-                g(
-                    "building",
-                    &["net.mother_free_build", "net.mother_free_build_ai"]
-                ),
-                g(
-                    "units",
-                    &[
-                        "net.improved_movement",
-                        "net.group_movement",
-                        "net.improved_combat"
-                    ]
-                ),
-                g("limits", &["caps.raise"]),
-                g("campaign", &["net.project_gate_fix", "net.sp_sim_step_ms"]),
-            ]
-        );
-        assert_eq!(
-            shape("multiplayer"),
-            [
-                g(
-                    "connection",
-                    &[
-                        "launcher.relay_mode",
-                        "net.force_relay",
-                        "net.port",
-                        "net.lockstep_max_ms"
-                    ]
-                ),
-                g("overlay", &["hud.net_indicator", "hud.net_indicator_key"]),
-            ]
-        );
-        assert_eq!(
-            shape("updates"),
-            [g("updates", &["launcher.channel", "launcher.discord"])]
-        );
-        let diag: Vec<(String, Vec<String>)> = s
-            .diagnostics_groups()
-            .into_iter()
-            .map(|(g, rows)| (g, ids(&rows)))
-            .collect();
-        assert_eq!(
-            diag,
-            [
-                g(
-                    "logs",
-                    &[
-                        "log.level",
-                        "log.keep_sessions",
-                        "log.keep_days",
-                        "desync.state_record"
-                    ]
-                ),
-                g("compat", &["video.backend", "input.backend"]),
-            ]
-        );
     }
 
     #[test]

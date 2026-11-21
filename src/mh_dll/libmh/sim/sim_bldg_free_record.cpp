@@ -4,6 +4,7 @@
 // was exported for this batch).
 //
 #include "sim/sim_bldg_free_record.h"
+#include "sim/sim_order_tasks.h"
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -41,6 +42,8 @@ void bldg_free_record(sim_store &own, uint32_t player, int32_t building_index) {
     // buildings[player][0].index is whatever it held minus 1 (not necessarily -1, since write 2 may
     // have touched a different row).
     b0.index -= 1;
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::building, player16, uint32_t(building_index), false);
+    own.storage_policy(mh::storage_policy::operation::retire_building, player16, building_index);
 
     // 0x0047bae3-0x0047baec: `CMP G_PLANET_INDEX,2; JLE <epilogue>; CMP building_index,5` then falls
     // straight into the epilogue with no jump after the second CMP -- both arms of the JLE land on

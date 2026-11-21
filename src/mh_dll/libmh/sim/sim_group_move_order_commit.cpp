@@ -1,4 +1,5 @@
 #include "sim/sim_group_move_order_commit.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_stack_guard.h"    // LIFT-TABLE S5: the stack probe is libmh-internal, not a host service
 #include "sim/sim_move_fixes.h"     // mods:M1H the planner keys' switchboard (move_fix())
 #include "sim/move/arrival.h"       // mods:M1H [net] move_distinct_goals
@@ -263,15 +264,22 @@ struct commit_arrival_world {
     uint32_t field_of(uint32_t t) { return own.region_cell_at(static_cast<int32_t>(flat_x(t)), static_cast<int32_t>(flat_y(t))).terrain_flags >> 8; }
     bool     unit(uint32_t owner_, uint32_t i, move::arr_unit *out) {
         if (owner_ >= 8 || i >= static_cast<uint32_t>(v.caps.units)) return false;
-        const sim::unit &u = unit_of(v, owner_, static_cast<int32_t>(i));
-        out->order         = u.order;
-        out->state         = u.state;
-        out->goal_x        = u.goal_x;
-        out->goal_y        = u.goal_y;
-        out->group         = u.move_group_id;
-        out->x             = u.x;
-        out->y             = u.y;
-        out->path_slot     = u.path_slot_id;
+        const sim::unit &u   = unit_of(v, owner_, static_cast<int32_t>(i));
+        out->order           = u.order;
+        out->state           = u.state;
+        out->goal_x          = u.goal_x;
+        out->goal_y          = u.goal_y;
+        out->group           = u.move_group_id;
+        out->x               = u.x;
+        out->y               = u.y;
+        out->path_slot       = u.path_slot_id;
+        out->owned_patrol    = false;
+        out->patrol_sequence = 0;
+        if (u.order == 16) {
+            const auto q         = order_tasks_adapter::placement_patrol(own, owner_, i);
+            out->owned_patrol    = q.eligible && q.group == uint32_t(u.move_group_id);
+            out->patrol_sequence = q.sequence;
+        }
         return true;
     }
     void set_unit_goal(uint32_t owner_, uint32_t i, uint8_t x, uint8_t y) {
@@ -394,12 +402,16 @@ void group_move_order_commit(const sim_view &v, sim_store &own, const group_move
         if (v.passable[(scratch.tile_col << 8) | scratch.tile_row] == 0) {
             // 0x0041c98a-0x0041c9ac: this member's own start tile is impassable -- abort the WHOLE
             // commit immediately (not just this member), after the partial writes above already landed.
+            order_tasks_adapter::fail_wave(own, uint32_t(player_id), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
             c.stack_capacity_guard_0x20();
             return;
         }
     }
 
-    if (bad_member_count != 0) return; // 0x0041c9b6-0x0041c9ba: any unit_idx<1 -- bail without committing.
+    if (bad_member_count != 0) {
+        order_tasks_adapter::fail_wave(own, uint32_t(player_id), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
+        return;
+    } // 0x0041c9b6-0x0041c9ba: any unit_idx<1 -- bail without committing.
 
     own.group_order_owner_mut() = player_id; // 0x0041c9c0-0x0041c9c3
 

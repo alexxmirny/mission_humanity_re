@@ -44,11 +44,11 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: order the airborne mothership to land (shift+right-click; order 0x10 move + 0x18
+# in the match: order the airborne mothership to land (Ctrl+right-click; order 0x10 move + 0x18
 # deploy). It flies until well before gameclock 20000.
 absent Network players
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 3200
 
 # ---- segment 1: diplomacy (mp:U39) -------------------------------------------------------------
@@ -93,6 +93,7 @@ capture mother_selected
 # damage it: Shift+Enter opens the debug console line; `_DESTROY` needs ini/cheat_gate_off.ini.
 layout 00000409
 key 0x1c shift
+chatready
 type _DESTROY
 field chat _DESTROY
 key 0x1c

@@ -1399,9 +1399,11 @@ static int run_udprelinktest(int port) {
     ur_check(re, "the re-dial was accepted on an ALREADY-STARTED transport (the T1b rule)");
     ur_check(cl.peer_count() == 0, "...and the restart dropped the old connection table (peers=%d)",
              cl.peer_count());
-    const bool up2 = ur_wait([&] { return host.peer_count() == 1; }, 10000);
-    ur_check(up2, "the host accepted a SECOND connection from the same client (peers=%d)",
-             host.peer_count());
+    // Host admission precedes TOKEN_ACK delivery. Wait for the client's own active connection too:
+    // send() before that ACK returns success without queuing the one-shot PING.
+    const bool up2 = ur_wait([&] { return host.peer_count() == 1 && cl.peer_count() == 1; }, 10000);
+    ur_check(up2, "both endpoints admitted the SECOND connection (host peers=%d, client peers=%d)",
+             host.peer_count(), cl.peer_count());
     ur_check(ur_hs_done(host) == 2,
              "...counted as a second completed handshake, not the old one resurrected (%ld)",
              ur_hs_done(host));
@@ -3327,6 +3329,8 @@ static int run_mute_probe(int port) {
     return n <= 0 ? 0 : 1;
 }
 
+int run_tcp_generation_checks(int port, const char *secure_key, const char *open_key);
+
 static int run_authtest(int port) {
     char exe[MAX_PATH], dir[MAX_PATH];
     GetModuleFileNameA(nullptr, exe, MAX_PATH);
@@ -3376,12 +3380,16 @@ static int run_authtest(int port) {
     CloseHandle(pgood.hThread);
     CloseHandle(pprobe.hProcess);
     CloseHandle(pprobe.hThread);
+    // Fold the mandatory game-generation gate into the existing transport suite.
+    // keyA remains the fixed secure fixture; keyB now denotes explicit plaintext.
+    write_key_file(keyB, "open");
+    const int generations = run_tcp_generation_checks(port + 20, keyA, keyB);
     DeleteFileA(keyA);
     DeleteFileA(keyB);
 
     printf("=== wrong-key client=%d (want !=0)  mute probe=%d (want 0)  right-key client=%d (want 0)  host=%d ===\n",
            bad, probe, good, host);
-    if (bad != 0 && probe == 0 && good == 0 && host == 0) {
+    if (bad != 0 && probe == 0 && good == 0 && host == 0 && generations == 0) {
         printf("=== PASS: only the key holder got in ===\n");
         return 0;
     }
@@ -3437,6 +3445,11 @@ int run_logsinktest();
 // was hand-patched at its own call site. This suite is the durable fix's own proof, against a
 // fixture ini shaped exactly like the trap (mh_net.example.ini's documented style).
 int run_inireadtest();
+// mod_catalog_selftest.cpp -- mods:DATAEXT1: the pure mod catalog (mh::mods::prepare) driven over
+// temporary mod trees: no-mod digest constant, strict order + shadowed identity, whole-set
+// fallback, alias/escape/refusals, the class surface, mounted_snapshot const lookup.
+int run_modcatalogtest();
+int run_cfgpatchtest();                         // DATAEXT2: transactional existing-record merge and native emission.
 int run_gameplaytest();                         // gameplay_selftest.cpp -- PT-SET1: host-synced gameplay settings
 int run_infoavitest();                          // info_avi_selftest.cpp -- mp:X2g
 int run_infoguardtest();                        // info_guard_selftest.cpp -- mp:U73
@@ -3518,6 +3531,10 @@ int run_patchtest();
 int run_capstest();
 // ovf_selftest.cpp -- PT-CAP8 S2 slice E: the overflow extension (mh::caps::ovf) -- slice table, incremental tracker, folds, MHOV codec + every refusal.
 int run_ovftest();
+// mods_save_selftest.cpp -- DATAEXT1: the outer .sav mod-metadata carrier (mh/mods/save_meta.*): the
+// MHM1 footer, the BOOT/LOADED/UNKNOWN provenance rules, strict grammar/bounds and every
+// malformed/position/fault path (bounds checked BEFORE any scratch read).
+int run_modsavetest();
 // gone_peer_guard_selftest.cpp -- mp:U19i: gone_peer_frame_guard's byte-patch carrier, the REAL naked
 // thunk driven against a fake buffer/emitter/frame. Its rig half (a config-(1) clean quit) cannot
 // show the damage the thunk prevents without a second, unguarded run; this arm shows both.
@@ -3664,6 +3681,7 @@ static const suite_row SUITE_TABLE[] = {
     {"patchtest",      true, adapt_void<run_patchtest>},
     {"capstest",       true, adapt_void<run_capstest>},
     {"ovftest",        true, adapt_void<run_ovftest>},
+    {"modsavetest",    true, adapt_void<run_modsavetest>},
     {"gpfgtest",       true, adapt_void<run_gpfgtest>},
     {"tombstonetest",  true, adapt_void<run_tombstonetest>},
     {"hostapitest",    true, adapt_void<run_hostapitest>},
@@ -3687,6 +3705,8 @@ static const suite_row SUITE_TABLE[] = {
     {"logrottest",     true, adapt_void<run_logrottest>},
     {"logsinktest",    true, adapt_void<run_logsinktest>}, // mp:LOG1
     {"inireadtest",    true, adapt_void<run_inireadtest>},
+    {"modcatalogtest", true, adapt_void<run_modcatalogtest>}, // mods:DATAEXT1
+    {"cfgpatchtest",   true, adapt_void<run_cfgpatchtest>}, // mods:DATAEXT2
     {"gameplaytest",   true, adapt_void<run_gameplaytest>}, // PT-SET1
     // mp:X2g. The info-screen media tick's divisor guard (seams/ui_info_avi.h): the arithmetic the
     // replaced llm_ui_info_media_frame_tick runs, driven with the zero-filled context a failed AVI

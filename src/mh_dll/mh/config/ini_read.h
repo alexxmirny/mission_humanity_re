@@ -53,6 +53,16 @@ inline bool strip_ini_comment(char *s) {
     }
     return false;
 }
+// Only a versioned migration may read retired PLAYER settings through this path.
+// They are no longer registered editable keys; treating them as unknown dev keys
+// would silently replace saved values with defaults before migration can validate.
+inline DWORD read_ini_player_import_string(const char *section, const char *key, const char *def,
+                                           char *out, DWORD out_cap, const char *ini) {
+    DWORD n = GetPrivateProfileStringA(section, key, def, out, out_cap, ini);
+    if (strip_ini_comment(out)) n = (DWORD)lstrlenA(out);
+    return n;
+}
+
 
 // GetPrivateProfileStringA (via the RL2 ship gate, mh_ini_get_str), with a trailing same-line `;comment` stripped from the STRING it
 // returns (see strip_ini_comment above). Drop-in replacement for the raw API at a STRING read

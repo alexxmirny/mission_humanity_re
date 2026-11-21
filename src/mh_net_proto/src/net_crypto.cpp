@@ -45,21 +45,20 @@ const std::uint32_t K256[64] = {
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
-struct Sha256Ctx {
-    std::uint32_t h[8];
-    std::uint64_t total;
-    std::uint8_t  buf[64];
-    std::size_t   used;
-};
-
-void sha_init(Sha256Ctx &c) {
-    c.h[0] = 0x6a09e667; c.h[1] = 0xbb67ae85; c.h[2] = 0x3c6ef372; c.h[3] = 0xa54ff53a;
-    c.h[4] = 0x510e527f; c.h[5] = 0x9b05688c; c.h[6] = 0x1f83d9ab; c.h[7] = 0x5be0cd19;
+void sha_init(sha256_stream &c) {
+    c.h[0]  = 0x6a09e667;
+    c.h[1]  = 0xbb67ae85;
+    c.h[2]  = 0x3c6ef372;
+    c.h[3]  = 0xa54ff53a;
+    c.h[4]  = 0x510e527f;
+    c.h[5]  = 0x9b05688c;
+    c.h[6]  = 0x1f83d9ab;
+    c.h[7]  = 0x5be0cd19;
     c.total = 0;
     c.used  = 0;
 }
 
-void sha_block(Sha256Ctx &c, const std::uint8_t *p) {
+void sha_block(sha256_stream &c, const std::uint8_t *p) {
     std::uint32_t w[64];
     for (int i = 0; i < 16; ++i) w[i] = load_be32(p + i * 4);
     for (int i = 16; i < 64; ++i) {
@@ -76,14 +75,26 @@ void sha_block(Sha256Ctx &c, const std::uint8_t *p) {
         std::uint32_t S0 = ror32(a, 2) ^ ror32(a, 13) ^ ror32(a, 22);
         std::uint32_t mj = (a & b) ^ (a & cc) ^ (b & cc);
         std::uint32_t t2 = S0 + mj;
-        h = g; g = f; f = e; e = d + t1;
-        d = cc; cc = b; b = a; a = t1 + t2;
+        h                = g;
+        g                = f;
+        f                = e;
+        e                = d + t1;
+        d                = cc;
+        cc               = b;
+        b                = a;
+        a                = t1 + t2;
     }
-    c.h[0] += a; c.h[1] += b; c.h[2] += cc; c.h[3] += d;
-    c.h[4] += e; c.h[5] += f; c.h[6] += g; c.h[7] += h;
+    c.h[0] += a;
+    c.h[1] += b;
+    c.h[2] += cc;
+    c.h[3] += d;
+    c.h[4] += e;
+    c.h[5] += f;
+    c.h[6] += g;
+    c.h[7] += h;
 }
 
-void sha_update(Sha256Ctx &c, const std::uint8_t *p, std::size_t n) {
+void sha_update(sha256_stream &c, const std::uint8_t *p, std::size_t n) {
     c.total += n;
     while (n) {
         std::size_t take = 64 - c.used;
@@ -99,7 +110,7 @@ void sha_update(Sha256Ctx &c, const std::uint8_t *p, std::size_t n) {
     }
 }
 
-void sha_final(Sha256Ctx &c, std::uint8_t out[SHA256_LEN]) {
+void sha_final(sha256_stream &c, std::uint8_t out[SHA256_LEN]) {
     std::uint64_t bits = c.total * 8;
     std::uint8_t  pad  = 0x80;
     sha_update(c, &pad, 1);
@@ -113,16 +124,27 @@ void sha_final(Sha256Ctx &c, std::uint8_t out[SHA256_LEN]) {
 
 // ---- ChaCha20 (RFC 8439) ------------------------------------------------------------------------
 inline void qr(std::uint32_t &a, std::uint32_t &b, std::uint32_t &c, std::uint32_t &d) {
-    a += b; d ^= a; d = rol32(d, 16);
-    c += d; b ^= c; b = rol32(b, 12);
-    a += b; d ^= a; d = rol32(d, 8);
-    c += d; b ^= c; b = rol32(b, 7);
+    a += b;
+    d ^= a;
+    d = rol32(d, 16);
+    c += d;
+    b ^= c;
+    b = rol32(b, 12);
+    a += b;
+    d ^= a;
+    d = rol32(d, 8);
+    c += d;
+    b ^= c;
+    b = rol32(b, 7);
 }
 
 void chacha_block(const std::uint8_t key[KEY_LEN], std::uint32_t counter,
                   const std::uint8_t nonce[12], std::uint8_t out[64]) {
     std::uint32_t s[16];
-    s[0] = 0x61707865; s[1] = 0x3320646e; s[2] = 0x79622d32; s[3] = 0x6b206574;
+    s[0] = 0x61707865;
+    s[1] = 0x3320646e;
+    s[2] = 0x79622d32;
+    s[3] = 0x6b206574;
     for (int i = 0; i < 8; ++i) s[4 + i] = load_le32(key + i * 4);
     s[12] = counter;
     for (int i = 0; i < 3; ++i) s[13 + i] = load_le32(nonce + i * 4);
@@ -163,7 +185,7 @@ void hmac_pieces(const std::uint8_t *key, std::size_t key_len, const Piece *piec
         ipad[i] = (std::uint8_t)(k[i] ^ 0x36);
         opad[i] = (std::uint8_t)(k[i] ^ 0x5c);
     }
-    Sha256Ctx c;
+    sha256_stream c;
     sha_init(c);
     sha_update(c, ipad, 64);
     for (int i = 0; i < npieces; ++i)
@@ -196,11 +218,23 @@ void kdf(const std::uint8_t psk[KEY_LEN], const char *label, const std::uint8_t 
 
 // ---- public primitives --------------------------------------------------------------------------
 void sha256(const std::uint8_t *msg, std::size_t len, std::uint8_t out[SHA256_LEN]) noexcept {
-    Sha256Ctx c;
+    sha256_stream c;
     sha_init(c);
     sha_update(c, msg, len);
     sha_final(c, out);
 }
+
+// ---- streaming SHA-256: the same function, fed in pieces ---------------------------------------
+// The DATAEXT1 mod content digest hashes a canonical stream assembled from many buffers; feeding
+// it piecewise avoids concatenating it into one giant allocation. Semantically identical to
+// sha256() over the concatenation (pinned against it in test/net_proto_test.cpp).
+void sha256_reset(sha256_stream &s) noexcept { sha_init(s); }
+
+void sha256_feed(sha256_stream &s, const std::uint8_t *data, std::size_t len) noexcept {
+    sha_update(s, data, len);
+}
+
+void sha256_finish(sha256_stream &s, std::uint8_t out[SHA256_LEN]) noexcept { sha_final(s, out); }
 
 void hmac_sha256(const std::uint8_t *key, std::size_t key_len, const std::uint8_t *msg,
                  std::size_t msg_len, std::uint8_t out[SHA256_LEN]) noexcept {

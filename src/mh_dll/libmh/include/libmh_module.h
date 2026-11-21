@@ -35,14 +35,11 @@
 extern "C" {
 #endif
 
-// Bumped whenever anything in this header changes shape. mh.dll REFUSES a module whose ABI
-// disagrees rather than calling into it: two DLLs that ship separately can be mismatched by a
-// player copying one file, and a silent mismatch is a crash in somebody else's stack frame.
-//
-// IT IS NOT THE CONTRACT'S VERSION. The ~100 spine rows are checked ROW BY ROW at bind time (every
-// name must resolve or the module is refused whole), which is strictly stronger than a number both
-// sides have to remember to bump -- and it is the check a generated list can actually keep true.
-#define LIBMH_MODULE_ABI 0xF4D00001u
+// Bumped for module shape OR host-callback semantic incompatibility. mh.dll refuses
+// disagreement before publishing any spine pointers or installing promotions.
+// Symbol-by-symbol checks below fence missing exports, not changed callback meanings.
+// v3 requires the host-owned completed-body participant-removal boundary.
+#define LIBMH_MODULE_ABI 0xF4D00003u
 
 // What mh.dll hands the module at bind time. The same shape as MH_NetModuleHost and the same Q1
 // rule behind it: the satellite owns no path, no ini and no file handle, because exactly one place

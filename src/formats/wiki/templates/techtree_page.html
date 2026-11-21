@@ -1,0 +1,7 @@
+{% extends "_base.html" %}
+{% block body %}
+<style>main { max-width: none; }</style>
+<p class="dim"><a href="index.html">{{ S.techtree }}</a></p>
+<p class="dim">{{ note }}</p>
+{{ fragment|safe }}
+{% endblock %}

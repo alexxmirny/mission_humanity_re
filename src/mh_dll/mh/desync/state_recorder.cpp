@@ -541,7 +541,7 @@ bool configure(int enabled_key, int keyframe_every, uint64_t manifest_fp, log_fn
     g_qpc_hz = QueryPerformanceFrequency(&hz) ? hz.QuadPart : 0;
     g_total  = 0;
     for (int i = 0; i < N; ++i) {
-        g_lens[i] = mh::state::HASH_REGIONS[i].len;
+        g_lens[i] = mh::state::hash_len(i);
         g_base[i] = g_total;
         g_total += g_lens[i];
     }

@@ -163,7 +163,7 @@ class Coverage:
                 for lo, hi in re.findall(r"(\d{4,5})\s*-\s*(\d{4,5})", value):
                     self.port_ranges.append((int(lo), int(hi)))
                 # a "<base> + n" / "<base> + test_index" band -- this codebase's bands are all
-                # lane_alloc.PORT_BAND wide (200 since TL-BANDS200); treat the base the same way.
+                # lane_alloc.PORT_BAND wide; treat the base the same way.
                 for base in re.findall(r"(\d{4,5})\s*\+\s*[A-Za-z_]", value):
                     b = int(base)
                     self.port_ranges.append((b, b + _port_band() - 1))

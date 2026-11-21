@@ -70,19 +70,19 @@ int32_t xtl_llm_strat_bldg_instant_construct_find_slot(int32_t tile_col, int32_t
 }
 
 // ---- sim/sim_unit_order_disembark_soldiers.h --------------------------------------------------
-// void __watcall llm_unit_order_disembark_soldiers(uint32_t player, int32_t unit_idx).
-void xtl_llm_unit_order_disembark_soldiers(uint32_t player, int32_t unit_idx) {
+// void __watcall llm_unit_order_squad_split(uint32_t player, int32_t unit_idx).
+void xtl_llm_unit_order_squad_split(uint32_t player, int32_t unit_idx) {
     static bool fired = false;
-    xtl_mark_first_call(fired, "llm_unit_order_disembark_soldiers");
+    xtl_mark_first_call(fired, "llm_unit_order_squad_split");
     const int32_t argv[2] = {(int32_t)player, unit_idx};
-    ::libmh_issue_order(LIBMH_ORD_UNIT_ORDER_DISEMBARK_SOLDIERS, argv, 2u);
+    ::libmh_issue_order(LIBMH_ORD_UNIT_ORDER_SQUAD_SPLIT, argv, 2u);
 }
 
 } // namespace promoted_arm
 
 MH_EXPORT_REPLACE(llm_strat_bldg_init_all, mh::sim::promoted_arm::xtl_llm_strat_bldg_init_all)
 MH_EXPORT_REPLACE(llm_strat_bldg_instant_construct_find_slot, mh::sim::promoted_arm::xtl_llm_strat_bldg_instant_construct_find_slot)
-MH_EXPORT_REPLACE(llm_unit_order_disembark_soldiers, mh::sim::promoted_arm::xtl_llm_unit_order_disembark_soldiers)
+MH_EXPORT_REPLACE(llm_unit_order_squad_split, mh::sim::promoted_arm::xtl_llm_unit_order_squad_split)
 // clang-format on
 
 bool xtl_promotion_active() { return promoted_arm::g_xtl_promote_installed; }
@@ -113,7 +113,7 @@ int install_promotion_xtl(int default_on) {
     const entry seams[] = {
         {"llm_strat_bldg_init_all",                    mh::exp::addr_llm_strat_bldg_init_all,                    mh_export_install_llm_strat_bldg_init_all},
         {"llm_strat_bldg_instant_construct_find_slot", mh::exp::addr_llm_strat_bldg_instant_construct_find_slot, mh_export_install_llm_strat_bldg_instant_construct_find_slot},
-        {"llm_unit_order_disembark_soldiers",          mh::exp::addr_llm_unit_order_disembark_soldiers,          mh_export_install_llm_unit_order_disembark_soldiers},
+        {"llm_unit_order_squad_split",          mh::exp::addr_llm_unit_order_squad_split,          mh_export_install_llm_unit_order_squad_split},
     };
     // clang-format on
 

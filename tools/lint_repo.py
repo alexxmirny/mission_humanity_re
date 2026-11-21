@@ -90,14 +90,23 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import machine_config as machine  # noqa: E402
+import machine_config as machine
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLANG_FORMAT = os.environ.get("MH_CLANG_FORMAT", machine.CLANG_FORMAT)
 # "libmh" joined at fork F5O, when the 628-TU roster moved out of mh/ into the directory of
 # the project that owns it. Leaving it out would have dropped 1260 files out of clang-format
 # silently -- the scope-emptying failure this list is written as a literal to make visible.
-DLL_ROOTS = ("mh", "libmh", "mh_common", "mh_nettest", "libmh_test")
+DLL_ROOTS = (
+    "mh",
+    "libmh",
+    "mh_common",
+    "mh_nettest",
+    "libmh_test",
+    "mh_mapgen",
+    "mh_mapgen_cli",
+    "mh_mapgen_test",
+)
 # The proxy-DLL shims are a separate tree but the same C++ discipline applies,
 # so they are formatted with the rest. Their generated stub bodies are excluded below: 47 naked
 # inline-asm thunks are emitted by tools/gen_proxy_stubs.py and clang-format would only fight it.
@@ -248,7 +257,7 @@ def _tree_is_the_cut():
     global _TREE_IS_CUT
     if _TREE_IS_CUT is None:
         try:
-            import check_publishable as cp  # noqa: PLC0415
+            import check_publishable as cp
 
             led = cp.load_ledger()
             _TREE_IS_CUT = cp.is_public_tree(cp.tracked_paths(REPO), led)
@@ -305,13 +314,36 @@ def _lane_of(cmd):
 
 
 class _Check:
-    __slots__ = ("name", "cmd", "cwd", "advisory", "lane", "fn", "done", "ok", "text")
+    __slots__ = (
+        "advisory",
+        "cmd",
+        "controller",
+        "credits",
+        "cwd",
+        "done",
+        "fn",
+        "lane",
+        "name",
+        "ok",
+        "text",
+    )
 
-    def __init__(self, name, cmd=None, cwd=REPO, advisory=False, fn=None, lane=None):
+    def __init__(
+        self,
+        name,
+        cmd=None,
+        cwd=REPO,
+        advisory=False,
+        fn=None,
+        lane=None,
+        controller=False,
+        credits=3,
+    ):
         self.name, self.cmd, self.cwd, self.advisory, self.fn = name, cmd, cwd, advisory, fn
         self.lane = lane or (_lane_of(cmd) if cmd else "fn:" + name)
         self.done = threading.Event()
         self.ok, self.text = True, ""
+        self.controller, self.credits = controller, credits
 
 
 def _declare(name):
@@ -327,18 +359,20 @@ def _declare(name):
     return False
 
 
-def check(name, cmd, cwd=REPO, advisory=False):
+def check(name, cmd, cwd=REPO, advisory=False, *, controller=False, credits=3):
     """Queue a subprocess check. An advisory check reports but never fails the gate."""
     if _declare(name):
         return
-    _QUEUE.append(_Check(name, cmd=cmd, cwd=cwd, advisory=advisory))
+    _QUEUE.append(
+        _Check(name, cmd=cmd, cwd=cwd, advisory=advisory, controller=controller, credits=credits)
+    )
 
 
-def check_fn(name, fn, advisory=False, lane=None):
+def check_fn(name, fn, advisory=False, lane=None, *, controller=False):
     """Queue an in-process check: `fn` prints its own lines and returns its verdict (None == ok)."""
     if _declare(name):
         return
-    _QUEUE.append(_Check(name, fn=fn, advisory=advisory, lane=lane))
+    _QUEUE.append(_Check(name, fn=fn, advisory=advisory, lane=lane, controller=controller))
 
 
 def check_chunked(name, cmd_prefix, files, cwd=REPO):
@@ -347,6 +381,7 @@ def check_chunked(name, cmd_prefix, files, cwd=REPO):
         name,
         lambda: run_chunked(name, cmd_prefix, files, cwd),
         lane=os.path.basename(cmd_prefix[0]).lower(),
+        controller=True,
     )
 
 
@@ -378,6 +413,28 @@ class _ThreadStdout:
 
 
 def _execute(c):
+    import gate_admission
+
+    if c.controller:
+        return _execute_held(c, None)
+    with gate_admission.lease("lint:" + c.name, credits=c.credits) as held:
+        return _execute_covered(c, held)
+
+
+def _execute_covered(c, held):
+    import gate_admission
+
+    env = held.covered_env()
+    if (
+        gate_admission.enabled()
+        and c.cmd
+        and os.path.basename(c.cmd[0]).lower() in ("ruff", "ruff.exe")
+    ):
+        env["RAYON_NUM_THREADS"] = "1"
+    return _execute_held(c, env)
+
+
+def _execute_held(c, env):
     if c.fn is not None:
         buf = io.StringIO()
         out = sys.stdout
@@ -397,7 +454,7 @@ def _execute(c):
             buf.write("[%s] %s -- %s\n" % ("ok" if c.advisory else "FAIL", c.name, e))
         c.text = buf.getvalue().rstrip("\n")
         return
-    r = subprocess.run(c.cmd, cwd=c.cwd, capture_output=True, text=True)
+    r = subprocess.run(c.cmd, cwd=c.cwd, capture_output=True, text=True, env=env)
     c.ok = r.returncode == 0
     lines = ["[%s] %s" % ("ok" if c.ok else "FAIL", c.name)]
     if not c.ok:
@@ -416,24 +473,104 @@ def run_queued(jobs=None):
     lanes = {}
     for c in _QUEUE:
         lanes.setdefault(c.lane, []).append(c)
+    ready = list(lanes.values())
+    import gate_admission
 
-    def drive(lane):
-        for c in lane:
-            try:
+    hints = {}
+    cfg = gate_admission.configuration()
+    if cfg and not cfg["covered"] and jobs != 1:
+        import json
+
+        import tool_paths
+
+        try:
+            with open(
+                str(tool_paths.state_path("gate/last_admission.json", repo=REPO)), encoding="utf-8"
+            ) as fh:
+                hints = gate_admission.leaf_duration_hints(json.load(fh))
+        except (OSError, ValueError):
+            hints = {}
+        # Admit long SCRIPT lanes early, without reordering a check and its mutations.
+        # Otherwise the broker cannot see late-declared work until a worker reaches it.
+        ready.sort(
+            key=lambda lane: -sum(hints.get((cfg["owner"], "lint:" + c.name), 1.0) for c in lane)
+        )
+
+    batching = bool(cfg and not cfg["covered"] and jobs != 1)
+    workers = jobs or min(len(lanes), (os.cpu_count() or 4))
+    if batching:
+        # A whole script lane belongs to one worker; its checks cannot race each other.
+        # Static balanced partitions let short checks share bounded admission without
+        # adding another queue, or waiting for another worker while holding credits.
+        groups = [[] for _ in range(min(workers, len(ready)))]
+        loads = [0.0] * len(groups)
+        for lane in ready:
+            slot = min(range(len(groups)), key=loads.__getitem__)
+            groups[slot].extend(lane)
+            loads[slot] += sum(hints.get((cfg["owner"], "lint:" + c.name), 1.0) for c in lane)
+    else:
+        groups = ready
+
+    def ordinary(c):
+        return not c.controller and c.credits == 3
+
+    def execute(c, held=None):
+        try:
+            if held is None:
                 _execute(c)
-            except Exception as e:
-                c.ok = False
-                c.text = "[FAIL] %s\n      driver error: %r" % (c.name, e)
-            finally:
-                c.done.set()
+            else:
+                _execute_covered(c, held)
+        except BaseException as e:
+            c.ok = False
+            c.text = "[FAIL] %s\n      driver error: %r" % (c.name, e)
+            if not isinstance(e, Exception):
+                raise
+
+    def drive(checks):
+        pos = 0
+        try:
+            while pos < len(checks):
+                end = pos + 1
+                if batching and ordinary(checks[pos]):
+                    while end < min(pos + 8, len(checks)) and ordinary(checks[end]):
+                        end += 1
+                    try:
+                        with gate_admission.lease(
+                            "lint:batch:" + checks[pos].name, credits=3
+                        ) as held:
+                            for c in checks[pos:end]:
+                                execute(c, held)
+                    except BaseException as e:
+                        # Acquisition/release errors must not produce a green batch.
+                        for c in checks[pos:end]:
+                            c.ok = False
+                            c.text = "[FAIL] %s\n      batch admission error: %r" % (c.name, e)
+                        if not isinstance(e, Exception):
+                            raise
+                    finally:
+                        for c in checks[pos:end]:
+                            c.done.set()
+                else:
+                    try:
+                        execute(checks[pos])
+                    finally:
+                        checks[pos].done.set()
+                pos = end
+        finally:
+            # A worker-level cancellation must wake the declaration-order reporter.
+            for c in checks[pos:]:
+                if not c.done.is_set():
+                    c.ok = False
+                    c.text = "[FAIL] %s\n      lint worker aborted" % c.name
+                    c.done.set()
 
     ok = True
     real = sys.stdout
     sys.stdout = _ThreadStdout(real)
     try:
-        with ThreadPoolExecutor(max_workers=jobs or min(len(lanes), (os.cpu_count() or 4))) as ex:
-            for lane in lanes.values():
-                ex.submit(drive, lane)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            for group in groups:
+                ex.submit(drive, group)
             for c in _QUEUE:
                 c.done.wait()
                 if c.text:
@@ -474,7 +611,12 @@ def run_chunked(name, cmd_prefix, files, cwd=REPO):
     # The batches exist only because of an argv-length ceiling -- one logical check over disjoint
     # file sets, with nothing ordered between them, so they fan out.
     def fmt(b):
-        return subprocess.run(cmd_prefix + b, cwd=cwd, capture_output=True, text=True)
+        import gate_admission
+
+        with gate_admission.lease("lint:clang-format") as held:
+            return subprocess.run(
+                cmd_prefix + b, cwd=cwd, capture_output=True, text=True, env=held.covered_env()
+            )
 
     with ThreadPoolExecutor(max_workers=min(len(batches), (os.cpu_count() or 4))) as ex:
         for r in list(ex.map(fmt, batches)):
@@ -532,9 +674,9 @@ def _strip_cxx_comments(text):
     never legitimately inside one)."""
     global _LRC_COMMENTS
     if _LRC_COMMENTS is None:
-        import re  # noqa: PLC0415
+        import re
 
-        _LRC_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+        _LRC_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
     return _LRC_COMMENTS.sub(lambda m: "\n" * m.group().count("\n"), text)
 
 
@@ -721,6 +863,21 @@ def declare_checks(args):
     check(
         "save-table-drift (gen_save_table_header --check)",
         [sys.executable, os.path.join(REPO, "tools", "gen_save_table_header.py"), "--check"],
+    )
+    check(
+        "cfgkit runtime schema drift (--check)",
+        [
+            sys.executable,
+            "-m",
+            "src.formats.cfgkit.runtime_schema",
+            "--output",
+            os.path.join(REPO, "src", "mh_dll", "mh_common", "include", "mh_cfg_schema.gen.h"),
+            "--check",
+        ],
+    )
+    check(
+        "cfgkit patch behavioral tests",
+        [sys.executable, "-m", "unittest", "src.formats.cfgkit.test_patch"],
     )
     check(
         "patches-drift (gen_dll_patches --check)",
@@ -1286,6 +1443,10 @@ def declare_checks(args):
         [sys.executable, os.path.join(REPO, "tools", "gen_ini_registry.py"), "--check"],
     )
     check(
+        "strategic action catalog/launcher/INI/id metadata drift",
+        [sys.executable, os.path.join(REPO, "tools", "gen_strategic_bindings.py"), "--check"],
+    )
+    check(
         "ini registry lint -- a planted unregistered key / stale schema goes RED "
         "(gen_ini_registry --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "gen_ini_registry.py"), "--selftest"],
@@ -1305,6 +1466,10 @@ def declare_checks(args):
         "dist RP3 report drain: pull-once, incomplete-report skip, refusals "
         "(drain_reports --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "drain_reports.py"), "--selftest"],
+    )
+    check(
+        "tmp lifecycle: native deletion, consumer/parent authorization and evidence safety",
+        [sys.executable, os.path.join(REPO, "tools", "tmp_lifecycle.py"), "selftest"],
     )
     # ---- dist RP3: the report drain (END) ---------------------------------------------------
     # dist LA2. THE UPDATE MANIFEST's signer. The launcher verifies `manifest.json` against one
@@ -1563,6 +1728,15 @@ def declare_checks(args):
     check(
         "mp:RM1 rematch-residue post-check -- the negative cases still fire (check_rematch_residue --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_rematch_residue.py"), "--selftest"],
+    )
+    # TILESET1: pin the same-millisecond JOIN/discard ordering and non-vacuous transfer checks.
+    check(
+        "TILESET1 map download oracle -- ordering and negative cases (check_tileset_map_download --selftest)",
+        [
+            sys.executable,
+            os.path.join(REPO, "tools", "check_tileset_map_download.py"),
+            "--selftest",
+        ],
     )
     # mp:X2j. The second-download post-check (map_xfer_twice rows): a stuck second download goes red off planted logs.
     check(
@@ -1979,6 +2153,10 @@ def declare_checks(args):
         "clean-quit reader -- planted relink-ordering/B2/slow-drop cases go RED (check_graceful_quit --selftest)",
         [sys.executable, os.path.join(REPO, "tools", "check_graceful_quit.py"), "--selftest"],
     )
+    check(
+        "migration deadline reader -- midnight, merged chunks and outcome boundaries (check_u62_handover --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_u62_handover.py"), "--selftest"],
+    )
     # mp:U19f. The transport-death reader is the txdeath_ingame scenario's post_check, so like the
     # rows above it only runs when the rig does; its negatives -- no fast-drop line, no outcome-7
     # on_gameover, the U19e garbled-stream arm instead of the fast-drop route, and U19d's correction
@@ -2020,6 +2198,14 @@ def declare_checks(args):
     # planted-negative sweep: a download under the base name, a download beside the player's maps,
     # an own-file hash that moved, a gate that never closed, and a transfer armed to a peer that
     # already had the map must each go RED.
+    # mods:MAPGEN2 -- the map-preview reader: a preview line whose spots / ore / trees / size / tileset disagree with the file it
+    # names, a missing arm line, a missing build line, a file that is not there, and (the off arm) a build line under
+    # `[ui] map_preview=0` must each go RED.
+    check(
+        "map-preview reader -- planted wrong-count/no-arm/no-build/missing-file/off-with-build cases go RED "
+        "(check_map_preview --selftest)",
+        [sys.executable, os.path.join(REPO, "tools", "check_map_preview.py"), "--selftest"],
+    )
     check(
         "map-download reader -- planted base-name/beside-maps/own-file-changed/no-gate cases go RED "
         "(check_map_transfer --selftest)",
@@ -2456,6 +2642,7 @@ def declare_checks(args):
     check(
         "determinism run-shape rules (det_arms --det-selftest)",
         [sys.executable, os.path.join(REPO, "tools", "det_arms.py"), "--det-selftest"],
+        credits=6,
     )
     # C9. Markdown tables that do not render. Found 2026-08-03 with 58% of the failure ledger -- the
     # ledger consulted before every "dead/unwired" claim -- rendering as prose, and four of its rows
@@ -2486,6 +2673,7 @@ def declare_checks(args):
     check(
         "state views reject illegal writes at COMPILE time (check_const_view: ai + sim)",
         [sys.executable, os.path.join(REPO, "tools", "check_const_view.py")],
+        controller=True,
     )
     # SIM0's other half, and the one the compiler cannot express: W2 says no game-state ADDRESS
     # reaches a sim translation, which is only true while sim_state.cpp is the single binder. A
@@ -2721,12 +2909,16 @@ def declare_checks(args):
     # with the remedy -- they never silently pass. Same lane, because both drive cargo against one
     # shared target/ directory and cargo takes a lock on it.
     check_fn(
-        "rust fmt (lint_rust --fmt)", rust_row("--fmt", "cargo fmt --all --check"), lane="cargo"
+        "rust fmt (lint_rust --fmt)",
+        rust_row("--fmt", "cargo fmt --all --check"),
+        lane="cargo",
+        controller=True,
     )
     check_fn(
         "rust clippy -D warnings (lint_rust --clippy)",
         rust_row("--clippy", "cargo clippy --workspace --all-targets -- -D warnings"),
         lane="cargo",
+        controller=True,
     )
     check(
         "rust lint verdict -- the negative cases still fire",
@@ -2922,13 +3114,16 @@ def main():
     CI_MODE = args.ci
 
     ok = True
-    declare_checks(args)
-    # The skip list is checked against the roster in BOTH modes -- see check_ci_skip_list.
-    stale = check_ci_skip_list()
-    for problem in stale:
-        print("[FAIL] --ci skip list: %s" % problem)
-    ok &= not stale
-    report_skips()
+    import gate_admission
+
+    with gate_admission.lease("lint:prepare", seconds=5, bootstrap=True):
+        declare_checks(args)
+        # The skip list is checked against the roster in BOTH modes.
+        stale = check_ci_skip_list()
+        for problem in stale:
+            print("[FAIL] --ci skip list: %s" % problem)
+        ok &= not stale
+        report_skips()
     ok &= run_queued(1 if args.fix else args.jobs)
     print(
         "lint_repo: rows total=%d run=%d skipped=%d%s"

@@ -450,6 +450,13 @@ void test_near_enough() {
     ck(near_enough_check(w, 0, 1, 5) == ne_stop::no, "B2: an attack order never stops here");
     a.order = 1;
     ck(near_enough_check(w, 0, 1, 0) == ne_stop::on_goal, "B3: order 1 (the replan form of a move) counts as a plain move");
+    a.order = 16;
+    ck(near_enough_check(w, 0, 1, 10) == ne_stop::no, "B patrol: unowned order16 is not an accepted move");
+    ck(near_enough_check(w, 0, 1, 0, true) == ne_stop::on_goal, "B patrol: exact physical placement can finish");
+    ++a.goal_x;
+    ck(near_enough_check(w, 0, 1, 10, true) == ne_stop::no, "B patrol: even a large radius cannot finish a different tile");
+    a.goal_x = a.x;
+    a.order  = 1;
     // near a goal a friend holds
     a.goal_x                                  = 7;
     a.goal_y                                  = 5;
@@ -798,6 +805,64 @@ void test_nudge() {
     }
 }
 
+void test_patrol_backpressure() {
+    using namespace mh::sim::mvc;
+    fake_world w;
+    auto      &u       = w.put(1, 100, 8, 0x0f);
+    auto      &blocker = w.put(2, 100, 9, 0x0a);
+    w.give_path(1, 1, {{1, 6}});
+    u.order                    = 16;
+    u.goal_x                   = 100;
+    u.goal_y                   = 14;
+    u.facing_target            = 1;
+    u.path_blocked_retry_count = 30;
+    auto               p       = make_blocked_params(1500, true, 500);
+    const blocker_info bi{2, false};
+    const auto         before = u, before_blocker = blocker;
+    ck(!patrol_yield(w, 0, u, false, p, bi, true),
+       "patrol yield: an unowned order16 retains the original policy");
+    p.owned_patrol             = true;
+    u.path_blocked_retry_count = 29;
+    ck(!patrol_yield(w, 0, u, false, p, bi, true),
+       "patrol yield: preserve the existing wait budget");
+    u.path_blocked_retry_count = 30;
+    ck(patrol_yield(w, 0, u, false, p, bi, true),
+       "patrol yield: a stationary marshal ahead permits a free own sidestep");
+    auto *path = w.path(0, 1);
+    int   dx = 0, dy = 0;
+    w.dir_delta(path[0].heading, &dx, &dy);
+    const auto nx = (u.x + uint32_t(dx)) & w.mask_x(), ny = (u.y + uint32_t(dy)) & w.mask_y();
+    ck(path[0].run_length == 1 && path[0].heading != 1 && !path[1].heading &&
+           !path[1].run_length && w.pass(nx, ny) && !w.tile(nx, ny).building,
+       "patrol yield: one genuinely free physical step, followed by a terminal");
+    ck(!std::memcmp(&u, &before, sizeof u) && !std::memcmp(&blocker, &before_blocker, sizeof blocker),
+       "patrol yield: neither actor pose, native goal, order nor blocker is changed");
+    auto wp = [&](uint32_t slot, int entry) -> mh_llm_strat_path_waypoint & { return w.path(0, slot)[entry]; };
+    ck(blocked_decide(u, true, p, wp, bi) == blocked_next::replan &&
+           u.path_blocked_retry_count == 30,
+       "patrol yield: ownership alone cannot keep an unchecked native detour");
+    p.patrol_yielded = true;
+    ck(blocked_decide(u, true, p, wp, bi) == blocked_next::done && u.path_blocked_retry_count == 94,
+       "patrol yield: retain the short path with the existing bounded retry accounting");
+    u.path_blocked_retry_count = 0xc0;
+    ck(!patrol_yield(w, 0, u, false, p, bi, true), "patrol yield: no unbounded yields without a real step");
+
+    struct rectangular_world : fake_world {
+        uint32_t mask_x() { return 0x7f; }
+    } rectangle;
+    auto &r = rectangle.put(1, 50, 200, 0x0f);
+    rectangle.put(2, 50, 201, 0x0a);
+    rectangle.give_path(1, 1, {{1, 6}});
+    r.order                    = 16;
+    r.facing_target            = 1;
+    r.path_blocked_retry_count = 30;
+    ck(patrol_yield(rectangle, 0, r, false, p, bi, true),
+       "patrol yield: rectangular-map candidates use the height mask");
+    rectangle.dir_delta(rectangle.path(0, 1)[0].heading, &dx, &dy);
+    ck(((r.y + uint32_t(dy)) & rectangle.mask_y()) >= 199,
+       "patrol yield: a lower-half actor never wraps its sidestep through the width mask");
+}
+
 // =====================================================================================================
 // E -- the real walker body with the keys on
 // =====================================================================================================
@@ -1071,6 +1136,7 @@ void run_move_proto_walker_tests() {
     test_near_enough();
     test_group_speed();
     test_nudge();
+    test_patrol_backpressure();
     test_queue_flank();
     static sim_fixture fx;
     test_walker_body(fx);

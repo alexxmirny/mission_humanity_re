@@ -44,6 +44,11 @@ extern "C" int MH_LangPack_Install(void);
 // The armed pack id ("ru"), or "" when the stock mh_ex is in use.
 extern "C" const char *MH_LangPack_Id(void);
 
+// Explicit locale for CFG translation selection. Empty means unknown, not English.
+// [lang] locale in mh_net.ini overrides the armed pack's [pack] locale in pack.ini.
+// Returned storage is process-lived; resolved on first call after language pack installation.
+extern "C" const char *MH_LangPack_Locale(const unsigned char *initlang, unsigned size);
+
 // RL17: the 8-bit codepage the armed pack declares in `lang\<id>\pack.ini` (`[pack] codepage=1251`),
 // or 0 when no pack is armed / the file or key is absent. ui_chat_input.cpp uses it as the input
 // codepage when `[input] codepage` is not pinned in mh_net.ini (an explicit setting always wins).

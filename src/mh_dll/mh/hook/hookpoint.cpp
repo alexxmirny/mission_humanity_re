@@ -32,6 +32,7 @@
 namespace mh::sim {
 int  set_sim_step_pre_hook(void (*fn)());
 void set_dispatch_observer(void (*fn)());
+void set_sim_step_post_ai_observer(void (*fn)());
 void set_land_players_observer(void (*fn)());
 void set_session_begin_multi_observer(void (*fn)());
 void set_new_game_init_observer(void (*fn)());
@@ -176,6 +177,12 @@ constexpr row TABLE[] = {
     {"snd_order_ack", "[log] snd_trace + [snd] ack_cooldown_on_play: order-ack voice",
      mh::exp::addr_llm_strat_group_order_ack_voice, shape::observe, 8, entry_claim::exclusive, 0,
      mh::exp::entry_llm_strat_group_order_ack_voice},
+    // tmp/decomp/llm_strat_sim_step_0043f512.asm:22-24: CMP [005d0194],0 (7 bytes),
+    // JZ +5, CALL 00466892. Steal ONLY the complete CMP; its trampoline returns to JZ.
+    {"sim_step_post_ai", "the MHOR post-AI queue phase", 0x0043f544, shape::observe, 7,
+     entry_claim::exclusive, 0, 0x7400005d01943d83ULL},
+    {"sim_step_post_ai_observer", "the MHOR translated post-AI queue phase", 0,
+     shape::register_only, 0, entry_claim::exclusive, 0, 0},
 };
 
 // The table and the enum are ONE list. A point added to the enum without a row would otherwise read
@@ -214,6 +221,8 @@ bool arm_observer(point p, void *detour, void **tramp_out) {
     if (!valid(p) || !detour || !tramp_out) return false;
     const row &r = at(p);
     if (r.kind != shape::observe) return false;
+    if (p == point::sim_step_post_ai &&
+        (!entry_bytes_match(p) || reinterpret_cast<const uint8_t *>(r.target)[8] != 0x05)) return false;
     return install_trampoline(r.target, detour, tramp_out, r.stolen, r.claim, r.who, r.expect);
 }
 
@@ -252,6 +261,7 @@ bool register_callback(point p, void (*fn)()) {
             if (!mh::sim::set_sim_step_pre_hook(fn)) return false;
             break;
         case point::dispatch_observer: mh::sim::set_dispatch_observer(fn); break;
+        case point::sim_step_post_ai_observer: mh::sim::set_sim_step_post_ai_observer(fn); break;
         case point::land_players_observer: mh::sim::set_land_players_observer(fn); break;
         case point::session_begin_multi: mh::sim::set_session_begin_multi_observer(fn); break;
         case point::new_game_init_observer: mh::sim::set_new_game_init_observer(fn); break;

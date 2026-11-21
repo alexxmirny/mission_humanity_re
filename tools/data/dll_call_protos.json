@@ -33438,8 +33438,8 @@
   },
   {
    "va": "0x0046e76c",
-   "name": "llm_unit_order_disembark_soldiers",
-   "cident": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
+   "cident": "llm_unit_order_squad_split",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -33482,8 +33482,8 @@
   },
   {
    "va": "0x0046e7d6",
-   "name": "llm_unit_order_disembark_soldiers_enqueue",
-   "cident": "llm_unit_order_disembark_soldiers_enqueue",
+   "name": "llm_unit_order_squad_split_enqueue",
+   "cident": "llm_unit_order_squad_split_enqueue",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -43173,8 +43173,8 @@
   },
   {
    "va": "0x00488a8b",
-   "name": "llm_unit_transport_unload_field",
-   "cident": "llm_unit_transport_unload_field",
+   "name": "llm_unit_squad_split_field",
+   "cident": "llm_unit_squad_split_field",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,
@@ -43184,7 +43184,7 @@
    "status": "ok",
    "params": [
     {
-     "name": "transport_player",
+     "name": "squad_player",
      "type": "uint",
      "ctype": "uint32_t",
      "kind": "int",
@@ -43196,7 +43196,7 @@
      }
     },
     {
-     "name": "transport_unit_index",
+     "name": "squad_unit_index",
      "type": "uint",
      "ctype": "uint32_t",
      "kind": "int",
@@ -43341,8 +43341,8 @@
   },
   {
    "va": "0x004891d8",
-   "name": "llm_unit_transport_unload_docked",
-   "cident": "llm_unit_transport_unload_docked",
+   "name": "llm_unit_squad_split_docked",
+   "cident": "llm_unit_squad_split_docked",
    "cc": "__watcall",
    "cleanup": "callee",
    "purge": 0,

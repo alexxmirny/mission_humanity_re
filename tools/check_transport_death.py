@@ -41,17 +41,16 @@ THE THREE CLAUSES, and each exists because a weaker gate would pass on the wrong
      holding it cannot fire; asserting it anyway catches the correction itself misfiring on an
      outcome it should not be touching.
 
-FAST_DROP IS HOST-ONLY BY CONSTRUCTION (measured on the rig, G270): `MH_Net_TakeDeadPeer()` excludes
-a client's own host-connection death (`dead == -1`, net_lockstep.cpp's own comment: "Host-only by
-construction (a client's host-conn latches -1)"), so the fast-drop broadcast -- and its log line --
-is emitted ONLY by the peer acting as host. `txdeath_ingame` is a 2-peer match whose shim `cut` closes
-BOTH legs of the proxied connection (net_shim.py's `cut()`), so the CLIENT independently reaches the
-SAME outcome=8 dialog via its own local below-quorum detection, but never logs FAST_DROP itself --
-that is not a weaker proof on the client's side, it is simply which peer the log line belongs to. So
-clause 1 (FAST_DROP) is checked ONLY on the first directory given (the host); clauses 2-3 (the
-outcome/wording sanity) are checked on EVERY directory given -- both peers independently prove they
-reached the correct dialog, and only the host additionally proves it took the fast route to get
-there. Call with the host directory FIRST: `check_transport_death.py <host-dir> <client-dir>...`.
+FAST_DROP IS HOST-ONLY IN THIS TWO-PEER TCP CASE (measured on the rig, G270).
+The TCP backend publishes concrete client IDs in `MH_Net_DeadPeerMask()`; a
+client's anonymous host connection has ID -1 and publishes no death bit. Thus
+`txdeath_ingame`'s fast-drop line belongs to the host. The shim's `cut` closes BOTH
+legs, so the client independently reaches the SAME outcome=8 dialog through its
+local below-quorum detection, without that line. This is not a general claim
+about UDP migration, whose explicit death declarations can include old-hub side0.
+Clause 1 is checked ONLY on the first directory (host); clauses 2-3 are checked
+on EVERY directory. Call with the host FIRST:
+`check_transport_death.py <host-dir> <client-dir>...`.
 
 ABSENCE IS A FAILURE (check_module_bind.py's rule, kept here): a directory that cannot be read or
 carries no SESSION_END is a REFUSAL, never a vacuous pass.
@@ -157,11 +156,10 @@ def peer_lines(run_dir):
 def check_one(run_dir, require_fastdrop):
     """(ok, [report lines]) for a single peer directory. Raises Refusal when unjudgeable.
 
-    `require_fastdrop`: only the HOST directory should be called with this True -- see the module
-    docstring's FAST_DROP-IS-HOST-ONLY note. A client whose own uplink died reaches the same
-    outcome=8 dialog without ever logging FAST_DROP itself; that is not a weaker proof, it is which
-    peer the line structurally belongs to (net_lockstep.cpp: MH_Net_TakeDeadPeer() excludes a
-    client's own host-conn death by returning -1 for it)."""
+    `require_fastdrop`: only the HOST directory should be called with this True
+    in the two-peer TCP scenario. Its client's anonymous uplink death publishes
+    no concrete-ID death bit; the client reaches outcome=8 without FAST_DROP.
+    See the module docstring; UDP migration has different declaration semantics."""
     lines = peer_lines(run_dir)
     out, bad = [], []
 

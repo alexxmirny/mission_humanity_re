@@ -43,13 +43,37 @@ awaitsignal clientin
 capture lobby_team__t1_host_ffa
 
 # --- Team mode: the host selects it; the teams set in FFA survive the switch ---
-click 501 370
+# Mode lives on the lobby's Settings page since mods:MAPGEN2: page there (one click per page, each gated on the page --
+# the 0x32 input-lock timer swallows back-to-back synthetic clicks), then click Mode inside the description box.
+settled Cancel
+click 501 380
+lobbypage 1
+settled Cancel
+click 501 380
+lobbypage 2
+click 501 184
 lobbymode 1
 team 0 1
 team 2 1
 # the AI row once more
 click 221 149
 team 2 2
+# Same native whole-row spinner as Mode, 21 px below it. No dropdown/label matching.
+# Coordinate (501,205) is source-derived; verify the first actual frame before baselining.
+lobbyspeed 100
+settled Cancel
+click 501 205
+lobbyspeed 125
+settled Cancel
+click 501 205
+lobbyspeed 150
+settled Cancel
+click 501 205
+lobbyspeed 175
+settled Cancel
+click 501 205
+lobbyspeed 200
+capture lobby_speed__host_200
 capture lobby_team__t2_host_team
 
 # --- the client cycles its own row (and probes the host's row + the mode selector, which must not move) ---
@@ -58,7 +82,14 @@ team 1 2
 team 0 1
 team 2 2
 lobbymode 1
+lobbyspeed 200
 capture lobby_team__t3_host_after_client
+# The fifth native cycle restores100, before any roster mutations disturb the client's capture.
+settled Cancel
+click 501 205
+lobbyspeed 100
+capture lobby_speed__host_100
+awaitsignal speedresetseen
 
 # --- vacate + re-take the AI slot: the team is forgotten ---
 click 70 149
@@ -71,10 +102,15 @@ team 2 0
 capture lobby_team__t4_host_retaken
 
 # --- back to FFA: the spinners hide on both peers ---
-click 501 370
+# (the lobby is still on its Settings page: Mode sits inside the description box)
+click 501 184
 lobbymode 0
 capture lobby_team__t5_host_ffa
 awaitsignal clientffa
+# back to the Description page for the segments after this one (the page is kept for the life of the process)
+settled Cancel
+click 501 380
+lobbypage 0
 log HOST team/mode scenario COMPLETE
 # put the AI slot back to OPEN (AI -> CLOSED -> OPEN) and wait for client 1 to leave
 click 70 149

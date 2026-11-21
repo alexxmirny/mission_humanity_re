@@ -60,8 +60,10 @@ import re
 import sys
 from pathlib import Path
 
+import tool_paths
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _subsys  # noqa: E402  -- the shared subsystem taxonomy + the owner vocabulary
+import _subsys
 
 REPO = Path(__file__).resolve().parent.parent
 ADDR_MANIFEST = REPO / "tools" / "data" / "dll_addr_manifest.json"
@@ -70,9 +72,10 @@ SAVE_TABLE = REPO / "tools" / "data" / "save_block_table.json"
 PATCH_DIR = REPO / "src" / "patcher"
 HASH_MANIFEST = REPO / "tools" / "data" / "hash_manifest.json"
 OWNERSHIP = REPO / "tools" / "data" / "region_ownership.json"
+HOST_REGIONS = REPO / "tools" / "data" / "host_state_regions.json"
 ACCESSORS = REPO / "tools" / "data" / "region_accessors.json"
 ANALYZE = REPO / "tools" / "mp_analyze.py"
-MATRIX = REPO / "tmp" / "state_matrix.json"
+MATRIX = tool_paths.input_path("state_matrix.json", repo=REPO)
 DATA = REPO / "tools" / "data" / "state_regions.json"
 HEADER = REPO / "src" / "mh_dll" / "mh" / "addr" / "mh_regions.gen.h"
 
@@ -93,6 +96,77 @@ TAGS = ("view", "shadow", "save", "patch", "hash")
 TAG_FLAG = {"shadow": "MEASURED"}
 
 OWNERS = ("unknown", "island", "shared", "readonly")
+
+
+def host_regions():
+    """Source-declared, pointer-free spans with no original-image address; order is append-only."""
+    doc = json.loads(HOST_REGIONS.read_text(encoding="utf-8-sig"))
+    if set(doc) != {"regions"} or not isinstance(doc["regions"], list):
+        raise SystemExit("host_state_regions.json: expected only a regions list")
+    required = {
+        "id",
+        "name",
+        "base",
+        "size",
+        "extent",
+        "owner",
+        "host_native",
+        "pointer_free",
+        "source",
+    }
+    seen, names, out = {"COUNT"}, set(), []
+    for row in doc["regions"]:
+        if not isinstance(row, dict) or set(row) != required:
+            raise SystemExit("host_state_regions.json: unexpected or missing region fields")
+        rid, name = row["id"], row["name"]
+        if not isinstance(rid, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", rid) or rid in seen:
+            raise SystemExit("host_state_regions.json: invalid/duplicate region id %r" % rid)
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name) or name in names:
+            raise SystemExit("host_state_regions.json: invalid/duplicate name %r" % name)
+        if (
+            type(row["base"]) is not int
+            or row["base"] != 0
+            or type(row["size"]) is not int
+            or not 0 < row["size"] <= 0xFFFFFFFF
+            or type(row["extent"]) is not int
+            or row["extent"] != row["size"]
+            or row["host_native"] is not True
+            or row["pointer_free"] is not True
+            or row["owner"] != "island"
+        ):
+            raise SystemExit(
+                "host_state_regions.json: %s requires zero base, positive equal minimum size/extent, island ownership and pointer-free native storage"
+                % rid
+            )
+        source = row["source"]
+        if (
+            not isinstance(source, str)
+            or not source.startswith("src/")
+            or "\\" in source
+            or ".." in source.split("/")
+            or not (REPO / source).is_file()
+        ):
+            raise SystemExit(
+                "host_state_regions.json: %s needs an existing public source path" % rid
+            )
+        seen.add(rid)
+        names.add(name)
+        out.append(dict(row, manifests=["hash"], size_claims={str(row["size"]): ["host_native"]}))
+    return out
+
+
+def validate_host_rows(regions):
+    """Never let an edited generated row turn stock census failures into a native exemption."""
+    declared = host_regions()
+    stock = [r for r in regions if not r.get("host_native")]
+    native = [r for r in regions if r.get("host_native")]
+    if native != declared or regions != stock + native:
+        raise SystemExit(
+            "host-native registry rows differ from their source or are not appended; --refresh"
+        )
+    if {r["id"] for r in stock} & {r["id"] for r in native}:
+        raise SystemExit("host-native id collides with a stock region")
+
 
 # ---- the ORIGINAL block-table walkers (SB-HOSTFREE / dead-ends G139) -------------------------
 #
@@ -283,7 +357,9 @@ def walker_masks(regions):
     """
     d = json.loads(SAVE_TABLE.read_text(encoding="utf-8-sig"))["tables"]
     bounds = sorted(
-        (r["base"], max(r.get("extent", 0), r["size"]), i) for i, r in enumerate(regions)
+        (r["base"], max(r.get("extent", 0), r["size"]), i)
+        for i, r in enumerate(regions)
+        if not r.get("host_native")
     )
     starts = [b for b, _s, _i in bounds]
     out = {}
@@ -348,6 +424,7 @@ def claims_hash():
     return [
         (int(e["addr"], 16), e["size"], "hash:" + e["name"])
         for e in hash_manifest() + tact_manifest()
+        if "region" not in e
     ]
 
 
@@ -561,6 +638,17 @@ def merge():
             r["id"] = "%s_%08X" % (r["id"], r["base"])
         seen[r["id"]] = r["base"]
         r["manifests"] = [t for t in TAGS if t in r["manifests"]]
+    native = host_regions()
+    for r in native:
+        if r["id"] in seen or any(s["name"] == r["name"] for s in out):
+            raise SystemExit("host-native region collides with stock region: %s" % r["id"])
+    out.extend(native)
+    native_claims = set()
+    for entries in (hash_manifest(), tact_manifest()):
+        resolved, _misses = resolve_slices(out, entries)
+        native_claims.update(s["rid"] for s in resolved if "region" in s)
+    if native_claims != {r["id"] for r in native}:
+        raise SystemExit("every host-native region needs a whole-span hash declaration")
     return out, warnings
 
 
@@ -605,7 +693,9 @@ def emit(regions):
         "// but a region claimed by several is one whose drift used to be silent.",
         "//",
         "#pragma once",
+        "#include <array>",
         "#include <cstdint>",
+        "#include <cstdlib>",
         "",
         '#include "addr/mh_addrs.gen.h"',
         "",
@@ -667,6 +757,7 @@ def emit(regions):
         "    // Note this is INDEPENDENT of `relocated`: `relocated` says a region HAS left the",
         "    // binary, `relocatable` says one COULD.",
         "    bool        relocatable;",
+        "    bool        host_native; // no stock VA; size/reach are minimum schema, live_size is payload",
         "};",
         "",
         "enum region_id : uint16_t {",
@@ -722,12 +813,12 @@ def emit(regions):
         mf = " | ".join("MF_" + TAG_FLAG.get(t, t.upper()) for t in r["manifests"]) or "0"
         rid = r.get("id") or ""
         decl = own.get(rid, {})
-        can_move = not blocking_accessors(acc.get(rid))
+        can_move = not r.get("host_native") and not blocking_accessors(acc.get(rid))
         if can_move:
             reloc += 1
             reloc_bytes += max(r.get("extent", 0), r["size"])
         L.append(
-            '    {"%s", MH_STOCK_BASE(0x%08xu), %uu, %uu, OWN_%s, static_cast<uint8_t>(%s), %s, %s, %s},'
+            '    {"%s", MH_STOCK_BASE(0x%08xu), %uu, %uu, OWN_%s, static_cast<uint8_t>(%s), %s, %s, %s, %s},'
             % (
                 r["name"] or r["id"],
                 r["base"],
@@ -738,6 +829,7 @@ def emit(regions):
                 "true" if decl.get("relocated") else "false",
                 "true" if decl.get("l1_serializer") else "false",
                 "true" if can_move else "false",
+                "true" if r.get("host_native") else "false",
             )
         )
     L += [
@@ -763,7 +855,7 @@ def emit(regions):
         "constexpr int      RELOCATABLE_COUNT = %d;" % reloc,
         "constexpr uint32_t RELOCATABLE_BYTES = %uu;" % reloc_bytes,
         "constexpr int      BLOCKED_COUNT     = %d; // a live original accessor still names them"
-        % (len(regions) - reloc),
+        % (sum(1 for r in regions if not r.get("host_native")) - reloc),
         "constexpr int      ZERO_SIZE_COUNT   = %d;"
         % sum(1 for r in regions if not max(r.get("extent", 0), r["size"])),
         "",
@@ -799,8 +891,9 @@ def emit(regions):
         "// constexpr, so the counts below and bind_relocated() cannot come to disagree about which",
         "// regions moved, which is the drift that would make the non-vacuity assertion meaningless.",
         "constexpr bool under_overrunning_window(region_id r) {",
+        "    if (REGIONS[r].host_native) return false;",
         "    for (int j = 0; j < RID_COUNT; ++j) {",
-        "        if (j == static_cast<int>(r) || REGIONS[j].reach <= REGIONS[j].size) continue;",
+        "        if (REGIONS[j].host_native || j == static_cast<int>(r) || REGIONS[j].reach <= REGIONS[j].size) continue;",
         "        const uint32_t wlo = REGIONS[j].base + REGIONS[j].size; // the OVERRUN, not the window",
         "        const uint32_t whi = REGIONS[j].base + REGIONS[j].reach;",
         "        if (REGIONS[r].base < whi && wlo < REGIONS[r].base + REGIONS[r].reach) return true;",
@@ -816,7 +909,7 @@ def emit(regions):
         "// window over its neighbours and poison their live storage, which decomposition does not",
         "// address.",
         "constexpr bool is_movable(region_id r) {",
-        "    return REGIONS[r].relocatable && REGIONS[r].reach != 0 &&",
+        "    return !REGIONS[r].host_native && REGIONS[r].relocatable && REGIONS[r].reach != 0 &&",
         "           REGIONS[r].reach == REGIONS[r].size;",
         "}",
         "",
@@ -846,7 +939,7 @@ def emit(regions):
     L.append("#ifndef MH_LIBMH_BUILD")
     for r in regions:
         n = r["name"]
-        if n in consts and consts[n] == r["base"]:
+        if not r.get("host_native") and n in consts and consts[n] == r["base"]:
             L.append("static_assert(REGIONS[RID_%s].base == mh::addr::%s);" % (r["id"], n))
             pinned += 1
     L.append("#endif // !MH_LIBMH_BUILD")
@@ -886,7 +979,7 @@ def emit(regions):
         "    live_table() {",
         "        for (int i = 0; i < RID_COUNT; ++i) {",
         "            base[i]  = REGIONS[i].base;",
-        "            size[i]  = REGIONS[i].size;",
+        "            size[i]  = REGIONS[i].host_native ? 0u : REGIONS[i].size;",
         "            count[i] = 0;",
         "            moved[i] = false;",
         "            bound[i] = false;",
@@ -938,14 +1031,14 @@ def emit(regions):
         "inline void rebase(region_id r, uint32_t base, uint32_t size) {",
         "    live().base[r]  = base;",
         "    live().size[r]  = size;",
-        "    live().moved[r] = true;",
+        "    live().moved[r] = !REGIONS[r].host_native;",
         "}",
         "",
         "// Put a region back where the binary has it. For test fixtures and for a module that",
         "// relinquishes a region -- NOT something the live build should ever need.",
         "inline void unrebase(region_id r) {",
         "    live().base[r]  = REGIONS[r].base;",
-        "    live().size[r]  = REGIONS[r].size;",
+        "    live().size[r]  = REGIONS[r].host_native ? 0u : REGIONS[r].size;",
         "    live().count[r] = 0;",
         "    live().moved[r] = false;",
         "    live().bound[r] = false;",
@@ -968,7 +1061,7 @@ def emit(regions):
         "    live().base[r]  = base;",
         "    live().size[r]  = size;",
         "    live().count[r] = count;",
-        "    live().moved[r] = (base != REGIONS[r].base);",
+        "    live().moved[r] = !REGIONS[r].host_native && (base != REGIONS[r].base);",
         "    live().bound[r] = true;",
         "}",
         "// The host's declared element capacity, or 0 for `it did not say`. STORED BUT NOT YET READ",
@@ -978,6 +1071,16 @@ def emit(regions):
         "// ignored in the window between T1 and T2.",
         "inline uint32_t live_count(region_id r) { return live().count[r]; }",
         "inline bool is_bound(region_id r) { return live().bound[r]; }",
+        "",
+        "// Static descriptors fingerprint the schema; native payloads use the entire bound span.",
+        "// An unbound native region is a boot/lifecycle error, never an empty hash or a 32-byte clamp.",
+        "inline uint32_t canonical_region_len(region_id r) {",
+        "    if (!REGIONS[r].host_native) return reach_of(r);",
+        "    const uint32_t n = live_size(r), base = live_base(r);",
+        "    if (!is_bound(r) || !base || n < size_of(r) ||",
+        "        uint64_t(base) + n > (uint64_t(1) << 32)) std::abort();",
+        "    return n;",
+        "}",
         "inline int  bound_count() {",
         "    int n = 0;",
         "    for (int i = 0; i < RID_COUNT; ++i)",
@@ -1024,11 +1127,40 @@ def emit(regions):
         "// declared standalone, and a standalone consumer of a stock address is a COMPILE error at the",
         "// site rather than a resolver that lies. The rid-keyed route is live_base(rid) + offset.",
         "#ifndef MH_LIBMH_BUILD",
+        "// Sorted by stock base. Prefix maxima prune impossible ends; RID order still wins overlaps.",
+        "struct stock_cover_entry { uint64_t max_end; region_id rid; };",
+    ]
+    stock_rows = sorted(
+        (r["base"], rid, max(r.get("extent", 0), r["size"]))
+        for rid, r in enumerate(regions)
+        if not r.get("host_native") and max(r.get("extent", 0), r["size"])
+    )
+    L.append(
+        "inline constexpr std::array<stock_cover_entry, %d> STOCK_COVER_INDEX{{" % len(stock_rows)
+    )
+    max_end = 0
+    for base, rid, reach in stock_rows:
+        max_end = max(max_end, base + reach)
+        L.append("    {0x%016Xull, RID_%s}," % (max_end, regions[rid]["id"]))
+    L += [
+        "}};",
+        "",
         "constexpr const region *covering(uint32_t addr, uint32_t size) {",
-        "    for (const region &r : REGIONS)",
-        "        if (r.reach && addr >= r.base && uint64_t(addr) + size <= uint64_t(r.base) + r.reach)",
-        "            return &r;",
-        "    return nullptr;",
+        "    const uint64_t end = uint64_t(addr) + size;",
+        "    uint32_t lo = 0, hi = static_cast<uint32_t>(STOCK_COVER_INDEX.size());",
+        "    while (lo < hi) {",
+        "        const uint32_t mid = lo + (hi - lo) / 2;",
+        "        if (STOCK_COVER_INDEX[mid].max_end < end) lo = mid + 1;",
+        "        else hi = mid;",
+        "    }",
+        "    region_id best = RID_COUNT;",
+        "    for (; lo < STOCK_COVER_INDEX.size(); ++lo) {",
+        "        const region_id rid = STOCK_COVER_INDEX[lo].rid;",
+        "        const region &r = REGIONS[rid];",
+        "        if (r.base > addr) break;",
+        "        if (rid < best && uint64_t(r.base) + r.reach >= end) best = rid;",
+        "    }",
+        "    return best == RID_COUNT ? nullptr : &REGIONS[best];",
         "}",
         "#endif // !MH_LIBMH_BUILD",
         "",
@@ -1055,11 +1187,28 @@ def resolve_slices(regions, entries=None):
     ext = sorted(
         (r["base"], r["base"] + max(r.get("extent", 0), r["size"]), i)
         for i, r in enumerate(regions)
-        if max(r.get("extent", 0), r["size"])
+        if not r.get("host_native") and max(r.get("extent", 0), r["size"])
     )
     starts = [e[0] for e in ext]
     out, misses = [], []
+    by_id = {r["id"]: r for r in regions}
     for e in hash_manifest() if entries is None else entries:
+        if "region" in e:
+            host = by_id.get(e["region"])
+            if (
+                "addr" in e
+                or host is None
+                or not host.get("host_native")
+                or type(e.get("offset")) is not int
+                or e["offset"] != 0
+                or type(e.get("size")) is not int
+                or e["size"] != host["size"]
+                or not host.get("pointer_free")
+                or e.get("excluded") is not False
+            ):
+                raise SystemExit("invalid host-native whole-span hash descriptor: %r" % e)
+            out.append(dict(e, rid=host["id"], host=host["name"]))
+            continue
         base, size = int(e["addr"], 16), e["size"]
         i = bisect.bisect_right(starts, base) - 1
         host = None
@@ -1127,7 +1276,7 @@ def emit_hash_view(regions):
             s["name"],
             s["rid"],
             s["offset"],
-            int(s["addr"], 16),
+            int(s.get("addr", "0"), 16),
             s["size"],
             "true" if s["excluded"] else "false",
         )
@@ -1173,7 +1322,15 @@ def emit_hash_view(regions):
         "// purpose (see the field comment). A consumer that hashes, dumps or pokes a slice reads",
         "// THIS, which is what stops the determinism oracle hashing bytes nothing writes after a",
         '// region moves (gates can pass vacuously).',
-        "inline uint32_t hash_base(int i) { return live_base(HASH_REGIONS[i].rid) + HASH_REGIONS[i].offset; }",
+        "inline uint32_t hash_base(int i) {",
+        "    const hash_region &h = HASH_REGIONS[i];",
+        "    if (REGIONS[h.rid].host_native) (void)canonical_region_len(h.rid);",
+        "    return live_base(h.rid) + h.offset;",
+        "}",
+        "inline uint32_t hash_len(int i) {",
+        "    const hash_region &h = HASH_REGIONS[i];",
+        "    return REGIONS[h.rid].host_native ? canonical_region_len(h.rid) : h.len;",
+        "}",
         "#ifndef MH_LIBMH_BUILD // LIB-REF-SPLIT: the stock address, absent standalone",
         "inline uint32_t hash_stock_base(int i) { return HASH_REGIONS[i].base; }",
         "#endif",
@@ -1251,7 +1408,7 @@ def emit_tact_hash_view(regions):
             sl["name"],
             sl["rid"],
             sl["offset"],
-            int(sl["addr"], 16),
+            int(sl.get("addr", "0"), 16),
             sl["size"],
             "true" if sl["excluded"] else "false",
         )
@@ -1290,7 +1447,13 @@ def emit_tact_hash_view(regions):
         "// Where tactical slice `i` is right now -- the rebase-following read, same contract as",
         "// hash_base() above.",
         "inline uint32_t tact_hash_base(int i) {",
+        "    if (REGIONS[TACT_HASH_REGIONS[i].rid].host_native)",
+        "        (void)canonical_region_len(TACT_HASH_REGIONS[i].rid);",
         "    return live_base(TACT_HASH_REGIONS[i].rid) + TACT_HASH_REGIONS[i].offset;",
+        "}",
+        "inline uint32_t tact_hash_len(int i) {",
+        "    const hash_region &h = TACT_HASH_REGIONS[i];",
+        "    return REGIONS[h.rid].host_native ? canonical_region_len(h.rid) : h.len;",
         "}",
         "",
     ]
@@ -1432,7 +1595,7 @@ def claim_windows(regions):
     rather than read off `region["manifests"]`: the merged field records WHICH manifests claim a
     region and the interlock needs WHERE each one reaches, which is the whole of rule 2.
     """
-    by_base = {r["base"]: r for r in regions}
+    by_base = {r["base"]: r for r in regions if not r.get("host_native")}
     keys = sorted(by_base)
     reach = [max(by_base[k].get("extent", 0), by_base[k]["size"] or 0) or 1 for k in keys]
     for tag in TAGS:
@@ -1441,6 +1604,11 @@ def claim_windows(regions):
             if i < 0 or base >= keys[i] + reach[i]:
                 continue
             yield by_base[keys[i]], tag, base - keys[i], (size or 0), name
+    for entry in resolve_slices(
+        regions, [e for e in hash_manifest() + tact_manifest() if "region" in e]
+    )[0]:
+        region = next(r for r in regions if r["id"] == entry["rid"])
+        yield region, "hash", 0, entry["size"], entry["name"]
 
 
 def check_ownership(regions, ownership, accessors=None):
@@ -1484,6 +1652,16 @@ def check_ownership(regions, ownership, accessors=None):
     # for rule 2, where the head skip and tail length differ per window and are the whole message --
     # so those stay per distinct window (deduped, since the save and load tables carry each one).
     out, seen = [], {}
+    for r in regions:
+        if not r.get("host_native"):
+            continue
+        decl = ownership.get(r["id"])
+        if decl is None:
+            continue
+        if not decl.get("owned_by_dll") or decl.get("relocated") or decl.get("l1_serializer"):
+            raise SystemExit(
+                "host-native %s requires owned_by_dll, not relocated or L1-served" % r["id"]
+            )
     for r, tag, off, size, name in claim_windows(regions):
         decl = ownership.get(r.get("id") or "")
         if not decl or not decl.get("relocated"):
@@ -1725,8 +1903,21 @@ def check_original_accessors(ownership, accessors=None):
             ]
 
     lines = []
+    native_ids = {r["id"] for r in host_regions()}
     for rid, decl in sorted(ownership.items()):
         if not decl.get("owned_by_dll"):
+            continue
+        if rid in native_ids:
+            if acc := accessors.get(rid):
+                if (
+                    not acc.get("host_native")
+                    or acc.get("measured")
+                    or any(
+                        acc.get(k)
+                        for k in ("external_writers", "external_readers", "external_addr_takers")
+                    )
+                ):
+                    lines.append("INVALID HOST-NATIVE CENSUS PROVENANCE: %s" % rid)
             continue
         acc = accessors.get(rid)
         if acc is None:
@@ -1818,6 +2009,9 @@ def check_region_classification(regions, ownership, accessors=None):
         if len(why) < 16:
             bad_why.append(rid)
         if owner == _subsys.UNATTRIBUTED:
+            if r.get("host_native"):
+                bad_sentinel.append((rid, 0))
+                continue
             acc = accessors.get(rid) or {}
             touched = sum(
                 len(acc.get(k) or [])
@@ -1897,7 +2091,7 @@ def check_coverage(regions):
     ext = []
     for r in regions:
         reach = max(r.get("extent", 0), r["size"])
-        if reach:
+        if reach and not r.get("host_native"):
             ext.append((r["base"], r["base"] + reach, r["name"]))
     ext.sort()
     starts = [e[0] for e in ext]
@@ -1937,7 +2131,7 @@ def check_slice_overruns(regions, tables=None):
     committed state. `tables` overrides the two manifests, which is how selftest() drives the
     check from the direction the real defect came from -- a manifest edit, not a registry edit.
     """
-    by_base = sorted(regions, key=lambda r: r["base"])
+    by_base = sorted((r for r in regions if not r.get("host_native")), key=lambda r: r["base"])
     starts = [r["base"] for r in by_base]
     by_name = {r["name"]: r for r in regions}
     out = []
@@ -2561,6 +2755,7 @@ def main():
         return 0
 
     regions = json.loads(DATA.read_text(encoding="utf-8-sig"))["regions"]
+    validate_host_rows(regions)
 
     if args.check:
         # THE UPSTREAM ARM (SB-BIND T4, 2026-09-06). Everything below re-derives the HEADER from the
@@ -2576,8 +2771,8 @@ def main():
         # merge() is ~0.2 s, so this runs on every --check rather than behind a flag.
         fresh, _w = merge()
         if fresh != regions:
-            have = {r["base"]: r for r in regions}
-            want = {r["base"]: r for r in fresh}
+            have = {r["id"]: r for r in regions}
+            want = {r["id"]: r for r in fresh}
             added = sorted(set(want) - set(have))
             gone = sorted(set(have) - set(want))
             changed = sorted(b for b in set(have) & set(want) if have[b] != want[b])

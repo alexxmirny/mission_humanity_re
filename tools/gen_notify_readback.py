@@ -82,6 +82,7 @@ from call_graph import load_graph  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SINK = os.path.join(REPO, "src", "mh_dll", "mh", "seams", "host_event_sink.cpp")
 EVENTS_H = os.path.join(REPO, "src", "mh_dll", "libmh", "include", "libmh_host_events.h")
+ORDER_EVENTS_H = os.path.join(REPO, "src", "mh_dll", "mh_common", "include", "mh_order_witness.h")
 WRITE_INDEX = os.path.join(REPO, "tools", "data", "state_write_index.json")
 ACCESSORS = os.path.join(REPO, "tools", "data", "region_accessors.json")
 DISPOSITIONS = os.path.join(REPO, "tools", "data", "notify_readback_dispositions.json")
@@ -90,7 +91,21 @@ MD_PATH = os.path.join(REPO, "tmp", "libmh_abi_lift", "notify_readback.md")
 
 # The sink's own local helpers are expanded into the case that calls them: a case that routes
 # through draw_active_count_hud() dispatches everything that helper dispatches.
-NOT_A_HELPER = ("route", "route_text", "log_first_dispatch")
+NOT_A_HELPER = ("route", "route_text", "route_order_observation", "log_first_dispatch")
+ORDER_OBSERVATION_KINDS = (
+    "LIBMH_EVK_UNIT_ORDER_COMMITTED",
+    "LIBMH_EVK_ATTACK_GROUP_BEGIN",
+    "LIBMH_EVK_ATTACK_GROUP_END",
+    "LIBMH_EVK_ORDER_ADMITTED",
+    "LIBMH_EVK_ATTACK_TARGET_ASSIGNED",
+    "LIBMH_EVK_ORDER_APPLIED",
+    "LIBMH_EVK_ORDER_DISCARDED",
+    "LIBMH_EVK_ORDER_WORLD_RESET",
+    "LIBMH_EVK_UNIT_PRIMARY_TERMINAL",
+    "LIBMH_EVK_MOVE_GROUP_REVOKED",
+    "LIBMH_EVK_ORDER_METADATA_BEFORE",
+    "LIBMH_EVK_ORDER_METADATA_AFTER",
+)
 
 
 def _load(path, encoding="utf-8"):
@@ -102,21 +117,15 @@ def _strip_comments(text):
 
 
 def parse_sink():
-    """[(channel, kind_id, [dispatch targets])] from mh.dll's routing table.
-
-    Case bodies are bounded by the NEXT case marker, so the last case of one channel's switch
-    stops at the first case of the next -- the text between them is switch scaffolding with no
-    dispatch in it. The trailing `namespace mh::hook` half of the file is cut first so the final
-    case does not absorb the binder.
-    """
-    src = _strip_comments(io.open(SINK, encoding="utf-8").read()).split("namespace mh::hook")[0]
+    """Routing scopes, bounded by the actual containing ordinary/text/order router."""
+    all_src = _strip_comments(io.open(SINK, encoding="utf-8").read())
+    src = all_src.split("namespace mh::hook")[0]
 
     helpers = {}
     helper_src = {}
+    routers = {}
     for m in re.finditer(r"\n(?:\w[\w:*&<>\s]*?)\b(\w+)\s*\([^;{]*\)\s*\{", src):
         name = m.group(1)
-        if name in NOT_A_HELPER:
-            continue
         start = src.index("{", m.end() - 1)
         depth = 0
         end = start
@@ -128,6 +137,10 @@ def parse_sink():
                 if depth == 0:
                     end = i
                     break
+        if name in ("route", "route_text", "route_order_observation"):
+            routers[name] = (start, end)
+        if name in NOT_A_HELPER:
+            continue
         helpers[name] = sorted(set(re.findall(r"mh::call::(\w+)", src[start:end])))
         helper_src[name] = src[start:end]
 
@@ -164,26 +177,39 @@ def parse_sink():
     for name in helpers:
         helpers[name] = sorted(set(helpers[name]))
 
-    # channel markers, so each kind case is attributed to the switch it sits in
     chans = [(m.start(), m.group(1)) for m in re.finditer(r"case\s+LIBMH_EVC_(\w+)\s*:", src)]
-
+    cases = list(re.finditer(r"\bcase\s+(LIBMH_EV[T]?K_\w+)\s*:", src))
     scopes = []
-    parts = re.split(r"\bcase\s+(LIBMH_EV[T]?K_\w+)\s*:", src)
-    offset = len(parts[0])
-    for i in range(1, len(parts), 2):
-        kind_id, body = parts[i], parts[i + 1]
-        channel = "text" if kind_id.startswith("LIBMH_EVTK_") else "unknown"
-        if channel == "unknown":
+    for index, marker in enumerate(cases):
+        containing = [
+            (name, start, end)
+            for name, (start, end) in routers.items()
+            if start < marker.start() < end
+        ]
+        if len(containing) != 1:
+            raise ValueError("notify case outside a unique routing function: " + marker.group(1))
+        router, start, end = containing[0]
+        if index + 1 < len(cases):
+            end = min(end, cases[index + 1].start())
+        kind_id = marker.group(1)
+        body = src[marker.end() : end]
+        if router == "route_text":
+            channel = "text"
+        elif router == "route_order_observation":
+            channel = "order_observation"
+        else:
+            channel = "unknown"
             for pos, name in chans:
-                if pos < offset:
+                if start < pos < marker.start():
                     channel = name.lower()
+            if channel == "unknown":
+                raise ValueError("ordinary notify case has no channel: " + kind_id)
         targets = list(dict.fromkeys(re.findall(r"mh::call::(\w+)", body)))
         for called in re.findall(r"\b(\w+)\s*\(", body):
-            for t in helpers.get(called, ()):
-                if t not in targets:
-                    targets.append(t)
+            for target in helpers.get(called, ()):
+                if target not in targets:
+                    targets.append(target)
         scopes.append([channel, kind_id, targets, body.strip() == ""])
-        offset += len("case " + kind_id + ":") + len(body)
 
     # C fallthrough: `case A: case B: { shared body }` gives A an EMPTY body and B the shared one.
     # A dispatches exactly what B dispatches -- LIBMH_EVK_SCR_WGTL_CENTER/_DRAW are that pair, and
@@ -195,12 +221,18 @@ def parse_sink():
                 if not nxt[3]:
                     row[2] = list(nxt[2])
                     break
+    if not re.search(
+        r"\blibmh_set_order_observation_sink\s*\(\s*"
+        r"route_order_observation\s*,\s*LIBMH_HOST_EVENTS_VERSION\s*,\s*witnesses\s*\)",
+        all_src,
+    ):
+        raise ValueError("owned order-observation router is not bound")
     return [(c, k, t) for c, k, t, _empty in scopes]
 
 
 def parse_kind_numbers():
-    """{macro name: int value} from the hand-authored contract header."""
-    text = io.open(EVENTS_H, encoding="utf-8").read()
+    """{macro name: int value} from the ordinary and shared owned-order contracts."""
+    text = "\n".join(io.open(path, encoding="utf-8").read() for path in (EVENTS_H, ORDER_EVENTS_H))
     return {
         m.group(1): int(m.group(2))
         for m in re.finditer(r"#define\s+(LIBMH_EV[T]?K_\w+)\s+(\d+)u", text)
@@ -299,6 +331,12 @@ def check(data, disp):
     pair_d = {(e["kind"], e["region"]): e for e in disp.get("pairs", [])}
     scope_d = {e["kind"]: e for e in disp.get("scopes", [])}
     seen_pairs, seen_scopes = set(), set()
+    for kind in ORDER_OBSERVATION_KINDS:
+        matches = [row for row in data["scopes"] if row["kind"] == kind]
+        if len(matches) != 1 or matches[0]["channel"] != "order_observation":
+            fails.append(
+                f"ORDER OBSERVATION COVERAGE {kind}: expected exactly one typed routing scope"
+            )
 
     for row in data["scopes"]:
         kind = row["kind"]

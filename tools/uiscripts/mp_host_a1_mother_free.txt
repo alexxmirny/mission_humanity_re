@@ -29,13 +29,13 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: the mothership lands (shift+right-click: order 0x10 move + 0x18 deploy), a Reactor P0 is placed and finished
+# in the match: the mothership lands (Ctrl+right-click: order 0x10 move + 0x18 deploy), a Reactor P0 is placed and finished
 # (the mother is still there), then the harness fixture (a1_at / a1_need) sends the mothership up again -- the game's own TO_UNIT
 # lift-off, the same write on every peer from sim state alone -- so the planet is mother-less with a finished plant (a player
 # without any building is out of the game, so the lift-off waits for it). A second Reactor P1 is placed with the gate open.
 absent Network players
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 22000
 simclick 890 215
 gameclock 23000

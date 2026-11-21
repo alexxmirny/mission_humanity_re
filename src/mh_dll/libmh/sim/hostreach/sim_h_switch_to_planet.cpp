@@ -4,6 +4,7 @@
 // with the asm on control flow (see the header banner).
 //
 #include "sim/hostreach/sim_h_switch_to_planet.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder (MH_LIBMH_BIND)
 #include "state/host_api.h"     // mh::host() -- the generated host-callback table
@@ -62,8 +63,9 @@ int32_t switch_to_planet(const sim_view &v, sim_store &own, const switch_to_plan
                          int32_t planet_index, const land_players_on_planet_calls &c_land,
                          const planet_map_session_init_calls &c_pmsi,
                          const diplomacy_set_relation_calls  &c_set_relation) {
-    // 0x0044ce35: unconditional at entry, before anything else runs.
-    own.sim_active_mut() = 0;
+    // Only a NEW save refusal restores this prior value; retain existing load-error semantics.
+    const auto prior_sim_active = own.sim_active_mut();
+    own.sim_active_mut()        = 0;
 
     // 0x0044ce3f-0x0044ce5e: if the OUTGOING planet still has a queued production for the local
     // player, fast-forward the sim (game speed forced to 10x) until the queue drains.
@@ -86,7 +88,10 @@ int32_t switch_to_planet(const sim_view &v, sim_store &own, const switch_to_plan
 
     // 0x0044cec4: always runs next, whether or not the loop above ran. Still the OLD planet --
     // G_PLANET_INDEX has not been overwritten yet.
-    c.save_planet_to_disk(static_cast<uint32_t>(*v.planet_index), 1);
+    if (c.save_planet_to_disk(static_cast<uint32_t>(*v.planet_index), 1) != 1) {
+        own.sim_active_mut() = prior_sim_active;
+        return -1;
+    }
 
     // DEAD BY CONSTRUCTION (0x0044cee9-0x0044cf42, see header banner): [EBP-0x2c] is stored 0 at
     // 0x0044cedc and re-compared to 0 at 0x0044cee3 with no write between -> the guard is
@@ -105,7 +110,17 @@ int32_t switch_to_planet(const sim_view &v, sim_store &own, const switch_to_plan
         if (own.planet_time_at(*v.planet_index) < own.game_clock_mut()) {
             own.game_clock_mut() = own.planet_time_at(*v.planet_index);
         }
+        order_tasks_adapter::begin_world_replacement(own);
         c.read_map_pre(static_cast<uint32_t>(*v.planet_index));
+        // First generation only; known/parked-planet restore imports carried policy instead.
+        mh_storage_policy_request policy_extent{};
+        mh_storage_policy_result  policy_result{};
+        policy_extent.operation = static_cast<uint32_t>(mh::storage_policy::operation::map_extent);
+        policy_extent.args[0]   = static_cast<uint32_t>(*v.map_width);
+        policy_extent.args[1]   = static_cast<uint32_t>(*v.map_height);
+        own.storage_policy_request(policy_extent, policy_result);
+        own.storage_policy(mh::storage_policy::operation::reset_loaded_roster);
+        order_tasks_adapter::publish_fresh_world(v, own);
         // llm_game_land_players_on_planet: ROUTING CORRECTION #1 -- see header banner. Threaded via
         // c_land (rule 3c) rather than MH_LIBMH_BIND.
         mh::sim::detail::land_players_on_planet(v, own, c_land, *v.planet_index, c_pmsi);

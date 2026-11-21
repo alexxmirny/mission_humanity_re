@@ -38,6 +38,7 @@ void unit_change_proto_and_energy(sim_store &own, const unit_change_proto_and_en
     u.energy = u.energy + energy_delta;
 
     // 0x00489582-0x0048958b: refresh the mounted-soldier walk animation.
+    own.storage_policy(mh::storage_policy::operation::cancel, player, unit_idx);
     c.unit_soldiers_start_walk_anim(static_cast<uint32_t>(player), unit_idx);
 }
 

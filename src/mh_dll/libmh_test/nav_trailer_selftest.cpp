@@ -25,6 +25,7 @@
 #include <cstring>
 
 #include "../libmh/include/libmh.h"
+#include "../mh_nettest/storage_policy_fixture.h"
 
 #include "addr/mh_regions.gen.h"
 #include "sim/libtrans/sim_lt_map_region_pool.h"
@@ -85,9 +86,22 @@ struct arena {
         }
         const int rc = libmh_bind_regions(b, static_cast<size_t>(count));
         std::free(b);
-        return rc == count;
+        if (rc != count) return false;
+        for (int i = 0; i < count; ++i) {
+            const auto rid = static_cast<mh::state::region_id>(i);
+            if (mh::state::REGIONS[rid].host_native &&
+                !mh::test::initialize_canonical_native(rid, mh::state::ptr<void>(rid),
+                                                       mh::state::live_size(rid))) return false;
+        }
+        return true;
     }
-    ~arena() { std::free(mem); }
+    ~arena() {
+        if (mem) {
+            for (int i = 0; i < mh::state::RID_COUNT; ++i)
+                mh::state::unrebase(static_cast<mh::state::region_id>(i));
+        }
+        std::free(mem);
+    }
 };
 
 // ---- the synthetic pool --------------------------------------------------------------------------

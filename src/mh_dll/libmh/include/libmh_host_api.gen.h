@@ -20,11 +20,13 @@
 #define LIBMH_HOST_API_GEN_H
 
 #include <stdint.h>
+#include "include/mh_storage_policy.h"
+#include "include/mh_order_tasks_host.h"
 
 /* FNV-1a over the ABI-relevant text (categories, names, signatures). Pass to
  * libmh_set_host_api(); the implementation refuses a value it was not compiled with. */
-#define LIBMH_HOST_API_VERSION 0xFD4BC3F8u
-#define LIBMH_HOST_API_ENTRY_COUNT 24u
+#define LIBMH_HOST_API_VERSION 0xC8C0BB34u
+#define LIBMH_HOST_API_ENTRY_COUNT 39u
 
 #ifdef __cplusplus
 extern "C" {
@@ -119,13 +121,13 @@ typedef struct libmh_host_api {
     /* libmh sites): (1) the globals `width` and `height` (RID_WIDTH / RID_HEIGHT, 4 B each, */
     /* MF_VIEW|MF_MEASURED|MF_SAVE); (2) `current_map_data.tlo_name` (+0x11c, 12 B, */
     /* RID_CURRENT_MAP_DATA) -- the tileset NAME, which is what the parse produces. THE RESOLVED TLO */
-    /* INDEX IS NOT THIS ENTRY'S OUTPUT, corrected here: it is one hop downstream, libmh's own body */
-    /* calling cfg_GetTloIndex on that string (sim/libtrans/sim_lt_cfg_planet.cpp:113), and since */
-    /* LIFT-TABLE S3 the index crosses host-side inside LIBMH_EVK_INV_PLANET_GFX_SETUP rather than */
-    /* landing in a region at all. Both libmh sites read the header back for tlo_name and nothing else */
-    /* (sim_lt_cfg_planet.cpp:113; sim/resid/sim_start_tutorial.cpp:148, which strcpy's it into the */
-    /* HASHED Planets[0x1f].tlo_file), and both DISCARD the return -- the `< 0` failure test exists */
-    /* only in the untranslated lobby callers (llm_lobby_map_transfer_finalize, */
+    /* INDEX IS NOT THIS ENTRY'S OUTPUT. Since TILESET1, LIBMH_EVK_INV_PLANET_GFX_SETUP owns the */
+    /* validated DOS8.3 name in b/c/d (12 little-endian ASCII bytes, implicit trailing NUL), not a */
+    /* stack pointer or stock-only index. The host resolves stock indices or custom tree/soldier */
+    /* profiles; libmh no longer calls cfg_GetTloIndex. Both libmh sites read the header back for */
+    /* tlo_name and nothing else (sim_lt_cfg_planet.cpp:113; sim/resid/sim_start_tutorial.cpp:148, */
+    /* which strcpy's it into the HASHED Planets[0x1f].tlo_file), and both DISCARD the return -- the `< */
+    /* 0` failure test exists only in the untranslated lobby callers (llm_lobby_map_transfer_finalize, */
     /* llm_cfg_map_verify_version). THE TORUS MASKS ARE NOT BLOB FIELDS EITHER: */
     /* general.{width_mask,height_mask,big_width,big_height,bw_mask,bh_mask} and */
     /* pathfinder_params->width_mask are DERIVED from width/height by llm_map_setup_dimensions */
@@ -204,7 +206,13 @@ typedef struct libmh_host_api {
     /* frozen side, so this is a format obligation rather than a convenience. */
     void (*save_player_data)(void *save_file);
 
-    /* ---- net (2): the lockstep transport -- REQUIRED: a no-op is a session that never advances ---- */
+    /* ---- net (4): the lockstep transport -- REQUIRED: a no-op is a session that never advances ---- */
+    /* [sim modules: lockstep] */
+    /* Required host-owned completed-body authority shared by native and promoted simulation drivers. */
+    uint64_t (*participant_body_boundary)(uint32_t operation, uint64_t argument);
+    /* [sim modules: lockstep] */
+    /* Required owned-payload admission of participant removal at the completed funded prefix. */
+    int32_t (*participant_removal_admit)(const void *request, uint32_t request_size);
     /* [sim modules: lockstep] */
     /* Receive one queued inbound lockstep packet, if any: the inbound half of transport_send. WHAT A */
     /* HOST SUPPLIES: a NON-BLOCKING poll that hands libmh the next packet from any peer with the */
@@ -346,6 +354,62 @@ typedef struct libmh_host_api {
     /* seam that lets mh.dll keep producing the real bytes while a standalone host produces any 0x400 */
     /* it likes. */
     void *(*media_diag_block)(void);
+
+    /* ---- storage-policy (12): REQUIRED synchronous policy and complete save carriers; no presentation/no-op fallback ---- */
+    /* [sim modules: save] */
+    /* Required native roster extension publication after native blocks and before policy publication. */
+    /* Hosted scatters and loads MHOV/orders/paths; standalone explicitly refuses unsupported MHOV and */
+    /* nonstock actual pools. */
+    int32_t (*planet_load_extensions)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required preparation before any native planet block is serialized. Hosted gathers current native */
+    /* windows and prepares paths; standalone refuses unsupported wider actual pools before mutation. */
+    int32_t (*planet_save_prepare)(void);
+    /* [sim modules: save] */
+    /* Required unconditional restoration after a prepared planet write, including errors. Hosted */
+    /* restores temporary path state; stock-window standalone has no temporary native rewrite. */
+    void (*planet_save_restore)(void);
+    /* [sim modules: save] */
+    /* Required accepted-load quarantine before native roster writes; preserves canonical bytes while */
+    /* disabling outgoing execution and reservations until validated publication. */
+    int32_t (*storage_begin_load)(void);
+    /* [sim modules: save] */
+    /* Required composed policy container manifest/version finish with real write failure propagation. */
+    int32_t (*storage_finish_container)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required validated campaign allocator import after container extraction and before */
+    /* current-member publication; opaque file IO preserves the caller position. */
+    int32_t (*storage_load_container)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required canonical policy import into the existing owner after native roster loading; legacy */
+    /* resets seed the actual loaded roster. */
+    int32_t (*storage_load_planet)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required supported composed version normalization to its exact source-backed native slot before */
+    /* the native version gate. */
+    int32_t (*storage_normalize_version)(void *header40);
+    /* [sim modules: sim] */
+    /* Required synchronous deterministic storage authority over the one canonical owner; standalone */
+    /* binds the real borrowed-region dispatcher, never a presentation event. */
+    int32_t (*storage_policy)(const mh_storage_policy_request *request, mh_storage_policy_result *result);
+    /* [sim modules: save] */
+    /* Required whole container/member/version preflight before any load mutation. */
+    int32_t (*storage_preflight_container)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required read-only whole planet validation before any native roster mutation, including */
+    /* unsupported overflow refusal. */
+    int32_t (*storage_preflight_planet)(int32_t handle);
+    /* [sim modules: save] */
+    /* Required complete SPOL planet tail write with checked opaque file IO and failure propagation. */
+    int32_t (*storage_write_planet)(int32_t handle);
+
+    /* ---- order-tasks (1): REQUIRED canonical route execution, lifetime and reservation authority; no presentation/no-op fallback ---- */
+    /* [sim modules: orders, sim, state] */
+    /* Required synchronous canonical route/reservation authority shared by native, bound and */
+    /* standalone execution. Contract3 requires logical move-prefix origins/witnesses and read-only */
+    /* owned ground-patrol placement operation28; an older callback must not interpret that query as an */
+    /* ordinary application. */
+    int32_t (*order_tasks)(const mh_order_tasks_request *request, mh_order_tasks_result *result);
 } libmh_host_api;
 
 #ifdef __cplusplus
@@ -372,6 +436,8 @@ typedef struct libmh_host_api {
     X(map_save_regions, "map-io", 0) \
     X(planet_tlo_load, "map-io", 0) \
     X(save_player_data, "map-io", 0) \
+    X(participant_body_boundary, "net", 0) \
+    X(participant_removal_admit, "net", 0) \
     X(transport_recv, "net", 0) \
     X(transport_send, "net", 0) \
     X(ansi_to_wide, "string", 0) \
@@ -380,6 +446,19 @@ typedef struct libmh_host_api {
     X(wide_to_local_bytes, "string", 0) \
     X(ticks_ms, "time", 0) \
     X(fatal, "fatal", 0) \
-    X(media_diag_block, "platform", 0)
+    X(media_diag_block, "platform", 0) \
+    X(planet_load_extensions, "storage-policy", 0) \
+    X(planet_save_prepare, "storage-policy", 0) \
+    X(planet_save_restore, "storage-policy", 0) \
+    X(storage_begin_load, "storage-policy", 0) \
+    X(storage_finish_container, "storage-policy", 0) \
+    X(storage_load_container, "storage-policy", 0) \
+    X(storage_load_planet, "storage-policy", 0) \
+    X(storage_normalize_version, "storage-policy", 0) \
+    X(storage_policy, "storage-policy", 0) \
+    X(storage_preflight_container, "storage-policy", 0) \
+    X(storage_preflight_planet, "storage-policy", 0) \
+    X(storage_write_planet, "storage-policy", 0) \
+    X(order_tasks, "order-tasks", 0)
 
 #endif /* LIBMH_HOST_API_GEN_H */

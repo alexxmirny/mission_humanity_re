@@ -16,16 +16,24 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import traceback
+
+import tmp_runs
+import tool_paths
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import desktop  # noqa: E402  the raw CreateProcessW launch that honours lpDesktop
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
-import ui_registry  # noqa: E402  TL-SUITE-REGDATA: the scenario registries (registry.yaml)
-import machine_config as machine  # noqa: E402
-import win_job  # noqa: E402  TL-SUITE-TEARDOWN: kill-on-close for the relay + relay-shim below
+import _rundir
+import desktop
+import gate_admission
+import lane_alloc
+import machine_config as machine
+import make_lane
+import ui_registry
+import ui_test
+import win_job
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_TEST = os.path.join(REPO, "tools", "ui_test.py")
@@ -111,7 +119,7 @@ def _import_fnt():
     d = os.path.join(REPO, "src", "formats")
     if d not in sys.path:
         sys.path.insert(0, d)
-    import fnt  # noqa: E402
+    import fnt
 
     return fnt
 
@@ -160,7 +168,7 @@ LANG_PACK_GAME = os.environ.get("MH_LANG_PACK_GAME") or machine.POLYGON
 
 def _import_langpack():
     _import_fnt()  # puts src/formats on sys.path
-    import langpack  # noqa: E402
+    import langpack
 
     return langpack
 
@@ -810,7 +818,7 @@ def ui_test_cmd(argv):
     return [sys.executable, UI_TEST, *argv]
 
 
-def run_ui_test(argv, timeout, capture=False):
+def run_ui_test(argv, timeout, capture=False, *, env=None):
     """Invoke ui_test.py with argv (list). Returns (exit code, captured text).
 
     `capture` buffers the child's output instead of streaming it -- required under --jobs, where
@@ -822,12 +830,21 @@ def run_ui_test(argv, timeout, capture=False):
     if not capture:
         print(banner)
         try:
-            return subprocess.run(cmd, cwd=REPO, timeout=timeout).returncode, ""
+            return subprocess.run(
+                cmd, cwd=REPO, timeout=timeout, env=tmp_runs.child_env(env)
+            ).returncode, ""
         except subprocess.TimeoutExpired:
             print("    !! ui_test.py exceeded the wrapper timeout (%ds)" % timeout)
             return 2, ""
     try:
-        r = subprocess.run(cmd, cwd=REPO, timeout=timeout, capture_output=True, text=True)
+        r = subprocess.run(
+            cmd,
+            cwd=REPO,
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+            env=tmp_runs.child_env(env),
+        )
         return r.returncode, banner + "\n" + (r.stdout or "") + (r.stderr or "")
     except subprocess.TimeoutExpired as e:
         tail = (
@@ -851,18 +868,14 @@ def run_ui_test(argv, timeout, capture=False):
 # --jobs N put seven other lanes on the same CPU. Measured: u39_diplomacy solo 51s / inside a
 # contended suite 424s against its 420s budget, ALL PAIRS IDENTICAL either way -- the run was never
 # wrong, only slow, and the flat bound cannot tell the difference. Below: a watchdog keyed on
-# whether any lane is still WRITING, not on how long it has been running.
+# actual script/simulation progress, not on how long it has been running.
 #
-# ui_log() (src/mh_dll/mh/seams/ui_drive.cpp) opens mh_uidrive.log, appends one line and closes the
-# handle on EVERY `; [script]` line, with no buffering -- so the file's mtime/size change the instant
-# a step happens, and staying unchanged is a real (if imperfect) proxy for "nothing happened", not an
-# artifact of some flush interval. It is imperfect in one direction only: a single WAIT step logs
-# nothing while it waits (only its "ok"/"TIMEOUT" line, when it ends) -- see script_tick() -- so a
-# stall threshold has to be picked comfortably above one step's own legitimate wait, not above one
-# scenario's whole walk. `WALK_STALL_S` is that threshold; `WALK_BACKSTOP_MULT` sizes the generous
-# last-resort bound behind it, for a run that never leaves ANY evidence to read progress from at all.
-# 240, not 90: the longest single wait in passing runs was 74 s (resync_storm_repro, measured
-# 2026-09-26 over three days of lane logs) at solo speed, and gameclock waits stretch under load.
+# Script waits are silent until their predicate succeeds. Observe script-log
+# progress AND actual per-step hash receipts in the same process's harness log:
+# increasing step and positive finite game clock, never CPU/render/file churn.
+# Each log cursor reads at most 64 KiB per poll and skips historical backlog;
+# load/import rewinds establish a fresh baseline rather than earning progress.
+# The 240-second no-progress limit and absolute backstop remain unchanged.
 WALK_STALL_S = 240
 WALK_BACKSTOP_MULT = 3  # ui_test.py's own --timeout, raised to max(row timeout, this x budget_s)
 
@@ -878,6 +891,110 @@ def _walk_log_fingerprint(run_dir):
         return None
 
 
+class _WalkSimulationProgress:
+    """Bounded cursor over actual per-step hash receipts in a process or owned match log.
+
+    Harness steps span match membership changes. A rewind/load starts a new
+    comparison baseline, not progress; only subsequent step AND clock advance
+    counts. Positive finite IEEE-754 clock bits preserve numeric ordering.
+    """
+
+    def __init__(self):
+        self.identity = None
+        self.offset = 0
+        self.pending = b""
+        self.sample = None
+
+    def poll(self, log_path):
+        try:
+            with open(log_path, "rb") as src:
+                st = os.fstat(src.fileno())
+                identity = (st.st_dev, st.st_ino)
+                reset = self.identity != identity or st.st_size < self.offset
+                if reset:
+                    self.pending = b""
+                    self.sample = None
+                start = max(0 if reset else self.offset, st.st_size - 65536)
+                skipped = start > (0 if reset else self.offset)
+                src.seek(start)
+                data = src.read(st.st_size - start)
+                self.offset = start + len(data)
+                self.identity = identity
+        except OSError:
+            self.identity = None
+            self.pending = b""
+            self.sample = None
+            return False
+        if skipped:
+            # The bounded tail may start in the middle of a record.
+            data = data.partition(b"\n")[2]
+            self.pending = b""
+        lines = (self.pending + data).split(b"\n")
+        self.pending = lines.pop()[-256:]
+        advanced = False
+        for line in lines:
+            words = line.split()
+            if (
+                len(words) != 4
+                or not words[0].isdigit()
+                or any(len(word) != 16 for word in words[1:])
+            ):
+                continue
+            try:
+                step = int(words[0])
+                clock, _, _ = (int(word, 16) for word in words[1:])
+            except ValueError:
+                continue
+            # Ignore negative, NaN and infinite clocks, not merely malformed text.
+            if clock == 0 or clock >> 63 or (clock >> 52) == 0x7FF:
+                continue
+            if self.sample is not None:
+                old_step, old_clock = self.sample
+                if step > old_step and clock > old_clock:
+                    advanced = True
+            self.sample = (step, clock)
+        # Existing historical rows establish a baseline, never keep a new watcher
+        # alive. A file replacement/truncation likewise earns no progress credit.
+        return advanced and not reset
+
+
+class _WalkProgress:
+    """Script progress plus owned simulation; membership removal is not progress."""
+
+    def __init__(self):
+        self.lanes = {}
+        self.simulation = {}
+
+    def poll(self, run_dirs):
+        active = {os.path.normcase(os.path.abspath(d)): os.path.abspath(d) for d in run_dirs}
+        self.lanes = {d: state for d, state in self.lanes.items() if d in active}
+        harness_logs = set()
+        advanced = False
+        evidence = False
+        for key, run_dir in active.items():
+            fp = _walk_log_fingerprint(run_dir)
+            if fp is not None:
+                evidence = True
+                advanced |= fp != self.lanes.get(key)
+            self.lanes[key] = fp
+            harness_logs.add(os.path.join(run_dir, "mh_harness.log"))
+            if _rundir.is_process_dir(run_dir):
+                harness_logs.update(
+                    os.path.join(session, "mh_match_harness.log")
+                    for session in _rundir.sessions_of(run_dir)
+                )
+        self.simulation = {
+            path: cursor for path, cursor in self.simulation.items() if path in harness_logs
+        }
+        for path in harness_logs:
+            if path not in self.simulation:
+                self.simulation[path] = _WalkSimulationProgress()
+            cursor = self.simulation[path]
+            advanced |= cursor.poll(path)
+            evidence |= cursor.sample is not None
+        return advanced, evidence
+
+
 _THREAD_PS = (
     "$ErrorActionPreference='SilentlyContinue';"
     "foreach($p in Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and "
@@ -887,6 +1004,60 @@ _THREAD_PS = (
     "'  cpu_s='+$q.TotalProcessorTime.TotalSeconds+' ws_mb='+[int]($q.WorkingSet64/1MB)+' threads='+$q.Threads.Count;"
     "foreach($t in $q.Threads){'  tid '+$t.Id+' '+$t.ThreadState+' '+$t.WaitReason+' cpu_s='+$t.TotalProcessorTime.TotalSeconds}}"
 )
+
+
+def failure_evidence(run_dirs, label):
+    """Keep failed physical-run logs before lane reuse; diagnostics never alter a verdict."""
+    lines = []
+    archive = None
+    for target in run_dirs:
+        try:
+            if os.path.basename(os.path.dirname(os.path.abspath(target))) != "logs":
+                continue
+            owned = _rundir.process_and_sessions(target)
+            tmp_runs.register(target, role="source")
+            lane = os.path.basename(os.path.dirname(os.path.dirname(owned[0])))
+            if archive is None:
+                parent = tmp_runs.current_output("postmortem")
+                os.makedirs(parent, exist_ok=True)
+                prefix = re.sub(r"[^A-Za-z0-9_-]", "_", label) + "-failed-"
+                archive = tempfile.mkdtemp(prefix=prefix, dir=parent)
+                tmp_runs.register(archive, role="evidence")
+            for source in owned:
+                destination = os.path.join(archive, lane, os.path.basename(source))
+                os.makedirs(destination, exist_ok=True)
+                paths = glob.glob(os.path.join(source, "*.log")) + glob.glob(
+                    os.path.join(source, "*.txt")
+                )
+                paths += [
+                    os.path.join(source, name) for name in ("session.json", "effective_config.json")
+                ]
+                for path in paths:
+                    if not os.path.isfile(path):
+                        continue
+                    try:
+                        name = os.path.basename(path)
+                        with open(path, "rb") as stream:
+                            stream.seek(0, 2)
+                            size = stream.tell()
+                            whole = name == "mh_uidrive.log" or name.endswith(".json")
+                            start = 0 if whole else max(0, size - 512 * 1024)
+                            stream.seek(start)
+                            data = stream.read()
+                        with open(os.path.join(destination, name), "wb") as stream:
+                            stream.write(data)
+                        if start:
+                            lines.append(
+                                "    [failure] %s: retained tail %d/%d bytes"
+                                % (path, len(data), size)
+                            )
+                    except OSError as exc:
+                        lines.append("    [failure] cannot retain %s: %s" % (path, exc))
+        except (OSError, ValueError) as exc:
+            lines.append("    [failure] cannot resolve owned run %s: %s" % (target, exc))
+    if archive is not None:
+        lines.insert(0, "    [failure] owned logs archived to %s" % archive)
+    return lines
 
 
 def stall_evidence(run_dirs, archive_name="stall"):
@@ -906,13 +1077,12 @@ def stall_evidence(run_dirs, archive_name="stall"):
                 continue  # only a real lane's logs/<run>
             lane = os.path.dirname(os.path.dirname(os.path.abspath(d)))
             dst = os.path.join(
-                REPO,
-                "tmp",
-                "ui_test",
-                "postmortem",
+                tmp_runs.current_output("postmortem"),
                 "%s__%s_%s" % (os.path.basename(lane), os.path.basename(d), archive_name),
             )
             os.makedirs(dst, exist_ok=True)
+            tmp_runs.register(d, role="source")
+            tmp_runs.register(dst, role="evidence")
             for f in glob.glob(os.path.join(d, "*.log")) + glob.glob(os.path.join(d, "*.txt")):
                 with open(f, "rb") as src:
                     src.seek(0, 2)
@@ -940,18 +1110,14 @@ def stall_evidence(run_dirs, archive_name="stall"):
     return lines
 
 
-def _run_watched(cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5, banner=None):
-    """Run `cmd` (a full argv, not just ui_test.py's tail), killing it EARLY -- before `backstop` --
-    only once NONE of `run_dirs_fn()`'s directories has an mh_uidrive.log that changed in the last
-    `stall_s` seconds. Never kills while at least one lane is still writing, however slowly.
-    `stall_s=0` disables the early kill (degrades to a flat `backstop`-second kill, same shape as
-    run_ui_test). `backstop` is the absolute ceiling either way -- a run with no evidence to read
-    progress from at all (a boot failure) is bounded by it alone, same as an ever-advancing run that
-    somehow never finishes. Split from run_ui_test_watched() so a selftest can drive it against a
-    fake child instead of a real ui_test.py invocation.
+def _run_watched(
+    cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5, banner=None, env=None
+):
+    """Watch script and actual sim progress, never extending the absolute backstop.
 
-    Returns (exit code, captured text). Both kill paths return rc=2 -- the vocabulary run_ui_test's
-    own TimeoutExpired path already uses, so looks_like_timeout() (rc == 2) needs no change.
+    Hash receipts must advance both step and clock; render/file churn is not sim
+    progress. Recheck after slow diagnostics: completion/progress may have resumed
+    while evidence was being collected. The existing timeout vocabulary is kept.
     """
     if not capture and banner:
         print(banner)
@@ -961,41 +1127,58 @@ def _run_watched(cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.STDOUT if capture else None,
         text=True,
+        env=tmp_runs.child_env(env),
     )
-    t0 = time.time()
+    t0 = time.monotonic()
     last_progress_t = t0
-    last_fp = None
+    progress = _WalkProgress()
     kill_why = None
+    ev = []
     out = None
     while True:
         try:
             out, _ = proc.communicate(timeout=poll_s)
-            break  # exited on its own -- the common, fast case
+            break
         except subprocess.TimeoutExpired:
             pass
-        now = time.time()
-        fps = [_walk_log_fingerprint(d) for d in run_dirs_fn()]
-        fp = tuple(fps) if any(f is not None for f in fps) else None
-        if fp != last_fp:
-            last_fp, last_progress_t = fp, now
+        now = time.monotonic()
+        run_dirs = list(run_dirs_fn())
+        advanced, evidence = progress.poll(run_dirs)
+        if advanced:
+            last_progress_t = now
         if now - t0 > backstop:
             kill_why = "backstop %ds exceeded (no run ever finished)" % backstop
             break
-        if stall_s and fp is not None and now - last_progress_t > stall_s:
-            kill_why = "no lane's mh_uidrive.log advanced for %ds" % stall_s
+        if not (stall_s and evidence and now - last_progress_t > stall_s):
+            continue
+        try:
+            ev = stall_evidence(run_dirs)
+        except Exception:  # noqa: BLE001
+            ev = []
+        # Drain a completed child's output readers for one ordinary bounded poll;
+        # a zero-time communicate can falsely time out while those readers finish.
+        try:
+            out, _ = proc.communicate(timeout=poll_s)
             break
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.monotonic()
+        advanced, _ = progress.poll(list(run_dirs_fn()))
+        if now - t0 > backstop:
+            kill_why = "backstop %ds exceeded (no run ever finished)" % backstop
+            break
+        if advanced:
+            last_progress_t = now
+            ev = []
+            continue
+        kill_why = "no lane's script or simulation advanced for %ds" % stall_s
+        break
     if kill_why:
-        ev = []
-        if stall_s and "advanced" in kill_why:
-            try:
-                ev = stall_evidence(list(run_dirs_fn()))
-            except Exception:  # noqa: BLE001
-                ev = []
         proc.kill()
         try:
             out, _ = proc.communicate(timeout=10)
         except subprocess.TimeoutExpired:
-            pass  # best-effort drain; win_job's kill-on-close job still reaps the peer processes
+            pass  # win_job's kill-on-close job still reaps the peer processes
         msg = "    !! PROGRESS WATCHDOG: %s" % kill_why
         if ev:
             msg += "\n" + "\n".join(ev)
@@ -1008,7 +1191,9 @@ def _run_watched(cmd, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5,
     return proc.returncode, ""
 
 
-def run_ui_test_watched(argv, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5):
+def run_ui_test_watched(
+    argv, backstop, run_dirs_fn, stall_s=0, capture=False, poll_s=5, *, env=None
+):
     """run_ui_test's progress-watchdog sibling (tooling:TL-HARN19): same signature shape and return
     contract, but the kill decision is `_run_watched`'s (see there), not a flat `timeout`."""
     banner = "    $ python tools/ui_test.py %s" % " ".join(argv)
@@ -1020,6 +1205,7 @@ def run_ui_test_watched(argv, backstop, run_dirs_fn, stall_s=0, capture=False, p
         capture=capture,
         poll_s=poll_s,
         banner=banner,
+        env=env,
     )
 
 
@@ -1042,15 +1228,15 @@ def run_ui_test_watched(argv, backstop, run_dirs_fn, stall_s=0, capture=False, p
 # backwards leaves the host on `peers 1` and the client on `sessions 1`, which reads like a discovery
 # failure.
 # The BANDS (bases, width, what else must stay clear of them) are laid out and gated in
-# tools/lane_alloc.py; these three + test_ui.LOCAL_SHIM_CTL_PORT_BASE are the originals it mirrors.
+# tools/lane_alloc.py; all bases are derived there.
 # 6600/6700/6800 x 100 until 2026-09-29 (TL-BANDS200): the registry could not pass 99 rows.
-LOCAL_PORT_BASE = 10000
+LOCAL_PORT_BASE = lane_alloc.PORT_BASE
 # A shim test is the ONE case where peers of a match do NOT share a port. The shim and the host lane
 # are both on this box, so they cannot both own the game port -- and the shim binds first, so the GAME
 # is what fails (`net: bind(:<game port>) failed 10013`), leaving the client stuck on `sessions 1` looking
 # exactly like a discovery bug (H3, 2026-07-28). The client dials the shim's port instead, and the shim
 # forwards to the host's. Its own band, well clear of LOCAL_PORT_BASE + len(TESTS).
-LOCAL_SHIM_PORT_BASE = 10200
+LOCAL_SHIM_PORT_BASE = lane_alloc.SHIM_PORT_BASE
 # mp:R2b -- a CLIENT lane that HOSTS a lobby of its own (`host_lanes` in a registry row: 1-based
 # client indices) cannot share the test's port: a UDP host binds `[net] port` with
 # SO_EXCLUSIVEADDRUSE, so the second host on one port is REFUSED at bind and its lobby, though
@@ -1059,7 +1245,7 @@ LOCAL_SHIM_PORT_BASE = 10200
 # band, like the shim's. When such a row runs as a share_lanes sharer this is moot -- it borrows a
 # HOST lane from a second target, whose port is that target's own -- so this only decides the
 # standalone (target-absent) shape.
-LOCAL_HOST2_PORT_BASE = 10400
+LOCAL_HOST2_PORT_BASE = lane_alloc.HOST2_PORT_BASE
 # --local implies --headless, and headless removes the vsync wait -- so the per-step watchdog, which is
 # budgeted in FRAMES, expires far sooner in wall-clock than it does with the blit enabled. 1500 (the
 # default) does not even survive boot on this host. This is a floor; a test with its own timeout_frames
@@ -1118,6 +1304,35 @@ def share_targets(test):
     return [tg] if isinstance(tg, str) else list(tg)
 
 
+def physical_tests(tests, step_names=()):
+    """Expand explicitly independent steps, without merging their boot settings twice."""
+    out = []
+    for test in tests:
+        if not test.get("independent_steps"):
+            out.append(test)
+            continue
+        selected = [s for s in test["solo_steps"] if not step_names or s["name"] in step_names]
+        if not selected:
+            out.append(dict(test, independent_steps=False))
+        for step in selected:
+            out.append(
+                dict(
+                    test,
+                    name=test["name"] + "__" + step["name"],
+                    independent_steps=False,
+                    solo_steps=[step],
+                    _root=test["name"],
+                    _step=step["name"],
+                    _schedule_s=test.get("_step_hints", {}).get(step["name"])
+                    or (test.get("_schedule_s") or test["budget_s"]) / len(test["solo_steps"]),
+                )
+            )
+    names = [t["name"] for t in out]
+    if len(set(names)) != len(names):
+        raise ValueError("independent physical test names collide")
+    return out
+
+
 def lane_names(test):
     """Every lane a test needs, in peer order (host first).
 
@@ -1132,6 +1347,8 @@ def lane_names(test):
     mp:GS1(b) -- `client_shares_lane` (see client_lane_slots) folds a relaunched client onto an
     earlier one's lane WITHIN one test, so the lane it needs is not counted twice either.
     """
+    if test.get("independent_steps"):
+        return [name for child in physical_tests([test]) for name in lane_names(child)]
     if test.get("share_lanes"):
         return []
     if test["kind"] == "solo":
@@ -1150,6 +1367,35 @@ def provision_lanes(
     range: the lane number is the mutex separation and the port is the game port, so two runs sharing
     either would fight. --det-local uses them for exactly that reason.
     """
+    tests = physical_tests(tests)
+    # Provisioning is one serial CPU phase, not 75 independently schedulable jobs.
+    # bg149 measured 44.5s of work in 75 commands but 153.6s between their leases.
+    # Charge the same one core continuously; children are covered, never uncharged.
+    commands = sum(len(lane_names(dict(t, share_lanes=None))) for t in tests)
+    with gate_admission.lease(
+        "ui:provision", seconds=max(1, commands * 0.6), bootstrap=True
+    ) as held:
+        return _provision_lanes(
+            tests,
+            headless,
+            port_base,
+            lane_base,
+            stock_exe,
+            backend,
+            input_backend,
+            held.covered_env(),
+        )
+
+
+def _provision_lanes(
+    tests, headless, port_base, lane_base, stock_exe, backend, input_backend, child_env
+):
+    if len(tests) > lane_alloc.PORT_BAND:
+        print(
+            "  port allocation REFUSED: %d physical rows exceed %d slots"
+            % (len(tests), lane_alloc.PORT_BAND)
+        )
+        return None
     # THE DEMAND IS CHECKED BEFORE ANYTHING IS PROVISIONED (fork F4H). This loop derives its lane
     # numbers from the registry's length, which is exactly how the capture suite grew 20 -> 36 lanes
     # and silently took over ui_soak's 32, --sp-determinism's 31 and the tactical lanes' 33..36 --
@@ -1250,9 +1496,31 @@ def provision_lanes(
             )
             if src:
                 cmd += ["--src", src]
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                print("  lane %s FAILED: %s" % (nm, (r.stderr or r.stdout).strip()[:200]))
+            if t.get("lane_maps") and i == 0:  # mods:MAPGEN1: generated maps only (last: nargs="+")
+                cmd += ["--maps-only"] + [
+                    tool_paths.resolve_input(m_, repo=REPO) for m_ in t["lane_maps"]
+                ]
+            # DATAEXT1: per-peer mods fixture (make_lane --mods-fixture, tools/mods_fixture.py) --
+            # each lane builds its own copy from its own install packs, so a 'variant' client really
+            # holds different text bytes under the same mod id and an unset client has no mods dir.
+            mods_mode = t.get("lane_mods_host") if i == 0 else t.get("lane_mods_client")
+            if mods_mode:
+                cmd += ["--mods-fixture", mods_mode]
+            if t.get("lane_mods_empty_maps"):
+                cmd.append("--mods-empty-maps")
+            began = time.monotonic()
+            # Keep the complete CLI validation/rebuild, but not a fresh interpreter per lane.
+            # Its native fixture children retain this phase's covered admission environment.
+            try:
+                rc = make_lane.main(cmd[2:], child_env=child_env)
+            except SystemExit as exc:
+                rc = exc.code or 0
+            except Exception as exc:
+                traceback.print_exc()
+                rc = str(exc) or type(exc).__name__
+            print("    provision %-38s %.3fs" % (nm, time.monotonic() - began))
+            if rc:
+                print("  lane %s FAILED: %s" % (nm, str(rc).strip()[:200]))
                 return None
         plan[t["name"]] = (port, shim_port, names)
         if names:
@@ -1370,7 +1638,7 @@ def relay_binary(build_if_missing=True):
             )
         return None, "no %s" % exe
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import lint_rust  # noqa: E402  the one place that knows where cargo is on this machine
+    import lint_rust
 
     cargo = lint_rust.resolve_cargo(os.environ)
     if not cargo:
@@ -1471,7 +1739,7 @@ class RelayProc:
         with self._lock:
             if self.proc is None:
                 return False
-            t0 = time.time()
+            t0 = time.monotonic()
             try:
                 self.proc.terminate()
                 self.proc.wait(timeout=10)
@@ -1483,7 +1751,7 @@ class RelayProc:
             self.restarts += 1
             self.proc, _ = self._spawn(self.port)
             got = self._await_listening(self.restarts + 1)
-            secs = time.time() - t0
+            secs = time.monotonic() - t0
             self.fh.write("[test_ui] relay back after %.1f s (listening=%s)\n" % (secs, got))
             self.fh.flush()
             return got == self.port
@@ -1885,7 +2153,7 @@ def apply_net_args(ap, args, peers_local):
         _relay_stack = contextlib.ExitStack()
         atexit.register(_relay_stack.close)
         _rp = _relay_stack.enter_context(
-            RelayProc(RELAY_PORT, os.path.join(REPO, "tmp", "relay_run.log"))
+            RelayProc(RELAY_PORT, os.path.join(tmp_runs.current_output("relay"), "relay_run.log"))
         )
         if not _rp.ok:
             print("[relay] could not start: %s" % _rp.note)
@@ -1919,7 +2187,7 @@ def apply_net_args(ap, args, peers_local):
                     args.relay_shim_delay,
                     args.relay_shim_jitter,
                     args.transport == "udp",
-                    os.path.join(REPO, "tmp", "relay_shim_run.log"),
+                    os.path.join(tmp_runs.current_output("relay"), "relay_shim_run.log"),
                 )
             )
             if not _rs.ok:

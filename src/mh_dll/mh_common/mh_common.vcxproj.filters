@@ -6,13 +6,74 @@
     <Filter Include="include">
       <UniqueIdentifier>{811BE297-6EBC-5A61-9420-1169FDC9AE90}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mh_mapgen">
+      <UniqueIdentifier>{C163C837-ED54-5A1C-98FA-28269CB92B1A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mh_mapgen\src">
+      <UniqueIdentifier>{F0765544-2E20-5D51-BC98-85A330F238EB}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="generic.h" />
+    <ClInclude Include="participant_boundary.h" />
     <ClInclude Include="include\mh_bmp.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_bnk.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_mod_catalog.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_tileset.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_cfg_patch.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_storage_policy.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_tasks.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_air_patrol.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_stream.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_tasks_host.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_tasks_dispatch.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_tasks_reservations.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_tasks_path.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_order_witness.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_strategic_bindings.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_strategic_binding_ids.gen.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_storage_policy_save.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_storage_policy_save_layout.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_cfg_schema_types.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_cfg_schema.gen.h">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\mh_lib_c_export.h">
@@ -40,6 +101,20 @@
   <ItemGroup>
     <ClCompile Include="bmp_io.cpp" />
     <ClCompile Include="bnk.cpp" />
+    <ClCompile Include="mod_catalog.cpp" />
+    <ClCompile Include="tileset_catalog.cpp" />
+    <ClCompile Include="..\mh_mapgen\src\rules_io.cpp">
+      <Filter>mh_mapgen\src</Filter>
+    </ClCompile>
+    <ClCompile Include="cfg_patch.cpp" />
+    <ClCompile Include="storage_policy.cpp" />
+    <ClCompile Include="order_tasks.cpp" />
+    <ClCompile Include="air_patrol.cpp" />
+    <ClCompile Include="mh_order_tasks_dispatch.cpp" />
+    <ClCompile Include="order_tasks_reservations.cpp" />
+    <ClCompile Include="order_witness.cpp" />
+    <ClCompile Include="strategic_bindings.cpp" />
+    <ClCompile Include="storage_policy_save.cpp" />
     <ClCompile Include="lzw.cpp" />
     <ClCompile Include="mh_log_sink.cpp" />
     <ClCompile Include="misc.cpp" />

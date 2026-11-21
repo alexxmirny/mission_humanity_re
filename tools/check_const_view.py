@@ -43,6 +43,7 @@ import argparse
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,6 +58,7 @@ INCLUDE_DIRS = [
     # F5O: the roster is under libmh/ now; mh/ still carries addr/, crt/, fp/, include/.
     os.path.join(REPO, "src", "mh_dll", "libmh"),
     os.path.join(REPO, "src", "mh_dll", "mh"),
+    os.path.join(REPO, "src", "mh_dll", "mh_common"),
     os.path.join(REPO, "src", "mh_dll"),
 ]
 
@@ -166,23 +168,59 @@ def cases_in(target):
     return dict(sorted(out.items()))
 
 
-def compile_once(vcvars, tu, macro, workdir, verbose):
-    cl = ["cl", "/nologo", "/c", "/std:c++20", "/EHsc", "/permissive-", "/W3"]
+def prepare_toolchain(vcvars, child_env):
+    """Capture the selected x86 environment once; never print its potentially private values."""
+    with tempfile.TemporaryDirectory(prefix="mh_const_vcenv_") as workdir:
+        bat = os.path.join(workdir, "environment.bat")
+        with open(bat, "w", encoding="ascii") as f:
+            f.write(
+                '@echo off\ncall "%s" >nul\nif errorlevel 1 exit /b %%errorlevel%%\nset\n' % vcvars
+            )
+        result = subprocess.run(
+            ["cmd", "/u", "/c", bat],
+            capture_output=True,
+            cwd=workdir,
+            timeout=300,
+            env=child_env,
+        )
+    if result.returncode:
+        raise RuntimeError("vcvars environment setup failed (exit %d)" % result.returncode)
+    environment = {}
+    for line in result.stdout.decode("utf-16-le").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            environment[key.upper()] = value
+    compiler = shutil.which("cl.exe", path=environment.get("PATH", ""))
+    if not compiler:
+        raise RuntimeError("vcvars environment did not provide cl.exe")
+    return compiler, environment
+
+
+def compile_once(toolchain, tu, macro, workdir, verbose):
+    compiler, environment = toolchain
+    cl = [compiler, "/nologo", "/c", "/std:c++20", "/EHsc", "/permissive-", "/W3"]
     for d in INCLUDE_DIRS:
-        cl += ["/I", '"%s"' % d]
+        cl += ["/I", d]
     if macro:
         cl.append("/D" + macro)
-    cl += ['/Fo"%s"' % os.path.join(workdir, "out.obj"), '"%s"' % tu]
-    bat = os.path.join(workdir, "run.bat")
-    with open(bat, "w", encoding="ascii") as f:
-        f.write('@echo off\ncall "%s" >nul\n%s\n' % (vcvars, " ".join(cl)))
+    cl += ["/Fo" + os.path.join(workdir, "out.obj"), tu]
     if verbose:
-        print("   $", " ".join(cl))
-    r = subprocess.run(["cmd", "/c", bat], capture_output=True, text=True, cwd=workdir, timeout=300)
+        print("   $", subprocess.list2cmdline(cl))
+    import gate_admission
+
+    with gate_admission.lease("lint:const-view:" + (macro or "positive"), seconds=3) as held:
+        r = subprocess.run(
+            cl,
+            capture_output=True,
+            text=True,
+            cwd=workdir,
+            timeout=300,
+            env=held.covered_env(environment),
+        )
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
-def run_target(target, vcvars, verbose):
+def run_target(target, toolchain, verbose):
     """Returns (n_cases, n_failures).  A structural problem returns (0, 1) so it can never read as
     'zero cases, zero failures, fine'."""
     print("=== check_const_view [%s] (%s) ===" % (target["name"], target["banner"]))
@@ -206,7 +244,7 @@ def run_target(target, vcvars, verbose):
     with tempfile.TemporaryDirectory(prefix="mh_stateview_") as wd:
         # THE POSITIVE ARM FIRST.  If the file does not compile clean, every negative result below
         # is uninterpretable, so this is a hard stop rather than one more failure line.
-        rc, out = compile_once(vcvars, target["tu"], None, wd, verbose)
+        rc, out = compile_once(toolchain, target["tu"], None, wd, verbose)
         if rc != 0:
             print("  FAIL: the POSITIVE arm does not compile, so no negative case means anything.")
             print("        Every legal read/write in the #else branch must build.")
@@ -214,15 +252,12 @@ def run_target(target, vcvars, verbose):
             return len(cases), len(cases)
         print("  ok: positive arm compiles (%s)" % target["positive"])
 
-        # The cases are N INDEPENDENT compiles of the same TU under mutually-exclusive macros, and
-        # each one pays a full `vcvars32.bat` before cl even starts -- which is most of the ~1.6 s a
-        # case costs. Fanning them out took this check from 19.5 s to ~4 s, the single largest lane
-        # in lint_repo. Each gets its OWN workdir: compile_once writes `run.bat` and `out.obj` by
-        # fixed name, so sharing one would have the cases overwrite each other's inputs.
+        # Cases share the prepared toolchain, never their output objects. Every compile
+        # has its own workdir and admission lease; a waiting pool holds no parent lease.
         def compile_case(n):
             cwd = os.path.join(wd, "case%d" % n)
             os.makedirs(cwd, exist_ok=True)
-            return compile_once(vcvars, target["tu"], target["macro"] % n, cwd, verbose)
+            return compile_once(toolchain, target["tu"], target["macro"] % n, cwd, verbose)
 
         with ThreadPoolExecutor(max_workers=min(len(cases), (os.cpu_count() or 4))) as ex:
             results = dict(zip(cases, ex.map(compile_case, cases)))
@@ -257,7 +292,11 @@ def main():
     ap.add_argument("--target", choices=[t["name"] for t in TARGETS], help="run only this target")
     args = ap.parse_args()
 
-    vcvars = find_vcvars()
+    import gate_admission
+
+    with gate_admission.lease("lint:const-view:toolchain", seconds=3) as held:
+        vcvars = find_vcvars()
+        toolchain = prepare_toolchain(vcvars, held.covered_env()) if vcvars else None
     if vcvars is None:
         print(
             "check_const_view: vcvars32.bat not found -- SKIPPED (this check needs the MSVC toolchain)"
@@ -269,7 +308,7 @@ def main():
     total_cases = 0
     total_fail = 0
     for t in targets:
-        n, f = run_target(t, vcvars, args.verbose)
+        n, f = run_target(t, toolchain, args.verbose)
         total_cases += n
         total_fail += f
 

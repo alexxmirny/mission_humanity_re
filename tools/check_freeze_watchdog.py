@@ -52,6 +52,7 @@ CHAIN = re.compile(r"; \[freeze\]   (?:ebp-chain|stack-ret):(?P<body>.*)")
 ENDED = re.compile(
     STAMP + r"; \[freeze\] frozen main thread ended: next present after (?P<ms>\d+) ms"
 )
+LEFT_MATCH = re.compile(STAMP + r"; \[freeze\] frozen main thread ended: left the match\b")
 FOCUS = re.compile(
     STAMP + r"; \[focus\] (?P<what>\w+) hwnd=\S+ (?P<det>.*?) iconic=(?P<ic>-?\d+) fg=(?P<fg>-?\d+)"
 )
@@ -199,6 +200,9 @@ def parse(lines):
         "ddraw": None,
         "stalls": [],
     }
+    pending_inject = None
+    active = None
+    last_capture = None
     for ln in lines:
         m = ARMED.search(ln)
         if m:
@@ -210,6 +214,9 @@ def parse(lines):
                 "mod": m.group("mod"),
                 "off": int(m.group("off"), 16),
             }
+            pending_inject = r["inject"]
+            last_capture = None
+            continue
         m = CAPTURE.search(ln)
         if m:
             r["captures"].append(
@@ -220,16 +227,31 @@ def parse(lines):
                     "refs": [],
                 }
             )
+            last_capture = r["captures"][-1]
+            last_capture["inject"] = None
+            last_capture["ended"] = None
+            if last_capture["n"] == 1:
+                last_capture["inject"] = pending_inject
+                pending_inject = None
+                active = last_capture
             continue
         m = CHAIN.search(ln)
-        if m and r["captures"]:
-            r["captures"][-1]["refs"].extend(
-                re.findall(r"([^\s@]+)\+0x([0-9A-Fa-f]+)", m.group("body"))
-            )
+        if m and last_capture is not None:
+            last_capture["refs"].extend(re.findall(r"([^\s@]+)\+0x([0-9A-Fa-f]+)", m.group("body")))
+            continue
+        if LEFT_MATCH.search(ln):
+            active = last_capture = pending_inject = None
             continue
         m = ENDED.search(ln)
         if m:
             r["ended"].append(int(m.group("ms")))
+            if active is not None:
+                active["ended"] = int(m.group("ms"))
+            # The beat preceding INJECT can close an older natural episode late.
+            if active is None or active["inject"] is pending_inject:
+                pending_inject = None
+            active = last_capture = None
+            continue
         m = FOCUS.search(ln)
         if m:
             r["focus"].append(
@@ -245,38 +267,32 @@ def parse(lines):
 
 
 def check_inject(r, n):
-    fails = []
-    # (the armed banner is written at process start, into the MENU dir -- not in the match's session dir)
+    # A previous natural freeze cannot supply the injected episode's stack or end.
     inj = r["inject"]
     if not inj or inj["ms"] != n:
-        fails.append("no `INJECT Sleep(%d)` line" % n)
-    caps = [c for c in r["captures"] if c["n"] == 1]
+        return ["no `INJECT Sleep(%d)` line" % n]
+    caps = [c for c in r["captures"] if c["n"] == 1 and c["inject"] is inj]
     if not caps:
-        fails.append(
-            "no `main thread no present for ... (sample 1` capture line -- the freeze left no stack"
-        )
-        return fails
+        return ["no post-injection sample-1 capture -- the injected freeze left no stack"]
     c = caps[0]
+    fails = []
     thr = r["armed"] or 1000
     if not (thr <= c["ms"] <= n + 600):
         fails.append("capture says %d ms, expected within [%d, %d]" % (c["ms"], thr, n + 600))
-    if inj:
-        hit = [
-            (m, o) for m, o in c["refs"] if m == inj["mod"] and 0 < int(o, 16) - inj["off"] <= 0x60
-        ]
-        if not hit:
-            fails.append(
-                "no stack entry names frame_watchdog_inject_sleep (%s+0x%X .. +0x60); entries: %s"
-                % (
-                    inj["mod"],
-                    inj["off"],
-                    " ".join("%s+0x%s" % t for t in c["refs"][:12]) or "(none)",
-                )
+    hit = [(m, o) for m, o in c["refs"] if m == inj["mod"] and 0 < int(o, 16) - inj["off"] <= 0x60]
+    if not hit:
+        fails.append(
+            "no stack entry names frame_watchdog_inject_sleep (%s+0x%X .. +0x60); entries: %s"
+            % (
+                inj["mod"],
+                inj["off"],
+                " ".join("%s+0x%s" % t for t in c["refs"][:12]) or "(none)",
             )
-    if not r["ended"]:
-        fails.append("no `frozen main thread ended` line")
-    elif abs(r["ended"][0] - n) > max(300, n // 4):
-        fails.append("ended after %d ms, expected ~%d" % (r["ended"][0], n))
+        )
+    if c["ended"] is None:
+        fails.append("no own `frozen main thread ended: next present` line")
+    elif abs(c["ended"] - n) > max(300, n // 4):
+        fails.append("ended after %d ms, expected ~%d" % (c["ended"], n))
     return fails
 
 
@@ -412,6 +428,54 @@ def selftest():
     expect(
         "no inject line",
         one([l for l in good if "INJECT Sleep" not in l], expect_inject=1500),
+        True,
+    )
+    natural = [
+        "[10:00:01.000] ; [freeze] main thread no present for 1000 ms (sample 1, sess=3 gclk=0)",
+        "[10:00:01.000] ; [freeze]   ebp-chain: mh.dll+0x5000",
+        "[10:00:01.310] ; [freeze] frozen main thread ended: next present after 1310 ms",
+    ]
+    expect("natural freeze before injection", one(natural + good, expect_inject=1500), False)
+    expect(
+        "old end logged after injection",
+        one([good[0], *natural[:2], good[1], natural[2], *good[2:]], expect_inject=1500),
+        False,
+    )
+    expect(
+        "stack before injection is not proof",
+        one([good[0], *good[2:6], good[1], good[6]], expect_inject=1500),
+        True,
+    )
+    expect(
+        "later episode cannot supply end",
+        one(good[:6] + natural, expect_inject=1500),
+        True,
+    )
+    expect(
+        "prior valid end cannot mask own bad end",
+        one(
+            natural + [l.replace("after 1510 ms", "after 5000 ms") for l in good],
+            expect_inject=1500,
+        ),
+        True,
+    )
+    wrong_first = [l.replace("mh.dll+0x1A2D5", "mh.dll+0x9999") for l in good[:6]]
+    second_sample = [good[2].replace("sample 1", "sample 2"), *good[3:6]]
+    expect(
+        "sample two cannot supply first stack",
+        one(wrong_first + second_sample + [good[6]], expect_inject=1500),
+        True,
+    )
+    expect(
+        "leaving match is not a next-present end",
+        one(
+            good[:6]
+            + [
+                "; [freeze] frozen main thread ended: left the match after 1500 ms without a present"
+            ]
+            + [good[6]],
+            expect_inject=1500,
+        ),
         True,
     )
     expect("off arm clean", one(["; nothing"], expect_none=True), False)

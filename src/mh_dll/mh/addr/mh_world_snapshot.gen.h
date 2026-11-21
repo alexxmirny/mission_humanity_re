@@ -31,9 +31,10 @@
 
 namespace mh::state {
 
-inline constexpr int WORLD_SNAPSHOT_BLOCK_COUNT = 829;
+inline constexpr int WORLD_SNAPSHOT_BLOCK_COUNT = 832;
 
-// 7711960 bytes of carried world, 16 regions excluded (all with a stated why), 0 unaccounted.
+// Descriptor lengths are schema minima; host-native payloads carry the whole bound span.
+// 7713722 bytes of carried world, 16 regions excluded (all with a stated why), 0 unaccounted.
 inline constexpr mh::state::blob::snapshot_block
     WORLD_SNAPSHOT_BLOCKS[WORLD_SNAPSHOT_BLOCK_COUNT] = {
         {RID_STRAT_ORDER_ACK_VOICE_COOLDOWN_SEC, 8u, "_G_LLM_STRAT_ORDER_ACK_VOICE_COOLDOWN_SEC"},
@@ -575,14 +576,14 @@ inline constexpr mh::state::blob::snapshot_block
         {RID_PATH, 8192u, "path_"},
         {RID_MAP_REGION_ROUTE_BFS_QUEUE, 2048u, "_G_LLM_MAP_REGION_ROUTE_BFS_QUEUE"},
         {RID_MAP_BFS_QUEUE_REGIONSPLIT, 8192u, "_G_LLM_MAP_BFS_QUEUE_REGIONSPLIT"},
-        {RID_TILE_DRAWN_MAP, 300u, "_G_LLM_TILE_DRAWN_MAP"},
+        {RID_TILE_DRAWN_MAP, 1018u, "_G_LLM_TILE_DRAWN_MAP"},
         {RID_TILE_VIS_MAP_M6, 1u, "_G_LLM_TILE_VIS_MAP_M6"},
         {RID_TILE_VIS_MAP_M5, 1u, "_G_LLM_TILE_VIS_MAP_M5"},
         {RID_TILE_VIS_MAP_M4, 1u, "_G_LLM_TILE_VIS_MAP_M4"},
         {RID_TILE_VIS_MAP_M3, 1u, "_G_LLM_TILE_VIS_MAP_M3"},
         {RID_TILE_VIS_MAP_M2, 1u, "_G_LLM_TILE_VIS_MAP_M2"},
         {RID_TILE_VIS_MAP_M1, 1u, "_G_LLM_TILE_VIS_MAP_M1"},
-        {RID_TILE_VIS_MAP, 300u, "_G_LLM_TILE_VIS_MAP"},
+        {RID_TILE_VIS_MAP, 1024u, "_G_LLM_TILE_VIS_MAP"},
         {RID_SPRITE_META, 528000u, "_G_LLM_SPRITE_META"},
         {RID_FOG_OF_WAR, 589824u, "fog_of_war"},
         {RID_TACT_LOS_CACHE_PTR, 4u, "_G_LLM_TACT_LOS_CACHE_PTR"},
@@ -865,6 +866,9 @@ inline constexpr mh::state::blob::snapshot_block
         {RID_STRAT_AI_ATTACK_CANDIDATES, 2048u, "_G_LLM_STRAT_AI_ATTACK_CANDIDATES"},
         {RID_STRAT_AI_ATTACK_CANDIDATE_COUNT, 4u, "_G_LLM_STRAT_AI_ATTACK_CANDIDATE_COUNT"},
         {RID_STRAT_AI_SCAN_TARGET_COUNT, 4u, "_G_LLM_STRAT_AI_SCAN_TARGET_COUNT"},
+        {RID_STORAGE_POLICY, 32u, "storage_policy"},
+        {RID_ORDER_TASKS, 128u, "order_tasks"},
+        {RID_ORDER_CAMPAIGN, 160u, "order_campaign"},
 };
 
 } // namespace mh::state

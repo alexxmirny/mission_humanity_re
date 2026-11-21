@@ -6,6 +6,7 @@
 // carry-over defect that is preserved deliberately, and the two ways the three commit passes differ.
 //
 #include "sim/sim_unit_group_step_ground.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_attack_range_footprint.h" // mods:M1C [net] attack_range_footprint
 #include "sim/move/twin_hit_c.h"            // mods:M1H: twin hit counters
 
@@ -231,6 +232,7 @@ static bool ground_commit_pass(const sim_view &v, sim_store &own, const unit_gro
         if (free_slot == -1) {
             // 0x004838e3-0x004838fa: no path slot left -- park THIS member and abandon the whole
             // function (not just this pass).
+            order_tasks_adapter::fail_wave(own, player, v, group_count, mh::order_tasks::outcome_kind::pool_exhausted);
             c.unit_set_state_of(player, member, static_cast<int16_t>(UNIT_STATE_IDLE_SCATTER));
             return true;
         }
@@ -430,6 +432,11 @@ void unit_group_step_ground(const sim_view &v, sim_store &own,
         if (group_count == GROUP_STEP_GROUND_SCRATCH_CAP) break;
     }
 
+    for (int32_t i = 0; i < group_count; ++i) {
+        const int32_t slot = v.group_move_scratch[i].unit_idx;
+        if (slot > 0 && uint32_t(slot) < v.caps.units)
+            order_tasks_adapter::begin_planning(own, player, uint32_t(slot), v.units[player * v.caps.units + slot]);
+    }
     // ---- 0x00483599-0x004835b7: the group's toroidal centroid becomes the path start -------------
     // Computed ONCE. Passes 2 and 3 do not get it back -- see the carry-over note in the header.
     int32_t centroid_col = 0;

@@ -10,6 +10,7 @@
 // `0xc3d3af`/`0x6aa4` constants exactly).
 //
 #include "sim/sim_target_release_ref.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
@@ -34,7 +35,17 @@ void target_release_ref(const sim_view &v, sim_store &own, const target_release_
     // 0x004dac5f: AND EDI,0xf -- the acting unit's owning player, masked once and reused by both
     // arms below (both the roster index for `unit_at(owner, unit_idx)` and, in mode 0, the `player`
     // argument to llm_strat_unit_estimate_weapon_damage).
-    uint32_t owner = player_idx & 0xf;
+    uint32_t       owner        = player_idx & 0xf;
+    const uint32_t primary_mode = mode & 15;
+    if (primary_mode == 0 || primary_mode == 1) {
+        mh_order_tasks_request request{};
+        mh_order_tasks_result  result{};
+        request.operation = uint32_t(mh::order_tasks::host_protocol::operation::reservation);
+        request.player    = owner;
+        request.slot      = uint32_t(unit_idx);
+        request.args[0]   = uint32_t(primary_mode == 0 ? mh::order_tasks::host_protocol::reservation_operation::rebound_before : mh::order_tasks::host_protocol::reservation_operation::release_before);
+        if (own.order_tasks_request(request, result) && result.values[0]) return;
+    }
 
     // 0x004dac5c / 0x004dac62-0x004dac6b: AND EBX,0xf; CMP EBX,3; JA -> epilogue; JMP [table]. Modes
     // 2 and 3 (and, since the guard is `> 3` not `!= 2/3`, every value 4..15 too) land on the SAME
@@ -123,6 +134,15 @@ void target_release_ref(const sim_view &v, sim_store &own, const target_release_
         }
         default:
             break; // modes 2/3/other: no-op, see the header comment.
+    }
+    if (primary_mode == 0 || primary_mode == 1) {
+        mh_order_tasks_request request{};
+        mh_order_tasks_result  result{};
+        request.operation = uint32_t(mh::order_tasks::host_protocol::operation::reservation);
+        request.player    = owner;
+        request.slot      = uint32_t(unit_idx);
+        request.args[0]   = uint32_t(primary_mode == 0 ? mh::order_tasks::host_protocol::reservation_operation::rebound_after : mh::order_tasks::host_protocol::reservation_operation::release_after);
+        own.order_tasks_request(request, result);
     }
 }
 

@@ -113,6 +113,10 @@
 #include "ai/ai_state.h"                // ai_say -- the shared trace sink the liveness line writes to
 #include "orders/admission_log.h"
 #include "orders/order_queue.h"
+#include "state/order_tasks_runtime.h"
+#include "state/host_api.h"
+#include "state/host_events.h"
+#include "lockstep/participant_removal.h"
 #include "sim/hostreach/sim_h_map_region_prep.h"
 #include "sim/libtrans/sim_lt_map_region_pool.h"
 #include "sim/libtrans/sim_lt_map_setup_dimensions.h"
@@ -447,8 +451,25 @@ extern "C" int libmh_import_world(const void *blob, size_t n) {
 }
 
 namespace {
+uint32_t order_tasks_lifecycle(mh::order_tasks::host_protocol::operation         operation,
+                               mh::order_tasks::host_protocol::begin_load_reason reason) {
+    mh_order_tasks_request request{};
+    mh_order_tasks_result  result{};
+    request.operation     = uint32_t(operation);
+    request.args[0]       = uint32_t(reason);
+    const auto   *host    = mh::state::host_api_or_null();
+    const int32_t handled = host ? (host->order_tasks ? host->order_tasks(&request, &result) : 0) : libmh_order_tasks_invoke(&request, &result);
+    return handled ? result.values[0] : UINT32_MAX;
+}
 
+
+// Publication replaces the body whose completion certificate the host holds.
 int import_world_impl(const void *blob, size_t n, const resync_args *rs) {
+    if (mh::lockstep::participant::boundary(mh::participant_boundary::operation::pending) ||
+        mh::lockstep::participant::boundary(mh::participant_boundary::operation::body_active))
+        return mh::state::world::WORLD_ERR_NATIVE_STATE;
+    const uint32_t witness_generation_before =
+        mh::order_witness::generation(mh::state::order_witnesses());
     // (0) mp:X3 -- READ the process-local resource handles BEFORE the byte engine overwrites them.
     //     Cheap (six dwords) and unconditional: a boot-time import reads six values it then writes
     //     back unchanged, and a live one is the case this exists for. See the table's banner.
@@ -478,9 +499,15 @@ int import_world_impl(const void *blob, size_t n, const resync_args *rs) {
                        kept_regions, kept_bytes);
     }
 
-    const int rc =
-        rs != nullptr ? mh::state::world::import_resync(blob, n) : mh::state::world::import(blob, n);
+    const auto before_apply = +[] {
+        mh::lockstep::participant::boundary(mh::participant_boundary::operation::world_invalidate);
+    };
+    const int rc = rs != nullptr ? mh::state::world::import_resync(blob, n, before_apply)
+                                 : mh::state::world::import(blob, n, before_apply);
     if (rc != mh::state::world::WORLD_OK) return rc;
+    if (order_tasks_lifecycle(mh::order_tasks::host_protocol::operation::begin_load,
+                              mh::order_tasks::host_protocol::begin_load_reason::snapshot_input_ring_replaced) == UINT32_MAX)
+        return mh::state::world::WORLD_ERR_NATIVE_STATE;
 
     // (2) FIRST statement after the byte engine: put every process-local dword where THIS process
     //     needs it. Nothing may run between import() and here -- a frame drawn in the gap would
@@ -585,7 +612,10 @@ int import_world_impl(const void *blob, size_t n, const resync_args *rs) {
     //     trivially against a rebuild compared with itself, and the replay would still drift. So
     //     there is exactly one writer of the decomposition on this path, and it is the trailer.
     const int nrc = mh::state::world::import_nav(blob, n);
-    if (nrc != mh::state::world::WORLD_OK) return nrc;
+    if (nrc != mh::state::world::WORLD_OK) {
+        mh::state::reset_order_witnesses_if_unchanged(witness_generation_before);
+        return nrc;
+    }
 
     // (7) THE DISPATCH TABLES, and this one is NOT in world_snapshot_dispositions.json's re_derive
     //     list -- it was found by the first standalone replay, which faulted inside the first sim
@@ -628,8 +658,15 @@ int import_world_impl(const void *blob, size_t n, const resync_args *rs) {
                        mh::orders::admission::stage_remaining(),
                        static_cast<uint32_t>(*mh::orders::state().pending_count),
                        mh::orders::admission::current().total, arc);
-        if (arc != 0) return arc;
+        if (arc != 0) {
+            mh::state::reset_order_witnesses_if_unchanged(witness_generation_before);
+            return arc;
+        }
     }
+    if (order_tasks_lifecycle(mh::order_tasks::host_protocol::operation::published,
+                              mh::order_tasks::host_protocol::begin_load_reason::preserve_input_ring) != 1)
+        return mh::state::world::WORLD_ERR_NATIVE_STATE;
+    mh::state::reset_order_witnesses_if_unchanged(witness_generation_before);
     return mh::state::world::WORLD_OK;
 }
 
@@ -698,6 +735,8 @@ extern "C" int libmh_submit_order(const void *record, size_t n) {
     if (at < 0 || at >= mh::orders::QUEUE_CAP) return -2;
     std::memcpy(&st.queue[at], record, n);
     *st.queue_count = at + 1;
+    mh::order_witness::clear(mh::state::order_witnesses(),
+                             mh::order_witness::container::queue, static_cast<uint32_t>(at));
     return at;
 }
 
@@ -709,6 +748,7 @@ extern "C" void libmh_sim_step(void) {
     static bool fired = false;
     in_live(fired, "libmh_sim_step");
     mh::sim::sim_step();
+    mh::lockstep::participant::poll();
 }
 
 // The lockstep STATE hash over the bound regions -- the state_excluded() slices dropped, folded

@@ -539,6 +539,8 @@ advert logs the mixed-version line and `MH_MP_HOST_VERSION_MIN_U59` (5) is the o
 | mp:U62 `MK_LEAVING` / `MK_LEAVE_ACK` | 2 | 4 | none (an unknown kind counts a bad frame) |
 | mp:U63 `PR_FO_STATE` / `PR_FO_REDIRECT` | 3 | 5 | a peer that would sit out a failover the others run |
 | mp:U64 (no new frame) | 3 | 5 | none |
+| mods:ORDERSEQ1 correction format | 6 | 9 | the preceding gameplay/queue generation |
+| failover loss identity (2026-11-10) | 7 | 9 | an endpoint without scoped loss evidence after rehome |
 
 ## Hub change: `FLAG_RECONCILE` (`mp:U60`)
 
@@ -622,12 +624,20 @@ Two sealed 13-byte probe-channel frames between SURVIVORS (the hub is gone), sea
 | `PR_FO_STATE = 3` | every 250 ms while in a match: flags SUSPECT=1 (hub silent), HUB=2 (I am hub now), REPLY=4 (answer; never answered). `arg` = my first choice. |
 | `PR_FO_REDIRECT = 4` | a survivor dialled by a peer that is not the elected hub: `arg` = the elected id. |
 
-`FO_STATE` flags (`FOF_*`): `SUSPECT = 1` (my hub has been silent for T_suspect, floor 2 s), `HUB = 2` (I rehomed as
-the hub), `REPLY = 4` (an answer, never answered in turn). `arg` is the candidate the sender will dial or become
-(`0xFF` = none yet); `epoch` is its held succession epoch. A 13-byte body cannot be mistaken for the 8-byte probe
-(`probe_body_decode` requires length 8).
+`FO_STATE` flags (`FOF_*`): `SUSPECT = 1`, `HUB = 2` (I rehomed as the hub), `REPLY = 4`
+(an answer, never answered in turn), `LOSS_TAG = 8`, and bits4–6 encode the failed hub id.
+`arg` remains the chosen candidate (`0xFF` = none); the body remains13 bytes. A tagged
+SUSPECT's epoch describes that failed hub, not a successor's newly published epoch.
 
-`CAP_VERSION` is 3 (a crash-failover peer refuses capability 2); `MH_MP_HOST_VERSION` 5.
+Direct corroboration requires fresh evidence from another seated survivor, the same
+failed hub, a nonzero epoch and a distance of at most one from the receiver's held
+epoch. Adjacent held epochs can describe the same loss; unrelated or stale losses
+cannot. A corroborated successor retains that evidence in its replies after rehome,
+including a terminal minority verdict, so a late survivor can reach the same verdict.
+HUB alone never corroborates a loss. Epoch rollover is not introduced by this rule.
+
+Current `CAP_VERSION` is7; older capabilities are refused at join in both directions.
+`MH_MP_HOST_VERSION` remains9; no exported module layout changes.
 
 **Outcome phases are local, not frames (`mp:U63`/`mp:U64`).** `FO_DONE`, `FO_FAILED` and `FO_MINORITY` exist only
 inside the endpoint (`udp_endpoint.h` `FailoverPhase`). A strict-majority group elects and plays on. A group that is

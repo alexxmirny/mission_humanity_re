@@ -217,6 +217,7 @@ struct splice_world {
 
 } // namespace
 
+
 // ---- the decision --------------------------------------------------------------------------------------------------------------
 extern "C" {
 int                             g_nd_nudge   = 0;             // [net] move_nudge_idle in force
@@ -243,6 +244,11 @@ mh::sim::move::sh_params        g_sh_p;    // mods:M1WL v3: the tuning keys in f
 mh::sim::move::sh_retrace_stats g_sh_rt;   // mods:M1WL v4: what the re-trace did (display + the log line; not sim state)
 mh::sim::move::sh_margin_stats  g_sh_mg;   // mods:M1WL v5: what the margin rule did (display + the log line; not sim state)
 mh::heatui::snapshot            g_sh_snap; // mods:M1WL v3: the last priced plan, for the ImGui read-outs and the "last plan" heat map (display only, not sim state)
+}
+bool mv_patrol_yield(uint32_t player, mh::game::mh_map_object_unit &u, bool detour,
+                     const mh::sim::mvc::blocked_params &p, const mh::sim::mvc::blocker_info &bi) {
+    splice_world w;
+    return mh::sim::mvc::patrol_yield(w, player, u, detour, p, bi, g_qf_req != 0);
 }
 int mv_fc_run(int32_t group_id, uint32_t mode, uint32_t target, const void *undo); // move_proto_arrival.cpp: the formation over live memory
 
@@ -297,9 +303,11 @@ static int __cdecl mk_decide(uint32_t player, uint32_t idx) {
     return mh::sim::mvc::mk_decide(w, mh::sim::mvc::nudge_keys{g_nd_nudge != 0, g_nd_claim != 0, g_nd_swap != 0, false, g_qf_req != 0}, player, idx) ? 1 : 0;
 }
 
+extern "C" void order_tasks_no_slot_gateway();
 // clang-format off
 __declspec(naked) static void mk_stub() {
     __asm {
+        call order_tasks_no_slot_gateway
         pushad
         cmp   g_nd_nudge, 0                     // mods:M1H hit counter: the decision runs only with nudge or swap on
         jne   mk_cnt

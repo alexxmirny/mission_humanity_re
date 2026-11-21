@@ -31,6 +31,11 @@
       "why": "the subsystem taxonomy; imported at module level by gen_state_registry.py and gen_region_accessors.py, both keep gates the public lint runs",
       "evidence": "fork F5M S4a (2026-09-16): re-classed from archive when the archive-class withhold rule was drawn -- a keep gate IMPORTS this module, so the public tree cannot run its own lint without it. Measured by import closure over the keep set; the publish-ledger closure arm cannot see this class of edge, because it scans path-form strings and `import _cstrip` has none."
     },
+    "_tmp_fs.py": {
+      "class": "keep",
+      "why": "identity-bound Windows file operations shared by the temporary-data lifecycle and its deletion-safety tests",
+      "evidence": "TL-TMP-REMOVE: imported by tmp_lifecycle.py; no pathname-unlink fallback"
+    },
     "_worklist.py": {
       "class": "archive",
       "why": "naming-pipeline batching/weighting library",
@@ -57,6 +62,51 @@
       "why": "UI-harness capture BMP->PNG converter",
       "evidence": "no machine invoker -- run by an analyst turning a harness capture into something readable",
       "hand_run": true
+    },
+    "check_content_refusal.py": {
+      "class": "keep",
+      "why": "DATAEXT1: the content-digest rows' post_check -- judges a JOIN v8 content refusal from both peers' mh_net.log (host 64-hex expected/local pair, delivered reply, joiner bounce + close); invoked by test_ui post_check",
+      "evidence": "DATAEXT1 acceptance slice (2026-11-01): named in registry rows content_refused / content_refused_missing / content_match_start; fixture-side sibling is make_lane --mods-fixture (tools/mods_fixture.py)"
+    },
+    "check_tileset_runtime.py": {
+      "class": "keep",
+      "why": "TILESET1: independently decodes real native save output, checks the custom terrain graphics profile and verifies missing-resource refusal before mutation",
+      "evidence": "invoked by tileset_save_retail and tileset_save_libmh solo-step postchecks in tools/uiscripts/registry.yaml"
+    },
+    "check_tileset_map_download.py": {
+      "class": "keep",
+      "why": "TILESET1: checks the real custom-map SEND/READY/store/re-JOIN sequence and rejects an acknowledged receive-side discard or ninety-second retry",
+      "evidence": "invoked by tileset_mp_retail and tileset_mp_libmh paired postchecks in tools/uiscripts/registry.yaml"
+    },
+    "mods_fixture.py": {
+      "class": "keep",
+      "why": "DATAEXT1: builds a lane's own mods/<id>/ fixture at provisioning from an ordinary info\\*.txt member unpacked out of the install packs (make_lane --mods-fixture machine invoker); variant mode changes an ASCII letter while preserving text encoding so peers hash different text",
+      "evidence": "DATAEXT1 acceptance slice (2026-11-01): wired from ui_suite_common's lane build loop for lane_mods_host/lane_mods_client; no committed art, no shared mutable source dir"
+    },
+    "check_cfg_boot.py": {
+      "class": "keep",
+      "why": "DATAEXT2: checks live boot, save-load and new-game configuration observations",
+      "evidence": "tools/uiscripts/registry.yaml cfg_dataext2_solo post_check"
+    },
+    "check_cfg_gameplay.py": {
+      "class": "keep",
+      "why": "DATAEXT2: checks real production costs, unlocks and movement on both carrier modes",
+      "evidence": "tools/uiscripts/registry.yaml cfg_dataext2_gameplay, cfg_dataext2_campaign and multiplayer post_check"
+    },
+    "check_cfg_io.py": {
+      "class": "keep",
+      "why": "DATAEXT2: shares actual text and resource observation checks across runtime judges",
+      "evidence": "tools/check_cfg_boot.py and tools/check_cfg_gameplay.py"
+    },
+    "check_mod_save_runtime.py": {
+      "class": "keep",
+      "why": "DATAEXT1: judges real save-load provenance and deferred warning scenarios",
+      "evidence": "tools/uiscripts/registry.yaml mods_save_provenance post_check"
+    },
+    "check_mod_assets.py": {
+      "class": "keep",
+      "why": "DATAEXT1: checks per-lane real mod resource hits, map preview/open and claim against independently provisioned bytes",
+      "evidence": "tools/uiscripts/registry.yaml mod_assets_solo and mod_assets_match post_check"
     },
     "bootstrap.py": {
       "class": "keep",
@@ -163,6 +213,16 @@
       "class": "keep",
       "why": "mp:D38 row 5: the configuration-(1) storage-panel rows' cross-peer post_check -- with the mh.dll seam (ship default) the host logs the panel's purge skipped with a dead docked unit left to the sim, the fixture killed on the same step on both peers, and the pair stays IDENTICAL with the in-band desync watch clean; with [net] storage_panel_purge_fix=0 (the reproduction arm) the host's panel purges the dead row ahead of the sim, `unit_storage` diverges right after the kill, and the watch logs *** DESYNC",
       "evidence": "invoked by tools/test_ui.py's d38_storage_purge / d38_storage_purge_retail TESTS entries (post_check, post_check_peers, post_check_session) and tools/lint_repo.py (--selftest)"
+    },
+    "check_storage_qol.py": {
+      "class": "keep",
+      "why": "Storage QoL: judges actual production receipt and paid full-HP repair release through native dock/world links and rally goals; requires the real named save/load path",
+      "evidence": "tools/uiscripts/registry.yaml ship_walk, wheel_hud_lists_lib and cfg_dataext2_gameplay folded post-checks"
+    },
+    "check_order_chains.py": {
+      "class": "keep",
+      "why": "Checks real canonical order-chain ingress, matched physical completion, attack cleanup, patrol return/circuits and replacement from explicit recorded invocations",
+      "evidence": "tools/uiscripts/registry.yaml cfg_dataext2_gameplay folded post-checks"
     },
     "check_info_avi.py": {
       "class": "keep",
@@ -304,6 +364,11 @@
       "why": "mp:L1b: the lobby slot-row panel's per-slot ping cell's NUMBERS, read off the `; [lobbyping]` lines in mh_net.log (src/mh_dll/mh/ui/lobby_ping.cpp, ticked from the lobby's own per-frame dispatch, not the present hook). The match_launch_net capture baseline proves the cell is drawn (with the digits masked -- they differ every run); this proves at least one connected peer's row carried a real measurement rather than a permanent `n/a`.",
       "evidence": "invoked by tools/lint_repo.py (--selftest, the planted-log negatives) and tools/test_ui.py's match_launch_net TESTS entry (post_check, post_check_peers, post_check_session) -- wired 2026-09-22 wave-3 lane C"
     },
+    "check_lobby_speed.py": {
+      "class": "keep",
+      "why": "Lobby speed: binds exact match metadata and recorded runtime scalar/fixed quantum to host-published Start, including mixed-carrier rematch reset and developer-pin precedence",
+      "evidence": "tools/uiscripts/registry.yaml match_launch_net and host_rematch post-checks"
+    },
     "check_lookahead_gate.py": {
       "class": "keep",
       "hand_run": true,
@@ -373,140 +438,117 @@
     "check_map_zoom.py": {
       "class": "keep",
       "why": "RES2: the map zoom's own log is the assertion a frame cannot make -- reads the `[zoom]` lines mh_input.log carries (one per zoom change: the map pixel under the cursor before and after, the camera tiles the absorb moved, the viewport size read) and checks, per row, that the anchor held to 2 px (--wheel, --det), that the side-panel notch left no line, that wheel_zoom=0 left none at all (--off), and that the determinism host's zoom really moved the camera (--det, so the proof is not vacuous). Absence of the log or of the `armed` line is RED",
-      "evidence": "the res_walk (map_zoom_wheel, res_nowrap_64 segments) and res_walk_auto (map_zoom_wheel_off segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_map_zoom.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk (map_zoom_wheel, res_nowrap_64 segments) and res_walk_auto (map_zoom_wheel_off segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_map_zoom.py --selftest` plants every negative and is run by hand"
     },
     "check_mode_guards.py": {
       "class": "keep",
       "why": "D13: the mode-change crash guards (seams/video_mode_guards.cpp) must be armed AND have fired -- a UI walk cannot see which code drew a background or whether the cursor really was outside the new mode. Reads mh_video.log: the three arm lines plus, per row, the `background WxH scaled to` line (--scaled) or the `cursor clamp LIVE` line (--cursor). Absence is RED",
-      "evidence": "the galaxy_bg_picker and res_walk (galaxy_native_* segments, --cursor) and res_walk_auto (galaxy_native_cursor segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_mode_guards.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the galaxy_bg_picker and res_walk (galaxy_native_* segments, --cursor) and res_walk_auto (galaxy_native_cursor segment) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_mode_guards.py --selftest` plants every negative and is run by hand"
     },
     "check_menu_roundtrip.py": {
       "class": "keep",
       "why": "RES3: the borderless window must not move or shrink through the game's mode changes (its MoveWindow(0,0,w,h) on every mode change was the menu-return flicker) -- a captured frame cannot show a one-frame window. Reads mh_video.log: the placement line, no POSCHANGED/SIZE off the monitor rect after it, at least two mode changes, a swallowed MoveWindow, no repeated same-size SetDisplayMode. Absence is RED",
-      "evidence": "the res_walk_auto row (res_menu_roundtrip segment) in tools/uiscripts/registry.yaml names it as its post_check; `check_menu_roundtrip.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk_auto row (res_menu_roundtrip segment) in tools/uiscripts/registry.yaml names it as its post_check; `check_menu_roundtrip.py --selftest` plants every negative and is run by hand"
     },
     "check_ui_quads.py": {
       "class": "keep",
       "why": "mods:RES4 stages 1-2: the presented image (the game frame composed into the ui_scale quad list) is invisible to a framebuffer capture, so the res4_quads row captures it with `pcapture` and this checker rebuilds the same image from the unscaled capture with its OWN implementation of the quad arithmetic (nothing shared with gfx/ui_layout.cpp) and demands pixel equality, plus the `; [ui] ui_scale` layout line in mh_video.log (so two identical pictures from a scale that never took effect cannot pass). Absence of the log line or of either capture is RED",
-      "evidence": "the res4_quads row in tools/uiscripts/registry.yaml names it as its post_check; `check_ui_quads.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_quads row in tools/uiscripts/registry.yaml names it as its post_check; `check_ui_quads.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_cursor.py": {
       "class": "keep",
       "why": "mods:RES4 stage 5: in a scaled layout the cursor is an overlay the presenter draws at ui_scale, not part of the game frame, so a framebuffer capture cannot see it. The checker rebuilds the presented image from the unscaled frame capture with check_ui_quads' independent quad arithmetic and demands: nothing differs outside the logged cursor rect (no trail, no second cursor), the drawn box equals the sprite's opaque box (mh_capture.log `pcapture cursor rect ... sprite ...`) scaled by s and hung on the pointer's hotspot, and the game frame has no cursor of its own (the frames of two stops equal in the first stop's 1x cursor box). Any missing line, capture or rect is RED",
-      "evidence": "the res4_cursor_150 and res4_cursor_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_cursor.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_cursor_150 and res4_cursor_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_cursor.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_dialog.py": {
       "class": "keep",
       "why": "mods:RES4 stage 6: a gameplay-size dialog (ESC menu, Options, a confirmation) is its own presenter quad at ui_scale, which a framebuffer capture cannot see. The checker reads the logged quads (mh_capture.log `pcapture dialog ... screen ...`) and demands the frame rect is the one the game centred (a misread list is RED), the screen rect is round(w s) x round(h s), covers the 1x copy, fits and is centred on the visible map, and that the presented pixels equal an independent composition (check_ui_quads' HUD arithmetic, then each dialog sampled by the pixel-centre rule) outside the cursor rect; the dialog pixels differ between the first two stages (the click on the scaled button opened another screen). Any missing line or capture is RED",
-      "evidence": "the res4_dlg_150, res4_dlg_200 and res4_dlg_confirm_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_dialog.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_dlg_150, res4_dlg_200 and res4_dlg_confirm_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_dialog.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_fit.py": {
       "class": "keep",
       "why": "mods:RES17: an explicit frame smaller than the screen's room is FITTED (the map enlarged by one factor k), not shown as a small 1:1 box. Reads the layout line of mh_video.log (map WxH xK, panel, strip, composition filling the screen height or width) and re-derives the presented image from the game frame capture with its own quad arithmetic (map enlarged by k, strip and panel at s, black aspect bars) demanding pixel equality outside the cursor rect, plus the ESC dialog quad covering the enlarged copy of its frame rect. A 1:1 small box, a wrong composition or a differing pixel is RED",
-      "evidence": "the res4_fit_explicit and res4_fit_click (--click) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_fit.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_fit_explicit and res4_fit_click (--click) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_fit.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_info.py": {
       "class": "keep",
       "why": "mods:RES16: the unit/building info screen (game mode 4) is a stage-6b dialog layer at ui_scale (its AVI clip is stashed by the tick and composited into the layer). Reads the logged dialog quad and pcapture dialog lines (480x480 frame rect, a screen rect scaled by s, one layer), checks the map around the window art stays at normal scale and the clip rect is a busy picture, requires page 1 to differ from page 0 (the NEXT click through the scaled quad landed) and the side-panel list rows to be the same before and after ESC. No quad line, no layer, an unscaled rect or a changed panel is RED",
-      "evidence": "the res4_info_175 row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_info.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_info_175 row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_info.py --selftest` plants the negatives and is run by hand"
     },
     "check_res26_apply.py": {
       "class": "keep",
       "why": "mods:RES26: the HUD shows the requested Interface size right after Options Apply while the menu (game mode 3) is still up. Reads the mh_video.log `view epoch` lines (pct in force == the asked percentage in game modes 3/4 after the first strategic frame, never a single quad at a >100 request) and compares the presented side-panel list rows of the menu bcapture with the resume one. A stale 100% single quad over a 200% request (the pre-RES26 stamp of the old frame) is RED",
-      "evidence": "the res_apply_menu_200_d3d11 / res_apply_menu_200_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_res26_apply.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res_apply_menu_200_d3d11 / res_apply_menu_200_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_res26_apply.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_latch.py": {
       "class": "keep",
       "why": "mods:RES19: an Interface size chosen in Options shows only after the game resumes. Reads mh_video.log (`ui_scale in force: 125% (game mode 2)`, never mode 3 or 4, layout lines in presentation order) and demands the presented ESC-menu image keeps the 200% side-panel list rows of the strategic reference while the image after Return to game has the narrower 125% layout. The old behaviour (the new percentage applied to the HUD quads in mode 3 over a frame holding the old panel) is RED",
-      "evidence": "the res4_opt_latch row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_latch.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_opt_latch row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_latch.py --selftest` plants the negatives and is run by hand"
     },
     "check_res_crop.py": {
       "class": "keep",
       "why": "mods:RES18: a session size off the 32 px tile grid is rendered rounded up and presented cropped. Reads mh_video.log (`[video] crop: WxH renders as FWxFH`, `SetDisplayMode FWxFH`, the `[ui] crop:` / `ui_scale` layout lines) and the frame / presented captures, and compares the presented image with a composition this tool derives independently (map top-left, strip = the frame's last 32 rows, panel = its last 160 columns). Bars, a strip off the last rows, a wrong panel slice or a vacuous run is RED",
-      "evidence": "the res_crop_1080 / res_crop_720 / res_crop_odd rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_crop.py --selftest`",
-      "hand_run": true
+      "evidence": "the res_crop_1080 / res_crop_720 / res_crop_odd rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_crop.py --selftest`"
     },
     "check_panel_filler.py": {
       "class": "keep",
       "why": "mods:RES23-S3 (the RES22 visual rule): whole empty side-panel slots below the visible rows of the game frame must be teal, only the partial gap under the last whole row is pink (approved RES4 rule). Probes the panel column of the frame capture using the Hp log line; pink whole slots or a teal partial gap is RED",
-      "evidence": "the res4_s150 / res4_s200 / res4_auto / res_overlay_150 / res_overlay_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_panel_filler.py --selftest`",
-      "hand_run": true
+      "evidence": "the res4_s150 / res4_s200 / res4_auto / res_overlay_150 / res_overlay_200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_panel_filler.py --selftest`"
     },
     "check_res_notice.py": {
       "class": "keep",
       "why": "mods:RES20: the floating in-game notices scale with Interface size. From the before / after presented captures of a printed notice, the changed-pixel box has one line's height x the percentage and starts at the 100% anchor x the percentage; above 100 the game frame must hold no notice (it is an overlay), at 100 it must (the stock path). A notice that stays 1x is RED. --stock (kill switch [video] ui_scale_notices=0): the notice must be the game's own, in the frame, 1:1. --modal (RES23-S5): the scaled notice shows behind the mode-3 ESC menu, the dialog covers it where they overlap, and the stock 1x notice is not in the frame. --stale (RES23-S5): a notice printed in the strategic view is dropped over the info screen (mode 4), in the capture log, the CPU composition and the presenter output",
-      "evidence": "the res_notice_100 / res_notice_200 / res_notice_off (--stock) / res_notice_modal (--modal) / res_notice_stale (--stale) rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_notice.py --selftest`",
-      "hand_run": true
+      "evidence": "the res_notice_100 / combined res_notice_200 (--modal) / res_notice_off (--stock) / res_notice_stale (--stale) steps in tools/uiscripts/registry.yaml name it as their post_check; `check_res_notice.py --selftest`"
     },
     "check_res_fallback.py": {
       "class": "keep",
       "why": "mods:RES18/RES23 (R720 fix): an Interface size the layout cannot use (the panel at that size does not exceed the fit zoom's) falls back to the 100 base layout, and the hooks that keep the cursor / dialog lists / notices out of the frame must stand down. Reads the frame, pcapture and bcapture of a strategic view (cursor on A, then B) and the ESC menu: exactly one cursor source (the game's own, in the frame, no overlay), the cursor on screen at the zoomed hotspot, the ESC menu in the frame and on screen. No cursor and no ESC menu (the user's rc4 1280x720 @175 report) is RED",
-      "evidence": "the res_crop_720_175 / res_crop_720_175_gdi / res_overlay_125 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_fallback.py --selftest`",
-      "hand_run": true
+      "evidence": "the res_crop_720_175 / res_crop_720_175_gdi / res_overlay_125 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_fallback.py --selftest`"
     },
     "check_res_classic.py": {
       "class": "keep",
       "why": "mods:RES25: Classic sizes only (resolution=stock) is no resolution work and no Interface size scaling. Reads mh_video.log (the ui_scale-ignored / classic-sizes / options-row-off lines, no scaled layout, crop or picker line, every view epoch a 100% single quad) and the captures: the presented image equals the 640x480 frame scaled with no quads, and Screen size steps through exactly three entries. A scaled layout, a crop, a fourth size or a vacuous run is RED",
-      "evidence": "the res_classic row in tools/uiscripts/registry.yaml names it as its post_check; `check_res_classic.py --selftest`",
-      "hand_run": true
+      "evidence": "the res_classic row in tools/uiscripts/registry.yaml names it as its post_check; `check_res_classic.py --selftest`"
     },
     "check_res_overlay.py": {
       "class": "keep",
       "why": "mods:RES21: an explicit resolution above 100% shows the whole frame at the 100 zoom with the panel and strip drawn over it. Re-derives the composition independently from the layout log line and the frame capture and compares the presented image pixel for pixel; bars, a changed map zoom or wrong overlay size is RED",
-      "evidence": "the res_overlay_100 / _150 / _200 and res_crop_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_overlay.py --selftest`",
-      "hand_run": true
+      "evidence": "the res_overlay_100 / _150 / _200 and res_crop_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res_overlay.py --selftest`"
     },
     "check_res4_input.py": {
       "class": "keep",
       "why": "mods:RES4 stages 3-4: a UI capture cannot say that the game was asked for the ideal frame, that the panel lists follow Hp, or that a pointer click on the SCALED panel reached the same place as the click in frame coordinates. Reads mh_video.log: the `ui_scale=P%: the session frame is WxH` line, the `side-panel list rows follow the visible panel: Hp N` line, and the minimap / four-edge-scroll camera lines the res4_s150 / res4_s200 scripts log with `logsel`. Any missing line, a minimap click that lands elsewhere than its frame-coordinate twin, an edge that does not scroll, or two edges that scroll the same way is RED",
-      "evidence": "the res4_s150 and res4_s200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_input.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_s150 and res4_s200 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_input.py --selftest` plants the negatives and is run by hand"
     },
     "check_bcapture.py": {
       "class": "keep",
       "why": "mods:RES23-S0: a pcapture is the CPU re-composition of the game frame and never reads the presenter, so a presenter-only bug is invisible to it. `bcapture <n>` writes capture_<n>__b.bmp from what the presenter really put on screen (gdi: the same draw calls run into a client-sized DIB; d3d11: the back buffer after the overlay pass); this tool compares each pair: equal sizes, the differing-pixel fraction within the filter tolerance (gdi 0.2%, d3d11 1% point / 3% area) and no 32x32 block mostly different. A size mismatch, a missing layer or a black band is RED; a null presenter's SKIPPED line is not an error unless --require-pair",
-      "evidence": "the res4_opt, res4_opt_latch, res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_bcapture.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_opt, res4_opt_latch, res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as a post_check; `check_bcapture.py --selftest` plants the negatives and is run by hand"
     },
     "check_res19_filler.py": {
       "class": "keep",
       "why": "mods:RES23-S0 / RES19: the user's rc3 report (the bottom strip's extension and corner black after Apply in Options) was filed as d3d11-only without the rig ever reading the presenter. Reads the layout lines of mh_video.log, derives the regions from them, and reports their colour in every bcapture (and pcapture twin) of the res19_user_* rows -- BLACK = RES19 reproduced on that presenter. Since RES23-S2 it measures the bottom-strip extension right of the status bar, the strip corner under the side panel and the panel filler, and is RED by default (--expect any = report only): the rows are the RES19 acceptance",
-      "evidence": "the res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res19_filler.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res19_user_d3d11 and res19_user_gdi rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res19_filler.py --selftest` plants the negatives and is run by hand"
     },
     "check_res19_panel.py": {
       "class": "keep",
       "why": "mods:RES23-S2 / RES19: hp_pump used to redraw only the building-list panel modes after an Interface size change, so a selected unit / ship card kept the old size's pixels. The row res19_unit_panel selects the mother ship, changes Interface size 200 -> 125 in Options and resumes; this checks the log (the commit that took 125% owed every panel mode and the strip a redraw, and was taken in game mode 2, never behind the menu) and the presenter's bcaptures (the panel's lower part and the strip extension are not black in the menu, after the resume and 600 ticks later)",
-      "evidence": "the res19_unit_panel row in tools/uiscripts/registry.yaml names it as its post_check; `check_res19_panel.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res19_unit_panel row in tools/uiscripts/registry.yaml names it as its post_check; `check_res19_panel.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_opt.py": {
       "class": "keep",
       "why": "mods:RES4 in-game options: a picture cannot say that the Options screen's Interface size choice reached the ini the launcher writes, or that the presenter changed live. Reads mh_video.log: the `options menu: Interface size -> N (saved; the ini reads back [video] ui_scale=N)` lines (150 then 100, read back equal to what was written), the `ui_scale -> P%` presenter changes in the same order and the 150% layout line, and the presented captures: 150% differs from the first 100% image and the image back at 100% is not the 150% composition. A missing line, a write that did not stick or an unchanged picture is RED",
-      "evidence": "the res4_opt row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_opt.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_opt row in tools/uiscripts/registry.yaml names it as its post_check; `check_res4_opt.py --selftest` plants the negatives and is run by hand"
     },
     "check_res4_orders.py": {
       "class": "keep",
       "why": "mods:RES4 stage 4: a capture cannot say that an order given through the scaled UI reached the tile the same order has at 100%. Reads the `; [sel]` / `; [goal]` lines the res4_orders_100 / res4_orders_150 scripts log and demands the unit selected (exactly unit 5) and its goal tile equal the committed record tools/data/res4_orders_goal.json, which both rows share, so the two rows agree by construction. A missing line, a camera that was not pinned, a different selection or a different goal is RED",
-      "evidence": "the res4_orders_100 and res4_orders_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_orders.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the res4_orders_100 and res4_orders_150 rows in tools/uiscripts/registry.yaml name it as their post_check; `check_res4_orders.py --selftest` plants the negatives and is run by hand"
     },
     "check_res_list.py": {
       "class": "keep",
       "why": "RES3: a UI capture is the composed game frame and cannot say what the presenter was asked for. Reads mh_video.log: the generated list armed and chose the expected size, the owned display was asked for the RENDERED size (not the desktop height, which left black rows at the bottom), and the size got the expected integer/fit scaling rule. Absence is RED",
-      "evidence": "the res_walk_auto row (boot list; res_frac segment, --ingame) in tools/uiscripts/registry.yaml names it as its post_check; `check_res_list.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk_auto row (boot list; res_frac segment, --ingame) in tools/uiscripts/registry.yaml names it as its post_check; `check_res_list.py --selftest` plants every negative and is run by hand"
     },
     "walk_segments.py": {
       "class": "keep",
@@ -517,14 +559,12 @@
     "check_session_players.py": {
       "class": "keep",
       "why": "dist RL15: both peers' session.json must record the same players (names + order) and ai_count; a client used to write its own name for the host's slot. Reads the host lane's newest session and the `_c1` lane's session for the same match_id; absence of either is a REFUSAL",
-      "evidence": "the graceful_quit and gquit_net rows in tools/uiscripts/registry.yaml name it in their post_check lists; `check_session_players.py --selftest` plants the negatives and is run by hand",
-      "hand_run": true
+      "evidence": "the graceful_quit and gquit_net rows in tools/uiscripts/registry.yaml name it in their post_check lists; `check_session_players.py --selftest` plants the negatives and is run by hand"
     },
     "check_cfg_newgame_restore.py": {
       "class": "keep",
       "why": "mods:G17: the cfg_newgame_* UI scenarios' post_check -- reads the `; G17: new-game cfg tables` line mh.dll logs at the top of llm_strat_new_game_init (per table, bytes differing from the boot capture before/after the restore): after a Load of cfgmod.sav every table differs before and none after; a fresh process is 0/0; the fix-off twin keeps the difference (RED, expect_red). Absence of the capture or restore line is RED",
-      "evidence": "invoked by tools/uiscripts/registry.yaml's cfg_newgame_* rows (post_check, run by test_ui.py); `check_cfg_newgame_restore.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "invoked by tools/uiscripts/registry.yaml's cfg_newgame_* rows (post_check, run by test_ui.py); `check_cfg_newgame_restore.py --selftest` plants every negative and is run by hand"
     },
     "m1_detours.py": {
       "class": "keep",
@@ -540,8 +580,7 @@
     "check_presence.py": {
       "class": "keep",
       "why": "dist RL15: mh.dll's presence.json (the launcher's Discord feed) must follow a campaign planet switch. A UI walk cannot see it (no pixels): reads the file after the run and requires state/mode campaign, system and planet named, the planet no longer the one NEW GAME starts on, and a rewrite after the session began; a --before/--after pair mode checks two hand snapshots. Absence of the file is RED",
-      "evidence": "the campaign_planet_switch row in tools/uiscripts/registry.yaml names it as its post_check (test_ui runs it; no Python source mentions it); `check_presence.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the campaign_planet_switch row in tools/uiscripts/registry.yaml names it as its post_check (test_ui runs it; no Python source mentions it); `check_presence.py --selftest` plants every negative and is run by hand"
     },
     "check_pt3_air_order.py": {
       "class": "keep",
@@ -646,7 +685,7 @@
     "check_u62_handover.py": {
       "class": "keep",
       "why": "mp:U62 (HM-M4): the `--u62-host-quit` / `--u62-host-exit` / `--u62-neg` determinism shapes' verdict -- after a planned handover of the transport hub the two survivors log the hub change, play >= 1000 steps past the leaver ALL PAIRS IDENTICAL with no game-clock stall over 1 s; with `[net] hub_migration=0` (negative arm) nothing hands over and the survivors reproduce U55's ~58 s outcome-8 timeline.",
-      "evidence": "invoked by tools/det_arms.py's run_u53 (the u62-* arms)"
+      "evidence": "invoked by tools/det_arms.py's run_u53 (the u62-* arms); --selftest covers the unchanged30..90s outcome window, midnight and overlapping process/session chunks"
     },
     "check_u52_teams.py": {
       "class": "keep",
@@ -1133,6 +1172,11 @@
       "why": "state-region registry merge + ownership rules. KEEP: lint-gated, and its docstring states the inputs are committed so --check stays Ghidra-free",
       "evidence": "invoked by tools/lint_repo.py"
     },
+    "gen_strategic_bindings.py": {
+      "class": "keep",
+      "why": "The shared strategic action catalog generates launcher metadata, local INI registry/default reference and C++ action IDs; --check rejects every stale generated byte.",
+      "evidence": "invoked by tools/lint_repo.py"
+    },
     "gen_tact_closure.py": {
       "class": "archive",
       "why": "tactical membership closure (Ghidra call-graph walk)",
@@ -1395,6 +1439,22 @@
       "evidence": "hand-run by the operator to build the language test folder (docs/lang-packs.md 'Tester workdir'); no machine invoker. Its --selftest runs hermetically from temp dirs",
       "hand_run": true
     },
+    "check_mapgen_ai.py": {
+      "class": "keep",
+      "why": "per-AI readout of a mapgen_ai playtest (landing, buildings, units, spend, sim clock) from mh_harness.log / mh_net.log",
+      "evidence": "mods:MAPGEN1 AI playtest; registry row pending tooling:TL-BANDS-FULL"
+    },
+    "check_map_preview.py": {
+      "class": "keep",
+      "why": "mods:MAPGEN2: re-parses the file behind every map-preview build line (size, tileset, landing spots, ore blocks, trees) with an independent implementation and requires the DLL's numbers to agree; --expect off asserts the [ui] map_preview=0 arm draws nothing",
+      "evidence": "invoked by tools/lint_repo.py (--selftest) and by the mappreview row's post_check in tools/uiscripts/registry.yaml"
+    },
+    "mapgen_check.py": {
+      "class": "keep",
+      "why": "independent Python oracle for MAPGEN1 generated maps (round-trip, tile pairs, start connectivity, preview sheet)",
+      "evidence": "mods:MAPGEN1 acceptance (a)-(c); run_gate unit lands with the generator (W3)",
+      "hand_run": true
+    },
     "map_variant.py": {
       "class": "keep",
       "why": "mp:T5/X2a -- makes a map file's content differ from a base copy (same name, same length) so a rig lane can never already hold the map by the game's content-hash check; also a standalone --check offline arm",
@@ -1450,6 +1510,11 @@
       "why": "desync full-state snapshot byte-diff",
       "evidence": "no machine invoker -- run by a human holding two desync snapshots",
       "hand_run": true
+    },
+    "mh_order_stream.py": {
+      "class": "keep",
+      "why": "strict MHOR v2 exact HASH/ENTRY native order stream codec",
+      "evidence": "imported by mp_order_diff.py, fixture_replay.py and replay_libref.py"
     },
     "mp_order_diff.py": {
       "class": "keep",
@@ -1611,6 +1676,11 @@
       "evidence": "no machine invoker -- run by a human running a paired determinism experiment",
       "hand_run": true
     },
+    "gate_admission.py": {
+      "class": "keep",
+      "why": "one CPU/VM admission owner shared by gate coordinators; contained startup, explicit leaf release and measured job accounting",
+      "evidence": "imported and invoked by run_gate.py, run_selftests.py, lint_repo.py, check_const_view.py, lint_rust.py, ui_suite_common.py, test_ui.py and det_arms.py"
+    },
     "run_gate.py": {
       "class": "keep",
       "why": "overlapped DLL-gate driver (unit list needs pruning)",
@@ -1740,6 +1810,26 @@
       "why": "UI regression suite driver: the registry (TESTS) runner + its offline lints; forwards the old mode flags to det_arms.py / tact_test.py / ui_abc.py / soak_test.py for one cycle (tooling:TL-SUITE-SPLIT)",
       "evidence": "invoked by tools/lint_repo.py, tools/run_gate.py"
     },
+    "tmp_lifecycle.py": {
+      "class": "keep",
+      "why": "producer-owned temporary-data lifecycle, guarded plan/apply and pre-full-gate cleanup",
+      "evidence": "invoked by lint_repo.py selftest and imported by run_gate.py; operator audit-apply remains available"
+    },
+    "tmp_lifecycle_test.py": {
+      "class": "keep",
+      "why": "consumer-visible deletion boundaries for the temporary-data lifecycle",
+      "evidence": "invoked by tmp_lifecycle.py selftest"
+    },
+    "tmp_runs.py": {
+      "class": "keep",
+      "why": "owned run manifests, parent adjudication and frozen generated-output snapshots",
+      "evidence": "imported by the gate, UI/replay/determinism/selftest producers and tmp_lifecycle.py"
+    },
+    "tool_paths.py": {
+      "class": "keep",
+      "why": "canonical persistent input, scheduling-state and private-evidence paths",
+      "evidence": "imported by the gate, UI fixture consumers, generated-data readers and tmp lifecycle"
+    },
     "track.py": {
       "class": "archive",
       "why": "structured-tracker query/regenerate (trackers dropped)",
@@ -1815,50 +1905,42 @@
     "check_land_hud.py": {
       "class": "keep",
       "why": "RES3: the campaign start lands at a spot whose camera depends on the lane's carried state, so a whole-frame pixel baseline is not a stable oracle; the landing footprint (an effect animation the stock view test rejects at 2048 wide on a 64-tile map) and the selected landed ship's complete panel (icon-table overrun above 768 rows) are read from the captured frames by colour counts. Absence of a frame is RED",
-      "evidence": "the res_walk row (res_land_hud segment, --prefix) in tools/uiscripts/registry.yaml names it as its post_check; `check_land_hud.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk row (res_land_hud segment, --prefix) in tools/uiscripts/registry.yaml names it as its post_check; `check_land_hud.py --selftest` plants every negative and is run by hand"
     },
     "check_panel_rows.py": {
       "class": "keep",
       "why": "RES7: the side-panel list rows past 768 run on the user's save, a live game whose map and status numbers move between runs, so a whole-frame pixel baseline is not a stable oracle; the list rows (grid-green per row), the status line (placement / unit info) and a worker counter are read from the captured frames, and the arm lines from mh_video.log. Absence of a frame or a line is RED",
-      "evidence": "the res_walk row (worker_1024, owned_960, ayy30_960 and ayy30_1440 modes) in tools/uiscripts/registry.yaml names it as its post_check; `check_panel_rows.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk row (worker_1024, owned_960, ayy30_960 and ayy30_1440 modes) in tools/uiscripts/registry.yaml names it as its post_check; `check_panel_rows.py --selftest` plants every negative and is run by hand"
     },
     "check_drag_box.py": {
       "class": "keep",
       "why": "RES12: the drag-select box behaves as in vanilla -- the rows res_drag_stock (the game's own corner conversion at a stock-sized view) and res_drag_box / res_drag_box_orig (1920x1056) run the same scripted drags and one order; this holds each against the committed vanilla record tools/data/drag_box_vanilla.json (world box, camera, selected unit ids, player orders, outline) and refuses an inverted outline or a guard skip. Absence of a drag is RED",
-      "evidence": "the res_drag_stock, res_drag_box and res_drag_box_orig rows in tools/uiscripts/registry.yaml name it as a post_check; `check_drag_box.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_drag_stock, res_drag_box and res_drag_box_orig rows in tools/uiscripts/registry.yaml name it as a post_check; `check_drag_box.py --selftest` plants every negative and is run by hand"
     },
     "check_report_replay.py": {
       "class": "keep",
       "why": "tooling:TL-REPORT-REPLAY-FIDELITY: a player report replays from the report only -- takes the recording the rep_fidelity row just made and replays it with replay_match_segment.py (--raw-fixups: the dump as recorded) over four different carrier saves (the row's own, planet 5, planet 7, ayy30); every field checkpoint hash must match on every carrier, so a capture that mistakes sim data for pointers (the scene import then keeps the carrier's bytes) goes RED",
-      "evidence": "the rep_fidelity row in tools/uiscripts/registry.yaml names it as its post_check; `check_report_replay.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the rep_fidelity row in tools/uiscripts/registry.yaml names it as its post_check; `check_report_replay.py --selftest` plants every negative and is run by hand"
     },
     "check_shift_rearm.py": {
       "class": "keep",
       "why": "mods:D11: Shift+click keeps the just-placed building type armed -- reads the harness's `; [build] <label> armed= type= shift= placed= res=` lines, the seam's `; D11:` lines and mh_rec_orders.bin and holds the chain: armed after each Shift place, 0 after a plain one or a Shift+right-click, an occupied footprint keeps the type, the chain stops once when the next copy is unaffordable, one 0xea order per building placed. Absence of the seam's armed banner is RED, so the fix-off twin goes red on behaviour and on the banner",
-      "evidence": "the shift_rearm_build / _orig / _off rows and d11_shift_chain_c1 (--mp) in tools/uiscripts/registry.yaml name it as a post_check; `check_shift_rearm.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the shift_rearm_build / _orig / _off rows and d11_shift_chain_c1 (--mp) in tools/uiscripts/registry.yaml name it as a post_check; `check_shift_rearm.py --selftest` plants every negative and is run by hand"
     },
     "check_bigmap.py": {
       "class": "keep",
       "why": "mods:MM4: the big minimap overlay shows while its key is held and leaves nothing behind -- the seam's `; BIGMAP: shown` lines (geometry at 1024x768, 640x480, 2560x1440, the map plus its frame fitting the view) and the held / after-release frames: the held frame differs over most of the view, the after-release frame matches the before frame except animated sprites and has no 32x32 tile left changed (the residue trap). Absence of a line or a frame is RED",
-      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment bigmap); `check_bigmap.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment bigmap); `check_bigmap.py --selftest` plants every negative and is run by hand"
     },
     "check_minimap_box.py": {
       "class": "keep",
       "why": "RES9: the minimap viewport box clipped to the minimap is verified from the seam's own per-geometry mh_net.log lines (stock overrun, drawn and clipped pixels, the canary before the side-panel surface), read from the menu folder and the session folders after it; the row runs on a live save, so pixels are masked and not the oracle. Absence of a line is RED",
-      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment res_minimap_box); `check_minimap_box.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment res_minimap_box); `check_minimap_box.py --selftest` plants every negative and is run by hand"
     },
     "check_minimap_plus.py": {
       "class": "keep",
       "why": "mods:MM1-MM3: the minimap's widest zoom keeps its resources, corners and view box -- reads the seam's boot line (all three parts armed) and the RES9 geometry line the top-level box draw logs on res_walk's 128-tile ayy30 at zoom 1; the pixels are the capture baselines' job. Absence of a line is RED",
-      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment minimap_plus); `check_minimap_plus.py --selftest` plants every negative and is run by hand",
-      "hand_run": true
+      "evidence": "the res_walk row in tools/uiscripts/registry.yaml names it as a post_check (--segment minimap_plus); `check_minimap_plus.py --selftest` plants every negative and is run by hand"
     },
     "scan_cap_reloc_sites.py": {
       "class": "keep",

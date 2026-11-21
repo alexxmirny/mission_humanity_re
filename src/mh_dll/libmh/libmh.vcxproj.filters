@@ -1121,6 +1121,9 @@
     <ClCompile Include="sim\sim_order_issue_0xf_adjacent.cpp">
       <Filter>sim</Filter>
     </ClCompile>
+    <ClCompile Include="sim\sim_order_tasks.cpp">
+      <Filter>sim</Filter>
+    </ClCompile>
     <ClCompile Include="sim\sim_path_alloc_slot.cpp">
       <Filter>sim</Filter>
     </ClCompile>
@@ -1284,6 +1287,9 @@
       <Filter>sim</Filter>
     </ClCompile>
     <ClCompile Include="sim\sim_storage_accepts_unit_type.cpp">
+      <Filter>sim</Filter>
+    </ClCompile>
+    <ClCompile Include="sim\sim_storage_bulk_rally.cpp">
       <Filter>sim</Filter>
     </ClCompile>
     <ClCompile Include="sim\sim_storage_can.cpp">
@@ -1664,6 +1670,9 @@
     <ClCompile Include="state\boot_snapshot.cpp">
       <Filter>state</Filter>
     </ClCompile>
+    <ClCompile Include="state\boot_snapshot_export.cpp">
+      <Filter>state</Filter>
+    </ClCompile>
     <ClCompile Include="state\hook_api.cpp">
       <Filter>state</Filter>
     </ClCompile>
@@ -1682,6 +1691,12 @@
     <ClCompile Include="state\nav_trailer.cpp">
       <Filter>state</Filter>
     </ClCompile>
+    <ClCompile Include="state\order_tasks_origin.cpp">
+      <Filter>state</Filter>
+    </ClCompile>
+    <ClCompile Include="state\order_tasks_runtime.cpp">
+      <Filter>state</Filter>
+    </ClCompile>
     <ClCompile Include="state\rebind_arming.cpp">
       <Filter>state</Filter>
     </ClCompile>
@@ -1698,6 +1713,9 @@
       <Filter>state</Filter>
     </ClCompile>
     <ClCompile Include="state\spine_exports.cpp">
+      <Filter>state</Filter>
+    </ClCompile>
+    <ClCompile Include="state\storage_policy_runtime.cpp">
       <Filter>state</Filter>
     </ClCompile>
     <ClCompile Include="state\world_fixup.cpp">

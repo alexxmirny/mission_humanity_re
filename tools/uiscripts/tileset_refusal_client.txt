@@ -1,0 +1,38 @@
+# TILESET1: discover an advertised session without the host tileset, then require content refusal.
+# 1. main menu (NETWORK GAME = value 110)
+settled value:110
+clickv 110
+
+# 2. player-name screen (accept the default name)
+present Player name
+settled Ok
+clickl Ok
+
+# 3. local-games browser -> "Internet server" (the direct-IP path)
+present Internet server
+settled Internet server
+clickl Internet server
+
+# 4. IP-join window -> Connect (discovers the host)
+present Server address
+settled Connect
+clickl Connect
+
+# 5. "Games available": the host session is listed -> Join it
+sessions 1
+settled Join game
+clickl Join game
+
+# 6. THE BOUNCE. Same shape as mp_client_join_refused step 6: gate on the DESTINATION (the browser
+# with Join game back on screen) and on the notice, then RE-GATE on the notice before the capture
+# (tooling:TL-SUITE-FOLD, 2026-10-16): under suite load the rescan can re-select the session row
+# and swap the right panel to the map description. Capture only while the notice is up.
+absent Network players
+onscreen Join game
+present Refused: content
+sessions 1
+present Games available
+present Refused: content
+capture tileset_refuse_client
+log CLIENT: JOIN refused on the content digest -> back on the browser, notice names it
+end

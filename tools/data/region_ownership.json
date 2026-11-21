@@ -139,6 +139,24 @@
   "                  reason class per function, gated by tools/gen_writer_attribution.py --check."
  ],
  "regions": {
+  "STORAGE_POLICY": {
+   "owner_subsystem": "Strategic sim/economy",
+   "owned_by_dll": true,
+   "relocated": false,
+   "why": "Host-native pointer-free storage-policy canonical bytes, owned once by mh.dll; no original-image address or original accessor. Direct bound bytes feed hashes, world snapshots, resync and replay; no serializer or second libmh singleton."
+  },
+  "ORDER_TASKS": {
+   "owner_subsystem": "Strategic sim/economy",
+   "owned_by_dll": true,
+   "relocated": false,
+   "why": "Host-native pointer-free canonical order routes, reservation receipts and command high-water marks. Native and bound execution borrow one owner; full raw runtime extent participates in hashes, snapshots and resync."
+  },
+  "ORDER_CAMPAIGN": {
+   "owner_subsystem": "Strategic sim/economy",
+   "owned_by_dll": true,
+   "relocated": false,
+   "why": "Host-native pointer-free campaign allocator and32 persisted planet incarnations. Exact incoming publication, never a local maximum or map-seed identity."
+  },
   "100F": {
    "owner_subsystem": "Strategic sim/economy",
    "owned_by_dll": false,

@@ -31,7 +31,7 @@ namespace {
 uint32_t load_bits(const uint8_t *p, const uint8_t *end) {
     uint32_t v = 0;
     for (int i = 0; i < 3; ++i)
-        if (p + i < end) v |= static_cast<uint32_t>(p[i]) << (8 * i);
+        if (static_cast<size_t>(i) < static_cast<size_t>(end - p)) v |= static_cast<uint32_t>(p[i]) << (8 * i);
     return v;
 }
 
@@ -42,14 +42,14 @@ enum class code_status { code,
 
 // decompressImpl 0x004f4c1f. Returns one code, or says why it could not.
 code_status read_code(decoder_state &st, const uint8_t *&in, const uint8_t *end, uint32_t &counter,
-                      uint32_t &out_code) {
+                      uint32_t &out_code, bool strict) {
     // NOT IN THE ORIGINAL, and the only guard in this file that can fire on a stream the original
     // would have accepted. The original has no input bound at all: a truncated or corrupt payload
     // walks off the end of the staging buffer reading whatever follows, and since its terminating
     // test is a 0x101 code that may never arrive, it can run away. Refusing here turns that into
     // ReadCompressedFromFile's ordinary failure return. Verified not to fire on any of the 102
     // blocks of a real save -- a well-formed stream's 0x101 is always inside the payload.
-    if (in >= end) return code_status::exhausted;
+    if (in >= end || (strict && size_t(end - in) * 8 < st.shift + st.bit_count)) return code_status::exhausted;
 
     const uint32_t word = load_bits(in, end);
     out_code            = (word >> st.shift) & st.mask;
@@ -99,7 +99,7 @@ code_status read_code(decoder_state &st, const uint8_t *&in, const uint8_t *end,
 // which is the evidence that these are inert on real data.
 bool handle_code(const decoder_state &st, uint32_t code, uint8_t *&out, const uint8_t *dst_end) {
     if (code < CODE_FIRST) {
-        if (dst_end != nullptr && out + 1 > dst_end) return false;
+        if (dst_end != nullptr && dst_end - out < 1) return false;
         *out++ = static_cast<uint8_t>(code);
         return true;
     }
@@ -111,7 +111,7 @@ bool handle_code(const decoder_state &st, uint32_t code, uint8_t *&out, const ui
     } while (walk > CODE_END && n <= static_cast<int32_t>(DICT_NODES));
     if (walk > CODE_END) return false; // ran the cap -> the chain is a cycle
 
-    if (dst_end != nullptr && out + n + 1 > dst_end) return false;
+    if (dst_end != nullptr && dst_end - out < static_cast<ptrdiff_t>(n) + 1) return false;
 
     int32_t  i = n; // 0x004f4cc4: first byte goes at out[n], then downwards
     uint32_t c = code;
@@ -160,8 +160,8 @@ void update_dict(decoder_state &st, uint32_t prev, uint32_t cur) {
 
 } // namespace
 
-void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_size,
-                uint32_t dst_limit) {
+static void decompress_impl(decoder_state &st, const void *payload, void *dst, uint32_t *io_size,
+                            uint32_t dst_limit, bool strict) {
     const uint8_t *p = static_cast<const uint8_t *>(payload);
 
     payload_header h{};
@@ -216,20 +216,20 @@ void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_
     // inputs long enough to fill the dictionary.
     for (;;) {
         uint32_t prev = 0;
-        switch (read_code(st, in, end, counter, prev)) {
+        switch (read_code(st, in, end, counter, prev, strict)) {
             case code_status::end_of_stream: *io_size = static_cast<uint32_t>(out - static_cast<uint8_t *>(dst)); return;
             case code_status::exhausted: *io_size = 0; return;
             case code_status::restart: continue;
             case code_status::code: break;
         }
-        if (!handle_code(st, prev, out, dst_end)) {
+        if ((strict && prev >= CODE_FIRST) || !handle_code(st, prev, out, dst_end)) {
             *io_size = 0; // the failure status UnpackSaveData already maps to "refused"
             return;
         }
 
         for (;;) {
             uint32_t          cur = 0;
-            const code_status s   = read_code(st, in, end, counter, cur);
+            const code_status s   = read_code(st, in, end, counter, cur, strict);
             if (s == code_status::end_of_stream) {
                 *io_size = static_cast<uint32_t>(out - static_cast<uint8_t *>(dst));
                 return;
@@ -239,6 +239,10 @@ void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_
                 return;
             }
             if (s == code_status::restart) break; // back to the outer entry, deliberately
+            if (strict && (st.dict_size >= DICT_NODES || cur > CODE_FIRST + st.dict_size)) {
+                *io_size = 0;
+                return;
+            }
             update_dict(st, prev, cur);
             if (!handle_code(st, cur, out, dst_end)) {
                 *io_size = 0;
@@ -247,6 +251,23 @@ void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_
             prev = cur;
         }
     }
+}
+void decompress(decoder_state &st, const void *payload, void *dst, uint32_t *io_size,
+                uint32_t dst_limit) {
+    decompress_impl(st, payload, dst, io_size, dst_limit, false);
+}
+
+bool decompress_bounded(decoder_state &st, const void *payload, size_t payload_size,
+                        void *dst, size_t dst_size) {
+    if (!payload || !dst || payload_size < sizeof(payload_header) || payload_size > UINT32_MAX || dst_size == 0 || dst_size > UINT32_MAX)
+        return false;
+    payload_header h{};
+    std::memcpy(&h, payload, sizeof(h));
+    if (h.magic != MAGIC || h.compressed_len != payload_size || h.uncompressed_size != dst_size)
+        return false;
+    uint32_t result = static_cast<uint32_t>(payload_size);
+    decompress_impl(st, payload, dst, &result, static_cast<uint32_t>(dst_size), true);
+    return result == dst_size;
 }
 
 namespace {
@@ -442,49 +463,69 @@ int Decompress(char *input, char *output, size_t outputSize) {
 
 namespace mh::lzss {
 
-void decompress_block(const void *block, void *dst) {
-    const uint8_t *in = static_cast<const uint8_t *>(block);
-    uint32_t       uncompressed_size;
-    std::memcpy(&uncompressed_size, in + 4, sizeof uncompressed_size); // the BLOCK header's size
-    in += 8;
-
-    uint8_t       *out = static_cast<uint8_t *>(dst);
-    uint8_t *const end = out + uncompressed_size;
-
-    // The flag word is refilled the moment its sixteenth bit is consumed, not lazily on the next
-    // request (0x004ddcd7: DEC AH / JNZ, and the reload does not disturb the carry just taken).
-    uint16_t flags = 0;
-    int      have  = 0;
-    std::memcpy(&flags, in, sizeof flags);
-    in += sizeof flags;
-    have = 16;
-
-    const auto next_bit = [&]() -> bool {
-        const bool bit = (flags & 0x8000u) != 0; // `SHL DX,1` takes the carry from before the shift
-        flags          = static_cast<uint16_t>(flags << 1);
-        if (--have == 0) {
-            std::memcpy(&flags, in, sizeof flags);
-            in += sizeof flags;
-            have = 16;
-        }
-        return bit;
+namespace {
+template <bool Checked>
+bool decode(const void *block, size_t block_size, void *dst, size_t dst_size) {
+    const auto *base = static_cast<const uint8_t *>(block);
+    if constexpr (Checked)
+        if (!base || !dst || block_size < 10) return false;
+    uint32_t expected;
+    std::memcpy(&expected, base + 4, 4);
+    if constexpr (Checked)
+        if (expected > dst_size) return false;
+    size_t   pos = 8, used = 0;
+    auto    *out    = static_cast<uint8_t *>(dst);
+    uint16_t flags  = 0;
+    int      have   = 0;
+    auto     refill = [&]() {
+        if constexpr (Checked)
+            if (pos > block_size || block_size - pos < 2) return false;
+        std::memcpy(&flags, base + pos, 2);
+        pos += 2;
+        have = 16;
+        return true;
     };
-
-    while (out < end) { // `CMP EDI,end / JNC` -- tested only between tokens, hence the 8-byte overrun
-        if (!next_bit()) {
-            *out++ = *in++;
+    if (!refill()) return false;
+    auto bit = [&](bool &v) {
+        v     = (flags & 0x8000u) != 0;
+        flags = static_cast<uint16_t>(flags << 1);
+        if (--have == 0 && !refill()) return false;
+        return true;
+    };
+    while (used < expected) {
+        bool value;
+        if (!bit(value)) return false;
+        if (!value) {
+            if constexpr (Checked)
+                if (pos >= block_size) return false;
+            out[used++] = base[pos++];
             continue;
         }
         uint32_t len = 0;
-        for (int i = 0; i < 3; ++i) len = (len << 1) | (next_bit() ? 1u : 0u); // three RCL CL,1
+        for (int i = 0; i < 3; ++i) {
+            if (!bit(value)) return false;
+            len = (len << 1) | (value ? 1u : 0u);
+        }
         len += 2;
-
-        // `MOV BL,AL` into an EBX of 0xffffffff, so the offset byte is a distance of 256-offset
-        // back: 0 is the furthest (256) and 255 is the nearest (1).
-        const uint32_t offset = *in++;
-        const uint8_t *copy   = out + offset - 256;
-        for (uint32_t i = 0; i < len; ++i) *out++ = *copy++; // byte at a time: runs may overlap
+        if constexpr (Checked)
+            if (pos >= block_size || used > dst_size || len > dst_size - used) return false;
+        const size_t distance = 256 - base[pos++];
+        if constexpr (Checked)
+            if (distance > used) return false;
+        for (uint32_t i = 0; i < len; ++i) {
+            // In the legacy path the original intentionally has no bounds checks.
+            out[used] = *(out + static_cast<ptrdiff_t>(used) - static_cast<ptrdiff_t>(distance));
+            ++used;
+        }
     }
+    return true;
+}
+} // namespace
+
+void decompress_block(const void *block, void *dst) { (void)decode<false>(block, 0, dst, 0); }
+
+bool decompress_block_bounded(const void *block, size_t block_size, void *dst, size_t dst_size) {
+    return decode<true>(block, block_size, dst, dst_size);
 }
 
 } // namespace mh::lzss

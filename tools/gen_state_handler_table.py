@@ -4,13 +4,13 @@ disassembly, and emit them as the C++ table our own registrar fills.
 
     1) run-script {programPath: "/eng/mh.exe", scriptName: "mh_export_decomp.py"} with a request
        naming llm_strat_register_state_handlers + its two setters and "disasm": true
-    2) python tools/gen_state_handler_table.py --extract --asm-dir tmp/dispatch_asm
+    2) python tools/gen_state_handler_table.py --extract  # default: input:dispatch_asm
     3) python tools/gen_state_handler_table.py            # write the generated header
        python tools/gen_state_handler_table.py --check    # drift gate (lint_repo.py runs this)
 
 SECOND MODE, for the OTHER fn-ptr registry (SIM1-BLDGCB):
 
-    python tools/gen_state_handler_table.py --extract-bldg-type --asm-dir tmp/dispatch_asm
+    python tools/gen_state_handler_table.py --extract-bldg-type  # default: input:dispatch_asm
 
 which extracts llm_strat_register_bldg_type_callbacks' 30 callbacks into
 tools/data/sim_bldg_type_callback_table.json (for gen_migration.py to seed the sim closure with,
@@ -56,6 +56,8 @@ import json
 import os
 import re
 import sys
+
+import tool_paths
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(REPO, "tools", "data", "sim_state_handler_table.json")
@@ -745,7 +747,7 @@ def main():
     ap.add_argument(
         "--extract", action="store_true", help="re-extract the table from exported .asm"
     )
-    ap.add_argument("--asm-dir", default=os.path.join(REPO, "tmp", "dispatch_asm"))
+    ap.add_argument("--asm-dir", default=str(tool_paths.input_path("dispatch_asm", repo=REPO)))
     ap.add_argument(
         "--extract-bldg-type",
         action="store_true",

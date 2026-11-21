@@ -6,11 +6,11 @@
   "orphan_sites": 483,
   "promotable_bodies": 403,
   "verified_bodies": 953,
-  "detour_target_addrs": 92,
-  "detour_target_bodies": 92,
-  "unresolved_install_sites": 16,
+  "detour_target_addrs": 101,
+  "detour_target_bodies": 100,
+  "unresolved_install_sites": 18,
   "sites_in_promotable_body": 12098,
-  "sites_in_detour_target": 5582,
+  "sites_in_detour_target": 5654,
   "sites_in_either": 13210,
   "sites_in_verified_not_promotable": 31395,
   "sites_in_entry_window_of_claimed_body": 93,
@@ -656,7 +656,7 @@
       "fn": "llm_rand"
     }
   ],
-  "dll_patch_extents": 162,
+  "dll_patch_extents": 344,
   "dll_patches_dynamic_unchecked": [
     "interlock_selftest_fake_entry",
     "hostapi_selftest_unbound_hook_table",
@@ -671,7 +671,8 @@
     "detour_save_promote",
     "detour_net_trace",
     "detour_video_reentrancy",
-    "detour_shadow_sites"
+    "detour_shadow_sites",
+    "mods_resource_entry_detours"
   ],
   "registered_patch_overlaps": [
     {
@@ -873,6 +874,195 @@
       "relation": "start"
     },
     {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "grand_all_caphike",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "units_caphike",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "allpools_roster_relocate",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "buildings_caphike",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "buildings_relocate",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00481a5c",
+      "len": 5,
+      "manifest": "grand_all_relocate",
+      "site": "0x00481a5e",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00482892",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x00482891",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00482892",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00482891",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00482892",
+      "len": 5,
+      "manifest": "grand_all_relocate",
+      "site": "0x00482891",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00482892",
+      "len": 5,
+      "manifest": "units_caphike",
+      "site": "0x00482891",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00482892",
+      "len": 5,
+      "manifest": "units_relocate",
+      "site": "0x00482891",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00485259",
+      "len": 5,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x00485259",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00485259",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x00485259",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00485259",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00485259",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00485259",
+      "len": 5,
+      "manifest": "subpools_allcaps_caphike",
+      "site": "0x00485259",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
       "patch": "resync_wait_fix",
       "addr": "0x0049c044",
       "len": 3,
@@ -891,6 +1081,141 @@
       "relation": "start"
     },
     {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "grand_all_caphike",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "grand_all_caphike_storagecap_EN",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "grand_all_relocate",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "units_caphike",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "units_relocate",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x004869e9",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x004869e9",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x004869e9",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x004869e9",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x004869e9",
+      "len": 5,
+      "manifest": "units_caphike",
+      "site": "0x004869e9",
+      "site_len": 4,
+      "relation": "start"
+    },
+    {
+      "patch": "selected_target_weapon_effects",
+      "addr": "0x0048c536",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x0048c535",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "selected_target_weapon_effects",
+      "addr": "0x0048c536",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x0048c535",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "selected_target_weapon_effects",
+      "addr": "0x0048c536",
+      "len": 5,
+      "manifest": "grand_all_relocate",
+      "site": "0x0048c535",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "selected_target_weapon_effects",
+      "addr": "0x0048c536",
+      "len": 5,
+      "manifest": "units_caphike",
+      "site": "0x0048c535",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "selected_target_weapon_effects",
+      "addr": "0x0048c536",
+      "len": 5,
+      "manifest": "units_relocate",
+      "site": "0x0048c535",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
       "patch": "soldier_origin_anim_fix",
       "addr": "0x00491166",
       "len": 7,
@@ -907,6 +1232,222 @@
       "site": "0x00491169",
       "site_len": 4,
       "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047b358",
+      "len": 5,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x0047b359",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047b358",
+      "len": 5,
+      "manifest": "buildings_caphike",
+      "site": "0x0047b359",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047b358",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x0047b359",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047b358",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x0047b359",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047e5f0",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x0047e5f3",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047e5f0",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x0047e5f3",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047e5f0",
+      "len": 5,
+      "manifest": "grand_all_relocate",
+      "site": "0x0047e5f3",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047e5f0",
+      "len": 5,
+      "manifest": "soldiers_caphike",
+      "site": "0x0047e5f3",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x0047e5f0",
+      "len": 5,
+      "manifest": "soldiers_relocate",
+      "site": "0x0047e5f3",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00487b9c",
+      "len": 9,
+      "manifest": "grand_all_caphike",
+      "site": "0x00487ba0",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00487b9c",
+      "len": 9,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00487ba0",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00487b9c",
+      "len": 9,
+      "manifest": "grand_all_relocate",
+      "site": "0x00487ba0",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00487b9c",
+      "len": 9,
+      "manifest": "units_caphike",
+      "site": "0x00487ba0",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00487b9c",
+      "len": 9,
+      "manifest": "units_relocate",
+      "site": "0x00487ba0",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489586",
+      "len": 5,
+      "manifest": "grand_all_caphike",
+      "site": "0x00489587",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489586",
+      "len": 5,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00489587",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489586",
+      "len": 5,
+      "manifest": "soldiers_caphike",
+      "site": "0x00489587",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "allpools_roster_caphike",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "allpools_roster_relocate",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "buildings_caphike",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "buildings_relocate",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "grand_all_caphike",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "grand_all_caphike_storagecap",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
+    },
+    {
+      "patch": "storage_policy_native_lifecycle",
+      "addr": "0x00489f4c",
+      "len": 8,
+      "manifest": "grand_all_relocate",
+      "site": "0x00489f52",
+      "site_len": 4,
+      "relation": "straddle"
     },
     {
       "patch": "turret_clip_fix",
@@ -1091,6 +1632,24 @@
       "relation": "interior"
     },
     {
+      "patch": "order_tasks_native_executor",
+      "addr": "0x00466ce1",
+      "len": 7,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466ce4",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
+      "patch": "selected_target_order_witness",
+      "addr": "0x00466bf0",
+      "len": 9,
+      "manifest": "cap_v023_units_reloc_EN",
+      "site": "0x00466bf3",
+      "site_len": 4,
+      "relation": "interior"
+    },
+    {
       "patch": "soldier_origin_anim_fix",
       "addr": "0x00491166",
       "len": 7,
@@ -1138,8 +1697,11 @@
     "llm_cd_locate_and_open_audio",
     "llm_chat_history_push",
     "llm_debug_console_dispatch",
+    "llm_game_boot_init",
     "llm_game_land_players_on_planet",
     "llm_game_return_to_main_menu_cb",
+    "llm_game_shutdown_cleanup",
+    "llm_game_speed_recompute",
     "llm_gfx_ddraw_dll_acquire",
     "llm_gfx_ddraw_dll_release",
     "llm_gfx_draw_cursor_menu",
@@ -1173,6 +1735,8 @@
     "llm_net_discovery_poll_stub",
     "llm_net_join_connect_stub",
     "llm_net_lockstep_broadcast_resync_state",
+    "llm_net_player_remove",
+    "llm_net_player_remove_timeout",
     "llm_net_poll_recv",
     "llm_net_send_packet",
     "llm_net_session_init_stub",
@@ -1182,6 +1746,7 @@
     "llm_snd_play",
     "llm_str_ansi_to_wide",
     "llm_strat_draw_floating_messages",
+    "llm_strat_group_issue_attack_order",
     "llm_strat_group_move_order_pathfind",
     "llm_strat_group_order_ack_voice",
     "llm_strat_input_update",
@@ -1200,6 +1765,7 @@
     "llm_tact_frame",
     "llm_tact_group_issue_order",
     "llm_tact_unit_enqueue_command",
+    "llm_ui_avi_close_return_to_menu",
     "llm_ui_chat_input_process_scancodes",
     "llm_ui_diplomacy_screen_build",
     "llm_ui_dlg_savegame_io_error",
@@ -1222,6 +1788,7 @@
     "llm_view_set_size_mode",
     "llm_wnd_on_destroy",
     "llm_wnd_on_devicechange",
+    "llm_wnd_proc",
     "map_LoadPlanetFromDisk",
     "map_SavePlanetToDisk",
     "time_GetCurrentTime",

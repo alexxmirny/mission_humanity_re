@@ -111,6 +111,13 @@
 #pragma once
 
 #ifdef __cplusplus
+#include <stdint.h>
+// Internal observation only; not a DLL export or a second input hook.
+namespace mh::seams::chat_input_trace {
+bool enabled();
+void main_record(uint32_t scan, uint32_t type, uint32_t character, uint32_t timestamp,
+                 const uint32_t *final_event, bool discard_valid, bool discarded);
+} // namespace mh::seams::chat_input_trace
 extern "C" {
 #endif
 

@@ -16,12 +16,11 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lane_alloc  # noqa: E402  fork F4H: the ONE place a lane NUMBER comes from
-import ui_test  # noqa: E402  boot_lock + wait_past_pack_load, shared with the UI suite
-import machine_config as machine  # noqa: E402
-import make_lane  # noqa: E402  LANE_ROOT + the lane builder used by --local
-from ui_suite_common import (  # noqa: E402
-    LOCAL_PORT_BASE,
+import lane_alloc
+import machine_config as machine
+import make_lane
+import ui_test
+from ui_suite_common import (
     LOCAL_TIMEOUT_FRAMES,
     REPO,
     RunnerConfig,
@@ -41,7 +40,7 @@ from ui_suite_common import (  # noqa: E402
 # tools/data/save_index.json, so a name printed by the session driver's `--start` resolves here.
 SAVE_STORAGE = machine.SAVE_STORAGE
 
-import _rundir  # noqa: E402 -- the run-dir name contract (SES8 + SES1)
+import _rundir
 
 
 def sp_net_text(log_dir):
@@ -500,7 +499,7 @@ def run_soak(args):
             "--lane",
             str(lane_no),
             "--port",
-            str(LOCAL_PORT_BASE + lane_no),
+            str(lane_alloc.lane_port(lane_no)),
         ]
         + (["--dll", args.soak_dll] if getattr(args, "soak_dll", "") else [])
         + (["--visible"] if args.visible else ["--headless"]),

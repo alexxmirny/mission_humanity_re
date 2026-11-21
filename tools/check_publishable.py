@@ -430,12 +430,8 @@ def _resolve(token, idx, published):
     return sorted(hits)[0]
 
 
-def _py_string_constants(src):
+def _py_string_constants(tree):
     """String constants via ast: comments are gone by construction, docstrings excluded."""
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return []
     docstrings = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -458,17 +454,13 @@ def _py_string_constants(src):
     return out
 
 
-def _py_joined_paths(src):
+def _py_joined_paths(tree):
     """`os.path.join(REPO, "tools", "gen_dll_calls.py")` is THE house idiom for naming another
     repo file, and it defeats a plain string scan: no literal in that call contains a separator, so
     every segment looks like prose. Reconstruct the join from its constant arguments (the leading
     non-constant root -- REPO, ROOT, HERE -- is dropped) and hand the result to the same resolver.
     Without this the Python arm cannot see lint_repo.py invoking another tool, which is precisely
     the edge that would break a public lint run."""
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return []
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -494,8 +486,9 @@ def _py_joined_paths(src):
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./\\-]+")
 
 
-def closure_scan(paths, led, root=REPO, say=print):
-    """Returns (violations, visited) -- violations are (source, line, needed_path, kind)."""
+def closure_scan(paths, led, root=REPO, say=print, *, source_refs=None):
+    """Return (violations, visited). Optional reference facts require an unchanged source tree;
+    ledger classification and resolution always run independently. Never reuse across edits."""
     by_path, _, _ = classify(paths, led)
     published = {p for p in paths if by_path.get(p) and by_path[p]["disposition"] == PUBLISHED}
     idx = suffix_index(paths)
@@ -509,42 +502,48 @@ def closure_scan(paths, led, root=REPO, say=print):
         ext = os.path.splitext(p)[1].lower()
         if ext not in CXX_EXT and ext != ".py":
             continue
-        try:
-            with open(full, encoding="utf-8", errors="replace") as fh:
-                src = fh.read()
-        except OSError:
+        if source_refs is not None and p in source_refs:
+            refs = source_refs[p]
+        else:
+            refs = _source_references(full, ext)
+            if source_refs is not None:
+                source_refs[p] = refs
+        if refs is None:
             continue
         visited += 1
-
-        if ext in CXX_EXT:
-            for m in INCLUDE_RE.finditer(src):
-                tok = m.group(1).replace("\\", "/")
-                hit = _resolve(tok, idx, published)
-                if hit:
-                    line = src.count("\n", 0, m.start()) + 1
-                    violations.append((p, line, hit, "include"))
-        else:
-            for lineno, val in _py_string_constants(src):
-                for tok in TOKEN_RE.findall(val.replace("\\", "/")):
-                    # A Python string is not a compiler directive: a bare basename in one is far
-                    # more often prose ("see the session log", "copy setup.dat into the lane") than a
-                    # read, and both shapes were measured in this tree. So the Python arm requires
-                    # at least TWO path segments, which a sentence practically never carries and a
-                    # real relative read almost always does. The consequence is stated rather than
-                    # hidden: a tool that reads a withheld ROOT document by name through
-                    # os.path.join(REPO, ...) is invisible to this arm, and is caught by disposition --
-                    # see the research-tooling ledger row.
-                    if tok.count("/") < 1:
-                        continue
-                    hit = _resolve(tok, idx, published)
-                    if hit:
-                        violations.append((p, lineno, hit, "pyref"))
-            for lineno, joined in _py_joined_paths(src):
-                hit = _resolve(joined, idx, published)
-                if hit:
-                    violations.append((p, lineno, hit, "pyjoin"))
+        for line, tok, kind in refs:
+            hit = _resolve(tok, idx, published)
+            if hit:
+                violations.append((p, line, hit, kind))
 
     return violations, visited
+
+
+def _source_references(full, ext):
+    try:
+        with open(full, encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return None
+    refs = []
+    if ext in CXX_EXT:
+        line, previous = 1, 0
+        for m in INCLUDE_RE.finditer(src):
+            line += src.count("\n", previous, m.start())
+            previous = m.start()
+            refs.append((line, m.group(1).replace("\\", "/"), "include"))
+    else:
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            return ()
+        for lineno, val in _py_string_constants(tree):
+            for tok in TOKEN_RE.findall(val.replace("\\", "/")):
+                # Bare Python basenames are prose too often; require a path separator.
+                if "/" in tok:
+                    refs.append((lineno, tok, "pyref"))
+        refs.extend((line, joined, "pyjoin") for line, joined in _py_joined_paths(tree))
+    return tuple(refs)
 
 
 def closure(paths, led, root=REPO, say=print, public=False):
@@ -723,7 +722,8 @@ def selftest():
     # ledger later says about the header, and fails if the include is removed or the resolver
     # breaks -- which is the whole job of a known-positive.
     real = tracked_paths()
-    vios, visited = closure_scan(real, led)
+    source_refs = {}
+    vios, visited = closure_scan(real, led, source_refs=source_refs)
     expect("walker visited published sources in the real tree", visited > 100)
 
     probe_rule = {
@@ -735,7 +735,7 @@ def selftest():
     probe_rule["_res"] = [glob_re(g) for g in probe_rule["globs"]]
     probe_led = dict(led)
     probe_led["rules"] = [probe_rule] + list(led["rules"])
-    probe_vios, probe_visited = closure_scan(real, probe_led)
+    probe_vios, probe_visited = closure_scan(real, probe_led, source_refs=source_refs)
     expect("probe walker visited the real tree", probe_visited > 100)
     control = [
         v

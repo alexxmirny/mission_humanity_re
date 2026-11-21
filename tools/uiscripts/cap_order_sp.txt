@@ -1,5 +1,5 @@
 # patching:PT-CAP8 acceptance item 3 -- SINGLE-PLAYER orders on the raised building pool. Same walk as cap_fill_solo.txt (1 human + 1 AI skirmish, mother
-# landed with shift+right-click); the harness cap-fill fixture places ~330 buildings, then the cap_order probe issues ONE activate order for building
+# landed with Ctrl+right-click); the harness cap-fill fixture places ~330 buildings, then the cap_order probe issues ONE activate order for building
 # index cap_order_idx (> 127; 200 and 300 in the two steps of cap_order_sp) through the game's own order queue and checks the target slot was staffed and
 # the truncated slot (idx & 0x7f below 256, idx & 0xff above) was not (tools/check_cap_fill.py --order sp). Verdict is in mh_harness.log, not a frame.
 settled value:110
@@ -26,7 +26,7 @@ clickl Start
 absent Network players
 gamemode 2
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 6000
 log cap: mother landing ordered, handing the run to the harness fixture
 gameclock 40000

@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "patch/inmem_patch.h"
+#include "ui/target_line_order_events.h"
 
 namespace mh::caps::orders {
 namespace {
@@ -209,6 +210,7 @@ bool toggle(bool want_on, const char *why) {
         }
         g_on = false;
     }
+    mh::ui::selected_targets::detail::native_order_geometry_changed();
     olog("; [caps] orders layer %s (%s): %d sites -> .mhcapo %08X; queue %u pending %u staging %u; sender quota %u records/player\n", want_on ? "ON" : "OFF", who,
          g_ts.m ? g_ts.m->site_count : 0, static_cast<unsigned>(reinterpret_cast<uintptr_t>(g_o)), cap(QUEUE), cap(PENDING), cap(STAGING), QUOTA);
     return true;

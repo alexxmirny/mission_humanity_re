@@ -24,6 +24,7 @@
 #include "lockstep/internal_call.h" // C8-d: MH_INTERNAL_CALL -- the intra-closure edges
 #include "lockstep/resync.h"        // C8-d: count_active_players / is_local_leader_peer / force_resync
 #include "lockstep/turn_engine.h"   // C8-d: commit_horizon, the production entry point
+#include "lockstep/participant_removal.h"
 
 #include <windows.h>
 
@@ -69,6 +70,7 @@ const emit_calls &live_emit_calls() {
         MH_INTERNAL_CALL(llm_net_lockstep_commit_horizon, mh::lockstep::commit_horizon),
         MH_INTERNAL_CALL(llm_net_lockstep_is_local_leader_peer, mh::lockstep::is_local_leader_peer),
         MH_INTERNAL_CALL(llm_net_lockstep_force_resync, mh::lockstep::force_resync),
+        participant::live_admit,
     };
     return ec;
 }
@@ -228,14 +230,51 @@ void apply_removal_and_branch(const emit_state &es, const emit_calls &calls, int
     }
 }
 
+struct removal_payload {
+    emit_state  state;
+    emit_calls  calls;
+    int32_t     side, index;
+    uint64_t    horizon;
+    control_tag tag;
+};
+
+bool removal_valid(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<removal_payload>(bytes, size);
+    return p.calls.player_by_side_id(p.side) == p.index &&
+           participant::human(p.state.players_w, p.index) &&
+           participant::pb::bits(p.state.peer_horizon[p.index]) == p.horizon;
+}
+bool removal_terminal(const void *bytes, uint32_t size) {
+    const auto p = participant::copy<removal_payload>(bytes, size);
+    return participant::survivors(p.state.players_w, p.index) <= 1;
+}
+bool removal_execute(const void *bytes, uint32_t size) {
+    const auto    p     = participant::copy<removal_payload>(bytes, size);
+    const int32_t index = send_removal_record(p.state, p.calls, p.side, p.tag);
+    apply_removal_and_branch(p.state, p.calls, index);
+    return true;
+}
+void remove_at_boundary(const emit_state &es, const emit_calls &calls, int32_t side_id,
+                        control_tag tag) {
+    const int32_t index = calls.player_by_side_id(side_id);
+    if (!participant::continuing(es.players_w, index, *es.player_side)) {
+        const int32_t sent = send_removal_record(es, calls, side_id, tag);
+        apply_removal_and_branch(es, calls, sent);
+        return;
+    }
+    const removal_payload p{es, calls, side_id, index,
+                            participant::pb::bits(es.peer_horizon[index]), tag};
+    const auto            r = participant::request_for(index, es.peer_horizon[index], p,
+                                                       removal_execute, removal_valid, removal_terminal);
+    if (participant::submit(calls.participant_admit, r) == participant::pb::admission::execute_now)
+        removal_execute(&p, sizeof(p));
+}
 void player_remove(const emit_state &es, const emit_calls &calls, int32_t side_id) {
-    const int32_t pidx = send_removal_record(es, calls, side_id, CTL_DROP_SYNCED);
-    apply_removal_and_branch(es, calls, pidx);
+    remove_at_boundary(es, calls, side_id, CTL_DROP_SYNCED);
 }
 
 void player_remove_timeout(const emit_state &es, const emit_calls &calls, int32_t side_id) {
-    const int32_t pidx = send_removal_record(es, calls, side_id, CTL_DROP_UNSYNCED);
-    apply_removal_and_branch(es, calls, pidx);
+    remove_at_boundary(es, calls, side_id, CTL_DROP_UNSYNCED);
 }
 
 } // namespace detail

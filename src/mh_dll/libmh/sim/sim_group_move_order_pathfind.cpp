@@ -1,4 +1,5 @@
 #include "sim/sim_group_move_order_pathfind.h"
+#include "sim/sim_order_tasks.h"
 #include "sim/sim_merge_goal.h"    // mods:M1X [net] move_merge_goal_fix
 #include "sim/sim_move_fixes.h"    // mods:M1H the planner keys' switchboard (move_fix())
 #include "sim/move/wrap.h"         // mods:M1H [net] move_centroid_wrap_fix
@@ -231,6 +232,7 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             reinterpret_cast<uint32_t *>(&own.group_order_goal_x_mut()),
             reinterpret_cast<uint32_t *>(&own.group_order_goal_y_mut()), centroid_col, centroid_row);
         if (result != 0) {
+            order_tasks_adapter::fail_wave(own, uint32_t(owner), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
             reset_all_path_slots();
             return;
         }
@@ -247,6 +249,7 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             reinterpret_cast<uint32_t *>(&own.group_order_goal_x_mut()),
             reinterpret_cast<uint32_t *>(&own.group_order_goal_y_mut()));
         if (result != 0) {
+            order_tasks_adapter::fail_wave(own, uint32_t(owner), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
             reset_all_path_slots();
             return;
         }
@@ -316,6 +319,7 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             reinterpret_cast<uint32_t *>(&own.group_order_goal_x_mut()),
             reinterpret_cast<uint32_t *>(&own.group_order_goal_y_mut()));
         if (plan_result != 0) {
+            order_tasks_adapter::fail_wave(own, uint32_t(owner), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
             reset_all_path_slots();
             return;
         }
@@ -341,6 +345,7 @@ void group_move_order_pathfind(const sim_view &v, sim_store &own,
             auto         *to_bytes       = reinterpret_cast<uint8_t *>(&to_packed);
             const int32_t nearest_result = c.region_find_nearest_valid_tile(&to_bytes[1], &to_bytes[0]);
             if (nearest_result == 0) {
+                order_tasks_adapter::fail_wave(own, uint32_t(owner), v, member_count, mh::order_tasks::outcome_kind::planning_failed);
                 // 0x0041d1a4-0x0041d20d: no valid nearby tile at all -- fall back to each member's own
                 // raw scratch tile (NOT the goal) and reset every path slot.
                 for (int32_t i = 0; i < member_count; ++i) {

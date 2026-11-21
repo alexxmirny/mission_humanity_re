@@ -1,0 +1,16 @@
+# DATAEXT1: a raised save must still be refused while mod set B is mounted.
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+present Ok
+settled Ok
+screensettled
+capture refused
+log cap: raised save refused, message box up
+clickl Ok
+gamemode 3
+present Load game
+log cap: message dismissed, still in the menu
+end

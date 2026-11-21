@@ -51,6 +51,15 @@
     <Filter Include="libmh\state">
       <UniqueIdentifier>{BCA90837-53CC-5AA1-97BB-5420B4692A96}</UniqueIdentifier>
     </Filter>
+    <Filter Include="mh_mapgen">
+      <UniqueIdentifier>{E49B279A-A229-5D2F-B050-F2DA9380E6D5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mh_mapgen\src">
+      <UniqueIdentifier>{2ADC0842-BE2F-5D81-9A11-C7DF1E425DFD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mods">
+      <UniqueIdentifier>{AC2ADE85-F8FE-5833-BCBD-3C27242D9B6A}</UniqueIdentifier>
+    </Filter>
     <Filter Include="patch">
       <UniqueIdentifier>{34BFEC4A-FF69-59B5-9FEB-C2C64934B4B4}</UniqueIdentifier>
     </Filter>
@@ -66,6 +75,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\libmh_contract.gen.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\avi_lifecycle.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="addr\mh_calls.gen.cpp">
@@ -95,6 +107,9 @@
     </ClCompile>
     <ClCompile Include="caps\ovf_save.cpp">
       <Filter>caps</Filter>
+    </ClCompile>
+    <ClCompile Include="mods\save_meta.cpp">
+      <Filter>mods</Filter>
     </ClCompile>
     <ClCompile Include="caps\path_pool.cpp">
       <Filter>caps</Filter>
@@ -140,6 +155,21 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_chat_input.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\strategic_input.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\strategic_keyboard_native.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\strategic_input_native.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\strategic_mouse_native.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\strategic_input_hooks.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_cheat_gate.cpp">
@@ -241,6 +271,66 @@
     <ClCompile Include="seams\ui_map_zoom.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\ui_unit_double_select.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="gfx\strat_world_view.cpp">
+      <Filter>gfx</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\storage_policy_hosted.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\order_tasks_hosted.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\order_tasks_native.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\storage_policy_save_hosted.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\ui_storage_controls.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\storage_bulk_rally.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\lobby_speed.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\lobby_speed_widget.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\selected_targets.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_painter.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_routes.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_debug.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_intents.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_order_events.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_weapon_events.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_deferred_events.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_attack_events.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\target_line_attack_provenance.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
     <ClCompile Include="seams\ui_wheel.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -254,6 +344,9 @@
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\lang_pack.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\mod_resource_overlay.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\ui_options_scale.cpp">
@@ -274,6 +367,12 @@
     <ClCompile Include="seams\net_lockstep.cpp">
       <Filter>seams</Filter>
     </ClCompile>
+    <ClCompile Include="seams\participant_boundary_hosted.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\participant_boundary_native.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
     <ClCompile Include="seams\gameplay_hooks.cpp">
       <Filter>seams</Filter>
     </ClCompile>
@@ -281,6 +380,12 @@
       <Filter>config</Filter>
     </ClCompile>
     <ClCompile Include="seams\net_seams.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\tileset_runtime.cpp">
+      <Filter>seams</Filter>
+    </ClCompile>
+    <ClCompile Include="seams\tileset_save_preflight.cpp">
       <Filter>seams</Filter>
     </ClCompile>
     <ClCompile Include="seams\reimpl_probe.cpp">
@@ -303,6 +408,15 @@
     </ClCompile>
     <ClCompile Include="ui\lobby_widgets.cpp">
       <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\map_preview.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_mapgen\src\mpm_io.cpp">
+      <Filter>mh_mapgen\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\mh_mapgen\src\preview.cpp">
+      <Filter>mh_mapgen\src</Filter>
     </ClCompile>
     <ClCompile Include="ui\lobby_ping.cpp">
       <Filter>ui</Filter>
@@ -489,6 +603,72 @@
     <ClInclude Include="seams\strat_pre_input.h">
       <Filter>seams</Filter>
     </ClInclude>
+    <ClInclude Include="gfx\strat_world_view.h">
+      <Filter>gfx</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\storage_policy.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\order_tasks_hosted.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\order_tasks_native.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\storage_policy_save.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\ui_storage_controls.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\storage_bulk_rally.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\lobby_speed.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\lobby_speed.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="caps\save_host.h">
+      <Filter>caps</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\selected_targets.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_painter.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_routes.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_route_adapter.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_debug.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_intents.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_order_events.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_weapon_events.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_deferred_events.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_attack_events.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\target_line_attack_provenance.h">
+      <Filter>ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\mh_unitselect_export.h">
+      <Filter>include</Filter>
+    </ClInclude>
     <ClInclude Include="seams\video_mode_guards.h">
       <Filter>seams</Filter>
     </ClInclude>
@@ -613,6 +793,15 @@
     <ClInclude Include="seams\replay_boundary.h">
       <Filter>seams</Filter>
     </ClInclude>
+    <ClInclude Include="seams\tileset_runtime.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\tileset_summary.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\tileset_save_preflight.h">
+      <Filter>seams</Filter>
+    </ClInclude>
     <ClInclude Include="desync\state_miniz_config.h">
       <Filter>desync</Filter>
     </ClInclude>
@@ -680,6 +869,9 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="seams\net_internal.h">
+      <Filter>seams</Filter>
+    </ClInclude>
+    <ClInclude Include="seams\avi_lifecycle.h">
       <Filter>seams</Filter>
     </ClInclude>
     <ClInclude Include="ui\lobby_ui.h">

@@ -1,0 +1,74 @@
+# mods:MAPGEN1 W4 -- AI suitability playtest. 8-player generated 128 map (the lane's ONLY map), slot 0 Human + a Computer in every other seat; the row sets all_ai=1 so the human slot is converted to AI too and EVERY landing spot is used.
+# generated 128 map (lane's ONLY map, make_lane --maps-only), through the real menu (walk of mapgen_solo.txt). The AIs play ~10 game
+# minutes; captures every minute. Observability is the harness's own AI probe (row's harness_extra: ai_probe_step -> `; AIPROBE` +
+# one `; AIP p<i> ... bldg= uc= us= groups= mother=` line per AI in mh_harness.log; aistate_probe_at -> one `; AISTATE` per player at
+# the end with resource_spent / ai_mine_yield). Verdict is reaching the end marker; read the logs with tools/check_mapgen_ai.py.
+# Captures are for the user's review -- no baseline (baselines/mapgen_ai/_ignore.json marks them _unjudged).
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+clickl Ok
+
+present Network players
+settled Start
+capture mg_lobby_empty
+click 70 132
+present Computer
+occ 2
+click 70 149
+present Computer
+occ 3
+click 70 166
+present Computer
+occ 4
+click 70 183
+present Computer
+occ 5
+click 70 200
+present Computer
+occ 6
+click 70 217
+present Computer
+occ 7
+click 70 234
+present Computer
+occ 8
+enabled Start
+capture mg_lobby_full
+clickl Start
+
+absent Network players
+gamemode 2
+gameclock 3000
+capture mg_start
+gameclock 60000
+capture mg_1min
+gameclock 120000
+capture mg_2min
+gameclock 180000
+capture mg_3min
+gameclock 240000
+capture mg_4min
+gameclock 300000
+capture mg_5min
+gameclock 360000
+capture mg_6min
+gameclock 420000
+capture mg_7min
+gameclock 480000
+capture mg_8min
+gameclock 540000
+capture mg_9min
+gameclock 600000
+capture mg_10min
+log mapgen_ai: 10 game minutes played
+end

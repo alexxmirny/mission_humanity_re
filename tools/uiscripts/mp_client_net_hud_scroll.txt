@@ -22,12 +22,11 @@ settled Cancel
 absent Network players
 gamemode 2
 
-# segment 1 (net_hud L1/L1c): the client's indicator on a clean link. The client's single connection carries player_id -1, so this is the
-# peer that needs the live_peer_slot() resolution to name "host" -- and it must still show a real ping.
+# segment 1 (net_hud L1/L1c): the client's real measurements on a live link. Its connection carries player_id -1,
+# so live_peer_slot() must resolve the actual "host" name. Scheduling jitter may legitimately lower its quality bar.
 gameclock 20000
-capture net_hud__n1_hud
-log CLIENT captured the net indicator in a live udp match
-signal hudcap
+log CLIENT reached the net-indicator measurement phase in a live udp match
+signal hudready
 
 # segment 2 (TL-UISTALL): the host blackholes host -> client; `stalled` gates the capture on the SIM actually being frozen (>= 400 ms, the
 # indicator's own STALL_SHOW_MS) rather than on a wall-clock guess. The host lifts the blackhole once this peer has captured.

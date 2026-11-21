@@ -4,6 +4,7 @@
 // being a draft.
 //
 #include "sim/resid/sim_session_begin_multi.h"
+#include "sim/sim_order_tasks.h"
 
 #include "orders/admission_log.h"
 #include "lockstep/turn_engine.h" // mh::lockstep::fixes(): [net] team_relations_fix
@@ -204,6 +205,15 @@ int32_t session_begin_multi(const sim_view &v, sim_store &own,
     c.player_set_human(static_cast<uint8_t>(*v.player_side));
     c.ui_message_queue_clear_all();
     c.map_read_map_pre(static_cast<uint32_t>(*v.planet_index));
+    // A same-sized rematch still starts a fresh empty policy world before profile births.
+    mh_storage_policy_request policy_extent{};
+    mh_storage_policy_result  policy_result{};
+    policy_extent.operation = static_cast<uint32_t>(mh::storage_policy::operation::map_extent);
+    policy_extent.args[0]   = static_cast<uint32_t>(*v.map_width);
+    policy_extent.args[1]   = static_cast<uint32_t>(*v.map_height);
+    own.storage_policy_request(policy_extent, policy_result);
+    own.storage_policy(mh::storage_policy::operation::reset_loaded_roster);
+    order_tasks_adapter::publish_fresh_world(v, own);
     c.net_lockstep_peer_timing_reset();
     // mp:X3c: a new MP match starts the PENDING-admission log from zero. This is the per-match
     // reset point (the same call site that resets the lockstep peer-timing table; MP session start

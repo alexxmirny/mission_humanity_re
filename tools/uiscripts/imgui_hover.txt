@@ -121,5 +121,42 @@ present Player name
 settled Ok
 capture io2_playername
 
+# MODALKEY1: normalized owned-device packets must retain navigation identity
+# through native scan masking and the modal consumer. Keep the existing captures.
+rawfocus 1
+clickl Your name
+layout 00000409
+field name host
+rawkey 0x4b e0
+type 1
+field name hos1t
+rawkey 0x47 e0
+type 2
+field name 2hos1t
+rawkey 0x4f e0
+type 3
+field name 2hos1t3
+rawkey 0x4b e0
+rawkey 0x53 e0
+field name 2hos1t
+rawkey 0x4d e0
+type 4
+field name 2hos1t4
+# Old full-code journals have no E0 flag and must keep working.
+key 0xcb
+type 5
+field name 2hos1t54
+key 0xc7
+type 6
+field name 62hos1t54
+key 0xcf
+type 7
+field name 62hos1t547
+layout default
+settled Cancel
+clickl Cancel
+settled value:110
+log MODALKEY1 normalized and full-code navigation COMPLETE
+
 log imgui hover COMPLETE -- ImGui hover follows the game cursor and flips at the panel edge (+-1 game px, 1.5x); owned DirectInput: absolute exact, relative carried, E0 keys released on focus loss, click withheld under the open overlay, a raw click activated NETWORK GAME
 end

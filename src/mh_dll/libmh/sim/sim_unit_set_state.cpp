@@ -6,6 +6,7 @@
 // correct.
 //
 #include "sim/sim_unit_set_state.h"
+#include "state/host_events.h"
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -26,6 +27,7 @@ void unit_set_state(sim_store &own, uint16_t new_state) {
 void unit_set_state(uint16_t new_state) {
     sim_state st = state();
     detail::unit_set_state(st.own, new_state);
+    mh::state::emit_primary_terminal(*st.read.cur_player, *st.read.cur_index, new_state);
 }
 
 

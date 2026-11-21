@@ -49,9 +49,11 @@
 #include "mh_ini_gate.h" // RL2: the ship gate every ini read goes through
 #include <cstdarg>
 #include <cstring>
+#include <cstdlib>
 #include <stdint.h>
 
 #include "ui_panel_rows.h"
+#include "seams/ui_storage_controls.h"
 #include "video_mode_guards.h"
 #include "include/mh_run_context.h" // mh_proc_path
 #include "include/mh_log_sink.h"    // LOG1: async log sink
@@ -65,6 +67,7 @@
 namespace {
 
 namespace pr = mh::gfx::panel_rows;
+namespace sc = mh::ui::storage_controls;
 
 // ---- raw VAs with provenance (no manifest data entry: that would add a registry region and stale every recorded
 // fixture; precedent video_mode_guards.cpp) ------------------------------------------------------------------------
@@ -282,13 +285,15 @@ constexpr ref_site ROWSTATE_REFS[] = {
 
 // ---- state ------------------------------------------------------------------------------------------------------
 pr::plan        g_plan;
-uint8_t        *g_entries   = nullptr;
-int             g_entries_n = 0;
-int32_t        *g_gstart    = nullptr;
-pr::hud_widget *g_widgets   = nullptr;
-int32_t        *g_rowstate  = nullptr; // [slots] selection, then [slots] selected control group
-bool            g_armed     = false;
-bool            g_built     = false; // the boot build ran (widgets extended, body rects captured)
+uint8_t        *g_entries         = nullptr;
+int             g_entries_n       = 0;
+int             g_stock_entries_n = 0;
+int             g_auto_widget     = -1;
+int32_t        *g_gstart          = nullptr;
+pr::hud_widget *g_widgets         = nullptr;
+int32_t        *g_rowstate        = nullptr; // [slots] selection, then [slots] selected control group
+bool            g_armed           = false;
+bool            g_built           = false; // the boot build ran (widgets extended, body rects captured)
 int             g_body_stock_bottom[N_BODIES];
 
 // for the units-list remap thunk (asm reads them)
@@ -345,22 +350,23 @@ void __cdecl on_panel_init_tables() {
     // The icon table, fresh (the stock unpack also resets every operand the panels re-point).
     const int n  = pr::build_icon_table((const uint8_t *)ADDR_BLOB, BLOB_LEN, g_plan, g_entries, g_entries_n, g_gstart,
                                         g_plan.n_groups);
-    bool      ok = n == g_entries_n;
-    if (!ok) pr_log("; [video] panel rows: icon table rebuild FAILED (%d records, %d expected)", n, g_entries_n);
+    bool      ok = n == g_stock_entries_n;
+    if (!ok) pr_log("; [video] panel rows: icon table rebuild FAILED (%d records, %d expected)", n, g_stock_entries_n);
     if (ok && !pr::extend_widgets(g_widgets, g_plan.n_widgets, g_plan)) {
         pr_log("; [video] panel rows: the per-row widget ranges do not step by their row heights -- not extended");
         ok = false;
     }
     if (ok && !descriptors_match()) ok = false;
+    if (!ok || !sc::bind_panel_tables(g_entries, n, g_entries_n, g_gstart,
+                                      g_plan.n_groups, g_widgets, g_plan.n_widgets, g_auto_widget)) {
+        pr_log("; storage controls: required native compact panel contract refused");
+        mh_logq_flush(1000);
+        std::abort();
+    }
     for (int i = 0; i < N_BODIES; ++i) g_body_stock_bottom[i] = g_widgets[BODY_IDS[i]].bottom;
     // the registry region (view only) and every stock-address reader keep the stock contents
     memcpy((void *)ADDR_WIDGETS, g_widgets, (size_t)pr::STOCK_WIDGETS * sizeof(pr::hud_widget));
     g_built = true;
-    if (!ok) {
-        // the grown tables stay (a superset: the rows a 768 window shows sit where they always did); the lists cap
-        mh::video::set_panel_list_cap(pr::STOCK_ROWS_H, on_height);
-        return;
-    }
     apply_height(mh::video::panel_effective_height());
     static bool said = false;
     if (!said) {
@@ -477,11 +483,10 @@ namespace mh::video {
 bool install_panel_rows(const char *ini, int h_max) {
     if (!mh::en_build_ok() || g_armed) return g_armed;
     if (mh_ini_get_int("video", "panel_rows", 1, ini) == 0) {
-        pr_log("; [video] panel rows DISABLED ([video] panel_rows=0): side-panel lists keep the 768 rows");
-        return false;
+        pr_log("; [video] panel rows: list growth disabled; required storage controls retain relocated stock-height tables");
+        h_max = pr::STOCK_ROWS_H;
     }
     if (h_max <= 0) h_max = pr::H_FALLBACK;
-    if (h_max <= pr::STOCK_ROWS_H) return false; // nothing taller than the stock tables hold
     if (!panel_rows_p6_armed()) {
         pr_log("; [video] panel rows NOT armed -- the P6 row-count guard is not armed ([video] mode_guards=0?)");
         return false;
@@ -490,11 +495,14 @@ bool install_panel_rows(const char *ini, int h_max) {
         pr_log("; [video] panel rows NOT armed -- %d px needs more selection rows than the code can index", h_max);
         return false;
     }
-    g_entries_n = pr::build_icon_table((const uint8_t *)ADDR_BLOB, BLOB_LEN, g_plan, nullptr, 0, nullptr, 0);
-    if (g_entries_n < STOCK_ENTRIES) {
+    g_auto_widget = g_plan.n_widgets;
+    g_plan.n_widgets += sc::EXTRA_WIDGETS;
+    g_stock_entries_n = pr::build_icon_table((const uint8_t *)ADDR_BLOB, BLOB_LEN, g_plan, nullptr, 0, nullptr, 0);
+    if (g_stock_entries_n < STOCK_ENTRIES) {
         pr_log("; [video] panel rows NOT armed -- the icon group blob at %08x is not the stock one", (unsigned)ADDR_BLOB);
         return false;
     }
+    g_entries_n         = g_stock_entries_n + sc::EXTRA_ENTRIES;
     const int sel_slots = g_plan.slots[pr::G_SEL];
     g_entries           = (uint8_t *)alloc_zero((size_t)g_entries_n * pr::ENTRY_BYTES);
     g_gstart            = (int32_t *)alloc_zero((size_t)g_plan.n_groups * 4);

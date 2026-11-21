@@ -1,5 +1,5 @@
 //
-// hostapi_trap.cpp -- the selftest host table's TRAP, and nothing else.
+// hostapi_trap.cpp -- named required-entry traps and the executable-owned participant authority.
 //
 // WHY IT IS ITS OWN TU (fork F5I S2). The generated selftest host tables
 // (mh_hostapi_selftest.gen.cpp) give every REQUIRED entry a stub that calls mh_hostapi_trap(name)
@@ -17,6 +17,9 @@
 // this file from the directory that owns it.
 //
 #include "hostapi_selftest_support.h"
+#include "../mh_common/participant_boundary.h"
+#include "addr/mh_regions.gen.h"
+#include <cstring>
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,7 +30,35 @@ int  g_trap_count = 0;
 char g_last_trap[128];
 int  g_trap_capture = 0;
 
+
+mh::participant_boundary::authority g_participant;
+mh::participant_boundary::view      participant_world(void *) {
+    using namespace mh::state;
+    if (!is_bound(RID_STRAT_GAME_CLOCK) || !is_bound(RID_STRAT_SIM_STEP_INTERVAL) ||
+        !is_bound(RID_GAME_SESSION_MODE) || !live_base(RID_STRAT_GAME_CLOCK) ||
+        !live_base(RID_STRAT_SIM_STEP_INTERVAL) || !live_base(RID_GAME_SESSION_MODE) ||
+        live_size(RID_STRAT_GAME_CLOCK) < sizeof(double) ||
+        live_size(RID_STRAT_SIM_STEP_INTERVAL) < sizeof(double) || live_size(RID_GAME_SESSION_MODE) < 1)
+        return {0, 0, false, false};
+    return {*ptr<const double>(RID_STRAT_GAME_CLOCK), *ptr<const double>(RID_STRAT_SIM_STEP_INTERVAL),
+                 *ptr<const uint8_t>(RID_GAME_SESSION_MODE) == 3, true};
+}
 } // namespace
+
+void mh_hostapi_participant_initialize() {
+    static const bool initialized = g_participant.initialize(participant_world, nullptr);
+    if (!initialized) std::abort();
+}
+uint64_t mh_hostapi_participant_body_boundary(uint32_t op, uint64_t argument) {
+    return g_participant.boundary(op, argument);
+}
+int32_t mh_hostapi_participant_removal_admit(const void *data, uint32_t size) {
+    using namespace mh::participant_boundary;
+    if (!data || size != sizeof(request)) return int32_t(admission::invalid);
+    request r;
+    std::memcpy(&r, data, sizeof(r));
+    return int32_t(g_participant.admit(r));
+}
 
 void mh_hostapi_trap(const char *name) {
     ++g_trap_count;

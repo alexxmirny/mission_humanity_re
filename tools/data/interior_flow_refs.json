@@ -508,7 +508,7 @@
    "interior_inbound": []
   },
   "0x0046e76c": {
-   "name": "llm_unit_order_disembark_soldiers",
+   "name": "llm_unit_order_squad_split",
    "body_ranges": [
     [
      "0x0046e76c",
@@ -1809,6 +1809,12 @@
      "dest": "0x004d8b82",
      "from": "0x004d55ea",
      "from_fn": "llm_strat_ai_engage_partition_turret_candidates",
+     "type": "UNCONDITIONAL_JUMP"
+    },
+    {
+     "dest": "0x004d8b83",
+     "from": "0x004d5240",
+     "from_fn": "llm_strat_ai_engage_prune_unseen_candidates",
      "type": "UNCONDITIONAL_JUMP"
     }
    ]

@@ -26,10 +26,10 @@ process run directory test_ui hands over (the logs, and the capture_<name>.bmp f
                                     selected building / unit count are identical before and after every overlay click, drag
                                     and right click, while the control click on the bare world DOES change them
   check_bigmap.py --orders <run-dir>   mods:MM4C: the right click on the overlay gives the side minimap's order. Judged from
-                                    the net log's `; BIGMAP: order at (x,y) -> tile (c,r): <what> [group n, double click d, shift s]`
+                                    the net log's `; BIGMAP: order at (x,y) -> tile (c,r): <what> [group n, double click d, shift s, ctrl c]`
                                     lines (each tile re-derived from the `shown` geometry) and the video log's `; [goal] <label>`
                                     lines (loggoal: the selected unit's goal_x:goal_y): the unit's goal is the clicked tile after a
-                                    visible-tile move, a not-visible-tile move, the confirmed move (double click, Shift) and an
+                                    visible-tile move, a not-visible-tile move, the confirmed move (double click, Ctrl) and an
                                     attack; a control right click on the bare world gives the SAME goal; a placement is cancelled
                                     (armed -> 0) with no order; nothing selected gives no order
   check_bigmap.py --orders-off <run-dir>   [ui] bigmap_orders=0: no `order at` line, the unit's goal unchanged, the selection too
@@ -226,7 +226,7 @@ def click_log_problems(net, video, sel_checks=True, min_clicks=1):
 
 ORDER = re.compile(
     r"; BIGMAP: order at \((?P<x>-?\d+),(?P<y>-?\d+)\) -> tile \((?P<tc>\d+),(?P<tr>\d+)\): (?P<what>.*?) "
-    r"\[group (?P<group>\d+), double click (?P<dbl>\d+), shift (?P<shift>\d+)"
+    r"\[group (?P<group>\d+), double click (?P<dbl>\d+), shift (?P<shift>\d+), ctrl (?P<ctrl>\d+)"
 )
 GOAL = re.compile(r"; \[goal\] (?P<label>\w+) n=(?P<n>\d+) goals=(?P<goals>\S*)")
 BUILD = re.compile(r"; \[build\] (?P<label>\w+) armed=(?P<armed>\d+)")
@@ -264,12 +264,48 @@ def order_events(net):
     return ev
 
 
+def selection_problems(video):
+    """The real folded click workload: exact native rosters, not selected counts."""
+    rows = re.compile(
+        r"; \[sel\] (?P<label>qol_\w+|selected) cam=(?P<x>-?\d+),(?P<y>-?\d+) "
+        r"gest=\d+ btn=\d+ n=(?P<n>\d+) bldg=(?P<b>\d+) ids=(?P<ids>[\d,]*)"
+    )
+    selected = {}
+    out = []
+    for match in rows.finditer(video):
+        label = match["label"]
+        if label in selected:
+            out.append(f"duplicate selection observation {label}")
+            continue
+        ids = tuple(int(x) for x in match["ids"].split(",") if x)
+        if len(ids) != int(match["n"]) or len(ids) != len(set(ids)):
+            out.append(f"invalid selection roster {label}")
+        selected[label] = (int(match["x"]), int(match["y"]), int(match["b"]), ids)
+    for label, ids, camera in (
+        ("qol_single5", (5,), (1440, 1696)),
+        ("qol_plain", (2, 5), (1440, 1696)),
+        ("qol_seed2", (2,), (1440, 1696)),
+        ("qol_shift_before", (2,), (1440, 1504)),
+        ("qol_shift_union", (2, 5), (1440, 1504)),
+        ("qol_replace_offscreen", (5,), (1440, 1504)),
+        ("qol_ctrl_seed2", (2,), (1440, 1696)),
+        ("qol_ctrl_add5", (2, 5), (1440, 1696)),
+        ("qol_ctrl_remove5", (2,), (1440, 1696)),
+        ("qol_ctrl_double", (2,), (1440, 1696)),
+        ("selected", (5,), (1440, 1696)),
+    ):
+        expected = (*camera, 0, ids)
+        if selected.get(label) != expected:
+            out.append(f"{label}: {selected.get(label)!r}, expected {expected!r}")
+    return out
+
+
 def orders_problems(net, video):
     out = []
     ev = order_events(net)
     goals = goal_lines(video)
     armed = {m.group("label"): int(m.group("armed")) for m in BUILD.finditer(video)}
-    # the order script: 0 a, 1 b, 2+3 the two clicks of the double click, 4 e (Shift), 5 f (attack), 6 h (placement), 7 g (nothing)
+    # the order script: 0 a, 1 b, 2+3 the two clicks of the double click, 4 e (Ctrl), 5 f (attack), 6 h (placement), 7 g (nothing)
     if len(ev) != 8:
         return ["%d `; BIGMAP: order at` line(s), the script gives 8" % len(ev)]
     for i, o in enumerate(
@@ -316,12 +352,12 @@ def orders_problems(net, video):
                     % (label, got, o["tc"], o["tr"])
                 )
 
-    want(0, "a_overlay", "move (deferred)", dbl=0, shift=0)
-    want(1, "b_far", "move (deferred, tile not visible)", dbl=0, shift=0)
-    want(2, None, "move (deferred)", dbl=0, shift=0)
-    want(3, "d_double", "move (confirmed)", dbl=1, shift=0)
-    want(4, "e_shift", "move (confirmed)", dbl=0, shift=1)
-    want(5, None, "attack 0x40", dbl=0, shift=0)
+    want(0, "a_overlay", "move (deferred)", dbl=0, shift=0, ctrl=0)
+    want(1, "b_far", "move (deferred, tile not visible)", dbl=0, shift=0, ctrl=0)
+    want(2, None, "move (deferred)", dbl=0, shift=0, ctrl=0)
+    want(3, "d_double", "move (confirmed)", dbl=1, shift=0, ctrl=0)
+    want(4, "e_ctrl", "move (confirmed)", dbl=0, shift=0, ctrl=1)
+    want(5, None, "attack 0x40", dbl=0, shift=0, ctrl=0)
     # control: the bare world, the same tile as (a): the same goal as the overlay gave
     a, c = goal_of("a_overlay"), goal_of("c_control")
     if a is not None and c is not None and a != c:
@@ -330,7 +366,7 @@ def orders_problems(net, video):
         )
     # the attack: the goal is not the move before it, and the same building clicked on the bare world gives the same goal
     e, f, away, ctl = (
-        goal_of("e_shift"),
+        goal_of("e_ctrl"),
         goal_of("f_attack"),
         goal_of("f_away"),
         goal_of("f_attack_control"),
@@ -506,15 +542,20 @@ def orders_ship_problems(net, video):
             return None
         return g[0][1:]
 
-    for o, kind, label, shift in (
+    for o, kind, label, ctrl in (
         (ev[0], "move (deferred)", "a_overlay", 0),
         (ev[1], "move (deferred, tile not visible)", "b_far", 0),
-        (ev[2], "move (confirmed)", "e_shift", 1),
+        (ev[2], "move (confirmed)", "e_ctrl", 1),
     ):
-        if not o["what"].startswith(kind) or o["group"] != 1 or o["shift"] != shift:
+        if (
+            not o["what"].startswith(kind)
+            or o["group"] != 1
+            or o["shift"] != 0
+            or o["ctrl"] != ctrl
+        ):
             out.append(
-                "order at (%d,%d): `%s`, want `%s...` of 1 group, shift %d"
-                % (o["x"], o["y"], o["what"], kind, shift)
+                "order at (%d,%d): `%s`, want `%s...` of 1 group, shift 0 ctrl %d"
+                % (o["x"], o["y"], o["what"], kind, ctrl)
             )
         got = goal_of(label)
         if got is not None and got != (o["tc"], o["tr"]):
@@ -572,26 +613,26 @@ def orders_selftest(fails):
     def tile(x, y):  # pixel -> tile with this geometry
         return ((x - 208) // 7 + 26) % 64, ((y - 144) // 7 + 32) % 64
 
-    rows = [  # (x, y, what, group, double click, shift)
-        (407, 357, "move (deferred)", 1, 0, 0),
-        (230, 170, "move (deferred, tile not visible)", 1, 0, 0),
-        (350, 430, "move (deferred)", 1, 0, 0),
-        (350, 430, "move (confirmed)", 1, 1, 0),
-        (414, 357, "move (confirmed)", 1, 0, 1),
-        (456, 371, "attack 0x40 target 3 side 1", 1, 0, 0),
-        (414, 357, "cancel placement, no order", 0, 0, 0),
-        (407, 357, "no order (nothing selected)", 0, 0, 0),
+    rows = [  # (x, y, what, group, double click, shift, ctrl)
+        (407, 357, "move (deferred)", 1, 0, 0, 0),
+        (230, 170, "move (deferred, tile not visible)", 1, 0, 0, 0),
+        (350, 430, "move (deferred)", 1, 0, 0, 0),
+        (350, 430, "move (confirmed)", 1, 1, 0, 0),
+        (414, 357, "move (confirmed)", 1, 0, 0, 1),
+        (456, 371, "attack 0x40 target 3 side 1", 1, 0, 0, 0),
+        (414, 357, "cancel placement, no order", 0, 0, 0, 0),
+        (407, 357, "no order (nothing selected)", 0, 0, 0, 0),
     ]
 
     def net_text(mut=None):
         t = geom
-        for i, (x, y, what, grp, d, sh) in enumerate(rows):
+        for i, (x, y, what, grp, d, sh, ct) in enumerate(rows):
             if mut == "kind%d" % i:
                 what = "move (deferred)" if "confirmed" in what else "move (confirmed)"
             c, r = tile(x, y)
             t += (
-                "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): %s [group %d, double click %d, shift %d,"
-                " dt 1 window 93]\n" % (x, y, c, r, what, grp, d, sh)
+                "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): %s [group %d, double click %d, shift %d, ctrl %d,"
+                " dt 1 window 93]\n" % (x, y, c, r, what, grp, d, sh, ct)
             )
         return t
 
@@ -605,9 +646,7 @@ def orders_selftest(fails):
             + goal("b_far", b)
             + goal("c_control", b if mut == "control" else a)
         )
-        v += (
-            goal("d_double", d) + goal("e_shift", e) + goal("f_attack", e if mut == "attack" else f)
-        )
+        v += goal("d_double", d) + goal("e_ctrl", e) + goal("f_attack", e if mut == "attack" else f)
         v += goal("f_away", a) + goal("f_attack_control", (40, 40) if mut == "ctlfar" else f)
         v += "; [build] h_armed armed=%d type=21\n; [build] h_cancelled armed=%d type=21\n" % (
             0 if mut == "unarmed" else 21,
@@ -642,14 +681,14 @@ def orders_selftest(fails):
         True,
     )
     ship_net = geom
-    for x, y, what, grp, d, sh in (rows[0], rows[1], rows[4]):
+    for x, y, what, grp, d, sh, ct in (rows[0], rows[1], rows[4]):
         c, r = tile(x, y)
         ship_net += (
-            "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): %s [group %d, double click %d, shift %d,"
-            " dt 1 window 93]\n" % (x, y, c, r, what, grp, d, sh)
+            "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): %s [group %d, double click %d, shift %d, ctrl %d,"
+            " dt 1 window 93]\n" % (x, y, c, r, what, grp, d, sh, ct)
         )
     a, b, e = tile(407, 357), tile(230, 170), tile(414, 357)
-    ship_vid = goal("a_overlay", a) + goal("b_far", b) + goal("c_control", a) + goal("e_shift", e)
+    ship_vid = goal("a_overlay", a) + goal("b_far", b) + goal("c_control", a) + goal("e_ctrl", e)
     for label, net, vid, want in (
         ("ship good", ship_net, ship_vid, False),
         (
@@ -672,7 +711,7 @@ def orders_selftest(fails):
     for x, y in ((250, 235), (300, 200)):
         c, r = tile(x, y)
         mp_net += (
-            "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): move (deferred) [group 1, double click 0, shift 0,"
+            "[00:00:00.000] ; BIGMAP: order at (%d,%d) -> tile (%d,%d): move (deferred) [group 1, double click 0, shift 0, ctrl 0,"
             " dt 1 window 93]\n" % (x, y, c, r)
         )
     last = tile(300, 200)
@@ -826,7 +865,10 @@ def main(argv):
             if len(argv) != 1:
                 print(__doc__)
                 return 2
-            p = fn(read_logs(argv[0]), read_video(argv[0]))
+            video = read_video(argv[0])
+            p = fn(read_logs(argv[0]), video)
+            if flag in ("--orders", "--orders-ship"):
+                p.extend(selection_problems(video))
             for line in p:
                 print("check_bigmap: " + line)
             if not p:

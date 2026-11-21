@@ -32,7 +32,9 @@
 // They collapse into one traversal AT ownership, which is the point, not a property we already have.
 //
 #pragma once
+#include <bit>
 #include <cstdint>
+#include <cstring>
 
 namespace mh::state {
 
@@ -171,23 +173,36 @@ struct hash_sink final : state_sink {
         uint32_t       i = 0;
         // Finish a block left over from the previous call.
         while (filled && i < n) {
-            block |= (uint64_t)b[i++] << (filled * 8);
+            const uint32_t byteword = uint32_t(b[i++]) << ((filled & 3u) * 8u);
+            if (filled < 4) block |= byteword;
+            else block |= uint64_t(byteword) << 32;
             if (++filled == 8) {
                 mix(block);
                 block  = 0;
                 filled = 0;
             }
         }
-        // Whole blocks. Byte-wise assembly rather than a cast: the source is an arbitrary address
-        // inside a game struct, so it is not guaranteed 8-aligned, and a misaligned 64-bit read is
-        // a portability bug waiting for a compiler that cares.
-        for (; i + 8 <= n; i += 8) {
-            uint64_t w = 0;
-            for (uint32_t k = 0; k < 8; ++k) w |= (uint64_t)b[i + k] << (k * 8);
-            mix(w);
+        // Keep a disjoint bulk stream's accumulator local; no callback observes it mid-call.
+        // Overlapping input retains per-word publication because a write may change later input.
+        if (n - i >= 16) {
+            const uintptr_t source   = reinterpret_cast<uintptr_t>(p);
+            const uintptr_t object   = reinterpret_cast<uintptr_t>(this);
+            const bool      disjoint = source >= object ? source - object >= sizeof(*this)
+                                                        : object - source >= n;
+            if (disjoint) {
+                uint64_t accumulator = h;
+                for (; n - i >= 8; i += 8) accumulator = mixed(accumulator, load_word(b + i));
+                h = accumulator;
+            }
         }
+        for (; n - i >= 8; i += 8) mix(load_word(b + i));
         // Keep the tail for the next call.
-        for (; i < n; ++i) block |= (uint64_t)b[i] << (filled++ * 8);
+        for (; i < n; ++i) {
+            const uint32_t byteword = uint32_t(b[i]) << ((filled & 3u) * 8u);
+            if (filled < 4) block |= byteword;
+            else block |= uint64_t(byteword) << 32;
+            ++filled;
+        }
     }
 
     // The stream may END mid-block, so the tail has to be folded before `h` is read. Callers that
@@ -202,10 +217,25 @@ struct hash_sink final : state_sink {
     }
 
 private:
-    void mix(uint64_t w) {
-        h ^= w;
-        h *= 1099511628211ULL;
+    static uint64_t load_word(const uint8_t *p) {
+        uint64_t word = 0;
+        if constexpr (std::endian::native == std::endian::little) {
+            std::memcpy(&word, p, sizeof(word));
+        } else {
+            for (uint32_t k = 0; k < 8; ++k) word |= uint64_t(p[k]) << (k * 8);
+        }
+        return word;
     }
+    static uint64_t mixed(uint64_t value, uint64_t word) {
+        value ^= word;
+        // 0x100000001b3 = 2^40 + 435. Compute the same product modulo 2^64
+        // with 32-bit limbs, avoiding x86's general wide-multiply helper.
+        const uint32_t low     = uint32_t(value);
+        const uint64_t product = uint64_t(low) * 0x1b3u;
+        const uint32_t high    = uint32_t(product >> 32) + uint32_t(value >> 32) * 0x1b3u + (low << 8);
+        return (uint64_t(high) << 32) | uint32_t(product);
+    }
+    void mix(uint64_t word) { h = mixed(h, word); }
 #else
     void raw(const void *p, uint32_t n) override {
         const uint8_t *b = static_cast<const uint8_t *>(p);

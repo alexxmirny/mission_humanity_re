@@ -1,0 +1,12 @@
+# Which of the 24 facings (1 = first sprite of the unit's sheet) the wiki shows for a unit.
+# Resolution order: units[<cfg name>] > first matching category > default.
+# Review the choice on tmp/wiki_art/review/units_*.png (picked facing has a red frame).
+# Colour sets of soldiers (frames 64-191 of the 192-frame sheet) are per-planet map skins
+# (camouflage), not unit data: the wiki always draws set 0 (see sprites.py facing_indices).
+default: 22 # vehicles, planes, helicopters (user review 2026-10-26)
+categories:
+  infantry: # soldiers and commandos
+    facing: 10
+    soldier_type: [SOLDIERTYPE_SOLDIER, SOLDIERTYPE_COMMANDO]
+units: {}
+#  N_alien_Example: 12

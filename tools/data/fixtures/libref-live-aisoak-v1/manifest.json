@@ -4,15 +4,15 @@
  "version": 1,
  "steps": 5000,
  "provenance": {
-  "commit": "0e68df39981424033315936edac220309aa9e067",
-  "recorded": "2026-10-24",
+  "commit": "ef7934da972c31f3e4c98e16899dcd85e385d91f",
+  "recorded": "2026-11-10",
   "scenario_script": "sp_soak.txt",
   "synth_seed": 20260912,
-  "host": "local lane ui_libref_rec (headless, isolated desktop mh_rig; scratch lane 96, port 6696), single peer",
-  "peers": "1 (8-way all-AI: every slot an AI, including the converted local slot; no rig VMs)",
-  "run_dir": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-54-26Z_menu_solo",
-  "build": "0.0.0-dev+0e68df39",
-  "stream_from_run": "../../../workdir/mh_lanes/ui_libref_rec/logs/2026-10-24T01-54-26Z_menu_solo"
+  "host": "rc21 finalF uncommitted ENv425 continuous flight/shared origin/physical lease; native retirement scope fixed: freshness is not route authority; original Native fullcampaign65unchangedregions+allclockchannels proven; actual fixture reference is shipping bound hosted, independent native oracle is separate; source receipt F:\\repo\\mh_decompile.rep\\tmp\\rc21_patrol\\fixtures_finalF_20261110\\source_receipt.json",
+  "peers": "single local peer; eight AI slots",
+  "run_dir": "tmp/rc21_patrol/fixtures_finalF_20261110/runs/libref-live-aisoak-v1/record",
+  "build": "0.0.0-dev+ef7934da",
+  "stream_from_run": "tmp/rc21_patrol/fixtures_finalF_20261110/runs/libref-live-aisoak-v1/record"
  },
  "compare": {
   "channel": "state",
@@ -80,47 +80,50 @@
    "game_time_delta",
    "game_speed",
    "player_resources",
-   "progress"
+   "progress",
+   "storage_policy",
+   "order_tasks",
+   "order_campaign"
   ]
  },
  "step0": {
-  "world_content_hash": "AA2AF65F60A18860",
-  "world_schema_fp": "AEFE4E28",
-  "lockstep_combined": "4F3A4FB48DD7A7A3",
-  "lockstep_state": "9374267CD33534B7",
-  "game_clock": "3F947AE147AE147B",
+  "world_content_hash": "678595F6F7267D83",
+  "world_schema_fp": "7EAA1059",
+  "lockstep_combined": "A1274067152C89FD",
+  "lockstep_state": "4D7B32EFD7282736",
+  "game_clock": "3F9111276FB08000",
   "step": 1,
   "mask_flags": 7,
   "hash_sink_fp": "68AADCE3",
-  "hash_manifest_fp": "6451B93B",
-  "hash_slice_count": 63,
-  "hash_input_epoch": 1,
+  "hash_manifest_fp": "95DC868F",
+  "hash_slice_count": 66,
+  "hash_input_epoch": 2,
   "hash_kind": 1
  },
  "artifacts": {
   "clock": {
    "file": "clock.bin.zz",
    "raw_bytes": 40000,
-   "zlib_bytes": 20667,
-   "sha256_raw": "d321e317a3f6e54a9f18091d020e674d6305ca7a5e4419838a75d26a2c639c9c"
+   "zlib_bytes": 27966,
+   "sha256_raw": "bfcf3e8df9a8367bc296eab17a84449a67b88da8c047bac91e8da246a60de39c"
   },
   "world": {
    "file": "world.bin.zz",
-   "raw_bytes": 8323576,
-   "zlib_bytes": 522433,
-   "sha256_raw": "03380f6ebf365698b593825afbfc7f5f1fd859da024e1b62cd8b107429989a60"
+   "raw_bytes": 15554146,
+   "zlib_bytes": 528513,
+   "sha256_raw": "8e2c0db186e6e104100e10ea5446f1249e4f95b4c54d60abf5745ae71fb6b5e1"
   },
   "hash_steps": {
    "file": "hash_steps.txt.zz",
    "raw_bytes": 278893,
-   "zlib_bytes": 140259,
-   "sha256_raw": "c508bf2537dcb5c9844a9f5c40a2fc8df38da0e9faa01c5b9061a832d26c9810"
+   "zlib_bytes": 152076,
+   "sha256_raw": "db7753a359db14053a4f03627106fd6e08f89eb6370d38881303fab2268f5b6b"
   },
   "hash_regions": {
    "file": "hash_regions.txt.zz",
-   "raw_bytes": 5388893,
-   "zlib_bytes": 821866,
-   "sha256_raw": "9af02bd9f0d0f67777a91fae50859877ba55d3a0d3c49a5d5d5b13b939cdba8e"
+   "raw_bytes": 5643893,
+   "zlib_bytes": 789543,
+   "sha256_raw": "259860e678f1d98faf56c41c47db85902ce86ab65512695c7ea0385cbc3e82a3"
   }
  },
  "live_contract": {
@@ -129,6 +132,7 @@
    "synth_move": 0,
    "order_mode": 0,
    "replay_suppress_enqueue": 0,
+   "replay_ai_off": 0,
    "pin_wallclock": 1,
    "pin_fpu": 1,
    "fixed_step": 0,
@@ -141,13 +145,14 @@
   },
   "scenario_script": "sp_soak.txt",
   "semantics": [
-   "NO ORDER STREAM EXISTS IN THIS FIXTURE, and that is the claim being made. The replay fixtures inject a recorded order stream and suppress the sim's own enqueues, which structurally covers over the enqueue/issue/dispatch loop; here the in-sim AI is the SOLE order source. A standalone host must run that loop for real and still track the recording bit-for-bit.",
+   "NO ORDER STREAM EXISTS IN THIS FIXTURE. The in-sim AI is the SOLE order source; no HASH or ENTRY replacement runs. The standalone host must reproduce this live enqueue/issue/dispatch loop bit-for-bit.",
    "all_ai=1: every player slot is an AI, including the local one (a pre-landing status_flags flip, so it spawns through llm_strat_spawn_ai_base like any computer player rather than ticking with no home tile).",
    "synth_move=0: the harness's synthetic workload is EXPLICITLY disarmed. It is the soak's own default here, but it is stated because a workload order would be a second order source and would make the sole-source claim false -- which is precisely how the replay fixture's step-5000 residual happened.",
-   "replay_suppress_enqueue=0: suppression is OFF. The standalone host must therefore run WITHOUT --no-suppress-enqueue's opposite -- i.e. it must pass --no-suppress-enqueue, since that host suppresses by default for the replay contract.",
+   "replay_suppress_enqueue=0: suppression is OFF, as in faithful MHOR v2 replay.",
    "clock_record=1 with order_mode=0: the clock track is written WITHOUT an order stream. That combination did not exist before 2026-09-11 -- clock_record was gated on order_mode==1, so the only way to get a clock was to also produce the order stream this fixture forbids. order_mode==1 still implies clock_record, so every older recording path is byte-unchanged (proven: a 300-step sp_det record before and after the split produced byte-identical mh_clock.bin and mh_orders.bin).",
    "pin_strat_seed=1, strat_seed=20260912: the pinned scenario seed, carried literally. MEASURED INERT for this scenario -- five 200-step runs (two unpinned minutes apart, plus strat_seed 7, 52 and 20260912) are bit-identical on `state` and all 61 region columns -- because the knob's documented effect is the CAMPAIGN landing roll and this is an 8-way skirmish from the default start. The pin is kept as anti-cherry-picking provenance, not as a determinism mechanism.",
-   "the clock track is a legitimate carried INPUT: time is an input, decisions are not. Nothing else about the run is fed to the standalone host."
+   "the clock track is a legitimate carried INPUT: time is an input, decisions are not. Nothing else about the run is fed to the standalone host.",
+   "net: the [net] keys the recording ran under (checked against its effective_config.json at pack). They set the step regime -- sim_step_ms is SIM_STEP_INTERVAL, and rig_fixed_step_loop=1 runs sim_tick's mode-3 fixed-step loop in single-player (one step per frame, delta = interval exactly). `replay` passes them back as --net-extra."
   ],
   "record_flags": {
    "all_ai": 1,
@@ -165,7 +170,17 @@
    "strat_seed": 20260912,
    "all_ai_observer": -1,
    "gameover_step": 100,
-   "ai_probe_step": 200
+   "ai_probe_step": 200,
+   "seed_mode": 2,
+   "hash_kind": 1,
+   "replay_ai_off": 0
+  },
+  "net": {
+   "sp_sim_step_ms": 0,
+   "improved_movement": 0,
+   "group_movement": 0,
+   "improved_combat": 0,
+   "soldier_origin_anim_fix": 0
   }
  },
  "fidelity": {

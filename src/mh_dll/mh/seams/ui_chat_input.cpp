@@ -1,3 +1,5 @@
+#include "seams/strategic_input_native.h"
+#include "seams/strat_pre_input.h"
 //
 // seams/ui_chat_input.cpp -- mp:F3 + mp:MP-LANG: typed input and displayed text, language-agnostic in MP.
 //
@@ -141,9 +143,10 @@ constexpr int       LOBBY_CHAT_CAP_MAX     = 0x40;        // the block's own [2]
 // path runs only when our return address is the pump's call site AND the pump's own (at [EBP+4]: the
 // pump opens `push ebp; mov ebp,esp`, and the U24 trampoline replays exactly that prologue) lies in
 // the tick. The pending widget alone is not enough: it can outlive the edit.
-constexpr uintptr_t RET_IN_PUMP  = 0x004b52c3u;
-constexpr uintptr_t EDIT_TICK_LO = 0x004bbd30u; // llm_ui_edit_field_modal_tick
-constexpr uintptr_t EDIT_TICK_HI = 0x004bc089u; // its end (exclusive)
+constexpr uintptr_t RET_IN_PUMP          = 0x004b52c3u;
+constexpr uintptr_t ADDR_MODAL_KEY_LATCH = 0x006542cau; // the modal pump's private dequeued event
+constexpr uintptr_t EDIT_TICK_LO         = 0x004bbd30u; // llm_ui_edit_field_modal_tick
+constexpr uintptr_t EDIT_TICK_HI         = 0x004bc089u; // its end (exclusive)
 // H5: llm_ui_text_wrap_find_break_ansi -- ONE caller, the edit field's draw (0x004c1479). It widens the
 // buffer into the scratch at 0x00660d24 and then treats a BYTE offset as a UNIT index twice: the fit's
 // end pointer is `scratch + (end - text) * 2`, and the fitted count it stores is read back by the draw
@@ -185,6 +188,13 @@ long g_lobby_edits   = 0; // backspace/delete/left/right H1 did itself across a 
 long g_lobby_full    = 0; // lobby characters refused whole for lack of room
 long g_lobby_scrolls = 0; // H5 line fits computed for the UTF-8 lobby field (logged, first few)
 
+// Existing opt-in keyboard tracing also records the downstream native consumer.
+// Bound the entire process stream so first-failure retention keeps its prefix.
+bool     g_key_trace       = false;
+unsigned g_key_trace_rows  = 0;
+unsigned g_key_trace_pop   = 0;
+unsigned g_key_trace_drain = ~0u;
+
 char          g_log[MAX_PATH];
 unsigned long g_log_gen = 0;
 
@@ -204,6 +214,34 @@ void ci_log(const char *fmt, ...) {
         line[n]   = 0;
     }
     mh_logq_write(g_log, line, lstrlenA(line));
+}
+
+bool key_trace_row() {
+    if (!g_key_trace || g_key_trace_rows >= 1024) return false;
+    if (++g_key_trace_rows == 1024) {
+        ci_log("; [keytrace] trace exhausted after1023 records; later events not observed");
+        return false;
+    }
+    return true;
+}
+
+void trace_key(const char *stage, uint32_t scan, uint32_t type, uint32_t character,
+               uintptr_t caller, uint32_t timestamp) {
+    if (!key_trace_row()) return;
+    ci_log("; [keytrace] %u %s sc=%x type=%x ch=%x caller=%08x ts=%u mode=%u chat=%u active=%u q=%d r/w=%u/%u",
+           g_key_trace_rows, stage, scan, type, character, unsigned(caller), timestamp,
+           unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE), *(volatile uint32_t *)0x005d01d8u,
+           *(volatile uint32_t *)ADDR_CHAT_ACTIVE, *(volatile int32_t *)ADDR_CHAT_WRITE_POS,
+           *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_READ_IDX,
+           *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_WRITE_IDX);
+}
+
+void trace_before_strategic_input() {
+    const int n = *(volatile int32_t *)ADDR_CHAT_WRITE_POS;
+    if (n > 0)
+        trace_key("pre-reset-pending",
+                  n <= CHAT_Q_MAX ? *(volatile uint8_t *)(ADDR_CHAT_LINE + CHAT_Q_OFF) : 0,
+                  0, 0, 0x00441b88u, 0);
 }
 
 UINT resolved_cp() {
@@ -394,12 +432,42 @@ void lobby_insert(EditBlock *b, uint32_t cp) {
 //
 // The original, line for line, with ToAscii replaced by the codec -- plus the MP-LANG name rule and the
 // lobby chat field's UTF-8 path. Layout:
-//   key_event[0] = the set-1 scancode (written by llm_input_key_dequeue; E0 keys carry 0x80)
-//   key_event[1] = event type: 0x100 press, 0x80 release (the pump's publish reads bytes +4/+5)
+//   key_event[0] = set-1 scan, masked by native producers; old full-code fixtures retain bit 7
+//   key_event[1] = 0x100 press / 0x80 release, with 0x200 for E0
 //   key_event[2] = the resolved character (what every caller reads)
 // `outer_ret` is the PUMP's return address when the pump is the caller, else 0 (see RET_IN_PUMP).
+//
+// Native producers split E0 from the scan, but modal navigation compares full codes.
+// Restore only the navigation cluster in the private modal latch, on both edges.
+// The shared ring keeps strategic numpad aliases; E0 Enter stays the modal Enter code.
+UINT modal_navigation_scan(UINT sc, uint32_t event_type) {
+    if (sc >= 0x80u || !(event_type & 0x200u)) return sc;
+    switch (sc) {
+        case 0x47u: // Home
+        case 0x48u: // Up
+        case 0x49u: // Page Up
+        case 0x4bu: // Left
+        case 0x4du: // Right
+        case 0x4fu: // End
+        case 0x50u: // Down
+        case 0x51u: // Page Down
+        case 0x52u: // Insert
+        case 0x53u: // Delete
+            return sc | 0x80u;
+        default:
+            return sc;
+    }
+}
 void key_dequeue_translate(uint32_t *key_event, uintptr_t outer_ret) {
     mh::call::llm_input_key_dequeue((uint32_t)(uintptr_t)key_event);
+    if (g_key_trace) trace_key("translated-pop", key_event[0], key_event[1], key_event[2], outer_ret, key_event[8]);
+    if (outer_ret != 0 && reinterpret_cast<uintptr_t>(key_event) == ADDR_MODAL_KEY_LATCH &&
+        mh::seams::strategic_input_native::modal_record(key_event, outer_ret)) {
+        if (g_key_trace) trace_key("modal-filtered", key_event[0], key_event[1], key_event[2], outer_ret, key_event[8]);
+        return;
+    }
+    if (outer_ret != 0 && reinterpret_cast<uintptr_t>(key_event) == ADDR_MODAL_KEY_LATCH)
+        key_event[0] = modal_navigation_scan(key_event[0], key_event[1]);
     const UINT sc = key_event[0];
 
     // THE LOBBY CHAT FIELD, typed as UTF-8. Only a PRESS latched by the pump inside the edit tick is
@@ -468,6 +536,7 @@ void key_dequeue_translate(uint32_t *key_event, uintptr_t outer_ret) {
         if (press) ++g_name_rejected;
         key_event[2] = 0;
     }
+    if (g_key_trace) trace_key("translated", key_event[0], key_event[1], key_event[2], outer_ret, key_event[8]);
 }
 
 // __watcall(uint* in EAX) -> void, plain `ret` (no stack arguments to clean). The pump's own return
@@ -727,6 +796,14 @@ int control_repeat(unsigned sc) {
 void on_chat_drain() {
     volatile int32_t *wp = (volatile int32_t *)ADDR_CHAT_WRITE_POS;
     int               n  = *wp;
+    if (g_key_trace && g_key_trace_drain != g_key_trace_pop) {
+        g_key_trace_drain = g_key_trace_pop;
+        if (key_trace_row())
+            ci_log("; [keytrace] %u drain pop=%u q=%d mode=%u chat=%u active=%u hkl=%08x tid=%u handled=%ld/%ld",
+                   g_key_trace_rows, g_key_trace_pop, n, unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE),
+                   *(volatile uint32_t *)0x005d01d8u, *(volatile uint32_t *)ADDR_CHAT_ACTIVE,
+                   unsigned(uintptr_t(GetKeyboardLayout(0))), GetCurrentThreadId(), g_chat_chars, g_chat_full);
+    }
     if (n <= 0) return;
     if (n > CHAT_Q_MAX) n = CHAT_Q_MAX; // the producers bound this; a corrupt count must not read past
 
@@ -744,6 +821,10 @@ void on_chat_drain() {
     for (int i = 0; i < n; ++i) {
         const unsigned sc = q[i];
         const uint32_t cp = sc_is_typewriter(sc) ? translate_sc(sc, st) : 0;
+        if (key_trace_row())
+            ci_log("; [keytrace] %u decode sc=%x cp=%x held=%u/%u/%u hkl=%08x tid=%u",
+                   g_key_trace_rows, sc, cp, unsigned(st[VK_SHIFT]), unsigned(st[VK_CONTROL]), unsigned(st[VK_MENU]),
+                   unsigned(uintptr_t(GetKeyboardLayout(0))), GetCurrentThreadId());
         if (cp) {
             char bytes[4];
             int  nb = 0;
@@ -844,12 +925,20 @@ long  g_keyup_saved  = 0;       // arrow key-UPs applied to a latch before a non
 long  g_keyup_logged = 0;
 
 void __cdecl on_key_pop(uintptr_t caller) {
-    if (caller >= ADDR_STRAT_IN && caller < STRAT_IN_END) return; // the stock ladder clears its own latch
     const uint32_t r = *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_READ_IDX & 0x7f;
     const uint32_t w = *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_WRITE_IDX & 0x7f;
     if (r == w) return; // empty: the primitive pops nothing
     const auto *ev = (const mh::game::mh_llm_input_key_event *)(mh::addr::_G_LLM_INPUT_KEY_EVENTS +
                                                                 (size_t)r * sizeof(mh::game::mh_llm_input_key_event));
+    if (g_key_trace) {
+        ++g_key_trace_pop;
+        trace_key("raw-pop", ev->scancode, ev->event_type, 0, caller, ev->timestamp);
+    }
+    mh::seams::strategic_input_native::observe_dequeue(reinterpret_cast<const uint32_t *>(ev), caller);
+    // Semantic ownership counts aliases and F8/F9, including non-strategic drains. Raw U48
+    // clearing would incorrectly stop a remapped action or its still-held alternate key.
+    if (mh::seams::strategic_input_native::observing()) return;
+    if (caller >= ADDR_STRAT_IN && caller < STRAT_IN_END) return;
     if ((ev->event_type & 0x100) || !(ev->event_type & 0x80)) return; // UP events only
     uintptr_t latch = 0;
     switch (ev->scancode & 0x7f) {
@@ -918,12 +1007,36 @@ bool normalize_name_global(uintptr_t addr, const char *placeholder, const char *
 
 } // namespace
 
+bool mh::seams::chat_input_trace::enabled() { return g_key_trace && g_key_trace_rows < 1024; }
+
+void mh::seams::chat_input_trace::main_record(uint32_t scan, uint32_t type, uint32_t character,
+                                              uint32_t timestamp, const uint32_t *event,
+                                              bool discard_valid, bool discarded) {
+    if (!event || !key_trace_row()) return;
+    ci_log("; [keytrace] %u main-filtered pop=%u in=%x/%x/%x/%u out=%x/%x/%x/%u discard=%u/%u mode=%u chat=%u active=%u q=%d r/w=%u/%u",
+           g_key_trace_rows, g_key_trace_pop, scan, type, character, timestamp,
+           event[0], event[1], event[2], event[8], unsigned(discard_valid), unsigned(discarded),
+           unsigned(*(volatile uint8_t *)mh::addr::_G_LLM_GAME_MODE),
+           *(volatile uint32_t *)0x005d01d8u, *(volatile uint32_t *)ADDR_CHAT_ACTIVE,
+           *(volatile int32_t *)ADDR_CHAT_WRITE_POS,
+           *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_READ_IDX,
+           *(volatile uint32_t *)mh::addr::_G_LLM_INPUT_KEY_WRITE_IDX);
+}
+
 extern "C" int MH_ChatInput_Install(void) {
     if (!mh::en_build_ok()) return 0; // EN-only
     if (g_armed) return 1;
 
     char ini[MAX_PATH];
     mh::cfgdir::ini_path(ini); // RL3: <config dir>mh_net.ini
+    g_key_trace = mh_ini_get_int("input", "key_trace", 0, ini) != 0;
+    if (!g_key_trace && mh_ini_get_int("uitest", "enable", 0, ini) != 0) {
+        char script[64];
+        mh::config::read_ini_string("uitest", "script", "", script, sizeof(script), ini);
+        g_key_trace = script[0] != '\0';
+        if (g_key_trace)
+            ci_log("; [keytrace] scripted UI consumer trace enabled (shipping default remains off)");
+    }
 
     char buf[64];
     mh::config::read_ini_string("input", "codepage", "acp", buf, sizeof(buf), ini); // TL-HARN4
@@ -1014,7 +1127,8 @@ extern "C" int MH_ChatInput_Install(void) {
 
     // H7 (mp:U48): default ON -- the fix is the shipped behaviour; `[input] scroll_keyup_rescue=0` is the
     // negative arm (retail: the overlay's chat pump discards an arrow key-up and the scroll latch sticks).
-    if (mh_ini_get_int("input", "scroll_keyup_rescue", 1, ini) != 0) {
+    if (mh::seams::strategic_input_native::observing() ||
+        mh_ini_get_int("input", "scroll_keyup_rescue", 1, ini) != 0) {
         if (install_trampoline(ADDR_KEY_POP, (void *)key_pop_detour, &g_tramp_pump, 6,
                                mh::hook::entry_claim::exclusive, "the U48 arrow key-up rescue", KEY_POP_ENTRY))
             ci_log("; [input] U48 armed -- an arrow key-up a non-strategic drain pops (stall overlay / menu frame) "
@@ -1053,13 +1167,20 @@ extern "C" int MH_ChatInput_Install(void) {
     g_lobby_utf8 = g_chat_utf8 && h1 && g_wrap_armed && h6;
 
     g_armed = (g_hooks > 0);
+    if (g_key_trace) {
+        const bool observed = mh::seams::strat_pre_input_add(trace_before_strategic_input,
+                                                             "the opt-in chat queue observation");
+        ci_log("; [keytrace] pre-input observation %s",
+               observed ? "ARMED (before native queue reset)" : "REFUSED; trace is partial");
+    }
     ci_log("; [input] chat/text codec armed (%d/6 hooks) -- chat %s, lobby chat field %s; other text codepage %u "
            "(%s), ACP %u, layout %08x",
            g_hooks, g_chat_utf8 ? "UTF-8 (MP-LANG)" : "LEGACY 8-bit ([input] chat_legacy_codepage=1)",
            g_lobby_utf8 ? "UTF-8" : "local codepage", resolved_cp(),
            g_cp_pinned ? "PINNED by [input] codepage" : "process default", GetACP(),
            (unsigned)(uintptr_t)GetKeyboardLayout(0));
-    return g_armed ? 1 : 0;
+    // A semantic keyboard cannot run without its one shared dequeue observer and modal source.
+    return g_armed && g_tramp_pump && h1 ? 1 : 0;
 }
 
 extern "C" unsigned int MH_ChatInput_Codepage(void) { return resolved_cp(); }

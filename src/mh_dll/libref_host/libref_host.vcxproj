@@ -29,6 +29,7 @@
   <ItemGroup>
     <ClCompile Include="dispatch_selftest.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="storage_policy_save_host.cpp" />
     <!-- F4D-PRE (ruling Q5): the VA marshalling thunks are PER-IMAGE now, not part of the archive.
          addr\mh_calls.gen.cpp left libmh.vcxproj's roster so its 19 `mh::call::detail::s_*` shapes
          stop counting as libmh export contract; the roster still REFERENCES a handful of them

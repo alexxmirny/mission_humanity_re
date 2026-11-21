@@ -1,0 +1,72 @@
+# TILESET1: same-process Alpha/Beta map switch; same title/TLO/player count, distinct path/content/description.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+clickl Join game
+present Network players
+present ALPHA MAP DESCRIPTION
+capture tileset_latch_alpha_client
+signal lobby
+settled Cancel
+
+absent Network players
+gamemode 2
+gameclock 3000
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit
+
+awaitsignal hostquit
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+present Internet server
+settled Internet server
+clickl Internet server
+present Server address
+settled Connect
+clickl Connect
+sessions 1
+settled Join game
+awaitsignal rehosted
+clickl Join game
+present Network players
+occ 2
+settled Cancel
+capture tileset_latch_rejoin_client
+present BETA MAP DESCRIPTION
+absent ALPHA MAP DESCRIPTION
+capture tileset_latch_beta_client
+occ 2
+settled Cancel
+signal rejoined
+absent Network players
+gamemode 2
+gameclock 12000
+capture tileset_latch_second_world
+log CLIENT played a SECOND match in the same process after re-joining; game 2 ran past 12 s
+awaitsignal game2up
+key 0x01
+settled value:113
+clickv 113
+settled value:121
+clickv 121
+settled value:110
+signal cliquit2
+log CLIENT: quit match 2 -- the second queue rollup is behind us
+end

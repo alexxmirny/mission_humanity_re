@@ -25,8 +25,9 @@ use crate::paths::Layout;
 use crate::relay::Relay;
 use crate::update::Offer;
 
-const PAGES: [View; 5] = [
+const PAGES: [View; 6] = [
     View::Play,
+    View::Mods,
     View::Settings,
     View::Report,
     View::About,
@@ -115,9 +116,23 @@ fn fixture(tag: &str, with_game: bool) -> Fixture {
         "; Mission Humanity configuration\r\n[video]\r\nwindow=borderless\r\nscale=fit\r\n\
          filter=area\r\nvsync=1\r\nfps_limit=0\r\nmouse_clip=1\r\npicker=0\r\n[lang]\r\npack=ru\r\n\
          [net]\r\nforce_relay=0\r\nport=6501\r\n[hud]\r\nnet_indicator=1\r\nnet_indicator_key=Ctrl+Alt+N\r\n\
-         [log]\r\nlevel=debug\r\n",
+         [log]\r\nlevel=debug\r\n[mods]\r\n; later wins\r\nenabled=bushes\r\n",
     )
     .unwrap();
+    // Two healthy mods, an invalid folder name and a manifest-less one: the Mods page has
+    // something honest to show in every state (and the fit test a long name).
+    let mod_ini = |id: &str, name: &str, version: &str| {
+        std::fs::create_dir_all(game.join("mods").join(id)).unwrap();
+        std::fs::write(
+            game.join("mods").join(id).join("mod.ini"),
+            format!("[mod]\r\nformat=1\r\nid={id}\r\nname={name}\r\nversion={version}\r\n"),
+        )
+        .unwrap();
+    };
+    mod_ini("bushes", "Extra bushes", "1.4");
+    mod_ini("quiet_guns", "Quiet guns", "0.3");
+    std::fs::create_dir_all(game.join("mods").join("Not-A-Valid-Id-For-The-Fit-Check")).unwrap();
+    std::fs::create_dir_all(game.join("mods").join("lonely")).unwrap();
     let layout = Layout::rooted(root.join("state"));
     let cfg = Config {
         game_dir: if with_game {
@@ -216,6 +231,9 @@ fn fixture(tag: &str, with_game: bool) -> Fixture {
         age_days: Some(3),
         ..Offer::default()
     });
+    // Every page polls the catalog, not just Mods. Settle the real fixture scan before the
+    // first frame so kittest never depends on when the worker thread gets scheduled.
+    prime_mods(&mut app);
     Fixture { app, game, root }
 }
 
@@ -280,13 +298,30 @@ fn nothing_sticks_out_of_the_frame_at_800x600() {
     for loc in Locale::ALL {
         i18n::set_locale(loc);
         for page in PAGES {
-            let mut f = fixture(&format!("fit_{}_{page:?}", loc.code()), true);
+            let tag = if page == View::Mods {
+                format!("fit_{}_{page:?}_{}", loc.code(), "long_path_".repeat(6))
+            } else {
+                format!("fit_{}_{page:?}", loc.code())
+            };
+            let mut f = fixture(&tag, true);
             f.app.view = page;
-            // Worst cases: unsaved edits, the longest sub-tab, a crash prompt, a report with a pick.
-            f.app.model_for = None;
+            if page == View::Mods {
+                stress_mod_metadata(&mut f.app);
+            }
+            // Include the save bar on every page, without discarding the edit on first draw.
+            f.app.ensure_model();
+            f.app.model.set("video.window", "windowed");
+            assert!(f.app.model.is_dirty());
             let root = f.root.clone();
             let mut h = harness(f.app);
             h.run();
+            assert!(h.state().model.is_dirty());
+            assert!(h.state().mods_job.is_none());
+            if page == View::Mods {
+                assert_eq!(h.state().mods.pending.ids, vec!["bushes"]);
+                // Both the active and available stressed rows must reach the surface.
+                assert_eq!(h.query_all_by_label_contains(&"W".repeat(8)).count(), 2);
+            }
             if page == View::Settings {
                 for tab in ["display", "gameplay", "multiplayer", "updates"] {
                     h.state_mut().settings_state.subtab = tab.into();
@@ -724,6 +759,154 @@ fn diagnostics_offers_reverify_for_an_installed_game() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Fill the Mods page's state synchronously (a real scan would land on a later frame): the
+/// fixture's catalog, and the ini's list as the pending baseline. `ensure_mods` would start a
+/// job; priming makes the click-assert cycles deterministic.
+fn prime_mods(app: &mut App) {
+    let Some(dir) = app.game_dir() else {
+        return;
+    };
+    app.mods.catalog = crate::mods::scan(&dir);
+    let (ini, _) = crate::cfgdir::ini_path(&app.layout, &dir);
+    assert!(app.mods_job.is_none(), "prime before a worker is started");
+    let bytes = crate::settings::ini_io::read_file(&ini)
+        .expect("read fixture ini")
+        .expect("fixture ini exists");
+    app.mods.reloaded(Some(&bytes));
+    app.mods_scanned_for = Some(dir);
+}
+
+// Maximum legal metadata on both active and available rows.
+fn stress_mod_metadata(app: &mut App) {
+    for e in &mut app.mods.catalog.entries {
+        if e.id == "bushes" || e.id == "quiet_guns" {
+            e.name = "W".repeat(64);
+            e.version = "9".repeat(64);
+        }
+    }
+}
+
+#[test]
+fn mods_active_limit_warns_without_changing_the_requested_list() {
+    i18n::set_locale(Locale::En);
+    let mut f = fixture("mods_limit", true);
+    f.app.view = View::Mods;
+    f.app.mods.pending.ids = (0..crate::mods::ENABLED_MAX)
+        .map(|i| format!("missing_{i}"))
+        .collect();
+    let root = f.root.clone();
+    let mut h = harness(f.app);
+    h.run();
+    assert!(h.query_by_label(crate::i18n::tr("mods.too_many")).is_none());
+    h.state_mut().mods.pending.ids.push("missing_extra".into());
+    h.run();
+    assert!(h.query_by_label(crate::i18n::tr("mods.too_many")).is_some());
+    assert_eq!(h.state().mods.pending.ids.len(), 65);
+    assert_eq!(h.state().mods.pending.ids.last().unwrap(), "missing_extra");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The page's whole job, end to end: enable, reorder (later wins), Apply, and the ini on disk
+/// carries the new list while every unrelated byte survives the splice.
+#[test]
+fn the_mods_page_orders_priorities_and_persists_the_selection() {
+    i18n::set_locale(Locale::En);
+    let mut f = fixture("mods_order", true);
+    let ini = f.game.join("mh_net.ini");
+    let root = f.root.clone();
+    f.app.view = View::Mods;
+    assert_eq!(f.app.mods.pending.ids, vec!["bushes"]);
+    let mut h = harness(f.app);
+    h.run();
+    // Installed and not active. A fresh enable goes to the END: later wins, so it is the top
+    // priority right away.
+    h.get_by_label("Quiet guns").click();
+    h.run();
+    assert_eq!(h.state().mods.pending.ids, vec!["bushes", "quiet_guns"]);
+    // Moving "bushes" down RAISES it (later wins): bushes is now last and takes their
+    // shared files; quiet_guns, now first, is the one overridden.
+    h.query_all_by_label("Down").next().unwrap().click();
+    h.run();
+    assert_eq!(h.state().mods.pending.ids, vec!["quiet_guns", "bushes"]);
+    assert!(h.state().mods.is_dirty());
+    assert!(h
+        .query_by_label_contains("Mod selection: not applied yet")
+        .is_some());
+    h.get_by_label("Apply").click();
+    h.run();
+    assert!(!h.state().mods.is_dirty());
+    let text = std::fs::read_to_string(&ini).unwrap();
+    assert!(text.contains("enabled=quiet_guns,bushes"), "{text}");
+    // Every unrelated byte survived: the header comment, other sections, the [mods] comment.
+    assert!(text.contains("; Mission Humanity configuration"), "{text}");
+    assert!(text.contains("[hud]\r\nnet_indicator=1"), "{text}");
+    assert!(text.contains("; later wins"), "{text}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A hand-edited list may name a folder that is not there: it SHOWS, with its reason, until the
+/// player unticks it -- and the rewrite that removes it is still byte-preserving.
+#[test]
+fn a_missing_enabled_mod_stays_visible_until_the_player_removes_it() {
+    i18n::set_locale(Locale::En);
+    let mut f = fixture("mods_missing", true);
+    let ini = f.game.join("mh_net.ini");
+    let root = f.root.clone();
+    std::fs::write(
+        &ini,
+        "; Mission Humanity configuration\r\n[video]\r\nwindow=borderless\r\n\
+         [mods]\r\nenabled=bushes,ghost\r\n",
+    )
+    .unwrap();
+    f.app.view = View::Mods;
+    prime_mods(&mut f.app);
+    assert_eq!(f.app.mods.pending.ids, vec!["bushes", "ghost"]);
+    let mut h = harness(f.app);
+    h.run();
+    assert!(
+        h.query_by_label("ghost").is_some(),
+        "the missing id stays visible"
+    );
+    // Unticking the ghost is how it leaves the list; the healthy mod is untouched.
+    h.get_by_label("ghost").click();
+    h.run();
+    assert_eq!(h.state().mods.pending.ids, vec!["bushes"]);
+    h.get_by_label("Apply").click();
+    h.run();
+    let text = std::fs::read_to_string(&ini).unwrap();
+    assert!(text.contains("enabled=bushes"), "{text}");
+    assert!(!text.contains("ghost"), "{text}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Graceful without a game (the shared hint) and graceful with a game that has no mods at all.
+#[test]
+fn the_mods_page_without_a_game_or_without_mods_stays_calm() {
+    i18n::set_locale(Locale::En);
+    let mut f = fixture("mods_nogame", false);
+    f.app.view = View::Mods;
+    let root = f.root.clone();
+    let mut h = harness(f.app);
+    h.run();
+    assert!(h.query_by_label_contains("No game folder").is_some());
+    let _ = std::fs::remove_dir_all(root);
+
+    let mut f = fixture("mods_empty", true);
+    let root = f.root.clone();
+    std::fs::remove_dir_all(f.game.join("mods")).unwrap();
+    std::fs::write(
+        f.game.join("mh_net.ini"),
+        "; Mission Humanity configuration\r\n[video]\r\nwindow=borderless\r\n",
+    )
+    .unwrap();
+    f.app.view = View::Mods;
+    prime_mods(&mut f.app);
+    let mut h = harness(f.app);
+    h.run();
+    assert!(h.query_by_label_contains("No mods here yet").is_some());
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn the_report_lists_sessions_from_both_log_roots_without_duplicates() {
     i18n::set_locale(Locale::En);
@@ -784,6 +967,15 @@ fn review_screenshots() {
             save(&mut h, &dir, &format!("{name}_{code}"));
             let _ = std::fs::remove_dir_all(root);
         };
+        shot("settings_bindings", true, &|a| {
+            a.view = View::Settings;
+            a.settings_state.subtab = "bindings".into();
+        });
+        shot("settings_bindings_modifiers", true, &|a| {
+            a.view = View::Settings;
+            a.settings_state.subtab = "bindings".into();
+            a.settings_state.bindings.category = "modifiers".into();
+        });
         // Whole-page pictures of the Settings tabs and the Diagnostics page.
         let shot_tall = |name: &str, f: &dyn Fn(&mut App)| {
             let mut fx = fixture(&format!("shot_{name}_{code}"), true);
@@ -856,6 +1048,20 @@ fn review_screenshots() {
                 }
             });
         }
+        shot("mods_800x600", true, &|a| {
+            a.view = View::Mods;
+            stress_mod_metadata(a);
+            a.mods.pending.enable("quiet_guns");
+        });
+        shot_tall("mods", &|a| {
+            a.view = View::Mods;
+        });
+        shot_tall("mods_dirty", &|a| {
+            a.view = View::Mods;
+            a.mods.pending.enable("quiet_guns");
+            a.mods.pending.move_row(0, 1);
+        });
+        shot("mods_nogame", false, &|a| a.view = View::Mods);
         shot_tall("diagnostics_detailed", &|a| {
             a.view = View::Diagnostics;
             a.settings_state.detailed = true;

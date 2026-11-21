@@ -6,7 +6,7 @@
 # arms placement mode and nothing cancels it).
 #
 #   segment                 old row            what it does here
-#   landing                 -                  land the mothership (shift+right-click), the shared pre-landing frames
+#   landing                 -                  land the mothership (Ctrl+right-click), the shared pre-landing frames
 #   info_guard_u73          info_guard_u73     select the barracks, 4 right-clicks on the docked row (mp_host_u73_info_guard.txt)
 #   d38_storage_purge       d38_storage_purge  keep the barracks selected across the fixture's kill (step 3800) and the sim's purge
 #   turret_slot_reuse       turret_slot_reuse  pt1: the fixture builds / kills / re-builds a turret; this walk only waits
@@ -40,16 +40,16 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: land the mothership (shift+right-click; order 0x10 move + 0x18 deploy). The two pre-landing frames
-# (bldg_pip_guard / air_order_deadlock) are the same frame; the pt1 frame is a flight frame, still before any fixture acts
-# (re-baselined: the two captures before the click land the pioneer a step or two later than turret_slot_reuse's own walk did).
+# Land the mothership through the real Ctrl+right-click order.
+# Keep the pre-fixture flight frame for inspection, not pose equality: game-clock
+# readiness does not synchronize physical landing. PT1 is judged by its later native probe.
 absent Network players
 gameclock 3000
 mark landing
 capture bldg_pip_guard__pip_start
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 4500
-capture turret_slot_reuse__pt1_landed
+capture turret_slot_reuse__pre_fixture
 
 # ===== segment info_guard_u73 (was row info_guard_u73: mp_host_u73_info_guard.txt)
 # The d38 fixture (both peers, from step 100) builds a barracks beside the landed mother and docks one soldier; the
@@ -66,12 +66,27 @@ gameclock 24000
 capture info_guard_u73__selected
 capture d38_storage_purge__selected
 
+# Wire/ownership proof on native peers; restore defaults before all old fixture actions.
+logsel qol_mp_ready
+simclick 997 285
+gameclock +300
+simrclick 500 400
+gameclock +400
+simclick 997 285
+gameclock +300
+simclick 997 285
+gameclock +300
+simrclick 305 345
+gameclock +300
+simclick 997 285
+gameclock +300
+
 log u73 rclick docked row -- valid request
 simrclick 940 340
 retry 1500 1 3 gamemode 4
 screensettled
 log u73 valid info screen up
-key 0x01
+keywidget 0x01 0x0065153b
 retry 1500 1 3 gamemode 2
 screensettled
 log u73 valid info screen closed
@@ -98,7 +113,7 @@ simrclick 940 340
 retry 1500 1 3 gamemode 4
 screensettled
 log u73 valid again up
-key 0x01
+keywidget 0x01 0x0065153b
 retry 1500 1 3 gamemode 2
 screensettled
 log u73 done

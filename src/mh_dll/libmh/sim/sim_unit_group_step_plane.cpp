@@ -5,6 +5,7 @@
 // 32`, not the shift form), and the unbacked-enum literal derivation.
 //
 #include "sim/sim_unit_group_step_plane.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -64,9 +65,11 @@ void unit_group_step_plane(const sim_view &v, sim_store &own, const unit_group_s
     // function's .asm, not inferred from the pre-existing (wrong) sim_state.h prose.
     own.pathfinder_air_mode_flag() = 1;
 
+    const auto    task      = order_tasks_adapter::begin_planning(own, player, uint32_t(unit_index), u);
     const int32_t free_slot = c.path_find_free_slot(static_cast<int32_t>(player));
     if (free_slot == -1) {
         // 0x00484b85-0x00484b8f: no path slot available -- give up and idle.
+        order_tasks_adapter::observe(own, task, mh::order_tasks::outcome_kind::pool_exhausted, u);
         c.unit_set_state(UNIT_STATE_IDLE_SCATTER);
         return;
     }
@@ -89,6 +92,7 @@ void unit_group_step_plane(const sim_view &v, sim_store &own, const unit_group_s
             u.target_ref   = 0;
             u.target_index = 0;
             c.unit_set_state_order(UNIT_STATE_STOP_TO_DEFAULT, UNIT_STATE_STOP_TO_DEFAULT);
+            order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
             return;
         }
         // 0x00484c18-0x00484cab: target still alive -- re-fetch its live fine position and recompute
@@ -124,6 +128,8 @@ void unit_group_step_plane(const sim_view &v, sim_store &own, const unit_group_s
     }
     c.path_write_from_solver(player, unit_index, x, y, free_slot);
     c.unit_set_state(static_cast<uint16_t>(v.cfg_units[u.unit_proto_id].move_op_code));
+    order_tasks_adapter::direction_ready(own, task, u,
+                                         mh::order_tasks::executor::direction_plane, 17);
     c.unit_notify_status(player, unit_index, GROUP_STEP_PLANE_NOTIFY_PATH_COMPUTED);
 }
 

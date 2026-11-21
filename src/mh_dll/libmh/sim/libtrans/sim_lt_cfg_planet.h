@@ -5,10 +5,9 @@
 
 namespace mh::sim {
 
-// The three real outward calls this function makes -- see the header banner's CALLEES section.
+// The remaining host call made by the translated constructor.
 struct cfg_planet_construct_calls {
     uint32_t (*read_map_file)(mh::game::mh_cfg_struct_map_header *map_header); // cfg_ReadMapFile @0x004a3b9d
-    uint8_t (*get_tlo_index)(char *file_name);                                 // cfg_GetTloIndex @0x004b9582
     // cfg_final_planet_FillBankData @0x0045e306 IS GONE (LIFT-TABLE S3, 2026-09-09) -- it left with
     // the rest of the graphics tail onto LIBMH_EVK_INV_PLANET_GFX_SETUP, and with it the host-API
     // entry: the tail's eight calls were its only libmh caller.

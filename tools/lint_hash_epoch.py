@@ -241,7 +241,12 @@ def selftest():
         edit(
             data["header"],
             lambda t: EPOCH_RE.sub(
-                lambda m: m.group(0).replace(m.group(1), str(int(m.group(1)) + 1)), t
+                lambda m: (
+                    m.group(0)[: m.start(1) - m.start()]
+                    + str(int(m.group(1)) + 1)
+                    + m.group(0)[m.end(1) - m.start() :]
+                ),
+                t,
             ),
         )
         case("a header bump that is not rebaselined goes RED", True)

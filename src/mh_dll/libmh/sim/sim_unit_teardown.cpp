@@ -9,6 +9,7 @@
 // header hazards for the full derivation of each.
 //
 #include "sim/sim_unit_teardown.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -147,6 +148,7 @@ void unit_teardown(const sim_view &v, sim_store &own, const unit_teardown_calls 
     }
 
     // ---- (10) AI notify, always (0x00488012-0x00488025) ----------------------------------------------
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::unit, p, uint32_t(unit_index), false);
     c.ai_notify_object_removed(p | 0x80u, unit_index, 0);
 }
 

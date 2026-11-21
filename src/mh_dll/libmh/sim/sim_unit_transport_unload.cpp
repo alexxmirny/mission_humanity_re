@@ -1,7 +1,7 @@
 //
 // sim/sim_unit_transport_unload.cpp -- see sim_unit_transport_unload.h. Translated from the
-// DISASSEMBLY (tmp/decomp/llm_unit_transport_unload_field_00488a8b.asm,
-// tmp/decomp/llm_unit_transport_unload_docked_004891d8.asm), not from Ghidra's C: both drafts read
+// DISASSEMBLY (tmp/decomp/llm_unit_squad_split_field_00488a8b.asm,
+// tmp/decomp/llm_unit_squad_split_docked_004891d8.asm), not from Ghidra's C: both drafts read
 // correctly for the overall shape and were used as a map, but every field offset, register-to-arg
 // mapping, and branch target below was independently re-walked against the raw CMP/JZ/JNZ/IMUL
 // opcodes per house rules -- including the one place (docked's dead read, see the header FINDING)
@@ -43,7 +43,7 @@ inline uint16_t unit_full_id_word(const uint8_t (&packed)[2]) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// llm_unit_transport_unload_field @0x00488a8b
+// llm_unit_squad_split_field @0x00488a8b
 // ---------------------------------------------------------------------------------------------
 void unload_field(const sim_view &v, sim_store &own, const unit_transport_unload_calls &c,
                   uint32_t transport_player, uint32_t transport_unit_index) {
@@ -186,7 +186,7 @@ void unload_field(const sim_view &v, sim_store &own, const unit_transport_unload
 }
 
 // ---------------------------------------------------------------------------------------------
-// llm_unit_transport_unload_docked @0x004891d8
+// llm_unit_squad_split_docked @0x004891d8
 // ---------------------------------------------------------------------------------------------
 void unload_docked(const sim_view &v, sim_store &own, const unit_transport_unload_calls &c,
                    uint32_t player_in, uint32_t unit_index_in) {

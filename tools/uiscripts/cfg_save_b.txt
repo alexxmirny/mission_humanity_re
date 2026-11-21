@@ -1,0 +1,30 @@
+# DATAEXT2: boot B, load the A save, then start a new campaign under B.
+settled value:108
+capture cfg_b_ready
+logcfg b_boot
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +1000
+logcfg b_loaded
+wmsg different mods
+savegame dxsaveb
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:103
+clickv 103
+hovered value:104
+clickv 104
+gamemode 2
+gameclock +1000
+logcfg b_fresh
+savegame dxfresh
+end

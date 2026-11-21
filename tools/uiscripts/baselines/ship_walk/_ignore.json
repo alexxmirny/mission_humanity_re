@@ -1,6 +1,65 @@
 {
+  "_why_auto_hint": "Four new captures judge only the native status field (Auto Off, Units out, Repair, cleared), in RGB at tolerance0. Auto-On reuses its existing whole-frame capture: check_storage_qol compares that exact field byte-for-byte with the golden-checked Off frame. The native field is[96,736,378,16]; measured Auto/cleared ink is x260..318,y739..747. No early capture/action, gameplay comparison scope or tolerance change.",
   "_why_minimap": "tooling:TL-SUITE-FOLD step 9: the wheel_hud_lists captures mask the strategic minimap [869,5,132,132] (unit dots and the fog edge move between runs: 0.24-0.36% of the frame against a 0.3% tol, and ship_walk's c_owned_list failed at 0.312/0.356%). Outside the minimap the frames are pixel-identical to the baselines (checked on all six captures except 44 px of d_unit_panel's list, inside its 0.6% tol); the lists under test are all below y 140.",
+  "_why_rally": "Rally/phase captures judge the complete selected-storage sidebar, including latched Auto and occupants. Their reference terrain is corrected from attributable bg246 actual frames. Native Off/On remain whole-frame comparisons; Reload retains the world except the narrow animated connector corridor below. Animated connector geometry/phase/cleanup remain separate existing check_storage_qol assertions; these sidebar comparisons do not claim to validate line appearance or seamless animation.",
+  "_why_reload_phase": "rc14: Reload still compares the world/sidebar exactly except the animated rally-stem corridor from (240,200) to (480,384), 8304/786432 pixels. Fresh gate changed264 samples only in this corridor; one AA sample exceeded pixdelta40 by1. The repaired tile[352,320,32,32] is explicitly excluded from the mask and stays exact. Existing check_storage_qol geometry/phase/cleanup assertions remain mandatory; no tolerance/channel threshold changes. Rects are16px x-slabs of that fixed route with8px coverage margin and terminal caps, not a whole-world mask.",
+  "capture_qol_storage__reloaded.png": [
+    [232, 185, 16, 30],
+    [248, 198, 16, 29],
+    [264, 210, 16, 29],
+    [280, 222, 16, 29],
+    [296, 234, 16, 30],
+    [312, 247, 16, 29],
+    [328, 259, 16, 29],
+    [344, 271, 16, 29],
+    [360, 284, 16, 29],
+    [376, 296, 16, 24],
+    [384, 320, 8, 5],
+    [392, 308, 16, 29],
+    [408, 320, 16, 30],
+    [424, 333, 16, 29],
+    [440, 345, 16, 29],
+    [456, 357, 16, 29],
+    [472, 369, 16, 30],
+    [488, 382, 16, 29],
+    [228, 188, 24, 24],
+    [464, 368, 32, 32]
+  ],
+  "_unjudged": [
+    "capture_qol_air_idle.png",
+    "capture_qol_air_move.png",
+    "capture_qol_air_phase.png",
+    "capture_qol_air_cleared.png"
+  ],
+  "_only": {
+    "capture_qol_auto_hint__off.png": {"mode": "rgb", "rect": [96, 736, 378, 16]},
+    "capture_qol_auto_hint__units_out.png": {"mode": "rgb", "rect": [96, 736, 378, 16]},
+    "capture_qol_auto_hint__repair.png": {"mode": "rgb", "rect": [96, 736, 378, 16]},
+    "capture_qol_auto_hint__cleared.png": {"mode": "rgb", "rect": [96, 736, 378, 16]},
+    "capture_qol_storage__rally.png": {
+      "mode": "rgb",
+      "rect": [
+        864,
+        0,
+        160,
+        768
+      ]
+    },
+    "capture_qol_storage__rally_phase.png": {
+      "mode": "rgb",
+      "rect": [
+        864,
+        0,
+        160,
+        768
+      ]
+    }
+  },
   "_tol": {
+    "capture_qol_auto_hint__off.png": 0.0,
+    "capture_qol_auto_hint__units_out.png": 0.0,
+    "capture_qol_auto_hint__repair.png": 0.0,
+    "capture_qol_auto_hint__cleared.png": 0.0,
     "capture_res_drag_box__a_start.png": 0.003,
     "capture_res_drag_box__b_dragging.png": 0.003,
     "capture_res_drag_box__c_selected.png": 0.003,

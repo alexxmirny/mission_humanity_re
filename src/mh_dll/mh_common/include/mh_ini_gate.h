@@ -84,6 +84,7 @@ struct reg_row {
 inline const reg_row *reg_table(int *count) {
     static const reg_row rows[] = {
 #include "../../mh/config/ini_keys.def"
+#include "mh_strategic_ini.gen.def"
     };
     *count = (int)(sizeof(rows) / sizeof(rows[0]));
     return rows;

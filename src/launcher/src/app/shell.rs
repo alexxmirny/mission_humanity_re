@@ -19,6 +19,23 @@ const SIDE_W: f32 = 200.0;
 const FOOT_H: f32 = 22.0;
 
 pub fn show(app: &mut App, ui: &mut Ui) {
+    app.ensure_model();
+    if app.view != Page::Settings
+        || app.settings_state.subtab != "bindings"
+        || ui.input(|i| {
+            !i.focused
+                || i.events
+                    .iter()
+                    .any(|event| matches!(event, egui::Event::WindowFocused(false)))
+        })
+        || app.start_prompt
+        || app.close_prompt
+    {
+        app.settings_state.bindings.cancel();
+    }
+    app.settings_state
+        .bindings
+        .pre_input(ui.ctx(), &mut app.model);
     let full = ui.max_rect();
     theme::paint_background(ui.painter(), full);
     let side = Rect::from_min_size(
@@ -38,6 +55,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     ui.scope_builder(UiBuilder::new().max_rect(frame_rect), |ui| {
         widgets::game_frame(ui, Some(tr(page.title_key())), true, |ui| match page {
             Page::Play => pages::play::show(app, ui),
+            Page::Mods => pages::mods::show(app, ui),
             Page::Settings => pages::settings::show(app, ui),
             Page::Report => pages::report::show(app, ui),
             Page::About => pages::about::show(app, ui),
@@ -49,7 +67,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     modals(app, ui);
 }
 
-/// Logo, the five menu entries, and -- pinned to the bottom -- Start game and the version line.
+/// Logo, the page menu entries, and -- pinned to the bottom -- Start game and the version line.
 fn menu_column(app: &mut App, ui: &mut Ui) {
     ui.spacing_mut().item_spacing.y = 10.0;
     ui.label(
@@ -70,10 +88,16 @@ fn menu_column(app: &mut App, ui: &mut Ui) {
     );
     for page in Page::ALL {
         // The unsaved-settings marker sits on Settings, and also on Diagnostics, whose rows are
-        // settings too.
-        let dot = matches!(page, Page::Settings | Page::Diagnostics) && app.model.is_dirty();
+        // settings too; the Mods page carries it while the mod selection has unsaved edits.
+        let dot = match page {
+            Page::Settings | Page::Diagnostics => app.model.is_dirty(),
+            Page::Mods => app.mods.is_dirty(),
+            _ => false,
+        };
         if widgets::menu_button(ui, tr(page.menu_key()), app.view == page, dot).clicked() {
-            if page == Page::Settings && app.view != Page::Settings {
+            app.settings_state.bindings.cancel();
+            app.settings_state.capturing = None;
+            if page == Page::Settings && app.view != page {
                 app.reload_model_if_clean();
             }
             app.view = page;
@@ -103,9 +127,10 @@ fn menu_column(app: &mut App, ui: &mut Ui) {
 
 /// Unsaved settings, on every page: the count and Apply / Revert, just above Start game, so an edit
 /// is never only saveable from the bottom of the Settings page (user, 2026-10-09). Drawn inside the
-/// bottom-up layout, so the buttons go in first and the count lands above them.
+/// bottom-up layout, so the buttons go in first and the count lands above them. The mod selection
+/// (DATAEXT1) rides the same bar: one Apply writes both, Revert drops both.
 fn save_bar(app: &mut App, ui: &mut Ui) {
-    if !app.model.is_dirty() {
+    if !app.model.is_dirty() && !app.mods.is_dirty() {
         return;
     }
     ui.add_space(4.0);
@@ -117,18 +142,29 @@ fn save_bar(app: &mut App, ui: &mut Ui) {
             }
         });
         if widgets::gbtn(ui, tr("btn.revert")).clicked() {
+            app.settings_state.bindings.cancel();
             app.model.revert();
+            app.mods.revert();
             app.settings_note = None;
         }
     });
-    ui.label(
-        RichText::new(trf(
-            "settings.unsaved",
-            &[("n", &app.model.dirty_count().to_string())],
-        ))
-        .size(12.0)
-        .color(theme::HAZARD),
-    );
+    if app.model.is_dirty() {
+        ui.label(
+            RichText::new(trf(
+                "settings.unsaved",
+                &[("n", &app.model.dirty_count().to_string())],
+            ))
+            .size(12.0)
+            .color(theme::HAZARD),
+        );
+    }
+    if app.mods.is_dirty() {
+        ui.label(
+            RichText::new(tr("mods.unsaved"))
+                .size(12.0)
+                .color(theme::HAZARD),
+        );
+    }
 }
 
 /// The status strip: what the last action said (left), what the update half said (right).
@@ -203,6 +239,13 @@ fn dirty_modal(app: &App, ctx: &egui::Context, id: &str, body_key: &str) -> Opti
         let out = widgets::modal(ctx, id, tr("modal.dirty.title"), |ui| {
             ui.label(tr(body_key));
             widgets::hint(ui, &trf("settings.unsaved", &[("n", &n.to_string())]));
+            if app.mods.is_dirty() {
+                ui.label(
+                    RichText::new(tr("mods.unsaved"))
+                        .size(11.0)
+                        .color(theme::HAZARD),
+                );
+            }
             if problems {
                 ui.label(
                     RichText::new(tr("modal.dirty.invalid"))

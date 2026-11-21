@@ -273,20 +273,6 @@ def new_value(value, a, sec_va=None):
 # ---- exe scan --------------------------------------------------------------------------------------
 
 
-def _sweep(md, d, base, ranges):
-    covered = {}
-    for lo, hi in ranges:
-        o = lo - base
-        while base + o < hi:
-            ins = list(md.disasm(d[o : o + 15], base + o, 1))
-            if not ins:
-                o += 1
-                continue
-            covered[ins[0].address] = ins[0]
-            o += ins[0].size
-    return covered
-
-
 def scan_exe(raw, img, lay):
     """-> (sites, census). sites: sorted dicts; census: every in-extent dword of BEGTEXT/DGROUP with its class."""
     import bisect
@@ -312,12 +298,22 @@ def scan_exe(raw, img, lay):
             ranges.append((lo, hi))
         prev = max(prev, hi)
     ranges.append((prev, base + len(d)))
-    covered = _sweep(md, d, base, ranges)
+    covered = scan.sweep_ranges(md, d, base, ranges)
 
+    low = min((a["stock_base"] for a in lay), default=0)
+    high = max((a["stock_base"] + a["stock_size"] for a in lay), default=0)
+    # A four-byte field can start at offsets 0..11 of a maximum-length x86 instruction.
+    # Retain biased fields even with a corrupt value, so their exact refusal still fires.
+    biased_starts = {va - off for va in BIASED for off in range(12)}
     sites, seen = [], set()
     for addr in sorted(covered):
         i = covered[addr]
         b = bytes(i.bytes)
+        if len(b) < 4 or (
+            addr not in biased_starts
+            and not any(low <= u32(b, off) < high for off in range(len(b) - 3))
+        ):
+            continue
         for kind, off, sz in (
             ("disp", i.disp_offset, i.disp_size),
             ("imm", i.imm_offset, i.imm_size),
@@ -372,12 +368,15 @@ def scan_exe(raw, img, lay):
         data = raw[sec["raw_off"] : sec["raw_off"] + sec["raw_size"]]
         for o in range(len(data) - 3):
             v = u32(data, o)
-            a = array_of(v, lay)
-            if sec["va"] + o in BIASED:
-                a = next(x for x in lay if x["name"] == BIASED[sec["va"] + o][0])
+            va = sec["va"] + o
+            if va in BIASED:
+                a = next(x for x in lay if x["name"] == BIASED[va][0])
+            elif low <= v < high:
+                a = array_of(v, lay)
+            else:
+                continue
             if a is None:
                 continue
-            va = sec["va"] + o
             if va in seen:
                 cls = "site"
             elif va in EXCLUDE:

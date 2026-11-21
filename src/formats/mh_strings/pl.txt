@@ -20,7 +20,8 @@ refuse.codepage = strona kodowa %u/%u
 refuse.newer_protocol = protokół %u > %u
 refuse.older_protocol = protokół %u < %u
 refuse.malformed = niepoprawne żądanie dołączenia
-refuse.no_match_id = stary protokół (brak match_id)
+refuse.old_protocol = stary protokół gry
+refuse.host_generation = generacja hosta %u < %u
 refuse.newer_than_host = protokół nowszy niż u hosta
 refuse.not_our_lobby = to nie nasze lobby
 refuse.cp_mismatch = różne strony kodowe wejścia
@@ -28,6 +29,7 @@ refuse.unknown = nieznane
 refuse.caps = nie można podnieść limitów
 refuse.build = Host ma %s, ty masz %s: zaktualizuj
 refuse.gameplay = Różne ustawienia rozgrywki (%s/%s): zaktualizuj
+refuse.content = różna zawartość gry (mody?)
 relay.outdated = Przekaźnik przestarzały (protokół %u < %u)
 
 # map transfer
@@ -71,5 +73,34 @@ lobby.team_4 = D4
 lobby.mode_ffa = Tryb: każdy na każdego
 lobby.mode_team = Tryb: drużyny
 
+# right panel page spinner (mods:MAPGEN2)
+page.description = Widok: Opis
+page.preview = Widok: Podgląd
+page.settings = Widok: Ustawienia
+page.settings_title = Ustawienia gry
+page.settings_host_only = Ustawienia gry (ustala host)
+page.preview_not_received = Mapa jeszcze nie dotarła
+page.preview_none = Brak podglądu
+
 # raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
 caps.load_refused = Ten zapis używa podniesionych limitów. Włącz "Raised limits" w launcherze, aby go wczytać.
+# the .sav mod-metadata carrier: one deferred notice, the load continues (mh/mods/save_meta.cpp)
+mods.save_mismatch = Zapis wykonano z innymi modami - wczytywanie mimo to
+mods.save_legacy = Zapis bez danych modów - może nie pasować do aktywnych modów
+mods.save_tileset_missing = Do wczytania zapisu brakuje zestawu kafelków. Włącz jego mod.
+mods.config_refused = Mody odrzucone; aktywne oryginalne zasoby
+mods.config_details = Szczegóły w mh_video.log
+tileset.summary_overflow = Opis mapy przekracza limit wyświetlania
+tileset.unknown = Nieznany zestaw kafelków
+lobby.speed = Prędkość: %d%%
+storage.auto_dispatch = automatyczne wyjście
+
+keys.input_unavailable = Nie można bezpiecznie uruchomić sterowania strategicznego. Uruchom ponownie zgodne wersje gry i moda.
+orders.queue_full = %u jedn.: kolejka rozkazów jest pełna (32 wpisy)
+orders.after_patrol = %u jedn.: po cyklicznym patrolu nie można dodać skończonego rozkazu
+orders.degenerate = %u jedn.: patrol wymaga różnych punktów
+orders.target = %u jedn.: cel nie jest już dostępny
+orders.unsupported = %u jedn.: tej czynności nie można kolejkować
+orders.actor_unavailable = %u jedn.: jednostka niedostępna dla rozkazów w kolejce
+orders.world_unavailable = %u jedn.: rozkaz w kolejce nie jest prawidłowy w obecnym świecie
+orders.blocked = %u jedn.: rozkaz zablokowany; zmień trasę, aby kontynuować

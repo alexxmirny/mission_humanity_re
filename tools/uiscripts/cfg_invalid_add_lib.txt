@@ -1,0 +1,5 @@
+# The second enabled mod is invalid: the first mod must not partially mount.
+settled value:103
+logcfg invalid_stock
+capture cfg_invalid_add_lib
+end

@@ -10,6 +10,7 @@
 #include "ai/ai_state.h"                                  // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h"                           // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "state/order_tasks_runtime.h"
 
 namespace mh::sim {
 
@@ -70,6 +71,7 @@ void game_update_progress(const sim_view &v, sim_store &own, const game_update_p
             const int32_t landing_spots = c.count_landing_spots();
             if (landing_spots > 2 &&
                 v.planet_status[v.cfg_inventions[inv].index] != PLANET_STATUS_INVASION) {
+                mh::order_tasks::runtime::ensure_known_planet(own, v.cfg_inventions[inv].index);
                 own.planet_status_at(v.cfg_inventions[inv].index) = PLANET_STATUS_CONQUERED;
             }
             if (plr == static_cast<uint16_t>(*v.player_side)) {

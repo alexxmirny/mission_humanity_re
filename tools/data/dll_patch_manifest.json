@@ -39,6 +39,179 @@
  ],
  "patches": [
   {
+   "id": "uitest_chat_main_consumer",
+   "sources": [
+    {
+     "file": "mh/seams/ui_drive.cpp",
+     "expr": "sites[0]"
+    }
+   ],
+   "addrs": ["0x00441be8"],
+   "lens": [5],
+   "kind": "code",
+   "owner": "llm_strat_input_update",
+   "knob": "uitest.enable",
+   "carrier": null,
+   "note": "An enabled script publishes pending chat DOWN/UP at the native main queue check, after its chat-queue reset. This source also restores the original CALL on installation rollback."
+  },
+  {
+   "id": "uitest_chat_wait_consumer",
+   "sources": [
+    {
+     "file": "mh/seams/ui_drive.cpp",
+     "expr": "sites[1]"
+    }
+   ],
+   "addrs": ["0x0044decb"],
+   "lens": [5],
+   "kind": "code",
+   "owner": "llm_net_chat_input_process",
+   "knob": "uitest.enable",
+   "carrier": null,
+   "note": "The same pending scripted chat pair is published at the native wait-chat queue check, before its empty-ring branch; independent of the strategic binding profile."
+  },
+  {
+   "id": "uitest_widget_key_consumer",
+   "sources": [{"file": "mh/seams/ui_drive.cpp", "expr": "sites[2]"}],
+   "addrs": ["0x004b52b0"],
+   "lens": [5],
+   "kind": "code",
+   "owner": "llm_ui_modal_key_pump",
+   "knob": "uitest.enable",
+   "carrier": null,
+   "note": "Publish a prepared keywidget edge only at the native widget dispatcher's modal queue check; UP requires its real selected/key-selected DOWN acknowledgment."
+  },
+  {
+   "id": "selected_target_order_witness",
+   "sources": [
+    {
+     "file": "mh/ui/target_line_order_events.cpp",
+     "expr": "p.site"
+    }
+   ],
+   "addrs": [
+    "0x00466499",
+    "0x004664f0",
+    "0x004664fe",
+    "0x004666ea",
+    "0x0046672d",
+    "0x00466750",
+    "0x0046675e",
+    "0x0046615d",
+    "0x004667fc",
+    "0x00466907",
+    "0x00466c38",
+    "0x00467113",
+    "0x00466bf0",
+    "0x004668c8",
+    "0x00469984",
+    "0x00444e7e",
+    "0x00444fc3",
+    "0x00444fe8",
+    "0x004451c9",
+    "0x0044531b",
+    "0x0044549d",
+    "0x0048668e",
+    "0x004866f1",
+    "0x00486968",
+    "0x004869e9"
+   ],
+   "lens": [
+    6,
+    6,
+    5,
+    5,
+    6,
+    6,
+    5,
+    7,
+    7,
+    7,
+    6,
+    5,
+    9,
+    6,
+    8,
+    7,
+    6,
+    7,
+    6,
+    7,
+    6,
+    5,
+    5,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_schedule",
+    "llm_strat_order_release_due",
+    "llm_strat_order_enqueue",
+    "llm_strat_order_pending_enqueue",
+    "llm_strat_order_queue_dispatch",
+    "llm_strat_group_issue_move_order_deferred",
+    "llm_strat_group_issue_move_order_confirmed",
+    "llm_strat_group_issue_move_order",
+    "llm_strat_unit_set_state_order",
+    "llm_strat_unit_set_state",
+    "llm_strat_unit_set_state_order_of",
+    "llm_strat_unit_set_state_of"
+   ],
+   "knob": null,
+   "carrier": "migrated:selected-targets",
+   "note": "Guarded native physical-queue lineage, dispatch outcomes, genuine move-group scope and terminal-state observations for immediate requested-endpoint presentation; p.site also guards rollback.",
+   "rationale": "Installation skips each promoted owner. Translated queue/dispatch/group/state owners drive the same shared presentation-only witness and lifecycle events; unpromoted group roots retain their native observers. All gateways preserve registers, flags and FPU state. EXIT_CANCEL owns the complete nine-byte relocated state write, replayed before APPLIED; no canonical queue layout, timing or hashes change."
+  },
+  {
+   "id": "tileset_planet_graphics",
+   "sources": [
+    {
+     "file": "mh/seams/tileset_runtime.cpp",
+     "expr": "site.address"
+    }
+   ],
+   "addrs": [
+    "0x0045b8fe"
+   ],
+   "lens": [
+    6
+   ],
+   "kind": "code",
+   "owner": [
+    "cfg_final_planet_Construct"
+   ],
+   "knob": null,
+   "carrier": "migrated:lib_trans",
+   "note": "TILESET1 graphics tail: expected 8d 85 c8 fe ff ff. install() skips this splice when its owner is promoted; the translated constructor emits INV_PLANET_GFX_SETUP with the owned token and the sink calls the same require_planet_graphics path. The site.address loop also guards rollback with replacement bytes."
+  },
+  {
+   "id": "tileset_lobby_label_summary",
+   "sources": [
+    {
+     "file": "mh/seams/tileset_runtime.cpp",
+     "expr": "site.address"
+    }
+   ],
+   "addrs": [
+    "0x004c07cb",
+    "0x004c0856",
+    "0x004c0899"
+   ],
+   "lens": [
+    7,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_lobby_map_transfer_finalize"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "TILESET1 label splice and two summary-format calls: expected c7 45 dc 00 00 00 00, e8 c5 fa 00 00 and e8 82 fa 00 00 respectively. install() refuses promotion of any of the three sites; site.address also guards rollback with replacement bytes."
+  },
+  {
    "id": "resync_wait_fix",
    "sources": [
     {
@@ -220,6 +393,10 @@
     {
      "file": "mh/seams/video.cpp",
      "expr": "sites[i][k]"
+    },
+    {
+     "file": "mh/seams/video.cpp",
+     "expr": "alias_sites[i][k]"
     }
    ],
    "addrs": [],
@@ -528,6 +705,17 @@
    "note": "The TACTICAL cadence detour (TACT-PREP), armed under [harness] tact_hash_step / tact_synth -- it carries the per-frame `T` hash line that IS the tactical trajectory oracle. TACT1E (2026-08-28) made llm_tact_frame promotable, and this detour KEEPS the entry under the same C6 protocol as detour_sim_step: reimpl_probe reads [promote] tact_frame and rebinds what the detour falls through to (MH_Harness_RebindTactFrame), so on_tact_frame still hashes the pre-body state first. The rebind is not one option of two here -- it is the ONLY route: an MH_EXPORT_REPLACE install was measured being refused, '; [export] llm_tact_frame NOT armed -- entry is OWNED by an unnamed DLL detour'. And the harness must be the entry owner rather than the promotion, because if the INSTRUMENT is the side that loses the race a determinism run is silently VOIDED (no hashes recorded) instead of failed. ---- FORK F2E (2026-09-13): THE CARRIER IS GONE BECAUSE THE PROMOTION IS. Tactical mode is demoted permanently -- the fork's selector has two hosted answers and the reimplemented spine brokered serves is the STRATEGIC one -- so libmh/tact/tact_promote.{h,cpp}, the 18 MH_EXPORT_REPLACE installs and both routes onto this entry were deleted. This detour still owns the entry and still does its job; what it falls through to is the ORIGINAL body, which is now the only body there is in a hosted process. `carrier` is therefore null: a carrier names how a promotion survives a detour, and there is no promotion to survive it. ---- FORK F3C (2026-09-13): THE SITE MOVED, THE FACTS DID NOT. Ruling D5 took the harness off the raw primitives, so this detour is now a ROW of the named hook-point table (mh/hook/hookpoint.cpp); harness.cpp names a `point` instead of a target, a steal width, a claim and a guard. lint_dll_patches reads that table as the call-site list, so the target still resolves and check 7 still asks the collision question -- the source key below is the row's own target expression."
   },
   {
+   "id": "detour_order_phase_post_ai",
+   "kind": "detour",
+   "addrs": ["0x0043f544"],
+   "lens": [7],
+   "sources": [{"file": "mh/hook/hookpoint.cpp", "expr": "0x0043f544"}],
+   "owner": ["llm_strat_sim_step"],
+   "knob": null,
+   "carrier": "migrated:sim_step_post_ai_observer",
+   "note": "MHOR v2 ENTRY after actual AI and before the count gate: complete CMP833d94015d0000 at0043f544, then native JZ7405 and dispatch CALL0043f54d. Trampoline preserves GP/flags/FX state and replays only CMP; zero never forces dispatch. Translated sim_step calls its separate observer at the same boundary. Scalar COUNT is not a relocated cap operand."
+  },
+  {
    "id": "detour_order_dispatch",
    "kind": "detour",
    "sources": [
@@ -685,7 +873,7 @@
    ],
    "knob": null,
    "carrier": "migrated:cfg_newgame_restore_fix",
-   "note": "mods:G17: restores the seven baked cfg tables to the boot parse at the top of llm_strat_new_game_init. The detour is armed only when detour_refusal says the entry is free (shipped config without libmh, [config] mode=original); when sim_resid promotes the body, libmh's own detail::new_game_init fires the SAME function through set_new_game_init_observer (hookpoint new_game_init_observer), so both configurations carry it. Knob [net] cfg_newgame_restore_fix (default 1)."
+   "note": "mods:G17: restores the seven baked cfg tables before fresh campaign System[1] selection via the shared replay-boundary call site, or at llm_strat_new_game_init for other New Game routes. The late callback consumes the already-prepared fresh-campaign event. The detour is armed only when detour_refusal says the entry is free (shipped config without libmh, [config] mode=original); when sim_resid promotes the body, libmh's own detail::new_game_init fires the SAME function through set_new_game_init_observer (hookpoint new_game_init_observer), so both configurations carry it. Knob [net] cfg_newgame_restore_fix (default 1)."
   },
   {
    "id": "detour_session_begin_multi_logger",
@@ -1032,9 +1220,9 @@
    "owner": [
     "llm_net_lockstep_dispatch"
    ],
-   "knob": "gone_peer_frame_guard",
-   "carrier": "migrated:gone_peer_frame_guard",
-   "note": "mp:U19i (2026-09-23): call-splice the leader's kick re-broadcast for an already-GONE sender (`call llm_net_send_lockstep_kick` @0x0049c330, guarded with the following `mov eax,[ebp-0x38]` so the thunk's read of `len` is proven) into mh::gone_peer_guard::thunk, which snapshots min(len, 0x3f8) bytes of _G_LLM_NET_SEND_BUF across the emit and restores them -- U19e's reimpl-only guard (rx_dispatch.cpp dispatch_packet), carried for configuration (1), where no libmh.dll means the body never runs. Displaced by promotion (C1), so configuration (2) is unchanged. Offline oracle: net_selftest.exe gpfgtest (the real thunk, fake buffer/emitter/frame)."
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Mandatory native continuation carrier: saved RX tails bypass the already-GONE fresh-datagram preamble; fresh frames retain the gone_peer_frame_guard runtime toggle and original negative arm. Promoted dispatch uses the same authority continuation bit. Existing snapshot/restore guard remains unchanged for fresh guarded frames."
   },
   {
    "id": "undock_reentry_fix",
@@ -1382,9 +1570,9 @@
    "owner": [
     "llm_strat_sim_tick"
    ],
-   "knob": "sp_sim_step_ms",
-   "carrier": "migrated:sp_sim_step_ms",
-   "note": "SP catch-up cap (2026-10-16): the `CALL llm_strat_sim_step` (E8 B2 00 00 00) inside sim_tick's fixed-step loop becomes a call to sp_step_cap_stub, which runs the step and, outside session mode 3, after [net] sp_sim_step_ms-derived cap steps (10 at 20 ms) sets TOTAL_GAME_TIME := GAME_CLOCK so the rest of a long stall is dropped. Twin: reimpl_fixes::sp_step_cap."
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Mandatory post-body participant poll at the fixed-step CALL; the existing optional SP catch-up cap and hitch timing share this carrier. Promoted sim_tick performs the same poll after each actual body."
   },
   {
    "id": "sp_hitch_timing",
@@ -1404,9 +1592,53 @@
    "owner": [
     "llm_strat_sim_tick"
    ],
-   "knob": "hitch_ms",
-   "carrier": "migrated:hitch_ms",
-   "note": "Hitch watch (2026-10-16, observe-only, [net] hitch_ms, default 0): the `CALL llm_strat_sim_step` (E8 7E 00 00 00) on sim_tick's one-variable-step branch becomes a call to sim_step_stub, which brackets the step with QPC reads for the [hitch] log line. No behaviour change."
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Mandatory post-body participant poll at the variable-step CALL; optional hitch timing shares this carrier. Promoted sim_tick performs the same poll after its actual body."
+  },
+  {
+   "id": "participant_advance_body_poll",
+   "sources": [{"file": "mh/seams/net_lockstep.cpp", "expr": "advance_site"}],
+   "addrs": ["0x0044d151"],
+   "lens": [5],
+   "kind": "code",
+   "owner": ["llm_strat_advance_sim_clock"],
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "The advance-clock loop shares the full-state post-body poll gateway; translated advance_sim_clock polls the same initialized authority."
+  },
+  {
+   "id": "participant_native_body_and_whole_removal",
+   "sources": [{"file": "mh/seams/participant_boundary_native.cpp", "expr": "address"}],
+   "addrs": ["0x0043f524", "0x0043fe14", "0x0043efb5", "0x0049c8fa", "0x0049cb3d", "0x0049cd87"],
+   "lens": [6, 5, 8, 8, 7, 7],
+   "kind": "code",
+   "owner": ["llm_strat_sim_step", "llm_strat_time_tick", "llm_net_lockstep_dispatch"],
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Closed literal guarded list: actual sim body begin/end; whole timeout/consensus continuations; agreed synced/unsynced RX simulation suffixes. RX notice/pending-clear remains immediate. Full GP/flags/FX state and displaced instructions are preserved; translated owners use the same required host ports."
+  },
+  {
+   "id": "participant_native_remove",
+   "sources": [{"file": "mh/seams/participant_boundary_native.cpp", "expr": "g_emit_normal"}],
+   "addrs": ["0x0049dca3"],
+   "lens": [8],
+   "kind": "detour",
+   "owner": ["llm_net_player_remove"],
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Exclusive original-entry trampoline defers the complete continuing-match emitter; the promoted emitter submits the same owned operation. Self/last-peer/explicit terminal removal retains immediate original behavior."
+  },
+  {
+   "id": "participant_native_remove_timeout",
+   "sources": [{"file": "mh/seams/participant_boundary_native.cpp", "expr": "g_emit_timeout"}],
+   "addrs": ["0x0049ddc1"],
+   "lens": [8],
+   "kind": "detour",
+   "owner": ["llm_net_player_remove_timeout"],
+   "knob": null,
+   "carrier": "migrated:participant-boundary",
+   "note": "Timeout emitter counterpart of participant_native_remove; original and translated paths share the initialized completed-body authority without publishing a premature roster change."
   },
   {
    "id": "mother_free_gate",
@@ -2381,6 +2613,67 @@
    "note": "mods:LANG1 (2026-09-29): repoint ReadMsgsDat's `mov eax, s_Msgs_dat_005034cf` operand to `lang\\<id>\\Msgs.dat` when the armed pack carries one. Guarded on the exact 5 original bytes. Runs at the top of WinMain, after DllMain armed it."
   },
   {
+   "id": "mods_boot_splice",
+   "sources": [
+    {
+     "file": "mh/seams/mod_resource_overlay.cpp",
+     "expr": "ADDR_BOOT_CALL"
+    }
+   ],
+   "addrs": [
+    "0x004c3dbf"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_boot_progress_draw"
+   ],
+   "knob": "mods.enabled",
+   "carrier": null,
+   "note": "mods:DATAEXT1 integration proof (2026-11-01): jump-splice the FIRST pack load's `call rsr_TryReadRsrFile` (0x004c3563) to a stub that runs the mod arm (resource detours -> catalog prepare -> the BANKI stock guard -> side gate -> mount -> live) and then repeats the call; the original EAX argument (the pack name) survives pushad/pushfd untouched. Post-loader-lock (DllMain has returned) and pre-first-pack (G_RSR_FILE_PTRS is still empty). Written from MH_Seam_Init only when [mods] enabled names ids; unset key = no write, stock boot. Disjoint from lang_pack_mh_ex's 0x004c3dba MOV one instruction earlier -- composes with an armed language pack."
+  },
+  {
+   "id": "mods_resource_entry_detours",
+   "sources": [
+    {
+     "file": "mh/seams/mod_resource_overlay.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [],
+   "dynamic": true,
+   "kind": "detour",
+   "owner": [],
+   "knob": "mods.enabled",
+   "carrier": null,
+   "note": "mods:DATAEXT1: res_detour_install is called for rsr_GetFileRealSize at 0x004cf15e and GetResourseFilePtr at 0x004cf069; each trampoline steals eight guarded entry bytes, preserves the stock fallback and exclusively claims the entry.",
+   "rationale": "The install_trampoline target is the wrapper parameter site, which the static detour scanner cannot resolve. Its two current callers pass the fixed resource entry addresses listed in note. hook/detour.cpp checks promoted-body displacement and entry claims at runtime; refusal leaves the overlay unmounted. This row registers the unresolved call, not a byte patch."
+  },
+  {
+   "id": "mods_save_load_notice",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "ADDR_LOAD_OK_PUMP"
+    }
+   ],
+   "addrs": [
+    "0x004bb761"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_menu_loadgame_confirm"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "mods:DATAEXT1: guarded E8 call splice on successful load; commit staged provenance and deliver its notice before tail-jumping to llm_menu_finish_enter_gameplay. Installed regardless of caps relocation."
+  },
+  {
    "id": "options_interface_size_row",
    "sources": [
     {
@@ -2984,9 +3277,9 @@
     "llm_menu_campaign_start_and_enter",
     "llm_menu_campaign_start_confirm_cb"
    ],
-   "knob": "desync.seed_record",
-   "carrier": "none:diagnostic -- observe-only notes for the replay record; in configuration (2) a promoted SwitchToPlanet displaces its site and replay_record's per-step poll (G_PLANET_INDEX change / game clock backwards) cuts the segment instead, without the pre-boundary hash",
-   "note": "hotfix rc9.4 (crash triage 7908b: both crashes followed planet changes; a replay could not cross them): five CALL rel32 retargets, E8 -> E8 to a pushad thunk that calls replay_rec::note_boundary (state hash + game clock + the source file's size/FNV-1a 64, BEFORE the callee replaces the state) and tail-jumps to the original callee: llm_menu_loadgame_confirm -> llm_game_load (save_load, EAX = name, file save\\<name>.sav), SwitchToPlanet -> map_SavePlanetToDisk(old,1) after the production drain (planet_transition, target = [EBP-0x20], file save\\temp\\save%02d.dat unless G_PLANET_STATUS[target]==0 = generated), llm_tact_mission_end_return_to_strategic -> map_LoadPlanetFromDisk (tact_return), llm_menu_campaign_start_and_enter / llm_menu_campaign_start_confirm_cb -> llm_strat_planet_session_begin (new_game, EDX = reset flag). The first sim step after a note writes mh_rec_seed_<n>.bin(.gz) + a mh_rec_segments.txt line. OBSERVE ONLY: no game memory written, callee registers and return address unchanged."
+   "knob": null,
+   "carrier": "none: replay notes may fall back to the per-step poll when a site is promoted; the fresh campaign restore and continuation instead require their guarded call sites and missing readiness holds mod publication",
+   "note": "hotfix rc9.4 (crash triage 7908b: both crashes followed planet changes; a replay could not cross them): five CALL rel32 retargets, E8 -> E8 to a pushad thunk that calls replay_rec::note_boundary (state hash + game clock + the source file's size/FNV-1a 64, BEFORE the callee replaces the state) and tail-jumps to the original callee: llm_menu_loadgame_confirm -> llm_game_load (save_load, EAX = name, file save\\<name>.sav), SwitchToPlanet -> map_SavePlanetToDisk(old,1) after the production drain (planet_transition, target = [EBP-0x20], file save\\temp\\save%02d.dat unless G_PLANET_STATUS[target]==0 = generated), llm_tact_mission_end_return_to_strategic -> map_LoadPlanetFromDisk (tact_return), llm_menu_campaign_start_and_enter / llm_menu_campaign_start_confirm_cb -> llm_strat_planet_session_begin (new_game, EDX = reset flag). The first sim step after a note writes mh_rec_seed_<n>.bin(.gz) + a mh_rec_segments.txt line. The fresh campaign call site is also armed independently of recording and restores the boot cfg tables after the note but before the callee reads System[1]; reset=1 continuation does not restore. Registers and return address are unchanged."
   },
   {
    "id": "move_reverse_now",
@@ -3059,12 +3352,12 @@
    "id": "detour_caps_save_gather",
    "kind": "detour",
    "knob": null,
-   "carrier": "none:the mirror hooks exist only for the relocated cap layout; a promoted save walker would have to carry the gather itself (see rationale)",
+   "carrier": "migrated:storage-policy",
    "owner": [
     "map_SavePlanetToDisk"
    ],
    "note": "D1 of the PT-CAP8 spec: the stock .bss arrays are the CANONICAL MIRROR of the relocated wide arrays and the save block sites keep their original bases and sizes, so the planet save must read a freshly gathered mirror. A run-before trampoline on the entry; the displaced prologue runs afterwards.",
-   "rationale": "PT-CAP8 (v0.2.2 cap raise). Installed ONLY when the cap relocation manifest was applied -- which the applier refuses whenever a promoted body holds one of its sites, so in the shipped configurations (libmh absent, or [config] mode=original) nothing is promoted and this entry is ours. The four save-block walkers (SavePlanetToDisk, LoadPlanetFromDisk, game_SaveGame, llm_game_load) are NOT promoted at all today (mh::config::kSaveClosureOwned = false), so the collision this lint guards against cannot occur; if that constant ever flips, the install is refused BY NAME (entry_claim::exclusive against a promoted body, logged as an [interlock] refusal plus the '[caps] WARNING: a mirror hook is missing' line), and the translated walker would then have to gather/scatter the canonical mirror itself (docs/inmem-patching.md, 'The canonical mirror').",
+   "rationale": "Promoted save_live wrappers carry prepare/restore through the host API and live-bound state; claimed native entries are skipped. Required policy support is not an optional gameplay knob.",
    "sources": [
     {
      "file": "mh/patch/caps_install.cpp",
@@ -3076,12 +3369,12 @@
    "id": "detour_caps_load_scatter",
    "kind": "detour",
    "knob": null,
-   "carrier": "none:the mirror hooks exist only for the relocated cap layout; a promoted load walker would have to carry the scatter itself (see rationale)",
+   "carrier": "migrated:storage-policy",
    "owner": [
     "map_LoadPlanetFromDisk"
    ],
    "note": "D1 of the PT-CAP8 spec: map_LoadPlanetFromDisk writes the STOCK extents (the mirror); a mid-body trampoline at 0x0044851b (ADD [EBP-0x20],EAX after the path free-count block, the last block of the wide set; PT-CAP9-U7b moved it here from 0x00448488 behind the labs block, which scattered the stock mirror BEFORE the path buffers, busy flags and free count were read, so every planet load lost the path pool) scatters the mirror into the wide arrays, applies the MHOV trailer and re-derives the path ids before llm_strat_planet_map_session_init and the fog recompute read them. Six stolen bytes, checked by hand (no entry prologue).",
-   "rationale": "PT-CAP8 (v0.2.2 cap raise). Installed ONLY when the cap relocation manifest was applied -- which the applier refuses whenever a promoted body holds one of its sites, so in the shipped configurations (libmh absent, or [config] mode=original) nothing is promoted and this entry is ours. The four save-block walkers (SavePlanetToDisk, LoadPlanetFromDisk, game_SaveGame, llm_game_load) are NOT promoted at all today (mh::config::kSaveClosureOwned = false), so the collision this lint guards against cannot occur; if that constant ever flips, the install is refused BY NAME (entry_claim::exclusive against a promoted body, logged as an [interlock] refusal plus the '[caps] WARNING: a mirror hook is missing' line), and the translated walker would then have to gather/scatter the canonical mirror itself (docs/inmem-patching.md, 'The canonical mirror').",
+   "rationale": "Promoted planet load carries preflight/import/deferred-close and live publication in save_live.cpp. Original bodies retain the guarded native scatter splice.",
    "sources": [
     {
      "file": "mh/patch/caps_install.cpp",
@@ -3090,73 +3383,444 @@
    ]
   },
   {
-   "id": "caps_save_trailer",
+   "id": "storage_save_required_calls",
    "sources": [
     {
      "file": "mh/patch/caps_install.cpp",
-     "expr": "ADDR_SAVE_CLOSE"
+     "expr": "site"
     }
    ],
    "addrs": [
-    "0x004480e0"
+    "0x004480e0",
+    "0x004476b4",
+    "0x004bb76d",
+    "0x0044719a",
+    "0x0044d38f",
+    "0x004475c5"
    ],
    "lens": [
+    5,
+    5,
+    5,
+    5,
+    5,
     5
+   ],
+   "kind": "code",
+   "owner": [
+    "map_SavePlanetToDisk",
+    "llm_game_load",
+    "llm_menu_loadgame_confirm",
+    "game_SaveGame",
+    "llm_strat_try_enter_tactical_mission"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "Closed literal required_call list: planet policy close, version normalization, load refusal, initial planet-save failure propagation, tactical planet save, and composed-container finalization. Each source expectation is guarded.",
+   "rationale": "Promoted save_live wrappers carry prepare/restore/preflight/import and successful finalization through the shared host/common grammar. The early header-write hook is removed; finalization stamps only after the composed manifest. UI owners remain native; the fallback refusal call below is mutually exclusive."
+  },
+  {
+   "id": "storage_load_lifecycle",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "p.site"
+    }
+   ],
+   "addrs": [
+    "0x00447785",
+    "0x00448222",
+    "0x00447b24"
+   ],
+   "lens": [
+    5,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_game_load",
+    "map_LoadPlanetFromDisk"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "ORDERSEQ1: actual load scopes, not file probes. Container accepted-version first bulk read CALL00447785 guard E85C0F0000 and planet first bulk read CALL00448222 guard E8BF040000 both invoke host_begin_load before original reader004486e6. Restore actual EAX destination/EDX bytes/EBX opaque FILE, including relocated operands. Begin failure skips reader: container cleanup00447994; planet failure accumulator[EBP-20]=1 then existing deferred-close path004485e5. Successful container extraction close CALL00447b24 guard E8A87C0800 invokes host_load_container before original close004cf7d1 once; success resumes00447b29, failure00447b9f. Full FLAGS/GPR/FX state restored. Member-output close00447b17 and native error close00447997 untouched.",
+   "rationale": "Outgoing execution/reservation adapters are quarantined without native subtraction or canonical QORD/QCAM mutation only after successful read-only admission, before incoming block writes, including same-world/incarnation loads. Nested container/member begin is idempotent and preserves QCAM. Missing QORD explicitly resets empty metadata even same world/shape; present QORD imports exact bytes. Final member publication rebinds incoming accounting and activates. Container QCAM restores only after successful extraction. Promoted save_live invokes identical begin/commit callbacks at matching boundaries and owns its root exclusively. Three guarded full5B CALLs contain no relocated cap operand. Partial arm failure rolls back matching owned replacements, reverse order."
+  },
+  {
+   "id": "storage_planet_save_restore",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "0x004480fbu"
+    }
+   ],
+   "addrs": [
+    "0x004480fb"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
     "map_SavePlanetToDisk"
    ],
    "knob": null,
-   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
-   "note": "S3: the 5-byte `CALL utils_close_file` (E8 EC 76 08 00) that ends map_SavePlanetToDisk (EAX = the FILE) becomes CALL save_close_stub; the stub (pushad/pushfd) appends the MHOV overflow blob + 8-byte {len, 'MHOF'} footer while raised() and some record is non-zero past the vanilla window, then JMPs to utils_close_file.",
-   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+   "carrier": "migrated:storage-policy",
+   "note": "All native planet-save returns restore the live view after temporary framing; guarded epilogue8B45EC8D65F0.",
+   "rationale": "Promoted save_live writer carries prepare/restore on its actual returns."
   },
   {
-   "id": "caps_save_stamp",
+   "id": "storage_planet_load_deferred_close",
    "sources": [
     {
      "file": "mh/patch/caps_install.cpp",
-     "expr": "ADDR_HDR_WRITE"
+     "expr": "0x004485e8u"
     }
    ],
    "addrs": [
-    "0x0044725c"
+    "0x004485e8"
    ],
    "lens": [
     5
+   ],
+   "kind": "code",
+   "owner": [
+    "map_LoadPlanetFromDisk"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "Guarded E8E4710800 close retains the opaque Watcom FILE until policy import.",
+   "rationale": "Promoted load carries equivalent deferred close/import through the host callbacks."
+  },
+  {
+   "id": "storage_planet_load_return",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "0x00448655u"
+    }
+   ],
+   "addrs": [
+    "0x00448655"
+   ],
+   "lens": [
+    6
+   ],
+   "kind": "code",
+   "owner": [
+    "map_LoadPlanetFromDisk"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "Every native load return publishes or refuses policy and closes deferred I/O; guarded8B45EC8D65F0.",
+   "rationale": "Promoted save_live carries equivalent post-load validation/import/publication."
+  },
+  {
+   "id": "storage_container_write_failure",
+   "sources": [
+    {
+     "file": "mh/patch/caps_install.cpp",
+     "expr": "0x004474f5u"
+    }
+   ],
+   "addrs": [
+    "0x004474f5"
+   ],
+   "lens": [
+    6
    ],
    "kind": "code",
    "owner": [
     "game_SaveGame"
    ],
    "knob": null,
-   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
-   "note": "S3: the 5-byte `CALL utils_write_to_file` (E8 F6 8C 08 00) of game_SaveGame's 40-byte container version header (EAX = the table slot 0x5d08f4 + idx*0x28) becomes CALL header_write_stub; when raised() and an included member planet file ends in a footer the stub swaps EAX for a copy of the slot with bytes 29..32 = 'MHC1' (a sixth version no build's table holds), then JMPs to utils_write_to_file.",
-   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+   "carrier": "migrated:storage-policy",
+   "note": "Guarded837DCC00750C propagates initial planet-save failure.",
+   "rationale": "Promoted container writer tests the same real planet-save result before continuing."
   },
   {
-   "id": "caps_load_version",
+   "id": "storage_policy_native_lifecycle",
    "sources": [
     {
-     "file": "mh/patch/caps_install.cpp",
-     "expr": "ADDR_HDR_READ"
+     "file": "mh/seams/ui_storage_controls.cpp",
+     "expr": "p.site"
     }
    ],
    "addrs": [
-    "0x004476b4"
+    "0x0047a304",
+    "0x0047a53a",
+    "0x0047b28e",
+    "0x0047b358",
+    "0x00466ddc",
+    "0x0046cb4a",
+    "0x004814f4",
+    "0x0047f690",
+    "0x0047e5f0",
+    "0x00489586",
+    "0x00466968",
+    "0x0046969c",
+    "0x0043f552",
+    "0x0045421c",
+    "0x0045443d",
+    "0x0044cfb6",
+    "0x00461e96",
+    "0x0046227c",
+    "0x00463858",
+    "0x00489f4c",
+    "0x00462d80",
+    "0x00487b9c",
+    "0x0047baf0"
+   ],
+   "lens": [
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    6,
+    6,
+    9,
+    5,
+    5,
+    5,
+    8,
+    8,
+    8,
+    8,
+    9,
+    9,
+    9
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_bldg_completion_dispatch",
+    "llm_strat_hangar_recharge_pulse",
+    "llm_strat_order_queue_dispatch",
+    "llm_storage_cancel_pending_docked",
+    "llm_strat_unit_state_takeoff_landing",
+    "llm_strat_unit_state_exit_walk_out",
+    "llm_strat_unit_apply_damage",
+    "llm_strat_unit_change_proto_and_energy",
+    "llm_strat_sim_step",
+    "llm_strat_planet_session_begin",
+    "llm_strat_session_begin_multi",
+    "SwitchToPlanet",
+    "llm_strat_unit_init_record",
+    "map_unit_Add",
+    "llm_strat_storage_dock_unit_at_building",
+    "llm_strat_storage_remove_docked_unit",
+    "map_CreateBuilding",
+    "llm_strat_unit_free_slot",
+    "llm_strat_bldg_free_record"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "Complete24 fixed sites and rollback: production, paid repair, admin/manual admission, manual bulk-rally commit, departure completion, damage/prototype changes, retry, world reset, ordinary RMB and birth/cancel/retire.",
+   "rationale": "Promoted simulation owners synchronously carry storage_policy through sim_store and their translated order/production/repair/departure/lifecycle bodies and world wrappers. UI input remains native; no translated UI carrier is claimed. Promoted-owned native bodies are not patched."
+  },
+  {
+   "id": "storage_transition_active_capture",
+   "sources": [
+    {
+     "file": "mh/seams/replay_boundary.cpp",
+     "expr": "0x0044ce35u"
+    }
+   ],
+   "addrs": [
+    "0x0044ce35"
+   ],
+   "lens": [
+    10
+   ],
+   "kind": "code",
+   "owner": [
+    "SwitchToPlanet"
+   ],
+   "knob": null,
+   "carrier": "migrated:storage-policy",
+   "note": "Capture prior simulation-active state before native C705D4015D0000000000.",
+   "rationale": "sim_h_switch_to_planet captures the same state and restores it on save refusal."
+  },
+  {
+   "id": "unit_double_select_mouse_observer",
+   "sources": [
+    {
+     "file": "mh/seams/ui_unit_double_select.cpp",
+     "expr": "POP_SITE"
+    }
+   ],
+   "addrs": [
+    "0x004266a5"
    ],
    "lens": [
     5
    ],
    "kind": "code",
    "owner": [
-    "llm_game_load"
+    "llm_input_mouse_delta_pump"
    ],
    "knob": null,
-   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
-   "note": "S3: the 5-byte `CALL utils_read_from_file` (E8 9F 86 08 00) of llm_game_load's 40-byte version header into G_LZW_TEMP_DATA becomes CALL header_read_stub; the stub performs the read, then, if the 40 bytes are the raised stamp: raised() rewrites them to the table slot (the vanilla compare accepts them), OFF leaves them (the vanilla compare fails -> the load is refused before any block is read) and arms the refusal-message flag. Any other header is untouched.",
-   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+   "carrier": null,
+   "note": "Guarded E84EAA0A00 input-pop observer, including installer rollback.",
+   "rationale": "Native input owns this consumer in both gameplay carriers."
+  },
+  {
+   "id": "unit_double_select_finish",
+   "sources": [
+    {
+     "file": "mh/seams/ui_unit_double_select.cpp",
+     "expr": "FINISH_SITE"
+    }
+   ],
+   "addrs": [
+    "0x00443a1c"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_input_update"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Guarded E875250000 completed-selection call preserves Ctrl and notifications.",
+   "rationale": "Native input owns this consumer in both gameplay carriers."
+  },
+  {
+   "id": "selected_targets_after_ground",
+   "sources": [
+    {
+     "file": "mh/ui/selected_targets.cpp",
+     "expr": "ground_call"
+    }
+   ],
+   "addrs": [
+    "0x0044e5f1"
+   ],
+   "lens": [
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_render_view"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Guarded E8FE690500 invokes metrics/ground refresh once, then draws before native objects/shadows/bodies.",
+   "rationale": "Render-only native owner; spectator fog retains its separate0044e5a4 insertion and map zoom is unmodified. Shadows may darken lines, as approved."
+  },
+  {
+   "id": "selected_target_weapon_effects",
+   "sources": [
+    {
+     "file": "mh/ui/target_line_weapon_events.cpp",
+     "expr": "p.site"
+    }
+   ],
+   "addrs": [
+    "0x0048c1ef",
+    "0x0048c414",
+    "0x0048c536"
+   ],
+   "lens": [
+    5,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_unit_fire_weapon"
+   ],
+   "knob": null,
+   "carrier": "migrated:selected-targets",
+   "note": "Guarded direct-effect completion and successful projectile returns establish actual secondary firing, not acquisition.",
+   "rationale": "Promoted fire_weapon emits UNIT_WEAPON_FIRED after the same real successful consumers; the synchronous host sink observes identities. Native wrappers retain calls, results, stacked cleanup and complete machine state."
+  },
+  {
+   "id": "selected_target_deferred_commit",
+   "sources": [
+    {
+     "file": "mh/ui/target_line_deferred_events.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x00469d9d"
+   ],
+   "lens": [
+    6
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_queue_apply_and_dequeue"
+   ],
+   "knob": null,
+   "carrier": "migrated:selected-targets",
+   "note": "Guarded FF0D94015D00 witnesses accepted deferred args/order/home before compaction and reproduces DEC on the bound count.",
+   "rationale": "The promoted successful dequeue consumer emits UNIT_ORDER_COMMITTED at the same boundary with owned scalar metadata; no queued deferral is mistaken for acceptance."
+  },
+  {
+   "id": "selected_target_attack_provenance",
+   "sources": [
+    {
+     "file": "mh/ui/target_line_attack_events.cpp",
+     "expr": "p.site"
+    }
+   ],
+   "addrs": [
+    "0x00466143",
+    "0x00466325",
+    "0x004667e3",
+    "0x00467088",
+    "0x004672a2"
+   ],
+   "lens": [
+    6,
+    6,
+    6,
+    5,
+    5
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_order_enqueue",
+    "llm_strat_order_stage_scheduled",
+    "llm_strat_order_pending_enqueue",
+    "llm_strat_order_queue_dispatch"
+   ],
+   "knob": null,
+   "carrier": "migrated:selected-targets",
+   "note": "Successful QUEUE/STAGING/PENDING admissions and completed primary/secondary target binds establish private attack provenance. PENDING ingress is unknown-origin.",
+   "rationale": "Promoted owners emit equivalent synchronous checkpoints. Native admission thunks reproduce INC on bound counters while preserving incoming CF and outgoing flags; acceptance wrappers preserve the original call and complete outgoing machine state."
+  },
+  {
+   "id": "detour_selected_target_attack_group",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/ui/target_line_attack_events.cpp",
+     "expr": "group_entry"
+    }
+   ],
+   "addrs": [
+    "0x00444894"
+   ],
+   "lens": [
+    8
+   ],
+   "owner": [
+    "llm_strat_group_issue_attack_order"
+   ],
+   "knob": null,
+   "carrier": "migrated:selected-targets",
+   "note": "Native begin/original/end attack-invocation observer; promoted public wrapper emits equivalent presentation checkpoints."
   },
   {
    "id": "caps_load_refusal_msg",
@@ -3177,9 +3841,370 @@
     "llm_menu_loadgame_confirm"
    ],
    "knob": null,
-   "carrier": "none:the raised-save splices exist only for the relocated cap layout (installed only when the relocation manifest applied); the save/load walkers are not promoted (mh::config::kSaveClosureOwned = false), and a promoted walker would have to carry the trailer itself",
-   "note": "S3: the 5-byte `CALL llm_ui_dlg_msgbox_ok` (E8 38 0F 00 00) of the menu's load-failure box (EAX = G_TEXT_PTRS[0x2b5]) becomes CALL loadfail_msg_stub; when the refusal flag is armed the stub swaps EAX for the player-strings row caps.load_refused (EN: 'This save uses raised building limits. Turn on Raised limits in the launcher to load it.'), then JMPs to the box. Otherwise EAX is untouched.",
-   "rationale": "PT-CAP8 S3 (v0.2.2 raised-caps saves). Installed ONLY when the cap relocation manifest was applied (nothing is promoted in the shipped configurations, libmh absent or [config] mode=original). Raise OFF: every branch is raised()-gated or read-only, an OFF save is byte-for-byte vanilla."
+   "carrier": null,
+   "note": "Native menu load-refusal message call; fallback installation when required save support is unavailable. Exact E8380F0000 remains guarded.",
+   "rationale": "This UI consumer remains native; the fallback is mutually exclusive with the successful required_call installer and reports the actual policy/caps refusal."
+  },
+  {
+   "id": "avi_lifetime_entry_detours",
+   "kind": "detour",
+   "sources": [
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "CLOSE"
+    },
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004c29d8"
+    },
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004b6ca2"
+    },
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004a0524"
+    }
+   ],
+   "addrs": [
+    "0x004c3216",
+    "0x004c29d8",
+    "0x004b6ca2",
+    "0x004a0524"
+   ],
+   "lens": [
+    8,
+    8,
+    8,
+    8
+   ],
+   "owner": [
+    "llm_ui_avi_close_return_to_menu",
+    "llm_game_boot_init",
+    "llm_game_shutdown_cleanup",
+    "llm_wnd_proc"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Four exclusive eight-byte entry trampolines preserve native execution while enforcing AVI worker rundown and close deferral. Any refusal aborts required installation before game entry."
+  },
+  {
+   "id": "avi_lifetime_calls",
+   "kind": "code",
+   "sources": [
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "site"
+    }
+   ],
+   "addrs": [
+    "0x004c30e5",
+    "0x004c400d",
+    "0x004c23b3",
+    "0x004c3391"
+   ],
+   "lens": [
+    7,
+    7,
+    7,
+    7
+   ],
+   "owner": [
+    "llm_game_boot_init",
+    "llm_game_boot_async_thread_pump",
+    "llm_ui_avi_audio_playback_loop",
+    "llm_ui_avi_close_return_to_menu"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Closed replace_call caller list: initialize_lock at004c30e5, create_worker at004c400d, release_worker_lock at004c23b3, before_continuation at004c3391. Each writes CALL rel32 plus two NOPs over seven guarded bytes."
+  },
+  {
+   "id": "avi_lifetime_close_lock",
+   "kind": "code",
+   "sources": [
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004c3245u"
+    },
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004c3292u"
+    }
+   ],
+   "addrs": [
+    "0x004c3245",
+    "0x004c3292"
+   ],
+   "lens": [
+    22,
+    22
+   ],
+   "owner": [
+    "llm_ui_avi_close_return_to_menu",
+    "llm_ui_avi_close_return_to_menu"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "NOP the complete guarded native main-thread conditional EnterCriticalSection and LeaveCriticalSection sequences. Main deletes the lock only after the retained worker signals."
+  },
+  {
+   "id": "avi_read_sharing",
+   "kind": "code",
+   "sources": [
+    {
+     "file": "mh/seams/avi_lifecycle.cpp",
+     "expr": "0x004cd07cu"
+    }
+   ],
+   "addrs": [
+    "0x004cd07c"
+   ],
+   "lens": [
+    2
+   ],
+   "owner": [
+    "llm_ui_avi_open"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Guarded PUSH10 becomes PUSH20: immutable boot/info AVI readers coexist while write opens remain denied. Native media loading, errors and continuations remain intact."
+  },
+  {
+   "id": "strategic_semantic_input",
+   "sources": [
+    {
+     "file": "mh/seams/strategic_input_hooks.cpp",
+     "expr": "patches[done].site"
+    }
+   ],
+   "addrs": [
+    "0x00441bf8",
+    "0x00442da4",
+    "0x00442ef6",
+    "0x00446012",
+    "0x0044601b",
+    "0x00446026",
+    "0x0044602f",
+    "0x00446379",
+    "0x00446382",
+    "0x004465f1",
+    "0x004465fa",
+    "0x0044661b",
+    "0x00446624",
+    "0x00445e43",
+    "0x00445e4c",
+    "0x00442ba5",
+    "0x0041183a",
+    "0x0041186e",
+    "0x00411843",
+    "0x0041187b",
+    "0x00442a4a",
+    "0x00441ba0"
+   ],
+   "lens": [
+    5,
+    5,
+    10,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    5,
+    5,
+    7,
+    7,
+    5,
+    8
+   ],
+   "kind": "code",
+   "owner": [
+    "llm_strat_input_update",
+    "llm_strat_selection_drag_finish",
+    "llm_ui_click_select_target",
+    "llm_ui_hud_minimap_click_handler"
+   ],
+   "knob": null,
+   "carrier": null,
+   "note": "Local strategic dequeue token, contextual mouse-edge/command ownership and selection role predicates; full-instruction guards and exact rollback.",
+   "rationale": "These input consumers remain native in both carriers. U48 keeps the sole dequeue entry detour; no physical key/modifier/mouse global is substituted."
   }
+,
+{
+ "id": "order_tasks_native_executor",
+ "sources": [
+  {
+   "file": "mh/seams/order_tasks_native.cpp",
+   "expr": "p.contract->address"
+  }
+ ],
+ "addrs": [
+  "0x00453ee4",
+  "0x00484b4a",
+  "0x004dac44",
+  "0x004d55ef",
+  "0x004d5708",
+  "0x0047ca32",
+  "0x00480c6f",
+  "0x004666fd",
+  "0x0046638a",
+  "0x004665a7",
+  "0x00466ce1",
+  "0x0047c8dd",
+  "0x00482892",
+  "0x004835a9",
+  "0x00482eb6",
+  "0x00483c0a",
+  "0x0048432d",
+  "0x004849ce",
+  "0x00484dce",
+  "0x0047cfc7",
+  "0x00480d35",
+  "0x0041c9ac",
+  "0x0041ccf7",
+  "0x0041d0d7",
+  "0x0041d236",
+  "0x00482c9c",
+  "0x00484b8a",
+  "0x004838f5",
+  "0x00483fc7",
+  "0x004846b9",
+  "0x004ede5c",
+  "0x004ede75",
+  "0x0047e405",
+  "0x00471125",
+  "0x0048513a",
+  "0x00484f04",
+  "0x00484ceb",
+  "0x004868ca",
+  "0x004868db",
+  "0x00481a5c",
+  "0x00482062",
+  "0x004809f5",
+  "0x00469a68",
+  "0x00469dde",
+  "0x0047cd29",
+  "0x0048512b",
+  "0x00485259",
+  "0x00482c6d",
+  "0x00471176",
+  "0x0047e537",
+  "0x00471a04",
+  "0x004736d1",
+  "0x00485959",
+  "0x004877ae",
+  "0x00488020",
+  "0x00484de9",
+  "0x004809bf",
+  "0x00485ea5"
+ ],
+ "lens": [
+  8,
+  8,
+  8,
+  8,
+  8,
+  5,
+  5,
+  7,
+  6,
+  6,
+  7,
+  6,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  8,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5,
+  5
+ ],
+ "kind": "code",
+ "owner": [
+  "llm_strat_group_move_order_commit",
+  "llm_strat_group_move_order_pathfind",
+  "llm_strat_session_state_reset",
+  "llm_strat_order_schedule",
+  "llm_strat_order_release_due",
+  "llm_strat_order_queue_dispatch",
+  "llm_strat_order_queue_apply_and_dequeue",
+  "llm_strat_bldg_apply_damage",
+  "llm_strat_bldg_state_to_unit",
+  "llm_strat_bldg_state_dismantle_finish",
+  "llm_strat_unit_tick",
+  "llm_strat_unit_state_move_walker",
+  "llm_strat_unit_apply_damage",
+  "llm_strat_unit_state_hover_engage",
+  "llm_strat_unit_state_move_path",
+  "llm_strat_unit_state_climb_vertical",
+  "llm_strat_unit_state_descend_cruise",
+  "llm_strat_unit_state_group_marshal",
+  "llm_strat_unit_group_step_ground",
+  "llm_strat_unit_group_step_plane",
+  "llm_strat_unit_state_attack_building",
+  "llm_strat_unit_state_attack_unit",
+  "llm_strat_unit_state_remove_silent",
+  "llm_strat_unit_chase_check",
+  "llm_strat_unit_teardown_mapped",
+  "llm_strat_unit_teardown",
+  "llm_strat_ai_commit_attack_order",
+  "llm_strat_ai_commit_attack_order_alt",
+  "llm_strat_target_release_ref",
+  "llm_strat_ai_engage_select_and_commit",
+  "llm_strat_unit_state_plot_turn_path"
+ ],
+ "knob": null,
+ "carrier": "migrated:order-tasks",
+ "note": "ORDERSEQ1 exact native issue/application, planner, terminal outcome, target-retirement and fresh-campaign lifecycle seams. All 58 literal sites are preflighted before any write; failure rolls back owned replacements. Source implementations carry the same typed common policy at matching boundaries.",
+ "rationale": "Original-only executor spans use complete measured instructions and preserve FLAGS/GPR/FX state. Promoted owners skip these splices and invoke the same canonical dispatcher from translated functions. The F entry guard composes its displaced cap-dependent operand through patch_bytes_guarded_caps and reads the actual raised queue through caps::orders; no runtime-discovered address exemption."
+}
  ]
 }

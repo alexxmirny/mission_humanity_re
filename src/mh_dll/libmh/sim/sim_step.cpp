@@ -6,6 +6,7 @@
 // translator brief and this unit's own hazard note about this being the domain root.
 //
 #include "sim/sim_step.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"   // typed callables for the original functions we still call OUT to
 #include "addr/mh_export.gen.h"  // MH_EXPORT_REPLACE -- the generated entry thunk the harness rebinds to
@@ -14,6 +15,7 @@
 #include "addr/mh_rebind.gen.h"  // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
 #include "fp/x87.h" // CRT-X87: the shared x87 truncation helpers
+#include "lockstep/participant_removal.h"
 
 // LIB-SPINE-API: the REPLAY SPINE's C facade, by relative path exactly as state/spine.cpp and
 // state/host_bind.h reach it -- libmh/include is on no module's include path, and adding it for one
@@ -25,6 +27,14 @@
 #include <cfloat> // _controlfp_s -- CRT-X87-CPP step 1's control-word read, see promoted_arm
 
 namespace mh::sim {
+namespace {
+void (*g_post_ai_observer)() = nullptr;
+}
+void set_sim_step_post_ai_observer(void (*fn)()) { g_post_ai_observer = fn; }
+void fire_sim_step_post_ai_observer() {
+    if (g_post_ai_observer) g_post_ai_observer();
+}
+
 
 // ---- locally-duplicated domain constants ---------------------------------------------------------
 //
@@ -106,12 +116,19 @@ namespace detail {
 
 void sim_step(const sim_view &v, sim_store &own, const sim_step_calls &c) {
     // ---- HEAD GATES (0x0043f52a-0x0043f552) ----------------------------------------------------
+    order_tasks_adapter::request(own, mh::order_tasks::host_protocol::operation::begin_due_player_batch);
     if (*v.ai_enabled != 0) {                  // DECLARED NEED: v.ai_enabled -- see sim_step.h
         c.ai_players_tick(*v.game_time_delta); // DECLARED NEED: v.game_time_delta
     }
+    order_tasks_adapter::request(own, mh::order_tasks::host_protocol::operation::end_due_player_batch);
+    fire_sim_step_post_ai_observer(); // MHOR ENTRY, including empty, BEFORE the native count gate
     if (own.order_count() != 0) {
         c.order_queue_dispatch();
     }
+    // Exactly once even with an empty explicit-order queue; new events from the later
+    // building loop wait deterministically until the next step's same retry boundary.
+    own.storage_policy(mh::storage_policy::operation::retry);
+    order_tasks_adapter::request(own, mh::order_tasks::host_protocol::operation::pre_unit_tick);
 
     // ---- PER-PLAYER LOOP (0x0043f552-0x0043fd7f), player = 0..MAX_PLAYERS-1 --------------------
     //
@@ -415,8 +432,11 @@ extern void (*g_pre_hook)(); // defined below, with the block comment that expla
 // served-count ladder, which is about the ENTRY being reached and stays true to that.
 void sim_step() {
     if (promoted_arm::g_pre_hook) promoted_arm::g_pre_hook();
-    sim_state st = state();
+    sim_state      st    = state();
+    const uint64_t token = mh::lockstep::participant::boundary(mh::participant_boundary::operation::begin);
+    if (!token) mh::lockstep::participant::fail("actual body entered with an unbound authority");
     detail::sim_step(st.read, st.own, live_sim_step_calls());
+    mh::lockstep::participant::boundary(mh::participant_boundary::operation::complete, token);
 }
 
 // ---- the PROMOTED arm (the domain root's oracle -- G13's answer, HARNESS-MEDIATED per C6) ----------

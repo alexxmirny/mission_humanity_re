@@ -31,6 +31,26 @@ clickl Ok
 # `peers 1` alone is a race the client always loses).
 present Network players
 peers 1
+# Select the host-owned speed through the real Settings spinner before waiting for the client's capture.
+settled Cancel
+click 501 380
+lobbypage 1
+settled Cancel
+click 501 380
+lobbypage 2
+lobbyspeed 100
+settled Cancel
+click 501 205
+lobbyspeed 125
+settled Cancel
+click 501 205
+lobbyspeed 150
+settled Cancel
+click 501 205
+lobbyspeed 175
+settled Cancel
+click 501 205
+lobbyspeed 200
 awaitsignal lobby
 enabled Start
 settled Start

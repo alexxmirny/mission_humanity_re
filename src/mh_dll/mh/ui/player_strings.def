@@ -27,7 +27,8 @@ MH_STR(REFUSE_CODEPAGE, "refuse.codepage", L"codepage %u/%u")
 MH_STR(REFUSE_NEWER_PROTOCOL, "refuse.newer_protocol", L"protocol %u > %u")
 MH_STR(REFUSE_OLDER_PROTOCOL, "refuse.older_protocol", L"protocol %u < %u")
 MH_STR(REFUSE_MALFORMED, "refuse.malformed", L"malformed JOIN")
-MH_STR(REFUSE_NO_MATCH_ID, "refuse.no_match_id", L"old protocol (no match_id)")
+MH_STR(REFUSE_OLD_PROTOCOL, "refuse.old_protocol", L"old game protocol")
+MH_STR(REFUSE_HOST_GENERATION, "refuse.host_generation", L"host generation %u < %u")
 MH_STR(REFUSE_NEWER_THAN_HOST, "refuse.newer_than_host", L"newer protocol than this host")
 MH_STR(REFUSE_NOT_OUR_LOBBY, "refuse.not_our_lobby", L"not our lobby")
 MH_STR(REFUSE_CP_MISMATCH, "refuse.cp_mismatch", L"input codepage mismatch")
@@ -37,6 +38,9 @@ MH_STR(REFUSE_CAPS, "refuse.caps", L"cannot raise limits")
 MH_STR(REFUSE_BUILD, "refuse.build", L"Host runs %s, you run %s: update")
 // PT-SET1: the host sends "gameplay keys <host>/<yours>" (hex digests of the synced-key sets); tr_refusal_reason parses it.
 MH_STR(REFUSE_GAMEPLAY, "refuse.gameplay", L"Gameplay settings differ (%s/%s): update")
+// DATAEXT1: the host's and joiner's active mod-content digests differ; the host sends the short phrase (the full
+// hex pair only fits the host log) and the joiner matches this row statically.
+MH_STR(REFUSE_CONTENT, "refuse.content", L"content mismatch")
 // The UDP module's relay-level notice ("Relay outdated (protocol 0 < 1)"), matched the same way.
 MH_STR(RELAY_OUTDATED, "relay.outdated", L"Relay outdated (protocol %u < %u)")
 
@@ -92,8 +96,45 @@ MH_STR(LOBBY_TEAM_3, "lobby.team_3", L"T3")
 MH_STR(LOBBY_TEAM_4, "lobby.team_4", L"T4")
 MH_STR(LOBBY_MODE_FFA, "lobby.mode_ffa", L"Mode: FFA")
 MH_STR(LOBBY_MODE_TEAM, "lobby.mode_team", L"Mode: Team")
+MH_STR(LOBBY_SPEED, "lobby.speed", L"Speed: %d%%")
 
 // ---- the raised-caps save (patching:PT-CAP8 S3; patch/caps_install.cpp, the load-failure message hook) ----------
 // Shown in the game's own load-failure message box when a raised-caps save is loaded with [caps] raise OFF
 // (user-approved wording, 2026-10-20).
 MH_STR(CAPS_LOAD_REFUSED, "caps.load_refused", L"This save uses raised limits. Turn on Raised limits in the launcher to load it.")
+
+// DATAEXT1: the outer .sav mod-metadata carrier (mh/mods/save_meta.cpp). One deferred red floating
+// notice per load whose mod set differs from (or is unknown to) the active set; the load continues.
+MH_STR(MODS_SAVE_MISMATCH, "mods.save_mismatch", L"Save was made with different mods - loading anyway")
+MH_STR(MODS_SAVE_LEGACY, "mods.save_legacy", L"Save has no mod data - it may not match the active mods")
+MH_STR(MODS_SAVE_TILESET_MISSING, "mods.save_tileset_missing", L"This save needs a missing tileset. Enable its mod to load it.")
+MH_STR(MODS_CONFIG_REFUSED, "mods.config_refused", L"Mods refused; stock resources active")
+MH_STR(MODS_CONFIG_DETAILS, "mods.config_details", L"See mh_video.log for details")
+MH_STR(TILESET_SUMMARY_OVERFLOW, "tileset.summary_overflow", L"Map summary exceeds display limit")
+MH_STR(TILESET_UNKNOWN, "tileset.unknown", L"Unknown tileset")
+
+// ---- the right panel's page spinner (ui/map_preview.cpp, mods:MAPGEN2) ---------------------------
+// "View: <page>" under Cancel pages the description/status box: Description | Preview | Settings (lobby only).
+MH_STR(PAGE_DESCRIPTION, "page.description", L"View: Description")
+MH_STR(PAGE_PREVIEW, "page.preview", L"View: Preview")
+MH_STR(PAGE_SETTINGS, "page.settings", L"View: Settings")
+// The Settings page's caption: the host edits, a client reads.
+MH_STR(SETTINGS_TITLE, "page.settings_title", L"Game settings")
+MH_STR(SETTINGS_HOST_ONLY, "page.settings_host_only", L"Game settings (set by the host)")
+// The Preview page when there is nothing to draw: a client before the host's map has arrived, or a file that cannot be read.
+MH_STR(PREVIEW_NOT_RECEIVED, "page.preview_not_received", L"Map not received yet")
+MH_STR(PREVIEW_NONE, "page.preview_none", L"No preview available")
+
+// ---- selected storage action status line (seams/ui_storage_controls.cpp) -----------------------
+MH_STR(STORAGE_AUTO_DISPATCH, "storage.auto_dispatch", L"auto dispatch")
+
+// Strategic semantic input and canonical route feedback. Counts name refused/blocked actors.
+MH_STR(STRATEGIC_INPUT_UNAVAILABLE, "keys.input_unavailable", L"Strategic input could not be installed safely. Restart with a matching game and mod build.")
+MH_STR(ORDER_QUEUE_FULL, "orders.queue_full", L"%u unit(s): order queue is full (32 entries)")
+MH_STR(ORDER_QUEUE_AFTER_PATROL, "orders.after_patrol", L"%u unit(s): a finite order cannot follow a repeating patrol")
+MH_STR(ORDER_QUEUE_DEGENERATE, "orders.degenerate", L"%u unit(s): patrol needs distinct points")
+MH_STR(ORDER_QUEUE_TARGET, "orders.target", L"%u unit(s): target is no longer available")
+MH_STR(ORDER_QUEUE_UNSUPPORTED, "orders.unsupported", L"%u unit(s): this activity cannot be queued")
+MH_STR(ORDER_QUEUE_ACTOR_UNAVAILABLE, "orders.actor_unavailable", L"%u unit(s): unit is unavailable for queued orders")
+MH_STR(ORDER_QUEUE_WORLD_UNAVAILABLE, "orders.world_unavailable", L"%u unit(s): queued order is not valid in the current world")
+MH_STR(ORDER_QUEUE_BLOCKED, "orders.blocked", L"%u unit(s): queued order blocked; replace the route to continue")

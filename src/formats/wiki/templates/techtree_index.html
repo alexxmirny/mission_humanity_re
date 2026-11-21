@@ -1,0 +1,9 @@
+{% extends "_base.html" %}
+{% block body %}
+<h1>{{ S.techtree }}</h1>
+<p class="lead">{{ S.tt_lead }}</p>
+<p class="dim">{{ note }}</p>
+<ul class="plain">
+{%- for label, href, n in trees %}<li><a href="{{ href }}">{{ label }}</a> <span class="dim">({{ n }})</span></li>{% endfor %}
+</ul>
+{% endblock %}

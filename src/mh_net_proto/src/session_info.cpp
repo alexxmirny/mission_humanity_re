@@ -1,5 +1,6 @@
 // mh_net_proto -- SESSION_INFO (de)serialization + lobby-id. Portable, no platform dependencies.
 #include "mh_net_proto/session_info.h"
+#include "mh_net_proto/net_wire.h"
 #include "mh_net_proto/text_utf8.h" // MP-LANG: CHAT_ENCODING_UTF8, named in join_refusal_text
 #include "byteio.h"
 #include <cstring>
@@ -159,6 +160,23 @@ const char *session_match_id_log_line(const std::uint8_t match_id[UUID7_BYTES], 
     return out;
 }
 
+void game_feature_encode(GameFeatureStage stage, std::uint8_t *out) noexcept {
+    out[0] = 'Q'; out[1] = 'G'; out[2] = 'E'; out[3] = 'N';
+    out[4] = static_cast<std::uint8_t>(GAME_GENERATION);
+    out[5] = static_cast<std::uint8_t>(GAME_GENERATION >> 8);
+    out[6] = static_cast<std::uint8_t>(stage);
+    out[7] = 0;
+}
+
+bool game_feature_accept(std::uint16_t flags, const std::uint8_t *in, std::size_t len,
+                         GameFeatureStage expected) noexcept {
+    if (!in || len != GAME_FEATURE_BYTES || in[0] != 'Q' || in[1] != 'G' ||
+        in[2] != 'E' || in[3] != 'N' || in[4] != static_cast<std::uint8_t>(GAME_GENERATION) ||
+        in[5] != static_cast<std::uint8_t>(GAME_GENERATION >> 8) ||
+        in[6] != static_cast<std::uint8_t>(expected) || in[7] != 0) return false;
+    return flags == (expected == GameFeatureStage::Ack ? FLAG_WELCOME : FLAG_HELLO);
+}
+
 // ---- JOIN request -------------------------------------------------------------------------------
 std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexcept {
     std::uint8_t *p = out;
@@ -185,6 +203,8 @@ std::size_t join_request_encode(const JoinRequest &jr, std::uint8_t *out) noexce
     p += blen;
     put_u32(p, jr.gameplay_digest);
     p += 4; // PT-SET1 (v7): OUR gameplay key-set digest
+    std::memcpy(p, jr.content_digest, CONTENT_DIGEST_BYTES);
+    p += CONTENT_DIGEST_BYTES; // DATAEXT1 (v8): OUR mod-content digest, last for the same reason
     return std::size_t(p - out);
 }
 
@@ -240,26 +260,28 @@ bool join_request_decode(const std::uint8_t *in, std::size_t len, JoinRequest &o
         out.build[blen] = '\0';
         p += blen;
     }
-    out.gameplay_digest = 0; // default: v1..v6 state no gameplay digest
-    if (fmt >= 7) {          // PT-SET1 (v7): the joiner's gameplay key-set digest
+    out.gameplay_digest = 0;           // default: v1..v6 state no gameplay digest
+    if (fmt >= 7) {                    // PT-SET1 (v7): the joiner's gameplay key-set digest
         if (p + 4 > end) return false; // REQUIRED at v7, same rule as the id
         out.gameplay_digest = get_u32(p);
         p += 4;
     }
-    return true;
+    std::memset(out.content_digest, 0, CONTENT_DIGEST_BYTES); // default: v1..v7 carry none
+    if (fmt >= 8) {                                           // DATAEXT1 (v8): the joiner's mod-content digest -- REQUIRED, no no-claim value
+        if (p + CONTENT_DIGEST_BYTES > end) return false;
+        std::memcpy(out.content_digest, p, CONTENT_DIGEST_BYTES);
+        p += CONTENT_DIGEST_BYTES;
+    }
+    return p == end;
 }
 
 JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
-                             const char *my_build) noexcept {
-    return join_request_for(si, my_codepage, my_map_hash, my_build, 0);
-}
-
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, const std::uint8_t *my_map_hash,
-                             const char *my_build, std::uint32_t my_gameplay_digest) noexcept {
+                             const char *my_build, std::uint32_t my_gameplay_digest,
+                             const std::uint8_t (&my_content_digest)[CONTENT_DIGEST_BYTES]) noexcept {
     JoinRequest jr;
     jr.gameplay_digest = my_gameplay_digest; // PT-SET1: OUR key-set digest -- deliberately NOT si.gameplay_digest
-    jr.tag        = si.tag;
-    std::size_t n = clamp_len(si.name, SESSION_NAME_MAX);
+    jr.tag             = si.tag;
+    std::size_t n      = clamp_len(si.name, SESSION_NAME_MAX);
     std::memcpy(jr.name, si.name, n);
     jr.name[n] = '\0';
     std::memcpy(jr.match_id, si.match_id, UUID7_BYTES); // SES0: echo the advert's id straight back
@@ -272,19 +294,11 @@ JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage, c
         std::memcpy(jr.build, my_build, bn);
         jr.build[bn] = '\0';
     }
+    // DATAEXT1: OUR mod-content digest, measured on this side like every other joiner-owned field;
+    // the bound array reference makes the argument mandatory and correctly sized.
+    std::memcpy(jr.content_digest, my_content_digest, CONTENT_DIGEST_BYTES);
     return jr;
 }
-
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage,
-                             const std::uint8_t *my_map_hash) noexcept {
-    return join_request_for(si, my_codepage, my_map_hash, nullptr);
-}
-
-JoinRequest join_request_for(const SessionInfo &si, std::uint16_t my_codepage) noexcept {
-    return join_request_for(si, my_codepage, nullptr);
-}
-
-JoinRequest join_request_for(const SessionInfo &si) noexcept { return join_request_for(si, 0, nullptr); }
 
 // ---- mp:X2 -- the map-identity helpers ----------------------------------------------------------
 
@@ -313,6 +327,20 @@ const char *map_hash_hex(const std::uint8_t h[MAP_HASH_BYTES], char *out, std::s
         out[i * 2 + 1] = kHex[h[i] & 0xf];
     }
     out[MAP_HASH_BYTES * 2] = '\0';
+    return out;
+}
+
+const char *content_digest_hex(const std::uint8_t d[CONTENT_DIGEST_BYTES], char *out, std::size_t cap) noexcept {
+    if (cap < CONTENT_DIGEST_HEX_CAP) {
+        if (cap) out[0] = '\0';
+        return out;
+    }
+    static const char kHex[] = "0123456789abcdef";
+    for (int i = 0; i < CONTENT_DIGEST_BYTES; ++i) {
+        out[i * 2]     = kHex[(d[i] >> 4) & 0xf];
+        out[i * 2 + 1] = kHex[d[i] & 0xf];
+    }
+    out[CONTENT_DIGEST_BYTES * 2] = '\0';
     return out;
 }
 
@@ -380,12 +408,13 @@ const char *join_admit_reason(JoinAdmit a) noexcept {
     switch (a) {
         case JoinAdmit::Admit: return "ok";
         case JoinAdmit::RefusedMalformed: return "malformed JOIN";
-        case JoinAdmit::RefusedOldProtocol: return "old protocol (no match_id)";
+        case JoinAdmit::RefusedOldProtocol: return "old game protocol";
         case JoinAdmit::RefusedNewerProtocol: return "newer protocol than this host";
         case JoinAdmit::RefusedWrongLobby: return "not our lobby";
         case JoinAdmit::RefusedCodepage: return "input codepage mismatch";
         case JoinAdmit::RefusedBuild: return "build (release version) mismatch";
         case JoinAdmit::RefusedGameplay: return "gameplay key set mismatch";
+        case JoinAdmit::RefusedContent: return "content digest mismatch";
     }
     return "unknown";
 }
@@ -422,6 +451,13 @@ JoinAdmit join_admit(const std::uint8_t *in, std::size_t len, const SessionInfo 
     // PT-SET1: both digests stated (nonzero) and different = the two builds sync different gameplay keys.
     if (mine.gameplay_digest != 0 && out.gameplay_digest != 0 && out.gameplay_digest != mine.gameplay_digest)
         return JoinAdmit::RefusedGameplay;
+    // DATAEXT1 (JOIN v8): the mod-content digests must be EQUAL, all 32 bytes, ALWAYS. The runtime
+    // always supplies a real digest (canonical stock bytes when no mod is active), so unlike the
+    // codepage/build/gameplay gates there is no empty-claim bypass: any difference, including one
+    // side all-zero, refuses. Last gate, and it runs before the seam seats the peer or answers the
+    // map claim, so a refused JOIN never reaches the map-transfer path.
+    if (std::memcmp(out.content_digest, mine.content_digest, CONTENT_DIGEST_BYTES) != 0)
+        return JoinAdmit::RefusedContent;
     return JoinAdmit::Admit;
 }
 
@@ -524,6 +560,12 @@ const char *join_refusal_text(JoinAdmit a, const SessionInfo &mine, const JoinRe
             // PT-SET1: "gameplay keys <host>/<joiner>" (hex digests, host first, like the build line).
             std::snprintf(out, cap, "gameplay keys %08X/%08X", (unsigned)mine.gameplay_digest,
                           (unsigned)theirs.gameplay_digest);
+            break;
+        case JoinAdmit::RefusedContent:
+            // DATAEXT1: the full hex pair (2 x 64 chars) would never fit the wire text; the host log
+            // carries the expected/local pair and the joiner gets the short phrase, matched against
+            // its REFUSE_CONTENT row and localized.
+            std::snprintf(out, cap, "content mismatch");
             break;
         case JoinAdmit::RefusedNewerProtocol:
             std::snprintf(out, cap, "protocol %u > %u", (unsigned)theirs.format, (unsigned)JOIN_REQUEST_FORMAT);

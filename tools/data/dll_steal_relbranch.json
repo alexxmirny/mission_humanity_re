@@ -7,18 +7,19 @@
   "verbatim to a new address and relocates nothing, so a relative branch inside them",
   "branches by the original displacement from the new address the first time it runs.",
   "",
-  "tools/gen_dll_effects.py REFUSES to gate a target flagged here, and refuses to run at",
-  "all if a target it wants to gate is MISSING from this file -- fail-closed, so adding a",
-  "new target forces a refresh rather than silently inheriting no answer.",
+  "NO CONSUMER TODAY: tools/gen_dll_effects.py -- which refused to gate a target flagged",
+  "here, and refused to run at all if a target it wanted was missing -- was deleted at",
+  "fork F2F. Any future consumer of a trampoline steal length wants this same fail-closed",
+  "contract; that is why the table is still generated and committed.",
   "",
   "Found by TACT-CUT2: a gate over llm_math_atan (12 bytes, steal 9 = FLD + CALL rel32)",
   "sent every tactical atan to a wrong address. The mission ended after frame 1 with no",
   "crash dump, and --tact-determinism reported '0 frames', which reads like a scenario",
-  "problem and says nothing about a bad hook. See docs/dead-ends.md."
+  "problem and says nothing about a bad hook."
  ],
  "_counts": {
-  "functions": 2103,
-  "relbranch": 18
+  "functions": 2113,
+  "relbranch": 19
  },
  "CRT_004da9f0": {
   "va": "0x004da9f0",
@@ -2060,6 +2061,12 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_gfx_set_window_resolution": {
+  "va": "0x004285c7",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
  "llm_gfx_sprite_clone_frame_pixels": {
   "va": "0x004a2d16",
   "steal": 8,
@@ -2228,6 +2235,12 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_input_mouse_device_init": {
+  "va": "0x004d10bc",
+  "steal": 5,
+  "relbranch": true,
+  "why": "CALL at +0: CALL 0x004d1070"
+ },
  "llm_input_mouse_init": {
   "va": "0x004d1070",
   "steal": 8,
@@ -2243,6 +2256,12 @@
  "llm_input_mouse_queue_is_empty": {
   "va": "0x004d10e0",
   "steal": 7,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_input_set_cursor_pos": {
+  "va": "0x004d1138",
+  "steal": 10,
   "relbranch": false,
   "why": ""
  },
@@ -3047,6 +3066,12 @@
  "llm_media_diag_read_gfx_resource_records": {
   "va": "0x004ce633",
   "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_mem_copy_words": {
+  "va": "0x004b47e3",
+  "steal": 5,
   "relbranch": false,
   "why": ""
  },
@@ -4276,6 +4301,12 @@
  },
  "llm_strat_ai_engage_partition_turret_candidates": {
   "va": "0x004d552b",
+  "steal": 5,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_strat_ai_engage_prune_unseen_candidates": {
+  "va": "0x004d516c",
   "steal": 5,
   "relbranch": false,
   "why": ""
@@ -5693,6 +5724,12 @@
  "llm_strat_bldg_has_aa_weapon": {
   "va": "0x004d746c",
   "steal": 5,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_strat_bldg_init_all": {
+  "va": "0x0045a017",
+  "steal": 8,
   "relbranch": false,
   "why": ""
  },
@@ -7700,6 +7737,18 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_strat_pathfind_result_col": {
+  "va": "0x0043cecc",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_strat_pathfind_result_row": {
+  "va": "0x0043cef8",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
  "llm_strat_pathfind_route_bbox": {
   "va": "0x0043d01f",
   "steal": 8,
@@ -7738,6 +7787,12 @@
  },
  "llm_strat_pathfind_route_start_adjust": {
   "va": "0x0043dbe2",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_strat_pathfind_sort_units_by_path_len": {
+  "va": "0x0043d18f",
   "steal": 8,
   "relbranch": false,
   "why": ""
@@ -9794,6 +9849,12 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_tact_blast_wipe_brighten_step": {
+  "va": "0x0043c323",
+  "steal": 7,
+  "relbranch": false,
+  "why": ""
+ },
  "llm_tact_blink_overlay_clear": {
   "va": "0x0042ed56",
   "steal": 8,
@@ -10133,12 +10194,6 @@
  "llm_tact_save_screenshot": {
   "va": "0x00499ef6",
   "steal": 8,
-  "relbranch": false,
-  "why": ""
- },
- "llm_tact_blast_wipe_brighten_step": {
-  "va": "0x0043c323",
-  "steal": 7,
   "relbranch": false,
   "why": ""
  },
@@ -10694,6 +10749,12 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_ui_avi_close_return_to_menu": {
+  "va": "0x004c3216",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
  "llm_ui_avi_decode_audio_chunk": {
   "va": "0x004cd792",
   "steal": 8,
@@ -10882,6 +10943,12 @@
  },
  "llm_ui_bldg_worker_adjust_apply": {
   "va": "0x004134b1",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_ui_blit_bitmap_rect": {
+  "va": "0x004a8b73",
   "steal": 8,
   "relbranch": false,
   "why": ""
@@ -11174,6 +11241,12 @@
   "relbranch": false,
   "why": ""
  },
+ "llm_ui_hud_bottom_strip_tick": {
+  "va": "0x00414395",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
  "llm_ui_hud_color_slot_set": {
   "va": "0x00419d84",
   "steal": 8,
@@ -11378,12 +11451,6 @@
   "relbranch": false,
   "why": ""
  },
- "llm_ui_hud_topbar_tick": {
-  "va": "0x00414395",
-  "steal": 8,
-  "relbranch": false,
-  "why": ""
- },
  "llm_ui_hud_unassigned_unit_row_click_handler": {
   "va": "0x00419166",
   "steal": 8,
@@ -11444,7 +11511,7 @@
   "relbranch": false,
   "why": ""
  },
- "llm_ui_icon_rect_hit_test_cached": {
+ "llm_ui_icon_rect_hit_test_release_pos": {
   "va": "0x0041b76c",
   "steal": 8,
   "relbranch": false,
@@ -11458,6 +11525,12 @@
  },
  "llm_ui_icon_rect_hit_test_rmb_cached": {
   "va": "0x0041b88e",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_ui_icon_table_unpack": {
+  "va": "0x00419b98",
   "steal": 8,
   "relbranch": false,
   "why": ""
@@ -11852,12 +11925,6 @@
   "relbranch": false,
   "why": ""
  },
- "llm_ui_set_draw_surface": {
-  "va": "0x004a8b73",
-  "steal": 8,
-  "relbranch": false,
-  "why": ""
- },
  "llm_ui_show_formatted_error_dialog": {
   "va": "0x004b51bd",
   "steal": 8,
@@ -12134,13 +12201,13 @@
   "relbranch": false,
   "why": ""
  },
- "llm_unit_order_disembark_soldiers": {
+ "llm_unit_order_squad_split": {
   "va": "0x0046e76c",
   "steal": 8,
   "relbranch": false,
   "why": ""
  },
- "llm_unit_order_disembark_soldiers_enqueue": {
+ "llm_unit_order_squad_split_enqueue": {
   "va": "0x0046e7d6",
   "steal": 8,
   "relbranch": false,
@@ -12154,6 +12221,18 @@
  },
  "llm_unit_set_order_param": {
   "va": "0x0048696f",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_unit_squad_split_docked": {
+  "va": "0x004891d8",
+  "steal": 8,
+  "relbranch": false,
+  "why": ""
+ },
+ "llm_unit_squad_split_field": {
+  "va": "0x00488a8b",
   "steal": 8,
   "relbranch": false,
   "why": ""
@@ -12182,18 +12261,6 @@
   "relbranch": false,
   "why": ""
  },
- "llm_unit_transport_unload_docked": {
-  "va": "0x004891d8",
-  "steal": 8,
-  "relbranch": false,
-  "why": ""
- },
- "llm_unit_transport_unload_field": {
-  "va": "0x00488a8b",
-  "steal": 8,
-  "relbranch": false,
-  "why": ""
- },
  "llm_util_empty_return_stub": {
   "va": "0x004db54a",
   "steal": 5,
@@ -12203,12 +12270,6 @@
  "llm_util_memmove": {
   "va": "0x004de261",
   "steal": 5,
-  "relbranch": false,
-  "why": ""
- },
- "llm_util_unpack_static_category_table": {
-  "va": "0x00419b98",
-  "steal": 8,
   "relbranch": false,
   "why": ""
  },

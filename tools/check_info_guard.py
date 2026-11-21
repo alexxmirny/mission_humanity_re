@@ -159,8 +159,8 @@ def check(host_dir, client_dir, min_overlap=1000):
             % ", ".join("`%s`" % m for m in missing)
         )
 
-    a = mp_analyze.load_peer(host_dir)
-    b = mp_analyze.load_peer(client_dir)
+    a = mp_analyze.load_peer(host_dir, harness_only=True)
+    b = mp_analyze.load_peer(client_dir, harness_only=True)
     if "harness" not in a or "harness" not in b:
         fails.append(
             "clause 6: a peer has no harness log (host=%s client=%s)"

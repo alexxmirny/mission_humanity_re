@@ -305,7 +305,9 @@ def _regions():
     gen_state_registry.py emits mh_regions.gen.h from, so the two cannot disagree."""
     path = os.path.join(REPO, "tools", "data", "state_regions.json")
     regs = json.load(open(path, encoding="utf-8-sig"))["regions"]
-    return sorted((r["base"], r["size"], r["id"]) for r in regs if r["size"])
+    return sorted(
+        (r["base"], r["size"], r["id"]) for r in regs if r["size"] and not r.get("host_native")
+    )
 
 
 def decompose(addr, size, regions):

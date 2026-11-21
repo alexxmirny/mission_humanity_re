@@ -159,6 +159,26 @@ def sessions_of(process_dir):
     ]
 
 
+def process_and_sessions(target):
+    """Resolve a process or one of its sessions, never sibling boots in the lane."""
+    target = os.path.abspath(target)
+    info = parse(target)
+    if not info or not os.path.isdir(target):
+        raise ValueError("expected an existing process or session directory: " + target)
+    process = target
+    if info["kind"] == "session":
+        metadata = read_session_json(target)
+        leaf = metadata.get("process_dir") if metadata else None
+        if not isinstance(leaf, str) or os.path.basename(leaf) != leaf or not is_process_dir(leaf):
+            raise ValueError("session has no valid process_dir: " + target)
+        process = os.path.join(os.path.dirname(target), leaf)
+        if not os.path.isdir(process):
+            raise ValueError("session process directory is missing: " + process)
+        if target not in sessions_of(process):
+            raise ValueError("session does not belong to process: " + target)
+    return [process] + sessions_of(process)
+
+
 def _selftest():
     fails = []
 
@@ -200,6 +220,22 @@ def _selftest():
         "canon() folds the SES8 stamp", canon(new_s) == "20260929T081509Z_ab12cd34_blue-monday_host"
     )
     check("canon() leaves SES1 alone", canon(old_s) == old_s)
+    # Process/session ownership, not parent-directory walks: a previous retry must not contribute
+    # its mount, JOIN or production lines to a later run's verdict.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        p1 = os.path.join(tmp, new_p)
+        p2 = os.path.join(tmp, "2026-09-29T08-16-02Z_menu_solo")
+        s1 = os.path.join(tmp, new_s)
+        s2 = os.path.join(tmp, "2026-09-29T08-16-09Z_ba12cd34_blue-monday_host")
+        for d in (p1, p2, s1, s2):
+            os.mkdir(d)
+        for sess, proc in ((s1, p1), (s2, p2)):
+            with open(os.path.join(sess, "session.json"), "w", encoding="utf-8") as fh:
+                json.dump({"process_dir": os.path.basename(proc)}, fh)
+        check("process scope excludes another boot", process_and_sessions(p2) == [p2, s2])
+        check("session resolves its owning boot", process_and_sessions(s1) == [p1, s1])
     mixed = [new_s, old_s, new_p, leg, old_p]
     check("raw sort gets the mix WRONG (the trap)", sorted(mixed)[-1] != new_s)
     check(

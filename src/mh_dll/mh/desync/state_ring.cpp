@@ -262,7 +262,7 @@ bool configure(const settings &s, bool recorder_on, uint64_t manifest_fp, bool (
     g_qpc_hz = QueryPerformanceFrequency(&hz) ? hz.QuadPart : 0;
     g_total  = 0;
     for (int i = 0; i < N; ++i) {
-        g_lens[i] = mh::state::HASH_REGIONS[i].len;
+        g_lens[i] = mh::state::hash_len(i);
         g_total += g_lens[i];
     }
     if (!s.enabled) {

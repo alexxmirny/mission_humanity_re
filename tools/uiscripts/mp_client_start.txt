@@ -29,16 +29,10 @@ signal lobby
 settled Cancel
 capture m2_lobby
 absent Network players
-# Capturing on `absent` ALONE is frame-rate sensitive, and headless is what exposed it (2026-07-28):
-# the client enters on the host's FLAG_START, so its first in-game frame lands mid fog-of-war reveal,
-# and at ~8500 fps that frame is a different reveal stage than at 60 fps -> 3.776% vs a 60 fps baseline
-# (the diff is a clean annulus: the reveal ring). Gate on the SIM instead -- `gameclock` is the idiom the
-# other in-game captures already use (res_hud 3000, esc_menu 1500) and it is speed-independent by
-# construction. The host's capture is gated the same way and for the same reason -- it looked exempt
-# at 0.000% once, then came back 1.590%, so it was never deterministic, just lucky.
-# 1500 still left the reveal GROWING (host 0.539% of a 2% tol -- passing, but on luck).
-# 6000 is past saturation, the value res_picker needed for the same reason. Both peers use
-# the SAME number so a lockstep pair also captures the same sim moment.
+# This threshold confirms the world is running; a client's delivered horizon can
+# advance several simulation steps before the capture. Keep that moving-world
+# frame for review, not as a networking oracle. The lobby PNG remains strict;
+# actual RTT, native launch predicates and paired state hashes judge this walk.
 gameclock 6000
 capture m3_launched
 log CLIENT entered the match

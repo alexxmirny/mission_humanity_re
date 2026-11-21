@@ -4,10 +4,12 @@
 // a draft.
 //
 #include "sim/resid/sim_session_state_reset.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"           // typed callables for the frontier originals we call OUT to
 #include "sim/resid/sim_new_game_init.h" // intra-slice sibling, called DIRECTLY (rule 2)
 #include "state/host_api.h"
+#include "lockstep/participant_removal.h"
 #include "state/host_events.h"
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
@@ -20,6 +22,11 @@ const session_state_reset_calls &live_session_state_reset_calls() {
         mh::state::evt::cam_jump_queue_clear,
         MH_LIBMH_BIND(llm_strat_invasion_alert_reset_all),
         MH_LIBMH_BIND(llm_strat_prod_reset_system),
+        [](bool new_session) {
+            const auto op = new_session ? mh::participant_boundary::operation::end_match
+                                        : mh::participant_boundary::operation::world_invalidate;
+            mh::lockstep::participant::boundary(op);
+        },
     };
     return c;
 }
@@ -49,6 +56,8 @@ namespace detail {
 // ---- llm_strat_session_state_reset @0x00453ee4 -----------------------------------------------------
 void session_state_reset(const sim_view &v, sim_store &own, const session_state_reset_calls &c,
                          int32_t reset_flag, const new_game_init_calls &c_ngi) {
+    if (c.participant_reset) c.participant_reset(reset_flag == 0 || reset_flag == 2);
+    order_tasks_adapter::begin_world_replacement(own, reset_flag == 0 || reset_flag == 2);
     // 0x00453eff/f06: two per-session control-mask bytes, zeroed unconditionally.
     own.game_human_player_mask() = 0;
     own.player_control_mask()    = 0;

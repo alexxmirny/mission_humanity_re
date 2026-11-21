@@ -10,12 +10,13 @@
 #include <cstring>
 
 #include "include/mh_langpack_export.h"
-#include "include/mh_run_context.h" // mh_run_path
-#include "include/mh_config_dir.h"  // RL3: <config dir>mh_net.ini
-#include "include/mh_log_sink.h"    // LOG1: async log sink
-#include "config/ini_read.h"        // read_ini_string -- strips a trailing `;comment`
-#include "hook/patch.h"             // patch_bytes_guarded
-#include "en_guard.h"               // EN-only build gate
+#include "include/mh_run_context.h"  // mh_run_path
+#include "include/mh_config_dir.h"   // RL3: <config dir>mh_net.ini
+#include "include/mh_log_sink.h"     // LOG1: async log sink
+#include "config/ini_read.h"         // read_ini_string -- strips a trailing `;comment`
+#include "hook/patch.h"              // patch_bytes_guarded
+#include "en_guard.h"                // EN-only build gate
+#include "mh_net_proto/net_crypto.h" // exact selected INITLANG fingerprints
 
 #pragma comment(lib, "user32.lib") // wsprintfA / wvsprintfA
 
@@ -261,6 +262,57 @@ extern "C" int MH_LangPack_Install(void) {
     lp_log("; [lang] pack=%s armed: mh_ex -> %s (%s path); Msgs.dat %s; pack codepage %u", g_id, g_mh_ex,
            rel ? "relative" : "absolute", msgs_state, g_pack_cp);
     return 1;
+}
+
+extern "C" const char *MH_LangPack_Locale(const unsigned char *initlang, unsigned size) {
+    static char locale[39] = {};
+    static bool read       = false;
+    if (read) return locale;
+    read = true;
+    char ini[MAX_PATH];
+    mh::cfgdir::ini_path(ini);
+    DWORD n = mh::config::read_ini_string("lang", "locale", "", locale, sizeof(locale), ini);
+    if (!n && g_id[0]) {
+        char dir[MAX_PATH], pack_ini[MAX_PATH];
+        exe_dir(dir, MAX_PATH);
+        if (lstrlenA(dir) + lstrlenA(g_id) + sizeof("lang\\\\pack.ini") >= MAX_PATH) return locale;
+        wsprintfA(pack_ini, "%slang\\%s\\pack.ini", dir, g_id);
+        // External pack.ini metadata, not mh_net.ini: match the neighboring pack
+        // codepage reader. Player-owned [lang] locale above still uses the ship gate.
+        n = GetPrivateProfileStringA("pack", "locale", "", locale, sizeof(locale), pack_ini);
+        if (n >= sizeof(locale) - 1) {
+            locale[0] = 0;
+            return locale;
+        }
+        if (mh::config::strip_ini_comment(locale)) n = static_cast<DWORD>(lstrlenA(locale));
+    }
+    if (n > 37) {
+        locale[0] = 0;
+        return locale;
+    }
+    for (char *p = locale; *p; ++p) {
+        if (*p >= 'A' && *p <= 'Z') *p = char(*p + ('a' - 'A'));
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_')) {
+            locale[0] = 0;
+            return locale;
+        }
+    }
+    if (!locale[0] && initlang && size) {
+        unsigned char digest[32];
+        mh_net_proto::sha256(initlang, size, digest);
+        // Exact bytes of original English INITLANG, including its UTF-16 BOM (220070 bytes).
+        static constexpr unsigned char stock_en[32] = {0x63, 0xd7, 0x8c, 0x96, 0xba, 0xf8, 0x5b, 0xa8, 0x66, 0x5b, 0x2f, 0x59, 0x25, 0x1b, 0x1e, 0x80, 0x34, 0x1a, 0x5e, 0x50, 0xfb, 0xad, 0x84, 0x15, 0x5d, 0x13, 0xc0, 0xb7, 0xd6, 0x6a, 0x98, 0x09};
+        // Existing built RU (including ru_noart) and Polish packs, exact decoded bytes.
+        static constexpr unsigned char merged_ru[32] = {0xf4, 0xf9, 0x9f, 0x55, 0xde, 0xee, 0x9d, 0x4a, 0xbf, 0x21, 0xd6, 0xac, 0x10, 0x32, 0x12, 0xe3, 0x1d, 0xe5, 0xc0, 0xfa, 0x30, 0x5f, 0x92, 0x77, 0x76, 0x8c, 0x35, 0x7d, 0x0e, 0x0d, 0x5f, 0x33};
+        static constexpr unsigned char merged_pl[32] = {0xd1, 0x89, 0x17, 0xda, 0x76, 0xf9, 0x94, 0x03, 0xb5, 0x0b, 0x5a, 0xa3, 0xe0, 0xf8, 0xe8, 0x4e, 0x1f, 0x34, 0x54, 0x75, 0x8c, 0xfd, 0x12, 0xac, 0xce, 0x48, 0x9b, 0xf3, 0x49, 0x03, 0xfc, 0xc7};
+        if (size == 220070 && std::memcmp(digest, stock_en, 32) == 0)
+            lstrcpynA(locale, "en", sizeof(locale));
+        else if (size == 221810 && std::memcmp(digest, merged_ru, 32) == 0)
+            lstrcpynA(locale, "ru", sizeof(locale));
+        else if (size == 92436 && std::memcmp(digest, merged_pl, 32) == 0)
+            lstrcpynA(locale, "pl", sizeof(locale));
+    }
+    return locale;
 }
 
 extern "C" unsigned MH_LangPack_Codepage(void) { return g_pack_cp; }

@@ -1,0 +1,476 @@
+# rc17: one folded actual-game scene for native and bound carriers.
+rawfocus 1
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+gameclock +300
+camto 45 53
+cursorhold 600 400 6
+screensettled
+winsize 1024 768
+
+# Save moving five-soldier bodies with bounded drags, not opaque-pixel clicks.
+cursorhold 700 410 10
+presshold 700 410
+cursorhold 700 410 6
+cursorhold 810 520 12
+release 810 520
+gameclock +100
+logsel target_unit5
+key 0x08 ctrl
+cursorhold 680 580 10
+presshold 680 580
+cursorhold 680 580 6
+cursorhold 800 700 12
+release 800 700
+gameclock +100
+logsel target_unit2
+key 0x09 ctrl
+cursorhold 600 350 10
+presshold 600 350
+cursorhold 600 350 6
+cursorhold 800 700 12
+release 800 700
+gameclock +100
+logsel target_pair
+# Native groups are exclusive: keep singleton7/8, never rebind the pair.
+
+hotkey F11
+imgui open
+# Existing measured headers: collapse Stream heat, expand selected target lines.
+rawmouse sabs 100 137
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 100 160
+imgui hover 1
+rawmouse down l
+rawmouse up l
+bcapture target_controls_expanded
+# The startup defaults are user-facing; the following comparisons explicitly request
+# zero cutoff and Subgroups so they exercise both modes even when Shared is the default.
+rawmouse sabs 25 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 60 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+# Freeze presentation dashes; use full opacity for attributable channel deltas.
+rawmouse sabs 29 275
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+hotkey F11
+imgui closed
+
+logsel target_controls_selected
+simrclick 700 250
+# Retarget while an earlier ground move is in flight. The actual native goals
+# bracket the immediate presenter capture independently of the requested endpoint.
+gameclock +700
+loggoal target_controls_old_move
+simrclick 500 150
+loggoal target_controls_pending_before
+bcapture target_controls_pending
+loggoal target_controls_pending_after
+gameclock +800
+loggoal target_controls_move
+hotkey F11
+imgui open
+bcapture target_controls_subgroups
+rawmouse sabs 190 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_shared
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_opacity_zero
+
+# Restore full opacity and Subgroups; cutoff0 ->64 ->0.
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 60 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 25 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_minimum_0
+rawmouse sabs 170 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_minimum_64
+rawmouse sabs 25 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_minimum_restored
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_minimum_zero
+rawmouse sabs 80 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+hotkey F11
+imgui closed
+capture target_controls_world
+
+# Common attack B: both actors remain far enough to expose terrain connectors.
+logsel attack_common_selected
+simrclick 464 608
+gameclock +1500
+loggoal attack_common_issued
+hotkey F11
+imgui open
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_common_zero
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_common_subgroups
+rawmouse sabs 190 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_attack_common_shared
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_common_zero_after
+hotkey F11
+imgui closed
+
+# Same target B, but two separately issued commands.
+key 0x08
+logsel attack_individual5_selected
+simrclick 464 608
+gameclock +500
+bcapture target_controls_attack_individual5
+key 0x09
+logsel attack_individual2_selected
+simrclick 464 608
+gameclock +500
+cursorhold 600 300 6
+presshold 600 300
+cursorhold 600 300 6
+cursorhold 855 700 6
+release 855 700
+cursorhold 600 300 6
+camto 45 53
+gameclock +100
+logsel attack_individual_selected
+loggoal attack_individual_issued
+hotkey F11
+imgui open
+rawmouse sabs 60 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_individual_zero
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_individual_subgroups
+rawmouse sabs 190 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_attack_individual_shared
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_individual_zero_after
+hotkey F11
+imgui closed
+
+# Distinct identities: unit5 ->B; unit2 ->A.
+# B's historical click is NOT an acceptance assertion: checker reads target_ref/index.
+key 0x08
+logsel attack_distinct5_selected
+simrclick 464 608
+gameclock +500
+bcapture target_controls_attack_distinct5
+key 0x09
+logsel attack_distinct2_selected
+simrclick 520 380
+gameclock +500
+cursorhold 600 300 6
+presshold 600 300
+cursorhold 600 300 6
+cursorhold 855 700 6
+release 855 700
+cursorhold 600 300 6
+camto 45 53
+gameclock +100
+logsel attack_distinct_selected
+loggoal attack_distinct_issued
+hotkey F11
+imgui open
+# Occluded distinct-target/RGB proof uses3px/long dashes; earlier proofs retain1px/7px.
+rawmouse sabs 170 228
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+rawmouse sabs 170 298
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 25 321
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+rawmouse sabs 60 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_distinct_zero
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_distinct_subgroups
+rawmouse sabs 190 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 800 700
+gameclock +100
+bcapture target_controls_attack_distinct_shared
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_distinct_zero_after
+
+# Actual RGB editor: clamp Attack blue to255; keep the real distinct orders.
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 132 518
+imgui hover 1
+rawmouse down l
+rawmouse sabs 400 518
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_color
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_attack_color_zero
+
+# Restore thin native artwork before the zoom proof; distinct-attack proof used3px.
+# Minimum distance deliberately remains0, proving the tested restoration.
+rawmouse sabs 80 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 190 365
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 57 228
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 42 298
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 42 321
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+hotkey F11
+imgui closed
+# Zoom must not move ImGui's pointer away from the native screen hotspot.
+# Fold native-pixel zoom artwork and pointer checks into the same two carrier walks.
+rawmouse abs 400 300
+rawmouse wheel -2400
+gameclock +300
+zoom 100
+# Keep the actors and requested target inside the zoom crop. This is real input,
+# not a forced unit state, and opacity-zero supplies this scene's clean backdrop.
+camto 50 53
+simrclick 550 150
+gameclock +100
+rawmouse abs 400 300
+rawmouse wheel 240
+gameclock +300
+zoom ge 110
+logsel target_zoom_scene
+loggoal target_controls_zoom_move
+hotkey F11
+imgui open
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 85 88
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_zoom_point
+rawmouse sabs 285 88
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_zoom_area
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_zoom_zero
+
+# A short move is filtered only while its destination is in the zoom crop.
+# Reuse the existing actors/order and64-tile cutoff, without another game boot.
+rawmouse sabs 170 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_cutoff_inside
+camto 50 57
+gameclock +100
+logsel target_cutoff_outside
+bcapture target_controls_cutoff_outside
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_cutoff_outside_zero
+camto 50 53
+rawmouse sabs 170 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+gameclock +100
+bcapture target_controls_cutoff_inside_restored
+# Restore this walk's prior zero-opacity/zero-cutoff state before its resize leg.
+rawmouse sabs 29 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 25 252
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 80 205
+imgui hover 1
+rawmouse down l
+rawmouse up l
+rawmouse sabs 85 88
+imgui hover 1
+rawmouse down l
+rawmouse up l
+hotkey F11
+imgui closed
+rawmouse abs 400 300
+rawmouse wheel -2400
+gameclock +300
+zoom 100
+winsize 1280 800
+winclient 1280 800
+hotkey F11
+imgui open
+rawmouse sabs 240 220
+gameclock +100
+imgui cursor 240 220
+hotkey F11
+imgui closed
+rawmouse abs 400 300
+rawmouse wheel 240
+gameclock +300
+zoom ge 110
+hotkey F11
+imgui open
+rawmouse sabs 240 220
+gameclock +100
+imgui cursor 240 220
+rawmouse rel 10 0
+gameclock +100
+imgui cursor 250 220
+rawmouse down l
+rawmouse rel -10 0
+gameclock +100
+imgui cursor 240 220
+rawmouse up l
+hotkey F11
+imgui closed
+# Advance beyond the capture clock; session close submits the buffered tail.
+gameclock +1
+key 0x01
+settled Quit game
+clickl Quit game
+present Yes
+settled Yes
+clickl Yes
+screensettled
+settled value:110
+# Seed + scene + finalized whole-session state, all using the shared compressor.
+gzdone 3
+end

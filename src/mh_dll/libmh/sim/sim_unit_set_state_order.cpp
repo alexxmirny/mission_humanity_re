@@ -7,6 +7,7 @@
 // sentence does not describe this function's own (branch-free) body, see the header note.
 //
 #include "sim/sim_unit_set_state_order.h"
+#include "state/host_events.h"
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -38,6 +39,7 @@ void unit_set_state_order(sim_store &own, uint16_t state, uint16_t order) {
 void unit_set_state_order(uint16_t state, uint16_t order) {
     sim_state st = mh::sim::state();
     detail::unit_set_state_order(st.own, state, order);
+    mh::state::emit_primary_terminal(*st.read.cur_player, *st.read.cur_index, state);
 }
 
 

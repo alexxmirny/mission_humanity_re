@@ -1,0 +1,13 @@
+{
+  "_why": "The fresh-B provenance claim is its actual saved identity/digest and restored B configuration, not one unpinned campaign terrain. The measured red frame has 119 quantised colours and a 0% different HUD; existing structural judgement guards a real rendered strategic game. check_mod_save_runtime remains mandatory for exact A resave and distinct fresh-B origin. The actual native mismatch warning is required through wmsg rather than an incidental whole-world screenshot.",
+  "_structural": {
+    "capture_dx_fresh_b.png": {
+      "ref": "capture_dx_fresh_b.png",
+      "view_rect": [0, 0, 480, 448],
+      "min_nonblack": 0.25,
+      "min_colors": 60,
+      "hud_rect": [480, 250, 160, 198],
+      "hud_tol": 0.10
+    }
+  }
+}

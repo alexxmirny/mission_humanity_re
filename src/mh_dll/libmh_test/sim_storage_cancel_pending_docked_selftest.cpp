@@ -73,6 +73,7 @@ void reset_recorders() {
 
 void run_storage_cancel_pending_docked_tests() {
     sim_fixture fx;
+    auto        own = fx.store();
 
     // =================================================================================================
     // T1 -- single docked entry, unit IS PARKED(0x1f): the one call fires with (player, unit_index),
@@ -92,7 +93,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                  = UNIT_INDEX;
         fx.u(PLAYER, UNIT_INDEX).state      = 0x1f;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 1u,
               "T1: exactly one call for one PARKED docked entry, 0x0046cb39-0x0046cb4a");
@@ -120,7 +121,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                  = UNIT_INDEX;
         fx.u(PLAYER, UNIT_INDEX).state      = 0x1e;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 0u,
               "T2: state 0x1e (PARKED - 1) -- no call, gate is == not >=, 0x0046cb39-0x0046cb41");
@@ -143,7 +144,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                  = UNIT_INDEX;
         fx.u(PLAYER, UNIT_INDEX).state      = 0x20;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 0u,
               "T3: state 0x20 (PARKED + 1) -- no call, gate is == not <=, 0x0046cb39-0x0046cb41");
@@ -167,7 +168,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                  = UNIT_INDEX; // would be a hit if ever read
         fx.u(PLAYER, UNIT_INDEX).state      = 0x1f;       // PARKED -- proves it is never consulted
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 0u,
               "T4: docked_count==0 -- zero iterations, docked_units[0] never read, 0x0046caf0-0x0046caf6");
@@ -198,7 +199,7 @@ void run_storage_cancel_pending_docked_tests() {
         fx.u(PLAYER, UNIT_B).state          = 0x05; // miss
         fx.u(PLAYER, UNIT_C).state          = 0x1f; // hit
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 2u,
               "T5: 2 of 3 entries PARKED -- the miss does not stop the loop, 0x0046cafa/0x0046cb00");
@@ -239,7 +240,7 @@ void run_storage_cancel_pending_docked_tests() {
         right_row.docked_units[0]               = UNIT_IF_SUB_ID_USED;
         fx.u(PLAYER, UNIT_IF_SUB_ID_USED).state = 0x1f;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 1u,
               "T6: exactly one call -- only the sub_id row's docked list is walked, 0x0046cac9");
@@ -269,7 +270,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                                              = UNIT_INDEX;
         fx.u(static_cast<int32_t>(PLAYER_LOW16), UNIT_INDEX).state      = 0x1f;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER_RAW, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER_RAW, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 1u,
               "T7: raw player with high garbage bits still resolves the low-16 row, 0x0046cab6");
@@ -300,7 +301,7 @@ void run_storage_cancel_pending_docked_tests() {
         st.docked_units[0]                  = UNIT_INDEX;
         fx.u(PLAYER, UNIT_INDEX).state      = 0x1f;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 1u,
               "T8: the full-width unit_index (325) resolves to a real PARKED unit, 0x0046cb1d");
@@ -341,7 +342,7 @@ void run_storage_cancel_pending_docked_tests() {
         g_mutate_sub_id_to      = SUB_ID_MUTATED_TO;
         g_mutate_armed          = true;
 
-        detail::storage_cancel_pending_docked(fx.view(), g_calls, PLAYER, BUILDING_INDEX);
+        detail::storage_cancel_pending_docked(fx.view(), own, g_calls, PLAYER, BUILDING_INDEX);
 
         ck_eq((uint32_t)g_disembark_calls.size(), 2u,
               "T9: BOTH entries fire -- sub_id cached once before the loop, 0x0046cac9, not re-read per "

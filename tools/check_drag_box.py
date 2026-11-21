@@ -63,7 +63,7 @@ STAMP = re.compile(r"^\[[0-9:.]+\] ")
 sys.path.insert(0, HERE)
 import walk_segments  # noqa: E402  the `; [mark] <segment>` slicer shared by the multi-segment walks
 
-ORDER_LEN, REC_LEN, HEADER_LEN = 0x44, 0x48, 8
+import mp_order_diff
 
 
 def video_log(run_dir):
@@ -99,20 +99,15 @@ def read_orders(run_dir, session=None):
                 seen += 1
                 if session is not None and seen != session:
                     continue
-                blob = open(p, "rb").read()
-                if p.endswith(".gz"):
-                    blob = gzip.decompress(blob)
-                body = blob[HEADER_LEN:]
-                recs = [
-                    body[i * REC_LEN + 4 : (i + 1) * REC_LEN] for i in range(len(body) // REC_LEN)
-                ]
+                decoded = mp_order_diff.load(p)
+                recs = [o.raw for o in decoded]
                 # the player's own orders (owner 0 on 2-almost), up to the last selection record (kind 0): what the process does
                 # after the script's last drag is not the drags' doing (a unit that arrived re-orders itself, and the two arms'
                 # processes end at different sim steps). A move order is re-queued every step until the unit arrives, one record
                 # per step (118 of them, the count moves with the timing): the kind-0x80 records collapse to their distinct
                 # bytes. The records of one step carry no meaningful order (the unit ids of a selection come out in either
                 # order), so the list is sorted: the claim is the SET of orders issued.
-                steps = [struct.unpack_from("<i", body, i * REC_LEN)[0] for i in range(len(recs))]
+                steps = [o.step for o in decoded]
                 mine = [(st, r) for st, r in zip(steps, recs) if r[0x0A] & 0x0F == 0]
                 cut = max([st for st, r in mine if r[0x0A] & 0xF0 == 0] or [0])
                 seen, out = set(), []

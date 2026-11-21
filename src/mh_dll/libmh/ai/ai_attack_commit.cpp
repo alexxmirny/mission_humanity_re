@@ -6,6 +6,7 @@
 // PROOF PATH: OFFLINE ONLY (see the header banner). No shadow wiring in this file.
 //
 #include "ai/ai_attack_commit.h"
+#include "state/order_tasks_origin.h"
 
 namespace mh::ai {
 namespace detail {
@@ -152,6 +153,8 @@ void commit_attack_order_alt(const ai_view &v, const ai_store &own, const ai_cal
 
 void commit_attack_order(uint32_t attacker_ref, int32_t attacker_unit_index, uint32_t target_ref,
                          int32_t target_index) {
+    mh::order_tasks::origin::issue_guard accounting(ref_owner(attacker_ref), uint32_t(attacker_unit_index), target_ref, uint32_t(target_index), true);
+    if (!accounting.allowed()) return;
     const ai_state st = state();
     detail::commit_attack_order(st.read, st.own, live_calls(), attacker_ref, attacker_unit_index,
                                 target_ref, target_index);
@@ -159,6 +162,8 @@ void commit_attack_order(uint32_t attacker_ref, int32_t attacker_unit_index, uin
 
 void commit_attack_order_alt(uint32_t attacker_ref, int32_t attacker_unit_index,
                              uint32_t target_ref, int32_t target_index) {
+    mh::order_tasks::origin::issue_guard accounting(ref_owner(attacker_ref), uint32_t(attacker_unit_index), target_ref, uint32_t(target_index), true);
+    if (!accounting.allowed()) return;
     const ai_state st = state();
     detail::commit_attack_order_alt(st.read, st.own, live_calls(), attacker_ref,
                                     attacker_unit_index, target_ref, target_index);

@@ -5,6 +5,7 @@
 // MOVE_PATH_12 value correction.
 //
 #include "sim/sim_unit_state_hover_engage.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"  // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -171,7 +172,10 @@ void unit_state_hover_engage(const sim_view &v, sim_store &own, const unit_state
     if (u.order_queued != 0 || u.state == UNIT_STATE_HOVER_DISENGAGE) {
         // 0x004809ba-0x004809c4: a fresh order is waiting, or we were actively disengaging -- either
         // way, commit the move and let the next tick's queued-order peek (above) sort out what's next.
+        const auto ready_task = order_tasks_adapter::capture(v, own);
         c.unit_set_state(UNIT_STATE_MOVE_PATH_12);
+        order_tasks_adapter::direction_ready(own, ready_task, u,
+                                             mh::order_tasks::executor::direction_nonplane, UNIT_STATE_MOVE_PATH_12);
         return;
     }
 
@@ -181,6 +185,14 @@ void unit_state_hover_engage(const sim_view &v, sim_store &own, const unit_state
     if (pending_order == STATE_ATTACK_UNIT_RETURN) {
         // 0x004809f5-0x00480a1d: return-to-rally -- retarget goal at home, then hand off to GROUP_STEP
         // with MOVE_PATH_12 queued as the follow-on order.
+        if (order_tasks_adapter::suppress_home(own, *v.cur_player, *v.cur_index)) {
+            const auto  task = order_tasks_adapter::capture(v, own);
+            const auto &cfg  = v.cfg_units[u.unit_proto_id];
+            c.unit_set_state_order(cfg.default_op_code, cfg.default_op_code);
+            if (order_tasks_adapter::cleanup(own, task, u) == mh::order_tasks::control::hold)
+                own.tick_budget() = 0.0; // no hold after the final finite leg
+            return;
+        }
         u.goal_x = u.home_x;
         u.goal_y = u.home_y;
         c.unit_set_state_order(STATE_GROUP_STEP, UNIT_STATE_MOVE_PATH_12);

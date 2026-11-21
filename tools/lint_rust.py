@@ -94,8 +94,18 @@ def run_mode(mode, cargo=None, runner=None, cwd=REPO):
         cargo = resolve_cargo()
     if not cargo:
         return SKIPPED, "%s -- %s" % (label, SKIP_REASON)
-    runner = runner or subprocess.run
-    r = runner([cargo] + argv, cwd=cwd, capture_output=True, text=True)
+    if runner is not None:
+        r = runner([cargo] + argv, cwd=cwd, capture_output=True, text=True)
+    else:
+        import gate_admission
+
+        with gate_admission.lease("lint:cargo:" + mode) as held:
+            child_env = held.covered_env()
+            if gate_admission.enabled():
+                child_env["CARGO_BUILD_JOBS"] = "1"
+            r = subprocess.run(
+                [cargo] + argv, cwd=cwd, capture_output=True, text=True, env=child_env
+            )
     out = ((r.stdout or "") + (r.stderr or "")).strip()
     if r.returncode == 0:
         return OK, label

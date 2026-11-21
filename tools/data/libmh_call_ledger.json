@@ -37,7 +37,7 @@
   "cfg_ReadMapFile": {
    "class": "host-callback:map-io",
    "confidence": "high",
-   "reason": "PRE-FORK ONLY (DEFER-BLOB). Parse a .MP map file into the caller's map_header. AND IT IS NOT PURE IO, which is the thing to carry across: it writes real sim geometry -- width/height, and through llm_map_setup_dimensions the torus masks and pathfinder_params->width_mask. A host that returns only the header fields it thinks matter breaks pathfinding. The group is called map-io because that is how these entries reach the disk; six of the seven are PARSES wearing an io hat. Kept as-is pre-fork by the 2026-09-03 decision, superseded fork-side by the LIB-WORLD blob. NOTE the buffer contract: it writes PAST mh_cfg_struct_map_header's 0x17c for maps carrying the mission tail (measured high-water 0x189), which is why libmh hands it 0x248 bytes of backing. WHAT LIB-WORLD'S BLOB MUST CARRY TO RETIRE THIS ENTRY -- the parse OUTPUT libmh consumes, not the .MP bytes (re-verified at SIMABI-MAPIO 2026-09-10 against the body @0x004a3b9d and both libmh sites): (1) the globals `width` and `height` (RID_WIDTH / RID_HEIGHT, 4 B each, MF_VIEW|MF_MEASURED|MF_SAVE); (2) `current_map_data.tlo_name` (+0x11c, 12 B, RID_CURRENT_MAP_DATA) -- the tileset NAME, which is what the parse produces. THE RESOLVED TLO INDEX IS NOT THIS ENTRY'S OUTPUT, corrected here: it is one hop downstream, libmh's own body calling cfg_GetTloIndex on that string (sim/libtrans/sim_lt_cfg_planet.cpp:113), and since LIFT-TABLE S3 the index crosses host-side inside LIBMH_EVK_INV_PLANET_GFX_SETUP rather than landing in a region at all. Both libmh sites read the header back for tlo_name and nothing else (sim_lt_cfg_planet.cpp:113; sim/resid/sim_start_tutorial.cpp:148, which strcpy's it into the HASHED Planets[0x1f].tlo_file), and both DISCARD the return -- the `< 0` failure test exists only in the untranslated lobby callers (llm_lobby_map_transfer_finalize, llm_cfg_map_verify_version). THE TORUS MASKS ARE NOT BLOB FIELDS EITHER: general.{width_mask,height_mask,big_width,big_height,bw_mask,bh_mask} and pathfinder_params->width_mask are DERIVED from width/height by llm_map_setup_dimensions @0x004989c2, a body libmh already owns translated and shadow-armed (sim/libtrans/sim_lt_map_setup_dimensions.cpp) and already re-invokes on the load path (save/save_live.cpp:466). It could not be otherwise for the pathfinder byte: its storage is a malloc'd 0x20-byte block reached through general.pathfinder_params (+0xc), heap and NOT a bound region, so a step-0 region dump cannot capture it and the importer must re-derive. Written but NOT consumed by libmh, hence not blob fields: header player_count/checksum/file_size/footer (the lobby transfer check and version verifier read those) and the global `version`. THE NAME IS DELIBERATELY THE ORIGINAL ONE (SIMABI-NAMES, 2026-09-10), and it is the pre-fork stamp: every other surviving entry was renamed to an abstract name that promises a permanent host contract, which is exactly the promise a DEFER-BLOB row does not make -- this entry is scheduled to LEAVE the surface when LIB-WORLD's blob carries the outputs listed above. An abstract name here would read as an obligation a standalone host must implement forever; the original callee's name says instead 'this is the pre-fork binary's own parse, still here because the blob is not'."
+   "reason": "PRE-FORK ONLY (DEFER-BLOB). Parse a .MP map file into the caller's map_header. AND IT IS NOT PURE IO, which is the thing to carry across: it writes real sim geometry -- width/height, and through llm_map_setup_dimensions the torus masks and pathfinder_params->width_mask. A host that returns only the header fields it thinks matter breaks pathfinding. The group is called map-io because that is how these entries reach the disk; six of the seven are PARSES wearing an io hat. Kept as-is pre-fork by the 2026-09-03 decision, superseded fork-side by the LIB-WORLD blob. NOTE the buffer contract: it writes PAST mh_cfg_struct_map_header's 0x17c for maps carrying the mission tail (measured high-water 0x189), which is why libmh hands it 0x248 bytes of backing. WHAT LIB-WORLD'S BLOB MUST CARRY TO RETIRE THIS ENTRY -- the parse OUTPUT libmh consumes, not the .MP bytes (re-verified at SIMABI-MAPIO 2026-09-10 against the body @0x004a3b9d and both libmh sites): (1) the globals `width` and `height` (RID_WIDTH / RID_HEIGHT, 4 B each, MF_VIEW|MF_MEASURED|MF_SAVE); (2) `current_map_data.tlo_name` (+0x11c, 12 B, RID_CURRENT_MAP_DATA) -- the tileset NAME, which is what the parse produces. THE RESOLVED TLO INDEX IS NOT THIS ENTRY'S OUTPUT. Since TILESET1, LIBMH_EVK_INV_PLANET_GFX_SETUP owns the validated DOS8.3 name in b/c/d (12 little-endian ASCII bytes, implicit trailing NUL), not a stack pointer or stock-only index. The host resolves stock indices or custom tree/soldier profiles; libmh no longer calls cfg_GetTloIndex. Both libmh sites read the header back for tlo_name and nothing else (sim_lt_cfg_planet.cpp:113; sim/resid/sim_start_tutorial.cpp:148, which strcpy's it into the HASHED Planets[0x1f].tlo_file), and both DISCARD the return -- the `< 0` failure test exists only in the untranslated lobby callers (llm_lobby_map_transfer_finalize, llm_cfg_map_verify_version). THE TORUS MASKS ARE NOT BLOB FIELDS EITHER: general.{width_mask,height_mask,big_width,big_height,bw_mask,bh_mask} and pathfinder_params->width_mask are DERIVED from width/height by llm_map_setup_dimensions @0x004989c2, a body libmh already owns translated and shadow-armed (sim/libtrans/sim_lt_map_setup_dimensions.cpp) and already re-invokes on the load path (save/save_live.cpp:466). It could not be otherwise for the pathfinder byte: its storage is a malloc'd 0x20-byte block reached through general.pathfinder_params (+0xc), heap and NOT a bound region, so a step-0 region dump cannot capture it and the importer must re-derive. Written but NOT consumed by libmh, hence not blob fields: header player_count/checksum/file_size/footer (the lobby transfer check and version verifier read those) and the global `version`. THE NAME IS DELIBERATELY THE ORIGINAL ONE (SIMABI-NAMES, 2026-09-10), and it is the pre-fork stamp: every other surviving entry was renamed to an abstract name that promises a permanent host contract, which is exactly the promise a DEFER-BLOB row does not make -- this entry is scheduled to LEAVE the surface when LIB-WORLD's blob carries the outputs listed above. An abstract name here would read as an obligation a standalone host must implement forever; the original callee's name says instead 'this is the pre-fork binary's own parse, still here because the blob is not'."
   },
   "file_seek": {
    "class": "host-callback:io",
@@ -981,6 +981,230 @@
    "class": "event-channel:screen",
    "confidence": "high",
    "reason": "CONVERTED at SIMABI-NOTIFY (2026-09-10) to LIBMH_EVK_SCR_STRAT_FRAME_REDRAW. Same shape as llm_strat_render_present and a SEPARATE kind rather than a shared one, because the redraw path deliberately does not present: its one libmh site is the last statement of detail::frame_redraw_behind_dialog (sim_lt_frame.cpp:78, 0x0043edd1). NOT to be confused with llm_tact_render_view, which stays REQUIRED under R3b -- that one's subtree writes hover/anim state llm_tact_frame reads at nine sites later in the same frame; this one is terminal and its subtree is render-read only (docs/state-boundary.md D5)."
+  },
+ "order_tasks": {
+  "class": "host-callback:order-tasks",
+  "confidence": "high",
+  "reason": "Required synchronous canonical route/reservation authority shared by native, bound and standalone execution. Contract3 requires logical move-prefix origins/witnesses and read-only owned ground-patrol placement operation28; an older callback must not interpret that query as an ordinary application.",
+  "abi": {
+   "name": "order_tasks",
+   "ret": "int32_t",
+   "params": [
+    [
+     "const mh_order_tasks_request *",
+     "request"
+    ],
+    [
+     "mh_order_tasks_result *",
+     "result"
+    ]
+   ],
+   "contract_version": 3,
+   "bind": "mh::order_tasks::hosted::invoke"
   }
+ },
+ "storage_policy": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required synchronous deterministic storage authority over the one canonical owner; standalone binds the real borrowed-region dispatcher, never a presentation event.",
+  "abi": {
+   "name": "storage_policy",
+   "ret": "int32_t",
+   "params": [
+    [
+     "const mh_storage_policy_request *",
+     "request"
+    ],
+    [
+     "mh_storage_policy_result *",
+     "result"
+    ]
+   ],
+   "bind": "mh::storage_policy::hosted::invoke"
+  }
+ },
+ "planet_save_prepare": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required preparation before any native planet block is serialized. Hosted gathers current native windows and prepares paths; standalone refuses unsupported wider actual pools before mutation.",
+  "abi": {
+   "name": "planet_save_prepare",
+   "ret": "int32_t",
+   "params": [],
+   "bind": "mh::caps::savehost::prepare"
+  }
+ },
+ "planet_save_restore": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required unconditional restoration after a prepared planet write, including errors. Hosted restores temporary path state; stock-window standalone has no temporary native rewrite.",
+  "abi": {
+   "name": "planet_save_restore",
+   "ret": "void",
+   "params": [],
+   "bind": "mh::caps::savehost::restore"
+  }
+ },
+ "planet_load_extensions": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required native roster extension publication after native blocks and before policy publication. Hosted scatters and loads MHOV/orders/paths; standalone explicitly refuses unsupported MHOV and nonstock actual pools.",
+  "abi": {
+   "name": "planet_load_extensions",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::caps::savehost::load_extensions"
+  }
+ },
+ "storage_write_planet": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required complete SPOL planet tail write with checked opaque file IO and failure propagation.",
+  "abi": {
+   "name": "storage_write_planet",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_write_planet"
+  }
+ },
+ "storage_preflight_planet": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required read-only whole planet validation before any native roster mutation, including unsupported overflow refusal.",
+  "abi": {
+   "name": "storage_preflight_planet",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_preflight_planet"
+  }
+ },
+ "storage_load_planet": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required canonical policy import into the existing owner after native roster loading; legacy resets seed the actual loaded roster.",
+  "abi": {
+   "name": "storage_load_planet",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_load_planet"
+  }
+ },
+ "storage_begin_load": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required accepted-load quarantine before native roster writes; preserves canonical bytes while disabling outgoing execution and reservations until validated publication.",
+  "abi": {
+   "name": "storage_begin_load",
+   "ret": "int32_t",
+   "params": [],
+   "bind": "mh::storage_policy::save::host_begin_load"
+  }
+ },
+ "storage_load_container": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required validated campaign allocator import after container extraction and before current-member publication; opaque file IO preserves the caller position.",
+  "abi": {
+   "name": "storage_load_container",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_load_container"
+  }
+ },
+ "storage_preflight_container": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required whole container/member/version preflight before any load mutation.",
+  "abi": {
+   "name": "storage_preflight_container",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_preflight_container"
+  }
+ },
+ "storage_finish_container": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required composed policy container manifest/version finish with real write failure propagation.",
+  "abi": {
+   "name": "storage_finish_container",
+   "ret": "int32_t",
+   "params": [
+    [
+     "int32_t",
+     "handle"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_finish_container"
+  }
+ },
+ "storage_normalize_version": {
+  "class": "host-callback:storage-policy",
+  "confidence": "high",
+  "reason": "Required supported composed version normalization to its exact source-backed native slot before the native version gate.",
+  "abi": {
+   "name": "storage_normalize_version",
+   "ret": "int32_t",
+   "params": [
+    [
+     "void *",
+     "header40"
+    ]
+   ],
+   "bind": "mh::storage_policy::save::host_normalize_version"
+  }
+ },
+ "participant_body_boundary": {
+  "class": "host-callback:net",
+  "confidence": "high",
+  "reason": "Required host-owned completed-body authority shared by native and promoted simulation drivers.",
+  "abi": {
+   "name": "participant_body_boundary",
+   "ret": "uint64_t",
+   "params": [["uint32_t", "operation"], ["uint64_t", "argument"]],
+   "bind": "mh::participant_boundary::hosted::participant_body_boundary"
+  }
+ },
+ "participant_removal_admit": {
+  "class": "host-callback:net",
+  "confidence": "high",
+  "reason": "Required owned-payload admission of participant removal at the completed funded prefix.",
+  "abi": {
+   "name": "participant_removal_admit",
+   "ret": "int32_t",
+   "params": [["const void *", "request"], ["uint32_t", "request_size"]],
+   "bind": "mh::participant_boundary::hosted::participant_removal_admit"
+  }
+ }
  }
 }

@@ -18,7 +18,8 @@ const storage_cancel_pending_docked_calls &live_storage_cancel_pending_docked_ca
 namespace detail {
 
 // llm_storage_cancel_pending_docked @0x0046ca99. See the header banner for the full derivation.
-void storage_cancel_pending_docked(const sim_view &v, const storage_cancel_pending_docked_calls &c,
+void storage_cancel_pending_docked(const sim_view &v, sim_store &own,
+                                   const storage_cancel_pending_docked_calls &c,
                                    uint32_t player, int32_t building_index);
 
 } // namespace detail

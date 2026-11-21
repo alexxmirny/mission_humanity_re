@@ -45,6 +45,9 @@ RUN = re.compile(r"[^\x00-\x7F]+")
 # What a REPAIRED run may contain -- the punctuation this repo's prose actually uses. A peel whose
 # result falls outside this is reported as suspicious rather than rewritten.
 ALLOWED = set("—–‘’“”…→←·§×° ─│┌┐└┘├┤┬┴┼Σ≤≥≠")
+# A non-ASCII run can peel only if its first two CP1251 bytes begin a valid UTF-8 sequence.
+UTF8_LEADS_CP1251 = frozenset(bytes(range(0xC2, 0xF5)).decode("cp1251"))
+UTF8_CONT_CP1251 = frozenset(bytes(range(0x80, 0xC0)).decode("cp1251", errors="ignore"))
 
 
 def peel(s, rounds=4):
@@ -65,6 +68,8 @@ def scan(text):
     """Yield (run, repaired, layers) for every mis-decoded run."""
     for m in RUN.finditer(text):
         s = m.group(0)
+        if len(s) < 2 or s[0] not in UTF8_LEADS_CP1251 or s[1] not in UTF8_CONT_CP1251:
+            continue
         out, n = peel(s)
         if n and out != s and all(ord(c) < 128 or c in ALLOWED for c in out):
             yield s, out, n
@@ -84,6 +89,8 @@ def main():
     for p in sorted(files()):
         try:
             raw = open(p, "rb").read()
+            if raw.isascii():
+                continue  # RUN cannot match; keep reading every file, including non-UTF-8 inputs.
             text = raw.decode("utf-8")
         except Exception:
             continue  # a non-UTF-8 file is a different problem; this check is about mis-decoding

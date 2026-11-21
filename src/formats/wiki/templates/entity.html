@@ -1,0 +1,131 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import panel, entlink %}
+{% block body %}
+<article class="entity k-{{ e.kind }}{% if e.faction %} f-{{ e.faction }}{% endif %}">
+<h1>{{ c.name(e) }}</h1>
+<p class="meta"><span class="badge">{{ S.kinds[e.kind] }}</span>{% if e.faction %} <span class="badge f-{{ e.faction }}">{{ S[e.faction] }}</span>{% endif %}{% if c.role_title(e) %} <span class="badge">{{ c.role_title(e) }}</span>{% endif %} <code class="cfg" title="{{ S.cfg_name }}">{{ e.cfg_name }}</code></p>
+
+<div class="media">
+{%- for src, cap, cls in c.media(e) %}
+  <figure class="{{ cls }}"><img src="{{ src }}" alt="{{ cap }}"><figcaption>{{ cap }}</figcaption></figure>
+{%- endfor %}
+</div>
+
+{%- if e.kind == "building" and not e.buildable %}<p class="note nobuild">{{ S.not_buildable }}</p>{% endif %}
+
+{% set sm = c.starmap(e) %}
+{% if sm %}
+<section class="starmap-sec">
+<h2>{{ S.starmap }}</h2>
+<p class="dim">{{ S.starmap_note }}</p>
+<div class="starmap" style="aspect-ratio: {{ sm.ratio }}">
+  <img class="sm-bg" src="{{ sm.bg }}" alt="{{ S.starmap }}">
+  {%- for p in sm.planets %}
+  <a class="sm-planet" href="{{ p.href }}" title="{{ p.name }}" style="left:{{ p.left }}%;top:{{ p.top }}%;width:{{ p.size }}%"><img src="{{ p.img }}" alt="{{ p.name }}"><span>{{ p.name }}</span></a>
+  {%- endfor %}
+</div>
+</section>
+{% endif %}
+
+{% set pmap = c.planet_map(e) %}
+{% if pmap %}
+<section class="planetmap-sec">
+<h2>{{ S.planet_map }}</h2>
+<p class="dim">{{ S.planet_map_note }}</p>
+<dl class="stats"><dt>{{ S.planet_map_size }}</dt><dd>{{ S.planet_map_tiles.format(w=pmap.w, h=pmap.h) }}</dd></dl>
+<p class="mapkey"><span class="mk land"></span> {{ S.map_landing }} ({{ pmap.land|length }}) <span class="mk ore"></span> {{ S.map_ore }} ({{ pmap.ore|length }})</p>
+<div class="planetmap">
+  <img src="{{ pmap.img }}" alt="{{ S.planet_map }}">
+  {%- for p in pmap.ore %}<i class="mk ore" style="left:{{ p.left }}%;top:{{ p.top }}%"></i>{% endfor %}
+  {%- for p in pmap.land %}<i class="mk land" style="left:{{ p.left }}%;top:{{ p.top }}%"></i>{% endfor %}
+</div>
+</section>
+{% endif %}
+
+{% set lv = c.levels(e) %}
+{% if lv %}
+<nav class="levels"><b>{{ S.levels }}:</b>
+{%- for m in lv %} <a href="#{{ c.level_id(m) }}">{{ c.level_title(m) }}</a>{% endfor %}</nav>
+{%- for m in lv %}
+<section class="panel level" id="{{ c.level_id(m) }}">
+<h2>{{ c.level_title(m) }}{% if m.level %}: {{ c.name(m) }}{% endif %}</h2>
+{%- if m.level %}
+{%- if m.links.research %}<p class="dim">{{ S.research_required }}: {% for l in m.links.research %}{{ entlink(c, l) }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+<div class="media">
+{%- for src, cap, cls in c.media(m) %}
+  <figure class="{{ cls }}"><img src="{{ src }}" alt="{{ cap }}"><figcaption>{{ cap }}</figcaption></figure>
+{%- endfor %}
+</div>
+{%- endif %}
+{{ panel(c, m.panel) }}
+{%- if m.level and m.extra %}
+<details class="extra">
+<summary>{{ S.extra }} ({{ m.extra|length }})</summary>
+<dl class="stats cfgvals">
+{%- for r in m.extra %}<dt><code>{{ r.cfg_key }}</code></dt><dd>{{ c.fmt(r.value) }}</dd>{% endfor %}
+</dl>
+</details>
+{%- endif %}
+</section>
+{%- endfor %}
+{% elif e.panel.left or e.panel.right or e.panel.weapons or e.panel.costs or e.panel.offers or e.panel.upgrade or e.panel.research %}
+<section class="panel">
+<h2>{{ S.panel }}</h2>
+{{ panel(c, e.panel) }}
+
+{%- if e.panel.upgrade %}
+{% set up = e.panel.upgrade %}
+<div class="upgrade">
+  <h3>{{ S.upgrade_possible }} {{ entlink(c, up.target) }}</h3>
+  {%- if up.project %}<p class="dim">{{ S.research_required }}: {{ entlink(c, up.project) }}</p>{% endif %}
+  {{ panel(c, up.panel) }}
+</div>
+{%- endif %}
+
+{%- for o in e.panel.offers %}
+<div class="offer">
+  <h3>{% if o.label_key %}{{ c.label(o.label_key) }}{% else %}{{ S.offer[o.role] }}:{% endif %} {% if o.role.startswith("upgrade") %}<span>{{ c.name(o.link) }}</span>{% else %}{{ entlink(c, o.link) }}{% endif %}</h3>
+  {%- if o.panel %}{{ panel(c, o.panel) }}{% endif %}
+  {%- if o.affected %}{% set amb = c.ambiguous(o.affected) %}<p class="aff"><b>{{ S.affects }}:</b> {% for l in o.affected %}{{ entlink(c, l, amb) }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</div>
+{%- endfor %}
+
+{%- if e.panel.research %}
+<p class="research"><b>{{ S.research_time }}</b> {{ c.val(e.panel.research) }} <span class="dim">({{ S.not_in_game }})</span></p>
+{%- endif %}
+</section>
+{% endif %}
+
+{% set desc = c.description(e) %}
+{% if desc %}
+<section class="desc">
+<h2>{{ S.description }}</h2>
+{%- if c.desc_fallback(e) %}<p class="dim">{{ S.desc_fallback }}</p>{% endif %}
+{%- for para in desc %}<p>{{ para }}</p>{% endfor %}
+</section>
+{% endif %}
+
+{% set groups = c.link_groups(e) %}
+{% if groups %}
+<section class="links">
+<h2>{{ S.related }}</h2>
+<dl class="rel">
+{%- for title, links in groups %}
+  <dt>{{ title }}</dt>
+  {% set amb = c.ambiguous(links) %}
+  <dd>{% for l in links %}{{ entlink(c, l, amb) }}{% if l.role %} <span class="dim">({{ l.role }})</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+{%- endfor %}
+</dl>
+</section>
+{% endif %}
+
+{% if e.extra %}
+<details class="extra">
+<summary>{{ S.extra }} ({{ e.extra|length }})</summary>
+<dl class="stats cfgvals">
+{%- for r in e.extra %}<dt><code>{{ r.cfg_key }}</code></dt><dd>{{ c.fmt(r.value) }}</dd>{% endfor %}
+</dl>
+</details>
+{% endif %}
+</article>
+{% endblock %}

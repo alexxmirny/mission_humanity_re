@@ -36,6 +36,12 @@
    "name": "MH_Harness_RebindSimTick"
   },
   {
+   "name": "MH_Harness_RecordFailoverCleanup"
+  },
+  {
+   "name": "MH_Harness_SoaComplete"
+  },
+  {
    "name": "MH_Harness_StepFence"
   },
   {
@@ -49,15 +55,6 @@
   }
  ],
  "host": [
-  {
-   "export": "?arm_neuter@hook@mh@@YA_NW4point@12@@Z",
-   "mangled": "?arm_neuter@hook@mh@@YA_NW4point@12@@Z",
-   "pretty": "bool __cdecl mh::hook::arm_neuter(enum mh::hook::point)",
-   "slot": "mh_hook_arm_neuter",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
   {
    "export": "?arm_observer@hook@mh@@YA_NW4point@12@PAXPAPAX@Z",
    "mangled": "?arm_observer@hook@mh@@YA_NW4point@12@PAXPAPAX@Z",
@@ -81,6 +78,15 @@
    "mangled": "?available@hook@mh@@YA_NW4point@12@@Z",
    "pretty": "bool __cdecl mh::hook::available(enum mh::hook::point)",
    "slot": "mh_hook_available",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "?decode_profile@strategic_bindings@mh@@YA_NPBEIAAUprofile@12@AAUerror@12@@Z",
+   "mangled": "?decode_profile@strategic_bindings@mh@@YA_NPBEIAAUprofile@12@AAUerror@12@@Z",
+   "pretty": "bool __cdecl mh::strategic_bindings::decode_profile(unsigned char const *,unsigned int,struct mh::strategic_bindings::profile &,struct mh::strategic_bindings::error &)",
+   "slot": "mh_strategic_bindings_decode_profile",
    "used_by": [
     "harness.obj"
    ]
@@ -149,10 +155,28 @@
    ]
   },
   {
+   "export": "?observe_dispatch@detail@selected_targets@ui@mh@@YAX_N@Z",
+   "mangled": "?observe_dispatch@detail@selected_targets@ui@mh@@YAX_N@Z",
+   "pretty": "void __cdecl mh::ui::selected_targets::detail::observe_dispatch(bool)",
+   "slot": "mh_ui_selected_targets_detail_observe_dispatch",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z",
    "mangled": "?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z",
    "pretty": "void __cdecl mh::desync::on_sim_step_hashed(unsigned __int64 const *,int,unsigned __int64)",
    "slot": "mh_desync_on_sim_step_hashed",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "?point_target@hook@mh@@YAIW4point@12@@Z",
+   "mangled": "?point_target@hook@mh@@YAIW4point@12@@Z",
+   "pretty": "unsigned int __cdecl mh::hook::point_target(enum mh::hook::point)",
+   "slot": "mh_hook_point_target",
    "used_by": [
     "harness.obj"
    ]
@@ -171,6 +195,15 @@
    "mangled": "?register_callback@hook@mh@@YA_NW4point@12@P6AXXZ@Z",
    "pretty": "bool __cdecl mh::hook::register_callback(enum mh::hook::point,void (__cdecl*)(void))",
    "slot": "mh_hook_register_callback",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "?reset_intents@detail@selected_targets@ui@mh@@YAXXZ",
+   "mangled": "?reset_intents@detail@selected_targets@ui@mh@@YAXXZ",
+   "pretty": "void __cdecl mh::ui::selected_targets::detail::reset_intents(void)",
+   "slot": "mh_ui_selected_targets_detail_reset_intents",
    "used_by": [
     "harness.obj"
    ]
@@ -302,6 +335,15 @@
    ]
   },
   {
+   "export": "MH_LobbySpeed_ReplayEnter",
+   "mangled": "_MH_LobbySpeed_ReplayEnter",
+   "pretty": "_MH_LobbySpeed_ReplayEnter",
+   "slot": "MH_LobbySpeed_ReplayEnter",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_Lockstep_HorizonHold",
    "mangled": "_MH_Lockstep_HorizonHold",
    "pretty": "_MH_Lockstep_HorizonHold",
@@ -356,6 +398,33 @@
    ]
   },
   {
+   "export": "MH_RunDirGeneration",
+   "mangled": "_MH_RunDirGeneration",
+   "pretty": "_MH_RunDirGeneration",
+   "slot": "MH_RunDirGeneration",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_RunDir_SessionActive",
+   "mangled": "_MH_RunDir_SessionActive",
+   "pretty": "_MH_RunDir_SessionActive",
+   "slot": "MH_RunDir_SessionActive",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_RunDir_SessionMatchId",
+   "mangled": "_MH_RunDir_SessionMatchId",
+   "pretty": "_MH_RunDir_SessionMatchId",
+   "slot": "MH_RunDir_SessionMatchId",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
    "export": "MH_Seam_LeaveForExit",
    "mangled": "_MH_Seam_LeaveForExit",
    "pretty": "_MH_Seam_LeaveForExit",
@@ -369,6 +438,24 @@
    "mangled": "_MH_Session_HarnessStop",
    "pretty": "_MH_Session_HarnessStop",
    "slot": "MH_Session_HarnessStop",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_StrategicBindings_AdoptProfile",
+   "mangled": "_MH_StrategicBindings_AdoptProfile",
+   "pretty": "_MH_StrategicBindings_AdoptProfile",
+   "slot": "MH_StrategicBindings_AdoptProfile",
+   "used_by": [
+    "harness.obj"
+   ]
+  },
+  {
+   "export": "MH_StrategicBindings_Profile",
+   "mangled": "_MH_StrategicBindings_Profile",
+   "pretty": "_MH_StrategicBindings_Profile",
+   "slot": "MH_StrategicBindings_Profile",
    "used_by": [
     "harness.obj"
    ]
@@ -578,15 +665,6 @@
    "mangled": "?set_armed@rebind@mh@@YA_NPBD_N@Z",
    "pretty": "bool __cdecl mh::rebind::set_armed(char const *,bool)",
    "slot": "mh_rebind_set_armed",
-   "used_by": [
-    "harness.obj"
-   ]
-  },
-  {
-   "export": "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
-   "mangled": "?set_suppress_enqueue@orders@mh@@YAX_N@Z",
-   "pretty": "void __cdecl mh::orders::set_suppress_enqueue(bool)",
-   "slot": "mh_orders_set_suppress_enqueue",
    "used_by": [
     "harness.obj"
    ]

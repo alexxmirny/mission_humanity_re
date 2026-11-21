@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<main class="rootpick">
+<h1>{{ title }}</h1>
+<p>{% for code, label in langs %}<a class="card" href="{{ code }}/index.html"><b>{{ label }}</b></a> {% endfor %}</p>
+</main>
+</body>
+</html>

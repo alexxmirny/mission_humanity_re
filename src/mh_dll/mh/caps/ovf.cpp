@@ -518,7 +518,7 @@ namespace {
 
 // Walks a blob, validating it; visit(kind, player, idx, bytes, elem) per APPLICABLE record (skipped OPTIONAL sections are framed, not visited).
 template <class V>
-int walk(const void *blob, size_t n, V &&visit, uint32_t *features_out) {
+int walk(const void *blob, size_t n, V &&visit, uint32_t *features_out, bool require_available = true) {
     if (!blob) return OVF_ERR_ARG;
     if (features_out) *features_out = 0;
     if (n < sizeof(ovf_header)) return OVF_ERR_TRUNCATED;
@@ -550,7 +550,7 @@ int walk(const void *blob, size_t n, V &&visit, uint32_t *features_out) {
         if (!v2) {
             if (sec.arr >= ARRAYS) return OVF_ERR_RANGE;
             if (static_cast<int>(sec.arr) <= prev) return OVF_ERR_SECTION_ORDER;
-            if (!wide(static_cast<arr>(sec.arr))) return OVF_ERR_NOT_RELOCATED; // the blob names an array this build did not relocate
+            if (require_available && !wide(static_cast<arr>(sec.arr))) return OVF_ERR_NOT_RELOCATED;
             const geom &sk = stock(static_cast<arr>(sec.arr));
             if (sec.elem != sk.elem) return OVF_ERR_ELEM;
             if (sec.players != sk.players || sec.vanilla_row != sk.row || sec.raised_row != RAISED_ROW[sec.arr] || sec.flags != 0 || sec.kind_ver != 0)
@@ -565,7 +565,7 @@ int walk(const void *blob, size_t n, V &&visit, uint32_t *features_out) {
                 const kind_geom kg = geom_of(sec.arr);
                 if (sec.elem != kg.elem) err = OVF_ERR_ELEM;
                 else if (sec.players != kg.players || sec.vanilla_row != kg.vrow || sec.raised_row != kg.rrow) err = OVF_ERR_LAYOUT;
-                else if (!kg.available) err = OVF_ERR_NOT_RELOCATED;
+                else if (require_available && !kg.available) err = OVF_ERR_NOT_RELOCATED;
             }
             if (err != OVF_OK) {
                 if (!(sec.flags & SEC_OPTIONAL)) return err;
@@ -604,6 +604,10 @@ int walk(const void *blob, size_t n, V &&visit, uint32_t *features_out) {
 
 int check(const void *blob, size_t n) {
     return walk(blob, n, [](unsigned, unsigned, unsigned, const uint8_t *, uint32_t) {}, nullptr);
+}
+
+int check_format(const void *blob, size_t n) {
+    return walk(blob, n, [](unsigned, unsigned, unsigned, const uint8_t *, uint32_t) {}, nullptr, false);
 }
 
 int apply(const void *blob, size_t n, uint32_t *features) {

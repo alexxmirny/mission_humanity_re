@@ -356,8 +356,8 @@ inline int32_t th_llm_strat_unit_order_move_relative(const int32_t *a) {
     ::mh::orders::issue::unit_order_move_relative((uint32_t)a[0], (int32_t)a[1], (int32_t)a[2], (int32_t)a[3]);
     return 0;
 }
-// LIBMH_ORD_UNIT_ORDER_DISEMBARK_SOLDIERS -- llm_unit_order_disembark_soldiers
-inline int32_t th_llm_unit_order_disembark_soldiers(const int32_t *a) {
+// LIBMH_ORD_UNIT_ORDER_SQUAD_SPLIT -- llm_unit_order_squad_split
+inline int32_t th_llm_unit_order_squad_split(const int32_t *a) {
     (void)a;
     ::mh::sim::unit_order_disembark_soldiers((uint32_t)a[0], (int32_t)a[1]);
     return 0;
@@ -416,7 +416,7 @@ inline const order_row ORDERS[] = {
     {"llm_strat_unit_order_exit_storage", 5u, &th_llm_strat_unit_order_exit_storage},
     {"llm_strat_unit_order_move", 5u, &th_llm_strat_unit_order_move},
     {"llm_strat_unit_order_move_relative", 4u, &th_llm_strat_unit_order_move_relative},
-    {"llm_unit_order_disembark_soldiers", 2u, &th_llm_unit_order_disembark_soldiers},
+    {"llm_unit_order_squad_split", 2u, &th_llm_unit_order_squad_split},
 };
 
 // ---- the entry table --------------------------------------------------------------

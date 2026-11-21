@@ -5,6 +5,7 @@
 // unbacked-order/state-literal derivation.
 //
 #include "sim/sim_unit_state_move_path.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"     // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"           // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -119,7 +120,10 @@ void unit_state_move_path(const sim_view &v, sim_store &own, const unit_state_mo
     // header banner) -- not otherwise read anywhere in THIS function.
     if (u.order == MOVE_PATH_ORDER_ATTACK_UNIT || u.order == MOVE_PATH_ORDER_ATTACK_UNIT_RETURN ||
         u.order == MOVE_PATH_ORDER_ATTACK_BUILDING) {
-        own.unit_chase_result_mut() = c.unit_chase_check();
+        // Native00480c6f gates only chase, after spending this microstep's cost.
+        const bool primary_allowed = order_tasks_adapter::primary_access(v, own);
+        if (!primary_allowed && u.move_microstep >= 31) return;
+        if (primary_allowed) own.unit_chase_result_mut() = c.unit_chase_check();
     }
 
     // Shared table lookup: _G_LLM_STRAT_MOVE_MICROSTEPS[move_heading][move_microstep].facing, applied
@@ -143,9 +147,14 @@ void unit_state_move_path(const sim_view &v, sim_store &own, const unit_state_mo
     }
 
     // ---- 0x00480cf1-...: settled at a tile boundary (move_microstep >= 0x1f) ---------------------
+    order_tasks_adapter::scope task{};
+    const bool                 guided = order_tasks_adapter::air_boundary(v, own, task);
+    // The callback may refill in place and reset the actual cursor. Never retain
+    // the old slot/cursor/terminal across this boundary.
+    const unit          &path_actor = own.cur_unit();
     const path_waypoint &wp =
-        v.path_buffers[player * PATH_WAYPOINTS_PER_PLAYER + u.path_slot_id * PATH_WAYPOINTS_PER_SLOT +
-                       u.path_cursor]; // UNADVANCED cursor, 0x00480cf1-0x00480d28
+        v.path_buffers[player * PATH_WAYPOINTS_PER_PLAYER + path_actor.path_slot_id * PATH_WAYPOINTS_PER_SLOT +
+                       path_actor.path_cursor]; // UNADVANCED actual cursor after guidance refill
     const uint32_t heading = wp.heading;
 
     if (heading < 0x18) {
@@ -174,6 +183,9 @@ void unit_state_move_path(const sim_view &v, sim_store &own, const unit_state_mo
         return;                                           // NO budget refund -- a real tile transition happened this tick.
     }
 
+    // Typed settled travel boundary before freeing/idle dispatch; attack/prep is NOT arrival.
+    if (!guided) task = order_tasks_adapter::capture(v, own);
+    order_tasks_adapter::terminal(own, task, u);
     // ---- 0x00480d35-...: heading >= 0x18 -- terminal/no-next-step sentinel -----------------------
     if (u.path_slot_id != 0xff) {
         c.path_free_slot(player, unit_index); // 0x00480d35-0x00480d56

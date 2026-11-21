@@ -2,7 +2,7 @@
  "_generated_by": "tools/gen_region_accessors.py --refresh",
  "_do_not_hand_edit": "Regenerate after any migration promotion or state-matrix refresh.",
  "_schema": 5,
- "_candidate_set": "Every region in tools/data/state_regions.json, against every function in the binary that is not in _reimpl's `done` set. Edges from tmp/state_matrix.json (instruction scan, folds fn-ptr edges), NOT from the direct-call graph.",
+ "_candidate_set": "Every region in tools/data/state_regions.json, against every function in the binary that is not in _reimpl's `done` set. Edges from input:state_matrix.json (instruction scan, folds fn-ptr edges), NOT from the direct-call graph.",
  "_provenance": {
   "program": "mh.exe",
   "matrix_cells": 10997,
@@ -10,12 +10,12 @@
   "matrix_regions_unhosted": 1893,
   "reimpl_done": 1000,
   "reimpl_dead": 108,
-  "registry_regions": 845,
+  "registry_regions": 848,
   "measured": 783,
-  "unmeasured": 62,
+  "unmeasured": 65,
   "inputs": {
-   "en_functions": "8561727dc7ecc4d7",
-   "state_regions": "b9c5a960908ea9c0",
+   "en_functions": "1b0d59175b5e8237",
+   "state_regions": "4360412440dd3c4b",
    "reimpl_done": "f1486606577a0dd4"
   },
   "inputs_dirty_at_refresh": []
@@ -11427,7 +11427,7 @@
   "TILE_DRAWN_MAP": {
    "name": "_G_LLM_TILE_DRAWN_MAP",
    "base": 7420192,
-   "size": 300,
+   "size": 1018,
    "measured": true,
    "ours_writers": [
     "llm_tact_frame"
@@ -11598,7 +11598,7 @@
   "TILE_VIS_MAP": {
    "name": "_G_LLM_TILE_VIS_MAP",
    "base": 7421216,
-   "size": 300,
+   "size": 1024,
    "measured": true,
    "ours_writers": [
     "llm_tact_door_update_tile_state",
@@ -13586,7 +13586,7 @@
    "measured": true,
    "ours_writers": [],
    "ours_readers": [
-    "llm_unit_transport_unload_field"
+    "llm_unit_squad_split_field"
    ],
    "external_writers": [
     "llm_strat_dir8_offsets_init"
@@ -13789,8 +13789,8 @@
     "llm_strat_storage_accept_landing",
     "llm_strat_storage_board_unit",
     "llm_strat_unit_state_deploy_approach",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field"
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field"
    ],
    "external_writers": [
     "llm_strat_selection_click_resolve",
@@ -13910,7 +13910,7 @@
     "llm_strat_unit_state_step_adjacent",
     "llm_tact_unit_move_tick",
     "llm_tact_unit_owner_tick",
-    "llm_unit_transport_unload_field"
+    "llm_unit_squad_split_field"
    ],
    "external_writers": [
     "llm_map_load_objects",
@@ -15506,7 +15506,7 @@
     "llm_tact_teleport_zone_scan_tick",
     "llm_tact_unit_move_tick",
     "llm_tact_unit_owner_tick",
-    "llm_unit_transport_unload_field"
+    "llm_unit_squad_split_field"
    ],
    "external_writers": [
     "llm_map_load_main_plane",
@@ -16005,10 +16005,10 @@
     "llm_unit_force_disembark",
     "llm_unit_recruit",
     "llm_unit_set_order_param",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "llm_unit_status_bit_clear",
     "llm_unit_status_bit_set",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
     "map_unit_Add",
     "map_unit_PutOnMap"
    ],
@@ -16160,7 +16160,7 @@
     "llm_strat_unit_update_rotation",
     "llm_strat_unit_walk_step_allowed",
     "llm_tutorial_step_driver",
-    "llm_unit_order_disembark_soldiers",
+    "llm_unit_order_squad_split",
     "map_unit_IsAiGround",
     "map_unit_IsAiHeli",
     "map_unit_IsAiPlane",
@@ -16262,7 +16262,7 @@
     "llm_ui_group_tab_on_click",
     "llm_ui_selection_panel_refresh",
     "llm_ui_unit_unassigned_list_draw_row",
-    "llm_unit_order_disembark_soldiers_enqueue",
+    "llm_unit_order_squad_split_enqueue",
     "llm_unit_state_is_busy"
    ],
    "external_addr_takers": [
@@ -16338,8 +16338,8 @@
     "llm_strat_unit_state_squad_merge",
     "llm_strat_unit_teardown",
     "llm_strat_unit_update_soldiers",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "map_FillDefaults"
    ],
    "ours_readers": [
@@ -16541,7 +16541,7 @@
     "llm_strat_unit_state_takeoff_landing",
     "llm_strat_unit_state_takeoff_taxi",
     "llm_unit_create_soldier",
-    "llm_unit_transport_unload_field",
+    "llm_unit_squad_split_field",
     "map_CreateBuilding"
    ],
    "external_writers": [],
@@ -17434,10 +17434,10 @@
     "llm_unit_bldg_energy_refill_full",
     "llm_unit_create_soldier",
     "llm_unit_force_disembark",
-    "llm_unit_order_disembark_soldiers",
+    "llm_unit_order_squad_split",
     "llm_unit_recruit",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "map_unit_Add",
     "map_unit_IsAiGround",
     "map_unit_IsAiHeli",
@@ -17491,7 +17491,7 @@
     "llm_ui_info_text_build",
     "llm_ui_unit_unassigned_list_draw_row",
     "llm_unit_can_afford_resources",
-    "llm_unit_order_disembark_soldiers_enqueue"
+    "llm_unit_order_squad_split_enqueue"
    ],
    "external_addr_takers": [
     "llm_cfg_load_final_snapshot",
@@ -18153,8 +18153,8 @@
     "llm_strat_unit_teardown",
     "llm_strat_unit_teardown_mapped",
     "llm_tutorial_step_driver",
-    "llm_unit_transport_unload_docked",
-    "llm_unit_transport_unload_field",
+    "llm_unit_squad_split_docked",
+    "llm_unit_squad_split_field",
     "map_CreateBuilding"
    ],
    "external_writers": [],
@@ -21419,6 +21419,57 @@
    "external_addr_takers": [],
    "external_bytes": 0,
    "subsystems": {}
+  },
+  "STORAGE_POLICY": {
+   "name": "storage_policy",
+   "base": 0,
+   "size": 32,
+   "measured": false,
+   "ours_writers": [],
+   "ours_readers": [],
+   "external_writers": [],
+   "external_writers_dead": [],
+   "external_readers": [],
+   "external_addr_takers": [],
+   "external_bytes": 0,
+   "subsystems": {},
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_storage_policy.h"
+  },
+  "ORDER_TASKS": {
+   "name": "order_tasks",
+   "base": 0,
+   "size": 128,
+   "measured": false,
+   "ours_writers": [],
+   "ours_readers": [],
+   "external_writers": [],
+   "external_writers_dead": [],
+   "external_readers": [],
+   "external_addr_takers": [],
+   "external_bytes": 0,
+   "subsystems": {},
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_order_tasks.h"
+  },
+  "ORDER_CAMPAIGN": {
+   "name": "order_campaign",
+   "base": 0,
+   "size": 160,
+   "measured": false,
+   "ours_writers": [],
+   "ours_readers": [],
+   "external_writers": [],
+   "external_writers_dead": [],
+   "external_readers": [],
+   "external_addr_takers": [],
+   "external_bytes": 0,
+   "subsystems": {},
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_order_tasks.h"
   }
  }
 }

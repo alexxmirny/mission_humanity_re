@@ -84,8 +84,8 @@
 #include "mh_net_proto/net_udp.h"
 #include "mh_net_proto/net_wire.h" // the 12-byte framing the stream carries -- see the note above
 #include "mh_net_queue_policy.h"   // mp:U41e -- the SAME lane pair mh_net.dll's TCP transport uses
-#include "mesh.h"                 // mp:U61 -- elect(), the RTT matrix, the FLAG_MESH codecs (socket-free)
-#include "origin_seq.h"           // mp:U59 -- the end-to-end exactly-once layer for broadcast game frames
+#include "mesh.h"                  // mp:U61 -- elect(), the RTT matrix, the FLAG_MESH codecs (socket-free)
+#include "origin_seq.h"            // mp:U59 -- the end-to-end exactly-once layer for broadcast game frames
 #include "udp_channel_c.h"         // mp:T2 -- channel C's bulk transfer and its chunk lane
 #include "udp_ping_cadence.h"      // mp:P15 -- the warm-up ping cadence's decision function
 #include "udp_stats.h"             // mp:T3 -- the RFC 6298 / 3393 / 7680 arithmetic, I/O-free
@@ -411,13 +411,14 @@ public:
 
     // ---- the transport surface (one method per MH_Net_* row that has a body) ---------------------
     int  send(int dst_player, const void *buf, int len);
-    int  recv(int *out_sender, void *buf, int *inout_len);
+    int  recv(int *out_sender, void *buf, int *inout_len,
+              const int *blocked_senders = nullptr, int blocked_count = 0);
     void send_ctrl(uint16_t flags, const unsigned char *buf, int len);
     int  peer_count();
     int  local_player_id() const { return m_started ? m_my_id : -1; }
     int  id_assigned() const;
     int  active_peer_ids(int *out, int cap);
-    int  take_dead_peer();
+    int  dead_peer_mask();
     void get_stats(MH_NetStats *out);
     // mp:SES6 -- mh.dll pushes the peer's ADVERTISED LOCKSTEP HORIZON here (a game-level quantity the
     // transport cannot measure itself; see mh_net_export.h's note on MH_Net_SetPeerHorizon), so the
@@ -453,16 +454,16 @@ public:
     //                   queue exactly like a live frame. Returns osq::Layer::Rx as an int, or -1 (and
     //                   changes nothing) while the game queue has no room: drain it and call again.
     //   osq_counters / osq_gap_force -- instrumentation and the M2 switch (0 = never skip a hole).
-    void           osq_report(osq::Report &out);
+    void osq_report(osq::Report &out);
     typedef void (*osq_serve_fn)(void *ctx, uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *data,
                                  int len, bool sup);
-    int            osq_serve(int origin, uint32_t from, uint32_t to, osq_serve_fn fn, void *ctx);
-    int            osq_ingest(int origin, uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *data, int len);
-    osq::Counters  osq_counters();
-    void           osq_gap_force(uint32_t ms);
+    int           osq_serve(int origin, uint32_t from, uint32_t to, osq_serve_fn fn, void *ctx);
+    int           osq_ingest(int origin, uint16_t inc, uint32_t lo, uint32_t hi, const uint8_t *data, int len);
+    osq::Counters osq_counters();
+    void          osq_gap_force(uint32_t ms);
     // Test-only: make this endpoint behave as a PRE-U59 build (empty HELLO/WELCOME, unprefixed DATA) so
     // the version gate (user decision Q5) can be proved in both directions without an old binary.
-    void           osq_test_legacy(bool on);
+    void osq_test_legacy(bool on);
 
     // ---- mp:U60 (HM-M2) -- REHOME: a CLIENT endpoint changes hub, IN PLACE -------------------------
     // The mechanism a later step (M3 election, M4/M5 handover) drives; nothing in normal play calls it.
@@ -492,26 +493,26 @@ public:
         bool test_skip_reconcile; // TEST ONLY: switch the role and re-dial but never reconcile (the mutation probe)
     };
     struct RehomeStatus {
-        bool rehomed;          // rehome() has run since start()
-        int  role;             // 0 = hub, 1 = client
-        bool reconciling;      // a reconcile is still in flight here
-        bool done;             // this endpoint reached the hub's TARGET frontier (no origin short, none waiting)
-        bool unrecoverable;    // the plan found a needed seq below every holder's retention: end the match
-        bool aborted;          // gave up after RC_ABORT_MS
-        int  reports_in;       // hub: RC_REPORTs received
-        int  plans;            // hub: plans issued
-        int  fetches_issued;   // hub: fetches in the plans
-        long ranges_served;    // ranges this endpoint put on the wire for someone else
-        long ranges_ingested;  // ranges this endpoint fed to its own exactly-once layer
-        long ranges_noroom;    // ranges that arrived with the game queue short of headroom (must stay 0)
-        long foreign_refused;  // hub: HELLOs refused for an id outside the roster
-        long welcome_tx;       // WELCOMEs this endpoint SENT, lifetime (rehome must not move it)
-        long welcome_rx;       // WELCOMEs this endpoint RECEIVED, lifetime
-        uint32_t target[8];    // the TARGET frontier it is converging on (0 = none yet)
+        bool     rehomed;         // rehome() has run since start()
+        int      role;            // 0 = hub, 1 = client
+        bool     reconciling;     // a reconcile is still in flight here
+        bool     done;            // this endpoint reached the hub's TARGET frontier (no origin short, none waiting)
+        bool     unrecoverable;   // the plan found a needed seq below every holder's retention: end the match
+        bool     aborted;         // gave up after RC_ABORT_MS
+        int      reports_in;      // hub: RC_REPORTs received
+        int      plans;           // hub: plans issued
+        int      fetches_issued;  // hub: fetches in the plans
+        long     ranges_served;   // ranges this endpoint put on the wire for someone else
+        long     ranges_ingested; // ranges this endpoint fed to its own exactly-once layer
+        long     ranges_noroom;   // ranges that arrived with the game queue short of headroom (must stay 0)
+        long     foreign_refused; // hub: HELLOs refused for an id outside the roster
+        long     welcome_tx;      // WELCOMEs this endpoint SENT, lifetime (rehome must not move it)
+        long     welcome_rx;      // WELCOMEs this endpoint RECEIVED, lifetime
+        uint32_t target[8];       // the TARGET frontier it is converging on (0 = none yet)
         bool     target_valid;
     };
-    bool           rehome(const RehomeSpec &sp);
-    void           rehome_status(RehomeStatus &out);
+    bool rehome(const RehomeSpec &sp);
+    void rehome_status(RehomeStatus &out);
     // The UDP port the socket is bound to (host byte order), 0 when not started. A relay tunnel that is
     // switching to the host shape needs it as its `game_port`.
     unsigned short bound_port();
@@ -530,9 +531,9 @@ public:
     // The two things this endpoint cannot know come in as hooks (udp_transport.cpp wires the real ones;
     // the selftest wires fakes): this peer's own round trip to the relay, and a fresh relay room code.
     struct MeshHooks {
-        int      (*leg_rtt_dms)(void *ctx) = nullptr; // own relay-leg round trip in 0.1 ms, or -1 (not relayed / not measured yet)
-        uint32_t (*mint_room)(void *ctx)   = nullptr; // a fresh non-zero relay room code, 0 = the RNG failed
-        void *ctx                          = nullptr;
+        int (*leg_rtt_dms)(void *ctx)    = nullptr; // own relay-leg round trip in 0.1 ms, or -1 (not relayed / not measured yet)
+        uint32_t (*mint_room)(void *ctx) = nullptr; // a fresh non-zero relay room code, 0 = the RNG failed
+        void *ctx                        = nullptr;
         // mp:U62 -- the relay tunnel's role switch (udprelay::rehome), for a relayed match's handover. role 0 =
         // become `room`'s host (the tunnel then delivers to 127.0.0.1:game_port), role 1 = move to `room` as a
         // client; `*dial_port` receives the loopback port a client endpoint must re-dial. MUST be called
@@ -547,37 +548,40 @@ public:
     void set_mesh_hooks(const MeshHooks &h) { m_mesh_hooks = h; }
     // Test-only. -1 = the real capability byte. A pre-M3 build (U59/U60) sends CAP_VERSION 1.
     void mesh_test_cap(int cap) { InterlockedExchange(&m_test_cap, (LONG)(cap + 1)); }
+    // Test-only wire negatives: 0 normal, 1 omitted cap, 2 trailing byte, 3 no
+    // TOKEN/TOKEN_ACK. Like mesh_test_cap, set before start; never read from ini.
+    void game_test_handshake_shape(int shape) { InterlockedExchange(&m_test_game_shape, shape); }
     // Test-only: send no probe datagram, so a "this pair stays unmeasured" case is real.
     void mesh_test_no_probe(bool on) { InterlockedExchange(&m_test_noprobe, on ? 1 : 0); }
     // Test-only: adopt epochs but never ack them (a client whose acks are lost), so "e+1 only after every ack of e" is real.
     void mesh_test_no_ack(bool on) { InterlockedExchange(&m_test_noack, on ? 1 : 0); }
     struct MeshStatus {
-        int      role;          // 0 hub, 1 client
-        bool     key_valid;
+        int  role; // 0 hub, 1 client
+        bool key_valid;
         // the epoch this endpoint is working on: the host's published one, a client's held one
-        uint32_t epoch;
-        uint32_t digest;
-        uint8_t  hub;
-        uint8_t  S;             // survivor set (bit per player id)
-        uint8_t  tier;
-        int      rank_n;
-        uint8_t  rank[8];
-        mesh::Matrix   M;       // the matrix of that epoch (host before the first publish: the live merged one)
+        uint32_t       epoch;
+        uint32_t       digest;
+        uint8_t        hub;
+        uint8_t        S; // survivor set (bit per player id)
+        uint8_t        tier;
+        int            rank_n;
+        uint8_t        rank[8];
+        mesh::Matrix   M; // the matrix of that epoch (host before the first publish: the live merged one)
         mesh::CandList dial[8];
-        uint32_t room[8];
+        uint32_t       room[8];
         // host: who acked what
         uint32_t acked_mask;          // acks of the CURRENT epoch
         uint32_t last_acked_epoch[8]; // per peer, the latest epoch it acked (kept across roster changes)
         uint32_t last_acked_digest[8];
         int      cov_have, cov_total; // matrix pairs with an entry (direct or relay-estimated), over the roster
         // counters
-        long     probe_tx, probe_rx, echo_tx, echo_rx;
-        long     probe_bytes_tx, probe_bytes_rx; // UDP payload bytes of probe + echo datagrams
-        long     frames_tx, frames_rx, frame_bytes_tx, frame_bytes_rx; // FLAG_MESH stream frames
-        long     bad_probe, bad_frame, rank_mismatch, epochs_published, epochs_held, ack_rx, epoch_resends;
-        DWORD    first_pair_ms[8]; // client: ms from the BROKER to the first echo from each peer, 0 = none yet
-        DWORD    all_acked_ms;     // host: ms from the last publish to its last ack, 0 = outstanding
-        DWORD    first_epoch_ms;   // host: ms from the first client CAND to the first publish, 0 = none
+        long  probe_tx, probe_rx, echo_tx, echo_rx;
+        long  probe_bytes_tx, probe_bytes_rx;                       // UDP payload bytes of probe + echo datagrams
+        long  frames_tx, frames_rx, frame_bytes_tx, frame_bytes_rx; // FLAG_MESH stream frames
+        long  bad_probe, bad_frame, rank_mismatch, epochs_published, epochs_held, ack_rx, epoch_resends;
+        DWORD first_pair_ms[8]; // client: ms from the BROKER to the first echo from each peer, 0 = none yet
+        DWORD all_acked_ms;     // host: ms from the last publish to its last ack, 0 = outstanding
+        DWORD first_epoch_ms;   // host: ms from the first client CAND to the first publish, 0 = none
     };
     void mesh_status(MeshStatus &out);
     // This client's held epoch (the last one it acked) -- M5 reads it when the hub dies. False when none.
@@ -600,32 +604,36 @@ public:
     //   The departure is NOT a roster change here: the leaving player is removed from the sim roster at a
     //       PINNED step by the game's own leave path (U19b's park step for a quit, the pinned elimination for
     //       a defeat) before this is called. This layer carries no roster state.
-    enum LeaveState { HL_NONE = 0, HL_WAITING = 1, HL_HANDED = 2, HL_TIMEOUT = 3, HL_NOTHING = 4 };
+    enum LeaveState { HL_NONE    = 0,
+                      HL_WAITING = 1,
+                      HL_HANDED  = 2,
+                      HL_TIMEOUT = 3,
+                      HL_NOTHING = 4 };
     int hub_leave(int timeout_ms); // returns a LeaveState (HL_HANDED / HL_TIMEOUT / HL_NOTHING)
     struct HubStatus {
-        bool     enabled;      // not `[net] hub_migration=0`
-        int      role;         // 0 hub, 1 client
-        int      hub_id;       // the hub's player id as this endpoint knows it, -1 unknown
+        bool     enabled; // not `[net] hub_migration=0`
+        int      role;    // 0 hub, 1 client
+        int      hub_id;  // the hub's player id as this endpoint knows it, -1 unknown
         int      local_id;
-        uint32_t epoch;        // the succession epoch held (client) / published (hub), 0 none
+        uint32_t epoch; // the succession epoch held (client) / published (hub), 0 none
         int      rank_n;
         uint8_t  rank[8];
-        uint32_t survivors;    // that epoch's S
-        int      leave_state;  // a LeaveState
+        uint32_t survivors;   // that epoch's S
+        int      leave_state; // a LeaveState
         bool     rehomed;
         bool     reconciling, reconcile_done, unrecoverable, aborted;
-        long     changes;      // hub changes this endpoint has gone through as a SURVIVOR
+        long     changes; // hub changes this endpoint has gone through as a SURVIVOR
         int      old_hub, new_hub;
         uint32_t change_epoch; // the epoch of the LEAVING that caused the last change
         int      clients;      // hub: active client conns
         long     leaving_rx, acks_tx, acks_rx, retargets;
         // mp:U63 -- the crash failover
-        int      failover;        // a FailoverPhase
-        bool     failover_active; // SUSPECT or ELECT: the game suspends its own silence timers
-        int      failover_ms;     // ms since the hub went silent (0 when none)
-        bool     change_crash;    // the last hub change was a crash failover (the notice says "lost", not "left")
-        long     fo_redirects_rx, fo_redirects_tx;
-        int      fo_group;        // survivors in the group this peer judged the quorum on (popcount)
+        int  failover;        // a FailoverPhase
+        bool failover_active; // SUSPECT or ELECT: the game suspends its own silence timers
+        int  failover_ms;     // ms since the hub went silent (0 when none)
+        bool change_crash;    // the last hub change was a crash failover (the notice says "lost", not "left")
+        long fo_redirects_rx, fo_redirects_tx;
+        int  fo_group; // survivors in the group this peer judged the quorum on (popcount)
     };
     void hub_status(HubStatus &out);
     // mp:U63 (HM-M5) -- CRASH FAILOVER (plan section 5.2 / 5.3 / 7.1). Automatic, no API: a client whose hub has been
@@ -633,12 +641,20 @@ public:
     // leg) corroborates, walks the held epoch's ranking: the first live candidate rehomes as the hub, every other
     // survivor re-dials it keeping its id. `Endpoint::hub_status` carries the phase to the game, which suspends its own
     // silence timers while `failover_active`.
-    enum FailoverPhase { FO_IDLE = 0, FO_SUSPECT = 1, FO_ELECT = 2, FO_DONE = 3, FO_FAILED = 4, FO_MINORITY = 5 };
+    enum FailoverPhase { FO_IDLE     = 0,
+                         FO_SUSPECT  = 1,
+                         FO_ELECT    = 2,
+                         FO_DONE     = 3,
+                         FO_FAILED   = 4,
+                         FO_MINORITY = 5 };
     // Test-only: this endpoint's FIRST CHOICE is `id` whatever the ranking says (a survivor that dials a non-elected
     // candidate), so REDIRECT is real. -1 = off.
     void fo_test_force_first(int id) { InterlockedExchange(&m_fo_test_first, (LONG)id); }
     // Test-only: this endpoint sends no FO_STATE and answers none (a candidate that is up but unreachable).
     void fo_test_mute(bool on) { InterlockedExchange(&m_fo_test_mute, on ? 1 : 0); }
+    // Test-only: withhold loss reports until this endpoint actually rehomes.
+    void fo_test_mute_until_hub() { InterlockedExchange(&m_fo_test_mute, 2); }
+    bool fo_test_corroborated_from_hub(int id);
     // The game says whether a MATCH is running (MH_Net_SetInMatch). The failover is armed only inside one: a lobby whose
     // host closes, or a client that has returned to the menu, is not a hub crash. Leaving the match clears a terminal phase.
     void set_in_match(bool on);
@@ -647,10 +663,10 @@ public:
     // MANUAL DRIVER (the MH_Net_Rehome export): the same switch the handover performs, from outside.
     struct RehomeEx {
         bool     as_hub;
-        uint32_t roster_mask;   // as_hub: bit per survivor id expected to re-dial
-        char     host[64];      // !as_hub, direct: the new hub's address
+        uint32_t roster_mask; // as_hub: bit per survivor id expected to re-dial
+        char     host[64];    // !as_hub, direct: the new hub's address
         int      port;
-        uint32_t relay_room;    // a relayed match: the room (0 = a direct match)
+        uint32_t relay_room; // a relayed match: the room (0 = a direct match)
         int      dial_budget_ms;
     };
     bool rehome_ex(const RehomeEx &sp);
@@ -838,7 +854,9 @@ private:
     void client_on_boot(const sockaddr_in &from, const uint8_t *body, size_t len, DWORD now);
     void host_on_token(const sockaddr_in &from, const mh_net_proto::udp::Header &h, const uint8_t *body,
                        size_t len, DWORD now);
-    void client_on_token_ack(const mh_net_proto::udp::Header &h, DWORD now);
+    void client_on_token_ack(const mh_net_proto::udp::Header &h, const uint8_t *body, size_t len, DWORD now);
+    void send_token_ack(const sockaddr_in &to, const uint8_t *cid, uint64_t seq,
+                        const mh_net_proto::SessionKeys &keys);
     int  alloc_conn_slot();
 
     // stream
@@ -861,15 +879,15 @@ private:
 
     void enqueue(int src, const void *data, int len);
     // mp:U61 -- the mesh (udp_mesh.cpp). All callers hold m_conn_cs unless noted.
-    void    mesh_on_frame(int idx, const mh_net_proto::WireHdr &h, const uint8_t *payload, uint32_t len);
-    void    mesh_tick(DWORD now);
-    void    mesh_host_tick(DWORD now);
-    void    mesh_client_tick(DWORD now);
-    bool    mesh_on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD now); // takes m_conn_cs itself
-    void    mesh_send(int idx, const uint8_t *payload, int len, int dst);
-    void    mesh_install_key(const uint8_t key[mh_net_proto::KEY_LEN]);
-    void    mesh_send_probe(int peer, const sockaddr_in &to, uint8_t kind, uint32_t nonce);
-    void    mesh_publish(DWORD now, uint32_t S, const mesh::Matrix &snap, const mesh::Election &el);
+    void mesh_on_frame(int idx, const mh_net_proto::WireHdr &h, const uint8_t *payload, uint32_t len);
+    void mesh_tick(DWORD now);
+    void mesh_host_tick(DWORD now);
+    void mesh_client_tick(DWORD now);
+    bool mesh_on_datagram(uint8_t *pkt, int len, const sockaddr_in &from, DWORD now); // takes m_conn_cs itself
+    void mesh_send(int idx, const uint8_t *payload, int len, int dst);
+    void mesh_install_key(const uint8_t key[mh_net_proto::KEY_LEN]);
+    void mesh_send_probe(int peer, const sockaddr_in &to, uint8_t kind, uint32_t nonce);
+    void mesh_publish(DWORD now, uint32_t S, const mesh::Matrix &snap, const mesh::Election &el);
     // mp:U62 -- the handover. hl_on_leaving runs on the recv thread UNDER m_conn_cs (it only acknowledges and
     // queues); hl_service runs on the timer thread with NO lock held between passes, because the relay tunnel's
     // role switch must not be called under m_conn_cs (see MeshHooks::tunnel_rehome).
@@ -885,20 +903,23 @@ private:
     // mp:U63 -- the crash failover. fo_tick runs on the timer thread UNDER m_conn_cs (detection, corroboration, the
     // choice) and posts at most one ACTION; fo_service runs with NO lock held (the relay tunnel's role switch must not)
     // and performs it. fo_on_datagram is mesh_on_datagram's FO half (the caller holds the lock).
-    void     fo_tick(DWORD now);
-    void     fo_service();
-    void     fo_on_datagram(int from_id, uint8_t kind, uint8_t flags, uint32_t epoch, uint8_t arg,
-                            const sockaddr_in &from, DWORD now);
-    void     fo_send(int peer, uint8_t kind, uint8_t flags, uint8_t arg, DWORD now);
-    void     fo_broadcast_state(DWORD now);
-    void     fo_enter(DWORD now, const char *why);
-    void     fo_finish(int phase, const char *why);
-    DWORD    fo_peer_age(int peer, DWORD now); // ms since the freshest sign of life from `peer`, 0xFFFFFFFF = never
-    DWORD    mesh_t(DWORD ms) const { const int d = m_cfg.mesh_time_div; return d > 1 ? (ms / (DWORD)d ? ms / (DWORD)d : 1u) : ms; } // Config::mesh_time_div
-    uint32_t fo_alive_mask(DWORD now);         // peers alive-known to this one (not this peer itself)
+    void  fo_tick(DWORD now);
+    void  fo_service();
+    void  fo_on_datagram(int from_id, uint8_t kind, uint8_t flags, uint32_t epoch, uint8_t arg,
+                         const sockaddr_in &from, DWORD now);
+    void  fo_send(int peer, uint8_t kind, uint8_t flags, uint8_t arg, DWORD now);
+    void  fo_broadcast_state(DWORD now);
+    void  fo_enter(DWORD now, const char *why);
+    void  fo_finish(int phase, const char *why);
+    DWORD fo_peer_age(int peer, DWORD now); // ms since the freshest sign of life from `peer`, 0xFFFFFFFF = never
+    DWORD mesh_t(DWORD ms) const {
+        const int d = m_cfg.mesh_time_div;
+        return d > 1 ? (ms / (DWORD)d ? ms / (DWORD)d : 1u) : ms;
+    } // Config::mesh_time_div
+    uint32_t fo_alive_mask(DWORD now); // peers alive-known to this one (not this peer itself)
     int      fo_my_choice(DWORD now, bool *undecided);
     void     fo_client_done(int hub, DWORD now);
-    uint8_t cap_byte() const;
+    uint8_t  cap_byte() const;
     // mp:U60 -- the reconcile over a new hub (all callers hold m_conn_cs).
     void rc_on_frame(int idx, const mh_net_proto::WireHdr &h, const uint8_t *payload, uint32_t len);
     void rc_tick(DWORD now);
@@ -932,16 +953,16 @@ private:
     bool                lose_it();
 
     // ---- state ------------------------------------------------------------------------------------
-    bool   m_started;
-    bool   m_cs_ready; // the two critical sections are initialised once and never deleted (see stop)
-    Config m_cfg;
-    int    m_K;
-    int    m_ping_ms; // the RESOLVED values, not the config's three-state raw ones
-    int    m_rx_timeout_ms;
+    bool         m_started;
+    bool         m_cs_ready; // the two critical sections are initialised once and never deleted (see stop)
+    Config       m_cfg;
+    int          m_K;
+    int          m_ping_ms; // the RESOLVED values, not the config's three-state raw ones
+    int          m_rx_timeout_ms;
     volatile int m_role; // mp:U60: rehome(as_hub) flips 1 -> 0 under m_conn_cs; the two threads read it bare
-    int    m_my_id;
-    bool   m_host_assign;
-    bool   m_secure;
+    int          m_my_id;
+    bool         m_host_assign;
+    bool         m_secure;
 
     SOCKET        m_sock;
     HANDLE        m_recv_thread;
@@ -957,7 +978,7 @@ private:
     CRITICAL_SECTION m_conn_cs;
     Conn             m_conns[MH_NET_MAX_PEERS];
     Pending          m_pend[MH_NET_MAX_PEERS];
-    volatile LONG    m_dead_peer;
+    volatile LONG    m_dead_mask;
     volatile LONG    m_id_assigned;
 
     // mp:U41e -- the SAME sequence-merged lane pair as mh_net.dll's `g_lanes`/`g_qh`/`g_qm`
@@ -976,51 +997,51 @@ private:
 
     // mp:U59 -- guarded by m_conn_cs (every path that touches it already holds it). POD, valid
     // zero-filled; start() arms it. ~1.7 MB: eight origins x (128 KiB ring + 2048 entries + 16 waiting).
-    osq::Layer m_osq;
-    bool       m_osq_legacy_said;
+    osq::Layer    m_osq;
+    bool          m_osq_legacy_said;
     volatile LONG m_test_legacy; // osq_test_legacy; NOT reset by start()
 
     // mp:U60 -- rehome state. Guarded by m_conn_cs. Zeroed by start(); NOT by rehome() itself.
     struct Rc {
-        bool     active;       // a reconcile is in flight
-        bool     skip;         // test-only: rehome(test_skip_reconcile)
-        bool     done, unrecoverable, aborted, planned, dirty;
-        DWORD    started_ms, deadline_ms, last_report_ms, last_repair_ms;
-        uint32_t saved_gap_ms; // osq gap_force_ms to restore when the reconcile ends
-        uint8_t  have[osq::ORIGINS];   // hub: a report is held for this player id
-        osq::Report rep[osq::ORIGINS]; // hub: the latest report per player id
-        uint32_t target[osq::ORIGINS];
-        bool     target_valid;
-        int      reports_in, plans, fetches_issued;
-        long     ranges_served, ranges_ingested, ranges_noroom, foreign_refused;
+        bool        active; // a reconcile is in flight
+        bool        skip;   // test-only: rehome(test_skip_reconcile)
+        bool        done, unrecoverable, aborted, planned, dirty;
+        DWORD       started_ms, deadline_ms, last_report_ms, last_repair_ms;
+        uint32_t    saved_gap_ms;       // osq gap_force_ms to restore when the reconcile ends
+        uint8_t     have[osq::ORIGINS]; // hub: a report is held for this player id
+        osq::Report rep[osq::ORIGINS];  // hub: the latest report per player id
+        uint32_t    target[osq::ORIGINS];
+        bool        target_valid;
+        int         reports_in, plans, fetches_issued;
+        long        ranges_served, ranges_ingested, ranges_noroom, foreign_refused;
     };
-    bool          m_rehomed;                   // rehome() ran since start()
-    uint8_t       m_roster[osq::ORIGINS];      // hub: ids allowed to re-dial (1 = allowed)
-    int           m_hs_budget_ms;              // client re-dial budget (0 = HS_BUDGET_MS)
-    volatile LONG m_welcome_tx, m_welcome_rx;  // lifetime WELCOME counters (survive rehome by design)
+    bool          m_rehomed;                  // rehome() ran since start()
+    uint8_t       m_roster[osq::ORIGINS];     // hub: ids allowed to re-dial (1 = allowed)
+    int           m_hs_budget_ms;             // client re-dial budget (0 = HS_BUDGET_MS)
+    volatile LONG m_welcome_tx, m_welcome_rx; // lifetime WELCOME counters (survive rehome by design)
     Rc            m_rc;
 
 
     // ---- mp:U61 -- mesh state. Guarded by m_conn_cs. start() re-initialises it; rehome() leaves it. ---
     struct MeshPeer {
-        bool            known;     // brokered: probe it (when neither side is relayed)
-        bool            relayed;
-        mesh::CandList  cands;
-        mesh::ProbeKeys keys;      // THIS peer's keys as a SENDER (derived from the mesh key)
+        bool                            known; // brokered: probe it (when neither side is relayed)
+        bool                            relayed;
+        mesh::CandList                  cands;
+        mesh::ProbeKeys                 keys;   // THIS peer's keys as a SENDER (derived from the mesh key)
         mh_net_proto::udp::ReplayWindow rx_win; // its probes/echoes to us
-        bool            have_best;
-        sockaddr_in     best;
-        DWORD           best_ms;   // when `best` last answered
-        DWORD           heard_ms;  // when we last received a PROBE from it (its own probing drives the steady state)
-        uint32_t        nonce;
-        uint32_t        ring_nonce[8];
-        int64_t         ring_qpc[8];
-        int             ring_at;
-        double          srtt_dms;
-        long            samples;
-        DWORD           last_echo_ms;
-        DWORD           first_probe_ms;
-        DWORD           last_probe_ms;
+        bool                            have_best;
+        sockaddr_in                     best;
+        DWORD                           best_ms;  // when `best` last answered
+        DWORD                           heard_ms; // when we last received a PROBE from it (its own probing drives the steady state)
+        uint32_t                        nonce;
+        uint32_t                        ring_nonce[8];
+        int64_t                         ring_qpc[8];
+        int                             ring_at;
+        double                          srtt_dms;
+        long                            samples;
+        DWORD                           last_echo_ms;
+        DWORD                           first_probe_ms;
+        DWORD                           last_probe_ms;
     };
     struct Mesh {
         bool            on;
@@ -1032,23 +1053,23 @@ private:
         DWORD           broker_ms, first_cand_ms;
         DWORD           first_pair_ms[8];
         // client
-        bool            cand_sent;
-        DWORD           last_row_ms;
-        mesh::Epoch     held;
-        bool            held_valid;
+        bool        cand_sent;
+        DWORD       last_row_ms;
+        mesh::Epoch held;
+        bool        held_valid;
         // host
-        mesh::CandList  reported[8];
-        bool            have_cand[8], reported_relayed[8], have_row[8];
-        DWORD           row_ms[8];
-        mesh::Matrix    M;             // raw merged rows
-        uint32_t        S;             // current roster (bit per client id)
-        DWORD           roster_ms;     // when S last changed
-        bool            broker_dirty;
-        DWORD           last_broker_ms;
-        mesh::Epoch     cur;
-        uint32_t        acked_mask;
-        DWORD           pub_ms, last_send_ms, last_eval_ms, all_acked_ms, first_epoch_ms;
-        uint32_t        last_acked_epoch[8], last_acked_digest[8];
+        mesh::CandList reported[8];
+        bool           have_cand[8], reported_relayed[8], have_row[8];
+        DWORD          row_ms[8];
+        mesh::Matrix   M;         // raw merged rows
+        uint32_t       S;         // current roster (bit per client id)
+        DWORD          roster_ms; // when S last changed
+        bool           broker_dirty;
+        DWORD          last_broker_ms;
+        mesh::Epoch    cur;
+        uint32_t       acked_mask;
+        DWORD          pub_ms, last_send_ms, last_eval_ms, all_acked_ms, first_epoch_ms;
+        uint32_t       last_acked_epoch[8], last_acked_digest[8];
         // counters
         long  probe_tx, probe_rx, echo_tx, echo_rx, probe_bytes_tx, probe_bytes_rx;
         long  frames_tx, frames_rx, frame_bytes_tx, frame_bytes_rx;
@@ -1070,23 +1091,23 @@ private:
     // ---- mp:U62 -- the handover state. Guarded by m_conn_cs. start() re-initialises it; rehome() leaves it. ---
     struct HubLeaveState {
         // the LEAVING hub
-        bool          leaving;     // hub_leave() is in progress: conn drops are not "dead peers", the mesh is quiet
-        int           state;       // a LeaveState
-        uint32_t      want, ack;   // clients that must acknowledge / that did
-        uint32_t      removed;     // successors given up on (re-issued without them)
-        bool          succ_acked;  // the CURRENT first successor acknowledged
-        bool          go_sent;     // ...and the list was repeated once as the "GO": the survivors may now dial it
-        uint8_t       ackc[8];     // acks per client for the CURRENT generation (>= 2 = it saw the GO too)
+        bool          leaving;    // hub_leave() is in progress: conn drops are not "dead peers", the mesh is quiet
+        int           state;      // a LeaveState
+        uint32_t      want, ack;  // clients that must acknowledge / that did
+        uint32_t      removed;    // successors given up on (re-issued without them)
+        bool          succ_acked; // the CURRENT first successor acknowledged
+        bool          go_sent;    // ...and the list was repeated once as the "GO": the survivors may now dial it
+        uint8_t       ackc[8];    // acks per client for the CURRENT generation (>= 2 = it saw the GO too)
         DWORD         started_ms, sent_ms;
-        mesh::Leaving cur;         // the list as last sent
+        mesh::Leaving cur; // the list as last sent
         // a SURVIVOR
-        uint8_t       seen_gen;    // highest LEAVING generation acted on (0 = none)
-        bool          todo_valid;  // a LEAVING is queued for hl_service
-        bool          todo_go;     // ...and released: the successor acted at once, a survivor waits for the hub's GO
+        uint8_t       seen_gen;   // highest LEAVING generation acted on (0 = none)
+        bool          todo_valid; // a LEAVING is queued for hl_service
+        bool          todo_go;    // ...and released: the successor acted at once, a survivor waits for the hub's GO
         mesh::Leaving todo;
-        bool          mesh_resume; // the mesh runs on a rehomed endpoint (set by the handover only)
+        bool          mesh_resume;     // the mesh runs on a rehomed endpoint (set by the handover only)
         bool          epoch_inherited; // a rehomed hub: m_mesh.cur is the held epoch renumbered, not one it published
-        int           hub_id;      // the hub's id after a change, -1 = as the held epoch says
+        int           hub_id;          // the hub's id after a change, -1 = as the held epoch says
         long          changes;
         int           old_hub, new_hub;
         uint32_t      change_epoch;
@@ -1095,43 +1116,46 @@ private:
     };
     HubLeaveState m_hl;
     // ---- mp:U63 -- the crash failover. Guarded by m_conn_cs. start() re-initialises it; rehome() leaves it. ---
-    enum FoAct { FA_NONE = 0, FA_BECOME_HUB = 1, FA_DIAL = 2 };
+    enum FoAct { FA_NONE       = 0,
+                 FA_BECOME_HUB = 1,
+                 FA_DIAL       = 2 };
     struct FoPeer {
-        DWORD    ms;    // when its last FO_STATE arrived (0 = never)
-        uint8_t  flags;
-        uint32_t epoch;
-        uint8_t  arg;
-        DWORD    redir_tx_ms;
-        DWORD    reply_ms;
-        sockaddr_in addr;     // where its last FO_STATE came from (a verified path to it)
-        bool     have_addr;
+        DWORD       ms; // when its last FO_STATE arrived (0 = never)
+        uint8_t     flags;
+        uint32_t    epoch;
+        uint8_t     arg;
+        DWORD       redir_tx_ms;
+        DWORD       reply_ms;
+        sockaddr_in addr; // where its last FO_STATE came from (a verified path to it)
+        bool        have_addr;
     };
     struct Failover {
-        int         phase;      // a FailoverPhase
-        DWORD       start_ms;   // the hub went silent (the clock the budget runs from)
-        DWORD       corrob_ms;  // the loss was corroborated (0 = not yet)
+        int         phase;       // a FailoverPhase
+        DWORD       start_ms;    // the hub went silent (the clock the budget runs from)
+        DWORD       corrob_ms;   // the loss was corroborated (0 = not yet)
+        uint32_t    corrob_hubs; // matching old-hub-loss reports from already-rehomed sources at corroboration
         DWORD       state_tx_ms;
         uint32_t    seq;
-        mesh::Epoch ep;         // the epoch the whole failover works from (this peer's held one when it began)
+        mesh::Epoch ep; // the epoch the whole failover works from (this peer's held one when it began)
         FoPeer      p[8];
-        uint32_t    failed;     // candidates that did not answer this round
-        int         forced;     // a candidate a REDIRECT (or a higher epoch's choice) sent this peer to, -1 none
-        int         cand;       // the candidate being dialled, -1 none
-        DWORD       cand_ms;    // when this candidate's dial began
-        int         addr_i;     // which of its addresses is being tried
+        uint32_t    failed;  // candidates that did not answer this round
+        int         forced;  // a candidate a REDIRECT (or a higher epoch's choice) sent this peer to, -1 none
+        int         cand;    // the candidate being dialled, -1 none
+        DWORD       cand_ms; // when this candidate's dial began
+        int         addr_i;  // which of its addresses is being tried
         int         addr_n;
         mesh::Addr4 addrs[8];
         DWORD       addr_ms;
-        int         act;        // a FoAct, posted by fo_tick for fo_service
+        int         act; // a FoAct, posted by fo_tick for fo_service
         int         act_cand;
         int         act_addr_i;
-        bool        relayed;    // this peer is behind a relay tunnel: no peer-to-peer reachability, rooms instead of addresses
-        bool        dialing;    // a re-dial toward `cand` is in flight (fo_service ran rehome())
-        DWORD       cand_window;// how long `cand` is tried before the next one
-        bool        hub_acted;  // this peer became the hub (FA_BECOME_HUB ran)
+        bool        relayed;        // this peer is behind a relay tunnel: no peer-to-peer reachability, rooms instead of addresses
+        bool        dialing;        // a re-dial toward `cand` is in flight (fo_service ran rehome())
+        DWORD       cand_window;    // how long `cand` is tried before the next one
+        bool        hub_acted;      // this peer became the hub (FA_BECOME_HUB ran)
         bool        change_pending; // the hub change is counted (and shown) only once the quorum is judged
-        bool        dialed_ok;  // a client: the re-dial succeeded; DONE waits for the quorum pre-check (direct match)
-        int         hub_id;     // the elected hub (-1 none yet)
+        bool        dialed_ok;      // a client: the re-dial succeeded; DONE waits for the quorum pre-check (direct match)
+        int         hub_id;         // the elected hub (-1 none yet)
         DWORD       done_ms;
         bool        quorum_judged;   // the pre-check (direct) ran
         DWORD       quorum_deadline; // the new hub's wait for its roster
@@ -1141,13 +1165,18 @@ private:
     Failover      m_fo;
     volatile LONG m_spectators;    // bit per player id; set_spectator; reset by start()
     volatile LONG m_in_match;      // set_in_match; NOT reset by start() (the game owns it)
-    uint32_t      m_dead_extra;    // peers latched dead beyond the single m_dead_peer slot (take_dead_peer pops them)
     volatile LONG m_fo_test_first; // fo_test_force_first; -1 = off (the ctor sets it); NOT reset by start()
     volatile LONG m_fo_test_mute;
+    // Called under m_conn_cs; mode 2 releases at the real rehome boundary.
+    bool fo_test_muted() const {
+        const LONG mode = m_fo_test_mute;
+        return mode == 1 || (mode == 2 && !m_fo.hub_acted);
+    }
     volatile LONG m_hl_test_mute; // hl_test_mute; NOT reset by start()
     Mesh          m_mesh;
-    MeshHooks     m_mesh_hooks;   // set once by the transport; NOT reset by start()
-    volatile LONG m_test_cap;     // mesh_test_cap(c) stores c+1; 0 = unset (the ctor zeroes it); NOT reset by start()
+    MeshHooks     m_mesh_hooks;      // set once by the transport; NOT reset by start()
+    volatile LONG m_test_cap;        // mesh_test_cap(c) stores c+1; 0 = unset (the ctor zeroes it); NOT reset by start()
+    volatile LONG m_test_game_shape; // game_test_handshake_shape; ctor-zeroed, NOT reset by start()
     volatile LONG m_test_noprobe;
     volatile LONG m_test_noack;
     volatile LONG m_block_port[8]; // mp:U64 set_rx_block_port: source ports (host order) dropped on receive, 0 = free slot

@@ -140,7 +140,7 @@ INCLUDE_RE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
 # reading as a new outbound edge.
 PROJECT_RE = re.compile(r"@mh@@|^_?MH_[A-Za-z]|^_?libmh_[a-z]")
 SHIM_RE = re.compile(r"@detail@call@mh@@")
-COMMON_RE = re.compile(r"@(?:lzw|lzss)@mh@@")
+COMMON_RE = re.compile(r"@(?:lzw|lzss|order_witness)@mh@@")
 
 # POSITIVE CONTROLS for the OBJ pass. A scan that reports an empty edge has to prove it can still
 # see one, and these are facts of the tree rather than of this item: every roster object references

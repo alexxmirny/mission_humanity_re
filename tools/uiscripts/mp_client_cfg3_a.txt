@@ -34,6 +34,8 @@ settled Internet server
 clickl Internet server
 present Server address
 settled Connect
+# Fix player-slot assignment: fresh control B must finish joining before A connects.
+awaitsignal lobby_b
 clickl Connect
 sessions 1
 settled Join game

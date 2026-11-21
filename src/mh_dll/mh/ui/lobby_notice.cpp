@@ -116,11 +116,14 @@ int measure_status(void *, const wchar_t *s, int n) {
     return mh::call::llm_ui_text_measure_width(g_wrap_font, (uint16_t *)tmp);
 }
 
-extern "C" void __cdecl status_draw(uint8_t *w) {
-    wchar_t *const label  = *(wchar_t **)(w + W_LABEL);
-    auto *const    widget = (mh::game::mh_llm_ui_widget *)w;
+// The text path: `label` is the box's own buffer, or (mods:MAPGEN2) a page's caption / placeholder.
+void draw_text(uint8_t *w, wchar_t *const label) {
+    auto *const    widget      = (mh::game::mh_llm_ui_widget *)w;
+    wchar_t *const own         = *(wchar_t **)(w + W_LABEL);
+    *(wchar_t **)(w + W_LABEL) = label; // restored below; a plain assignment when label == own
     if (!label || !label[0]) {
         mh::call::llm_ui_widget_draw(widget);
+        *(wchar_t **)(w + W_LABEL) = own;
         return;
     }
     const uint32_t flags = *(const uint32_t *)(w + W_FLAGS);
@@ -136,6 +139,7 @@ extern "C" void __cdecl status_draw(uint8_t *w) {
     mh::ui::wrap_text(label, g_wrapped, STATUS_WRAP_CAP, width, max_lines, measure_status, nullptr, &r);
     if (!r.breaks && !r.truncated) {
         mh::call::llm_ui_widget_draw(widget); // fits: the original buffer, untouched
+        *(wchar_t **)(w + W_LABEL) = own;
         return;
     }
     if (g_wrap_logged < 16 && lstrcmpW(g_wrap_last, g_wrapped) != 0) { // once per distinct wrapped text
@@ -150,7 +154,24 @@ extern "C" void __cdecl status_draw(uint8_t *w) {
     }
     *(wchar_t **)(w + W_LABEL) = g_wrapped;
     mh::call::llm_ui_widget_draw(widget);
-    *(wchar_t **)(w + W_LABEL) = label;
+    *(wchar_t **)(w + W_LABEL) = own;
+}
+
+extern "C" void __cdecl status_draw(uint8_t *w) {
+    wchar_t *const label = *(wchar_t **)(w + W_LABEL);
+    const wchar_t *ovr   = nullptr;
+    switch (mh::ui::map_preview_box(w, &ovr)) {
+        case mh::ui::BOX_PREVIEW:
+            draw_text(w, (wchar_t *)ovr);    // the empty box (or the placeholder line) ...
+            mh::ui::map_preview_box_after(); // ... and the thumbnail inside it
+            return;
+        case mh::ui::BOX_SETTINGS:
+            draw_text(w, (wchar_t *)ovr);
+            return;
+        default:
+            draw_text(w, label);
+            return;
+    }
 }
 
 // clang-format off
@@ -208,7 +229,11 @@ bool on_a_browser_or_lobby() {
 
 void no_module_notice_tick() {
     // Not on a browser or the lobby: the screen we ARE on may own this buffer (the map picker does).
-    if (!on_a_browser_or_lobby()) return;
+    static bool was_up = false;
+    const bool  up     = on_a_browser_or_lobby();
+    if (up && !was_up) mh::ui::map_preview_notice_posted(); // mods:MAPGEN2: a standing notice APPEARS when the screen does
+    was_up = up;
+    if (!up) return;
     lstrcpynW((wchar_t *)ADDR_MAP_STATUS_LINE, mh::ui::tr(mh::ui::Str::LOBBY_NO_MODULE), 256);
 }
 
@@ -287,6 +312,7 @@ void browser_notice_arm_no_module() {
 // Called every frame from the lockstep present hook. Cheap when idle.
 void browser_notice_tick() {
     status_wrap_install(); // once; every status line the field draws is wrapped from here on
+    map_preview_tick();    // mods:MAPGEN2: the one switch back to the Description page per new notice
     if (!g_notice) {
         if (g_no_module) no_module_notice_tick();
         return;

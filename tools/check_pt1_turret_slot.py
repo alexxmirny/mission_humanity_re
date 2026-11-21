@@ -147,8 +147,8 @@ def check(host_dir, client_dir, expect, min_overlap=1000):
     if desync:
         fails.append("clause 5: the in-band desync watch fired: %s" % desync[0].strip())
 
-    a = mp_analyze.load_peer(host_dir)
-    b = mp_analyze.load_peer(client_dir)
+    a = mp_analyze.load_peer(host_dir, harness_only=True)
+    b = mp_analyze.load_peer(client_dir, harness_only=True)
     if "harness" not in a or "harness" not in b:
         fails.append(
             "clause 5: a peer has no harness log (host=%s client=%s)"

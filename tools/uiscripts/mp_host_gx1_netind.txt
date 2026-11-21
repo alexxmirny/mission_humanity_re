@@ -39,7 +39,7 @@ absent Network players
 gamemode 2
 gameclock 20000
 capture n1_shown
-hotkey Ctrl+Alt+N
+key 0x31 ctrl+alt
 gameclock 20600
 capture n2_hidden
 log HOST: net indicator hidden at gameclock ~20000 -- n2_hidden must carry none of n1_shown's glyphs

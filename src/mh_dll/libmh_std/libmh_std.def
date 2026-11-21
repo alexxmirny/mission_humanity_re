@@ -17,11 +17,15 @@
 ; name and a different export list; a swapped pair is refused by name at mh.dll's bind.
 LIBRARY libmh
 EXPORTS
+    ?bound_campaign@runtime@order_tasks@mh@@YAAAVcampaign_state@23@XZ
+    ?bound_state@runtime@order_tasks@mh@@YAAAVstate@23@XZ
+    ?bound_state@runtime@storage_policy@mh@@YAAAVstate@23@XZ
     ?fill_tables@detail@sim@mh@@YA_NPAP6AXXZH0H@Z
     ?fixes@lockstep@mh@@YAABUreimpl_fixes@12@XZ
     ?frame@detail@sim@mh@@YAXABUsim_view@23@AAVsim_store@23@ABUlt_frame_calls@23@@Z
     ?hash_manifest_fingerprint@world@state@mh@@YAIXZ
     ?hash_sink_fingerprint@world@state@mh@@YAIXZ
+    ?import_legacy_bindings@runtime@order_tasks@mh@@YA_NXZ
     ?last_import@nav@state@mh@@YAABUimport_stats@123@XZ
     ?last_trap@libmh_in@mh@@YAPBDXZ
     ?live@state@mh@@YAAAUlive_table@12@XZ
@@ -29,7 +33,6 @@ EXPORTS
     ?live_lt_frame_calls@sim@mh@@YAABUlt_frame_calls@12@XZ
     ?owner_count@state@mh@@YAAAHXZ
     ?owner_table@state@mh@@YAPAUowner_slot@12@XZ
-    ?rng_trace_add_note@sim@mh@@YAXIIIIIII@Z
     ?rng_trace_at@sim@mh@@YAABUrng_trace_entry@12@H@Z
     ?rng_trace_count@sim@mh@@YAHXZ
     ?rng_trace_note_at@sim@mh@@YAABUrng_trace_note@12@H@Z
@@ -37,6 +40,9 @@ EXPORTS
     ?rng_trace_overflowed@sim@mh@@YA_NXZ
     ?rng_trace_set_step@sim@mh@@YAXI@Z
     ?rng_trace_window@sim@mh@@YAXII@Z
+    ?roster_dimensions@runtime@storage_policy@mh@@YA?AUdimensions@23@XZ
+    ?schema_fingerprint@world@state@mh@@YAIXZ
+    ?set_sim_step_post_ai_observer@sim@mh@@YAXP6AXXZ@Z
     ?set_suppress_enqueue@orders@mh@@YAX_N@Z
     ?sim_step@sim@mh@@YAXXZ
     ?sim_tick@detail@lockstep@mh@@YAXABUengine_state@23@ABUgame_calls@23@ABUreimpl_fixes@23@@Z
@@ -53,8 +59,14 @@ EXPORTS
     libmh_import_world
     libmh_in_open
     libmh_install_fp_precision
+    libmh_order_tasks_begin_load
+    libmh_order_tasks_bind
+    libmh_order_tasks_invoke
+    libmh_order_tasks_published
     libmh_region_count
     libmh_set_host_api
     libmh_set_tact_host_api
     libmh_state_hash
+    libmh_storage_policy_bind
+    libmh_storage_policy_invoke
     libmh_tact_host_api_unbound

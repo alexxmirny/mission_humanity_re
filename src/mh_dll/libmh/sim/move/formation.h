@@ -261,12 +261,19 @@ inline bool formation_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint
     uint32_t hdl[FC_MAX_MEMBERS];
     uint8_t  mcol[FC_MAX_MEMBERS], mrow[FC_MAX_MEMBERS];
     uint32_t mgoal[FC_MAX_MEMBERS]; // the member's own unit.goal when the commit started: stamped by an earlier wave of the move-as-one rule, else the click
+    bool     patrol_wave = false;
+    uint32_t patrol_seq  = 0;
     for (int32_t m = 0; m < n; ++m) {
         hdl[m]  = w.member_handle(m);
         mcol[m] = w.member_col(m);
         mrow[m] = w.member_row(m);
         arr_unit u;
-        if (hdl[m] < 1 || hdl[m] >= static_cast<uint32_t>(unit_cap) || !w.unit(owner, hdl[m], &u) || !is_plain_move(u.order)) return false;
+        if (hdl[m] < 1 || hdl[m] >= static_cast<uint32_t>(unit_cap) || !w.unit(owner, hdl[m], &u) || !is_placement_move(u)) return false;
+        const bool patrol = u.order == 16;
+        if (m == 0) {
+            patrol_wave = patrol;
+            patrol_seq  = u.patrol_sequence;
+        } else if (patrol != patrol_wave || (patrol_wave && u.patrol_sequence != patrol_seq)) return false;
         mgoal[m] = tidx(u.goal_x, u.goal_y);
     }
     auto member_of = [&](int32_t unit_idx) {
@@ -294,10 +301,11 @@ inline bool formation_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint
         if (member_of(i)) continue;
         arr_unit u;
         if (!w.unit(owner, static_cast<uint32_t>(i), &u) || u.group != group_id) continue;
+        if (patrol_wave && (!u.owned_patrol || u.order != 16 || u.patrol_sequence != patrol_seq)) continue;
         const uint32_t goal = tidx(u.goal_x, u.goal_y);
         if ((u.state == ARR_ST_MOVE || u.state == ARR_ST_MOVE_HOP || (u.state == ARR_ST_MARSHAL && goal != click)) && c.n_taken < ARR_MAX_TAKEN) c.taken[c.n_taken++] = goal;
         if (u.state == ARR_ST_MARSHAL && goal == click && n_reserved < ARR_MAX_TAKEN) reserved[n_reserved++] = tidx(u.x, u.y);
-        if (rule3 && u.state == ARR_ST_MARSHAL && goal == click && n + n_q < FC_MAX_MEMBERS) qh[n_q] = static_cast<uint32_t>(i), qx[n_q] = u.x, qy[n_q] = u.y, ++n_q;
+        if (rule3 && (!patrol_wave || patrol_seq) && u.state == ARR_ST_MARSHAL && goal == click && n + n_q < FC_MAX_MEMBERS) qh[n_q] = static_cast<uint32_t>(i), qx[n_q] = u.x, qy[n_q] = u.y, ++n_q;
     }
     const int nO = n + n_q; // the order set: the wave, then its queued groupmates
     uint32_t  oh[FC_MAX_MEMBERS];
@@ -317,6 +325,11 @@ inline bool formation_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint
         for (int m = 0; m < nO; ++m)
             if (oh[m] == static_cast<uint32_t>(unit_idx)) return true;
         return false;
+    };
+    auto cohort_mate = [&](int32_t i) {
+        arr_unit u;
+        return w.unit(owner, static_cast<uint32_t>(i), &u) && u.group == group_id &&
+               (!patrol_wave || (u.order == 16 && u.owned_patrol && u.patrol_sequence == patrol_seq));
     };
     auto reachable = [&](uint32_t t) {
         if (c.field_fresh) {
@@ -347,8 +360,7 @@ inline bool formation_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint
         const int32_t occ  = w.occupant(owner, t);
         bool          mate = false; // move-as-one: a tile one of this order's units stands on is a target (it walks on: an earlier wave or a queued one)
         if (rule3 && occ > 0) {
-            arr_unit u;
-            mate = in_order_set(occ) || (w.unit(owner, static_cast<uint32_t>(occ), &u) && u.group == group_id);
+            mate = in_order_set(occ) || cohort_mate(occ);
         }
         if (!mate) {
             if (!(wa >= 0 ? pc_tp[wa][wb] != 0 : w.true_passable(t))) return false;
@@ -383,8 +395,7 @@ inline bool formation_after_pathfind(W &w, int32_t group_id, uint32_t mode, uint
                 if (ok && !pc_tp[a][b]) { // closed before the bracket: walkable only when a unit of this order stands there (it walks on)
                     const uint32_t t   = tidx(static_cast<uint32_t>(static_cast<int>(cx) + a - FC_R_MAX) & c.mask, static_cast<uint32_t>(static_cast<int>(cy) + b - FC_R_MAX) & c.mask);
                     const int32_t  occ = w.occupant(owner, t);
-                    arr_unit       u;
-                    ok = occ > 0 && (in_order_set(occ) || (w.unit(owner, static_cast<uint32_t>(occ), &u) && u.group == group_id));
+                    ok                 = occ > 0 && (in_order_set(occ) || cohort_mate(occ));
                 }
                 walk[a][b] = ok ? 1 : 0;
             }

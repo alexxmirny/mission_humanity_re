@@ -32040,13 +32040,13 @@
 "llm_strat_bldg_order_purge_dead_docked_enqueue"
 ],
 "0046e76c": [
-"llm_unit_order_disembark_soldiers"
+"llm_unit_order_squad_split"
 ],
 "0046e7cd": [
 "LAB_0046e7cd"
 ],
 "0046e7d6": [
-"llm_unit_order_disembark_soldiers_enqueue"
+"llm_unit_order_squad_split_enqueue"
 ],
 "0046e837": [
 "LAB_0046e837"
@@ -38379,7 +38379,7 @@
 "LAB_00488a82"
 ],
 "00488a8b": [
-"llm_unit_transport_unload_field"
+"llm_unit_squad_split_field"
 ],
 "00488b7a": [
 "LAB_00488b7a"
@@ -38454,7 +38454,7 @@
 "LAB_004891c5"
 ],
 "004891d8": [
-"llm_unit_transport_unload_docked"
+"llm_unit_squad_split_docked"
 ],
 "0048925c": [
 "LAB_0048925c"
@@ -63108,6 +63108,24 @@
 "004d5146": [
 "LAB_004d5146"
 ],
+"004d516c": [
+"llm_strat_ai_engage_prune_unseen_candidates"
+],
+"004d5182": [
+"LAB_004d5182"
+],
+"004d51d3": [
+"LAB_004d51d3"
+],
+"004d51fc": [
+"LAB_004d51fc"
+],
+"004d5215": [
+"LAB_004d5215"
+],
+"004d5234": [
+"LAB_004d5234"
+],
 "004d5245": [
 "llm_strat_ai_engage_rank_candidates_by_range"
 ],
@@ -64227,6 +64245,9 @@
 ],
 "004d8b82": [
 "LAB_004d8b82"
+],
+"004d8b83": [
+"LAB_004d8b83"
 ],
 "004d8b89": [
 "llm_strat_bldg_side_has_aircraft_producer"
@@ -101182,12 +101203,12 @@
 [
 "0046e76c",
 "0046e7d5",
-"llm_unit_order_disembark_soldiers"
+"llm_unit_order_squad_split"
 ],
 [
 "0046e7d6",
 "0046e83f",
-"llm_unit_order_disembark_soldiers_enqueue"
+"llm_unit_order_squad_split_enqueue"
 ],
 [
 "0046e840",
@@ -102447,7 +102468,7 @@
 [
 "00488a8b",
 "0048905d",
-"llm_unit_transport_unload_field"
+"llm_unit_squad_split_field"
 ],
 [
 "0048905e",
@@ -102462,7 +102483,7 @@
 [
 "004891d8",
 "00489520",
-"llm_unit_transport_unload_docked"
+"llm_unit_squad_split_docked"
 ],
 [
 "00489521",
@@ -108078,6 +108099,11 @@
 "004d50b3",
 "004d516b",
 "llm_strat_ai_engage_candidate_add"
+],
+[
+"004d516c",
+"004d5244",
+"llm_strat_ai_engage_prune_unseen_candidates"
 ],
 [
 "004d5245",
@@ -114350,7 +114376,7 @@
 "004425b2": "game_SetEvent",
 "004425c1": "game_SetEvent",
 "004425d0": "game_SetEvent",
-"00442649": "llm_unit_order_disembark_soldiers",
+"00442649": "llm_unit_order_squad_split",
 "00442741": "llm_cfg_save_setup_dat",
 "00442843": "llm_map_cam_set_col",
 "00442848": "llm_map_cam_mark_viewport_dirty",
@@ -116341,8 +116367,8 @@
 "00466865": "utils_assert_stack_capacity",
 "0046689a": "utils_assert_stack_capacity",
 "004669b2": "llm_unit_state_is_boarding",
-"00466c77": "llm_unit_transport_unload_docked",
-"00466c85": "llm_unit_transport_unload_field",
+"00466c77": "llm_unit_squad_split_docked",
+"00466c85": "llm_unit_squad_split_field",
 "00466cac": "llm_unit_force_disembark",
 "00466d06": "llm_strat_target_release_ref",
 "00466dc6": "llm_strat_unit_notify_status",
@@ -123481,6 +123507,7 @@
 "004d501e": "llm_strat_ai_route_unit_to_home_storage",
 "004d50ae": "llm_watcom_epilogue_004d66d6",
 "004d50b8": "utils_assert_stack_capacity",
+"004d5171": "utils_assert_stack_capacity",
 "004d524d": "utils_assert_stack_capacity",
 "004d527d": "llm_strat_unit_max_weapon_range",
 "004d5318": "llm_strat_toroidal_dist_sq",

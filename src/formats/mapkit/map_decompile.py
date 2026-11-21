@@ -40,12 +40,13 @@ def _write_images(out, images, written):
 
 def _decompile_strategic(mp, mh, args, written):
     m = strategic.parse(mp)
-    tlo_path = _find_tlo(mh, m.tlo_name)
+    tlo_path = (_find_tlo(args.data_dir, m.tlo_name) if args.data_dir else None) or _find_tlo(mh, m.tlo_name)
     if tlo_path is None:
         return f"SKIP: tileset {m.tlo_name!r} not found"
     tlo_model = tlo.parse(tlo_path)
     png_name = os.path.splitext(os.path.basename(tlo_path))[0].lower() + ".png"
-    bank = args._bankmap.get(os.path.basename(mp).lower())
+    bank = (None if args.no_trees else treebank.PROFILE_BANKS[args.tree_profile]
+            if args.tree_profile is not None else args._bankmap.get(os.path.basename(mp).lower()))
     tree_sprites = {}
     if bank is not None and m.objects:
         tree_sprites = treebank.load_tree_sprites(
@@ -79,6 +80,9 @@ def main(argv=None):
     ap.add_argument("--unpack-root", default=treebank.UNPACK_ROOT,
                     help="mh_tools BANKI unpack tree for real tree-sprite art")
     ap.add_argument("--no-trees", action="store_true", help="skip rendering tree sprites")
+    ap.add_argument("--data-dir", help="winning mod data directory for TLO resources")
+    ap.add_argument("--tree-profile", choices=sorted(treebank.PROFILE_BANKS),
+                    help="descriptor trees= profile for maps outside INIT.CFG")
     ap.add_argument("maps", nargs="*", help="basenames/globs; default = all *.MP + ALIEN_*.MAP")
     args = ap.parse_args(argv)
     mh = os.path.join(args.clean, "mh")
@@ -90,6 +94,7 @@ def main(argv=None):
     if args.maps:
         sel = []
         for pat in args.maps:
+            sel += [p for p in glob.glob(pat) if os.path.isfile(p) and os.path.splitext(p)[1].lower() in (".mp", ".mpm", ".map")]
             sel += [p for p in all_maps if fnmatch.fnmatch(os.path.basename(p), pat)
                     or os.path.basename(p).lower() == pat.lower()]
         all_maps = sorted(set(sel))

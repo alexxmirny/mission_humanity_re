@@ -6,8 +6,8 @@
 // forwarding thunk per row, attached to the real symbol by a /alternatename linker directive
 // so not one of harness.cpp's call sites changes.
 
-#define MH_HARNESS_HOST_COUNT 44
-#define MH_HARNESS_SPINE_COUNT 20
+#define MH_HARNESS_HOST_COUNT 53
+#define MH_HARNESS_SPINE_COUNT 19
 
 extern "C" {
 // The bound addresses, in slot order. A null slot is not a configuration -- the binds below

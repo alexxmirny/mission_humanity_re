@@ -92,6 +92,13 @@ int MH_Net_Send(int dst_player, const void *buf, int len);
  * when the inbound queue is empty. Non-blocking; poll it. */
 int MH_Net_Recv(int *out_sender, void *buf, int *inout_len);
 
+/* Dequeue the first frame whose origin is not held at a participant-removal boundary. Held frames
+ * stay in their original positions/order; other origins can still fund the pending final step.
+ * A zero blocked_count is the ordinary receive operation. No eligible frame leaves outputs untouched.
+ * Lane H retains its normal supersedable-overflow policy; protected lane M is never evicted. */
+int MH_Net_RecvExcept(int *out_sender, void *buf, int *inout_len,
+                      const int *blocked_senders, int blocked_count);
+
 /* Currently-connected peer count (host: active clients; client: 1 if connected, else 0). */
 int MH_Net_PeerCount(void);
 
@@ -114,12 +121,13 @@ int MH_Net_IdAssigned(void);
  * isn't {1..N} (a MIDDLE peer leaves, or host-assign hands out a non-contiguous id). */
 int MH_Net_ActivePeerIds(int *out, int cap);
 
-/* U17: return + CLEAR the most-recently-disconnected peer's transport player_id (== game side_id), or -1
- * if none pending. Set by the recv thread when a conn drops (active->0). The host learns real client ids
- * (>=1) so this yields a droppable side_id; a client's only conn (to the host) carries player_id -1, so a
- * host death returns -1 here -> the caller (main-thread on_time_tick) fast-drops CLIENT departures only,
- * never a host death (which is a relay-topology problem, out of U17 scope). One-shot (Interlocked). */
-int MH_Net_TakeDeadPeer(void);
+/* Current explicit transport-death declarations, one bit per strategic side0..7.
+ * A drop/missing-survivor verdict sets its bit; an accepted reconnect clears it.
+ * Reading never consumes it, so several deaths cannot hide one another and a
+ * held game-side intent can revalidate cancellation after reconciliation.
+ * This is NOT quorum or absence-of-connections evidence. Zero when not started.
+ * The client's unidentified host connection remains the separate failover path. */
+int MH_Net_DeadPeerMask(void);
 
 /* ---- per-peer link latency (mp:T3) ---------------------------------------------------------------
  * What a transport that MEASURES its link can say about each peer. Carried inside MH_NetStats rather

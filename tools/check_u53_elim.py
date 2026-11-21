@@ -19,6 +19,8 @@ import re
 import subprocess
 import sys
 
+from check_graceful_quit import wall_delta_ms
+
 REPO = os.path.dirname(os.path.abspath(__file__))
 MP_ANALYZE = os.path.join(REPO, "mp_analyze.py")
 MIN_POST = 1500
@@ -43,6 +45,27 @@ def _read(path):
         raise Refusal("missing %s" % path)
     with open(path, encoding="utf-8", errors="replace") as fh:
         return fh.read()
+
+
+def native_peer_ids(det_dir, peers):
+    """Fixture roles mapped through one complete match-owned native roster."""
+    from mp_analyze import read_session_json
+
+    ids, matches = {}, set()
+    for peer in peers:
+        meta = read_session_json(os.path.join(det_dir, peer)) or {}
+        slot, match = meta.get("slot"), meta.get("match_id")
+        if (
+            type(slot) is not int
+            or not isinstance(match, str)
+            or not re.fullmatch(r"[0-9a-fA-F]{32}", match)
+        ):
+            raise Refusal("%s has no native slot/full match ID in session.json" % peer)
+        ids[peer] = slot
+        matches.add(match.lower())
+    if len(matches) != 1 or ids.get("host") != 0 or set(ids.values()) != set(range(len(peers))):
+        raise Refusal("native slots must uniquely name one full match cohort: %r" % ids)
+    return ids
 
 
 def harness_steps(text):
@@ -192,9 +215,12 @@ def _secs(ts):
     return int(h) * 3600 + int(m) * 60 + float(sec)
 
 
-def timeline(net, peer):
-    """Wall-clock timeline of what a survivor did after the hub died, seconds relative to its first
-    stall on the host (the earliest visible symptom of the hub's death)."""
+def elapsed_wall_seconds(start, end):
+    return wall_delta_ms(start * 1000, end * 1000) / 1000.0
+
+
+def timeline_events(net):
+    """First events relative to first stall; process/session chunks may overlap."""
     ev = []
     for ln in net.splitlines():
         m = re.match(r"\[(\d\d:\d\d:\d\d\.\d+)\] (.*)", ln)
@@ -203,21 +229,32 @@ def timeline(net, peer):
         for name, rx in TL_EVENTS:
             if rx.search(m.group(2)):
                 ev.append((_secs(m.group(1)), name, m.group(2)))
-    ev.sort()
-    seen, out, t0 = set(), [], None
-    for t, name, txt in ev:
-        if name in seen:
-            continue
-        seen.add(name)
-        if t0 is None:
-            t0 = next((e[0] for e in ev if e[1].startswith("first stall")), t)
+    origin = next((t for t, name, _ in ev if name.startswith("first stall")), ev[0][0] if ev else 0)
+    relative = []
+    for stamp, name, text in ev:
+        elapsed = elapsed_wall_seconds(origin, stamp)
+        if elapsed > 12 * 3600:
+            elapsed -= 24 * 3600  # a pre-stall event on the preceding day
+        relative.append((elapsed, name, text))
+    seen, out = set(), []
+    for elapsed, name, text in sorted(relative):
+        if name not in seen:
+            seen.add(name)
+            out.append((elapsed, name, text))
+    return out
+
+
+def timeline(net, peer):
+    """Human-readable timeline; verdict callers consume structured events."""
+    out = []
+    for elapsed, name, txt in timeline_events(net):
         extra = ""
         if name == "on_gameover":
             mo = re.search(r"outcome=(\d+) gclk=(\d+)", txt)
             extra = " outcome=%s gclk=%s" % mo.groups() if mo else ""
         if name == "link silent/dropped":
             extra = " (%s)" % txt[:90]
-        out.append("    %s timeline +%6.1fs  %s%s" % (peer, t - t0, name, extra))
+        out.append("    %s timeline +%6.1fs  %s%s" % (peer, elapsed, name, extra))
     if not out:
         return ["    %s timeline: no hub-death events in the net log" % peer]
     return out

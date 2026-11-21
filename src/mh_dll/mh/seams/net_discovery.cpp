@@ -19,7 +19,9 @@
 
 #include "include/mh_log_sink.h" // mp:LOG2: session.json goes through the log sink's writer
 #include "include/mh_net_export.h"
-#include "config/gameplay.h"             // PT-SET1
+#include "config/gameplay.h" // PT-SET1
+#include "seams/lobby_speed.h"
+#include "seams/participant_boundary_hosted.h"
 #include "caps/caps.h"                   // PT-CAP8: note_world_ended at the session close
 #include "include/mh_caps_export.h"      // PT-CAP9-U8b: MH_Caps_DumpPostMatch
 #include "include/mh_seam_export.h"      // MH_Seam_StartTransport (async connect kick)
@@ -30,6 +32,7 @@
 #include "mh_version.h"                  // MH_VERSION_FULL -- the build stamp in SESSION_BEGIN (SES1)
 #include "include/mh_net_module.h"       // MH_NET_MODULE_ABI -- the module version in SESSION_BEGIN
 #include "include/mh_module_bind.h"      // mp:SES4 -- MH_NetModule_{Bound,Configured}Transport
+#include "include/mh_mod_export.h"       // DATAEXT1 -- MH_Mods_ContentDigest (header authored by the resource adapter)
 #include "addr/mh_addrs.gen.h"           // generated EN VAs (tools/gen_dll_addrs.py)
 #include "net_internal.h"                // shared spine: g_a, g_ini, g_host_join_seen, seam_log, mp_client_slot
 #include "config/ini_read.h"             // TL-HARN4: read_ini_string / strip_ini_comment
@@ -47,6 +50,7 @@
 
 using mh::hook::call_watcall1;
 
+extern "C" void        MH_MP_ClientOnJoinRefused(const char *reason);
 extern "C" int         MH_MP_IsManual(void);                                                                   // launch.cpp -- 1 = pure manual session (gate manual-only work)
 extern "C" void        MH_MP_ResetHostMirror(void);                                                            // launch.cpp -- U13/U40 host: reset the peer-mirror one-shot edge
 extern "C" void        MH_MP_ArmManualLobby(void);                                                             // launch.cpp -- run the proven lobby driver for the manual path
@@ -209,7 +213,10 @@ volatile LONG g_exit_cause = 0; // 0 = none, 1 = MH_MP_EXIT_HOST_LEFT, 2 = MH_MP
 // MH_Seam_PollRecv, which bounces the client out of the lobby it seated itself in through the SAME
 // synthesised-0x0e transition a dead host uses. Cleared by the next JOIN we send, so a stale refusal
 // from an earlier lobby can never bounce a fresh join.
-volatile LONG g_join_refused                                         = 0;
+volatile LONG g_join_refused = 0;
+// Unlike the consumable notice, this gate survives UI polling until a compatible
+// host claim is selected/received. A late START cannot undo a refused generation.
+volatile LONG g_host_generation_refused                              = 0;
 char          g_join_refused_reason[mh_net_proto::ANNOUNCE_TEXT_CAP] = {0};
 
 // RL11 -- THE RELEASE VERSION THIS PEER STATES. MH_VERSION_STRING ("0.2.0"), not MH_VERSION_FULL
@@ -358,14 +365,13 @@ void build_synth_session() {
 // FLAG_SESSION_INFO control frame, so clients can list the REAL game (name/tag/map/players) instead of the
 // fabricated "MH Host". Manual-host only + throttled; the control frame is routed to a handler, never to
 // the game queue, so it can't perturb the lockstep. Tag uses a NON-SIM RNG (never the lockstep seed).
-constexpr uintptr_t ADDR_GAME_NAME             = mh::addr::mp_game_name;       // host-typed create name (unnamed in Ghidra)
-constexpr uintptr_t ADDR_MAP_NAME              = ADDR_CUR_MAP + MD_MAPNAME;    // current_map_data.map_name (0x006550e3)
-constexpr uintptr_t ADDR_MAP_PCOUNT            = ADDR_CUR_MAP + 0x08;          // current_map_data player-slot count (build_players bound)
-constexpr uintptr_t ADDR_MP_LOBBY_SLOTS        = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
-constexpr int       MP_SLOT_STRIDE             = 0x39;
-constexpr int       MP_SLOT_STATUS             = 0x0b; // slot_status byte (0 = empty)
-constexpr uint16_t  MH_MP_HOST_VERSION         = 7;    // bump on a wire/behaviour change (2 = SES0's match_id, 3 = mp:U59's exactly-once frame prefix, 4 = mp:U61's host-migration mesh capability, 5 = mp:U63's crash-failover capability, 6 = RL11's release version in the JOIN, 7 = O1c's 12-bit order index: documentary, MIN stays 6)
-constexpr uint16_t  MH_MP_HOST_VERSION_MIN_U59 = 6;    // the first host version this transport still accepts: U59's prefix + U61's mesh + U63's failover capability + RL11's build-stating JOIN (a v3/v4 host's WELCOME carries capability 1/2, refused; a v5 host cannot read our v6 JOIN)
+constexpr uintptr_t ADDR_GAME_NAME      = mh::addr::mp_game_name;       // host-typed create name (unnamed in Ghidra)
+constexpr uintptr_t ADDR_MAP_NAME       = ADDR_CUR_MAP + MD_MAPNAME;    // current_map_data.map_name (0x006550e3)
+constexpr uintptr_t ADDR_MAP_PCOUNT     = ADDR_CUR_MAP + 0x08;          // current_map_data player-slot count (build_players bound)
+constexpr uintptr_t ADDR_MP_LOBBY_SLOTS = mh::addr::_G_LLM_LOBBY_SLOTS; // host + AI + humans
+constexpr int       MP_SLOT_STRIDE      = 0x39;
+constexpr int       MP_SLOT_STATUS      = 0x0b;                          // slot_status byte (0 = empty)
+constexpr uint16_t  MH_MP_HOST_VERSION  = mh_net_proto::HOST_GENERATION; // ORDERSEQ: task 0xfe + QORD/QCAM snapshots
 
 // slot_status enum (llm_lobby_player_slot.slot_status, offset 0x0b): OPEN=0, HUMAN=1, AI=2, CLOSED=3.
 enum { SLOT_OPEN   = 0,
@@ -598,6 +604,7 @@ void mp_session_open(const unsigned char *match_id, int slot, const char *mode, 
         // lands in ITS directory rather than in the new one.
         mp_session_close("rolled");
     }
+    mh::participant_boundary::hosted::begin_session();
     if (map == nullptr) map = (const char *)ADDR_MAP_NAME; // the lobby's picked map (host) / the advert's (client)
     if (!(MH_RunDir_SessionBegin(hex, slot, map, mode) & MH_SESSION_OPENED)) {
         seam_log("; [session] SESSION_BEGIN skipped -- the session directory could not be created; "
@@ -621,7 +628,8 @@ void mp_session_open(const unsigned char *match_id, int slot, const char *mode, 
     session_roster(g_session_rec.roster, MH_SESSION_ROSTER_CAP);
     session_players(&g_session_rec);
     mh::gameplay::current(g_session_rec.gameplay, (int)sizeof(g_session_rec.gameplay), g_session_rec.gameplay_src,
-                          (int)sizeof(g_session_rec.gameplay_src));    // PT-SET1
+                          (int)sizeof(g_session_rec.gameplay_src)); // PT-SET1
+    g_session_rec.lobby_speed_pct = mh::seams::lobby_speed::match_percent();
     mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP, "running"); // RL15: see mh_session_dir.h
     g_desync_latch = false;
     MH_Seam_SessionPacing(nullptr, nullptr, nullptr, nullptr, &g_session_rec.lockstep_step_ms,
@@ -979,6 +987,7 @@ bool close_session_active() { return MH_RunDir_SessionActive() != 0; }
 bool close_net_started() { return MH_Net_IsStarted() != 0; }
 
 void close_restore_local() {
+    mh::seams::lobby_speed::clear();
     mh::gameplay::restore_local("session closed");
     MH_Caps_DumpPostMatch(); // PT-CAP9-U8b: `[caps] post_match_dump=1` -- the runtime proof the sites came back byte-exact
 }
@@ -1032,6 +1041,7 @@ void close_record(const char *reason) {
     // PT-SET1: the close wins, like the roster -- a client opened with its own values and ran the host's.
     mh::gameplay::current(g_session_rec.gameplay, (int)sizeof(g_session_rec.gameplay), g_session_rec.gameplay_src,
                           (int)sizeof(g_session_rec.gameplay_src));
+    g_session_rec.lobby_speed_pct = mh::seams::lobby_speed::match_percent();
     // RL15: sampled BEFORE close_rollups() -- match_end() resets the detector's counters.
     mh_sd_copy(g_session_rec.outcome, MH_SESSION_TEXT_CAP,
                mh_session_outcome(g_session_rec.reason, g_desync_latch || mh::desync::detected()));
@@ -1084,7 +1094,17 @@ const mh::session_close::ops CLOSE_OPS = {
 
 } // namespace
 
+// Record Start adoption immediately: a crash must retain the entered host speed, not lobby defaults.
+void mp_session_speed_frozen() {
+    if (!MH_RunDir_SessionActive()) return;
+    g_session_rec.lobby_speed_pct = mh::seams::lobby_speed::match_percent();
+    mh::gameplay::current(g_session_rec.gameplay, (int)sizeof(g_session_rec.gameplay),
+                          g_session_rec.gameplay_src, (int)sizeof(g_session_rec.gameplay_src));
+    session_json_write();
+}
+
 void mp_session_close(const char *reason) {
+    mh::participant_boundary::hosted::end_session();
     mp_session_solo_note_close(reason);
     // Idempotent: only the first exit seam on an open session does the work. A session the harness
     // already closed IN PLACE (MH_Session_HarnessStop below) gets its directory switch, the resets
@@ -1131,6 +1151,7 @@ namespace {
 void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
     if (g_mp_tag == 0) {
         g_mp_tag = mp_gen_tag();
+        mh::seams::lobby_speed::bind(g_mp_tag);
         // Mint the match_id in the same breath as the tag: "lobby created" is exactly this branch,
         // and a second mint point would be a second answer to when a match begins. The OS supplies
         // the clock and the entropy (mh_session_id.h); mh_net_proto does the RFC 9562 assembly.
@@ -1150,6 +1171,12 @@ void mp_build_host_session_info(mh_net_proto::SessionInfo &si) {
     si.host_version = MH_MP_HOST_VERSION;
     lstrcpynA(si.build, mp_own_build(), (int)sizeof(si.build)); // RL11: host-local, join_admit()'s comparand
     si.gameplay_digest = mh::gameplay::local_digest();          // PT-SET1: host-local, join_admit()'s comparand
+    // DATAEXT1 (JOIN v8): host-local mod-content digest, join_admit()'s comparand. The active mod
+    // set is a boot-time snapshot, so the value is stable for the lobby's whole life, and a
+    // re-created lobby re-stamps here for free (this runs every tick). The advert does not carry it
+    // (format 5 unchanged) -- only the JOIN's 32-byte claim is compared, unconditionally. The
+    // runtime always supplies the real snapshot (canonical stock bytes when no mod is active).
+    MH_Mods_ContentDigest(si.content_digest);
     // F3: advertise the input codepage this peer has pinned, every tick, beside the identity. It is
     // resolved rather than stored: MH_ChatInput_Codepage() answers GetACP() when the seam never armed,
     // so "no [input] codepage line in the ini" and "pinned to the machine default" are the same claim
@@ -1573,10 +1600,12 @@ void build_browser_from_store() {
             rec          = &g_store_rec; // the live advert of the lobby we are linked to, in the slot's place
             store_listed = true;
         }
+        if (rec->has_map_header && !mh::seams::maps::validate_advert_header(rec->map_header, MAP_DATA1_SIZE)) continue;
         fill_browser_desc(g_browser_descs[g_browser_count], rec, relay_slot_handle(i));
         g_browser_src[g_browser_count++] = i;
     }
-    if (g_store_valid && !store_listed && g_browser_count < BROWSER_ROWS_CAP) {
+    if (g_store_valid && !store_listed && g_browser_count < BROWSER_ROWS_CAP &&
+        (!g_store_rec.has_map_header || mh::seams::maps::validate_advert_header(g_store_rec.map_header, MAP_DATA1_SIZE))) {
         fill_browser_desc(g_browser_descs[g_browser_count], &g_store_rec, (void *)HANDLE_STORE);
         g_browser_src[g_browser_count++] = BROWSER_SRC_STORE;
     }
@@ -1771,6 +1800,22 @@ static void advert_hold_pump() {
     on_session_info_recv(g_hold_sender, g_hold_buf, g_hold_len);
 }
 
+// Shared by selected direct/directory rows, the deferred resend, map completion,
+// and the actual connected advert. A directory claim never overrides the actual
+// host's version, and refusal precedes map/seat/start publication.
+static bool client_host_generation(const mh_net_proto::SessionInfo &si) {
+    if (mh_net_proto::host_generation_supported(si.host_version)) {
+        InterlockedExchange(&g_host_generation_refused, 0);
+        return true;
+    }
+    InterlockedExchange(&g_host_generation_refused, 1);
+    char reason[64];
+    wsprintfA(reason, "host generation %u < %u", (unsigned)si.host_version,
+              (unsigned)mh_net_proto::HOST_MIN_GENERATION);
+    MH_MP_ClientOnJoinRefused(reason);
+    return false;
+}
+
 // Client side (recv thread): store each received SESSION_INFO. The main-thread MH_Seam_ClientDiscoveryTick
 // then re-arms the browser to list it (S3). Write the record BEFORE publishing g_store_valid (x86 TSO).
 void on_session_info_recv(int sender, const unsigned char *buf, int len) {
@@ -1808,6 +1853,7 @@ void on_session_info_recv(int sender, const unsigned char *buf, int len) {
         seam_log("; S3 recv: malformed SESSION_INFO\n");
         return;
     }
+    if (!client_host_generation(si)) return;
     // mp:GS1: count DISTINCT lobbies, not adverts. A host that cancels and re-creates while a client sits
     // on its browser produces no observable edge on the retail session count (the row is replaced in
     // place, ~1 Hz), so a script cannot tell "the lobby I saw" from "the lobby the host made after it" --
@@ -1973,6 +2019,7 @@ extern "C" void MH_MP_HostResetSessionIdentity(void) {
     // the last line of the directory it describes and the NEXT mint opens a second, distinct one --
     // which is exactly the host_recreate case the acceptance criteria count directories for.
     mp_session_close("leave");
+    if (mh::seams::lobby_speed::match_percent() == 0) mh::seams::lobby_speed::clear();
     host_reset_identity();
     seam_log("; U13: host left lobby -> reset session identity (fresh tag on re-create) + join gate\n");
 }
@@ -2061,11 +2108,29 @@ void on_join_recv(int sender, const unsigned char *buf, int len) {
         host_reply_refused(sender, verdict, mine, jr);
         return;
     }
+    if (verdict == mh_net_proto::JoinAdmit::RefusedContent) {
+        // DATAEXT1: the joiner's active mod-content digest differs from ours. Both full digests are
+        // named in the HOST LOG (the only place 128 hex characters fit) and the refusal is DELIVERED
+        // (F3c) as the short phrase the joiner localizes -- before any seat or map answer, exactly
+        // like RefusedGameplay. Own buffer: b[192] cannot hold the two hexes.
+        char hex_e[mh_net_proto::CONTENT_DIGEST_HEX_CAP], hex_l[mh_net_proto::CONTENT_DIGEST_HEX_CAP];
+        mh_net_proto::content_digest_hex(mine.content_digest, hex_e, sizeof(hex_e));
+        mh_net_proto::content_digest_hex(jr.content_digest, hex_l, sizeof(hex_l));
+        char cb[320];
+        wsprintfA(cb, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; expected %s, local %s)\n",
+                  sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
+                  hex_e, hex_l);
+        seam_log(cb);
+        host_reply_refused(sender, verdict, mine, jr);
+        return;
+    }
     if (verdict == mh_net_proto::JoinAdmit::RefusedOldProtocol) {
         wsprintfA(b, "; S4 JOIN from %d '%s' for '%s#%08X' -> REFUSED (%s; format %u < %u)\n",
                   sender, jr.player_name, jr.name, jr.tag, mh_net_proto::join_admit_reason(verdict),
                   (unsigned)jr.format, (unsigned)mh_net_proto::JOIN_REQUEST_MIN_FORMAT);
         seam_log(b);
+        // v6+ peers understand the existing addressed REFUSED announce.
+        if (jr.format >= 6) host_reply_refused(sender, verdict, mine, jr);
         return;
     }
     if (verdict == mh_net_proto::JoinAdmit::Admit) {
@@ -2192,6 +2257,11 @@ void on_join_connect() {
         seam_log("; S4 join: no stored host record -> JOIN not sent\n");
         return;
     }
+    if (!client_host_generation(*rec)) return;
+    // A user-selected JOIN can cause the host to send immediately, before the lobby ticks. Reset
+    // before that send (also before a deferred R6 redial), never on its resend or completion re-JOIN.
+    if (!g_join_resending) mh::seams::maps::client_begin_join();
+    if (!g_join_resending) mh::seams::lobby_speed::open(false, rec->tag);
     if (!g_join_resending && slot >= 0) {
         // A relay-listed row. Three cases, and the log line names which (tools/check_browser_rows.py
         // reads it): the link we hold is INTO this lobby (send now); the dial in flight is for its
@@ -2202,7 +2272,7 @@ void on_join_connect() {
         char           id[64];
         mh_net_proto::lobby_id_str(*rec, id, sizeof(id));
         char b[224];
-        if (linked) {
+        if (linked && MH_Net_IdAssigned()) {
             InterlockedExchange(&g_join_pending, 0);
             wsprintfA(b, "; R2b join: row %d (slot %d) %s room=%u -> linked, JOIN sent now\n", sel_idx,
                       slot, id, (unsigned)room);
@@ -2216,9 +2286,10 @@ void on_join_connect() {
             // means the link is into some OTHER lobby -- the same-lobby case is `linked`), the
             // latch names this room, and that dial has not already finished without landing
             // (MH_Seam_ClientDiscoveryTick's idle_after_dial test, same 1.5 s grace).
-            const bool in_flight = !g_store_valid && g_relay_room_set && g_relay_dialled == room &&
-                                   !(g_s3_conn_done && MH_Net_PeerCount() == 0 &&
-                                     (GetTickCount() - (DWORD)g_s3_conn_done_at) > 1500);
+            const bool in_flight = linked ||
+                                   (!g_store_valid && g_relay_room_set && g_relay_dialled == room &&
+                                    !(g_s3_conn_done && MH_Net_PeerCount() == 0 &&
+                                      (GetTickCount() - (DWORD)g_s3_conn_done_at) > 1500));
             if (in_flight) {
                 wsprintfA(b, "; R2b join: row %d (slot %d) %s room=%u -> dial in flight, JOIN re-sent when it lands\n",
                           sel_idx, slot, id, (unsigned)room);
@@ -2232,7 +2303,7 @@ void on_join_connect() {
             }
             return; // the R6 re-send carries the JOIN once the link into this room is up
         }
-    } else if (!g_store_valid && !g_join_resending) {
+    } else if ((!g_store_valid || !MH_Net_IdAssigned()) && !g_join_resending) {
         // mp:R6 -- remember it; the link coming up re-sends it (see g_join_pending).
         g_join_pending_rec  = *rec;
         g_join_pending_room = (g_relay_pick >= 0) ? g_relay_rows[g_relay_pick].room : 0;
@@ -2242,6 +2313,9 @@ void on_join_connect() {
     } else if (!g_join_resending) {
         InterlockedExchange(&g_join_pending, 0);
     }
+    // A linked endpoint can precede WELCOME. Keep the pending click rather than sending
+    // a JOIN stamped with this client's previous host's player id.
+    if (!MH_Net_IdAssigned()) return;
     // F3: the JOIN carries OUR pin, not the advert's -- join_request_for's two-argument form exists
     // precisely so a client cannot accidentally echo the host's value and make a mismatch invisible.
     // X2: the third argument is the same rule one field along -- the hash of the map file WE hold
@@ -2278,20 +2352,15 @@ void on_join_connect() {
     // advert: the same claim is a compare. A row older than a map change reports the old hash; the
     // advert then re-resolves and client_resolve_now re-JOINs (the backstop, map_transfer.cpp).
     mh::seams::maps::client_on_advert(*rec);
-    // mp:U59 (user decision Q5): a host older than the exactly-once frame layer is REFUSED by the
-    // transport (its WELCOME / first DATA frame lacks the capability). Said here, in mh_net.log, so the
-    // refusal that follows has a cause on the page, in the same spirit as the MP-LANG line above.
-    if (rec->host_version != 0 && rec->host_version < MH_MP_HOST_VERSION_MIN_U59) {
-        char vb[208];
-        wsprintfA(vb, "; U59/U61: host_version %u predates the exactly-once frame layer / host-migration mesh (needs >= %u) -- a "
-                      "mixed-version pair; the transport will refuse it\n",
-                  (unsigned)rec->host_version, (unsigned)MH_MP_HOST_VERSION_MIN_U59);
-        seam_log(vb);
-    }
-    uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
-    const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
-    mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(), mh::gameplay::local_digest());
+    uint8_t    mine[mh_net_proto::MAP_HASH_BYTES] = {0};
+    const bool have_map                           = mh::seams::maps::client_my_hash(mine);
+    // DATAEXT1: OUR OWN mod-content digest, measured here like the codepage/map/build/gameplay
+    // arguments -- never copied from `rec`. The runtime always supplies the real snapshot.
+    uint8_t my_content[mh_net_proto::CONTENT_DIGEST_BYTES];
+    MH_Mods_ContentDigest(my_content);
+    mh_net_proto::JoinRequest jr = mh_net_proto::join_request_for(
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(),
+        mh::gameplay::local_digest(), my_content);
     fill_my_player_name(jr); // S6: my player name ([A-Za-z0-9], MP-LANG)
     uint8_t buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     int     n = (int)mh_net_proto::join_request_encode(jr, buf);
@@ -2316,9 +2385,8 @@ void on_join_connect() {
     // SES1: the CLIENT's session opens HERE -- at the JOIN, which is the moment this peer commits to
     // a particular lobby. Not at on_session_info_recv: an advert only means the browser listed a
     // host, and a player who scrolls past three lobbies would otherwise mint three directories.
-    // The slot is the join-time one (mp_client_slot); the host may reassign it in its WELCOME, and
-    // that assignment is in mh_net.log where it has always been. The directory name keeps the
-    // join-time label so the folder is nameable before the WELCOME arrives.
+    // The directory retains the slot observed at JOIN; transport assignment evidence remains
+    // in mh_net.log rather than being inferred from a folder name.
     mp_session_open(jr.match_id, mp_client_slot(), "client");
 }
 
@@ -2340,11 +2408,16 @@ void on_join_connect() {
 // from the same sources, and the map hash is re-read from the seam that just stored a file.
 void mp_join_resend_map_report() {
     const mh_net_proto::SessionInfo *rec = g_store_valid ? &g_store_rec : relay_picked_rec();
-    if (rec == nullptr) return;
-    uint8_t                   mine[mh_net_proto::MAP_HASH_BYTES] = {0};
-    const bool                have_map                           = mh::seams::maps::client_my_hash(mine);
-    mh_net_proto::JoinRequest jr                                 = mh_net_proto::join_request_for(
-        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(), mh::gameplay::local_digest());
+    if (rec == nullptr || !client_host_generation(*rec)) return;
+    uint8_t    mine[mh_net_proto::MAP_HASH_BYTES] = {0};
+    const bool have_map                           = mh::seams::maps::client_my_hash(mine);
+    // DATAEXT1: the map-completion re-JOIN re-states the same content digest. The snapshot is
+    // boot-time so it cannot have changed mid-lobby, but it is re-read like every other field.
+    uint8_t my_content[mh_net_proto::CONTENT_DIGEST_BYTES];
+    MH_Mods_ContentDigest(my_content);
+    mh_net_proto::JoinRequest jr = mh_net_proto::join_request_for(
+        *rec, (uint16_t)MH_ChatInput_WireEncoding(), have_map ? mine : nullptr, mp_own_build(),
+        mh::gameplay::local_digest(), my_content);
     fill_my_player_name(jr);
     uint8_t   buf[mh_net_proto::JOIN_REQUEST_MAX_ENCODED];
     const int n = (int)mh_net_proto::join_request_encode(jr, buf);
@@ -2408,6 +2481,9 @@ extern "C" int MH_Seam_TakeStartSlots(unsigned char *out, int cap) {
 
 // Client (recv thread): the host clicked Start -> adopt its slot array, then release the entry gate.
 void on_start_recv(int sender, const unsigned char *buf, int len) {
+    if (InterlockedCompareExchange(&g_host_generation_refused, 0, 0) != 0 ||
+        InterlockedCompareExchange(&g_join_refused, 0, 0) != 0 ||
+        (g_store_valid && !client_host_generation(g_store_rec))) return;
     char b[192];
     // ORDER MATTERS: publish the slots BEFORE the gate. The entry tick polls the gate on the main
     // thread and builds Players[] immediately after it opens, so releasing first would let it win the
@@ -2495,6 +2571,7 @@ void on_host_advertise() {
     *g_a.is_host                = 1;
     *(int *)ADDR_NET_LOCALIDX   = 0;
     *(int *)ADDR_NET_PLAYERSIDE = 0;
+    mh::seams::lobby_speed::open(true, 0);
     MH_MP_ArmManualLobby();
     // mp:R7 -- CREATE GAME AFTER A RELAY BROWSE. With a relay configured the first browser dials
     // the relay as a CLIENT to list the directory (see MH_Seam_ClientDiscoveryTick), so a player
@@ -2737,7 +2814,7 @@ extern "C" void MH_Seam_ClientDiscoveryTick(void) {
     // mp:R6 -- THE RE-SENT JOIN. A peer is connected now, so a JOIN sent while the link was still
     // coming up (dropped by the transport, see g_join_pending) goes again -- if the link is into
     // the lobby the player clicked: by the advert when the store already holds it, by the room the
-    // dial was for otherwise. On the FIRST tick with a peer, not on the advert's arrival: the retail
+    // dial was for otherwise. On the FIRST tick with an assigned peer, not on the advert's arrival: the retail
     // lobby's own first dispatch sends its 0x17 "client hello", which the host answers with the slot
     // table only for an ADMITTED peer, and a JOIN that lands after that hello leaves the client
     // seated in an empty lobby (measured: the advert-triggered form lost by 2 ms). The host side
@@ -2745,7 +2822,7 @@ extern "C" void MH_Seam_ClientDiscoveryTick(void) {
     // Independent of the g_s3_listed one-shot above, which a client that browsed an earlier host
     // has already spent.
     if (MH_Net_IsStarted() && MH_Net_PeerCount() > 0 &&
-        InterlockedCompareExchange(&g_join_pending, 0, 0) != 0) {
+        InterlockedCompareExchange(&g_join_pending, 0, 0) != 0 && MH_Net_IdAssigned()) {
         InterlockedExchange(&g_join_pending, 0);
         const bool same = g_store_valid ? mh_net_proto::session_same_lobby(g_store_rec, g_join_pending_rec)
                                         : (g_relay_room_set && g_relay_dialled == g_join_pending_room);

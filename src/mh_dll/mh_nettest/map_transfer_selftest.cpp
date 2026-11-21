@@ -27,6 +27,10 @@
 #include <windows.h>
 
 #include <new>
+#include <array>
+#include <memory>
+#include "mh_lzw.h"
+#include "seams/tileset_save_preflight.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +39,12 @@
 #include "../mh_net_udp/udp_endpoint.h"
 #include "../mh_net_udp/udp_snapshot.h"
 
+#include "mh_mapgen/mpm.h"  // mods:DATAEXT1: real .mpm fixtures via the existing codec
+#include "mh_mod_catalog.h" // mods:DATAEXT1: a real Snapshot + mount for the byte-claim arms
 #include "mh_net_proto/net_crypto.h"
 #include "mh_net_proto/session_info.h"
 #include "seams/map_transfer.h"
+#include "ui/map_info_latch.h"
 
 namespace {
 
@@ -184,13 +191,129 @@ bool wait_for(Pred pred, DWORD budget_ms) {
 
 } // namespace
 
+struct SaveProbeFixture {
+    std::vector<uint8_t> bytes;
+    int32_t              pos          = 0;
+    bool                 fail_restore = false;
+    static int32_t       tell(void *p) { return static_cast<SaveProbeFixture *>(p)->pos; }
+    static int           seek(void *p, int32_t off, int whence) {
+        auto &s = *static_cast<SaveProbeFixture *>(p);
+        if (s.fail_restore && whence == 0 && off == 7) return -1;
+        int64_t next = (whence == 0 ? 0 : whence == 1 ? s.pos
+                                                                : int64_t(s.bytes.size())) +
+                       int64_t(off);
+        if (next < 0 || next > int64_t(s.bytes.size())) return -1;
+        s.pos = int32_t(next);
+        return 0;
+    }
+    static uint32_t read(void *p, void *out, uint32_t n) {
+        auto &s = *static_cast<SaveProbeFixture *>(p);
+        if (n > s.bytes.size() - size_t(s.pos)) return 0;
+        memcpy(out, s.bytes.data() + s.pos, n);
+        s.pos += int32_t(n);
+        return n;
+    }
+};
+void save_probe_test() {
+    SaveProbeFixture         file;
+    std::array<uint8_t, 240> versions{};
+    memcpy(versions.data() + 5 * 40, "fixture-version", 15);
+    file.bytes.insert(file.bytes.end(), versions.begin() + 5 * 40, versions.end());
+    auto encoder   = std::make_unique<mh::lzw::encoder_state>();
+    auto add_block = [&](const std::vector<uint8_t> &plain) {
+        std::vector<uint8_t> compressed(mh::lzw::compressed_bound(uint32_t(plain.size())));
+        const uint32_t       size = mh::lzw::compress(*encoder, plain.data(), uint32_t(plain.size()), compressed.data(), uint32_t(compressed.size()));
+        checkf(size != 0, "save probe: fixture compression succeeds");
+        for (uint32_t v : {size, uint32_t(plain.size())})
+            for (int i = 0; i < 4; ++i) file.bytes.push_back(uint8_t(v >> (8 * i)));
+        file.bytes.insert(file.bytes.end(), compressed.begin(), compressed.begin() + size);
+    };
+    for (size_t size : {57500u, 211400u, 11648u, 560u}) add_block(std::vector<uint8_t>(size));
+    auto run = [&](const char *token, const mh::mods::Snapshot *snapshot, bool fail_restore = false) {
+        std::vector<uint8_t> planets(34016);
+        memcpy(planets.data() + 0x20e, token, strlen(token) + 1);
+        const size_t marker = file.bytes.size();
+        add_block(planets);
+        file.pos          = 7;
+        file.fail_restore = fail_restore;
+        maps::SaveProbeIo io{&file, SaveProbeFixture::tell, SaveProbeFixture::seek, SaveProbeFixture::read};
+        std::string       error;
+        maps::begin_save_read_attempt();
+        const auto result = maps::probe_save_resources(io, versions.data(), snapshot, error);
+        if (result != maps::SaveProbeResult::available) maps::record_save_read_refusal(result);
+        if (!fail_restore) checkf(file.pos == 7, "save probe: original FILE position preserved");
+        file.fail_restore = false;
+        file.bytes.resize(marker);
+        return result;
+    };
+    checkf(run("diuna256.tlo", nullptr) == maps::SaveProbeResult::available, "save probe: stock resources remain loadable");
+    checkf(run("marsh_01.tlo", nullptr) == maps::SaveProbeResult::missing_resources, "save probe: unavailable custom descriptor refuses before load");
+    checkf(maps::take_missing_save_tileset_refusal(), "save refusal: missing resource is reported once");
+    checkf(!maps::take_missing_save_tileset_refusal(), "save refusal: consuming twice does not repeat notice");
+    checkf(run("marsh_01.tlo", nullptr) == maps::SaveProbeResult::missing_resources, "save refusal: repeat missing-resource attempt");
+    checkf(run("diuna256.tlo", nullptr) == maps::SaveProbeResult::available, "save refusal: later stock attempt succeeds");
+    checkf(!maps::take_missing_save_tileset_refusal(), "save refusal: next read clears stale missing-resource reason");
+    maps::begin_save_read_attempt();
+    maps::record_save_read_refusal(maps::SaveProbeResult::invalid_save);
+    checkf(!maps::take_missing_save_tileset_refusal(), "save refusal: corrupt save is not described as missing assets");
+    checkf(run("marsh_01.tlo", nullptr, true) == maps::SaveProbeResult::invalid_save,
+           "save probe: failed position restoration overrides missing-resource classification");
+    checkf(!maps::take_missing_save_tileset_refusal(),
+           "save refusal: position restoration failure is not described as missing assets");
+    mh::mods::Snapshot mounted;
+    mh::mods::Payload  art{};
+    art.name = "marsh_01.tlo";
+    art.bytes.resize(512 + 1024);
+    mounted.payloads.push_back(std::move(art));
+    mh::mods::TilesetDescriptor descriptor{};
+    descriptor.name        = "marsh_01.tlo";
+    descriptor.tlo_payload = 0;
+    mounted.tilesets.push_back(std::move(descriptor));
+    checkf(run("marsh_01.tlo", &mounted) == maps::SaveProbeResult::available, "save probe: available custom descriptor remains loadable");
+}
+
 int run_maptest(int port);
 
 int run_maptest(int port) {
+    save_probe_test();
     // +400, the next free slot after udpbulktest's +200 and udpsnaptest's +300, so three suites that
     // each stand up loopback endpoints never collide when the gate runs them back to back.
     port += 400;
     printf("=== maptest (mp:X2 -- the map download: identity, naming, resolve, the gate) ===\n");
+    {
+        using mh::game::mh_cfg_struct_map_header;
+        using mh::ui::detail::MapInfoLatch;
+        using mh::ui::detail::MapInfoRefresh;
+        MapInfoLatch             latch;
+        mh_cfg_struct_map_header a{};
+        a.width = a.height = 64;
+        a.player_count     = 2;
+        a.file_size        = 1234;
+        a.checksum         = 0x12345678;
+        strcpy(reinterpret_cast<char *>(&a) + offsetof(mh_cfg_struct_map_header, path_unc), "Maps\\A\\same.mpm");
+        strcpy(a.map_name, "same.mpm");
+        memcpy(a.tlo_name, "diuna256.tlo", 12);
+        memcpy(a.footer, "First description", sizeof("First description"));
+        checkf(latch.update(a) == MapInfoRefresh::slots, "map-info: first map refreshes details and slots");
+        checkf(latch.update(a) == MapInfoRefresh::unchanged, "map-info: identical header does not refresh");
+        auto b = a;
+        strcpy(reinterpret_cast<char *>(&b) + offsetof(mh_cfg_struct_map_header, path_unc), "Maps\\B\\same.mpm");
+        checkf(latch.update(b) == MapInfoRefresh::details,
+               "map-info: same-count/title/tileset different path refreshes details only");
+        b.checksum ^= 1;
+        checkf(latch.update(b) == MapInfoRefresh::details,
+               "map-info: changed map content checksum refreshes details only");
+        memcpy(b.footer, "Other description", sizeof("Other description"));
+        checkf(latch.update(b) == MapInfoRefresh::details,
+               "map-info: same identity fields but changed footer refreshes details only");
+        b.player_count = 3;
+        checkf(latch.update(b) == MapInfoRefresh::slots,
+               "map-info: player-count change refreshes details and slot widgets");
+        b.player_count = 0;
+        checkf(latch.update(b) == MapInfoRefresh::unchanged,
+               "map-info: incomplete map header does not replace shown identity");
+    }
+
     scratch_make();
     printf("  scratch: %s\n", g_dir);
 
@@ -299,18 +422,16 @@ int run_maptest(int port) {
         checkf(!session_info_decode(v6, n, got6), "B: a NEWER advert is refused, not best-effort read");
 
         // The JOIN carries what the JOINER holds -- never an echo of the advert.
-        JoinRequest jr = join_request_for(si, 1250, mine_h);
+        const unsigned char CONTENT0[CONTENT_DIGEST_BYTES] = {0};
+        JoinRequest         jr                             = join_request_for(si, 1250, mine_h, nullptr, 0, CONTENT0);
         lstrcpynA(jr.player_name, "Bob", sizeof(jr.player_name));
         checkf(map_hash_equal(jr.map_hash, mine_h) && !map_hash_equal(jr.map_hash, si.map_hash),
                "B: the JOIN reports OUR hash, not the host's (an echo would hide every mismatch)");
-        JoinRequest none = join_request_for(si, 1250);
-        checkf(map_hash_is_none(none.map_hash),
-               "B: the two-argument form declares NOTHING rather than the advert's value");
 
         uint8_t           jbuf[JOIN_REQUEST_MAX_ENCODED];
         const std::size_t jn = join_request_encode(jr, jbuf);
         JoinRequest       jgot;
-        checkf(join_request_decode(jbuf, jn, jgot), "B: a v5 JOIN round-trips");
+        checkf(join_request_decode(jbuf, jn, jgot), "B: a current JOIN round-trips");
         checkf(map_hash_equal(jgot.map_hash, mine_h), "B: ...carrying the joiner's own map hash");
         checkf(join_admit(jbuf, jn, si, jgot) == JoinAdmit::Admit, "B: ...and it is admitted");
 
@@ -319,8 +440,9 @@ int run_maptest(int port) {
         uint8_t j4[JOIN_REQUEST_MAX_ENCODED];
         memcpy(j4, jbuf, jn);
         j4[0] = 4;
-        JoinRequest j4got;
-        checkf(join_admit(j4, jn - MAP_HASH_BYTES, si, j4got) == JoinAdmit::RefusedOldProtocol,
+        JoinRequest       j4got;
+        const std::size_t j4n = jn - (MAP_HASH_BYTES + 1 + 4 + CONTENT_DIGEST_BYTES);
+        checkf(join_admit(j4, j4n, si, j4got) == JoinAdmit::RefusedOldProtocol,
                "B: a v4 JOIN (no map report) is refused as an OLD PROTOCOL, by name");
     }
 
@@ -824,6 +946,226 @@ int run_maptest(int port) {
         g_ep_cl.stop();
         DeleteFileA(stored0);
         delete_scratch(BASE);
+    }
+
+    // ---- arms M1..M6: mods:DATAEXT1 -- the mounted set's map domain -------------------------------
+    // The pure half of the mod integration: winners beat a same-named loose file and never consult
+    // the lobby's redirect state, a mod name is never a transfer target on either side, a payload
+    // that is not a map fails the whole arm, and the picker's row plan is a pure function of the
+    // armed rows. The byte/claim arms build a REAL catalog Snapshot, run the same mod_arm the boot
+    // adapter runs before publishing, and mount it once -- the honest path, not a stub.
+    {
+        using mh::mods::Payload;
+        using mh::mods::Snapshot;
+
+        // A real .mpm fixture through the existing codec: mpm_init + write_mpm. The random-filled
+        // buffers above are NOT maps -- which is exactly what the M5 arm asserts.
+        mh_mapgen::MpmModel fixture;
+        mh_mapgen::mpm_init(fixture, "diuna256.tlo", 64, 64);
+        const std::vector<uint8_t> real_map = mh_mapgen::write_mpm(fixture);
+        const uint32_t             real_len = (uint32_t)real_map.size();
+        std::array<uint8_t, 0x17c> network_header{};
+        memcpy(network_header.data() + 0x11c, "diuna256.tlo", 12);
+        checkf(maps::validate_network_header(network_header.data(), network_header.size()),
+               "M0: 12-byte stock token accepted with trailing NUL");
+        memcpy(network_header.data() + 0x11c, "unknown1.tlo", 12);
+        checkf(maps::validate_advert_header(network_header.data(), network_header.size()),
+               "M0: structurally valid unknown custom advert stays visible for JOIN digest refusal");
+        checkf(!maps::validate_network_header(network_header.data(), network_header.size()),
+               "M0: unknown custom token refused before admitted native copy");
+        memset(network_header.data() + 0x11c, 'a', 13);
+        checkf(!maps::validate_advert_header(network_header.data(), network_header.size()) &&
+                   !maps::validate_network_header(network_header.data(), network_header.size()),
+               "M0: unterminated network token refused in discovery and admission");
+        checkf(!maps::validate_network_header(network_header.data(), 0x11c + 12),
+               "M0: truncated network header refused before native copy");
+        memcpy(network_header.data() + 0x11c, "diuna256.tlo", 13);
+        memset(network_header.data() + 0xfc, 'x', 32);
+        checkf(!maps::validate_advert_header(network_header.data(), network_header.size()),
+               "M0: unterminated map name is not exposed in discovery");
+        memset(network_header.data() + 0xfc, 0, 32);
+        memset(network_header.data() + 0x18, 'x', 0xe4);
+        checkf(!maps::validate_advert_header(network_header.data(), network_header.size()),
+               "M0: unterminated map path is not exposed in discovery");
+        uint8_t real_h[MAP_HASH_BYTES];
+        hash_of(real_map.data(), real_len, real_h);
+
+        // -- M1: nothing armed is byte-for-byte the stock answer.
+        maps::mod_disarm_for_test();
+        char pout[MAX_PATH];
+        checkf(!maps::mod_open_apply("Maps\\Anything.mpm", pout, sizeof(pout)),
+               "M1: with no set armed, no open is a mod open");
+        checkf(!maps::claim_bytes_for("Anything.mpm", nullptr, nullptr, nullptr),
+               "M1: with no set armed, no name is a mod claim");
+        char cout_[MAX_PATH];
+        lstrcpynA(cout_, "KEEP", sizeof(cout_));
+        checkf(maps::preview_resolve("Maps\\Cold War.mpm", cout_, sizeof(cout_)) == 0 &&
+                   lstrcmpA(cout_, "Maps\\Cold War.mpm") == 0,
+               "M1: preview_resolve hands back the base path untouched");
+
+        // -- M2: path-only winners -- precedence at the open and in the preview.
+        char win_path[MAX_PATH], loose_path[MAX_PATH];
+        checkf(write_scratch("mod_win.mpm", g_host_map, MAPLEN), "M2: wrote the winner bytes");
+        checkf(write_scratch("loose.mpm", g_mine_map, MAPLEN), "M2: wrote a DIFFERENT loose file");
+        scratch_path(win_path, sizeof(win_path), "mod_win.mpm");
+        scratch_path(loose_path, sizeof(loose_path), "loose.mpm");
+        maps::ModMapEntry rows2[2];
+        rows2[0].canonical = "maps\\loose.mpm";
+        rows2[0].leaf      = "loose.mpm";
+        rows2[0].path      = loose_path;
+        rows2[0].mod_id    = "alpha";
+        rows2[1].canonical = "maps\\brand new.mpm";
+        rows2[1].leaf      = "brand new.mpm";
+        rows2[1].path      = win_path;
+        rows2[1].mod_id    = "alpha";
+        maps::mod_set_for_test(rows2, 2);
+
+        checkf(maps::mod_open_apply("Maps\\LOOSE.MPM", pout, sizeof(pout)) &&
+                   lstrcmpA(pout, loose_path) == 0,
+               "M2: the winner wins over whatever Maps\\ holds (case-insensitive leaf)");
+        checkf(maps::mod_open_apply("brand new.mpm", pout, sizeof(pout)) &&
+                   lstrcmpA(pout, win_path) == 0,
+               "M2: a bare name -- the loader's other shape -- resolves too");
+        checkf(!maps::mod_open_apply("Maps\\Cold War.mpm", pout, sizeof(pout)),
+               "M2: a name no mod provides is NOT a mod open -- the pack-shadow rules stand");
+        checkf(!maps::mod_open_apply("saves\\loose.mpm", pout, sizeof(pout)),
+               "M2: the mod domain is the maps directory (and bare names) -- a same-leaf path elsewhere is never redirected");
+        maps::redirect_set("loose.mpm", "mh_dl\\stored.mpm");
+        checkf(maps::mod_open_apply("Maps\\loose.mpm", pout, sizeof(pout)) &&
+                   lstrcmpA(pout, loose_path) == 0,
+               "M2: the mod answer never consults the lobby's redirect state (the open seam orders mod first)");
+        maps::redirect_clear();
+        char pv[MAX_PATH + 8];
+        checkf(maps::preview_resolve("Maps\\loose.mpm", pv, sizeof(pv)) == 0 &&
+                   lstrcmpA(pv, loose_path) == 0,
+               "M2: preview_resolve serves the winner bytes");
+        maps::mod_disarm_for_test();
+
+        // -- M3: a mod name is never a transfer target, and claims read the SNAPSHOT bytes.
+        Snapshot snap;
+        snap.ok = true;
+        snap.mods.push_back({"alpha", "Alpha", "1", "", "mods/alpha"});
+        Payload p0;
+        p0.name      = "maps\\hosted.mpm";
+        p0.mod_index = 0;
+        p0.bytes     = real_map;
+        snap.payloads.push_back(p0);
+        snap.winners["maps\\hosted.mpm"] = 0;
+        // Offline maptest has no executable to patch; use the existing path-row test door,
+        // and test the real snapshot-backed claim after publication. Actual hook readiness is
+        // exercised in a game launch, never faked in mod_arm.
+        checkf(write_scratch("mod_hosted.mpm", real_map.data(), real_len), "M3: wrote winner bytes");
+        char hosted_path[MAX_PATH];
+        scratch_path(hosted_path, sizeof(hosted_path), "mod_hosted.mpm");
+        maps::ModMapEntry hosted_row{"maps\\hosted.mpm", "hosted.mpm", hosted_path, "alpha"};
+        maps::mod_set_for_test(&hosted_row, 1);
+        checkf(!maps::claim_bytes_for("hosted.mpm", nullptr, nullptr, nullptr),
+               "M3: an unpublished snapshot is not claimable");
+        mh::mods::mount_snapshot(std::move(snap));
+        const uint8_t *mb  = nullptr;
+        uint32_t       ml  = 0;
+        const char    *mid = nullptr;
+        checkf(maps::claim_bytes_for("hosted.mpm", &mb, &ml, &mid) && ml == real_len &&
+                   memcmp(mb, real_map.data(), real_len) == 0 && lstrcmpA(mid, "alpha") == 0,
+               "M3: the claim reads the SNAPSHOT's winner bytes, with provenance");
+
+        maps::session_reset();
+        maps::set_can_carry_for_test(1);
+        maps::host_set_claim_for_test("hosted.mpm", real_h, real_len);
+        maps::host_on_join(1, "Bob", mine_h); // a DIFFERENT file of the same name
+        checkf(maps::host_next_peer_needing_map() == -1,
+               "M3: a disagreeing peer on a MOD map is never a transfer target");
+        char who[32];
+        bool unfetch = true;
+        checkf(maps::host_start_blocked(who, sizeof(who), &unfetch) && unfetch,
+               "M3: ...Start stays refused, and it is a refusal (nothing will arrive), not a wait");
+        maps::host_on_join(1, "Bob", real_h); // the peer reports the winner's bytes
+        checkf(!maps::host_start_blocked(who, sizeof(who), &unfetch),
+               "M3: a peer holding the winner bytes unblocks Start with nothing to fetch");
+        maps::set_can_carry_for_test(-1);
+
+        // -- M4: a NON-mod map beside an armed set downloads exactly as before.
+        maps::session_reset();
+        maps::set_can_carry_for_test(1);
+        maps::host_set_claim_for_test(BASE, host_h, MAPLEN);
+        maps::host_on_join(1, "Bob", mine_h);
+        checkf(maps::host_next_peer_needing_map() == 1,
+               "M4: an armed set does not touch the ordinary loose-map download");
+        maps::set_can_carry_for_test(-1);
+        maps::session_reset();
+
+        // -- M5: a payload that is not a map fails the WHOLE arm (the adapter then publishes stock).
+        Snapshot bad;
+        bad.ok = true;
+        bad.mods.push_back({"beta", "Beta", "1", "", "mods/beta"});
+        Payload bad_p;
+        bad_p.name      = "maps\\broken.mpm";
+        bad_p.mod_index = 0;
+        bad_p.bytes.assign(g_mine_map, g_mine_map + MAPLEN); // pseudo-random bytes: no ver02 header
+        bad.payloads.push_back(bad_p);
+        bad.winners["maps\\broken.mpm"] = 0;
+        checkf(!maps::mod_arm(&bad) && !maps::mod_active(),
+               "M5: garbage masquerading as a map fails the arm -- the seam stays stock");
+        checkf(!maps::mod_open_apply("Maps\\broken.mpm", pout, sizeof(pout)),
+               "M5: ...and the refused name resolves as nothing special afterwards");
+
+        // A NESTED maps\ name would collapse to the same flat leaf as its siblings (`maps\pack\dup.mpm`
+        // -> `dup.mpm`), and retail's 32-byte map_name could never carry the folder: the whole set
+        // refuses rather than one ambiguous winner being served.
+        Snapshot deep;
+        deep.ok = true;
+        deep.mods.push_back({"beta", "Beta", "1", "", "mods/beta"});
+        Payload deep_p;
+        deep_p.name      = "maps\\pack\\dup.mpm";
+        deep_p.mod_index = 0;
+        deep_p.bytes     = real_map;
+        deep.payloads.push_back(deep_p);
+        deep.winners["maps\\pack\\dup.mpm"] = 0;
+        checkf(!maps::mod_arm(&deep),
+               "M5: a nested Maps\\ name refuses the whole set (the flat engine name could never select it)");
+
+        // -- M6: the picker's row plan.
+        maps::mod_disarm_for_test();
+        maps::ModMapEntry m6[3];
+        m6[0].canonical = "maps\\cold war.mpm";
+        m6[0].leaf      = "cold war.mpm"; // a STOCK-name override: no extra row, the stock name wins the list
+        m6[0].path      = win_path;
+        m6[0].mod_id    = "alpha";
+        m6[1].canonical = "maps\\zeta.mpm";
+        m6[1].leaf      = "zeta.mpm";
+        m6[1].path      = win_path;
+        m6[1].mod_id    = "alpha";
+        m6[2].canonical = "maps\\way_too_long_for_the_engine_field.mpm";
+        m6[2].leaf      = "way_too_long_for_the_engine_field.mpm"; // 37-byte leaf: over the 31-byte engine field
+        m6[2].path      = win_path;
+        m6[2].mod_id    = "alpha";
+        maps::mod_set_for_test(m6, 3);
+        wchar_t existing[3][64];
+        MultiByteToWideChar(CP_ACP, 0, "Cold War", -1, existing[0], 64);
+        MultiByteToWideChar(CP_ACP, 0, "Blue Monday", -1, existing[1], 64);
+        MultiByteToWideChar(CP_ACP, 0, "A folder row", -1, existing[2], 64);
+        wchar_t   want[8][48];
+        const int nm6  = maps::picker_rows_missing(existing, 3, want, 8);
+        const int nm6b = maps::picker_rows_missing(existing, 3, want, 8);
+        checkf(nm6 == 1 && nm6b == nm6 && lstrcmpiW(want[0], L"zeta") == 0,
+               "M6: only the mod's OWN new names become rows, the over-long name is skipped, and the plan is pure");
+
+        // -- cleanup: the cache files mod_arm wrote under the suite's cfgdir (inert, but tidy).
+        char cpath[MAX_PATH];
+        if (maps::mod_open_apply("hosted.mpm", cpath, sizeof(cpath))) {
+            DeleteFileA(cpath);
+            char *slash = strrchr(cpath, '\\');
+            if (slash != nullptr) {
+                *slash = '\0';
+                RemoveDirectoryA(cpath); // the pid dir
+                char *up = strrchr(cpath, '\\');
+                if (up != nullptr) {
+                    *up = '\0';
+                    RemoveDirectoryA(cpath); // modmaps directory
+                }
+            }
+        }
+        maps::mod_disarm_for_test();
     }
 
     maps::set_dl_dir(nullptr);

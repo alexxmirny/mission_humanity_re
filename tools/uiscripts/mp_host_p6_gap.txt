@@ -55,13 +55,11 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: one capture at match_launch's own SIM gate, then run to the HOST's own outcome
-# (the win) -- the wall-clock moment this peer's own on_gameover fires is the post_check's anchor
-# for "the deciding step" (net_lockstep.cpp's grace-timer starts counting once THIS peer leaves
-# lockstep, roughly here).
+# Run to the HOST's own outcome (the win). Its wall-clock on_gameover is the
+# deciding-step anchor. Transient launch selection/deployment pixels are not P6's
+# contract; retain the real outcome capture and both peers' frame-gap/hash judges.
 absent Network players
 gameclock 6000
-capture m3_launched
 log HOST is in the match (conquest workload armed via the row's harness config)
 screen 0x00653dc3
 capture host_won

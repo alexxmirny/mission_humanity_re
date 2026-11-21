@@ -93,6 +93,21 @@ internal routing layer while the libmh-facing surface shrinks.
   values (R4), or **libmh performs the state half itself** and the record becomes pure
   presentation. Note this one is invisible to the R3b gate by construction: the gate asks what
   libmh READS BACK, and here libmh reads nothing.
+  Selected-target order observations follow the owned-values branch: one88-byte typed FIFO
+  carries kinds24–33. Canonical command headers and thirteen args exclude scheduling time,
+  physical queue indices and borrowed native pointers. Logical admissions/outcomes additionally
+  own admission/issuer IDs, actor incarnation and world epoch. Native and translated producers
+  bind one host-owned witness store through the three-argument
+  `libmh_set_order_observation_sink` (`LIBMH_HOST_EVENTS_VERSION=0x00010019`); null selects
+  allocation-free standalone backing. Container moves/compaction retain logical lineage,
+  with eight bounded simultaneous pins; last-reference removal discards only unapplied work.
+  IDs remain process-unique across resets, and rendering tokens reserve their high-bit namespace.
+  World publication revokes old ownership without recycling still-pinned nodes. The shared boot
+  byte engine remains optional-libmh-independent; the library-only C import boundary publishes
+  its reset. Group boundaries, admissions, application and discard use the same ordered FIFO.
+  Polling overflow revokes trust through the loss-affected backlog; attack scope resumes at a
+  fresh BEGIN, ordinary moves at fresh self-contained admissions after drainage. No observation,
+  callback result, grouping token or witness state enters simulation decisions, saves or hashes.
 
 - **R4 — the host reads state; libmh doesn't push it.** Callbacks carry identities,
   deltas, positions — not data snapshots. SB-BIND gives the host the state view (the
@@ -297,20 +312,19 @@ Blocked on S2: before the mask this entry writes hashed and saved state, which i
 **Negative arm:** no-op the new entry with S2 reverted — the hash moves, proving the mask is what
 makes the move legal rather than the move being harmless on its own.
 
-**DONE 2026-09-09 (commit `336e0832`), table 46 → 45**, as `LIBMH_EVK_INV_PLANET_GFX_SETUP(a =
-planet_slot, b = tlo_index)` on the invalidate channel rather than a new table row — a composite
-tail has no single original function for `gen_libmh_hostapi` to generate a forwarder from, which
-is why every LIFT-TACT composite went the same way. `cfg_final_planet_FillBankData` left the
-table with it.
+**DONE 2026-09-09 (commit `336e0832`), table 46 → 45.** `TILESET1` keeps
+`LIBMH_EVK_INV_PLANET_GFX_SETUP` on the invalidate channel, but replaces the original
+stock-only index payload: `a = planet_slot`, `b/c/d = 12 owned little-endian ASCII
+tileset-name bytes`, with an implicit thirteenth NUL. `cfg_final_planet_FillBankData`
+remains outside the callback table.
 
-**ONE CLAUSE ABOVE IS REFUTED: the raw VA edge to `cfg_GetTloIndex` CANNOT go, and the reason
-generalises.** The lookup reads `map_header.tlo_name`, a STACK LOCAL of the emitting frame.
-Handing the host that pointer works under mh.dll, whose sink dispatches synchronously at emit,
-and DANGLES under a NULL-callback host, which drains at the frame edge with the frame gone —
-R7's two consumptions are exactly what makes the difference invisible in testing. **A record may
-not carry a pointer into the emitter's frame**; an identity may. So libmh keeps the 116-byte
-constant-table lookup and the resolved index crosses, while the VA edge stays where it already
-belonged, in LIB-BOOT's `cfg-snapshot` set. Census unchanged at 39 for this stage.
+**Deferred events own their input.** A pointer to the emitting frame's stack header
+would dangle when a NULL-callback host drains after that frame returns. The owned
+DOS8.3 token removes that lifetime hazard without a stock-only libmh lookup.
+The host resolves the name through the admitted tileset catalog and selects the
+graphics-only tree/soldier metadata; original stock indices remain unchanged.
+The frozen boot-snapshot TLO table is retained for its existing snapshot/export
+contract, not as a second runtime classifier.
 
 The R3b gate filed the new scope in the `readback` bucket, because `PLANETS` is one 34016-byte
 region and the gate works at region granularity; it carries a `justified-exempt` disposition with

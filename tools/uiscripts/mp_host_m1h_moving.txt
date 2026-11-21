@@ -32,7 +32,7 @@ clickl Start
 absent Network players
 gameclock 6000
 capture m1h_mp_start
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 66000
 log HOST m1h moving cases done
 end

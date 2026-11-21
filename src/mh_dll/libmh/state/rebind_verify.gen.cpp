@@ -1874,16 +1874,16 @@ static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_recruit), int32
               "rebind target signature drifted: llm_unit_recruit -> mh::sim::unit_recruit");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_set_order_param), void (*)(int32_t, int32_t, int16_t)>,
               "rebind target signature drifted: llm_unit_set_order_param -> mh::sim::unit_set_order_param");
+static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_squad_split_docked), void (*)(uint32_t, uint32_t)>,
+              "rebind target signature drifted: llm_unit_squad_split_docked -> mh::sim::unload_docked");
+static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_squad_split_field), void (*)(uint32_t, uint32_t)>,
+              "rebind target signature drifted: llm_unit_squad_split_field -> mh::sim::unload_field");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_state_is_boarding), int32_t (*)(int32_t)>,
               "rebind target signature drifted: llm_unit_state_is_boarding -> mh::sim::promoted_arm::hr_llm_unit_state_is_boarding");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_status_bit_clear), void (*)(int32_t, int32_t, uint8_t)>,
               "rebind target signature drifted: llm_unit_status_bit_clear -> mh::sim::unit_status_bit_clear");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_status_bit_set), void (*)(int32_t, int32_t, uint8_t)>,
               "rebind target signature drifted: llm_unit_status_bit_set -> mh::sim::unit_status_bit_set");
-static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_transport_unload_docked), void (*)(uint32_t, uint32_t)>,
-              "rebind target signature drifted: llm_unit_transport_unload_docked -> mh::sim::unload_docked");
-static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_llm_unit_transport_unload_field), void (*)(uint32_t, uint32_t)>,
-              "rebind target signature drifted: llm_unit_transport_unload_field -> mh::sim::unload_field");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_map_CreateBuilding), void (*)(uint16_t, uint32_t, uint32_t, int32_t, int32_t, uint32_t, uint32_t)>,
               "rebind target signature drifted: map_CreateBuilding -> mh::sim::create_building");
 static_assert(std::is_same_v<decltype(&MH_REBIND_TARGET_map_LoadPlanetFromDisk), uint32_t (*)(int32_t, uint32_t)>,

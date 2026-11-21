@@ -25,6 +25,7 @@
 #include "include/mh_log_sink.h"    // LOG1: async log sink
 #include "addr/mh_addrs.gen.h"      // generated EN VAs
 #include "en_guard.h"               // EN-only build gate
+#include "state/region_runtime.h"
 
 #pragma comment(lib, "user32.lib") // wsprintfA / GetAsyncKeyState
 
@@ -266,7 +267,12 @@ extern "C" void MH_Capture_WriteBgra32(const char *name, const unsigned int *px,
         DWORD wr = 0;
         WriteFile(hf, out, (DWORD)filesize, &wr, nullptr);
         CloseHandle(hf);
-        cap_log("; capture_%s__b.bmp written (presenter output %dx%d)", name, w, h);
+        // Timestamp the actual presenter write, not the earlier script request.
+        uint64_t clock_bits = 0;
+        if (const auto *clock = mh::state::ptr<const double>(mh::state::RID_STRAT_GAME_CLOCK))
+            memcpy(&clock_bits, clock, sizeof clock_bits);
+        cap_log("; capture_%s__b.bmp written (presenter output %dx%d) game_clock=%08X%08X",
+                name, w, h, static_cast<unsigned>(clock_bits >> 32), static_cast<unsigned>(clock_bits));
     }
     free(out);
 }

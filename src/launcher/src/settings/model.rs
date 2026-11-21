@@ -86,6 +86,8 @@ pub enum Problem {
     BadChars,
     /// The custom relay needs `host:port`.
     BadAddress,
+    /// A complete strategic-profile error, including context collisions and reserved chords.
+    Binding(String),
 }
 
 /// What an Apply did.
@@ -216,6 +218,9 @@ fn canon_float(t: &str) -> String {
 
 /// The comparison/writing form of `raw` for `row`.
 pub fn canon(row: &Row, raw: &str) -> String {
+    if let Some(value) = super::bindings::normalize_row(&row.id, raw) {
+        return value;
+    }
     let t = raw.trim();
     match row.kind {
         Kind::Bool => match parse_bool(t) {
@@ -265,6 +270,7 @@ pub struct Model {
     /// Pending edits, exactly as typed.
     edits: BTreeMap<String, String>,
     providers: Vec<(Provider, Vec<ProviderOption>)>,
+    binding_navigation_changes: Vec<String>,
 }
 
 impl Model {
@@ -274,6 +280,7 @@ impl Model {
             loaded: BTreeMap::new(),
             edits: BTreeMap::new(),
             providers: Vec::new(),
+            binding_navigation_changes: Vec::new(),
         }
     }
 
@@ -285,6 +292,7 @@ impl Model {
     pub fn load(&mut self, ini: Option<&[u8]>, store: &dyn LauncherStore) {
         self.edits.clear();
         self.loaded.clear();
+        self.binding_navigation_changes = super::bindings::navigation_migration_changes(ini);
         for r in &self.schema.rows {
             let v = match &r.store {
                 Store::Ini { section, key } => {
@@ -299,8 +307,12 @@ impl Model {
                     }
                 }),
             };
+            let v = super::bindings::loaded_value(&r.id, ini, v);
             self.loaded.insert(r.id.clone(), v);
         }
+    }
+    pub fn binding_navigation_changes(&self) -> &[String] {
+        &self.binding_navigation_changes
     }
 
     pub fn set_provider_options(&mut self, p: Provider, options: Vec<ProviderOption>) {
@@ -432,6 +444,9 @@ impl Model {
         if bad_chars(t) {
             return Err(Problem::BadChars);
         }
+        if let Some(result) = super::bindings::validate_value(id, &v) {
+            return result.map_err(|()| Problem::BadHotkey);
+        }
         match r.kind {
             Kind::Bool | Kind::Enum | Kind::Str => Ok(()),
             Kind::Float => {
@@ -496,6 +511,13 @@ impl Model {
                 out.push((comp.to_string(), Problem::BadAddress));
             }
         }
+        for issue in super::bindings::issues(self) {
+            for id in issue.ids {
+                if !out.iter().any(|(existing, _)| existing == &id) {
+                    out.push((id, Problem::Binding(issue.text.clone())));
+                }
+            }
+        }
         out
     }
 
@@ -510,15 +532,23 @@ impl Model {
             .map(|(_, p)| p)
     }
 
-    /// The ini edits an Apply would make: changed ini rows only, canonical text.
+    /// Canonical changed rows; a binding edit writes the complete effective profile.
     pub fn ini_edits(&self) -> Vec<Edit> {
+        let binding_changed = self.schema.rows.iter().any(|row| {
+            row.page == super::schema::Page::Bindings && self.edits.contains_key(&row.id)
+        });
         let mut out = Vec::new();
         for r in &self.schema.rows {
+            if binding_changed && r.page == super::schema::Page::Bindings {
+                continue;
+            }
             let (Store::Ini { section, key }, Some(v)) = (&r.store, self.edits.get(&r.id)) else {
                 continue;
             };
-            let c = canon(r, v);
-            out.push(Edit::new(section, key, &c));
+            out.push(Edit::new(section, key, &canon(r, v)));
+        }
+        if binding_changed {
+            out.extend(super::bindings::snapshot_edits(self));
         }
         out
     }
@@ -743,10 +773,6 @@ mod tests {
         assert_eq!(m.validate("hud.net_indicator_key"), Err(Problem::BadHotkey));
         m.set("hud.net_indicator_key", "none");
         assert_eq!(m.validate("hud.net_indicator_key"), Ok(()));
-        assert_eq!(
-            m.ini_edits(),
-            [Edit::new("hud", "net_indicator_key", "none")]
-        );
     }
 
     #[test]
@@ -977,12 +1003,12 @@ mod tests {
         let ini = dir.join("mh_net.ini");
         std::fs::write(
             &ini,
-            "[ui]\r\nbigmap=1\r\nbigmap_key=F5\r\nbigmap_center=map\r\n",
+            "[ui]\r\nbigmap=1\r\nbigmap_key=F2\r\nbigmap_center=map\r\n",
         )
         .unwrap();
         let (mut m, mut store) = model();
         m.load(Some(&std::fs::read(&ini).unwrap()), &store);
-        let key = m.schema().row("ui.bigmap_key").unwrap().clone();
+        let key = m.schema().row("ui.bigmap_center").unwrap().clone();
         assert!(m.is_visible(&key));
         m.set("ui.bigmap", "0");
         assert!(!m.is_visible(&key), "the parent is off: the row is hidden");
@@ -993,21 +1019,21 @@ mod tests {
         m.apply(&ini, &mut store).unwrap();
         let text = std::fs::read_to_string(&ini).unwrap();
         assert!(
-            text.contains("bigmap=0") && text.contains("bigmap_key=F5"),
+            text.contains("bigmap=0") && text.contains("bigmap_key=F2"),
             "{text}"
         );
         assert!(text.contains("bigmap_center=map"), "{text}");
         let mut again = Model::new(Schema::builtin());
         again.load(Some(text.as_bytes()), &store);
         assert!(!again.is_visible(&key));
-        assert_eq!(again.value("ui.bigmap_key"), "F5");
+        assert_eq!(again.value("ui.bigmap_key"), "F2");
         assert_eq!(again.value("ui.bigmap_center"), "map");
         again.set("ui.bigmap", "1");
         assert!(
             again.is_visible(&key),
             "turning the parent on shows it again"
         );
-        assert_eq!(again.value("ui.bigmap_key"), "F5");
+        assert_eq!(again.value("ui.bigmap_key"), "F2");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

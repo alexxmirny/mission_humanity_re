@@ -489,56 +489,6 @@ int run_boottest(int argc, char **argv) {
         ck(import(blob, got) == BOOT_OK, "with the latch cleared the same blob imports");
     }
 
-    // ---- 7. the tlo lookup, over the IMPORTED registry --------------------------------------------
-    //
-    // This is what closes sim/libtrans/sim_lt_cfg_planet.cpp's census site: the lookup was always
-    // ours to do, it just had no data of its own. The original @0x004b9582 walks 8 entries with a
-    // case-insensitive compare and RETURNS 1 for anything it does not find -- that fallthrough is
-    // load-bearing (every unknown map gets Jungle), so it is asserted rather than assumed.
-    {
-        // The synthetic arena gave the registry pattern bytes, so the imported names are whatever
-        // the pattern produced; what matters here is the SHAPE. Import a blob whose tlo block we
-        // author directly.
-        uint8_t *mut = static_cast<uint8_t *>(std::malloc(got));
-        std::memcpy(mut, blob, got);
-        int tidx = -1;
-        for (int i = 0; i < BOOT_SNAPSHOT_BLOCK_COUNT; ++i)
-            if (BOOT_SNAPSHOT_BLOCKS[i].rid == RID_TLO_REGISTRY) tidx = i;
-        ck(tidx >= 0, "the tlo registry is a carried block");
-        if (tidx >= 0) {
-            size_t   off = 0;
-            uint32_t len = 0;
-            block_span(blob, tidx, &off, &len);
-            ck(len == TLO_ENTRIES * TLO_ENTRY_LEN, "the tlo block is the DERIVED form, not 72 raw bytes");
-            static const char *kNames[TLO_ENTRIES] = {"Jungle.tlo", "Kam256.tlo", "Metal256.tlo",
-                                                      "Ruins256.tlo", "Ice.tlo", "Lava.tlo",
-                                                      "Sand.tlo", "Snow.tlo"};
-            // INDICES START AT 2, and that is the arm rather than a detail. The original's
-            // fallthrough returns 1, and in the REAL table Jungle's index is also 1 -- so a fixture
-            // that mirrored the real indices could not tell "matched Jungle" from "found nothing",
-            // and the default arm below would pass on an implementation that never matches anything.
-            for (uint32_t i = 0; i < TLO_ENTRIES; ++i) {
-                uint8_t *rec = mut + off + i * TLO_ENTRY_LEN;
-                std::memset(rec, 0, TLO_ENTRY_LEN);
-                std::memcpy(rec, kNames[i], std::strlen(kNames[i]));
-                rec[TLO_NAME_CAP] = static_cast<uint8_t>(i + 2u);
-            }
-            // The header's hash no longer describes this blob; import does not check it (the schema
-            // does), which is deliberate -- content_hash is the ORACLE's value, not an integrity seal.
-            ck(import(mut, got) == BOOT_OK, "import the authored tlo block");
-            ck(tlo_index_for("Jungle.tlo") == 2, "an exact name resolves");
-            ck(tlo_index_for("METAL256.TLO") == 4, "the compare is case-insensitive (upper)");
-            ck(tlo_index_for("snow.tlo") == 9, "the compare is case-insensitive (lower)");
-            ck(tlo_index_for("no_such_map.tlo") == 1,
-               "an unknown name falls through to 1 (Jungle) -- the original's own default");
-            ck(tlo_index_for(nullptr) == 1, "a null name does not crash and answers the default");
-            // A prefix must NOT match: the original compares whole strings.
-            ck(tlo_index_for("Jungle") == 1,
-               "a PREFIX of a real name is not a match (it falls through to the default)");
-        }
-        std::free(mut);
-    }
-
     std::free(blob);
     printf("=== boottest: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;

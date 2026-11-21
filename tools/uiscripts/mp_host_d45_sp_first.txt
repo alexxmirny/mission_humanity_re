@@ -53,12 +53,12 @@ enabled Start
 settled Start
 clickl Start
 
-# land the mother (D35's gesture at 1024x768: shift+right-click = move + deploy); it is down well
+# land the mother (D35's gesture at 1024x768: Ctrl+right-click = move + deploy); it is down well
 # before gameclock 20000, and the deploy books the landing grant into resource_spent on BOTH peers.
 absent Network players
 gamemode 2
 gameclock 3000
-rclick 480 330 shift
+rclick 480 330 ctrl
 gameclock 20000
 signal landed
 
@@ -97,6 +97,8 @@ cursor 80 126
 press 80 126
 release 80 126
 present cold war
+# settle the hover/selection highlight before the frame (mp_host_d36_rematch.txt does; without it the capture raced: red vs yellow row)
+settled Ok
 capture d36_maps_game2
 settled Ok
 clickl Ok

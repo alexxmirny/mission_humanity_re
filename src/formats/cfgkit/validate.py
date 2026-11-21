@@ -36,10 +36,10 @@ def build_registry(model) -> dict:
     units, builds, weaps, plans, progs = (nm(c) for c in
         ("UNIT", "BUILDING", "WEAPON", "PLANET", "PROGRESS"))
     return {
-        "art": sprites | anims, "sprite": sprites, "icon": icons,
-        "define": defines, "invention": defines | progs,
-        "weapon": weaps, "building": builds, "unit_or_bldg": units | builds,
-        "planet": plans, "obj": units | weaps | builds, "progress": progs,
+        "art": sprites | anims, "sprite": sprites, "anim": anims, "icon": icons,
+        "define": defines, "resource_define": defines,
+        "weapon": weaps, "building": builds, "unit": units,
+        "planet": plans, "progress": progs,
     }
 
 
@@ -47,10 +47,12 @@ def _ref_values(rec, field):
     v = rec.get(field)
     if isinstance(v, str):
         return [v] if v else []
-    if isinstance(v, dict):                       # slot_str array
-        return [x for x in v.values() if isinstance(x, str) and x]
-    if isinstance(v, list):                       # DEPEND list
-        return [x for x in v if isinstance(x, str) and x]
+    if isinstance(v, dict):
+        return [x if isinstance(x, str) else x[0] for x in v.values()
+                if isinstance(x, str) and x or isinstance(x, tuple) and x[0]]
+    if isinstance(v, list):
+        return [x if isinstance(x, str) else x[0] for x in v
+                if isinstance(x, str) and x or isinstance(x, tuple) and x[0]]
     return []
 
 
@@ -89,11 +91,17 @@ def validate(model, assets_root=None) -> list:
 
     # ---- per-object: cross-references ----
     for (cls, field), uni in G.REF.items():
-        universe = reg[uni]
         for rec in model.classes.get(cls, []):
+            target = uni
+            if target == "upgrade_object":
+                defines = {}
+                for name, value in model.defines:
+                    defines.setdefault(name, value)
+                target = "unit" if defines.get(rec["type"], 0) == 1 else "weapon"
+            universe = reg[target]
             for ref in _ref_values(rec, field):
                 if ref not in universe:
-                    err(cls, rec["__name__"], field, f"dangling {uni} reference {ref!r}")
+                    err(cls, rec["__name__"], field, f"dangling {target} reference {ref!r}")
 
     # ---- optional asset files ----
     if assets_root:
@@ -115,7 +123,7 @@ def validate(model, assets_root=None) -> list:
         got = len(model.classes[cls])
         if got > cap:
             err(cls, "*", "count", f"{got} objects (game array cap {cap})")
-    frames = sum(r["length"] for r in model.classes["ANIM"])
+    frames = sum(r["length"] * r["repeat"] for r in model.classes["ANIM"])
     if frames > G.ANIM_FRAME_BUDGET:
         err("ANIM", "*", "length", f"anim frame budget {frames} > {G.ANIM_FRAME_BUDGET}")
 

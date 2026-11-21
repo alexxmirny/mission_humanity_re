@@ -16,19 +16,21 @@
  * construction (R8: nothing here may feed hashed sim state), so a drop degrades presentation,
  * never the sim. Single-threaded by design: emits happen on the sim/frame thread only.
  *
- * KINDS grow per LIFT-NOTIFY/SCREEN conversion; each kind documents its a/b/c/d payload here.
- * Adding a kind BUMPS LIBMH_HOST_EVENTS_VERSION (hand-maintained -- bump on any change to
- * this contract: record layout, channel/kind meaning, ordering/overflow semantics). */
+ * KINDS grow per LIFT-NOTIFY/SCREEN conversion; each kind documents its scalar
+ * payload or typed subsurface here. Adding a kind BUMPS LIBMH_HOST_EVENTS_VERSION
+ * (hand-maintained -- bump on any change to record layout, channel/kind meaning,
+ * ordering or overflow semantics). */
 #ifndef LIBMH_HOST_EVENTS_H
 #define LIBMH_HOST_EVENTS_H
 
 #include <stdint.h>
+#include "../../mh_common/include/mh_order_witness.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define LIBMH_HOST_EVENTS_VERSION 0x00010015u
+#define LIBMH_HOST_EVENTS_VERSION 0x00010019u
 
 /* channels (R7) */
 #define LIBMH_EVC_EVENT      1u /* game events: text/sound/alert/progress */
@@ -188,23 +190,11 @@ extern "C" {
 #define LIBMH_EVK_INV_ALL_SPRITE_BANKS    29u /* reload the strategic sprite banks on the way out                                                 * (llm_gfx_load_all_sprite_banks) */
 #define LIBMH_EVK_INV_SPRITE_PIX_OFFSETS  30u /* rebuild the sprite pixel-offset table                                                            * (llm_gfx_sprite_pix_offsets_init) */
 
-/* LIFT-TABLE S3 (2026-09-09): cfg_final_planet_Construct SPLITS -- its sim writes stay in libmh,
- * its per-planet GRAPHICS tail (0x0045b8fe to the end of the body) becomes this one record. The
- * tail's only inputs are the tileset index and the planet slot; its outputs -- Planets[].tlo_index,
- * Planets[].soldier_sprite_bank_offset and the eight cfg_final_planet_FillBankData calls -- are
- * read by renderers and bank loaders only, and LIFT-TABLE S2 has just taken all of them out of the
- * determinism hash, which is what makes a host-owned writer legal here.
- *
- * WHY libmh STILL COMPUTES tlo_index AND THE RECORD CARRIES IT. cfg_GetTloIndex reads
- * map_header.tlo_name -- a STACK LOCAL of the emitting body, filled one line earlier by the host's
- * own cfg_ReadMapFile entry. Passing that pointer would work under mh.dll, whose sink dispatches
- * synchronously at emit, and would DANGLE under a NULL-callback host, which drains at the frame
- * edge with the frame long gone. So the record carries the resolved index (an identity, R4) and
- * the raw VA edge to cfg_GetTloIndex stays where it already belongs, in LIB-BOOT's cfg-snapshot
- * set. */
-#define LIBMH_EVK_INV_PLANET_GFX_SETUP \
-    31u /* a=planet_index, b=tlo_index -- per-planet graphics setup (the tail of                   \
-         * cfg_final_planet_Construct @0x0045b69c) */
+/* The planet graphics event owns its token, including when queued without a sink.
+ * a is the planet slot; b/c/d contain twelve ASCII bytes in little-endian order,
+ * zero-filled after the first NUL. A thirteenth NUL is implicit at the receiver.
+ * No pointer or transient catalog handle crosses this boundary. */
+#define LIBMH_EVK_INV_PLANET_GFX_SETUP 31u
 
 /* LIFT-TABLE S4 (2026-09-09): the planet-map PALETTE block leaves libmh. R1, not R3's internalize
  * branch (section 0a): llm_gfx_pack_rgb16's only libmh caller was the nine-call block at the end of
@@ -303,6 +293,20 @@ extern "C" {
 /* LIFT-TACT slice B. A player pressed the screenshot key; whether that writes a PCX beside the exe,
  * opens a share sheet or does nothing at all is the host's to decide. (llm_tact_save_screenshot) */
 #define LIBMH_EVK_SCREENSHOT_SAVE 22u
+
+/* An actual strategic unit shot, after successful projectile allocation or direct/beam
+ * effect application, never target acquisition or a disabled/full-pool attempt.
+ * a=player, b=shooter unit slot, c=target reference, d=target slot. Presentation only:
+ * dropping/ignoring this record cannot change combat, orders or deterministic state. */
+#define LIBMH_EVK_UNIT_WEAPON_FIRED 23u
+
+/* Owned ORDER observations and their kind constants are defined in mh_order_witness.h.
+ * COMMITTED retains its deferred-executor meaning. Attack BEGIN carries target slot in
+ * unit_index, target player in owner_and_kind and selector in order_code; END is zero.
+ * ADMITTED reports every successful logical origin, not a container transfer. APPLIED and
+ * DISCARDED carry exact logical admission identity; WORLD_RESET starts a new presentation
+ * epoch. PRIMARY_TERMINAL retires completed activity, and MOVE_GROUP_REVOKED withdraws
+ * ambiguous nested-scope grouping without changing the accepted destination. */
 
 /* LIBMH_EVC_SCREEN -- screen/modal orchestration (LIFT-SCREEN). A record here
  * is a REQUEST to open, replace or dismiss a screen; it never answers anything. The modal whose
@@ -489,6 +493,33 @@ uint32_t libmh_poll_events(libmh_event *out, uint32_t max);
 
 /* Records dropped to ring overflow since process start (monotonic). */
 uint32_t libmh_event_overflow_count(void);
+
+/* ---- the ORDER subsurface of on_event ----------------------------------------------------
+ *
+ * Owned command values, never pointers or mutable container indices. Command
+ * headers are canonically decoded; args contains all thirteen command values.
+ * Scheduling time is omitted. STAGING producers decode its integrity encoding.
+ *
+ * All owned order kinds, including group boundaries and lifecycle outcomes, use this
+ * single FIFO in callback and polling modes. This is not another notification channel.
+ * A bound sink consumes synchronously; its record pointer is valid only during
+ * that call. Otherwise a fixed256-entry ring owns the values until polled.
+ * Producer mutation, queue compaction and removal cannot change those values.
+ * Overflow drops newest and increments libmh_event_overflow_count.
+ *
+ * A polling consumer must revoke provenance/group context when that counter
+ * changes. Suppress trust while draining the loss-affected backlog, discard any
+ * open scope at its end, and require a fresh subsequently observed BEGIN: a
+ * retained prefix may contain a BEGIN whose END was dropped.
+ * Binding does not flush backlog; drain it first. Same threading, version and
+ * keep-on-refusal semantics as libmh_set_event_sink. The optional shared store is stable,
+ * host-owned presentation storage, never a game queue pointer. Native and translated
+ * producers share it; null selects the real local owner. It must outlive the binding.
+ */
+int      libmh_set_order_observation_sink(libmh_order_observation_sink sink_or_null,
+                                          uint32_t                     events_version,
+                                          libmh_order_witness_store   *shared_store_or_null);
+uint32_t libmh_poll_order_observations(libmh_order_observation *out, uint32_t max);
 
 /* ---- the TEXT surface (LIFT-NOTIFY, the offscreen conversion's sibling for string payloads) ----
  *

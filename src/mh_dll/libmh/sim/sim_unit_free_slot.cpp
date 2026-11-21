@@ -1,4 +1,5 @@
 #include "sim/sim_unit_free_slot.h"
+#include "sim/sim_order_tasks.h"
 
 #include "ai/ai_state.h" // ai_say / trace_budget -- the shared trace sink, not AI state
 
@@ -58,6 +59,8 @@ void unit_free_slot(sim_store &own, uint32_t player, int32_t slot) {
     // decrement side of the same idiom sim_unit_apply_production_completion.cpp's own header-row
     // decrement documents for the completion path).
     header.order = static_cast<uint16_t>(header.order - kUnitZeroOrderHeaderDecrement);
+    order_tasks_adapter::retire(own, mh::order_tasks::object_kind::unit, player16, uint32_t(slot), false);
+    own.storage_policy(mh::storage_policy::operation::retire_unit, player16, slot);
 }
 
 } // namespace detail

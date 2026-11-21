@@ -55,16 +55,16 @@ namespace mh {
 namespace netudp {
 namespace osq {
 
-constexpr int      ORIGINS      = 8;       // == MH_NET_MAX_PEERS == the lobby's eight slots
-constexpr uint8_t  MAGIC        = 0xC3;    // no lobby/lockstep message type starts with it (<= 0x2x)
-constexpr int      PREFIX_BYTES = 7;       // magic | incarnation(2) | seq(4)
-constexpr uint8_t  CAP_VERSION  = 3;       // the HELLO / WELCOME payload byte (1 = mp:U59 exactly-once layer, 2 = mp:U61 host-migration mesh: a peer that cannot be brokered/probed/ranked is refused, Q5; 3 = mp:U63 crash failover: a peer that cannot speak FO_STATE/REDIRECT would sit out a failover the others run, so it is refused too)
-constexpr int      PAYLOAD_MAX  = 2048;    // == MH_NET_MAX_PAYLOAD (static_assert in udp_endpoint.cpp)
-constexpr uint32_t WINDOW_MS    = 30000;   // retention window (plan section 7.2)
+constexpr int      ORIGINS      = 8;            // == MH_NET_MAX_PEERS == the lobby's eight slots
+constexpr uint8_t  MAGIC        = 0xC3;         // no lobby/lockstep message type starts with it (<= 0x2x)
+constexpr int      PREFIX_BYTES = 7;            // magic | incarnation(2) | seq(4)
+constexpr uint8_t  CAP_VERSION  = 9;            // completed-body participant removal; refuse old simulation semantics before payload
+constexpr int      PAYLOAD_MAX  = 2048;         // == MH_NET_MAX_PAYLOAD (static_assert in udp_endpoint.cpp)
+constexpr uint32_t WINDOW_MS    = 30000;        // retention window (plan section 7.2)
 constexpr uint32_t RING_POOL    = 128u * 1024u; // bytes of retained payload, PER ORIGIN
-constexpr int      RING_ENTRIES = 2048;    // retained frames (or coalesced ranges), PER ORIGIN
-constexpr int      AHEAD_SLOTS  = 16;      // frames waiting above a hole, PER ORIGIN
-constexpr uint32_t GAP_FORCE_MS = 5000;    // default; 0 = never skip a hole
+constexpr int      RING_ENTRIES = 2048;         // retained frames (or coalesced ranges), PER ORIGIN
+constexpr int      AHEAD_SLOTS  = 16;           // frames waiting above a hole, PER ORIGIN
+constexpr uint32_t GAP_FORCE_MS = 5000;         // default; 0 = never skip a hole
 
 // ---- the prefix ---------------------------------------------------------------------------------
 inline void prefix_encode(uint8_t *out, uint16_t inc, uint32_t seq) {
@@ -103,11 +103,11 @@ struct Ring {
     };
     Ent      ent[RING_ENTRIES];
     uint8_t  pool[RING_POOL];
-    int      head;    // index of the oldest entry
-    int      count;   // live entries
-    uint32_t ho;      // pool offset where the oldest live payload starts
-    uint32_t te;      // pool offset one past the newest payload
-    uint8_t  wrapped; // the live bytes are [ho, POOL) + [0, te)
+    int      head;        // index of the oldest entry
+    int      count;       // live entries
+    uint32_t ho;          // pool offset where the oldest live payload starts
+    uint32_t te;          // pool offset one past the newest payload
+    uint8_t  wrapped;     // the live bytes are [ho, POOL) + [0, te)
     uint32_t early_evict; // entries evicted for SPACE while younger than WINDOW_MS (the bound bit)
 
     void clear() {
@@ -115,11 +115,11 @@ struct Ring {
         ho = te = 0;
         wrapped = 0;
     }
-    bool     empty() const { return count == 0; }
+    bool       empty() const { return count == 0; }
     const Ent &at(int i) const { return ent[(head + i) % RING_ENTRIES]; }
     Ent       &at(int i) { return ent[(head + i) % RING_ENTRIES]; }
-    uint32_t oldest_lo() const { return count ? at(0).lo : 0; }
-    uint32_t newest_hi() const { return count ? at(count - 1).hi : 0; }
+    uint32_t   oldest_lo() const { return count ? at(0).lo : 0; }
+    uint32_t   newest_hi() const { return count ? at(count - 1).hi : 0; }
 
     void evict_front() {
         if (count == 0) return;
@@ -142,9 +142,9 @@ struct Ring {
         if (n > RING_POOL) return false;
         for (;;) {
             if (count == 0) {
-                ho = 0;
-                off = 0;
-                te = n;
+                ho      = 0;
+                off     = 0;
+                te      = n;
                 wrapped = 0;
                 return true;
             }
@@ -208,15 +208,15 @@ struct Report {
 
 struct Fetch {
     uint8_t  origin;
-    uint8_t  to_peer; // index into the reports passed to plan(): who needs the frames
-    uint8_t  holder;  // index into the reports: who serves them
+    uint8_t  to_peer;  // index into the reports passed to plan(): who needs the frames
+    uint8_t  holder;   // index into the reports: who serves them
     uint32_t from, to; // inclusive seq range
 };
 
 constexpr int REPORT_WIRE_BYTES = 1 + ORIGINS * 10; // version | per origin: front(4) oldest(4) inc(2)
 
 inline int report_encode(const Report &r, uint8_t *out) {
-    int o = 0;
+    int o    = 0;
     out[o++] = CAP_VERSION;
     for (int i = 0; i < ORIGINS; ++i) {
         for (int b = 0; b < 4; ++b) out[o++] = (uint8_t)(r.front[i] >> (8 * b));
@@ -241,8 +241,8 @@ inline bool report_decode(const uint8_t *in, int len, Report &r) {
 
 // One served range on the wire (a batch is these back to back): origin(1) inc(2) lo(4) hi(4) len(2) bytes.
 constexpr int RANGE_HDR_BYTES = 13;
-inline int range_encode(uint8_t *out, int cap, int origin, uint16_t inc, uint32_t lo, uint32_t hi,
-                        const uint8_t *data, int len) {
+inline int    range_encode(uint8_t *out, int cap, int origin, uint16_t inc, uint32_t lo, uint32_t hi,
+                           const uint8_t *data, int len) {
     if (cap < RANGE_HDR_BYTES + len) return 0;
     out[0] = (uint8_t)origin;
     out[1] = (uint8_t)(inc & 0xff);
@@ -310,12 +310,12 @@ inline int plan(const Report *rep, int n, Fetch *out, int cap, bool *unrecoverab
                 continue;
             }
             if (nf < cap) {
-                Fetch &f   = out[nf];
-                f.origin   = (uint8_t)o;
-                f.to_peer  = (uint8_t)p;
-                f.holder   = (uint8_t)h;
-                f.from     = rep[p].front[o] ? rep[p].front[o] + 1 : rep[h].oldest[o];
-                f.to       = best;
+                Fetch &f  = out[nf];
+                f.origin  = (uint8_t)o;
+                f.to_peer = (uint8_t)p;
+                f.holder  = (uint8_t)h;
+                f.from    = rep[p].front[o] ? rep[p].front[o] + 1 : rep[h].oldest[o];
+                f.to      = best;
                 ++nf;
             } else if (unrecoverable) {
                 *unrecoverable = true; // the caller's buffer was too small: refuse rather than half-plan
@@ -327,14 +327,14 @@ inline int plan(const Report *rep, int n, Fetch *out, int cap, bool *unrecoverab
 
 // ---- the layer ----------------------------------------------------------------------------------
 struct Counters {
-    long delivered;      // frames handed to the application, once each
-    long dup;            // arrivals below the frontier (already delivered)
-    long ahead;          // arrivals buffered above a hole
-    long ahead_dropped;  // arrivals the ahead buffer had no room for (reconcile refetches them)
-    long gap_skipped;    // holes skipped by the gap timeout (normal play: ZERO)
-    long resets;         // origin restarts (a new incarnation)
-    long legacy_refused; // peers refused for lacking the layer (counted by the endpoint)
-    long early_evict;    // retention evictions of frames younger than the window (the bound biting)
+    long delivered;                       // frames handed to the application, once each
+    long dup;                             // arrivals below the frontier (already delivered)
+    long ahead;                           // arrivals buffered above a hole
+    long ahead_dropped;                   // arrivals the ahead buffer had no room for (reconcile refetches them)
+    long gap_skipped;                     // holes skipped by the gap timeout (normal play: ZERO)
+    long resets;                          // origin restarts (a new incarnation)
+    long legacy_refused;                  // peers refused for lacking the layer (counted by the endpoint)
+    long early_evict;                     // retention evictions of frames younger than the window (the bound biting)
     long skip_origin, skip_from, skip_to; // mp:U63 diagnostics: the last hole skipped (origin, [from, to))
 };
 
@@ -347,17 +347,17 @@ struct Layer {
         uint8_t  data[PAYLOAD_MAX];
     };
     struct Origin {
-        uint8_t  have;     // a sequence is established for this origin
+        uint8_t  have; // a sequence is established for this origin
         uint16_t inc;
-        uint32_t next;     // remote: next seq to deliver. local: next seq to assign
-        uint32_t ahead_t;  // tick the oldest waiting frame arrived (0-free: see ahead_n)
+        uint32_t next;    // remote: next seq to deliver. local: next seq to assign
+        uint32_t ahead_t; // tick the oldest waiting frame arrived (0-free: see ahead_n)
         int      ahead_n;
         Ring     ring;
         Ahead    ahead[AHEAD_SLOTS];
     };
     Origin   o[ORIGINS];
     uint16_t my_inc;
-    int      local;        // this endpoint's own origin id, or -1
+    int      local; // this endpoint's own origin id, or -1
     uint32_t gap_force_ms;
     Counters c;
 
@@ -379,7 +379,7 @@ struct Layer {
     }
     // The origin id this endpoint sends as. A host-assign client learns it from WELCOME, after
     // start(); frames for that origin arriving later are our own and are dropped as duplicates.
-    void set_local(int id) { local = (id >= 0 && id < ORIGINS) ? id : -1; }
+    void     set_local(int id) { local = (id >= 0 && id < ORIGINS) ? id : -1; }
     uint16_t incarnation() const { return my_inc; }
     Counters counters() const {
         Counters r = c;
@@ -405,7 +405,10 @@ struct Layer {
     }
 
     // ---- receive side ----
-    enum class Rx { Delivered, Duplicate, Ahead, Dropped };
+    enum class Rx { Delivered,
+                    Duplicate,
+                    Ahead,
+                    Dropped };
 
     // One frame (or one coalesced range [lo, hi] from a reconcile) from `origin`. `sink` is called as
     // sink(origin, data, len) for every frame that becomes deliverable, in order; the return says what
@@ -483,7 +486,7 @@ struct Layer {
                 c.skip_origin = i;
                 c.skip_from   = (long)g.next;
                 c.skip_to     = (long)lowest;
-                g.next = lowest;
+                g.next        = lowest;
             }
             drain_ahead(i, g, now, sink);
             if (g.ahead_n) g.ahead_t = now ? now : 1;
@@ -544,7 +547,7 @@ private:
                 } else if (a.lo <= g.next) {
                     // copy out first: the sink may re-enter nothing, but a slot must not be live while
                     // its bytes are being handed over and the ring is being written
-                    uint8_t  tmp[PAYLOAD_MAX];
+                    uint8_t   tmp[PAYLOAD_MAX];
                     const int n = a.len;
                     if (n) memcpy(tmp, a.data, (size_t)n);
                     const uint32_t hi  = a.hi;

@@ -53,7 +53,7 @@
 //                                would be a wait that never ends -- the degradation turning into a
 //                                freeze. 1 means "there is nothing left to settle", which is true.
 //   MH_Net_ActivePeerIds    0    no ids written
-//   MH_Net_TakeDeadPeer    -1    "-1 if none pending"
+//   MH_Net_DeadPeerMask     0    no current transport-death declarations
 //   MH_Net_GetStats         -    zero-fills *out; every field is a counter and 0 is its value.
 //                                mp:T3's lat_supported is 0 for the same reason it is 0 on the TCP
 //                                module: nothing measured this link, which is a different claim
@@ -116,7 +116,7 @@ extern "C" {
 // three symbols", which is the same fact told as a version rather than as a diff. Both orders are
 // safe; the version is the one a player's bug report can quote.
 #define MH_NET_MODULE_ABI \
-    0xF4B0000Cu // bumped at mp:U71: MH_Net_SetSpectator added (row 35); mp:U63 added MH_Net_SetInMatch (row 34); mp:U62 added HubLeave / HubStatus / Rehome (rows 31-33)
+    0xF4B00011u // current death declarations replace destructive one-peer intake; reconnect cancellation
 
 // What mh.dll hands the module at bind time. ONE FIELD TODAY, and it is the whole of Q1's residue:
 // run_context.cpp stays mh.dll-side (F4 ruling Q1 -- 11 of its 13 consumers are core/harness, and
@@ -236,6 +236,9 @@ int MH_Net_SnapshotCancel(int dst_player);
       { return 0; })                                                                                \
     X(int, MH_Net_Recv, (int *out_sender, void *buf, int *inout_len), (out_sender, buf, inout_len), \
       { return 0; })                                                                                \
+    X(int, MH_Net_RecvExcept,                                                                       \
+      (int *out_sender, void *buf, int *inout_len, const int *blocked_senders, int blocked_count),  \
+      (out_sender, buf, inout_len, blocked_senders, blocked_count), { return 0; })                  \
     X(int, MH_Net_PeerCount, (void), (), { return 0; })                                             \
     X(int, MH_Net_LocalPlayerId, (void), (), { return -1; })                                        \
     X(int, MH_Net_IdAssigned, (void), (), { return 1; })                                            \
@@ -244,7 +247,7 @@ int MH_Net_SnapshotCancel(int dst_player);
         (void)cap;                                                                                  \
         return 0;                                                                                   \
     })                                                                                              \
-    X(int, MH_Net_TakeDeadPeer, (void), (), { return -1; })                                         \
+    X(int, MH_Net_DeadPeerMask, (void), (), { return 0; })                                          \
     X(int, MH_Net_IsStarted, (void), (), { return 0; })                                             \
     X(void, MH_Net_GetStats, (MH_NetStats * out), (out), {                                          \
         if (out) {                                                                                  \

@@ -1,0 +1,50 @@
+{%- if standalone -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+{{ css|safe }}
+</style>
+</head>
+<body class="tt-body">
+{%- endif %}
+<section class="tt-wrap" id="tt-{{ faction }}" data-faction="{{ faction }}">
+  <header class="tt-head">
+    <h1>{{ title }}</h1>
+    <p class="tt-sub">{{ counts.nodes }} {{ ui.n_nodes }}, {{ counts.edges }} {{ ui.n_links }}, {{ counts.ranks }} {{ ui.n_ranks }}
+      <span class="tt-sub-note">({{ ui.rule }})</span></p>
+  </header>
+  <div class="tt-legend" role="list" aria-label="{{ ui.legend }}">
+    {% for k in ["unit", "building", "project", "upgrade", "planet", "system"] -%}
+    <span class="tt-key k-{{ k }}" role="listitem"><i class="tt-swatch"></i>{{ ui[k] }}</span>
+    {% endfor -%}
+    <span class="tt-key gate" role="listitem"><i class="tt-swatch dash"></i>{{ ui.gate }}</span>
+    <span class="tt-key derived" role="listitem"><i class="tt-swatch dot"></i>{{ ui.derived }}</span>
+  </div>
+  <div class="tt-tools">
+    <button type="button" data-zoom="out" title="{{ ui.zoom_out }}" aria-label="{{ ui.zoom_out }}">{{ ui.zoom_out }}</button>
+    <button type="button" data-zoom="in" title="{{ ui.zoom_in }}" aria-label="{{ ui.zoom_in }}">{{ ui.zoom_in }}</button>
+    <button type="button" data-zoom="fit">{{ ui.fit }}</button>
+    <span class="tt-help">{{ ui.help }}</span>
+  </div>
+  <div class="tt-info" id="tt-info-{{ faction }}" aria-live="polite"></div>
+  <div class="tt-scroll">
+{{ svg|safe }}
+  </div>
+  <div class="tt-card" hidden></div>
+  <script type="application/json" class="tt-data">{{ data_json|safe }}</script>
+  <script type="application/json" class="tt-ui">{{ ui_json|safe }}</script>
+</section>
+{%- if standalone %}
+<script>
+{{ js|safe }}
+</script>
+</body>
+</html>
+{%- else %}
+<link rel="stylesheet" href="{{ asset_prefix }}techtree.css">
+<script src="{{ asset_prefix }}techtree.js" defer></script>
+{%- endif %}

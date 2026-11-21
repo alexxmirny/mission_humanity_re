@@ -1,0 +1,31 @@
+# Matching TILESET1 peers: select the custom map, wait for a real JOIN and start.
+settled value:110
+clickv 110
+present Player name
+settled Ok
+clickl Ok
+settled Create
+clickl Create
+present Game name
+settled Ok
+clickl Ok
+present Available maps
+settled Ok
+pickpage 1
+capture tileset_mp_picker
+clickl Ok
+present Network players
+peers 1
+occ 2
+awaitsignal lobby
+settled Start
+capture tileset_mp_lobby
+enabled Start
+clickl Start
+absent Network players
+gamemode 2
+gameclock 6000
+capture tileset_mp_world
+gameclock 16000
+log TILESET1 matching peers started
+end

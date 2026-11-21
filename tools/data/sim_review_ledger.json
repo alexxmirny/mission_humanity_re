@@ -624,13 +624,13 @@
   "by": "grandfather backfill (conductor session, 2026-08-26)",
   "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
  },
- "llm_unit_transport_unload_field": {
+ "llm_unit_squad_split_field": {
   "disposition": "exempt",
   "session": "",
   "by": "grandfather backfill (conductor session, 2026-08-26)",
   "note": "grandfathered -- verified before the review ledger landed 2026-08-26; evidence in the session reports/commits up to that date"
  },
- "llm_unit_transport_unload_docked": {
+ "llm_unit_squad_split_docked": {
   "disposition": "exempt",
   "session": "",
   "by": "grandfather backfill (conductor session, 2026-08-26)",

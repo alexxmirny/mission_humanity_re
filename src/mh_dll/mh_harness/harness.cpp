@@ -1,3 +1,4 @@
+#include "strategic_journal_profile.h"
 //
 // Determinism replay harness -- see include/mh_harness_export.h and the replay-harness notes.
 //
@@ -25,6 +26,8 @@
 #include <float.h>
 #include <stddef.h> // offsetof -- the mask offsets come from the generated struct mirrors
 #include <stdint.h>
+#include <cstdlib>
+#include <cstring>
 #include <intrin.h> // _ReturnAddress -- Sect. 9j rand call-site attribution
 
 #include "include/mh_harness_export.h"
@@ -66,14 +69,18 @@
 #include "state/world_fixup.h"              // mp:X3a: fixup_summarize -- INLINE readers, so no contract row
 #include "state/region_view.h"              // ST6: a slice emits itself into a sink (hash / seed / poke)
 #include "desync/desync_watch.h"            // D21: hand the per-step hash to the runtime desync detector
-#include "en_guard.h"                       // EN-only build gate
-#include "hook/hookpoint.h"                 // D5: the named hook points -- the harness arms ONLY through these
-#include "hook/promoted.h"                  // C9/D18: promoted_owner_of -- displaced is not the same as MISMATCHED
-#include "tact/tact_journal.h"              // TACT-REC: which seam calls are the PLAYER's
-#include "save/save_live.h"                 // SV1-P: the in-game load triggers (loadgame_at / load_at)
-#include "orders/order_queue.h"             // D18: set_suppress_enqueue -- the replay neuter's promoted path
-#include "config1.h"                        // mp:D29: configuration (1) -- the spine-free arm's guards + refusals
-#include "hash_kind.h"                      // tooling:TL-HARN-INCHASH: hash_kind 1 (FNV walk) | 2 (incremental core)
+#include "ui/target_line_intents.h"
+#include "en_guard.h"           // EN-only build gate
+#include "hook/hookpoint.h"     // D5: the named hook points -- the harness arms ONLY through these
+#include "hook/promoted.h"      // C9/D18: promoted_owner_of -- displaced is not the same as MISMATCHED
+#include "tact/tact_journal.h"  // TACT-REC: which seam calls are the PLAYER's
+#include "save/save_live.h"     // SV1-P: the in-game load triggers (loadgame_at / load_at)
+#include "orders/order_queue.h" // D18: set_suppress_enqueue -- the replay neuter's promoted path
+#include "mh_order_stream.h"
+#include "config1.h"   // mp:D29: configuration (1) -- the spine-free arm's guards + refusals
+#include "hash_kind.h" // tooling:TL-HARN-INCHASH: hash_kind 1 (FNV walk) | 2 (incremental core)
+#include "include/mh_storage_policy_save_layout.h"
+#include "include/mh_order_tasks.h"
 
 // Per-EVENT temporal trace (net_seams.cpp): sim_step is harness-hooked (not tracer-hookable), so mark
 // the step boundary here. No-op unless [trace] temporal=1 + SESSION_MODE==3. id 5 = TEV_SIMSTEP.
@@ -102,6 +109,7 @@ struct horizon_hold {
 // determinism run is ended by its runner from outside, which no exit seam survives, so without this
 // no determinism run ever wrote the desync/queue rollups or SESSION_END. seams/session_close_plan.h.
 extern "C" void MH_Session_HarnessStop(unsigned step);
+extern "C" int  MH_LobbySpeed_ReplayEnter(int recorded_percent);
 extern "C" void MH_Seam_LeaveForExit(void); // mp:U62 -- mh.dll's WM_DESTROY leave seam: a hub hands the transport over
 
 #if defined(_M_IX86) // x86-only: inline naked trampolines + absolute exe VAs (mh.exe is 32-bit)
@@ -167,7 +175,7 @@ inline uintptr_t ADDR_ORDER_PENDING() { // [1000] scheduled lockstep cmd buffer 
 inline uintptr_t ADDR_ORDER_PCOUNT() { // == the "order_pending" hash region
     return mh::state::live_base(mh::state::RID_STRAT_ORDER_PENDING_COUNT);
 }
-constexpr int ORDER_SIZE = 0x44; // sizeof(llm_strat_order)
+constexpr int ORDER_SIZE = 0x44;  // sizeof(llm_strat_order)
 constexpr int ORDER_QCAP = 4096;  // the LARGEST queue (static buffers); the live bound is order_qcap()
 constexpr int ORDER_PCAP = 32768; // ORDER_PENDING slot count, largest
 // SIM1-P clause 8: the THIRD order region, and the one order_log never polled. Same llm_strat_order
@@ -621,26 +629,12 @@ struct Config {
                                      // desync without a re-run. Set 1 for MP runs where a desync may appear.
     int order_mode = 0;              // Phase 2 order record/replay: 0=off, 1=record (dispatch->mh_orders.bin),
                                      // 2=replay (mh_orders.bin->queue each step). See the replay-harness notes.
-    int replay_ai_off = 0;           // replay only: zero every player's ai_enabled once at start so ONLY the
-                                     // recorded orders drive the sim (else the deterministic AI re-issues+doubles).
-    int replay_suppress_enqueue = 0; // replay only: neuter the immediate-lane enqueue (return 0, add
-                                     // nothing) AT THE SINK -- mh::orders::detail::enqueue, so the
-                                     // game's entry AND every rebound libmh-internal caller are
-                                     // covered, plus a byte neuter of the original entry when the
-                                     // container is not promoted. See MH_Harness_LateArm.
-    // mp:D37b. replay only: at order_queue_dispatch ENTRY -- the exact point the recorder snapshots --
-    // make the queue equal the recorded snapshot for this step (records copied, count = n, 0 included).
-    // Meant WITH replay_suppress_enqueue=0: every enqueue then runs for real (the AI and the sim get
-    // their true return values), orders a handler appends DURING the pass extend it as in the
-    // recording, and whatever the replay put in the queue before dispatch is replaced by what the
-    // recorded peer actually dispatched. The suppression cannot do that: a handler's same-pass
-    // enqueue never reaches the recorder's snapshot, so under the neuter it is simply lost. See
-    // order_replay_dispatch_replace.
+    int replay_lobby_speed_pct  = 0; // explicit metadata: 0=native campaign, 100..200=frozen match
+    int replay_ai_off           = 0; // nonzero is explicitly refused for MHOR v2
+    int replay_suppress_enqueue = 0; // nonzero is explicitly refused for MHOR v2
+    // Both exact input phases are required: HASH at the hash sample; ENTRY after AI,
+    // before the actual count gate. Real AI/enqueues and in-pass appends run normally.
     int replay_dispatch_inject = 0;
-    // replay diagnostics: how many differing dispatch entries to log (default 16), and whether to dump
-    // the live (pre-replace) and recorded records of each logged entry -- the replay's own AI orders vs
-    // the recording's, the first-AI-order-mismatch oracle of a seedless field recording.
-    int dinj_log_max = 16;
     // storage-exit probe (observe-only): every `garage_probe_every` steps in [from,to], log player
     // `garage_probe_player`'s storage slot `garage_probe_slot`: door mutex/waiters, the building's
     // online/built/eff, the player's population ledger (llm_strat_pop_stats, not hashed) and
@@ -650,7 +644,11 @@ struct Config {
     int garage_probe_from   = 0;
     int garage_probe_to     = 0;
     int garage_probe_every  = 50;
-    int dinj_log_orders     = 0;
+    // Passive wide-roster witness plus optional external-only movement-edit delivery.
+    // Never replace the AI/derived queue: mode0, real native enqueue at post-AI.
+    char patrol_watch_file[MAX_PATH] = "";
+    char patrol_input_file[MAX_PATH] = "";
+    int  patrol_watch_from = 1, patrol_watch_to = 0;
     // mp:D37b. replay only: the local player slot (PlayerSide) the replay plays as, written right
     // after the step-1 seed inject. -1 = leave whatever the replay's own lobby walk seated (slot 0).
     // PlayerSide is not in any hash region, so the seed cannot carry it: a recording made on slot 1
@@ -1067,31 +1065,31 @@ struct Config {
     int cap_enemy_r = 14;
     // PT-CAP10 second army: cap2_player >= 0 fills THAT player the same way (cap2_plant plants, then cap2_turret turrets of cap_turret_n's family) on the
     // fill lattice shifted by half a cell and by cap2_off_x/cap2_off_y tiles around cap_player's centre, so both sides' turrets have the other's buildings in reach.
-    int cap2_player  = -1;
-    int cap2_plant   = 20;
-    int cap2_turret  = 100;
-    int cap2_off_x   = 0;
-    int cap2_off_y   = 0;
-    int cap2_targets = 200; // relays each target army keeps standing
-    int cap2_powered = 0;   // 1: the second player also gets a POWERED grid at its own mother, with the first player's relays around it as targets
-    int cap_bldg_floor = 0; // > 0: during the hold the PLAIN building count (cap_bldg) may fall to this floor (an AI base loses a building to the match); the sub-rosters (storage/turret/mine/lab/prod/plant) may not fall at all
-    int cap_immortal = 0;   // 1: cap_player's buildings are held at full energy every step (the immortal-target idiom of the PT-FIX2 fixture)
-    int cap_pop_ev   = 0;   // > 0: re-issue the population grant every cap_pop_ev steps (the workers of a 100-turret grid drain away otherwise)
-    int cap_pop      = 0;   // population (workers) added to cap_player through the game's own debug order 0xec when the fixture starts
-    int cap_sample   = 500; // sample cadence (steps)
+    int cap2_player    = -1;
+    int cap2_plant     = 20;
+    int cap2_turret    = 100;
+    int cap2_off_x     = 0;
+    int cap2_off_y     = 0;
+    int cap2_targets   = 200; // relays each target army keeps standing
+    int cap2_powered   = 0;   // 1: the second player also gets a POWERED grid at its own mother, with the first player's relays around it as targets
+    int cap_bldg_floor = 0;   // > 0: during the hold the PLAIN building count (cap_bldg) may fall to this floor (an AI base loses a building to the match); the sub-rosters (storage/turret/mine/lab/prod/plant) may not fall at all
+    int cap_immortal   = 0;   // 1: cap_player's buildings are held at full energy every step (the immortal-target idiom of the PT-FIX2 fixture)
+    int cap_pop_ev     = 0;   // > 0: re-issue the population grant every cap_pop_ev steps (the workers of a 100-turret grid drain away otherwise)
+    int cap_pop        = 0;   // population (workers) added to cap_player through the game's own debug order 0xec when the fixture starts
+    int cap_sample     = 500; // sample cadence (steps)
     // ---- patching:PT-CAP9-U1/U2: THE UNIT-FILL FIXTURE (2026-10-21) -----------------------------------------------------------
     // The ON smoke of the v0.2.3 units/soldiers raise. Once player capu_player's mother has landed and step >= capu_at, it creates units
     // through the game's OWN debug order 0xeb (create_unit_debug -> the unit allocator, i.e. the raised limit bytes) of cfg prototype capu_proto,
     // capu_batch per step, on a ring lattice around the mother, until the player owns capu_units live units (slot 0 is the header, so the
     // most a 500-wide row holds is 499). Every unit carries crew SOLDIER records, so the soldier roster fills with them. Then it holds capu_hold
     // steps and logs `; CAPU VERDICT ...`; progress is sampled every capu_sample steps (`; CAPU ...`). 0 = off. The owner peer issues; every peer reads.
-    int capu_at     = 0;
-    int capu_player = 0;
+    int capu_at       = 0;
+    int capu_player   = 0;
     int capu_soldiers = 480; // soldier (crew) records the crewed orders aim at; the soldier row holds 499
-    int capu_units  = 490; // the debug order goes through llm_unit_create_soldier, whose recruit cap (units[p][0].order + 1 < 91 -> 491 raised) leaves slots 1..490
-    int capu_proto  = 34;  // cfg index + 1 of the plain filler unit (34 = CONQ_SOLDIER: no crew); the crewed unit is picked at start
-    int capu_batch  = 20;
-    int capu_hold   = 3000;
+    int capu_units    = 490; // the debug order goes through llm_unit_create_soldier, whose recruit cap (units[p][0].order + 1 < 91 -> 491 raised) leaves slots 1..490
+    int capu_proto    = 34;  // cfg index + 1 of the plain filler unit (34 = CONQ_SOLDIER: no crew); the crewed unit is picked at start
+    int capu_batch    = 20;
+    int capu_hold     = 3000;
     // PT-CAP9-U6: capu_maxr > 0 shrinks the ring lattice to Chebyshev rings 1..capu_maxr (default CAPU_MAXR = 24), so a box over the view holds the whole army.
     int capu_maxr   = 0;
     int capu_sample = 500;
@@ -1101,8 +1099,8 @@ struct Config {
     // capu_ai_hammer = 1, once the unit target is met and 300 steps have run, drives the game's OWN scratch writers with the AI's units: every live unit
     // through llm_strat_ai_attack_candidate_add (the candidate list grows to the unit count; the count is put back to 0, as the AI does at the start of each
     // group pass) and the largest AI group through llm_strat_ai_group_task_disperse_passable (the member-list copy into the group scratch). Raise ON only.
-    int capu_issue      = -1;
-    int capu_ai_hammer  = 0;
+    int capu_issue     = -1;
+    int capu_ai_hammer = 0;
     // capu_ai_hammer_stop = 1: write the VERDICT line and finish the fixture (no capu_hold soak) right after the AIHAMMER census. The negative arm (vanilla arrays) must not play on
     // for minutes: the gathered units are put back in their groups, but a vanilla array that was overrun is not a state to keep simulating. The UI script
     // (cap_ai_solo_off.txt) ends a few game seconds later.
@@ -1111,7 +1109,7 @@ struct Config {
     // destroys an idle opponent in minutes, and the retail attack tasks (llm_strat_ai_group_task_attack_nearest_defended, _drain_reserve_attack) then index player
     // -1 -- they look for a hostile player with a standing building and, finding none, pass the "not found" marker as a player (a retail latent fault at 0x004e98e6
     // that a real match never reaches because the last building ends it). -1 = off.
-    int capu_guard      = -1;
+    int capu_guard = -1;
     // PT-CAP9-U6: capu_sel = 1 watches the control-group table around a box select over more than 200 own units (the UI script does the drag). When the unit
     // target is met it plants a known pattern in control groups 1 and 2 (count + ids), and every capu sample logs `; CAPSEL ...`: group 0's count (the
     // selection: the game's cap is 200 ids per record) and whether groups 1 and 2 still hold exactly the planted bytes (the record after group 0 is where
@@ -1128,30 +1126,30 @@ struct Config {
     // peer counts the units whose goal (+0x86/+0x87) equals it -- orders APPLIED, not displacement -- and logs `; CAPO VERDICT ...`. capo2_player (>= 0) is a second burst of another player in the SAME
     // step (the other peer's own roster). capo_issue: -1 = the owner rule (this peer's side == the burst's player), 1 = this peer always (the AI
     // /solo player), 0 = never. 0 = off.
-    int capo_at     = 0;
-    int capo_player = 0;
-    int capo_n      = 500;
-    int capo_wait   = 40;
-    int capo_issue  = -1;
+    int capo_at      = 0;
+    int capo_player  = 0;
+    int capo_n       = 500;
+    int capo_wait    = 40;
+    int capo_issue   = -1;
     int capo2_player = -1;
     int capo2_n      = 500;
-    int capo_seed   = 7;
+    int capo_seed    = 7;
     // PT-CAP9-U7c: capo_save = 1 takes a game_SaveGame (cap_save_name) in the FIRE step, right after the burst's orders are enqueued and before the next sim
     // step drains the queue -- the file holds the burst (up to capo_n queue records, 450 in the shipped row). capo_save_gap = N loads it back N steps later (the
     // queue has drained and the stock mirror no longer equals the file, as in path_save_gap); the verdict then waits capo_wait steps from the LOAD. `; CAPO SAVE|LOAD ...`.
     int capo_save     = 0;
     int capo_save_gap = 20;
-    int capo_kind   = 1; // 0 = move orders (goal fields; needs the raised path-slot pool), 1 = ctrl-group status-bit orders (0x34: bit 15 of ai_group_index, no pathing) each followed by its 0xfb echo
+    int capo_kind     = 1; // 0 = move orders (goal fields; needs the raised path-slot pool), 1 = ctrl-group status-bit orders (0x34: bit 15 of ai_group_index, no pathing) each followed by its 0xfb echo
     // patching:PT-CAP9-U4: the 500-paths fixture. After the capu fill reached HOLD/DONE (so capu_at must be set), player path_player's live units
     // are sent, path_batch at a time every path_gap steps, to one walkable tile >= path_dist BFS tiles from the mother; the pool is sampled
     // every step (`MH_Caps_PathCensus`) and `; PATH VERDICT ...` is logged path_hold steps after the last batch. 0 = off.
-    int path_at    = 0;
+    int path_at     = 0;
     int path_player = 0;
-    int path_units = 500; // units ordered (clamped to the live roster)
-    int path_batch = 100;
-    int path_gap   = 10;
-    int path_dist  = 60;
-    int path_hold  = 1500;
+    int path_units  = 500; // units ordered (clamped to the live roster)
+    int path_batch  = 100;
+    int path_gap    = 10;
+    int path_dist   = 60;
+    int path_hold   = 1500;
     // PT-CAP9-U7b: path_save = 1 takes a game_SaveGame + llm_game_load round trip IN ONE STEP at the first step where path_player holds >= path_save_hold
     // paths and a held id >= path_save_id (the pool at its peak). `; PATH SAVE before|after ...` lines carry the pool digests and the per-player census;
     // tools/check_cap_path.py --save judges. The run then goes on to the usual verdict (arrivals after the load).
@@ -1160,7 +1158,7 @@ struct Config {
     int path_save_id   = 300;
     // path_save_gap = N loads the file back N steps AFTER the save (the world has moved on, so the stock path mirror no longer equals the file: the
     // load-order bug of the pre-U7b build only shows then -- a same-step round trip re-reads the very bytes the mirror already holds). 0 = same step.
-    int path_save_gap  = 0;
+    int path_save_gap = 0;
     // PT-CAP9-U4f: path_tact = 1 takes a TACTICAL ROUND TRIP at the same peak trigger as path_save (path_save_hold / path_save_id): from the present hook (between
     // frames, not inside a sim step) it snapshots the pool, saves the planet (map_SavePlanetToDisk, the retail entry's step), enters a tactical mission
     // (llm_tact_mission_start, the original body the --tactical verb enters), lets path_tact_frames tactical frames run (the mission overwrites row 0 slots 1..99 and resets their flags),
@@ -1176,10 +1174,10 @@ struct Config {
     // bits=.. goal_changed=.. tracked=.. q=.. p=.. s=..`: per group the unit count, the units of groups 1..3 whose ai_group_index carries the group's own bit (the status-bit
     // order select_member(unit, N) APPLIED), the units of groups 1..3 whose goal moved since the snapshot (a move order APPLIED), and the three order-array counts.
     // capg_dump = S logs the units' tile positions once at step S (`; CAPG POS`), to place the script's selection boxes. tools/check_cap_orders_ui.py judges.
-    int capg_at     = 0;
-    int capg_every  = 50;
-    int capg_player = -1;
-    int capg_dump   = 0;
+    int capg_at         = 0;
+    int capg_every      = 50;
+    int capg_player     = -1;
+    int capg_dump       = 0;
     int capg_dump_every = 0; // > 0: capg_dump repeats every this many steps, 8 times
     int capg_sel_dump   = 0; // 1 = every step, when the selection count (control group 0) changed: `; CAPG SEL` lists every unit's tile and whether it is selected (box calibration)
     // PT-CAP11: cap_player is an AI slot. The fixture's orders (0xf2 placements, 0xec population) are issued by the peer whose local player IS
@@ -1321,9 +1319,9 @@ struct Config {
     int nd_fcn   = 16;
     // ---- mods:M1BE: the door-queue fixture F21 (door_tick): nd_door 1 = infantry ordered into a barracks of nd_player; starts at nd_door_at (0 = off);
     // nd_fcn soldiers (4..40), nd_tail steps after the order.
-    int nd_door    = 0;
+    int nd_door = 0;
     int nd_sgx = -1, nd_sgy = -1; // mods:M1WL: the stream goal tile (-1 = the first clear 5x5 on a ring of radius 30..18 round the door)
-    int nd_stream  = 0; // mods:M1WL: 1 = after the F21 units are docked, order them out to open ground ~30 tiles away and measure the stream (ST lines)
+    int nd_stream  = 0;           // mods:M1WL: 1 = after the F21 units are docked, order them out to open ground ~30 tiles away and measure the stream (ST lines)
     int nd_door_at = 0;
     // ---- mp:U75: nd_door = 4 is the garage-exit corner fixture (door_tick): after the soldiers dock, a diamond wall of radius qf_r is raised round the exit
     // tile and every soldier is undocked at once; qf_tail = the most steps watched after the order.
@@ -1426,17 +1424,21 @@ char g_world_out[MAX_PATH]; // LIB-WORLD: the step-0 world blob, in the run fold
 char g_orders_path[MAX_PATH], g_orders_out[MAX_PATH];
 
 // ---- order record/replay state ------------------------------------------------------------------
-struct OrderRec {
-    uint32_t step;
-    uint8_t  order[ORDER_SIZE];
-}; // on-disk + in-memory record (0x48 B)
-constexpr uint32_t ORDERS_MAGIC         = 0x524f484du; // "MHOR"
-bool               g_rec_post_stop_done = false;       // mp:LOG2: the one post-stop dispatch has been recorded
-bool               g_rec_open           = false;       // mp:LOG2: record-mode stream created (lazy; the sink's writer owns the file)
-OrderRec          *g_replay             = nullptr;     // replay buffer (VirtualAlloc)
-uint32_t           g_replay_n           = 0;           // records loaded
-uint32_t           g_replay_i           = 0;           // cursor (records are step-sorted)
-bool               g_ai_zeroed          = false;
+namespace os          = mh::order_stream;
+bool       g_rec_open = false;
+uint8_t   *g_replay   = nullptr;
+os::reader g_order_reader;
+uint32_t   g_replay_hashes = 0, g_replay_entries = 0;
+bool       g_order_phase_pending = false;
+uint32_t   g_record_last_step = 0, g_record_hash_step = 0;
+uint8_t    g_order_pair[2 * (os::SAMPLE_HEADER_BYTES + ORDER_QCAP * ORDER_SIZE)];
+size_t     g_order_pair_bytes = 0;
+// A successful live import ends these continuous files, not the configured mode or observers.
+bool     g_capture_active    = true;
+uint64_t g_record_clock_bits = 0;
+uint32_t g_record_clock_step = 0;
+
+void capture_close_world_import(unsigned imported_step);
 
 // ---- clock track (record/replay the per-step game clock) -----------------------------------------
 // A real-time (fixed_step=0) recording advances the clock by the variable per-frame delta, NOT a fixed
@@ -1482,10 +1484,13 @@ uint32_t g_step = 0; // sim step counter (increments before hashing; first hashe
 // as its opponent; with no segment (or step_base 0) mstep() == g_step and nothing changes.
 uint32_t        g_match_base = 0;
 inline uint32_t mstep() { return g_step - g_match_base; }
-bool            g_ws_rehash       = false; // mp:X3c: a world resync import replaced the world under this step's already-taken hash
-uint32_t        g_ws_replay_until = 0;     // mp:X3c: the workloads already ran for steps <= this before the import rewound g_step
-bool            g_active          = true;  // logging enabled (HSTOP/HGO toggle via console)
-bool            g_seed_done       = false;
+bool            g_ws_rehash              = false; // mp:X3c: a world resync import replaced the world under this step's already-taken hash
+uint32_t        g_ws_replay_until        = 0;     // mp:X3c: the workloads already ran for steps <= this before the import rewound g_step
+bool            g_active                 = true;  // logging enabled (HSTOP/HGO toggle via console)
+uint32_t        g_last_published_step    = 0;
+unsigned        g_step_observation_depth = 0;
+bool            g_match_axis_valid       = false; // reset/import/uncounted bodies invalidate this session's certificate
+bool            g_seed_done              = false;
 
 // TACT-PREP: the tactical cadence's own counter. DELIBERATELY SEPARATE from g_step rather than
 // sharing it -- the two count different things (sim steps vs tactical frames), they never advance in
@@ -1669,11 +1674,12 @@ bool harness_enabled() { return mh_ini_get_int("harness", "enable", 0, g_ini_pat
 // sits past the census that ends check_arm_order's harness window -- so a kind-1 run's arm log is
 // byte-for-byte what it was, and a kind-2 run's differs only by the fingerprint's own token.
 namespace hk                        = mh::harness_hk;
-int                     g_hash_kind = hk::KIND_FNV; // the EFFECTIVE kind: g_cfg.hash_kind after refusals
-mh::state::inc::tracker g_inc;                      // the kind-2 core (also the timed shadow of kind 1)
-bool                    g_inc_on     = false;       // attached: update() runs every hashed step
-bool                    g_hk_checked = false;       // the first-step flat-bytes re-check has run
-char                    g_hk_note[3][320];          // arm-time decisions, logged at step 1
+int                     g_hash_kind = hk::KIND_FNV;  // the EFFECTIVE kind: g_cfg.hash_kind after refusals
+mh::state::inc::tracker g_inc;                       // the kind-2 core (also the timed shadow of kind 1)
+bool                    g_inc_on            = false; // attached: update() runs every hashed step
+bool                    g_hash_kind_pending = false; // attach only after finalized caps in LateArm
+bool                    g_hk_checked        = false; // the first-step flat-bytes re-check has run
+char                    g_hk_note[3][320];           // arm-time decisions, logged at step 1
 int                     g_hk_notes = 0;
 hk::cost_acc            g_hk_cost;
 hk::inc_totals          g_hk_inc;
@@ -1712,10 +1718,16 @@ void hash_kind_arm() {
         // The flat-bytes guard (inc_state.h): the core hashes a slice's RAW bytes under a keep mask, so
         // a slice whose owner emits anything but its own bytes cannot be hashed by it. Re-asked at the
         // first hashed step, when every owner has registered.
-        const int    nf    = mh::state::inc::first_nonflat_slice();
-        static void *arena = nullptr; // one arena per process, however often the harness arms
-        if (nf < 0 && arena == nullptr)
-            arena = VirtualAlloc(nullptr, mh::state::inc::tracker::arena_bytes(), MEM_COMMIT, PAGE_READWRITE);
+        const int     nf         = mh::state::inc::first_nonflat_slice();
+        static void  *arena      = nullptr; // one fixed-extent arena per process, across harness arms
+        static size_t arena_size = 0;
+        const size_t  need       = mh::state::inc::tracker::arena_bytes();
+        if (arena && need != arena_size) std::abort();
+        if (arena) g_inc.require_extents();
+        if (nf < 0 && arena == nullptr) {
+            arena = VirtualAlloc(nullptr, need, MEM_COMMIT, PAGE_READWRITE);
+            if (arena) arena_size = need;
+        }
         if (nf >= 0) {
             wsprintfA(m, "; [harness] hash_kind=2 REFUSED: hash slice %d (%s) is served by an owner whose "
                          "stream is not its own flat bytes -- the incremental core cannot hash it; this run "
@@ -1911,36 +1923,39 @@ void load_config() {
     g_cfg.replay_ai_off           = mh_ini_get_int("harness", "replay_ai_off", g_cfg.replay_ai_off, g_ini_path);
     g_cfg.replay_suppress_enqueue = mh_ini_get_int("harness", "replay_suppress_enqueue", g_cfg.replay_suppress_enqueue, g_ini_path);
     g_cfg.replay_dispatch_inject  = mh_ini_get_int("harness", "replay_dispatch_inject", g_cfg.replay_dispatch_inject, g_ini_path);
-    g_cfg.dinj_log_max            = mh_ini_get_int("harness", "dinj_log_max", g_cfg.dinj_log_max, g_ini_path);
     g_cfg.garage_probe_player     = mh_ini_get_int("harness", "garage_probe_player", g_cfg.garage_probe_player, g_ini_path);
     g_cfg.garage_probe_slot       = mh_ini_get_int("harness", "garage_probe_slot", g_cfg.garage_probe_slot, g_ini_path);
     g_cfg.garage_probe_from       = mh_ini_get_int("harness", "garage_probe_from", g_cfg.garage_probe_from, g_ini_path);
     g_cfg.garage_probe_to         = mh_ini_get_int("harness", "garage_probe_to", g_cfg.garage_probe_to, g_ini_path);
     g_cfg.garage_probe_every      = mh_ini_get_int("harness", "garage_probe_every", g_cfg.garage_probe_every, g_ini_path);
-    g_cfg.dinj_log_orders         = mh_ini_get_int("harness", "dinj_log_orders", g_cfg.dinj_log_orders, g_ini_path);
-    g_cfg.replay_seat             = mh_ini_get_int("harness", "replay_seat", g_cfg.replay_seat, g_ini_path);
-    g_cfg.replay_session_mode     = mh_ini_get_int("harness", "replay_session_mode", g_cfg.replay_session_mode, g_ini_path);
-    g_cfg.replay_drop_net_issue   = mh_ini_get_int("harness", "replay_drop_net_issue", g_cfg.replay_drop_net_issue, g_ini_path);
-    g_cfg.clock_record            = mh_ini_get_int("harness", "clock_record", g_cfg.clock_record, g_ini_path);
-    g_cfg.match_segment           = mh_ini_get_int("harness", "match_segment", g_cfg.match_segment, g_ini_path);
-    g_cfg.verdict_snap_every      = mh_ini_get_int("harness", "verdict_snap_every", g_cfg.verdict_snap_every, g_ini_path);
-    g_cfg.verdict_snap_max        = mh_ini_get_int("harness", "verdict_snap_max", g_cfg.verdict_snap_max, g_ini_path);
-    g_cfg.verdict_snap_from       = mh_ini_get_int("harness", "verdict_snap_from", g_cfg.verdict_snap_from, g_ini_path);
-    g_cfg.replay_isolate_input    = mh_ini_get_int("harness", "replay_isolate_input", g_cfg.replay_isolate_input, g_ini_path);
-    g_cfg.order_log               = mh_ini_get_int("harness", "order_log", g_cfg.order_log, g_ini_path);
-    g_cfg.rng_perturb_slot        = mh_ini_get_int("harness", "rng_perturb_slot", g_cfg.rng_perturb_slot, g_ini_path);
-    g_cfg.rng_perturb_step        = mh_ini_get_int("harness", "rng_perturb_step", g_cfg.rng_perturb_step, g_ini_path);
-    g_cfg.ai_probe_step           = mh_ini_get_int("harness", "ai_probe_step", g_cfg.ai_probe_step, g_ini_path);
-    g_cfg.region_poke_at          = mh_ini_get_int("harness", "region_poke_at", g_cfg.region_poke_at, g_ini_path);
-    g_cfg.region_poke_min         = mh_ini_get_int("harness", "region_poke_min", g_cfg.region_poke_min, g_ini_path);
-    g_cfg.region_poke_only        = mh_ini_get_int("harness", "region_poke_only", g_cfg.region_poke_only, g_ini_path);
-    g_cfg.region_poke_off         = mh_ini_get_int("harness", "region_poke_off", g_cfg.region_poke_off, g_ini_path);
-    g_cfg.rdump_rid               = mh_ini_get_int("harness", "rdump_rid", g_cfg.rdump_rid, g_ini_path);
-    g_cfg.rdump_lo                = mh_ini_get_int("harness", "rdump_lo", g_cfg.rdump_lo, g_ini_path);
-    g_cfg.rdump_hi                = mh_ini_get_int("harness", "rdump_hi", g_cfg.rdump_hi, g_ini_path);
-    g_cfg.mask_ctrl_group         = mh_ini_get_int("harness", "mask_ctrl_group", g_cfg.mask_ctrl_group, g_ini_path);
-    g_cfg.mask_soldier_anim       = mh_ini_get_int("harness", "mask_soldier_anim", g_cfg.mask_soldier_anim, g_ini_path);
-    g_cfg.mask_planets_gfx        = mh_ini_get_int("harness", "mask_planets_gfx", g_cfg.mask_planets_gfx, g_ini_path);
+    mh::config::read_ini_string("harness", "patrol_watch_file", "", g_cfg.patrol_watch_file, sizeof(g_cfg.patrol_watch_file), g_ini_path);
+    mh::config::read_ini_string("harness", "patrol_input_file", "", g_cfg.patrol_input_file, sizeof(g_cfg.patrol_input_file), g_ini_path);
+    g_cfg.patrol_watch_from      = mh_ini_get_int("harness", "patrol_watch_from", g_cfg.patrol_watch_from, g_ini_path);
+    g_cfg.patrol_watch_to        = mh_ini_get_int("harness", "patrol_watch_to", g_cfg.patrol_watch_to, g_ini_path);
+    g_cfg.replay_seat            = mh_ini_get_int("harness", "replay_seat", g_cfg.replay_seat, g_ini_path);
+    g_cfg.replay_session_mode    = mh_ini_get_int("harness", "replay_session_mode", g_cfg.replay_session_mode, g_ini_path);
+    g_cfg.replay_lobby_speed_pct = mh_ini_get_int("harness", "replay_lobby_speed_pct", g_cfg.replay_lobby_speed_pct, g_ini_path);
+    g_cfg.replay_drop_net_issue  = mh_ini_get_int("harness", "replay_drop_net_issue", g_cfg.replay_drop_net_issue, g_ini_path);
+    g_cfg.clock_record           = mh_ini_get_int("harness", "clock_record", g_cfg.clock_record, g_ini_path);
+    g_cfg.match_segment          = mh_ini_get_int("harness", "match_segment", g_cfg.match_segment, g_ini_path);
+    g_cfg.verdict_snap_every     = mh_ini_get_int("harness", "verdict_snap_every", g_cfg.verdict_snap_every, g_ini_path);
+    g_cfg.verdict_snap_max       = mh_ini_get_int("harness", "verdict_snap_max", g_cfg.verdict_snap_max, g_ini_path);
+    g_cfg.verdict_snap_from      = mh_ini_get_int("harness", "verdict_snap_from", g_cfg.verdict_snap_from, g_ini_path);
+    g_cfg.replay_isolate_input   = mh_ini_get_int("harness", "replay_isolate_input", g_cfg.replay_isolate_input, g_ini_path);
+    g_cfg.order_log              = mh_ini_get_int("harness", "order_log", g_cfg.order_log, g_ini_path);
+    g_cfg.rng_perturb_slot       = mh_ini_get_int("harness", "rng_perturb_slot", g_cfg.rng_perturb_slot, g_ini_path);
+    g_cfg.rng_perturb_step       = mh_ini_get_int("harness", "rng_perturb_step", g_cfg.rng_perturb_step, g_ini_path);
+    g_cfg.ai_probe_step          = mh_ini_get_int("harness", "ai_probe_step", g_cfg.ai_probe_step, g_ini_path);
+    g_cfg.region_poke_at         = mh_ini_get_int("harness", "region_poke_at", g_cfg.region_poke_at, g_ini_path);
+    g_cfg.region_poke_min        = mh_ini_get_int("harness", "region_poke_min", g_cfg.region_poke_min, g_ini_path);
+    g_cfg.region_poke_only       = mh_ini_get_int("harness", "region_poke_only", g_cfg.region_poke_only, g_ini_path);
+    g_cfg.region_poke_off        = mh_ini_get_int("harness", "region_poke_off", g_cfg.region_poke_off, g_ini_path);
+    g_cfg.rdump_rid              = mh_ini_get_int("harness", "rdump_rid", g_cfg.rdump_rid, g_ini_path);
+    g_cfg.rdump_lo               = mh_ini_get_int("harness", "rdump_lo", g_cfg.rdump_lo, g_ini_path);
+    g_cfg.rdump_hi               = mh_ini_get_int("harness", "rdump_hi", g_cfg.rdump_hi, g_ini_path);
+    g_cfg.mask_ctrl_group        = mh_ini_get_int("harness", "mask_ctrl_group", g_cfg.mask_ctrl_group, g_ini_path);
+    g_cfg.mask_soldier_anim      = mh_ini_get_int("harness", "mask_soldier_anim", g_cfg.mask_soldier_anim, g_ini_path);
+    g_cfg.mask_planets_gfx       = mh_ini_get_int("harness", "mask_planets_gfx", g_cfg.mask_planets_gfx, g_ini_path);
     // tooling:TL-HARN-INCHASH. A value that does not parse is refused BY NAME at arm and hashes kind
     // 1 -- never read as whatever default happens to apply.
     mh::config::read_ini_string("harness", "hash_kind", "", g_cfg.hash_kind_raw, sizeof(g_cfg.hash_kind_raw),
@@ -2255,14 +2270,14 @@ long g_body_mode_save = 0;
 // OVER whatever scene the replay lane loaded, before the seed. libmh_import_world is the full re-derive
 // (byte half + the seven fixups + the nav graph rebuilt from the blob's trailer); the session-begun latch
 // is lifted for the same reason the snapshot receiver lifts it (a world blob is captured mid-session).
-void world_in_import() {
+bool world_in_import() {
     char path[MAX_PATH];
     wsprintfA(path, "%smh_world_in.bin", g_dir);
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     char   b[300];
     if (h == INVALID_HANDLE_VALUE) {
         append_line(g_log_path, "; [world_in] mh_world_in.bin not found -- NOT imported\n");
-        return;
+        return false;
     }
     const DWORD sz  = GetFileSize(h, nullptr);
     uint8_t    *buf = static_cast<uint8_t *>(HeapAlloc(GetProcessHeap(), 0, sz));
@@ -2270,47 +2285,95 @@ void world_in_import() {
     if (buf) ReadFile(h, buf, sz, &got, nullptr);
     CloseHandle(h);
     if (!buf || got != sz) {
-        append_line(g_log_path, "; [world_in] read failed -- NOT imported\n");
-        return;
+        if (buf) HeapFree(GetProcessHeap(), 0, buf);
+        return false;
     }
     wsprintfA(b, "; [world_in] importing %lu bytes at step %lu\n", (unsigned long)sz, (unsigned long)g_step);
     append_line(g_log_path, b);
     log_flush();
-    // Configuration (2) imports through libmh.dll. Configuration (1) -- libmh absent, which is how players run
-    // and so how a field report must replay -- imports through mh.dll's own copy of the same code
-    // (desync/scene_dump.cpp), re-deriving with the game's original functions.
-    int rc;
-    if (g_spine) {
-        mh::state::boot::reset_session_latch_for_test();
-        rc = libmh_import_world(buf, sz);
-    } else {
-        rc = mh::desync::import_scene(buf, sz); // scatters itself (scene_dump.cpp)
-    }
-    if (g_spine && rc == 0) MH_Caps_CanonScatter(); // PT-CAP8 (D1): libmh_import_world wrote the stock mirror -> publish it to the wide arrays
-    wsprintfA(b, "; [world_in] %s(%lu bytes) rc=%d\n", g_spine ? "libmh_import_world" : "mh::desync::import_scene",
-              (unsigned long)sz, rc);
+    // The host owns stock publication and MHOV restoration in both configurations.
+    // A second scatter here would silently erase the raised roster tails.
+    if (g_spine) mh::state::boot::reset_session_latch_for_test();
+    const int rc = mh::desync::import_scene(buf, sz);
+    wsprintfA(b, "; [world_in] mh::desync::import_scene(%lu bytes) rc=%d\n", (unsigned long)sz, rc);
     append_line(g_log_path, b);
     log_flush();
     HeapFree(GetProcessHeap(), 0, buf);
+    return rc == 0;
 }
 
-void seed_inject() {
+void seed_inject(bool imported_scene = false) {
     HANDLE h = CreateFileA(g_seed_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
         append_line(g_log_path, "; seed_inject: seed file missing\n");
+        if (imported_scene) TerminateProcess(GetCurrentProcess(), 2);
         return;
     }
-    // ST6 phase 1: the inverse of seed_dump, through state_source. Same bytes, same order, so a blob
-    // written by any earlier build still injects.
-    mh::state::fn_source src(
-        [](void *ctx, void *p, uint32_t n) {
-            DWORD got = 0;
-            ReadFile(*static_cast<HANDLE *>(ctx), p, n, &got, nullptr);
-        },
-        &h);
-    for (int i = 0; i < N_REGIONS; ++i) mh::state::fill_slice(i, src);
-    CloseHandle(h);
+    if (imported_scene) {
+        // A complete scene already published its raised tails. A second stock-only
+        // scatter would erase them while retaining the larger live-unit counts.
+        // Keep that publication ONLY if its entire unmasked seed stream is identical.
+        struct comparison {
+            HANDLE   file;
+            bool     equal = true;
+            uint64_t bytes = 0;
+            uint32_t slice = 0;
+            uint8_t  chunk[4096];
+        } compared{h};
+        mh::state::fn_sink sink(
+            mh::state::sink_mode::PERSIST,
+            [](void *context, const void *data, uint32_t n) {
+                auto       &c = *static_cast<comparison *>(context);
+                const auto *p = static_cast<const uint8_t *>(data);
+                while (n && c.equal) {
+                    const DWORD want = n < sizeof(c.chunk) ? n : sizeof(c.chunk);
+                    DWORD       got  = 0;
+                    if (!ReadFile(c.file, c.chunk, want, &got, nullptr) || got != want ||
+                        std::memcmp(p, c.chunk, want) != 0) {
+                        c.equal = false;
+                        break;
+                    }
+                    c.bytes += want;
+                    p += want;
+                    n -= want;
+                }
+            },
+            &compared);
+        for (int i = 0; i < N_REGIONS && compared.equal; ++i) {
+            compared.slice = static_cast<uint32_t>(i);
+            mh::state::emit_slice(i, sink);
+        }
+        uint8_t    extra     = 0;
+        DWORD      trailing  = 0;
+        const bool exact_end = ReadFile(h, &extra, 1, &trailing, nullptr) && !trailing;
+        CloseHandle(h);
+        if (!compared.equal || !exact_end) {
+            char line[240];
+            wsprintfA(line, "; seed_inject: REFUSED imported scene/seed PERSIST mismatch slice=%lu bytes=%lu\n",
+                      compared.slice, static_cast<unsigned long>(compared.bytes));
+            append_line(g_log_path, line);
+            log_flush();
+            TerminateProcess(GetCurrentProcess(), 2);
+            return;
+        }
+        char line[200];
+        wsprintfA(line, "; seed_inject: imported scene matches all %d PERSIST slices, %lu bytes; raised tails retained\n",
+                  N_REGIONS, static_cast<unsigned long>(compared.bytes));
+        append_line(g_log_path, line);
+    } else {
+        // Legacy seed-only import has no source-world tail publication to retain.
+        mh::state::fn_source src(
+            [](void *ctx, void *p, uint32_t n) {
+                DWORD got = 0;
+                ReadFile(*static_cast<HANDLE *>(ctx), p, n, &got, nullptr);
+            },
+            &h);
+        for (int i = 0; i < N_REGIONS; ++i) mh::state::fill_slice(i, src);
+        CloseHandle(h);
+        MH_Caps_CanonScatter();
+    }
+    mh::ui::selected_targets::detail::reset_intents();
 
     // mp:D37b: the replay's seat. Written HERE, straight after the regions, so the step the seed lands
     // on already runs as the recorded peer did. The line is unconditional in a seed-inject run: which
@@ -3009,7 +3072,10 @@ void snapshot_poll_now(void) {
         log_flush();
         return;
     }
+    g_match_axis_valid = false;
+    capture_close_world_import((unsigned)blob_step);
     MH_Caps_CanonScatter(); // PT-CAP8 (D1): the import wrote the stock mirror -> publish it to the wide arrays
+    mh::ui::selected_targets::detail::reset_intents();
 
     // THE POST-IMPORT READING. hash_slice over live memory, under the masks this run hashes with --
     // the same three the capture recorded, so a mask mismatch shows up as a whole-line difference
@@ -3092,9 +3158,13 @@ void snapshot_poll_now(void) {
 // becoming a path. NOTHING is written into the process mh_harness.log by the open: the match's first
 // step is inside check_arm_order's gated window (its end marker is emitted later in that same step),
 // and an extra structural line there would red every harness-armed arm-order baseline.
-char g_proc_dir_h[MAX_PATH]; // the process folder, from g_log_path (lazily)
-char g_seg_dir[MAX_PATH];    // the session folder the open segment lives in; "" = no segment
-char g_seg_orders[MAX_PATH], g_seg_clock[MAX_PATH], g_seg_seed[MAX_PATH];
+char          g_proc_dir_h[MAX_PATH]; // the process folder, from g_log_path (lazily)
+char          g_seg_dir[MAX_PATH];    // the session folder the open segment lives in; "" = no segment
+unsigned long g_seg_generation = 0;
+DWORD         g_seg_thread     = 0;
+char          g_seg_match_id[33];
+bool          g_seg_cleanup_recorded = false;
+char          g_seg_orders[MAX_PATH], g_seg_clock[MAX_PATH], g_seg_seed[MAX_PATH];
 // mp:LOG2: the segment's recordings are written by the log sink's writer; these are only "this stream
 // is open" flags (there is no handle on the game thread any more).
 bool     g_seg_rec_on   = false;
@@ -3128,22 +3198,27 @@ void seg_close(const char *why) {
 
 void seg_open(const char *dir) {
     lstrcpynA(g_seg_dir, dir, MAX_PATH);
-    g_seg_base     = g_step - 1; // called after ++g_step: THIS step is match step 1
-    g_match_base   = g_seg_base;
-    g_seg_orders_n = 0;
+    g_seg_generation = MH_RunDirGeneration();
+    g_seg_thread     = GetCurrentThreadId();
+    lstrcpynA(g_seg_match_id, MH_RunDir_SessionMatchId(), sizeof(g_seg_match_id));
+    g_match_axis_valid = MH_RunDir_SessionActive() && g_seg_match_id[0] &&
+                         g_seg_generation == MH_RunDirGeneration();
+    g_seg_cleanup_recorded = false;
+    g_seg_base             = g_step - 1; // called after ++g_step: THIS step is match step 1
+    g_match_base           = g_seg_base;
+    g_seg_orders_n         = 0;
     wsprintfA(g_seg_log, "%smh_match_harness.log", dir);
     wsprintfA(g_seg_orders, "%smh_match_orders.bin", dir);
     wsprintfA(g_seg_clock, "%smh_match_clock.bin", dir);
     wsprintfA(g_seg_seed, "%smh_match_seed.bin", dir);
     g_seg_log_open   = true; // LOG1: mirrored lines are enqueued to g_seg_log by seg_mirror
-    const bool rec   = g_cfg.order_mode == 1;
-    const bool clock = rec || g_cfg.clock_record;
+    const bool rec   = g_capture_active && g_cfg.order_mode == 1;
+    const bool clock = g_capture_active && (rec || g_cfg.clock_record);
     const bool seed  = rec && g_cfg.seed_mode == 0;
     if (rec) { // mp:LOG2: create/truncate + the MHOR header as ONE sink record, written off this thread
-        struct {
-            uint32_t magic, ver;
-        } hdr = {ORDERS_MAGIC, 1};
-        mh_logq_create_bin(g_seg_orders, &hdr, (int)sizeof(hdr));
+        uint8_t hdr[os::HEADER_BYTES];
+        os::write_header(hdr);
+        mh_logq_create_bin(g_seg_orders, hdr, (int)sizeof(hdr));
         g_seg_rec_on = true;
     }
     if (clock) {
@@ -3160,9 +3235,9 @@ void seg_open(const char *dir) {
               "(step_base=%lu). Hash lines below carry PROCESS step numbers; mh_match_orders.bin=%s "
               "mh_match_clock.bin=%s mh_match_seed.bin=%s carry MATCH step numbers (replay inputs: "
               "copy them next to mh.exe as mh_orders.bin / mh_clock.bin / mh_harness_seed.bin). "
-              "Arm-time lines are in ..\\%s\\mh_harness.log%s\n",
+              "Arm-time lines are in ..\\%s\\mh_harness.log generation=%lu match=%s%s\n",
               seg_leaf_s, g_step, g_seg_base, g_seg_base, rec ? "yes" : "no", clock ? "yes" : "no",
-              seed ? "yes" : "no", proc_leaf,
+              seed ? "yes" : "no", proc_leaf, g_seg_generation, g_seg_match_id,
               // TL-HARN-INCHASH: the segment names its hash kind itself -- the fingerprint line that
               // otherwise carries it is in the PROCESS log, which a bug report may not include.
               g_hash_kind == hk::KIND_INC ? " hash_kind=2" : "");
@@ -3218,6 +3293,7 @@ void verdict_snap_tick() {
     const char *names[N_REGIONS];
     uint32_t    lens[N_REGIONS];
     bool        excl[N_REGIONS];
+    // Fingerprint describes the static schema; each following stream writes its emitted runtime len.
     for (int i = 0; i < N_REGIONS; ++i) {
         names[i] = REGIONS[i].name;
         lens[i]  = REGIONS[i].len;
@@ -3267,68 +3343,84 @@ void verdict_snap_tick() {
 }
 
 // ---- order record/replay (Phase 2) --------------------------------------------------------------
-// Record: at order_queue_dispatch entry the QUEUE holds exactly the orders about to execute this
-// step (post release_due, pre compaction). Snapshot QUEUE[0..COUNT], tag with g_step, append.
-void order_record() {
-    int n = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
-    if (n <= 0 || n > order_qcap()) return;
-    // mp:LOG2: no file handle and no WriteFile on the sim thread. The first record of the stream is a
-    // create/truncate + the MHOR header, enqueued to the log sink's writer at the SAME logical point
-    // the old lazy CreateFile ran (the first non-empty step), so a run with no orders still leaves no
-    // file. The records of this step are staged here and enqueued as ONE append per file (the bytes
-    // are the same flat run of 0x48-byte records the per-record WriteFiles produced).
+// Both producers publish complete pairs, including zero-count phases. No incomplete final
+// sample is made replayable by treating missing data as empty.
+void order_record(os::phase phase) {
+    const int n = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
+    if (n < 0 || n > order_qcap() ||
+        (phase == os::phase::hash ? g_order_phase_pending : !g_order_phase_pending)) {
+        append_line(g_log_path, "; MHOR v2 record FAILED: invalid count or phase ordering\n");
+        log_flush();
+        ExitProcess(3);
+    }
+    if (phase == os::phase::hash) {
+        if (g_record_last_step && (g_record_last_step == UINT32_MAX || g_step != g_record_last_step + 1)) {
+            append_line(g_log_path, "; MHOR v2 REFUSED: recording step axis changed; recapture from the new seed\n");
+            log_flush();
+            ExitProcess(3);
+        }
+        g_record_hash_step    = g_step;
+        g_order_pair_bytes    = 0;
+        g_order_phase_pending = true;
+    }
+    os::write_sample_header(g_order_pair + g_order_pair_bytes, g_step, phase, uint32_t(n));
+    g_order_pair_bytes += os::SAMPLE_HEADER_BYTES;
+    if (n) memcpy(g_order_pair + g_order_pair_bytes,
+                  reinterpret_cast<const void *>(ADDR_ORDER_QUEUE()), size_t(n) * ORDER_SIZE);
+    g_order_pair_bytes += size_t(n) * ORDER_SIZE;
+    if (phase == os::phase::hash) return;
+    if (g_step != g_record_hash_step) {
+        append_line(g_log_path, "; MHOR v2 REFUSED: ENTRY differs from its HASH step\n");
+        log_flush();
+        ExitProcess(3);
+    }
     if (!g_rec_open) {
-        struct {
-            uint32_t magic, ver;
-        } hdr = {ORDERS_MAGIC, 1};
-        mh_logq_create_bin(g_orders_out, &hdr, (int)sizeof(hdr));
+        uint8_t hdr[os::HEADER_BYTES];
+        os::write_header(hdr);
+        mh_logq_create_bin(g_orders_out, hdr, int(sizeof(hdr)));
         g_rec_open = true;
     }
-    static OrderRec s_stage[ORDER_QCAP];
-    const uint8_t  *q = reinterpret_cast<const uint8_t *>(ADDR_ORDER_QUEUE());
-    for (int i = 0; i < n; ++i) {
-        s_stage[i].step = g_step;
-        memcpy(s_stage[i].order, q + (size_t)i * ORDER_SIZE, ORDER_SIZE);
+    mh_logq_write_bin(g_orders_out, g_order_pair, int(g_order_pair_bytes));
+    if (g_seg_rec_on) {
+        // Only the two sample step fields change; all native queue bytes remain untouched.
+        os::write_u32(g_order_pair, g_step - g_seg_base);
+        const uint32_t hn = os::read_u32(g_order_pair + 8);
+        os::write_u32(g_order_pair + os::SAMPLE_HEADER_BYTES + size_t(hn) * ORDER_SIZE,
+                      g_step - g_seg_base);
+        mh_logq_write_bin(g_seg_orders, g_order_pair, int(g_order_pair_bytes));
+        g_seg_orders_n += uint32_t(n);
     }
-    mh_logq_write_bin(g_orders_out, s_stage, n * (int)sizeof(OrderRec));
-    if (g_seg_rec_on) { // mp:SES7: the match's copy, on the match's step axis
-        for (int i = 0; i < n; ++i) s_stage[i].step = g_step - g_seg_base;
-        mh_logq_write_bin(g_seg_orders, s_stage, n * (int)sizeof(OrderRec));
-        g_seg_orders_n += (uint32_t)n;
-    }
+    g_order_phase_pending = false;
+    g_record_last_step    = g_step;
 }
 
-// Replay: load mh_orders.bin into a VirtualAlloc'd, step-sorted array.
 void order_replay_load() {
     HANDLE h = CreateFileA(g_orders_path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
-        append_line(g_log_path, "; order_replay: mh_orders.bin missing\n");
-        return;
+        append_line(g_log_path, "; order_replay: missing MHOR v2 recording\n");
+        log_flush();
+        ExitProcess(3);
     }
-    DWORD sz = GetFileSize(h, nullptr), got = 0;
-    struct {
-        uint32_t magic, ver;
-    } hdr = {0, 0};
-    ReadFile(h, &hdr, sizeof(hdr), &got, nullptr);
-    if (got != sizeof(hdr) || hdr.magic != ORDERS_MAGIC || sz < sizeof(hdr)) {
-        append_line(g_log_path, "; order_replay: bad mh_orders.bin header\n");
+    const DWORD sz  = GetFileSize(h, nullptr);
+    DWORD       got = 0;
+    if (sz == INVALID_FILE_SIZE || sz < os::HEADER_BYTES) {
         CloseHandle(h);
-        return;
+        append_line(g_log_path, "; order_replay: truncated MHOR v2 header\n");
+        log_flush();
+        ExitProcess(3);
     }
-    uint32_t nrec = (sz - sizeof(hdr)) / sizeof(OrderRec);
-    g_replay      = static_cast<OrderRec *>(VirtualAlloc(nullptr, (size_t)nrec * sizeof(OrderRec) + 16,
-                                                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    if (!g_replay) {
-        CloseHandle(h);
-        return;
-    }
-    ReadFile(h, g_replay, nrec * sizeof(OrderRec), &got, nullptr);
-    g_replay_n = got / sizeof(OrderRec);
+    g_replay      = static_cast<uint8_t *>(VirtualAlloc(nullptr, sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    const bool ok = g_replay && ReadFile(h, g_replay, sz, &got, nullptr) && got == sz;
     CloseHandle(h);
-    char b[128];
-    wsprintfA(b, "; order_replay: loaded %lu order records\n", g_replay_n);
-    append_line(g_log_path, b);
+    if (!ok || !g_order_reader.reset(g_replay, sz, uint32_t(order_qcap()))) {
+        append_line(g_log_path, "; order_replay: REFUSED -- ");
+        append_line(g_log_path, ok ? g_order_reader.error() : "could not read complete order stream");
+        append_line(g_log_path, "\n");
+        log_flush();
+        ExitProcess(3);
+    }
+    append_line(g_log_path, "; order_replay: loaded faithful MHOR v2 HASH/ENTRY recording\n");
 }
 
 // clock track: append the current step's game clock (8 bytes) during record.
@@ -3342,6 +3434,36 @@ void clock_record(uint64_t clock_bits) {
     mh_logq_write_bin(g_clock_out, &clock_bits, (int)sizeof(clock_bits));
     if (g_seg_clock_on) // mp:SES7: track[0] = match step 1
         mh_logq_write_bin(g_seg_clock, &clock_bits, (int)sizeof(clock_bits));
+    g_record_clock_step = g_step;
+}
+
+// Discard only unpublished data. Never synthesize an ENTRY or continue an old seed across import.
+void capture_close_world_import(unsigned imported_step) {
+    if (!g_capture_active || (g_cfg.order_mode != 1 && !g_cfg.clock_record)) return;
+    const uint32_t pending_step = g_order_phase_pending ? g_record_hash_step : 0;
+    const uint32_t match_orders_end =
+        g_seg_rec_on && g_record_last_step > g_seg_base ? g_record_last_step - g_seg_base : 0;
+    const uint32_t match_clock_end =
+        g_seg_clock_on && g_record_clock_step > g_seg_base ? g_record_clock_step - g_seg_base : 0;
+    g_capture_active      = false;
+    g_order_phase_pending = false;
+    g_order_pair_bytes    = 0;
+    g_record_clock_bits   = 0;
+    g_seg_rec_on          = false;
+    g_seg_clock_on        = false;
+    char line[512];
+    wsprintfA(line,
+              "; [capture] CLOSE reason=successful-world-import imported_step=%lu "
+              "process_step=%lu orders_end=%lu clock_end=%lu discarded_HASH=%lu "
+              "match_open=%d match_base=%lu match_orders_end=%lu match_clock_end=%lu; "
+              "continuous capture stopped; hash/desync/gameplay continue\n",
+              (unsigned long)imported_step, (unsigned long)g_step,
+              (unsigned long)g_record_last_step, (unsigned long)g_record_clock_step,
+              (unsigned long)pending_step, g_seg_log_open ? 1 : 0,
+              (unsigned long)g_seg_base, (unsigned long)match_orders_end,
+              (unsigned long)match_clock_end);
+    append_line(g_log_path, line); // Also mirrored into the still-open match log.
+    log_flush();                   // Drains process AND match binary streams through the shared sink.
 }
 
 void clock_load() {
@@ -3598,11 +3720,6 @@ void gameover_check() {
         g_cfg.stop_step = (int)g_step;
 }
 
-void zero_ai_enabled_all() {
-    for (uint32_t p = 0; p < 8; ++p)
-        *reinterpret_cast<int *>(ADDR_PLAYER_DATA + (size_t)p * PLAYER_DATA_STRIDE + PD_AI_ENABLED_OFF) = 0;
-}
-
 // ---- the save-state index probe ------------------------------------------------------------------
 //
 // One "; AISTATE p=<i> ..." line per player slot, emitted once. Fields are chosen to answer "does
@@ -3770,269 +3887,28 @@ void emit_progress(const char *tag) {
     append_line(g_log_path, line);
 }
 
-// Replay inject: called from on_sim_step (ALWAYS runs; dispatch is count-gated so we can't rely on it).
-// Overwrite QUEUE with this step's recorded snapshot + set COUNT; sim_step's `if(COUNT!=0)` then fires
-// dispatch to execute them. The snapshot already contains deferred re-appearances, so a per-step
-// overwrite reproduces the recording exactly.
-// LIB-REF step-5000, count-ledger tag 16: how many records THIS step injected. A global rather than
-// a return value because the note is emitted after the UNCONDITIONAL tail-clear (which is not inside
-// this function and runs in both arms), so the two halves of the opening balance are read at the
-// same point the standalone host reads them.
-int g_replay_injected = 0;
-
-// LIB-REF-SOAK: THE INJECTOR'S OWN EVIDENCE, emitted unconditionally at the stop step.
-//
-// `fixture_replay.py`'s recorder guard refuses a fixture with a `0 -> n` step -- one whose
-// top-of-step queue count is 0 in the RECORD while the recorder captured orders at dispatch entry --
-// on the reasoning that "dispatch is count-gated and the suppressed enqueue cannot raise it, so its
-// orders would silently never execute". That class is REAL and stays refused: an injector that
-// APPENDS at the count without setting it leaves a count of 0, dispatch never runs, and the orders
-// vanish silently. This injector is not that one (it sets `count = n`), but the guard must not take
-// that on trust from a comment -- so the run MEASURES it and says so, and the guard admits `0 -> n`
-// only against that measurement.
-//
-// A READBACK, not a tally of intentions: after writing the count we read the region back and compare.
-// That catches a write to the wrong address, an unbound region, and any future injector variant that
-// appends -- none of which a "we set it, honest" counter would notice.
-int g_inject_arrivals = 0; // steps that injected at least one record
-int g_inject_set_ok   = 0; // ... of those, where the count read back as the number injected
-int g_inject_no_set   = 0; // ... and where it did not: the append-without-set shape, the real class
-
 // HASH-INPUT BEGIN harness_order_replay_inject (tools/data/hash_input_epoch.json)
-void order_replay_inject() {
-    if (g_cfg.replay_ai_off && !g_ai_zeroed) {
-        zero_ai_enabled_all();
-        g_ai_zeroed = true;
+// The issue-route diagnostics are independent of the phase stream.
+void    *g_issue_tramp   = nullptr;
+int      g_issue_drop    = 0;
+uint32_t g_issue_dropped = 0, g_issue_passed = 0;
+void     order_replay_inject(os::phase phase) {
+    os::view sample;
+    if (!g_order_reader.next(g_step, phase, sample)) {
+        append_line(g_log_path, "; order replay v2 FAILED: ");
+        append_line(g_log_path, g_order_reader.error());
+        append_line(g_log_path, "\n");
+        log_flush();
+        ExitProcess(3);
     }
-    // advance cursor to the first record at/after the current step
-    while (g_replay_i < g_replay_n && g_replay[g_replay_i].step < g_step) ++g_replay_i;
-    uint8_t *q = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int      n = 0;
-    uint32_t j = g_replay_i;
-    while (j < g_replay_n && g_replay[j].step == g_step && n < order_qcap()) {
-        memcpy(q + (size_t)n * ORDER_SIZE, g_replay[j].order, ORDER_SIZE);
-        ++n;
-        ++j;
-    }
-    if (n > 0) {
-        *reinterpret_cast<int *>(ADDR_ORDER_QCOUNT()) = n; // arm the count-gate for dispatch
-        ++g_inject_arrivals;
-        // The readback -- see g_inject_arrivals' banner for why this is measured and not asserted.
-        if (*reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()) == n)
-            ++g_inject_set_ok;
-        else
-            ++g_inject_no_set;
-    }
-    g_replay_injected = n;
+    if (sample.count) memcpy(reinterpret_cast<void *>(ADDR_ORDER_QUEUE()), sample.records,
+                                 size_t(sample.count) * ORDER_SIZE);
+    *reinterpret_cast<int *>(ADDR_ORDER_QCOUNT()) = int(sample.count); // ZERO is explicit too
+    if (phase == os::phase::hash) {
+        ++g_replay_hashes;
+    } else ++g_replay_entries;
 }
 // HASH-INPUT END harness_order_replay_inject
-
-// ---- mp:D37b: the dispatch-entry replace ([harness] replay_dispatch_inject=1) ------------------
-//
-// THE GAP IT CLOSES. The recorder snapshots the queue at dispatch ENTRY. A handler that enqueues while
-// dispatch walks the queue extends that SAME pass (sim_order_dispatch.cpp: the loop re-reads the
-// count), so its order is executed -- and possibly consumed -- without ever sitting in an entry
-// snapshot. Under replay_suppress_enqueue such an order is simply lost: the neuter drops it and the
-// recording has no copy to inject. MEASURED on the rc4 Last Question host recording: the replay left
-// its own recording at match step 6357, and at 10400 the only judged difference was `units` +0xd8 on
-// three units (1 byte each, the ctrl-group status bit order 0x34/0x35 RMWs).
-//
-// So the replay stops suppressing and instead makes the dispatch ENTRY exact: every enqueue runs for
-// real, and here, at the recorder's own point, the queue is set to what the recorded peer dispatched
-// (count = n, and n = 0 for a step with no record, which is what the recorder's `n <= 0` skip means).
-// Whatever the replay queued beforehand -- the AI tick's orders again, on top of the top-of-step
-// inject's copy of them -- is replaced; whatever the pass appends is the replay's own, as it was the
-// recorder's. The top-of-step inject stays: it is what opens sim_step's count gate on a step whose
-// only orders came from the wire, and what the step's hash has always read.
-//
-// Evidence, not trust: every entry is compared with the snapshot before it is overwritten, and the
-// stop line reports how many entries differed (a doubled AI order is the expected, benign shape;
-// the first few are logged with their counts).
-uint32_t g_dinj_entries   = 0; // dispatch entries seen in a dispatch-inject replay
-uint32_t g_dinj_differ    = 0; // ... where the live queue was not already the snapshot
-uint32_t g_dinj_logged    = 0;
-uint32_t g_dinj_last_step = 0; // the last step whose dispatch entry this replay saw
-uint32_t g_dinj_missed    = 0; // steps with a recorded snapshot whose dispatch never ran here
-uint32_t g_dinj_top_t     = 0; // records held back from the top-of-step queue as the AI tick's (T)
-// mp:D37b issue_detour state (defined here, above the stop report that reads the counters)
-void    *g_issue_tramp   = nullptr;
-int      g_issue_drop    = 0; // the detour's per-call verdict (the sim is single-threaded)
-uint32_t g_issue_dropped = 0;
-uint32_t g_issue_passed  = 0;
-
-void order_replay_dispatch_replace() {
-    uint32_t i = g_replay_i;
-    while (i < g_replay_n && g_replay[i].step < g_step) ++i;
-    uint8_t       *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int           *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
-    const int      live = *cnt;
-    int            n    = 0;
-    bool           same = true;
-    static uint8_t live_copy[ORDER_QCAP * ORDER_SIZE];
-    const int      live_n = live < 0 ? 0 : (live > order_qcap() ? order_qcap() : live);
-    if (g_cfg.dinj_log_orders) memcpy(live_copy, q, (size_t)live_n * ORDER_SIZE);
-    for (uint32_t j = i; j < g_replay_n && g_replay[j].step == g_step && n < order_qcap(); ++j, ++n) {
-        uint8_t *slot = q + (size_t)n * ORDER_SIZE;
-        if (n >= live || memcmp(slot, g_replay[j].order, ORDER_SIZE) != 0) {
-            same = false;
-            memcpy(slot, g_replay[j].order, ORDER_SIZE);
-        }
-    }
-    if (live != n) same = false;
-    *cnt = n;
-    ++g_dinj_entries;
-    g_dinj_last_step = g_step;
-    if (!same) {
-        ++g_dinj_differ;
-        if (g_dinj_logged < (uint32_t)g_cfg.dinj_log_max) {
-            ++g_dinj_logged;
-            char b[128];
-            wsprintfA(b, "; [dispatch_inject] step=%lu live_count=%d recorded=%d -> replaced\n", g_step,
-                      live, n);
-            append_line(g_log_path, b);
-            if (g_cfg.dinj_log_orders) { // bytes +0x08..+0x2c: unit, owner|kind, param0, code, args
-                for (int side = 0; side < 2; ++side) {
-                    const int cntv = side ? n : live_n;
-                    for (int k = 0; k < cntv; ++k) {
-                        const uint8_t *r = side ? q + (size_t)k * ORDER_SIZE : live_copy + (size_t)k * ORDER_SIZE;
-                        char           l[200];
-                        int            o = wsprintfA(l, "; [dinj] step=%lu %c%d ", g_step, side ? 'R' : 'L', k);
-                        for (int x = 8; x < 0x2c; ++x) o += wsprintfA(l + o, "%02x", r[x]);
-                        lstrcpyA(l + o, "\n");
-                        append_line(g_log_path, l);
-                    }
-                }
-            }
-        }
-    }
-}
-
-// The TOP-OF-STEP half of the dispatch-inject contract: what the recorded peer's queue held at its
-// HASH point, which is where this runs (on_sim_step, before the hash).
-//
-// The recording holds the queue at dispatch ENTRY, S(N). llm_strat_sim_step runs the AI tick BETWEEN
-// the hash and dispatch, and its direct enqueues (T, e.g. the state-30 re-issues every 50 steps with
-// a stale exec_time) are the TAIL of S(N). So the hash point saw H(N) = S(N) minus that tail: the
-// queue this replay already holds (the kept orders + the previous step's post-dispatch enqueues,
-// generated here as they were there) plus what the lockstep lane released before sim_step. The old
-// inject wrote all of S(N) -- measured on the Last Question host recording, a one-step hash blip at
-// every step with a T tail (6357, 7307, 7701, 7751, ...), and the replay's own AI then appended T a
-// second time.
-//
-// Which S(N) records past the replay's own count are RELEASED rather than T: release_due moved them
-// at clock(N), and they were not due at clock(N-1) -- so clock(N-1) < exec_time <= clock(N), read
-// off the clock track. A direct enqueue does not set exec_time (it is whatever the caller's record
-// held -- an earlier order's time), and the AI tick copies no order released this step. Released
-// records are contiguous after the kept prefix and before T, so the first record that fails the
-// test starts T. release_due may also REPLACE a queued record in place, so the prefix is written
-// from S(N), not trusted from the live queue. A misread only moves a hash blip: the dispatch-entry
-// replace still makes the executed queue exact, and says so in its counter.
-// tooling:TL-REPLAY-BM: mh_hqueue.bin (optional, beside mh_clock.bin) = one u32 per match step: the
-// recording's order_queue_count at its hash point (0xFFFFFFFF = unknown). Written by
-// tools/replay_match_segment.py from the recording's state file.
-uint32_t *g_hq   = nullptr;
-uint32_t  g_hq_n = 0;
-void      hqueue_load() {
-    char path[MAX_PATH];
-    wsprintfA(path, "%smh_hqueue.bin", g_dir);
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD sz = GetFileSize(h, nullptr), got = 0;
-    g_hq = static_cast<uint32_t *>(VirtualAlloc(nullptr, (size_t)sz + 16, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    if (g_hq) {
-        ReadFile(h, g_hq, sz, &got, nullptr);
-        g_hq_n = got / sizeof(uint32_t);
-        char b[96];
-        wsprintfA(b, "; hqueue: loaded %lu hash-point queue counts\n", g_hq_n);
-        append_line(g_log_path, b);
-    }
-    CloseHandle(h);
-}
-
-void order_replay_inject_prefix() {
-    if (g_cfg.replay_ai_off && !g_ai_zeroed) {
-        zero_ai_enabled_all();
-        g_ai_zeroed = true;
-    }
-    while (g_replay_i < g_replay_n && g_replay[g_replay_i].step < g_step) ++g_replay_i;
-    if (g_step > 1 && g_dinj_last_step != g_step - 1) {
-        // The previous step had a snapshot but its dispatch never ran here (sim_step's count gate
-        // stayed shut): its orders were NOT executed. Counted; the first few are named.
-        uint32_t j = g_replay_i;
-        while (j > 0 && g_replay[j - 1].step == g_step - 1) --j;
-        if (j < g_replay_i && g_replay[j].step == g_step - 1) {
-            ++g_dinj_missed;
-            if (g_dinj_missed <= 8) {
-                char b[128];
-                wsprintfA(b, "; [dispatch_inject] MISSED step=%lu: a recorded snapshot whose dispatch "
-                             "never ran\n",
-                          g_step - 1);
-                append_line(g_log_path, b);
-            }
-        }
-    }
-    uint8_t  *q    = reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE());
-    int      *cnt  = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
-    const int live = *cnt;
-    int       n    = 0; // records of S(N)
-    while (g_replay_i + n < g_replay_n && g_replay[g_replay_i + n].step == g_step && n < order_qcap()) ++n;
-    int keep = live < n ? live : n; // the kept prefix
-    if (g_hq && g_step <= g_hq_n && g_hq[g_step - 1] != 0xFFFFFFFFu) {
-        // tooling:TL-REPLAY-BM: the recording's OWN hash-point queue length (the state recording's
-        // order_queue_count at this step, handed over as mh_hqueue.bin) says exactly how many records
-        // of S(N) were already queued here -- released orders AND a human's direct enqueue (the
-        // immediate lane, exec_time 0, which the replay's sim never makes) -- and so where the AI tick's
-        // tail T begins. Exact by construction; replaces the clock-window guess below.
-        const uint32_t h = g_hq[g_step - 1];
-        keep             = (int)h < n ? (int)h : n;
-    } else if (n > keep && g_clock_trk && g_step >= 2 && g_step <= g_clock_n) {
-        const double lo = g_clock_trk[g_step - 2], hi = g_clock_trk[g_step - 1];
-        while (keep < n) {
-            double t;
-            memcpy(&t, g_replay[g_replay_i + keep].order, sizeof(t)); // exec_time, +0x00
-            if (!(t > lo && t <= hi)) break;
-            ++keep;
-        }
-    } else if (n > keep) {
-        keep = n; // no clock track: the old whole-snapshot inject
-    }
-    for (int k = 0; k < keep; ++k)
-        memcpy(q + (size_t)k * ORDER_SIZE, g_replay[g_replay_i + k].order, ORDER_SIZE);
-    *cnt = keep;
-    g_dinj_top_t += (uint32_t)(n - keep);
-    g_replay_injected = keep;
-    if (n > 0) {
-        ++g_inject_arrivals;
-        ++g_inject_set_ok; // the count is written unconditionally here, so the readback is moot
-    }
-}
-
-// SOLO / FIELD-REPORT FIX: open sim_step's count gate for a step whose WHOLE snapshot is held back.
-// llm_strat_sim_step calls the queue dispatch only when order_queue_count > 0. The top-of-step inject
-// (above) writes the hash-point queue H(N), which is S(N) less the records the replay is expected to
-// regenerate (the AI tick's tail T). A human's order in a solo run is neither released from the wire
-// nor made by the replay's AI: when it is the step's ONLY content, H(N) is empty, the gate stays
-// shut, the dispatch-entry replace never runs and the order is never executed (the unit never moves;
-// MEASURED: unit 12's move at step 160 of a self-recorded shipped session, `units` diverging at the
-// next hash). The fix runs AFTER the hash is taken, so no hashed byte moves: with an empty queue and
-// a non-empty snapshot, write the snapshot's first record and count 1. The dispatch-entry replace
-// then sets the queue to the whole recorded snapshot, exactly as for any other step.
-uint32_t g_gate_opened = 0;
-void     order_replay_open_gate() {
-    int *cnt = reinterpret_cast<int *>(ADDR_ORDER_QCOUNT());
-    if (*cnt != 0) return;
-    uint32_t i = g_replay_i;
-    while (i < g_replay_n && g_replay[i].step < g_step) ++i;
-    if (i >= g_replay_n || g_replay[i].step != g_step) return;
-    memcpy(reinterpret_cast<uint8_t *>(ADDR_ORDER_QUEUE()), g_replay[i].order, ORDER_SIZE);
-    *cnt = 1;
-    ++g_gate_opened;
-    if (g_gate_opened <= 8) {
-        char b[128];
-        wsprintfA(b, "; [dispatch_inject] gate opened at step=%lu: the whole snapshot was held back\n", g_step);
-        append_line(g_log_path, b);
-    }
-}
 
 // ---- P0-SPDET: the deterministic wall clock ------------------------------------------------------
 // Advanced once per sim_tick (one per frame -- llm_strat_frame calls time_tick and sim_tick as
@@ -4518,6 +4394,217 @@ inline mh::game::mh_map_object_turret *live_turret_row(unsigned p) {
 // is the geometry table's (MH_Caps_Rec), never a literal 100. Index `i` of a row is `live_unit_row(p)[i]` for i below the live limit (the row is wide).
 inline mh::game::mh_map_object_unit *live_unit_row(unsigned p) {
     return static_cast<mh::game::mh_map_object_unit *>(MH_Caps_Rec(MH_CAPS_IDX_UNITS, p, 0));
+}
+
+// Optional case witness. Explicit Win32/x86 LE words, no padded structs or hash
+// regions. Sampling never writes simulation state; FEIN delivers real frontend commands.
+// Participants stay present after route loss/death.
+uint32_t g_patrol_ids[500][3]{}, g_patrol_inputs[4096][16]{}, g_patrol_rows[500][39]{};
+uint32_t g_patrol_n = 0, g_patrol_input_n = 0, g_patrol_next = 0;
+uint32_t g_patrol_last = 0, g_patrol_samples = 0, g_patrol_records = 0;
+uint32_t g_patrol_world[3]{}, g_patrol_checksum = 2166136261u;
+bool     g_patrol_ready = false, g_patrol_finished = false;
+char     g_patrol_path[MAX_PATH]{};
+uint32_t patrol_word(const uint8_t *p) {
+    return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
+}
+[[noreturn]] void patrol_fail(const char *why) {
+    char line[256];
+    wsprintfA(line, "; PATROL WATCH REFUSED step=%lu: %s\n", g_step, why);
+    append_line(g_log_path, line);
+    log_flush();
+    TerminateProcess(GetCurrentProcess(), 3);
+    std::abort();
+}
+uint32_t patrol_load(const char *path, uint32_t magic, uint32_t header_words,
+                     uint32_t words, uint32_t capacity, void *out) {
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) patrol_fail("input file missing");
+    uint32_t head[4]{};
+    DWORD    got = 0;
+    if (!ReadFile(h, head, header_words * 4, &got, nullptr) || got != header_words * 4) {
+        CloseHandle(h);
+        patrol_fail("truncated input header");
+    }
+    const uint32_t n = head[header_words - 1];
+    if (head[0] != magic || head[1] != 1 || (header_words == 4 && head[2] != words * 4) ||
+        !n || n > capacity || GetFileSize(h, nullptr) != (header_words + n * words) * 4) {
+        CloseHandle(h);
+        patrol_fail("invalid input extent/version");
+    }
+    const bool ok = ReadFile(h, out, n * words * 4, &got, nullptr) && got == n * words * 4;
+    CloseHandle(h);
+    if (!ok) patrol_fail("truncated input records");
+    return n;
+}
+const uint8_t *patrol_region(mh::state::region_id rid, uint32_t minimum) {
+    const auto *p = reinterpret_cast<const uint8_t *>(mh::state::live_base(rid));
+    if (!p || mh::state::live_size(rid) < minimum) patrol_fail("unbound canonical observation");
+    return p;
+}
+const uint8_t *patrol_actor_row(uint32_t p, uint32_t slot) {
+    namespace ot           = mh::order_tasks;
+    const auto    *q       = patrol_region(mh::state::RID_ORDER_TASKS, ot::HEADER_BYTES);
+    const uint32_t players = patrol_word(q + 8), units = patrol_word(q + 12);
+    const uint64_t extent = ot::HEADER_BYTES + uint64_t(players) * units * ot::ROW_BYTES;
+    if (patrol_word(q) != 0x31524f51u || patrol_word(q + 4) != ot::SCHEMA ||
+        !players || players > 8 || !units || units > 500 || p >= players || !slot || slot >= units ||
+        extent != patrol_word(q + 36) || extent > mh::state::live_size(mh::state::RID_ORDER_TASKS) ||
+        !patrol_word(q + 16) || !patrol_word(q + 20)) patrol_fail("invalid QORD observation extent");
+    for (uint32_t i = 0; i < 3; ++i)
+        if (patrol_word(q + 24 + 4 * i) != g_patrol_world[i]) patrol_fail("observed world changed");
+    return q + ot::HEADER_BYTES + (p * units + slot) * ot::ROW_BYTES;
+}
+uint32_t patrol_live_life(uint32_t p, uint32_t slot) {
+    // SPR1's pointer-free lifetime records: storage_policy.cpp::state::unit.
+    const auto    *b       = patrol_region(mh::state::RID_STORAGE_POLICY, 32);
+    const uint32_t players = patrol_word(b + 8), buildings = patrol_word(b + 12), units = patrol_word(b + 16);
+    const uint64_t bytes = 32 + uint64_t(players) * (uint64_t(buildings) + units) * 16;
+    if (patrol_word(b) != 0x31525053u || patrol_word(b + 4) != 1 || !players || players > 8 ||
+        p >= players || slot >= units || bytes != patrol_word(b + 28) ||
+        bytes > mh::state::live_size(mh::state::RID_STORAGE_POLICY)) patrol_fail("invalid lifetime observation extent");
+    const auto *r = b + 32 + (players * buildings + p * units + slot) * 16;
+    return patrol_word(r + 4) & 1 ? patrol_word(r) : 0;
+}
+void patrol_write(const void *p, uint32_t bytes, bool checksum = true) {
+    mh_logq_write_bin(g_patrol_path, p, static_cast<int>(bytes));
+    if (checksum)
+        for (uint32_t i = 0; i < bytes; ++i)
+            g_patrol_checksum = (g_patrol_checksum ^ static_cast<const uint8_t *>(p)[i]) * 16777619u;
+}
+bool patrol_init() {
+    if (g_patrol_ready) return true;
+    if (!g_cfg.patrol_watch_file[0] && !g_cfg.patrol_input_file[0]) return false;
+    if (!g_cfg.patrol_watch_file[0] || g_cfg.patrol_watch_from <= 0 ||
+        g_cfg.patrol_watch_to < g_cfg.patrol_watch_from || g_cfg.order_mode != 0 ||
+        g_cfg.replay_ai_off || g_cfg.replay_suppress_enqueue || g_cfg.replay_drop_net_issue ||
+        g_cfg.seed_mode != 2 || g_cfg.world_in) patrol_fail("requires a real save, mode0 and unchanged AI/enqueues");
+    const auto *q = patrol_region(mh::state::RID_ORDER_TASKS, mh::order_tasks::HEADER_BYTES);
+    for (uint32_t i = 0; i < 3; ++i) g_patrol_world[i] = patrol_word(q + 24 + 4 * i);
+    if (!g_patrol_world[2] || g_patrol_world[1] >= 32) patrol_fail("invalid loaded world");
+    g_patrol_n = patrol_load(g_cfg.patrol_watch_file, 0x44495750u, 3, 3, 500, g_patrol_ids);
+    for (uint32_t i = 0; i < g_patrol_n; ++i) {
+        const auto *a = g_patrol_ids[i];
+        patrol_actor_row(a[0], a[1]);
+        if (!a[2] || patrol_live_life(a[0], a[1]) != a[2]) patrol_fail("participant lifetime mismatch at load");
+        if (i && (g_patrol_ids[i - 1][0] > a[0] ||
+                  (g_patrol_ids[i - 1][0] == a[0] && g_patrol_ids[i - 1][1] >= a[1])))
+            patrol_fail("participants not sorted unique");
+    }
+    if (g_cfg.patrol_input_file[0]) {
+        g_patrol_input_n = patrol_load(g_cfg.patrol_input_file, 0x4e494546u, 4, 16, 4096, g_patrol_inputs);
+        uint32_t last_sequence[500]{};
+        for (uint32_t i = 0; i < g_patrol_input_n; ++i) {
+            const auto    *r = g_patrol_inputs[i], *a = r + 3;
+            const uint32_t op = (a[0] >> 8) & 255u, kind = (a[0] >> 16) & 255u;
+            if (!r[0] || r[0] > uint32_t(g_cfg.patrol_watch_to) || (i && r[0] < g_patrol_inputs[i - 1][0]) ||
+                r[2] >= 8 || (a[0] & 0xff0000ffu) != mh::order_tasks::EDIT_SCHEMA ||
+                (op != uint32_t(mh::order_tasks::edit_kind::replace) && op != uint32_t(mh::order_tasks::edit_kind::append)) ||
+                (kind != uint32_t(mh::order_tasks::action::move) && kind != uint32_t(mh::order_tasks::action::patrol)) ||
+                (a[5] & 0xff00ff00u) || a[6] || a[7] || a[8] || !a[10] || a[11] || a[12] ||
+                (a[9] && ((a[9] & ~0x80ffu) || !(a[9] & 255u)))) patrol_fail("invalid movement-edit fixture");
+            bool listed = false;
+            for (uint32_t j = 0; j < g_patrol_n; ++j)
+                if (g_patrol_ids[j][0] == r[2] && g_patrol_ids[j][1] == r[1] && g_patrol_ids[j][2] == a[1]) {
+                    if (a[10] <= last_sequence[j]) patrol_fail("repeated/regressing participant command");
+                    last_sequence[j] = a[10];
+                    listed           = true;
+                    break;
+                }
+            if (!listed) patrol_fail("input actor outside watched participants");
+            for (uint32_t j = 0; j < 3; ++j)
+                if (a[2 + j] != g_patrol_world[j]) patrol_fail("input world mismatch");
+            const auto *header = patrol_region(mh::state::RID_ORDER_TASKS, mh::order_tasks::HEADER_BYTES);
+            if ((a[5] & 65535u) >= patrol_word(header + 16) || (a[5] >> 16) >= patrol_word(header + 20))
+                patrol_fail("input tile outside loaded map");
+        }
+    }
+    wsprintfA(g_patrol_path, "%smh_patrol_watch.bin", MH_RunDir());
+    mh_logq_create_bin(g_patrol_path, nullptr, 0);
+    const uint32_t head[12] = {0x54415750u, 1, 156, g_patrol_n, uint32_t(g_cfg.patrol_watch_from),
+                               uint32_t(g_cfg.patrol_watch_to), 0, g_patrol_world[0], g_patrol_world[1], g_patrol_world[2], g_patrol_input_n, 0};
+    patrol_write(head, sizeof(head));
+    g_patrol_ready = true;
+    return true;
+}
+void patrol_sample(uint32_t step, uint32_t process_step) {
+    if (g_patrol_finished || !patrol_init() || step < uint32_t(g_cfg.patrol_watch_from) ||
+        step > uint32_t(g_cfg.patrol_watch_to) + 1) return;
+    if (step != (g_patrol_samples ? g_patrol_last + 1 : uint32_t(g_cfg.patrol_watch_from)))
+        patrol_fail("missing/repeated observation step");
+    for (uint32_t i = 0; i < g_patrol_n; ++i) {
+        const auto *a = g_patrol_ids[i];
+        const auto *r = patrol_actor_row(a[0], a[1]);
+        const auto *u = static_cast<const mh::game::mh_map_object_unit *>(MH_Caps_Rec(MH_CAPS_IDX_UNITS, a[0], a[1]));
+        if (!u) patrol_fail("native wide unit unavailable");
+        const uint32_t count = patrol_word(r + 24), cursor = patrol_word(r + 32), head = patrol_word(r + 92);
+        if (count > mh::order_tasks::CAPACITY || head >= mh::order_tasks::CAPACITY || (count && cursor >= count))
+            patrol_fail("invalid live route indices");
+        const auto    *n          = count ? r + mh::order_tasks::ACTOR_BYTES + ((head + cursor) % mh::order_tasks::CAPACITY) * mh::order_tasks::NODE_BYTES : nullptr;
+        const uint32_t absent     = UINT32_MAX;
+        uint32_t      *out        = g_patrol_rows[i];
+        const uint32_t fields[37] = {step, process_step, a[0], a[1], a[2], patrol_live_life(a[0], a[1]),
+                                     0, 0, u->x, u->y, u->state, u->order, uint32_t(u->move_group_id), u->goal_x, u->goal_y,
+                                     patrol_word(r + 4), n ? patrol_word(n + 36) : absent, patrol_word(r + 12), patrol_word(r + 16),
+                                     patrol_word(r + 20), count, cursor, n ? patrol_word(n) : absent, n ? patrol_word(n + 28) : absent,
+                                     n ? patrol_word(n + 32) : absent, patrol_word(r + 48), patrol_word(r + 36), patrol_word(r + 40),
+                                     n ? patrol_word(n + 4) : absent, n ? patrol_word(n + 8) : absent, patrol_word(r + 28),
+                                     patrol_word(r + 44), patrol_word(r + 52), uint32_t(u->path_cursor), uint32_t(u->move_microstep),
+                                     u->path_blocked_retry_count, uint32_t(uint16_t(u->target_ref))};
+        std::memcpy(out, fields, sizeof(fields));
+        std::memcpy(out + 6, &u->energy, sizeof(u->energy));
+        std::memcpy(out + 37, reinterpret_cast<const void *>(ADDR_GAME_CLOCK), sizeof(double));
+    }
+    patrol_write(g_patrol_rows, g_patrol_n * sizeof(g_patrol_rows[0]));
+    ++g_patrol_samples;
+    g_patrol_records += g_patrol_n;
+    g_patrol_last = step;
+    if (step == uint32_t(g_cfg.patrol_watch_to) + 1) {
+        if (g_patrol_next != g_patrol_input_n) patrol_fail("external inputs incomplete at final body");
+        const uint32_t footer[12] = {0x4e455750u, 1, g_patrol_records, g_patrol_samples, step, g_patrol_next, g_patrol_checksum, 0, 0, 0, 0, 0};
+        patrol_write(footer, sizeof(footer), false);
+        g_patrol_finished = true;
+        append_line(g_log_path, "; PATROL WATCH COMPLETE: final body observed; original external edits delivered\n");
+    }
+}
+void patrol_input_tick() {
+    if (!g_cfg.patrol_input_file[0] || !patrol_init() || g_patrol_finished) return;
+    const uint32_t step = mstep();
+    if (g_patrol_next < g_patrol_input_n && g_patrol_inputs[g_patrol_next][0] < step) patrol_fail("missed external input step");
+    while (g_patrol_next < g_patrol_input_n && g_patrol_inputs[g_patrol_next][0] == step) {
+        const auto *r = g_patrol_inputs[g_patrol_next], *a = r + 3;
+        patrol_actor_row(r[2], r[1]);
+        if (patrol_live_life(r[2], r[1]) != a[1]) patrol_fail("external actor lifetime changed");
+        auto      *native_sequence = reinterpret_cast<uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_ORDER_SEQ_ID_BY_PLAYER));
+        const bool first           = !g_patrol_next || g_patrol_inputs[g_patrol_next - 1][2] != r[2] ||
+                           g_patrol_inputs[g_patrol_next - 1][13] != a[10];
+        if (!native_sequence) patrol_fail("unbound native click sequence");
+        if (first && a[9] && native_sequence[r[2]] != uint8_t(a[9])) patrol_fail("native click sequence differs from source input");
+        const int before = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
+        if (before < 0 || before >= order_qcap()) patrol_fail("external queue full");
+        auto *scratch = reinterpret_cast<int32_t *>(mh::state::live_base(mh::state::RID_STRAT_ORDER_SCRATCH_ARGS));
+        if (!scratch || !native_sequence) patrol_fail("unbound native input scratch");
+        int32_t saved[13];
+        std::memcpy(saved, scratch, sizeof(saved));
+        mh::call::llm_strat_order_scratch_reset();
+        for (uint32_t j = 0; j < 13; ++j) mh::call::llm_strat_order_scratch_set_field(int32_t(j), int32_t(a[j]));
+        const int result = mh::call::llm_strat_order_enqueue(uint16_t(r[1]), uint16_t(r[2]), int16_t(mh::order_tasks::COMMAND), uint16_t(mh::order_tasks::COMMAND));
+        std::memcpy(scratch, saved, sizeof(saved));
+        const int after = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
+        if (result <= 0 || after != before + 1) patrol_fail("native external enqueue failed");
+        const auto &added = reinterpret_cast<const mh::game::mh_llm_strat_order *>(ADDR_ORDER_QUEUE())[after - 1];
+        if (added.unit_index != r[1] || added.owner_and_kind != r[2] ||
+            added.param0 != mh::order_tasks::COMMAND || added.order_code != mh::order_tasks::COMMAND ||
+            std::memcmp(added.args, a, sizeof(added.args))) patrol_fail("native external enqueue changed payload");
+        ++g_patrol_next;
+        const bool last = g_patrol_next == g_patrol_input_n || g_patrol_inputs[g_patrol_next][2] != r[2] ||
+                          g_patrol_inputs[g_patrol_next][13] != a[10];
+        if (last && a[9] && ++native_sequence[r[2]] == 0) ++native_sequence[r[2]];
+        char line[180];
+        wsprintfA(line, "; PATROL INPUT step=%u p=%u unit=%u life=%u seq=%u group=%u queue=%d->%d\n",
+                  step, r[2], r[1], a[1], a[10], a[9], before, after);
+        append_line(g_log_path, line);
+    }
 }
 
 
@@ -5179,7 +5266,7 @@ void conq_issue() {
             // map when we issue them. The stored proto id is the cfg index, one LESS than what the
             // order takes -- accept either and say so if it is neither.
             auto *const u = live_unit_row(side);
-            g_conq_n = 0;
+            g_conq_n      = 0;
             for (unsigned k = 2; k < 100u && g_conq_n < 16; ++k) {
                 if (u[k].energy <= 0.0) continue;
                 const unsigned pid = (unsigned)u[k].unit_proto_id;
@@ -5568,6 +5655,12 @@ void tj_load(const char *path) {
         return;
     }
     CloseHandle(h);
+    if (g_cfg.ui_journal[0] && !mh::harness::strategic_profile::preflight(buf, got)) {
+        append_line(g_log_path, "; UI-REC NOT ARMED: missing/invalid version2 effective binding profile; recapture or explicitly normalize the fixture with equivalence evidence\n");
+        VirtualFree(buf, 0, MEM_RELEASE);
+        g_cfg.ui_journal[0] = 0;
+        return;
+    }
     g_tj_ev = (tj_entry *)VirtualAlloc(nullptr, sizeof(tj_entry) * TJ_MAX, MEM_COMMIT,
                                        PAGE_READWRITE);
     if (!g_tj_ev) return;
@@ -6065,6 +6158,16 @@ void prof_start() {
               (uint32_t)g_prof_exe_lo, (uint32_t)g_prof_exe_hi, (uint32_t)g_prof_dll_lo,
               (uint32_t)g_prof_dll_hi);
     append_line(g_log_path, m);
+    // Attribute optional profiling samples from the spine/harness too. Module bases
+    // from another process are not evidence: binding can change their ASLR placement.
+    const char *const modules[] = {"mh_harness.dll", "libmh.dll", "mh_net.dll", "ntdll.dll", "KERNELBASE.dll", "win32u.dll", "ucrtbase.dll", "msvcrt.dll"};
+    for (const char *name : modules) {
+        uintptr_t lo = 0, hi = 0;
+        extent(GetModuleHandleA(name), lo, hi);
+        if (!lo) continue;
+        wsprintfA(m, "; PROF MODULE %s %08X %08X\n", name, static_cast<uint32_t>(lo), static_cast<uint32_t>(hi));
+        append_line(g_log_path, m);
+    }
 }
 
 void prof_report() {
@@ -6404,6 +6507,17 @@ inline bool tji_own_take(uint32_t *mask, uint32_t slot) {
 }
 
 void tji_record() {
+    static bool profile_recorded = false;
+    if (g_cfg.ui_journal_rec && !profile_recorded) {
+        char metadata[mh::harness::strategic_profile::LINE_BYTES];
+        if (!mh::harness::strategic_profile::metadata(metadata)) {
+            append_line(g_log_path, "; UI-REC NOT ARMED: effective strategic profile unavailable\n");
+            g_cfg.ui_journal_rec = 0;
+            return;
+        }
+        append_line(g_log_path, metadata);
+        profile_recorded = true;
+    }
     // UI-REC: THE SCREEN BARRIER, emitted before this present's events so a replay reaches the screen
     // before it clicks on it. Only the present-indexed arm records these -- a tactical mission has
     // one screen for its whole life, so a barrier there would be a constant.
@@ -7104,6 +7218,7 @@ void tj_replay_frame() {
             append_line(g_log_path,
                         "; UI-REC EXIT: journal exhausted and stop_step=0 -- nothing further to "
                         "measure\n");
+            prof_report();
             log_flush();
             TerminateProcess(GetCurrentProcess(), 0);
         }
@@ -7303,6 +7418,7 @@ void ui_journal_present() {
         // No once-latch needed (and g_tj_verdict_done is not declared this early): the process is
         // terminated on the next line, so nothing can report twice.
         tj_report();
+        prof_report();
         log_flush();
         TerminateProcess(GetCurrentProcess(), 0);
     }
@@ -7841,7 +7957,7 @@ void tj_report() {
 }
 
 static bool g_tact_verdict_done = false; // TACT-RIG: report_all() fires once per tactical run
-void            ptact_frame();             // PT-CAP9-U4f: the tactical round trip's frame counter (defined with the path fixture)
+void        ptact_frame();               // PT-CAP9-U4f: the tactical round trip's frame counter (defined with the path fixture)
 
 void on_tact_frame() {
     if (!g_active) return;
@@ -8339,7 +8455,8 @@ bool g_exit_after_body = false;
 
 void exit_after_body_if_latched() {
     if (!g_exit_after_body) return;
-    g_exit_after_body = false; // one-shot: prof_report() must not re-enter this on a nested path
+    g_exit_after_body = false;              // one-shot: prof_report() must not re-enter this on a nested path
+    patrol_sample(mstep() + 1, g_step + 1); // Actual post-body tail, not a pre-body stop assertion.
     prof_report();
     log_flush(); // prof_report() appends after the stop block's own flush
     ExitProcess(0);
@@ -9004,7 +9121,7 @@ unsigned capu_row(unsigned arr) {
         return 0;
     }
     const unsigned elem = arr == MH_CAPS_IDX_UNITS ? 233u : 29u;
-    const auto     a    = reinterpret_cast<uintptr_t>(MH_Caps_Rec(arr, 0, 0)), b = reinterpret_cast<uintptr_t>(MH_Caps_Rec(arr, 1, 0));
+    const auto     a = reinterpret_cast<uintptr_t>(MH_Caps_Rec(arr, 0, 0)), b = reinterpret_cast<uintptr_t>(MH_Caps_Rec(arr, 1, 0));
     return (unsigned)((b - a) / elem);
 }
 
@@ -9023,20 +9140,24 @@ void capu_count(unsigned p, int *units, int *uhi, int *soldiers, int *shi) {
             ++ns;
             hs = (int)i;
         }
-    *units = nu;
-    *uhi   = hu;
+    *units    = nu;
+    *uhi      = hu;
     *soldiers = ns;
     *shi      = hs;
 }
 
-enum { CAPU_IDLE = 0, CAPU_FILL, CAPU_HOLD, CAPU_DONE, CAPU_FAILED };
+enum { CAPU_IDLE = 0,
+       CAPU_FILL,
+       CAPU_HOLD,
+       CAPU_DONE,
+       CAPU_FAILED };
 // PT-CAP9-U5: TWO instances (the second is `capu2_*`: a second player filled the same way, so both peers of a match can own a roster
 // of hundreds). Instance 0 keeps every historical log tag ("CAPU"); instance 1 logs "CAPU2".
 struct capu_state {
     int      proto = 34, crew_proto = 34, crew_n = 0, crewed_orders = 0, hist[8] = {}, phase = CAPU_IDLE, pos = 0, issued = 0, mx = 0, my = 0, hw_u = 0, hw_s = 0;
     uint32_t last_sample = 0, hold_from = 0, start = 0;
 };
-capu_state g_capu[2];
+capu_state    g_capu[2];
 constexpr int CAPU_MAXR = 24;
 
 void capu_fail(int inst, const char *why) {
@@ -9050,8 +9171,8 @@ void capu_fail(int inst, const char *why) {
 bool capu_issues(unsigned p, unsigned side) { return g_cfg.capu_issue < 0 ? side == p : g_cfg.capu_issue != 0; }
 
 // PT-CAP9-U6: the control-group table (llm_strat_ctrl_group[10]: int count + ushort unit_ids[200] = 404 B each, group 0 = the selection).
-constexpr uintptr_t CAPSEL_BASE = 0x00b63be0u;
-constexpr unsigned  CAPSEL_REC  = 404u;
+constexpr uintptr_t CAPSEL_BASE                    = 0x00b63be0u;
+constexpr unsigned  CAPSEL_REC                     = 404u;
 uint8_t             g_capsel_plant[2 * CAPSEL_REC] = {};
 bool                g_capsel_planted               = false;
 
@@ -9099,10 +9220,14 @@ void capsel_line(const char *tag) {
         for (unsigned i = 1; i < capu_row(MH_CAPS_IDX_UNITS); ++i) {
             if (ul[i].unit_proto_id == 0) continue;
             ++live;
-            if (ul[i].state < 8) ++sth[ul[i].state]; else ++sth[8];
+            if (ul[i].state < 8) ++sth[ul[i].state];
+            else ++sth[8];
             if (ul[i].unit_proto_id == 34) ++p34;
             const unsigned t = (unsigned)ul[i].y * 256u + ul[i].x;
-            if (!(seen[t >> 3] & (1u << (t & 7)))) { seen[t >> 3] |= (uint8_t)(1u << (t & 7)); ++tiles; }
+            if (!(seen[t >> 3] & (1u << (t & 7)))) {
+                seen[t >> 3] |= (uint8_t)(1u << (t & 7));
+                ++tiles;
+            }
             if (ul[i].x < x0) x0 = ul[i].x;
             if (ul[i].x > x1) x1 = ul[i].x;
             if (ul[i].y < y0) y0 = ul[i].y;
@@ -9119,7 +9244,7 @@ void capsel_line(const char *tag) {
 void capu_ai_census(unsigned p, int nu, int *biggest_group, int *biggest_members) {
     const auto *pd = reinterpret_cast<const mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA) + p;
     char        m[480];
-    int         n = wsprintfA(m, "; CAPU AI step=%lu player %u units=%d ai_enabled=%d groups=%d members:", g_step, p, nu, (int)pd->ai_enabled, (int)pd->ai_group_count);
+    int         n  = wsprintfA(m, "; CAPU AI step=%lu player %u units=%d ai_enabled=%d groups=%d members:", g_step, p, nu, (int)pd->ai_enabled, (int)pd->ai_group_count);
     int         bg = -1, bm = 0, ag = pd->ai_group_count < 32 ? pd->ai_group_count : 32;
     for (int g = 0; g < ag; ++g) {
         const int mc = pd->ai_groups[g].member_count;
@@ -9153,11 +9278,11 @@ void capu_ai_census(unsigned p, int nu, int *biggest_group, int *biggest_members
 
 static unsigned g_capu_guard_walked = 0;
 void            capu_tick_inst(int inst) {
-    capu_state &S    = g_capu[inst];
-    const int   cp   = inst ? g_cfg.capu2_player : g_cfg.capu_player;
-    const int   cun  = inst ? g_cfg.capu2_units : g_cfg.capu_units;
-    const int   cso  = inst ? g_cfg.capu2_soldiers : g_cfg.capu_soldiers;
-    const char *tag  = inst ? "CAPU2" : "CAPU";
+    capu_state &S   = g_capu[inst];
+    const int   cp  = inst ? g_cfg.capu2_player : g_cfg.capu_player;
+    const int   cun = inst ? g_cfg.capu2_units : g_cfg.capu_units;
+    const int   cso = inst ? g_cfg.capu2_soldiers : g_cfg.capu_soldiers;
+    const char *tag = inst ? "CAPU2" : "CAPU";
     if (inst && g_cfg.capu2_player < 0) return;
     if (g_cfg.capu_at <= 0 || g_step < (uint32_t)g_cfg.capu_at || S.phase == CAPU_FAILED) return;
     const unsigned p = (unsigned)cp;
@@ -9178,7 +9303,7 @@ void            capu_tick_inst(int inst) {
         {
             // the CREWED proto: the ground cfg unit (type < 0xf) with the smallest soldier_count >= 1. The first orders use it until the soldier roster target is
             // covered, the rest use the filler: the unit roster and the soldier roster are both driven to their raised caps in the one player.
-            const auto *U = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
+            const auto *U    = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
             int         best = 0;
             for (int i = 1; i < 100; ++i)
                 if (U[i].type < 0xfu && U[i].soldier_count >= 1 && (best == 0 || U[i].soldier_count < U[best].soldier_count)) best = i;
@@ -9186,11 +9311,11 @@ void            capu_tick_inst(int inst) {
             S.crew_n     = best ? U[best].soldier_count : 1;
         }
         wsprintfA(m, "; %s step=%lu START player %u proto %d crewed proto %d (crew %d) target=%d units / %d soldiers batch=%d row units=%u soldiers=%u\n", tag, g_step, p, S.proto, S.crew_proto, S.crew_n, cun, cso, g_cfg.capu_batch,
-                  capu_row(MH_CAPS_IDX_UNITS), capu_row(MH_CAPS_IDX_SOLDIERS));
+                             capu_row(MH_CAPS_IDX_UNITS), capu_row(MH_CAPS_IDX_SOLDIERS));
         append_line(g_log_path, m);
     }
     if (g_cfg.capu_guard >= 0 && g_cfg.capu_guard < 8) {
-        const auto *Bc = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
+        const auto *Bc      = reinterpret_cast<const mh::game::mh_cfg_final_struct_Building *>(mh::state::live_base(mh::state::RID_BUILDING));
         g_capu_guard_walked = 0;
         for (unsigned i = 1; i < capf_row(MH_CAPS_IDX_BUILDINGS); ++i) {
             ++g_capu_guard_walked;
@@ -9213,7 +9338,7 @@ void            capu_tick_inst(int inst) {
         }
         const unsigned long long dg = MH_Caps_OvfDigest();
         wsprintfA(m, "; %s step=%lu SAMPLE units=%d(hi %d) soldiers=%d(hi %d) issued=%d met=%d ovf_digest=%08X%08X row units=%u soldiers=%u\n", tag, g_step, nu, hu, ns, hs, S.issued, met ? 1 : 0,
-                  (unsigned)(dg >> 32), (unsigned)dg, capu_row(MH_CAPS_IDX_UNITS), capu_row(MH_CAPS_IDX_SOLDIERS));
+                             (unsigned)(dg >> 32), (unsigned)dg, capu_row(MH_CAPS_IDX_UNITS), capu_row(MH_CAPS_IDX_SOLDIERS));
         append_line(g_log_path, m);
         {
             // diagnostics: the game's cached count (units[p][0].order), proto-bearing slots, and the highest one (a free-slot search that stops early shows here)
@@ -9284,7 +9409,8 @@ void            capu_tick_inst(int inst) {
             for (unsigned i = 1; i < capu_row(MH_CAPS_IDX_UNITS) && i < sizeof(s_orig_grp); ++i)
                 if (s_orig_grp[i] != 0) {
                     if (ur[i].unit_proto_id != 0 && ur[i].ai_group_index == 0) mh::call::llm_strat_ai_group_member_move(p, 0, (int32_t)s_orig_grp[i], (int32_t)i);
-                    if (ur[i].unit_proto_id == 0 || ur[i].ai_group_index == s_orig_grp[i]) ++restored; else ++not_restored;
+                    if (ur[i].unit_proto_id == 0 || ur[i].ai_group_index == s_orig_grp[i]) ++restored;
+                    else ++not_restored;
                 }
             int clob_a = 0, clob_b = 0;
             for (unsigned k = 16; k < sizeof(s_ba); ++k) clob_a += ba[k] != s_ba[k];
@@ -9293,8 +9419,8 @@ void            capu_tick_inst(int inst) {
             for (unsigned k = 0; k < sizeof(s_bb); ++k) bb[k] = s_bb[k];
             *gcn = 0;
             wsprintfA(m, "; CAPU AIHAMMER step=%lu player %u: %d units gathered into the holding pen; %d live units fed to attack_candidate_add -> candidate count %d (vanilla 128); largest AI group g%d has %d members -> group scratch count %d (vanilla 100); "
-                         "bytes changed after the VANILLA attack array (@01022B24, restored): %d, after the VANILLA group list (@00E6A060, restored): %d\n",
-                      g_step, p, gathered, fed, cand, bg, bm, copied, clob_a, clob_b);
+                                               "bytes changed after the VANILLA attack array (@01022B24, restored): %d, after the VANILLA group list (@00E6A060, restored): %d\n",
+                                 g_step, p, gathered, fed, cand, bg, bm, copied, clob_a, clob_b);
             append_line(g_log_path, m);
             wsprintfA(m, "; CAPU AIHAMMER RESTORE step=%lu: %d gathered units back in their original AI group, %d not\n", g_step, restored, not_restored);
             append_line(g_log_path, m);
@@ -9330,25 +9456,34 @@ void            capu_tick_inst(int inst) {
     int recent = 0; // orders issued in the last 8 steps (they may not have run yet); a refused one stops counting after that
     for (int i = 0; i < 8; ++i) recent += S.hist[i];
     S.hist[g_step & 7] = 0;
-    const int room          = cun + 20 - nu - recent;
-    int       k           = g_cfg.capu_batch < room ? g_cfg.capu_batch : room;
+    const int room     = cun + 20 - nu - recent;
+    int       k        = g_cfg.capu_batch < room ? g_cfg.capu_batch : room;
     if (g_step - S.start > 40000u) return capu_fail(inst, "the target was not reached within 40000 steps");
     const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
     for (; k > 0; --k) {
         // ring lattice around the mother (Chebyshev rings 1..CAPU_MAXR), position S.pos, wrapping so refused tiles are retried later
         const int maxr = (g_cfg.capu_maxr > 0 && g_cfg.capu_maxr < CAPU_MAXR) ? g_cfg.capu_maxr : CAPU_MAXR;
-        int idx = S.pos++ % (4 * maxr * (maxr + 1)), r = 1;
+        int       idx = S.pos++ % (4 * maxr * (maxr + 1)), r = 1;
         for (; r < maxr; ++r) {
             if (idx < 8 * r) break;
             idx -= 8 * r;
         }
-        int dx, dy;
+        int       dx, dy;
         const int side_len = 2 * r;
-        const int q        = idx / side_len, o = idx % side_len;
-        if (q == 0) { dx = -r + o; dy = -r; }
-        else if (q == 1) { dx = r; dy = -r + o; }
-        else if (q == 2) { dx = r - o; dy = r; }
-        else { dx = -r; dy = r - o; }
+        const int q = idx / side_len, o = idx % side_len;
+        if (q == 0) {
+            dx = -r + o;
+            dy = -r;
+        } else if (q == 1) {
+            dx = r;
+            dy = -r + o;
+        } else if (q == 2) {
+            dx = r - o;
+            dy = r;
+        } else {
+            dx = -r;
+            dy = r - o;
+        }
         const int bx = (int)(((S.mx + dx) % (int)mw + (int)mw * 4) % (int)mw);
         const int by = (int)(((S.my + dy) % (int)mh_ + (int)mh_ * 4) % (int)mh_);
         // crewed orders first, until their expected crew covers the soldier target (+ a margin for refused tiles), then the plain filler
@@ -9384,8 +9519,8 @@ inline void capo_target(int player, int u, uint32_t mw, uint32_t mh_, uint8_t *t
 }
 
 // ---- PT-CAP9-U7c: the order queue across a SAVE (capo_save / capo_save_gap) -------------------------------------------------------
-void capsave_file_line();
-void capsave_planet_line();
+void     capsave_file_line();
+void     capsave_planet_line();
 bool     g_capo_saved = false, g_capo_loaded = false;
 uint32_t g_capo_load_at = 0;
 unsigned g_capo_save_rc = 0;
@@ -9397,7 +9532,7 @@ uint64_t capo_queue_digest(int n) {
     return fnv1a(reinterpret_cast<const void *>(ADDR_ORDER_QUEUE()), (size_t)n * ORDER_SIZE);
 }
 void capo_save_line(const char *what, unsigned rc) {
-    const int q = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), p = *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT()), s = *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT());
+    const int      q = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), p = *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT()), s = *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT());
     const uint64_t d = capo_queue_digest(q);
     char           m[300];
     wsprintfA(m, "; CAPO SAVE %s step=%lu rc=%u q=%d p=%d s=%d qcap=%d digest=%08X%08X\n", what, g_step, rc, q, p, s, order_qcap(), (unsigned)(d >> 32), (unsigned)d);
@@ -9433,7 +9568,7 @@ void capo_tick() {
     // ---- fire (all bursts in the same step, once every burst's roster is ready) ----
     if (g_capo[0].phase == 0) {
         for (int b = 0; b < nb; ++b) {
-            const int cb = b; // capu instance b fills burst b's player
+            const int cb = b;                                                        // capu instance b fills burst b's player
             if (cb == 0 && g_cfg.capu_at > 0 && g_capu[0].phase < CAPU_DONE) return; // DONE = the hold has run: the units have left their spawn state
             if (cb == 1 && g_cfg.capu2_player >= 0 && g_capu[1].phase < CAPU_DONE) return;
         }
@@ -9468,9 +9603,9 @@ void capo_tick() {
                     B.exp_y[k] = B.pre_y[k];
                 }
             }
-            B.qc0 = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
-            B.pc0 = *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT());
-            B.sc0 = *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT());
+            B.qc0             = *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT());
+            B.pc0             = *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT());
+            B.sc0             = *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT());
             const bool issues = g_cfg.capo_issue < 0 ? side == (unsigned)B.player : g_cfg.capo_issue != 0;
             if (issues) {
                 auto *seqp = reinterpret_cast<uint8_t *>(ADDR_ORDER_SEQ() + side);
@@ -9486,8 +9621,7 @@ void capo_tick() {
                         // admin primary and an echo for the same unit share one (unit_index, owner_and_kind) key and the queue keeps only the last
                         // of such a pair (a real move order's primary is unit-kind 0x80 and does not collide).
                         mh::call::llm_strat_order_dispatch(0, side, 0xfb, 0xfb);
-                    }
-                    else {
+                    } else {
                         mh::call::llm_strat_unit_order_move(side, static_cast<int32_t>(B.unit[pos]), tx, ty, seq);
                         if (++(*seqp) == 0) ++(*seqp);
                     }
@@ -9522,7 +9656,7 @@ void capo_tick() {
             append_line(g_log_path, m);
         }
         if (B.phase != 1 || g_step < B.fired_at + (uint32_t)g_cfg.capo_wait) continue;
-        const auto *ur = live_unit_row((unsigned)B.player);
+        const auto *ur      = live_unit_row((unsigned)B.player);
         int         applied = 0, moved = 0;
         for (int k = 0; k < B.nu; ++k) {
             const auto &u = ur[B.unit[k]];
@@ -9626,9 +9760,9 @@ void capf_tick() {
         if (g_cfg.cap2_player >= 0 && g_cfg.cap2_player < 8) mh::call::llm_strat_order_population_delta_debug((uint32_t)g_cfg.cap2_player, g_cfg.cap_pop);
     }
     if (g_cfg.cap_ai_grant != 0 && (g_step % 100u) == 0) {
-        auto      *pd    = reinterpret_cast<mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA) + p;
-        const int  total = *reinterpret_cast<const int32_t *>(0x00e5c9e0u); // G_PROGRESS_COUNT_TOTAL
-        auto      *pr    = reinterpret_cast<mh::game::mh_game_progress *>(0x00c38750u) + p * 300u;
+        auto     *pd             = reinterpret_cast<mh::game::mh_game_player_data *>(ADDR_PLAYER_DATA) + p;
+        const int total          = *reinterpret_cast<const int32_t *>(0x00e5c9e0u); // G_PROGRESS_COUNT_TOTAL
+        auto     *pr             = reinterpret_cast<mh::game::mh_game_progress *>(0x00c38750u) + p * 300u;
         pd->ai_build_plan_cursor = static_cast<int32_t>(pd->ai_build_plan_len_and_flag & 0x7fffffffu);
         for (int r = 1; r <= total && r < 300; ++r) pr[r].available = 1;
         static bool s_logged = false;
@@ -9662,9 +9796,9 @@ void capf_tick() {
             const unsigned ai_p  = other ? (unsigned)(g_cfg.cap_ai_hammer - 2) & 7u : p;
             const unsigned enemy = other ? p : (g_cfg.cap2_player >= 0 && g_cfg.cap2_player < 8 ? (unsigned)g_cfg.cap2_player : (p == 0u ? 1u : 0u));
             const unsigned lim   = capf_row(MH_CAPS_IDX_BUILDINGS);
-            auto *const    eng_n = reinterpret_cast<volatile int32_t *>(0x00fe5b50u);     // _G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT
-            auto *const    scn_n = reinterpret_cast<volatile int32_t *>(0x01022b20u);     // _G_LLM_STRAT_AI_SCAN_TARGET_COUNT
-            int            live = 0;
+            auto *const    eng_n = reinterpret_cast<volatile int32_t *>(0x00fe5b50u); // _G_LLM_STRAT_AI_ENGAGE_CANDIDATE_SCRATCH_COUNT
+            auto *const    scn_n = reinterpret_cast<volatile int32_t *>(0x01022b20u); // _G_LLM_STRAT_AI_SCAN_TARGET_COUNT
+            int            live  = 0;
             // The bytes that follow the VANILLA engage scratch (_G_LLM_STRAT_AI_SITE_CANDIDATES @0xfb59b0): with the AI layer OFF an engage list past 256 entries
             // lands here. Snapshot them, measure what changed, put them back (the negative arm must not poison the rest of the match).
             static uint8_t s_nb[8192];
@@ -9990,8 +10124,8 @@ void capsave_report(const char *tag, unsigned rc) {
     append_line(g_log_path, m);
 }
 
-// The saved container as a file: size, FNV-1a-32 of every byte, and whether its version header carries the raised-caps stamp
-// ("MHC1" at bytes 29..32). The byte-identity witness of the raise-OFF save (tools/check_cap_save.py --step off).
+// Artifact evidence only: classify the exact native/required-support header; full framing/CRC
+// validation belongs to the actual reload preflight, not a second harness container parser.
 void capsave_file_line() {
     char path[200];
     wsprintfA(path, "save\\%s.sav", g_cfg.cap_save_name);
@@ -10011,14 +10145,20 @@ void capsave_file_line() {
         size += got;
     }
     CloseHandle(h);
-    wsprintfA(m, "; CAP SAVE FILE name=%s size=%u fnv=%08X stamped=%d\n", g_cfg.cap_save_name, size, sum, memcmp(hdr + 29, "MHC1", 4) == 0 ? 1 : 0);
+    uint32_t  required = 0;
+    const int version  = size >= sizeof(hdr)
+                             ? mh::storage_policy::savefile::classify_header(
+                                  hdr, mh::storage_policy::savefile::native_versions(), required)
+                             : -1;
+    wsprintfA(m, "; CAP SAVE FILE name=%s size=%u fnv=%08X header_valid=%d raised=%d policy=%d\n",
+              g_cfg.cap_save_name, size, sum, version >= 0 ? 1 : 0,
+              (required & mh::storage_policy::savefile::REQUIRE_CAPS) ? 1 : 0,
+              (required & mh::storage_policy::savefile::REQUIRE_POLICY) ? 1 : 0);
     append_line(g_log_path, m);
 }
 
-// The planet file the container embeds verbatim, `save\temp\save<planet>.dat` (what SavePlanetToDisk writes, the file the trailer is appended to):
-// its size and whether its LAST 8 bytes are an {len, 'MHOF'} footer. A save written with the raise ON and overflow records has one (positive
-// control); a raise-OFF save never does. (The container itself is no byte witness: two consecutive saves of ONE state differ -- the LZW writer
-// keeps stale dictionary state -- so "OFF is byte-identical" rests on the hooks writing nothing, proven in ovftest and by this footer probe.)
+// Exact tail-presence probe, not a claim that CRCs are valid. SPFT precedes optional MHOF;
+// the actual supported reload checks both complete envelopes and the required-feature manifest.
 void capsave_planet_line() {
     char path[200];
     wsprintfA(path, "save\\temp\\save%02d.dat", (int)*reinterpret_cast<const int32_t *>(ADDR_PLANET_IDX));
@@ -10036,8 +10176,15 @@ void capsave_planet_line() {
     OVERLAPPED  at      = {};
     at.Offset           = size >= 8 ? size - 8 : 0; // a positioned read: no seek on the handle
     if (size >= 8 && ReadFile(h, foot, 8, &got, &at) && got == 8) has = foot[1] == 0x464F484Du ? 1 : 0;
+    const uint32_t overflow_length = has ? foot[0] : 0;
+    const DWORD    policy_end      = has ? (overflow_length <= size - 8 ? size - 8 - overflow_length : 0) : size;
+    foot[0] = foot[1]      = 0;
+    at.Offset              = policy_end >= 8 ? policy_end - 8 : 0;
+    const bool policy_tail = policy_end >= 8 && ReadFile(h, foot, 8, &got, &at) && got == 8 &&
+                             foot[1] == mh::storage_policy::savefile::POLICY_FOOTER;
     CloseHandle(h);
-    wsprintfA(m, "; CAP SAVE PLANET file=%s size=%u footer=%d footer_len=%u\n", path, (unsigned)size, has, has ? foot[0] : 0u);
+    wsprintfA(m, "; CAP SAVE PLANET file=%s size=%u footer=%d footer_len=%u policy_tail=%d policy_len=%u\n",
+              path, (unsigned)size, has, overflow_length, policy_tail ? 1 : 0, policy_tail ? foot[0] : 0);
     append_line(g_log_path, m);
 }
 
@@ -10084,8 +10231,8 @@ void capsave_tick() {
         append_line(g_log_path, m3);
         if (g_cfg.capu_sel != 0) {
             // PT-CAP9-U6: the ten control-group records (saved with the world) either side of the round trip
-            char        mg[100];
-            const auto  d = capsel_digest(0, 10);
+            char       mg[100];
+            const auto d = capsel_digest(0, 10);
             wsprintfA(mg, "; CAPSEL SAVEGROUPS %s step=%lu digest=%08X%08X\n", when, g_step, (unsigned)(d >> 32), (unsigned)d);
             append_line(g_log_path, mg);
         }
@@ -10384,7 +10531,10 @@ void pf_bfs(int sx, int sy, int16_t *d, uint32_t mw, uint32_t mh_) {
 }
 
 // ---- PT-CAP9-U4: the 500-paths fixture (config banner: path_*) ---------------------------------------------------------------------
-enum { PATHF_IDLE = 0, PATHF_RUN, PATHF_DONE, PATHF_FAILED };
+enum { PATHF_IDLE = 0,
+       PATHF_RUN,
+       PATHF_DONE,
+       PATHF_FAILED };
 int      g_pathf_phase = PATHF_IDLE, g_pathf_tx = -1, g_pathf_ty = -1, g_pathf_issued = 0, g_pathf_batches = 0, g_pathf_ordered = 0;
 int      g_pathf_peak = 0, g_pathf_maxid = 0, g_pathf_free_min = 1 << 30, g_pathf_exh = 0, g_pathf_viol = 0, g_pathf_nopath_ordered = 0;
 uint32_t g_pathf_next = 0, g_pathf_last_batch = 0;
@@ -10456,7 +10606,11 @@ void pathf_save_round_trip() {
 // running over the arrays the mission overwrites); on_tact_frame counts the mission's frames and ends it; OnPresent sees the strategic mode again and logs the AFTER
 // snapshot before any sim step runs. The exit is the game's OWN: the active-unit count goes to 0, llm_tact_frame's early-exit gate fires, and
 // llm_tact_mission_end_return_to_strategic reloads the planet file (the retail path; with libmh absent the original body, not ours).
-enum { PTACT_IDLE = 0, PTACT_PEND, PTACT_IN, PTACT_DONE, PTACT_FAILED };
+enum { PTACT_IDLE = 0,
+       PTACT_PEND,
+       PTACT_IN,
+       PTACT_DONE,
+       PTACT_FAILED };
 int      g_ptact        = PTACT_IDLE;
 uint32_t g_ptact_frames = 0, g_ptact_save_rc = 0;
 
@@ -10479,25 +10633,29 @@ void ptact_enter() {
     uint8_t *bb = reinterpret_cast<uint8_t *>(mh::state::live_base(mh::state::RID_SQUAD_STATUS));
     for (int i = 0; i < SLOTS * STRIDE; ++i) bb[i] = 0;
     for (int i = 0; i < squad; ++i) *reinterpret_cast<int *>(bb + i * STRIDE + 4) = 100;
-    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_STATUS_COUNT))          = squad;
-    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_SCAN_PLAYER))        = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
-    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_OWNER))       = 1;
-    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_BUILDING_ID)) = 0;
-    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_ENERGY_PCT))  = 100;
+    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_STATUS_COUNT))           = squad;
+    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_SCAN_PLAYER))         = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
+    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_OWNER))        = 1;
+    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_BUILDING_ID))  = 0;
+    *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_ENERGY_PCT))   = 100;
     *reinterpret_cast<int *>(mh::state::live_base(mh::state::RID_SQUAD_BB_TARGET_BUILDING_IDX)) = 0;
-    if (g_cfg.path_tact_system > 0) *reinterpret_cast<int *>(mh::addr::CurrentSystem) = g_cfg.path_tact_system;
-    const int planet = *reinterpret_cast<const int *>(mh::addr::G_PLANET_INDEX);
-    g_ptact_save_rc  = mh::call::map_SavePlanetToDisk((uint32_t)planet, 1u);
+    int *const system                                                                           = reinterpret_cast<int *>(mh::addr::CurrentSystem);
+    const int  strategic_system                                                                 = *system;
+    const int  mission_system                                                                   = g_cfg.path_tact_system > 0 ? g_cfg.path_tact_system : strategic_system;
+    const int  planet                                                                           = *reinterpret_cast<const int *>(mh::addr::G_PLANET_INDEX);
+    g_ptact_save_rc                                                                             = mh::call::map_SavePlanetToDisk((uint32_t)planet, 1u);
     char m[300];
-    wsprintfA(m, "; PATH TACT step=%lu ENTER planet=%d system=%d squad=%d planet_save_rc=%u\n", g_step, planet, *reinterpret_cast<const int *>(mh::addr::CurrentSystem), squad,
-              g_ptact_save_rc);
+    wsprintfA(m, "; PATH TACT step=%lu ENTER planet=%d system=%d squad=%d planet_save_rc=%u\n", g_step, planet, strategic_system, squad, g_ptact_save_rc);
     append_line(g_log_path, m);
     capsave_planet_line();
     if (!g_ptact_save_rc) return ptact_fail("map_SavePlanetToDisk failed; not entering tactical (the exit would restore a stale planet)");
     *reinterpret_cast<volatile uint8_t *>(mh::addr::_G_LLM_GAME_MODE) = 6;
-    g_ptact_frames                                                     = 0;
-    g_ptact                                                            = PTACT_IN;
+    g_ptact_frames                                                    = 0;
+    g_ptact                                                           = PTACT_IN;
+    // The mission selector is not a strategic world change: save and reload keep the real owner.
+    *system = mission_system;
     mh::call::llm_tact_mission_start(); // the ORIGINAL body (libmh is absent in the shipped configuration; mh_harness.dll does not link libmh's tact)
+    *system            = strategic_system;
     const unsigned now = *reinterpret_cast<const volatile uint8_t *>(mh::addr::_G_LLM_GAME_MODE);
     wsprintfA(m, "; PATH TACT step=%lu mission_start -> mode=%u (%s) active_units=%d\n", g_step, now, now == 6 ? "mission running" : "BOUNCED OUT",
               *reinterpret_cast<const int *>(mh::state::live_base(mh::state::RID_TACT_ACTIVE_UNIT_COUNT)));
@@ -10619,20 +10777,27 @@ void    capg_tick() {
     for (unsigned i = 1; i < lim; ++i)
         if (ur[i].unit_proto_id != 0) ++sth[ur[i].state < 9 ? ur[i].state : 9];
     {
-        int  n  = wsprintfA(m, "; CAPG STATES step=%lu", g_step);
+        int n = wsprintfA(m, "; CAPG STATES step=%lu", g_step);
         for (int k = 0; k < 10; ++k) n += wsprintfA(m + n, " %d", sth[k]);
         m[n++] = '\n';
         m[n]   = 0;
         append_line(g_log_path, m);
     }
     wsprintfA(m, "; CAPG step=%lu groups=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d bits=%d goal_changed=%d tracked=%d q=%d p=%d s=%d maxq=%d maxp=%d maxs=%d\n", g_step, cnt[0], cnt[1], cnt[2], cnt[3], cnt[4], cnt[5], cnt[6], cnt[7],
-              cnt[8], cnt[9], bits, changed, tracked, *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT()),
-              *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT()), g_capg_max_q, g_capg_max_p, g_capg_max_s);
+                 cnt[8], cnt[9], bits, changed, tracked, *reinterpret_cast<const int *>(ADDR_ORDER_QCOUNT()), *reinterpret_cast<const int *>(ADDR_ORDER_PCOUNT()),
+                 *reinterpret_cast<const int *>(ADDR_ORDER_SCOUNT()), g_capg_max_q, g_capg_max_p, g_capg_max_s);
     append_line(g_log_path, m);
 }
 
 void pathf_tick() {
     if (g_cfg.path_at <= 0 || g_step < (uint32_t)g_cfg.path_at || g_pathf_phase >= PATHF_DONE) return;
+    // An explicit tactical-only observation leaves the loaded scene intact: there
+    // are no ordered units, so neither a landed mother nor a BFS fill is required.
+    if (g_cfg.path_tact && g_cfg.path_units == 0 && !g_cfg.path_save) {
+        if (g_ptact == PTACT_IDLE) g_ptact = PTACT_PEND;
+        g_pathf_phase = PATHF_DONE;
+        return;
+    }
     if (g_capu[0].phase < CAPU_HOLD) return; // the units must exist first
     if (g_pathf_saved && !g_pathf_loaded && g_step >= g_pathf_load_at) pathf_load_back();
     const unsigned p = (unsigned)g_cfg.path_player;
@@ -10654,9 +10819,9 @@ void pathf_tick() {
             break;
         }
         if (best < 0) return pathf_fail("no walkable tile at the requested BFS distance from the mother");
-        g_pathf_tx = best >> 8;
-        g_pathf_ty = best & 0xff;
-        int n = 0;
+        g_pathf_tx        = best >> 8;
+        g_pathf_ty        = best & 0xff;
+        int            n  = 0;
         const unsigned lu = capu_row(MH_CAPS_IDX_UNITS);
         for (unsigned i = 1; i < lu && n < g_cfg.path_units && n < 512; ++i)
             if (un[i].unit_proto_id != 0 && un[i].energy > 0) g_pathf_units[n++] = (int)i;
@@ -10681,7 +10846,7 @@ void pathf_tick() {
             g_pathf_tx_of[k] = g_pathf_tx_of[cnt ? k % cnt : 0];
             g_pathf_ty_of[k] = g_pathf_ty_of[cnt ? k % cnt : 0];
         }
-        g_pathf_phase   = PATHF_RUN;
+        g_pathf_phase      = PATHF_RUN;
         g_pathf_last_batch = g_step;
         wsprintfA(m, "; PATH step=%lu START player %u units=%d dest=(%d,%d) bfs=%d batch=%d gap=%d limit=%u\n", g_step, p, n, g_pathf_tx, g_pathf_ty,
                   (int)g_pathf_d[(g_pathf_tx << 8) | g_pathf_ty], g_cfg.path_batch, g_cfg.path_gap, MH_Caps_PathLimit());
@@ -11769,7 +11934,7 @@ int      g_dr_phase = DR_PREP, g_dr_mb = 0, g_dr_n = 0, g_dr_bcfg = 0, g_dr_ucfg
 uint32_t g_dr_from = 0, g_dr_mark = 0, g_dr_order_at = 0;
 int      g_dr_unit[FC_MAXU];
 bool     g_dr_existed[100], g_dr_gaveup[FC_MAXU], g_dr_dockedu[FC_MAXU];
-int      g_dr_bound = 0;
+int      g_dr_bound   = 0;
 int      g_dr_giveups = 0, g_dr_closes = 0, g_dr_first = -1, g_dr_last = -1, g_dr_door_prev = 0;
 
 void dr_fail(const char *why) {
@@ -11804,7 +11969,7 @@ int dr_find_storage(unsigned p, const mh::game::mh_cfg_final_struct_Building *B,
 //     stuck = exited units that never came within 3 tiles of the goal. OBSERVE-ONLY apart from the one order.
 constexpr int ST_GATE = 12, ST_NEAR = 3, ST_RAMP = 5;
 int           g_st_n = 0, g_st_gx = 0, g_st_gy = 0, g_st_dx = 0, g_st_dy = 0, g_st_axis = 0, g_st_dir = 1, g_st_maxtile = 0, g_st_nexit = 0, g_st_narr = 0;
-uint32_t      g_st_at = 0;
+uint32_t      g_st_at         = 0;
 int           g_st_exit_first = -1, g_st_exit_last = -1;
 bool          g_st_out[FC_MAXU], g_st_arr[FC_MAXU], g_st_gate[FC_MAXU];
 int           g_st_arr_el[FC_MAXU], g_st_gate_perp[FC_MAXU], g_st_ngate = 0;
@@ -11821,9 +11986,9 @@ int st_wdiff(int a, int b, uint32_t m) { // a - b on a ring of size m, signed sh
 }
 
 void st_begin(int ndocked) {
-    const unsigned p   = (unsigned)g_cfg.nd_player;
+    const unsigned p    = (unsigned)g_cfg.nd_player;
     const unsigned side = *reinterpret_cast<const uint16_t *>(ADDR_SIDE);
-    auto          *st  = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    auto          *st   = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
     const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
     g_st_dx = (int)st[g_dr_slot].exit_tile_x;
     g_st_dy = (int)st[g_dr_slot].exit_tile_y;
@@ -11837,10 +12002,22 @@ void st_begin(int ndocked) {
             const int side_i = k / (2 * rad), o = k % (2 * rad) - rad;
             int       ox = 0, oy = 0;
             switch (side_i) {
-                case 0: ox = o; oy = -rad; break;
-                case 1: ox = rad; oy = o; break;
-                case 2: ox = -o; oy = rad; break;
-                default: ox = -rad; oy = -o; break;
+                case 0:
+                    ox = o;
+                    oy = -rad;
+                    break;
+                case 1:
+                    ox = rad;
+                    oy = o;
+                    break;
+                case 2:
+                    ox = -o;
+                    oy = rad;
+                    break;
+                default:
+                    ox = -rad;
+                    oy = -o;
+                    break;
             }
             const int cx = (int)((uint32_t)(g_st_dx + ox + (int)mw * 2) % mw), cy = (int)((uint32_t)(g_st_dy + oy + (int)mh_ * 2) % mh_);
             if (nd_clear_rect(cx - 2, cy - 2, 5, 5, mw, mh_)) {
@@ -11850,18 +12027,18 @@ void st_begin(int ndocked) {
         }
     char m[256];
     if (gx < 0) return dr_fail("stream: no clear goal ~30 tiles from the door");
-    g_st_gx   = gx;
-    g_st_gy   = gy;
+    g_st_gx       = gx;
+    g_st_gy       = gy;
     const int ddx = st_wdiff(gx, g_st_dx, mw), ddy = st_wdiff(gy, g_st_dy, mh_);
     g_st_axis = (ddx < 0 ? -ddx : ddx) >= (ddy < 0 ? -ddy : ddy) ? 0 : 1;
     g_st_dir  = (g_st_axis == 0 ? ddx : ddy) < 0 ? -1 : 1;
     g_st_n    = ndocked;
     g_st_at   = g_step;
     for (int k = 0; k < FC_MAXU; ++k) {
-        g_st_lx[k]   = -1;
-        g_st_pdx[k]  = g_st_pdy[k] = 0;
-        g_st_rev[k]  = 0;
-        g_st_plen[k] = -1;
+        g_st_lx[k]  = -1;
+        g_st_pdx[k] = g_st_pdy[k] = 0;
+        g_st_rev[k]               = 0;
+        g_st_plen[k]              = -1;
     }
     { // fog: the goal area discovered
         uint8_t *disc = reinterpret_cast<uint8_t *>(mh::addr::fog_of_war) + 256u * 256u * 8u;
@@ -11879,9 +12056,9 @@ void st_begin(int ndocked) {
 }
 
 void st_tick() {
-    const unsigned p   = (unsigned)g_cfg.nd_player;
-    auto          *un  = live_unit_row(p);
-    auto          *st  = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
+    const unsigned p  = (unsigned)g_cfg.nd_player;
+    auto          *un = live_unit_row(p);
+    auto          *st = reinterpret_cast<mh::game::mh_map_object_unit_storage *>(mh::state::hash_base(mh::state::HIDX_UNIT_STORAGE)) + p * 25u;
     const uint32_t mw = synth_map_w(), mh_ = synth_map_h();
     const int      el = (int)(g_step - g_st_at);
     char           m[512];
@@ -11922,9 +12099,9 @@ void st_tick() {
                 append_line(g_log_path, m);
             }
         }
-        const uint32_t t = ((uint32_t)(x & 0xff) << 8) | (uint32_t)(y & 0xff);
-        const int ddx = st_wdiff(x, g_st_dx, mw), ddy = st_wdiff(y, g_st_dy, mh_);
-        const bool beyond_ramp = (ddx < 0 ? -ddx : ddx) >= ST_RAMP || (ddy < 0 ? -ddy : ddy) >= ST_RAMP; // the lanes open out over the first tiles; every unit starts on the door
+        const uint32_t t   = ((uint32_t)(x & 0xff) << 8) | (uint32_t)(y & 0xff);
+        const int      ddx = st_wdiff(x, g_st_dx, mw), ddy = st_wdiff(y, g_st_dy, mh_);
+        const bool     beyond_ramp = (ddx < 0 ? -ddx : ddx) >= ST_RAMP || (ddy < 0 ? -ddy : ddy) >= ST_RAMP; // the lanes open out over the first tiles; every unit starts on the door
         if (beyond_ramp && !(g_st_vis[t][k >> 5] & (1u << (k & 31)))) {
             g_st_vis[t][k >> 5] |= 1u << (k & 31);
             ++g_st_cnt[t];
@@ -11976,7 +12153,7 @@ void st_tick() {
                     ++shown;
                 }
         }
-        const int span = g_st_exit_last - g_st_exit_first + 1;
+        const int span      = g_st_exit_last - g_st_exit_first + 1;
         int       rev_total = 0, rev_max = 0, nplan = 0, ratios[FC_MAXU];
         for (int k = 0; k < g_dr_n; ++k) {
             if (!g_st_out[k]) continue;
@@ -12063,7 +12240,7 @@ void qf_wall_and_log(int dx, int dy, int R, uint32_t mw, uint32_t mh_) {
     for (int sx = -1; sx <= 1; sx += 2)
         for (int sy = -1; sy <= 1; sy += 2)
             for (int variant = 0; variant < 2; ++variant) {
-                const int px = dx + (variant ? sx * 2 : sx * (R + 1)), py = dy + (variant ? sy * (R + 1) : sy * 2);
+                const int        px = dx + (variant ? sx * 2 : sx * (R + 1)), py = dy + (variant ? sy * (R + 1) : sy * 2);
                 static const int N4[5][2] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
                 bool             ok       = true;
                 for (int q = 0; q < 5; ++q) ok = ok && clean(px + N4[q][0], py + N4[q][1]);
@@ -12098,7 +12275,7 @@ bool qf_tick_phase(unsigned p, int phase, mh::game::mh_map_object_unit *un, mh::
         for (int i = 0; i < st[slot].docked_count && i < 50; ++i)
             if (un[st[slot].docked_units[i]].state != 0x1fu) return false;
         const int dx = (int)st[slot].exit_tile_x, dy = (int)st[slot].exit_tile_y;
-        int       R  = g_cfg.qf_r < 3 ? 3 : (g_cfg.qf_r > 8 ? 8 : g_cfg.qf_r);
+        int       R = g_cfg.qf_r < 3 ? 3 : (g_cfg.qf_r > 8 ? 8 : g_cfg.qf_r);
         qf_wall_and_log(dx, dy, R, mw, mh_);
         g_qf_n = 0;
         for (int i = 0; i < st[slot].docked_count && i < 50 && g_qf_n < 64; ++i) g_qf_unit[g_qf_n++] = st[slot].docked_units[i];
@@ -12121,7 +12298,7 @@ bool qf_tick_phase(unsigned p, int phase, mh::game::mh_map_object_unit *un, mh::
         return true;
     }
     // QWATCH
-    const int el = (int)(g_step - g_qf_order_at);
+    const int el    = (int)(g_step - g_qf_order_at);
     bool      moved = false;
     for (int k = 0; k < g_qf_n; ++k) {
         const int      u  = g_qf_unit[k];
@@ -12213,8 +12390,8 @@ void door_tick() {
             if (g_dr_bcfg == 0) return dr_fail("no cfg barracks for this race");
             // the unit: an infantry proto of the race that this very barracks accepts (the game's own storage_type_accepts_unit), soldiers first
             // the SLOWEST one: the report's soldiers hop onto the door tile slower than the previous soldier walks in, which is what leaves the door idle
-            double slowest = 1e30;
-            const int need = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > 40 ? 40 : g_cfg.nd_fcn);
+            double    slowest = 1e30;
+            const int need    = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > 40 ? 40 : g_cfg.nd_fcn);
             for (unsigned k = 1; k < 100u; ++k) {
                 // nd_door 3 (mods:M1SH): the proto the group is created as is k + 1 (create_unit_debug(ucfg + 1) yields unit_proto_id ucfg + 1), so the shuttle's gates are
                 // judged on THAT proto; the other fixtures keep judging k as before.
@@ -12231,7 +12408,7 @@ void door_tick() {
                 }
             }
             if (g_dr_ucfg == 0) return dr_fail("no infantry proto the barracks accepts");
-            g_dr_n     = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > 40 ? 40 : g_cfg.nd_fcn);
+            g_dr_n = g_cfg.nd_fcn < 4 ? 4 : (g_cfg.nd_fcn > 40 ? 40 : g_cfg.nd_fcn);
             if (g_cfg.nd_stream) { // mods:M1WL: as many as the unit table and the barracks allow
                 int freeslots = 0;
                 for (int i = 1; i < 100; ++i)
@@ -12252,8 +12429,8 @@ void door_tick() {
             // mods:M1SH: a shuttle that has only just been built reports a transient online state (10); the enter order is taken once it is settled (1 closed / 2 open)
             if (s != 0 && g_cfg.nd_door == 3 && bl[st[s].b_index].online_state != 1 && bl[st[s].b_index].online_state != 2) return;
             if (s != 0) {
-                g_dr_slot  = s;
-                g_dr_bidx  = st[s].b_index;
+                g_dr_slot = s;
+                g_dr_bidx = st[s].b_index;
                 int bound = -9;
                 if (g_cfg.nd_door == 3 && bl[g_dr_bidx].shuttle_slot == 0) bound = mh::call::llm_prod_shuttle_slot_bind_default(p, g_dr_bidx);
                 g_dr_bound = bound;
@@ -12271,7 +12448,7 @@ void door_tick() {
                     if (bl[i].building_id != 0 && B[bl[i].building_id].type == g_dr_want) ++have;
                 if (have == 0 && g_dr_try < 6) {
                     const int mb = g_dr_mb;
-                    int bx = wrapx((int)bl[mb].x + OFF[g_dr_try][0]), by = wrapy((int)bl[mb].y + OFF[g_dr_try][1]);
+                    int       bx = wrapx((int)bl[mb].x + OFF[g_dr_try][0]), by = wrapy((int)bl[mb].y + OFF[g_dr_try][1]);
                     if (g_cfg.nd_door == 3) { // mods:M1SH: a shuttle is bigger than a barracks: the first spot the game's own footprint check calls clear, nearest ring first
                         bool found = false;
                         for (int rad = 6 + 2 * g_dr_try; rad < 40 && !found; ++rad)
@@ -12373,7 +12550,7 @@ void door_tick() {
                           (int)un[g_dr_unit[0]].order);
                 append_line(g_log_path, m);
             }
-            int ndocked    = 0;
+            int ndocked = 0;
             for (int k = 0; k < g_dr_n; ++k) {
                 bool docked = false;
                 for (int i = 0; i < st[g_dr_slot].docked_count && i < 50; ++i) docked |= (st[g_dr_slot].docked_units[i] == g_dr_unit[k]);
@@ -12476,7 +12653,7 @@ int     g_mv_oob_lines = 0, g_mv_oob_total = 0, g_mv_parkfront = 0;
 // PT-CAP9-U4g: the path-slot pool the GAME uses. Since U4 the stock array (RID_STRAT_PATH_BUFFERS, 0xaee8c0) is only a mirror of slots 0..99,
 // re-gathered from the real pool (rows of 501) at every sim step, so a reader of the mirror is one step stale and blind to ids >= 100.
 // MH_Caps_Rec(PATH_SLOT, p, slot) is the real slot row (null while the pool is not relocated -> the stock array, rows of 100).
-constexpr unsigned MV_NOSLOT = 0xffffffffu;
+constexpr unsigned                                 MV_NOSLOT = 0xffffffffu;
 inline const mh::game::mh_llm_strat_path_waypoint *mv_wp(unsigned p, unsigned slot) {
     if (const void *r = MH_Caps_Rec(MH_CAPS_IDX_PATH_SLOT, p, slot)) return static_cast<const mh::game::mh_llm_strat_path_waypoint *>(r);
     return reinterpret_cast<const mh::game::mh_llm_strat_path_waypoint *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS)) + p * 30000u + slot * 300u;
@@ -12727,8 +12904,8 @@ void mv_line(const char *tag, const mv_unit &t, const mh::game::mh_map_object_un
         npas  = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)nx << 8) | (uint32_t)ny];
         nkind = mv_classify(nx, ny, d, sizeof(d));
     }
-    const int      tp   = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)u.x << 8) | u.y];
-    unsigned       leg0 = 0, leg1 = 0;
+    const int tp   = reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_PASSABLE))[((uint32_t)u.x << 8) | u.y];
+    unsigned  leg0 = 0, leg1 = 0;
     if (mv_slot(u) != MV_NOSLOT && u.path_cursor >= 0 && u.path_cursor < 300) {
         const uint8_t *w = reinterpret_cast<const uint8_t *>(mv_wp(p, mv_slot(u)) + u.path_cursor);
         leg0             = w[0];
@@ -12750,14 +12927,14 @@ void mv_line(const char *tag, const mv_unit &t, const mh::game::mh_map_object_un
 // PT-CAP9-U4g: scans the REAL pool (MH_Caps_Rec PATH_SLOT; rows of 501 since U4, slot 500 the sink), never the stock mirror: the mirror is re-gathered
 // from the pool every sim step, which zeroed the fill and made every scan see a phantom 600-byte "write".
 void mv_oob_scan() {
-    const bool reloc = MH_Caps_Rec(MH_CAPS_IDX_PATH_SLOT, 0, 0) != nullptr;
-    const uint8_t *pb = reloc ? static_cast<const uint8_t *>(MH_Caps_Rec(MH_CAPS_IDX_PATH_SLOT, 0, 0))
-                              : reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
+    const bool     reloc = MH_Caps_Rec(MH_CAPS_IDX_PATH_SLOT, 0, 0) != nullptr;
+    const uint8_t *pb    = reloc ? static_cast<const uint8_t *>(MH_Caps_Rec(MH_CAPS_IDX_PATH_SLOT, 0, 0))
+                                 : reinterpret_cast<const uint8_t *>(mh::state::live_base(mh::state::RID_STRAT_PATH_BUFFERS));
     if (!pb) return;
-    constexpr size_t SLOT = 300u * 2u;
-    const unsigned   rows = reloc ? 501u : 100u;          // slots per player row of the pool the game uses
-    const size_t     pstride = (size_t)rows * SLOT;       // bytes per player (300600 relocated, 60000 stock)
-    const size_t     TOTAL = 8u * pstride;
+    constexpr size_t SLOT    = 300u * 2u;
+    const unsigned   rows    = reloc ? 501u : 100u; // slots per player row of the pool the game uses
+    const size_t     pstride = (size_t)rows * SLOT; // bytes per player (300600 relocated, 60000 stock)
+    const size_t     TOTAL   = 8u * pstride;
     static_assert(sizeof(g_mv_pbshadow) >= 8u * 501u * 600u, "the shadow covers the relocated pool");
     char layout[64];
     wsprintfA(layout, "%s rows=%u pstride=%u", reloc ? "reloc" : "stock", rows, (unsigned)pstride);
@@ -12772,7 +12949,7 @@ void mv_oob_scan() {
             append_line(g_log_path, "; MV OOBPOKE restored\n");
         }
     }
-    char        m[300];
+    char m[300];
     // Ownership THIS step, so a slot a unit freed (or took) in this very step is not mistaken for an unowned one: only a
     // slot that is unowned both before AND after the step counts.
     static uint8_t owned_now[8 * 501];
@@ -12927,7 +13104,7 @@ void mv_cost_check(int ord, uint32_t mw, uint32_t mh_) {
 uint32_t mv_head_hash(const mh::game::mh_map_object_unit &u, unsigned p) {
     if (mv_slot(u) == MV_NOSLOT) return 0;
     const auto *wp = mv_wp(p, mv_slot(u));
-    uint32_t h = 2166136261u;
+    uint32_t    h  = 2166136261u;
     for (int c = 0; c < 300; ++c) {
         if (wp[c].heading == 0) break;
         h = (h ^ wp[c].heading) * 16777619u;
@@ -13018,8 +13195,8 @@ uint32_t g_mvf_lines = 0, g_mvf_tick_lines = 0;
 int32_t  g_mvf_face[1500], g_mvf_loop[1500];
 void     mv_fx_scan(unsigned p) {
     if (!g_cfg.mv_fx || g_mvf_lines > 20000) return;
-    auto *P  = reinterpret_cast<const mh::game::mh_llm_strat_projectile *>(mh::state::live_base(mh::state::RID_STRAT_PROJECTILE_POOL));
-    auto *F  = reinterpret_cast<const mh::game::mh_llm_strat_fx_anim *>(mh::state::live_base(mh::state::RID_STRAT_FX_ANIMS));
+    auto *P = reinterpret_cast<const mh::game::mh_llm_strat_projectile *>(mh::state::live_base(mh::state::RID_STRAT_PROJECTILE_POOL));
+    auto *F = reinterpret_cast<const mh::game::mh_llm_strat_fx_anim *>(mh::state::live_base(mh::state::RID_STRAT_FX_ANIMS));
     char  m[400];
     if (P) {
         for (int s = 1; s < 1500; ++s) {
@@ -13293,7 +13470,7 @@ void mv_tick() {
                     legs[0] = 0;
                     {
                         const auto *pbw = mv_wp(p, mv_slot(u) == MV_NOSLOT ? 0u : mv_slot(u));
-                        int nl = 0;
+                        int         nl  = 0;
                         for (int c = u.path_cursor; c >= 0 && c < 300 && nl < 270; ++c) {
                             if (pbw[c].heading == 0) break;
                             if (pbw[c].run_length == 0) continue;
@@ -13514,11 +13691,13 @@ void mv_arm_waves() {
 
 // ---- mp:DSHEAL: the shot-origin probe (see the config block) ----------------------------------------------------
 // Runs once, after the step's hash (outside the HASH-INPUT span). It writes ONE render-only byte per probed soldier and puts it back.
-bool g_soa_done = false;
+bool g_soa_done     = false;
+bool g_soa_complete = false;
+long g_soa_ticket   = 0;
 
 void soa_tick() {
     if (g_cfg.soa_at <= 0 || g_step < (uint32_t)g_cfg.soa_at || g_soa_done) return;
-    g_soa_done = true;
+    g_soa_done    = true;
     const auto *U = reinterpret_cast<const mh::game::mh_cfg_final_struct_Unit *>(mh::state::live_base(mh::state::RID_UNIT));
     char        m[256];
     int         probed = 0;
@@ -13528,13 +13707,13 @@ void soa_tick() {
             if (!(unit.energy > 0.0) || U[unit.unit_proto_id].soldier_count <= 0) continue;
             const unsigned head = (unsigned)(unit.unit_above[0] | (unit.unit_above[1] << 8));
             if (head == 0 || head >= 100) continue;
-            uint8_t *cnt = static_cast<uint8_t *>(MH_Caps_Rec(MH_CAPS_IDX_SOLDIERS, p, head)) + 0x1bu;
+            uint8_t      *cnt   = static_cast<uint8_t *>(MH_Caps_Rec(MH_CAPS_IDX_SOLDIERS, p, head)) + 0x1bu;
             const uint8_t saved = *cnt;
             wsprintfA(m, "; SOA UNIT p=%u u=%u proto=%d head=%u microstep=%d saved_cnt=%u\n", p, u, (int)unit.unit_proto_id, head,
                       (int)unit.move_microstep, (unsigned)saved);
             append_line(g_log_path, m);
             for (unsigned c = 0; c < 256; c += 4) {
-                *cnt = (uint8_t)c;
+                *cnt        = (uint8_t)c;
                 uint32_t ox = 0, oy = 0;
                 mh::call::llm_strat_unit_soldier_get_sprite_screen_pos((uint16_t)p, (int32_t)u, 0, &ox, &oy);
                 wsprintfA(m, "; SOA ORIGIN p=%u u=%u cnt=%u x=%u y=%u\n", p, u, c, ox, oy);
@@ -13546,6 +13725,11 @@ void soa_tick() {
     }
     wsprintfA(m, "; SOA DONE step=%lu units=%d\n", g_step, probed);
     append_line(g_log_path, m);
+    // The UI may end the process as soon as this producer completes. Publish its
+    // queue ticket, not the entry flag or an elapsed-clock estimate; never block
+    // the game thread on log I/O.
+    g_soa_ticket   = mh_logq_ticket();
+    g_soa_complete = true;
 }
 
 // HASH-INPUT BEGIN harness_on_sim_step_prehash (tools/data/hash_input_epoch.json)
@@ -13654,6 +13838,9 @@ void d38_fixture_tick() {
                 }
             }
             if (u <= 0 || u >= 100) return; // retried next step (no home yet); the timeout bounds it
+            // The fixture mutates relocated live rows after the entry gather. Publish the
+            // completed mutation before this step's hash/recording reads canonical mirrors.
+            MH_Caps_CanonGather();
             g_d38_unit      = u;
             g_d38_slot      = un[u].home_storage_slot;
             g_d38_phase     = D38_KILL;
@@ -13679,6 +13866,7 @@ void d38_fixture_tick() {
             if (left_s * 1000.0 < (double)D38_KILL_MARGIN_MS) return;
             un[u].energy = 0.0;
             mh::call::llm_strat_bldg_notify_ui((uint16_t)p, (uint32_t)st[s].b_index);
+            MH_Caps_CanonGather();
             g_d38_phase = D38_DONE;
             wsprintfA(m, "; D38FIX step=%lu KILLED docked unit %d of player %u in storage %d (building %d), "
                          "docked_count=%d; the sim's purge is due in %d ms\n",
@@ -13691,6 +13879,10 @@ void d38_fixture_tick() {
 }
 
 void on_sim_step() {
+    struct ObservationScope {
+        ObservationScope() { ++g_step_observation_depth; }
+        ~ObservationScope() { --g_step_observation_depth; }
+    } observation;
     MH_Caps_CanonGather();               // PT-CAP8 (D1): refresh the canonical mirror BEFORE any hash reads it (no-op unless relocated)
     exit_after_body_if_latched();        // LIB-REF-REC: the stop step's body has now run
     g_tj_last_step_ms = GetTickCount();  // UI-REC idle watchdog -- see ui_journal_present
@@ -13773,8 +13965,19 @@ void on_sim_step() {
     if (!g_seed_done && g_cfg.seed_step && g_step == (uint32_t)g_cfg.seed_step && g_cfg.seed_mode != 2) {
         if (g_cfg.seed_mode == 0) seed_dump();
         else {
-            if (g_cfg.world_in) world_in_import();
-            seed_inject();
+            if (g_cfg.world_in && !world_in_import()) {
+                append_line(g_log_path, "; replay REFUSED: recorded scene was not imported\n");
+                log_flush();
+                TerminateProcess(GetCurrentProcess(), 2);
+                return;
+            }
+            seed_inject(g_cfg.world_in != 0);
+            if (g_cfg.order_mode == 2 && !MH_LobbySpeed_ReplayEnter(g_cfg.replay_lobby_speed_pct)) {
+                append_line(g_log_path, "; replay REFUSED: invalid recorded lobby speed\n");
+                log_flush();
+                TerminateProcess(GetCurrentProcess(), 2);
+                return;
+            }
         }
         g_seed_done = true;
     }
@@ -13782,6 +13985,7 @@ void on_sim_step() {
     // match's mh_match_seed.bin is taken at the same point in its first step as mh_harness_seed.bin
     // is in the process's -- and before anything below stages an order or records the clock.
     seg_tick();
+    patrol_sample(mstep(), g_step);
 
     // D6: synthetic moving-unit workload (see the block above). Issued BEFORE the hash so the order
     // is staged on the same step on every peer; it takes effect later via the scheduled lockstep lane.
@@ -13860,14 +14064,7 @@ void on_sim_step() {
     // every peer at this same step.
     if (g_cfg.d38_player >= 0) d38_fixture_tick();
 
-    // Phase 2 replay: inject this step's recorded orders into the queue BEFORE the sim body runs
-    // dispatch (the hash below reads pre-execution state either way, so ordering vs the hash is moot).
-    // mp:D37b: under replay_dispatch_inject the top of the step gets the recorded HASH-point queue
-    // (the snapshot less the AI tick's tail) and dispatch entry gets the whole snapshot.
-    if (g_cfg.order_mode == 2 && g_replay) {
-        if (g_cfg.replay_dispatch_inject) order_replay_inject_prefix();
-        else order_replay_inject();
-    }
+    if (g_cfg.order_mode == 2) order_replay_inject(os::phase::hash);
 
     // NO TAIL-CLEAR ANY MORE (mp:D33 follow-up, user 2026-09-25). From 2026-09-11 this zeroed
     // order_queue's dead slots [count, 300) every step so the hash saw the live queue only. It wrote
@@ -14007,8 +14204,8 @@ void on_sim_step() {
             int units_cached = -1, units_scan = -1;
             if (g_idx_units >= 0) {
                 const auto *ub = live_unit_row(i);
-                units_cached = (int)(ub[0].energy + 0.5); // slot 0 is a HEADER: the cached count
-                units_scan   = 0;
+                units_cached   = (int)(ub[0].energy + 0.5); // slot 0 is a HEADER: the cached count
+                units_scan     = 0;
                 for (uint32_t u = 1; u < 100; ++u)
                     if (ub[u].energy > 0.0) ++units_scan;
             }
@@ -14114,7 +14311,7 @@ void on_sim_step() {
             for (int i = 0; i < N_REGIONS; ++i) {
                 const mh::state::hash_region &r = REGIONS[i];
                 if (mh::state::is_rebased(r.rid)) ++rebased;
-                if (mh::state::owner_serves(r.rid, r.offset, r.len)) ++owned;
+                if (mh::state::owner_serves(r.rid, r.offset, mh::state::hash_len(i))) ++owned;
                 if (mh::state::live_base(r.rid) == 0) ++uncovered;
             }
             char cl[320];
@@ -14138,34 +14335,41 @@ void on_sim_step() {
         combined                = sh2.combined;
         state                   = sh2.state;
     }
-    verdict_snap_tick(); // mp:SES7b -- after the hash, at the instant the desync watch snapshots
-    u49_tick();          // mp:U49 -- the double-undock fixture (after the hash: outside the HASH-INPUT span)
-    soa_tick();          // mp:DSHEAL -- the shot-origin probe (after the hash)
-    pt1_tick();          // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
-    pt3_tick();          // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
-    pt2_tick();          // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)
-    a1_tick();           // mods:A1 -- the mother lift-off fixture (same placement)
-    capf_tick();         // patching:PT-CAP8 hardening -- the cap-fill fixture (same placement)
-    capu_tick();         // patching:PT-CAP9-U1 -- the unit-fill fixture (the units + soldiers roster)
-    capo_tick();         // patching:PT-CAP9-U5 -- the order-burst fixture (the order layers)
-    pathf_tick();        // patching:PT-CAP9-U4 -- the 500-paths fixture (after the fill)
-    capg_tick();         // patching:PT-CAP9-U5 -- the passive control-group watch of the UI row
-    capf2_tick();        // patching:PT-CAP10 -- the second army (same placement)
-    capord_tick();       // O1c -- the wide-order-index probe (same placement)
-    capovf_tick();       // PT-CAP8 S2 -- the overflow negative stimulus (same placement)
-    capsave_tick();      // PT-CAP8 S3 -- the raised-caps save round trip (same placement)
-    pf_tick();           // mods:M1 S0 -- the ground path-trace probe (same placement)
-    mv_tick();           // mods:M1R -- the recorded-move replay probe (same placement)
-    nd_tick();           // mods:M1N -- the nudge / claim / swap case probe (same placement)
-    fc_tick();           // mods:M1G 4b -- the formation-from-the-click fixtures (same placement)
-    door_tick();         // mods:M1BE -- the door-queue fixture F21 (same placement)
-    pip_tick();          // hotfix rc9.4 bldg_pip_guard -- the bad-pip fixture (same placement)
+    if (g_capture_active && g_cfg.order_mode == 1)
+        order_record(os::phase::hash); // final hash instant, including rehash
+    verdict_snap_tick();               // mp:SES7b -- after the hash, at the instant the desync watch snapshots
+    u49_tick();                        // mp:U49 -- the double-undock fixture (after the hash: outside the HASH-INPUT span)
+    soa_tick();                        // mp:DSHEAL -- the shot-origin probe (after the hash)
+    pt1_tick();                        // patching:PT-FIX1 -- the turret-slot-reuse fixture (same placement)
+    pt3_tick();                        // patching:PT-FIX3 -- the helicopter order-deadlock fixture (same placement)
+    pt2_tick();                        // patching:PT-FIX2 -- the turret fire-rate fixture (same placement)
+    a1_tick();                         // mods:A1 -- the mother lift-off fixture (same placement)
+    capf_tick();                       // patching:PT-CAP8 hardening -- the cap-fill fixture (same placement)
+    capu_tick();                       // patching:PT-CAP9-U1 -- the unit-fill fixture (the units + soldiers roster)
+    capo_tick();                       // patching:PT-CAP9-U5 -- the order-burst fixture (the order layers)
+    pathf_tick();                      // patching:PT-CAP9-U4 -- the 500-paths fixture (after the fill)
+    capg_tick();                       // patching:PT-CAP9-U5 -- the passive control-group watch of the UI row
+    capf2_tick();                      // patching:PT-CAP10 -- the second army (same placement)
+    capord_tick();                     // O1c -- the wide-order-index probe (same placement)
+    capovf_tick();                     // PT-CAP8 S2 -- the overflow negative stimulus (same placement)
+    capsave_tick();                    // PT-CAP8 S3 -- the raised-caps save round trip (same placement)
+    pf_tick();                         // mods:M1 S0 -- the ground path-trace probe (same placement)
+    mv_tick();                         // mods:M1R -- the recorded-move replay probe (same placement)
+    nd_tick();                         // mods:M1N -- the nudge / claim / swap case probe (same placement)
+    fc_tick();                         // mods:M1G 4b -- the formation-from-the-click fixtures (same placement)
+    door_tick();                       // mods:M1BE -- the door-queue fixture F21 (same placement)
+    pip_tick();                        // hotfix rc9.4 bldg_pip_guard -- the bad-pip fixture (same placement)
 
     const uint64_t clock = *reinterpret_cast<const uint64_t *>(mh::state::hash_base(IDX_CLOCK)); // game_clock bits
-    // The clock track. `order_mode == 1` IMPLIES clock_record, so every recording path that predates
-    // the split writes exactly the clock it always did; the standalone key exists for LIB-REF-LIVE's
-    // order-free fixture, which needs a clock and must NOT produce an order stream. See Config.
-    if (g_cfg.order_mode == 1 || g_cfg.clock_record) clock_record(clock);
+    // Keep the original sampling instant. With orders, publish this clock only once the real
+    // HASH/ENTRY pair completes, so an import can discard a pending pair without leaving a clock.
+    // Standalone clock capture has no ENTRY phase and publishes directly.
+    if (g_capture_active) {
+        if (g_cfg.order_mode == 1)
+            g_record_clock_bits = clock;
+        else if (g_cfg.clock_record)
+            clock_record(clock);
+    }
 
     // LIB-WORLD: the step-0 world capture, HERE and nowhere else.
     //
@@ -14215,9 +14419,6 @@ void on_sim_step() {
               (unsigned)(state >> 32), (unsigned)state);
     append_line(g_log_path, line);
 
-    // Solo / field-report fix: see order_replay_open_gate. After the hash line, so no hashed byte moves.
-    if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay) order_replay_open_gate();
-
     // mp:X3: the SUB-DOMAIN trail, BEFORE the R row and from the same per[], so a step carrying
     // both has them describing one instant with the coarse row first -- which is also the order a
     // reader wants them in (which subsystem, then which region inside it).
@@ -14244,6 +14445,7 @@ void on_sim_step() {
         rl[off]   = '\0';
         append_line(g_log_path, rl);
     }
+    g_last_published_step = g_step;
 
     // The RAW REGION DUMP (rdump_*), at the SAME sample point as the `R` line above so a byte here and
     // a hash there describe the same instant. See the config block for what it is for and its one
@@ -14260,7 +14462,7 @@ void on_sim_step() {
         }
         if (g_cfg.rdump_rid >= 0 && g_cfg.rdump_rid < N_REGIONS) {
             const int rid = g_cfg.rdump_rid;
-            rdump_emit(reinterpret_cast<const uint8_t *>(mh::state::hash_base(rid)), REGIONS[rid].len,
+            rdump_emit(reinterpret_cast<const uint8_t *>(mh::state::hash_base(rid)), mh::state::hash_len(rid),
                        rid);
         }
     }
@@ -14310,29 +14512,6 @@ void on_sim_step() {
         // The shadow sites' FINAL verdict, here rather than in shadow.cpp, because this is the one
         // place that knows the run is over. Without it a site called fewer than 200 times ends its
         // log on the call-#1 progress line, which reads `1 call(s), 0 divergence(s)` by construction.
-        // LIB-REF-SOAK: the injector's evidence line, UNCONDITIONAL in a replay run -- it does not
-        // depend on rng_trace being armed, on a window, or on anything a later run might forget to
-        // pass. fixture_replay's recorder guard reads it to decide whether a `0 -> n` fixture is the
-        // benign shape (a sparse order stream over an idle queue) or the refused one (an injector
-        // that appends without setting the count). Absent line == no evidence == still refused.
-        if (g_cfg.order_mode == 2 && g_replay) {
-            char ib[256];
-            wsprintfA(ib, "; injector: count SET at %d of %d arrival step(s), %d append-without-set\n",
-                      g_inject_set_ok, g_inject_arrivals, g_inject_no_set);
-            append_line(g_log_path, ib);
-            if (g_cfg.replay_dispatch_inject) {
-                wsprintfA(ib, "; [dispatch_inject] %lu dispatch entr(ies), %lu replaced a queue that "
-                              "differed from the recorded snapshot; %lu record(s) held back at the "
-                              "top of a step as the AI tick's; %lu MISSED dispatch(es)\n",
-                          g_dinj_entries, g_dinj_differ, g_dinj_top_t, g_dinj_missed);
-                append_line(g_log_path, ib);
-            }
-            if (g_cfg.replay_drop_net_issue) {
-                wsprintfA(ib, "; [issue_drop] %lu net-player issue(s) dropped, %lu passed through\n",
-                          g_issue_dropped, g_issue_passed);
-                append_line(g_log_path, ib);
-            }
-        }
         g_active = false;
         // FLUSH UNCONDITIONALLY, and the NON-exiting path is the one that needs it. append_line only
         // writes on the NEXT call (a buffer overflow, or the 1 s cadence it checks on entry), and
@@ -14404,18 +14583,22 @@ void on_console(const char *line) {
         seed_dump();
         append_line(g_log_path, "; console: HDUMP\n");
     } else if (has("HLOAD")) {
+        g_match_axis_valid = false;
         seed_inject();
         append_line(g_log_path, "; console: HLOAD\n");
     } else if (has("HSTOP")) {
-        g_active = false;
+        g_match_axis_valid = false;
+        g_active           = false;
         append_line(g_log_path, "; console: HSTOP\n");
     } else if (has("HGO")) {
-        g_active = true;
+        g_match_axis_valid = false;
+        g_active           = true;
         append_line(g_log_path, "; console: HGO\n");
     } else if (has("HRESET")) {
-        g_step       = 0;
-        g_seed_done  = false;
-        g_loads_done = 0;
+        g_match_axis_valid = false;
+        g_step             = 0;
+        g_seed_done        = false;
+        g_loads_done       = 0;
         append_line(g_log_path, "; console: HRESET\n");
     }
 }
@@ -14466,30 +14649,47 @@ void *g_tick_promoted = nullptr;
 // jump target in one word, exactly like g_tick_promoted.
 void *g_disp_promoted = nullptr;
 
-// order_queue_dispatch entry hook -- record mode snapshots the queue about to execute.
+// The actual dispatcher observer stays separate. Empty ENTRY phases do not call dispatch.
 void on_dispatch() {
-    if (g_cfg.order_mode == 1) {
-        // mp:LOG2 (explains the 2026-10-04 match_launch_net last-step flake): once the harness stops
-        // (g_active=false at stop_step, g_step frozen) a run with exit_on_stop=0 keeps simulating until
-        // its runner kills it, and every further dispatch used to be recorded AGAIN under the frozen
-        // g_step -- so the LAST step's record count was however many steps ran before the kill (host 24
-        // vs peer 46; 214 vs 223 in a solo run). Only ONE dispatch after the stop belongs to the
-        // recording: the stop step's own body (the deferred-exit design, see g_exit_after_body). The
-        // latch records that one and ignores the rest; it re-arms whenever the harness is active again.
-        if (g_active) {
-            g_rec_post_stop_done = false;
-            order_record();
-        } else if (!g_rec_post_stop_done) {
-            g_rec_post_stop_done = true;
-            order_record();
-            // The stop step's own record is the LAST thing the stream will ever get, and a runner
-            // may taskkill /f this process at any moment after the stop block's log_flush() (it
-            // already ran, before this body): drain once more so the final step is on disk. Once per
-            // stop, bounded -- not a per-step cost.
+    mh::ui::selected_targets::detail::observe_dispatch(g_cfg.order_mode == 2);
+}
+
+void *g_post_ai_tramp = nullptr;
+void  on_order_post_ai() {
+    if (g_capture_active && g_cfg.order_mode == 1 && g_order_phase_pending) {
+        order_record(os::phase::entry);
+        clock_record(g_record_clock_bits);
+        if (!g_active) log_flush();
+    } else if (g_cfg.order_mode == 2 && g_replay_entries < g_replay_hashes) {
+        order_replay_inject(os::phase::entry);
+        if (!g_active) {
+            char b[200];
+            wsprintfA(b, "; order replay v2: HASH=%lu ENTRY=%lu missed=0 ai_off=0 suppress_enqueue=0\n",
+                       g_replay_hashes, g_replay_entries);
+            append_line(g_log_path, b);
             log_flush();
         }
-    } else if (g_cfg.order_mode == 2 && g_cfg.replay_dispatch_inject && g_replay)
-        order_replay_dispatch_replace(); // mp:D37b
+    }
+    patrol_input_tick();
+}
+__declspec(naked) void order_post_ai_detour() {
+    __asm {
+        pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
+        call on_order_post_ai
+        fxrstor [esp]
+        mov esp, ebx
+        popad
+        popfd
+        jmp dword ptr [g_post_ai_tramp]
+    }
 }
 
 // ---- mp:D37b: the lockstep issue route, emulated in a single-process replay ---------------------
@@ -14529,16 +14729,25 @@ __declspec(naked) void issue_detour() {
 
 __declspec(naked) void dispatch_detour() {
     __asm {
-        pushad
         pushfd
+        pushad
+        mov ebx, esp
+        sub esp, 527
+        and esp, -16
+        fxsave [esp]
+        fninit
+        fldcw word ptr [esp]
+        cld
         call on_dispatch
-        popfd
+        fxrstor [esp]
+        mov esp, ebx
         popad
-                            // D18: the C6 rebind, copied from sim_tick_detour below -- see the EFLAGS note there, which
-                            // applies here for the same reason (this is a FUNCTION ENTRY; nothing reads incoming flags).
-                            // Without this the recorder and `[promote] sim_dispatch` are mutually exclusive: whichever
-                            // arms second loses, and MEASURED, the loser was the promotion -- refused with "entry bytes
-                            // ... (wrong build, or already hooked)", a build diagnosis from a perfectly good build.
+        popfd
+                    // D18: the C6 rebind, copied from sim_tick_detour below -- see the EFLAGS note there, which
+                    // applies here for the same reason (this is a FUNCTION ENTRY; nothing reads incoming flags).
+                    // Without this the recorder and `[promote] sim_dispatch` are mutually exclusive: whichever
+                    // arms second loses, and MEASURED, the loser was the promotion -- refused with "entry bytes
+                    // ... (wrong build, or already hooked)", a build diagnosis from a perfectly good build.
         cmp  dword ptr [g_disp_promoted], 0
         jne  promoted
         jmp  dword ptr [g_disp_tramp] // stolen 8-byte prologue + jmp back to dispatch+8
@@ -14755,22 +14964,7 @@ extern "C" int MH_Harness_RebindLandPlayers(void *ours) {
 // MH_Harness_Init runs BEFORE MH_Seam_Init, so anything the harness decides at its own init time
 // necessarily predates every promotion.
 //
-// Today that is one thing -- the `[harness] replay_suppress_enqueue` neuter of
-// llm_strat_order_enqueue. Doing it at harness-init time meant the harness always won the entry and
-// `[promote] orders` (default ON; enqueue is one of its nine seams) then found it rewritten:
-// MEASURED, "[export] llm_strat_order_enqueue NOT armed -- entry bytes 0000002868C3C031 != expected
-// 0000002868E58955 (wrong build, or already hooked)" and then "[promote] orders: 8/9 seams installed
-// -- PARTIAL, treat this run as invalid". Using one facility invalidated the other, in language that
-// blamed the image.
-//
-// Deferring lets each configuration take the mechanism that fits it: if the entry is OURS the
-// suppression is carried as behaviour by our body (mh::orders::set_suppress_enqueue), and if it is
-// still the original's the byte neuter goes in exactly as before.
-//
-// F4G: the body is a static so the export can FLUSH after it whichever of its three exits it takes.
-// Same reason MH_Harness_Init flushes at its end -- this is the last of the arm report, it runs
-// before any frame, and a run killed at the menu never appends again.
-// mp:D37b: the issue drop, armed here for the reason the neuter is (D18): at harness init nothing is
+// The issue-route emulation arms after promotion ownership is known: at harness init nothing is
 // promoted yet, so taking the entry there made `[promote] orders` refuse it -- MEASURED, "entry is OWNED
 // by the field replay's net-player issue drop" and "orders: 8/9 seams installed -- PARTIAL". When the
 // entry is ours (configuration (2)) the drop is not needed as a hook: the promoted router takes the
@@ -14795,57 +14989,15 @@ static void late_arm_issue_drop(void) {
     if (!ok) g_cfg.replay_drop_net_issue = 0;
 }
 
-static void late_arm_report(void) {
-    late_arm_issue_drop();
-    if (g_cfg.order_mode != 2 || !g_cfg.replay_suppress_enqueue) return;
-
-    // THE SINK GATE IS SET UNCONDITIONALLY (user ruling, 2026-09-11), promoted or not. It lives in
-    // mh::orders::detail::enqueue now -- the one point every append passes through -- so it catches
-    // BOTH the game's entry (via the promotion thunk) and every libmh-internal caller that
-    // MH_LIBMH_BIND routes straight to our body, which is the population the old promotion-wrapper
-    // placement could not see and which appended one synth_move order per step straight past it
-    // (LIB-REF's step-5000 residual). Setting it even when the entry is NOT ours is deliberate and
-    // not redundant: the rebind rows are armed independently of `[promote] orders`, so in that
-    // configuration the byte neuter below covers the original's entry and this covers the rebound
-    // internal callers. Neither alone is the documented sentence.
-    // mp:D29: in configuration (1) there is no libmh sink and no rebound caller -- the byte neuter
-    // below is the whole suppression -- and the setter is a spine row, so it is skipped.
-    if (g_spine) mh::orders::set_suppress_enqueue(true);
-
-    if (mh::hook::promoted_owner_of(ADDR_ORDER_ENQUEUE)) {
-        append_line(g_log_path,
-                    "; replay_suppress_enqueue: llm_strat_order_enqueue is PROMOTED -- suppression "
-                    "CARRIED by our body AT THE SINK (mh::orders::detail::enqueue returns 0 and "
-                    "appends nothing, for the game's entry AND every rebound internal caller) "
-                    "instead of a byte neuter, and the orders promotion stays whole (D18)\n");
-        return;
-    }
-
-    // Neuter llm_strat_order_enqueue -> `xor eax,eax; ret` (return 0, append nothing). __watcall
-    // passes its 4 args in registers so no stack cleanup is needed; the entry has no frame yet.
-    // Guarded by the Watcom prologue. Lets the AI keep running while ONLY injected orders reach the
-    // queue -- the faithful-substitute test.
-    //
-    // D5: the guard and the three bytes live in the hook point's row now (`point::order_enqueue`).
-    // This was the ONE place in harness-owned code that hand-rolled its own VirtualProtect instead of
-    // going through a primitive at all, which is why check_fork_d5_hooks forbids VirtualProtect here
-    // as well as the three install primitives -- "zero raw-primitive callers" would otherwise be
-    // satisfiable by writing the bytes by hand.
-    if (mh::hook::arm_neuter(mh::hook::point::order_enqueue)) {
-        append_line(g_log_path, "; replay_suppress_enqueue: armed (original entry neutered)\n");
-    } else {
-        // Neither the prologue nor promoted: a genuine wrong-build/unknown entry. This branch NEVER
-        // degrades quietly, because the damage here is not a blind measurement but a WRONG one --
-        // un-neutered, the AI's own orders keep reaching the queue beside the replayed ones and the
-        // isolation the whole test rests on is gone, on a run that otherwise looks normal.
-        append_line(g_log_path,
-                    "; replay_suppress_enqueue: enqueue prologue mismatch -- NOT armed. THE REPLAY IS "
-                    "NOT ISOLATED IN THIS RUN: AI orders still reach the queue.\n");
-    }
-}
+static void late_arm_report(void) { late_arm_issue_drop(); }
 
 extern "C" void MH_Harness_LateArm(void) {
     late_arm_report();
+    if (g_hash_kind_pending) {
+        hash_kind_arm(); // finalized native extents; caps installation precedes LateArm
+        hash_fingerprint_report();
+        g_hash_kind_pending = false;
+    }
     log_flush();
 }
 
@@ -15081,8 +15233,7 @@ extern "C" int MH_Harness_Init(void) {
     // thread, and DllMain runs on whatever thread performed the injection, which is not necessarily
     // the one that will run frames. Arming from the arm path means the sampled thread is the thread
     // that does the work.
-    hash_kind_arm(); // TL-HARN-INCHASH: decide the kind BEFORE the fingerprint line states it
-    hash_fingerprint_report();
+    g_hash_kind_pending = true; // defer arena sizing + kind fingerprint until MH_Harness_LateArm
     prof_start();
     // TACT-PREP: the tactical cadence. Only installed when asked for -- with tact_hash_step=0 no
     // byte of llm_tact_frame is touched, so every existing run keeps its exact behaviour and the
@@ -15343,74 +15494,39 @@ extern "C" int MH_Harness_Init(void) {
     // mods:M1D: the read-only wave observer of the movement probe
     if (g_cfg.mv_replay[0] && g_cfg.mv_waves) mv_arm_waves();
 
-    // Phase 2 order record/replay. Record hooks order_queue_dispatch (same Watcom prologue, guarded);
-    // replay needs no hook (it injects from on_sim_step) -- just load the file.
-    if (g_cfg.order_mode == 1) {
-        // U30: the compare moved into the primitive, so the recorder either takes the entry or is
-        // told by name who has it -- and the D18 branch below still gets its turn.
-        const bool rec_armed = mh::hook::arm_observer(mh::hook::point::order_dispatch,
-                                                      reinterpret_cast<void *>(dispatch_detour),
-                                                      &g_disp_tramp);
-        if (rec_armed) {
-            // nothing further: the trampoline owns the entry and records from there
-        } else if (mh::hook::promoted_owner_of(ADDR_ORDER_DISPATCH)) {
-            // D18, the promotion-already-won branch. It does NOT fire in the shipped init order --
-            // MH_Harness_Init runs BEFORE MH_Seam_Init, which is where every promotion happens, so at
-            // this point nothing is promoted yet and the trampoline above takes the entry. The
-            // collision this facility actually has is the REVERSE one, and the rebind
-            // (MH_Harness_RebindOrderDispatch) is what resolves it. This branch is the belt to that
-            // braces: if the order ever changes, the recorder degrades to an observer on our body
-            // instead of silently recording nothing.
-            //
-            // Exactly one mechanism is live per configuration -- trampoline when the original owns
-            // the entry, observer when we do -- which is what stops it double-recording. order_mode
-            // STAYS 1 either way.
-            mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_dispatch);
-            append_line(g_log_path,
-                        "; order_record: dispatch is PROMOTED -- recording via the promoted body's "
-                        "observer instead of a trampoline (D18). order_mode stays 1.\n");
-        } else {
-            // A genuine wrong-build/unknown prologue, OR an entry another detour owns. Distinct from
-            // the promoted case above, and it has to stay distinct: conflating them is what made D17
-            // read as a build problem. The primitive has already said which of the two it was.
-            append_line(g_log_path, "; order_record: dispatch entry unavailable -- disabled (the "
-                                    "reason is in the [interlock] summary in mh_net.log)\n");
-            g_cfg.order_mode = 0;
-        }
-    } else if (g_cfg.order_mode == 2) {
-        order_replay_load();
-        hqueue_load();
-        clock_load(); // optional mh_clock.bin -> reproduce a real-time recording's per-step deltas
-        // The enqueue neuter is DEFERRED to MH_Harness_LateArm -- see it for why. Doing it here is
-        // what made `replay_suppress_enqueue=1` invalidate the whole orders promotion.
-        //
-        // mp:D37b: the dispatch-entry replace takes the recorder's entry, by the recorder's two
-        // mechanisms (trampoline, or the promoted body's observer) -- one run is never both.
-        if (g_cfg.replay_dispatch_inject) {
-            const char *how = nullptr;
-            if (mh::hook::arm_observer(mh::hook::point::order_dispatch,
-                                       reinterpret_cast<void *>(dispatch_detour), &g_disp_tramp)) {
-                how = "trampoline on the dispatch entry";
-            } else if (mh::hook::promoted_owner_of(ADDR_ORDER_DISPATCH)) {
-                mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_dispatch);
-                how = "the promoted body's observer (D18)";
+    // Install the post-AI gate independently of the actual dispatcher observer. The original
+    // 7-byte CMP trampoline executes only for a native body; the registered observer executes
+    // only for a translated body, including after a later sim-step promotion/rebind.
+    if (g_cfg.order_mode != 0 || g_cfg.patrol_input_file[0]) {
+        if (g_cfg.order_mode == 2) {
+            if (g_cfg.replay_ai_off || g_cfg.replay_suppress_enqueue || !g_cfg.replay_dispatch_inject) {
+                append_line(g_log_path, "; MHOR v2 REFUSED: requires AI ON, enqueue suppression 0, both phases\n");
+                log_flush();
+                ExitProcess(3);
             }
-            char b[200];
-            if (how) {
-                wsprintfA(b, "; [dispatch_inject] armed via %s -- the queue is set to the recorded "
-                             "snapshot at every dispatch entry%s\n",
-                          how,
-                          g_cfg.replay_suppress_enqueue
-                              ? " (WARNING: replay_suppress_enqueue=1 still drops same-pass enqueues)"
-                              : "");
-            } else {
-                wsprintfA(b, "; [dispatch_inject] dispatch entry unavailable -- NOT armed (the reason "
-                             "is in the [interlock] summary in mh_net.log)\n");
-                g_cfg.replay_dispatch_inject = 0;
-            }
-            append_line(g_log_path, b);
+            order_replay_load();
+            clock_load();
         }
-        // mp:D37b: replay_drop_net_issue arms in MH_Harness_LateArm (after the promotions), for D18's reason.
+        const bool native_phase = mh::hook::promoted_owner_of(
+                                      mh::hook::point_target(mh::hook::point::sim_step_post_ai)) != nullptr ||
+                                  mh::hook::arm_observer(mh::hook::point::sim_step_post_ai,
+                                                         reinterpret_cast<void *>(&order_post_ai_detour), &g_post_ai_tramp);
+        if (!native_phase ||
+            (g_spine && !mh::hook::register_callback(mh::hook::point::sim_step_post_ai_observer,
+                                                     &on_order_post_ai))) {
+            append_line(g_log_path, "; MHOR v2 REFUSED: exact post-AI phase unavailable\n");
+            log_flush();
+            ExitProcess(3);
+        }
+        if (!mh::hook::arm_observer(mh::hook::point::order_dispatch,
+                                    reinterpret_cast<void *>(dispatch_detour), &g_disp_tramp)) {
+            if (!mh::hook::promoted_owner_of(ADDR_ORDER_DISPATCH) ||
+                !mh::hook::register_callback(mh::hook::point::dispatch_observer, &on_dispatch)) {
+                append_line(g_log_path, "; dispatcher observation unavailable\n");
+                log_flush();
+                ExitProcess(3);
+            }
+        }
     }
 
     // ---- D6: arm the synthetic moving-unit workload -------------------------------------------
@@ -15648,6 +15764,44 @@ extern "C" int MH_Harness_StepFence(int target) {
     return (int)g_step;
 }
 
+extern "C" int MH_Harness_SoaComplete(void) {
+    if (!g_sim_tramp || g_cfg.soa_at <= 0) return -1;
+    return g_soa_complete && mh_logq_ticket_done(g_soa_ticket) ? 1 : 0;
+}
+
+extern "C" int MH_Harness_RecordFailoverCleanup(int phase, int local_id, int removed_side) {
+    if (!g_sim_tramp || GetCurrentThreadId() != g_seg_thread) return -1;
+    const bool already_recorded    = g_seg_cleanup_recorded;
+    g_seg_cleanup_recorded         = true;
+    const unsigned long generation = MH_RunDirGeneration();
+    const char         *match      = MH_RunDir_SessionMatchId();
+    if (!g_active || !g_match_axis_valid || g_step_observation_depth || g_ws_rehash ||
+        !g_seg_log_open || !g_seg_dir[0] || !MH_RunDir_SessionActive() ||
+        generation != g_seg_generation || !match || lstrcmpA(match, g_seg_match_id) != 0 ||
+        lstrcmpiA(MH_RunDir(), g_seg_dir) != 0 || MH_RunDirGeneration() != generation ||
+        g_step != g_last_published_step || g_step == UINT32_MAX || g_step < g_match_base ||
+        g_step - g_match_base >= 0x7fffffffu || local_id < 0 || local_id >= 8 ||
+        removed_side < 0 || removed_side >= 8 || local_id == removed_side ||
+        (phase != 4 && phase != 5) || already_recorded) {
+        append_line(g_log_path, "; FAILOVER-CLEANUP REFUSED: no unique stable published match boundary\n");
+        return -1;
+    }
+    const unsigned first   = g_step - g_match_base + 1;
+    const auto    *players = reinterpret_cast<const mh::game::mh_llm_strat_player_profile *>(
+        mh::state::hash_base(mh::state::HIDX_STRAT_PLAYERS));
+    char line[512];
+    wsprintfA(line,
+              "; FAILOVER-CLEANUP phase=%d match=%s local=%d remove=%d generation=%lu base=%lu "
+              "last=%lu first=%u flags=%08X,%08X,%08X,%08X,%08X,%08X,%08X,%08X\n",
+              phase, match, local_id, removed_side, generation, g_match_base, g_step, first,
+              (unsigned)players[0].status_flags, (unsigned)players[1].status_flags,
+              (unsigned)players[2].status_flags, (unsigned)players[3].status_flags,
+              (unsigned)players[4].status_flags, (unsigned)players[5].status_flags,
+              (unsigned)players[6].status_flags, (unsigned)players[7].status_flags);
+    append_line(g_log_path, line);
+    return (int)first;
+}
+
 // mp:X3c -- the world resync's two observation points (mh_harness_export.h has the contract).
 //   WS_CAPTURE (host, inside the horizon hold): the same SNAPCAP row + fixup line snapshot_send_now writes,
 //                labelled with the CAPTURE step S (the desync axis both peers agree on).
@@ -15655,6 +15809,8 @@ extern "C" int MH_Harness_StepFence(int target) {
 //                from live memory, and flag the step in progress so on_sim_step re-derives its hashes over
 //                the imported world (g_ws_rehash) instead of logging the replaced world's.
 extern "C" void MH_Harness_OnWorldSync(int what, unsigned step, int arg, const void *blob, unsigned len) {
+    if (what == 2) g_match_axis_valid = false;
+    if (what == 2) capture_close_world_import(step); // Successful import only; before the harness rewind.
     if (!g_active) return;
     char line[256];
     if (what == 1) {

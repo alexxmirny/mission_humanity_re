@@ -19,7 +19,8 @@ refuse.codepage = page de codes %u/%u
 refuse.newer_protocol = protocole %u > %u
 refuse.older_protocol = protocole %u < %u
 refuse.malformed = requête de connexion invalide
-refuse.no_match_id = ancien protocole (sans match_id)
+refuse.old_protocol = ancien protocole de jeu
+refuse.host_generation = génération de l’hôte %u < %u
 refuse.newer_than_host = protocole plus récent que l'hôte
 refuse.not_our_lobby = ce n'est pas notre salon
 refuse.cp_mismatch = pages de codes différentes
@@ -27,6 +28,7 @@ refuse.unknown = inconnu
 refuse.caps = impossible de relever les limites
 refuse.build = l'hôte a %s, vous avez %s : mettez à jour
 refuse.gameplay = Paramètres de jeu différents (%s/%s) : mettez à jour
+refuse.content = contenu du jeu différent (mods ?)
 relay.outdated = Relais obsolète (protocole %u < %u)
 
 # map transfer
@@ -70,5 +72,34 @@ lobby.team_4 = É4
 lobby.mode_ffa = Mode : mêlée
 lobby.mode_team = Mode : équipes
 
+# right panel page spinner (mods:MAPGEN2)
+page.description = Vue : Description
+page.preview = Vue : Aperçu
+page.settings = Vue : Réglages
+page.settings_title = Réglages de la partie
+page.settings_host_only = Réglages de la partie (fixés par l'hôte)
+page.preview_not_received = Carte pas encore reçue
+page.preview_none = Aucun aperçu disponible
+
 # raised-caps save refused while [caps] raise is OFF (patching:PT-CAP8 S3)
 caps.load_refused = Cette sauvegarde utilise des limites relevées. Activez "Raised limits" dans le lanceur pour la charger.
+# the .sav mod-metadata carrier: one deferred notice, the load continues (mh/mods/save_meta.cpp)
+mods.save_mismatch = Sauvegarde créée avec d'autres mods - chargement quand même
+mods.save_legacy = Sauvegarde sans données de mods - peut ne pas correspondre aux mods actifs
+mods.save_tileset_missing = Ce jeu sauvegardé nécessite un jeu de tuiles manquant. Activez son mod.
+mods.config_refused = Mods refusés ; ressources originales actives
+mods.config_details = Voir mh_video.log pour les détails
+tileset.summary_overflow = Le résumé de la carte dépasse la limite d'affichage
+tileset.unknown = Jeu de tuiles inconnu
+lobby.speed = Vitesse : %d%%
+storage.auto_dispatch = sortie automatique
+
+keys.input_unavailable = Impossible d'installer les commandes stratégiques en toute sécurité. Redémarrez avec des versions compatibles du jeu et du mod.
+orders.queue_full = %u unité(s) : file d'ordres pleine (32 entrées)
+orders.after_patrol = %u unité(s) : aucun ordre fini ne peut suivre une patrouille répétée
+orders.degenerate = %u unité(s) : la patrouille exige des points distincts
+orders.target = %u unité(s) : la cible n'est plus disponible
+orders.unsupported = %u unité(s) : cette action ne peut pas être mise en file
+orders.actor_unavailable = %u unité(s) : unité indisponible pour les ordres en file
+orders.world_unavailable = %u unité(s) : ordre en file non valide dans le monde actuel
+orders.blocked = %u unité(s) : ordre bloqué ; remplacez la route pour continuer

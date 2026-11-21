@@ -66,7 +66,7 @@ clickl Start
 absent Network players
 gamemode 2
 gameclock 3000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 12000
 capture u8b_second_game
 log CLIENT second game ran to 12 s of sim

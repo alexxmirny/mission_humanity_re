@@ -31,14 +31,17 @@ signal ready
 absent Network players
 gameclock 3000
 capture ingame
-gameclock 5000
+# Fence before the modal stops local simulation; release after Cancel.
+simstep 500
 simclick 972 150
 retry 1500 1 3 settled value:100
 clickv 100
 absent value:113
+settled Cancel
 capture diplomacy_team_locked_client
 clickl Cancel
 absent Cancel
+simresume
 gameclock 12000
 awaitsignal hostdone
 end

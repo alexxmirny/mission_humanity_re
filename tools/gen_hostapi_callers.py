@@ -110,9 +110,8 @@ def load_translated_domains():
                 continue
             p = os.path.join(dirpath, fn)
             text = io.open(p, encoding="utf-8", errors="replace").read()
-            for m in _reimpl.RE_REPLACE.finditer(text):
-                nm = m.group(1)
-                if nm in _reimpl.MACRO_PARAM_NAMES or nm in name_domain:
+            for nm in _reimpl.iter_installed_names(text):
+                if nm in name_domain:
                     continue
                 rel = os.path.relpath(p, root).replace("\\", "/").split("/")
                 # F5O: `libmh` joined `mh` as a tree whose SECOND component is the module.

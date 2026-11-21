@@ -13,11 +13,11 @@ camto 24 38
 gameclock +100
 cursorhold 600 400 6
 screensettled
-hotkeydown Tab
+rawkey 0x0f down
 cursorhold 600 400 10
 screensettled
 capture bigmap_map__held
-hotkeyup Tab
+rawkey 0x0f up
 cursorhold 600 400 10
 screensettled
 end

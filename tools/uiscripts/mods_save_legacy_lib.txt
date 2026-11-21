@@ -1,0 +1,15 @@
+# Load a deployed metadata-free retail save under mod set B.
+delsave dxsavea
+delsave dxsaveb
+delsave dxfresh
+settled value:108
+clickv 108
+present Load game
+settled Load game
+clickl Load game
+absent Load game
+gamemode 2
+capture dx_legacy_notice
+gameclock +1000
+capture dx_legacy_running
+end

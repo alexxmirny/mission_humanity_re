@@ -303,20 +303,6 @@ def thunk_code(o_va, q_va):
 # ---- exe scan --------------------------------------------------------------------------------------
 
 
-def _sweep(md, d, base, ranges):
-    covered = {}
-    for lo, hi in ranges:
-        o = lo - base
-        while base + o < hi:
-            ins = list(md.disasm(d[o : o + 15], base + o, 1))
-            if not ins:
-                o += 1
-                continue
-            covered[ins[0].address] = ins[0]
-            o += ins[0].size
-    return covered
-
-
 def scan_exe(raw, img, lay):
     """-> (sites, census). sites: sorted dicts; census: every in-extent dword of BEGTEXT/DGROUP with its class."""
     import capstone
@@ -341,7 +327,7 @@ def scan_exe(raw, img, lay):
             ranges.append((lo, hi))
         prev = max(prev, hi)
     ranges.append((prev, base + len(d)))
-    covered = _sweep(md, d, base, ranges)
+    covered = scan.sweep_ranges(md, d, base, ranges)
     for start in (
         RESYNC
     ):  # re-decode from a known instruction start, dropping the misdecoded instructions it overlaps
@@ -359,10 +345,14 @@ def scan_exe(raw, img, lay):
             a += i.size
             o += i.size
 
+    low = min((a["stock_base"] for a in lay), default=0)
+    high = max((a["stock_base"] + a["stock_size"] for a in lay), default=0)
     sites, seen = [], set()
     for addr in sorted(covered):
         i = covered[addr]
         b = bytes(i.bytes)
+        if not any(low <= u32(b, off) < high for off in range(len(b) - 3)):
+            continue
         for kind, off, sz in (
             ("disp", i.disp_offset, i.disp_size),
             ("imm", i.imm_offset, i.imm_size),
@@ -408,6 +398,8 @@ def scan_exe(raw, img, lay):
         data = raw[sec["raw_off"] : sec["raw_off"] + sec["raw_size"]]
         for o in range(len(data) - 3):
             v = u32(data, o)
+            if not low <= v < high:
+                continue
             a = array_of(v, lay)
             if a is None:
                 continue

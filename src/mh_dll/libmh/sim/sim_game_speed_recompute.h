@@ -103,6 +103,10 @@ void game_speed_recompute(const sim_view &v, sim_store &own);
 // Live wrapper: the logic applied to state(). Matches the original's committed void(void) signature.
 void game_speed_recompute();
 
+// Hosted post-recompute boundary. Only the live wrapper calls it; pure detail calls stay isolated.
+// The host owns any frozen match setting; libmh holds only this callback, never another speed state.
+void set_game_speed_recompute_observer(void (*fn)());
+
 namespace detail {
 } // namespace detail
 

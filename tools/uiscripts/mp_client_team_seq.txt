@@ -35,18 +35,52 @@ capture lobby_team__t2_client_team
 # own row: one click -> T1
 click 221 132
 team 1 1
-# the host's row and the AI row are not ours, and the mode is the host's: these clicks change nothing  (client layout: Start hidden, so the selector sits at y=356)
+# the host's row and the AI row are not ours, and the mode is the host's: these clicks change nothing
 click 221 115
 click 221 149
-click 501 356
+# Mode lives on the Settings page since mods:MAPGEN2 (client layout: Start hidden, so the page spinner sits at y=366): page
+# there, read-only for a client, and click it inside the box -- it must not move
+settled Cancel
+click 501 366
+lobbypage 1
+settled Cancel
+click 501 366
+lobbypage 2
+lobbyspeed 200
+capture lobby_speed__client_200
+# Attempt to edit the disabled host-only Speed spinner through actual native input.
+settled Cancel
+click 501 205
+click 501 184
+# ... and back to the Description page
+settled Cancel
+click 501 366
+lobbypage 0
 # a second own-row click proves the earlier probes were fully processed -> T2
 click 221 132
 team 1 2
 team 0 1
 team 2 2
 lobbymode 1
+# The second accepted own-team click above proves the earlier input probes drained.
+lobbyspeed 200
 capture lobby_team__t3_client_after_probe
+# Return to Settings for a stable view of the no-change result; roster is held by clientdone.
+settled Cancel
+click 501 366
+lobbypage 1
+settled Cancel
+click 501 366
+lobbypage 2
+lobbyspeed 200
+capture lobby_speed__client_after_probe
 signal clientdone
+lobbyspeed 100
+capture lobby_speed__client_100
+signal speedresetseen
+settled Cancel
+click 501 366
+lobbypage 0
 
 # --- the host vacates and re-takes the AI slot, then switches back to FFA ---
 lobbymode 0

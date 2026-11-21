@@ -9,6 +9,7 @@
 #include "ai/ai_state.h"        // ai_say / trace_budget -- the shared trace sink, not AI state
 #include "addr/mh_rebind.gen.h" // LIB-REBIND: the config-selected binder
 #include "state/rebind_targets.gen.h"
+#include "mh_storage_policy.h"
 
 namespace mh::sim {
 
@@ -122,8 +123,14 @@ void unit_state_takeoff_landing(const sim_view &v, sim_store &own, const unit_st
             return;
         }
         // 0x004814cd-0x004814f9: reached/passed the ceiling -- clamp and promote the queued order.
-        u.elevation = v.cfg_units[proto].elevation;
-        c.unit_set_state(u.order); // u.order (+0x4), NOT a literal -- see the header derivation.
+        u.elevation     = v.cfg_units[proto].elevation;
+        const auto &cfg = v.cfg_units[proto];
+        if (mh::storage_policy::is_rally_departure(u.order, cfg.move_op_arg, cfg.default_op_code)) {
+            u.order = cfg.move_op_code;
+            c.unit_set_state(cfg.move_op_arg);
+        } else {
+            c.unit_set_state(u.order);
+        }
         return;
     }
 

@@ -275,6 +275,38 @@ def decode_region(md, code, start_va, cls, fn_name, out, X86_OP_MEM, X86_OP_IMM,
             off += 1  # undecodable byte: resync
 
 
+def _decode_run(md, code, base, offset, end):
+    """Bounded sequential batches, stopping at the first invalid byte or start >= end."""
+    end = min(end, len(code))
+    while offset < end:
+        count = 0
+        # x86 instructions are at most 15 bytes. Keep a boundary-crossing final
+        # instruction, but never decode an unbounded remainder after a branch.
+        for ins in md.disasm(code[offset : min(offset + 64 * 15, end + 14)], base + offset, 64):
+            if ins.address >= base + end:
+                return
+            count += 1
+            offset = ins.address - base + ins.size
+            yield ins
+        if count < 64:
+            return
+
+
+def sweep_ranges(md, code, base, ranges):
+    """Independent linear ranges with byte-wise invalid resync and last-range-wins starts."""
+    covered = {}
+    for lo, hi in ranges:
+        offset = lo - base
+        while base + offset < hi:
+            start = offset
+            for ins in _decode_run(md, code, base, offset, hi - base):
+                covered[ins.address] = ins
+                offset = ins.address - base + ins.size
+            if offset == start:
+                offset += 1
+    return covered
+
+
 def recursive_descent(md, code, entry, end, img, tables=None):
     """-> {addr: instruction} reachable from `entry` by following fall-through and branch edges,
     including the targets of `jmp [reg*4 + table]` (the table is read out of the image). Unlike the
@@ -287,10 +319,11 @@ def recursive_descent(md, code, entry, end, img, tables=None):
     work = [entry]
     while work:
         a = work.pop()
-        while entry <= a <= end and a not in got:
-            off = a - entry
-            ins = next(md.disasm(code[off : off + 16], a, 1), None)
-            if ins is None:
+        if not entry <= a <= end or a in got:
+            continue
+        for ins in _decode_run(md, code, entry, a - entry, end - entry + 1):
+            a = ins.address
+            if a in got:
                 break
             got[a] = ins
             if ins.group(X86_GRP_RET):
@@ -317,7 +350,6 @@ def recursive_descent(md, code, entry, end, img, tables=None):
                         tables[a] = found
                 if ins.mnemonic == "jmp":
                     break
-            a += ins.size
     return got
 
 

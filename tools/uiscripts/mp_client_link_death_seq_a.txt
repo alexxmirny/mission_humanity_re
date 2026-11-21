@@ -18,6 +18,9 @@ clickl Join game
 # in the joined lobby, with a live link
 present Network players
 settled Cancel
+# gate on the seated rows (occ), not just the stable Cancel button: the own-slot render lags the join (U13); the pre-MAPGEN2
+# baseline was cut before the rows rendered and only passed under the 2% whole-frame tol
+occ 2
 capture link_death__cl1_lobby_linked
 log CLIENT in lobby, link healthy -- waiting for the transport to lose it
 

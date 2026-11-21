@@ -7,7 +7,7 @@ recordings, compressed and decodable?
                                  llm_strat_session_begin_multi, which no campaign, tutorial or loaded save
                                  passes -- so `[desync] state_record=1` recorded nothing in single
                                  player. (A player setting since mp:Q4; the row sets it explicitly.)
-  mp:Q3  mh_rec_orders.bin.gz    mh.dll's own order recording (MHOR v1, the harness format)
+  mp:Q3  mh_rec_orders.bin.gz    mh.dll's own order recording (MHOR v2 exact HASH/ENTRY, the harness format)
          mh_rec_clock.bin.gz     its per-step game clock track
 
 For each solo session folder that belongs to the given process folder (session.json `process_dir`),
@@ -159,8 +159,8 @@ def session_verdict(d, mode):
     blob = gzip.decompress(open(os.path.join(d, CLOCK + ".gz"), "rb").read())
     clocks = [struct.unpack_from("<d", blob, i)[0] for i in range(0, len(blob) - len(blob) % 8, 8)]
     mono = all(b > a for a, b in zip(clocks, clocks[1:]))
-    osteps = {o.step for o in orders}
-    in_range = all(1 <= s <= len(clocks) for s in osteps)
+    osteps = set(getattr(orders, "sample_steps", ()))
+    in_range = osteps == set(range(1, len(clocks) + 1))
     good = (
         sok
         and ook
@@ -249,10 +249,16 @@ def selftest():
                 open(os.path.join(d, "session.json"), "w"),
             )
             n = steps if clock_steps is None else clock_steps
+            import mh_order_stream as order_stream
+
             vals = [float(n - i) if decreasing else float(i + 1) for i in range(n)]
             files = {
                 STATE: b"S%d" % steps,
-                ORDERS: struct.pack("<II", 0x524F484D, 1) + struct.pack("<i", 1) + bytes(0x44),
+                ORDERS: order_stream.encode(
+                    order_stream.Sample(s, phase, (bytes(68),) if s == 1 else ())
+                    for s in range(1, steps + 1)
+                    for phase in (order_stream.HASH, order_stream.ENTRY)
+                ),
                 CLOCK: b"".join(struct.pack("<d", v) for v in vals),
             }
             for f, data in files.items():

@@ -96,6 +96,13 @@ _DEFAULTS = {
     # (or MH_IDENTITY_TOKENS). The lint also derives tokens from `git config user.name/user.email`
     # and %USERNAME%, so this is only for what those two do not spell.
     "IDENTITY_TOKENS": "",
+    # Persistent tool inputs/state are per worktree by default, outside disposable tmp.
+    # Empty values select <repo>/workdir/tool_{inputs,state}; explicit overrides may be shared.
+    "TOOL_INPUT_ROOT": "",
+    "TOOL_STATE_ROOT": "",
+    "EVIDENCE_ROOT": str(Path.home() / ".omp" / "evidence" / "mh_decompile"),
+    # RELEASE24 observed 11.72 GiB volume growth; 16 GiB includes roughly 30% headroom.
+    "TMP_FULL_HEADROOM_BYTES": 16 * 1024**3,
     # --- host-global lock dir ------------------------------------------------------------
     # Where tools/hostlock.py keeps the leases that serialize the shared SINGLETONS -- the one
     # Ghidra DB's WRITES (`ghidra-write`) and the rig's VMs/ports/desktop (`rig`). It MUST be an

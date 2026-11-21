@@ -39,7 +39,8 @@ import walk_segments  # noqa: E402
 BUILD = re.compile(
     r"^; \[build\] (?P<label>\S+) armed=(?P<armed>-?\d+) type=(?P<type>-?\d+) shift=(?P<shift>\d+) placed=(?P<placed>\d+) res=(?P<res>[-\d,]+)\s*$"
 )
-REC_LEN, HEADER_LEN = 0x48, 8
+import mh_order_stream as order_stream
+
 ORDER_PLACE = 0xEA
 
 
@@ -71,15 +72,16 @@ def parse_d11(text):
 
 def count_orders(blob, building_type):
     """Place-building (0xea) orders of the given type in a mh_rec_orders.bin image."""
-    body = blob[HEADER_LEN:]
     n = 0
-    for i in range(len(body) // REC_LEN):
-        r = body[i * REC_LEN : (i + 1) * REC_LEN]
-        if (
-            struct.unpack_from("<H", r, 16)[0] == ORDER_PLACE
-            and struct.unpack_from("<i", r, 20)[0] == building_type
-        ):
-            n += 1
+    for sample in order_stream.decode(blob):
+        if sample.phase != order_stream.ENTRY:
+            continue
+        for raw in sample.records:
+            if (
+                struct.unpack_from("<H", raw, 12)[0] == ORDER_PLACE
+                and struct.unpack_from("<i", raw, 16)[0] == building_type
+            ):
+                n += 1
     return n
 
 
@@ -344,13 +346,19 @@ def selftest():
     if not problems_mp(dict(mb, d11_shift2=dict(mb["d11_shift2"], armed=0)), d11m, 4):
         print("selftest: mp disarm NOT caught")
         fails += 1
-    blob = bytes(8)
-    rec = bytearray(REC_LEN)
-    struct.pack_into("<H", rec, 16, ORDER_PLACE)
-    struct.pack_into("<i", rec, 20, 21)
+    rec = bytearray(68)
+    struct.pack_into("<H", rec, 12, ORDER_PLACE)
+    struct.pack_into("<i", rec, 16, 21)
     other = bytearray(rec)
-    struct.pack_into("<i", other, 20, 5)
-    if count_orders(blob + bytes(rec) + bytes(rec) + bytes(other), 21) != 2:
+    struct.pack_into("<i", other, 16, 5)
+    records = (bytes(rec), bytes(rec), bytes(other))
+    blob = order_stream.encode(
+        (
+            order_stream.Sample(1, order_stream.HASH, ()),
+            order_stream.Sample(1, order_stream.ENTRY, records),
+        )
+    )
+    if count_orders(blob, 21) != 2:
         print("selftest: count_orders miscounted")
         fails += 1
     print("check_shift_rearm --selftest: %s" % ("FAIL (%d)" % fails if fails else "PASS"))

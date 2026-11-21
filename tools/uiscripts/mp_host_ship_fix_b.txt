@@ -4,7 +4,7 @@
 # the steps.
 #
 #   segment                 old row               what it does here
-#   landing                 -                     land the mothership (shift+right-click); the flight frame
+#   landing                 -                     land the mothership (Ctrl+right-click); the flight frame
 #   air_order_deadlock      air_order_deadlock    pt3_at=100: the fixture's helicopter right after the landing; this walk only waits
 #   d37a_relanding_c1       d37a_relanding_c1     the pioneer lifts off EMPTY and re-lands (clock 20000 .. 80000)
 #   u49_undock_double       u49_undock_double     d38_*/u49_* from step 8100: barracks, one docked soldier, two undock orders
@@ -37,14 +37,13 @@ enabled Start
 settled Start
 clickl Start
 
-# in the match: land the mothership (shift+right-click; order 0x10 move + 0x18 deploy).
+# in the match: land the mothership (Ctrl+right-click; order 0x10 move + 0x18 deploy).
 absent Network players
 gameclock 3000
 mark landing
 capture air_order_deadlock__pt3_start
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 4500
-capture u49_undock_double__u49_landed
 
 # ===== segment air_order_deadlock (was row air_order_deadlock: mp_host_pt3_air_order.txt)
 # pt3_at=100: the fixture creates a helicopter beside the landed mother, sends it east, and once it is in the path state sends
@@ -76,7 +75,7 @@ cursorhold 100 100 6
 cursorhold 800 700 12
 release 800 700
 gameclock 34000
-simrclick 480 330 shift
+simrclick 480 330 ctrl
 gameclock 70000
 capture d37a_relanding_c1__relanded
 # prove it is really back on the ground: the landing spot selects a building again

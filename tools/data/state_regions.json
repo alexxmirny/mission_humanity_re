@@ -9531,16 +9531,17 @@
   {
    "name": "_G_LLM_TILE_DRAWN_MAP",
    "base": 7420192,
-   "size": 300,
-   "extent": 300,
+   "size": 1018,
+   "extent": 1018,
    "owner": "shared",
    "manifests": [
     "view",
     "shadow"
    ],
    "size_claims": {
-    "300": [
+    "1018": [
      "matrix",
+     "view",
      "shadow"
     ]
    },
@@ -9659,16 +9660,17 @@
   {
    "name": "_G_LLM_TILE_VIS_MAP",
    "base": 7421216,
-   "size": 300,
-   "extent": 300,
+   "size": 1024,
+   "extent": 1024,
    "owner": "shared",
    "manifests": [
     "view",
     "shadow"
    ],
    "size_claims": {
-    "300": [
+    "1024": [
      "matrix",
+     "view",
      "shadow",
      "shadow",
      "shadow",
@@ -16059,6 +16061,63 @@
    ],
    "size_claims": {},
    "id": "IAT_GETTICKCOUNT"
+  },
+  {
+   "id": "STORAGE_POLICY",
+   "name": "storage_policy",
+   "base": 0,
+   "size": 32,
+   "extent": 32,
+   "owner": "island",
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_storage_policy.h",
+   "manifests": [
+    "hash"
+   ],
+   "size_claims": {
+    "32": [
+     "host_native"
+    ]
+   }
+  },
+  {
+   "id": "ORDER_TASKS",
+   "name": "order_tasks",
+   "base": 0,
+   "size": 128,
+   "extent": 128,
+   "owner": "island",
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_order_tasks.h",
+   "manifests": [
+    "hash"
+   ],
+   "size_claims": {
+    "128": [
+     "host_native"
+    ]
+   }
+  },
+  {
+   "id": "ORDER_CAMPAIGN",
+   "name": "order_campaign",
+   "base": 0,
+   "size": 160,
+   "extent": 160,
+   "owner": "island",
+   "host_native": true,
+   "pointer_free": true,
+   "source": "src/mh_dll/mh_common/include/mh_order_tasks.h",
+   "manifests": [
+    "hash"
+   ],
+   "size_claims": {
+    "160": [
+     "host_native"
+    ]
+   }
   }
  ]
 }

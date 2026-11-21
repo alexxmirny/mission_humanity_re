@@ -25,6 +25,7 @@
 #include "caps/path_pool.h"
 #include "caps/path_pool_layout.gen.h"
 #include "ovf_rc2_blob.gen.h"
+#include "include/mh_storage_policy_save_layout.h"
 
 #include "addr/mh_regions.gen.h"
 #include "desync/desync_watch.h"
@@ -222,27 +223,6 @@ uint32_t ff_write(void *f, const void *src, uint32_t n) {
 }
 const file_io FIO = {&ff_tell, &ff_seek, &ff_read, &ff_write};
 
-// A synthetic six-slot version table shaped like the game's (40 bytes a slot; the real strings are asserted against the
-// clean exe by tools/check_cap_save.py --selftest).
-void make_table(uint8_t (&t)[6][40]) {
-    static const char *const NAMES[6] = {" Extermination, demo version", " Extermination, ver 1.0", " Extermination, ver 1.01",
-                                         " Extermination, ver 1.02", " Extermination, ver 1.03", " 'Mission: Humanity' ver 1.00"};
-    for (int i = 0; i < 6; ++i) {
-        memset(t[i], ' ', 40);
-        memcpy(t[i], NAMES[i], strlen(NAMES[i]));
-        memset(t[i] + 34, 0, 6);
-    }
-}
-
-// The game_SaveGame member predicate over a fixture planet table.
-struct planets {
-    int32_t sys[40];
-    int32_t status[40];
-    bool    footer[40];
-};
-int32_t pl_sys(void *c, int i) { return static_cast<planets *>(c)->sys[i]; }
-int32_t pl_status(void *c, int i) { return static_cast<planets *>(c)->status[i]; }
-bool    pl_footer(void *c, int i) { return static_cast<planets *>(c)->footer[i]; }
 
 void save_tests() {
     printf("ovftest (5) -- the raised-caps save\n");
@@ -282,7 +262,6 @@ void save_tests() {
         memcpy(foot, sf.d.data() + sf.d.size() - 8, 8);
         ck(foot[0] == n && foot[1] == FOOTER_MAGIC && FOOTER_MAGIC == 0x464F484Du, "...the LAST 8 bytes are {ovf_len, 'MHOF'}");
         ck(memcmp(sf.d.data() + 1000, blob.data(), n) == 0 && check(sf.d.data() + 1000, n) == OVF_OK, "...and the bytes before them are the MHOV blob, which validates");
-        ck(file_has_footer(FIO, &sf) && sf.pos == (int32_t)sf.d.size(), "...file_has_footer sees it and leaves the position where it was");
     }
 
     // (5c) load: position restored on EVERY path
@@ -366,85 +345,42 @@ void save_tests() {
         ck(load_tail(FIO, &sf, &fail) == LT_APPLIED && digest() == d0 && sf.pos == 10, "(5c) ...and the unmutated file still applies after all that");
     }
 
-    // (5d) the container stamp
+    // The complete carrier has one required-support header authority, including legacy MHC1.
     {
-        uint8_t table[6][40];
-        make_table(table);
-        uint8_t stamp[40];
-        make_stamp(table[5], stamp);
-        bool differs = true;
-        for (int i = 0; i < 6; ++i) differs = differs && memcmp(stamp, table[i], 40) != 0;
-        ck(differs, "(5d) the stamp differs from ALL six table slots");
-        int ndiff = 0;
-        for (int i = 0; i < 40; ++i) ndiff += stamp[i] != table[5][i];
-        ck(ndiff == 4 && memcmp(stamp + 29, "MHC1", 4) == 0 && memcmp(stamp, table[5], 29) == 0 && memcmp(stamp + 33, table[5] + 33, 7) == 0,
-           "...it is the build's own slot with bytes 29..32 replaced by \"MHC1\"");
-        ck(is_stamp(stamp, table[5]), "...is_stamp recognises it");
-        bool none = true;
-        for (int i = 0; i < 6; ++i) none = none && !is_stamp(table[i], table[5]);
-        ck(none, "...and none of the six genuine version strings");
-
-        uint8_t hdr[40];
-        for (int i = 0; i < 6; ++i) {
-            memcpy(hdr, table[i], 40);
-            set_raised_for_test(true);
-            const bool a = version_check(hdr, table[5]) == VC_PASS && memcmp(hdr, table[i], 40) == 0;
-            set_raised_for_test(false);
-            memcpy(hdr, table[i], 40);
-            const bool b = version_check(hdr, table[5]) == VC_PASS && memcmp(hdr, table[i], 40) == 0 && !refused_raised();
-            ck(a && b, "(5d) version_check leaves a genuine version string untouched (ON and OFF)");
+        namespace SF         = mh::storage_policy::savefile;
+        const auto *versions = SF::native_versions();
+        SF::context context;
+        context.versions = versions;
+        for (int slot = 1; slot != 6; ++slot) {
+            for (uint32_t required = 0; required != 4; ++required) {
+                uint8_t header[40];
+                memcpy(header, versions + slot * 40, sizeof(header));
+                if (required)
+                    memcpy(header + 29, required == SF::REQUIRE_POLICY ? "MSP1" : required == SF::REQUIRE_CAPS ? "MHC1"
+                                                                                                               : "MSB1",
+                           4);
+                uint32_t found = ~0u;
+                ck(SF::classify_header(header, versions, found) == slot && found == required,
+                   "native, policy-only and combined headers retain the exact native version");
+                uint8_t original[40];
+                memcpy(original, header, sizeof(header));
+                context.caps_supported = false;
+                const bool supported   = !(required & SF::REQUIRE_CAPS);
+                ck(SF::normalize_version(context, header) == supported &&
+                       memcmp(header, supported ? versions + slot * 40 : original, sizeof(header)) == 0,
+                   "unsupported caps refuse without rewriting; policy-only is supported with caps OFF");
+                context.caps_supported = true;
+                memcpy(header, original, sizeof(header));
+                ck(SF::normalize_version(context, header) &&
+                       memcmp(header, versions + slot * 40, sizeof(header)) == 0,
+                   "supported required headers normalize to the original native slot");
+                memcpy(header, original, sizeof(header));
+                header[0] ^= 0x80;
+                memcpy(original, header, sizeof(header));
+                ck(!SF::normalize_version(context, header) && memcmp(header, original, sizeof(header)) == 0,
+                   "a marker is insufficient: an unknown full header refuses unchanged");
+            }
         }
-        memcpy(hdr, stamp, 40);
-        set_raised_for_test(true);
-        ck(version_check(hdr, table[5]) == VC_ACCEPTED && memcmp(hdr, table[5], 40) == 0 && !refused_raised(), "(5d) ON: the stamp is rewritten to the table slot (the vanilla compare then accepts it)");
-        memcpy(hdr, stamp, 40);
-        set_raised_for_test(false);
-        ck(version_check(hdr, table[5]) == VC_REFUSED && memcmp(hdr, stamp, 40) == 0 && refused_raised(), "(5d) OFF: the stamp is left (the vanilla compare fails) and the refusal flag is set");
-        memcpy(hdr, table[5], 40);
-        ck(version_check(hdr, table[5]) == VC_PASS && !refused_raised(), "(5d) the next, genuine header clears a stale refusal flag");
-    }
-
-    // (5e) stamp_needed re-implements the 0x44741a member predicate
-    {
-        planets pl;
-        memset(&pl, 0, sizeof(pl));
-        member_probe mp = {&pl, &pl_sys, &pl_status, &pl_footer, 3, 9};
-        for (int i = 0; i < 40; ++i) pl.sys[i] = 3;
-        set_raised_for_test(true);
-        ck(!stamp_needed(mp), "(5e) no member carries a footer: no stamp");
-        pl.footer[12] = true;
-        ck(!stamp_needed(mp), "...a footer on a planet with status 0 that is not the current one: not a member");
-        pl.status[12] = 1;
-        ck(stamp_needed(mp), "...status != 0: a member -> stamp");
-        pl.sys[12] = 4;
-        ck(!stamp_needed(mp), "...in another system: not a member");
-        pl.sys[12]    = 3;
-        pl.status[12] = 0;
-        pl.footer[12] = false;
-        pl.footer[9]  = true;
-        ck(stamp_needed(mp), "...the CURRENT planet is a member even with status 0");
-        pl.footer[9] = false;
-        pl.footer[0] = pl.footer[32] = true;
-        pl.status[0] = pl.status[32] = 1;
-        ck(!stamp_needed(mp), "...planets 0 and 32 are outside 1..0x1f");
-        pl.footer[31] = true;
-        pl.status[31] = 1;
-        ck(stamp_needed(mp), "...planet 0x1f is inside");
-        set_raised_for_test(false);
-        ck(!stamp_needed(mp), "...with the raise OFF nothing is ever stamped");
-        bool pred = true;
-        for (int i = 1; i <= 31; ++i) {
-            for (int s = 0; s < 2; ++s)
-                for (int cur = 0; cur < 2; ++cur) {
-                    planets q;
-                    memset(&q, 0, sizeof(q));
-                    for (int k = 0; k < 40; ++k) q.sys[k] = 5;
-                    q.status[i]     = s;
-                    member_probe m2 = {&q, &pl_sys, &pl_status, &pl_footer, 5, cur ? i : 0};
-                    pred            = pred && member_included(m2, i) == (s != 0 || cur != 0);
-                }
-        }
-        ck(pred, "...member_included == (system matches) && (status != 0 || current), over every index and combination");
     }
 
     set_raised_for_test(false);
@@ -1288,15 +1224,6 @@ void u7c_tests() {
         ck(wrote > 0 && f.d.size() == 1000u + (size_t)wrote, "(8f) save_tail() appends a trailer + footer for a queue past 300");
         ck(log.find("v2 path 0 orders 150") != std::string::npos, "...and logs the queue records it carries");
         printf("      %s", log.c_str());
-        ck(file_has_footer(FIO, &f), "...the file ends in a valid footer (the stamp predicate sees it)");
-        // the container stamp: some included member carries a footer
-        planets pl;
-        memset(&pl, 0, sizeof(pl));
-        pl.sys[3]       = 7;
-        pl.status[3]    = 1;
-        pl.footer[3]    = file_has_footer(FIO, &f);
-        member_probe mp = {&pl, &pl_sys, &pl_status, &pl_footer, 7, 3};
-        ck(stamp_needed(mp), "...so the container is STAMPED (a retail / OFF build refuses it before reading any block)");
         // load
         f.pos = 700;
         O::gather();
@@ -1962,6 +1889,12 @@ int run_ovftest() {
         // not relocated: nothing to write into, nothing to read
         reset_stock();
         ck(apply(blob.data(), blob.size()) == OVF_ERR_NOT_RELOCATED && encode(buf.data(), cap) == ENCODE_FAIL, "with the arrays NOT relocated apply() refuses and encode() fails");
+        ck(check_format(blob.data(), blob.size()) == OVF_OK,
+           "a structurally valid unsupported save can be classified without backing arrays");
+        auto corrupt = blob;
+        corrupt.back() ^= 1;
+        ck(check_format(corrupt.data(), corrupt.size()) == OVF_ERR_SUM,
+           "corruption is not misclassified as missing raised-limit support");
         ck(!tracker().prime(), "...and a tracker cannot prime");
     }
 

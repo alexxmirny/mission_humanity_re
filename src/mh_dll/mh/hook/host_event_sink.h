@@ -6,8 +6,8 @@
 
 namespace mh::hook {
 
-// Bind the routing sink (synchronous at emit). Returns libmh_set_event_sink's rc: 0 ok,
-// -1 version mismatch (visible red at the arm report, not a silent skew).
+// Bind ordinary-record, full-text and owned-order sinks.
+// Returns 0 on success, -1 on an events-version mismatch.
 int bind_host_event_sink();
 
 // Records that reached the sink with an unroutable (channel, kind) -- zero by construction

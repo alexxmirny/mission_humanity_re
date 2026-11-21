@@ -1,7 +1,6 @@
 """Cross-reference graph over a parsed cfg :class:`~cfgkit.parse.Model`.
 
-Every object field that names another entity (``grammar.REF`` plus the two the
-REF table misses — ``ANIM.sprite`` and resource ore names) is an edge from the
+Every object field that names another entity (``grammar.REF``) is an edge from the
 referencing object to the named resource. Inverting those edges gives, for each
 resource, the exact set of objects that use it — the **fan-in** that decides
 whether a resource is *exclusively owned* by one object (fold it into that
@@ -30,14 +29,10 @@ Edge = namedtuple("Edge", "src_cls src_name field universe ns name")
 
 # Union reference universes resolve to one of several namespaces by membership.
 _UNION = {
-    "art": ("sprites", "anims"),
-    "invention": ("defines", "inventions"),
-    "unit_or_bldg": ("units", "buildings"),
-    "obj": tuple(CLASS_NS.values()),
-    # singletons (name matches its namespace)
-    "sprite": ("sprites",), "icon": ("icons",), "define": ("defines",),
-    "weapon": ("weapons",), "building": ("buildings",), "planet": ("planets",),
-    "progress": ("inventions",), "resources": ("resources",),
+    "sprite": ("sprites",), "anim": ("anims",), "icon": ("icons",),
+    "define": ("defines",), "resource_define": ("resources",),
+    "weapon": ("weapons",), "building": ("buildings",), "unit": ("units",),
+    "planet": ("planets",), "progress": ("inventions",),
 }
 
 
@@ -57,13 +52,10 @@ def _ref_targets(kind, val):
 
 
 def _iter_ref_fields(cls):
-    """(field, kind, universe) for every name-bearing field of a class:
-    grammar.REF cross-refs plus RES ore names (whose universe REF omits)."""
+    """(field, kind, universe) for every grammar.REF name-bearing field."""
     rev = _reverse_map(cls)
     for field, (kind, _kw) in rev.items():
         universe = G.REF.get((cls, field))
-        if universe is None and kind == G.RES:
-            universe = "resources"
         if universe is not None:
             yield field, kind, universe
 
@@ -81,6 +73,9 @@ def build(model):
     """Return ``(edges, by_target)`` where *edges* is a list of :class:`Edge` and
     *by_target* maps ``(ns, name)`` -> list of the objects that reference it."""
     present = model_names(model)
+    defines = {}
+    for name, value in model.defines:
+        defines.setdefault(name, value)
     edges = []
     for cls, recs in model.classes.items():
         rev = _reverse_map(cls)
@@ -93,8 +88,11 @@ def build(model):
                 for tgt in _ref_targets(kind, rec[field]):
                     if not tgt:
                         continue  # unset optional (ObjectInit default "") — not a ref
-                    ns = _resolve_ns(universe, tgt, present)
-                    edges.append(Edge(cls, src, field, universe, ns, tgt))
+                    target = universe
+                    if target == "upgrade_object":
+                        target = "unit" if defines.get(rec["type"], 0) == 1 else "weapon"
+                    ns = _resolve_ns(target, tgt, present)
+                    edges.append(Edge(cls, src, field, target, ns, tgt))
     by_target = defaultdict(list)
     for e in edges:
         by_target[(e.ns, e.name)].append(e)
@@ -141,7 +139,7 @@ def main(argv=None):
 
     # art-field resolution: how many art refs land on sprites (top-level, not
     # foldable) vs anims (foldable)?
-    art = [e for e in edges if e.universe == "art"]
+    art = [e for e in edges if e.universe in ("sprite", "anim")]
     art_ns = defaultdict(int)
     for e in art:
         art_ns[e.ns or "DANGLING"] += 1

@@ -38,6 +38,20 @@ void sha256(const std::uint8_t *msg, std::size_t len, std::uint8_t out[SHA256_LE
 void hmac_sha256(const std::uint8_t *key, std::size_t key_len, const std::uint8_t *msg,
                  std::size_t msg_len, std::uint8_t out[SHA256_LEN]) noexcept;
 
+// Streaming SHA-256 -- the same function as sha256(), fed in pieces, for a canonical stream
+// assembled from many buffers that must not be concatenated into one allocation (the DATAEXT1
+// mod content digest, mh/mod_catalog.cpp). No allocation; the state is a plain POD.
+// reset/feed/finish over the pieces == sha256() over their concatenation.
+struct sha256_stream {
+    std::uint32_t h[8];
+    std::uint64_t total;   // bytes fed so far
+    std::uint8_t  buf[64]; // partial block
+    std::size_t   used;    // bytes currently in buf
+};
+void sha256_reset(sha256_stream &s) noexcept;
+void sha256_feed(sha256_stream &s, const std::uint8_t *data, std::size_t len) noexcept;
+void sha256_finish(sha256_stream &s, std::uint8_t out[SHA256_LEN]) noexcept;
+
 // ChaCha20 keystream XOR (RFC 8439, 96-bit nonce + 32-bit block counter). In-place safe.
 void chacha20_xor(const std::uint8_t key[KEY_LEN], std::uint64_t seq, const std::uint8_t *in,
                   std::uint8_t *out, std::size_t len) noexcept;
@@ -52,8 +66,8 @@ bool ct_equal(const std::uint8_t *a, const std::uint8_t *b, std::size_t len) noe
 // Each proof is HMAC(psk, label | client_nonce | server_nonce) with a distinct label per direction,
 // so a proof captured from one side can never be replayed as the other's, and a full transcript
 // replay fails because both nonces are fresh per connection.
-constexpr std::uint32_t HS_MAGIC    = 0x314B484Du; // "MHK1" little-endian
-constexpr std::uint16_t HS_VERSION  = 1;
+constexpr std::uint32_t HS_MAGIC         = 0x314B484Du; // "MHK1" little-endian
+constexpr std::uint16_t HS_VERSION       = 1;
 constexpr std::size_t   HS_HELLO_LEN     = 24;
 constexpr std::size_t   HS_CHALLENGE_LEN = 56;
 constexpr std::size_t   HS_RESPONSE_LEN  = SHA256_LEN;
@@ -91,9 +105,9 @@ void hs_derive_keys(const std::uint8_t psk[KEY_LEN], const std::uint8_t client_n
 // ---- record layer -------------------------------------------------------------------------------
 // On the wire: len(4, LE) | ciphertext(len) | mac(16). `seq` is NOT transmitted -- both ends count
 // their own direction, so a replayed or dropped record fails the MAC instead of being accepted.
-constexpr std::size_t REC_LEN_SIZE     = 4;
-constexpr std::size_t REC_OVERHEAD     = REC_LEN_SIZE + MAC_LEN;
-constexpr std::uint32_t REC_MAX_PLAIN  = 64 * 1024; // sanity bound on a declared length
+constexpr std::size_t   REC_LEN_SIZE  = 4;
+constexpr std::size_t   REC_OVERHEAD  = REC_LEN_SIZE + MAC_LEN;
+constexpr std::uint32_t REC_MAX_PLAIN = 64 * 1024; // sanity bound on a declared length
 
 // Seal `plain` into `out` (needs len + REC_OVERHEAD bytes). Returns the total bytes written.
 std::size_t rec_seal(const std::uint8_t enc_key[KEY_LEN], const std::uint8_t mac_key[KEY_LEN],
@@ -107,7 +121,7 @@ bool rec_open(const std::uint8_t enc_key[KEY_LEN], const std::uint8_t mac_key[KE
 // ---- key text -----------------------------------------------------------------------------------
 // The key travels between players as text (a Discord message), so it is 64 lowercase hex chars.
 constexpr std::size_t KEY_HEX_LEN = KEY_LEN * 2;
-void key_to_hex(const std::uint8_t key[KEY_LEN], char out[KEY_HEX_LEN + 1]) noexcept;
+void                  key_to_hex(const std::uint8_t key[KEY_LEN], char out[KEY_HEX_LEN + 1]) noexcept;
 // Tolerant of surrounding whitespace and of a trailing newline; rejects anything else.
 bool key_from_hex(const char *hex, std::uint8_t out[KEY_LEN]) noexcept;
 

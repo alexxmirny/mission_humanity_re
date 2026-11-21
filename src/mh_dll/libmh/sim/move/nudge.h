@@ -37,6 +37,7 @@
 #include "addr/mh_structs.gen.h"
 #include "sim/move/enter_queue.h" // mods:M1BE: eq_wait_behind_enterer (move_enter_queue)
 #include "sim/move/queue_flank.h" // mp:U75: the flank rule (move_queue_flank_guard)
+#include "sim/move/blocked.h"
 
 namespace mh::sim::mvc {
 
@@ -278,6 +279,38 @@ inline void nd_note(W &w, const char *what, uint32_t player, int32_t ai, int32_t
 }
 
 } // namespace ndg
+
+// ORDERSEQ1: a walking/marshalling friend may never vacate its tile. At the existing
+// wait budget, yield THIS patrol actor by one genuinely free step, then replan to its
+// unchanged assignment. Do not mutate the blocker or use the native detour's width-only
+// Y wrapping / path-tail splice. The ordinary walker performs the physical step.
+template <class W>
+inline bool patrol_yield(W &w, uint32_t player, ndg::unit_t &u, bool detour,
+                         const blocked_params &p, const blocker_info &bi, bool qflank) {
+    if (!p.owned_patrol || !p.keep || u.order != BLOCKED_ORDER_PATROL || detour ||
+        u.path_blocked_retry_count < p.wait_limit || u.path_blocked_retry_count >= 0xc0 ||
+        !bi.idx || u.path_slot_id >= 100 || u.path_cursor < 0 ||
+        u.path_cursor + 2 >= NDG_PATH_ENTRIES || u.facing_target < 1 || u.facing_target > 24)
+        return false;
+    const auto *blocker = w.unit(player, bi.idx);
+    if (!blocker || !ndg::unit_alive(*blocker)) return false;
+    auto     *path   = w.path(player, u.path_slot_id);
+    const int cursor = u.path_cursor;
+    if (!path[cursor].run_length || path[cursor].heading != u.facing_target) return false;
+    uint32_t nx = 0, ny = 0;
+    if (!ndg::pick_nudge_tile(w, u, u.facing_target, u.x, u.y, w.mask_x(), w.mask_y(),
+                              &nx, &ny, nullptr, qflank)) return false;
+    for (int h = 1; h <= 22; h += 3) {
+        int dx = 0, dy = 0;
+        w.dir_delta(h, &dx, &dy);
+        if (((u.x + static_cast<uint32_t>(dx)) & w.mask_x()) != nx ||
+            ((u.y + static_cast<uint32_t>(dy)) & w.mask_y()) != ny) continue;
+        path[cursor]     = {static_cast<uint8_t>(h), 1};
+        path[cursor + 1] = {0, 0};
+        return true;
+    }
+    return false;
+}
 
 // ---- the walker decision (3e-1 / 3e-2 / 3e-3) -----------------------------------------------------------------------------------
 // Called in place of CALL llm_strat_path_step_check_and_request_detour with the walker's (src x, src y, dst x, dst y).

@@ -13,25 +13,23 @@ is DECODABLE, which is what turned "order_queue differs" into MP D14 (the CTL_RE
 order carrying a hardcoded past exec_time and so landing on whatever step each peer drained its
 socket). See D14.
 
-FORMAT (harness.cpp order_record): an 8-byte header, then a flat stream of
-    { int32 step; uint8 order[0x44] }
-one record per order sitting in order_queue per recorded step -- so a single order that lingers in
-the queue for 30 steps appears 30 times, once per step. mh.dll's own recording (mp:Q3,
-desync/order_capture.h: `mh_rec_orders.bin`, gzipped to `mh_rec_orders.bin.gz` at the session close)
-is the same format; a `.gz` path is read through gzip.
+FORMAT: MHOR v2 (tools/mh_order_stream.py), complete exact HASH and ENTRY samples.
+Diagnostics default to ENTRY, the actual post-AI/pre-count-gate queue. HASH can
+be requested explicitly; it is never inferred as an ENTRY prefix. Empty samples
+remain present in by_step(), unlike missing steps. Old v1 and partial files refuse.
 
     usage: python tools/mp_order_diff.py <host_dir_or_bin> <client_dir_or_bin> [--kind 0xf0]
 """
 
 import argparse
-import gzip
 import struct
 import sys
 from pathlib import Path
 
-HEADER_LEN = 8
-ORDER_LEN = 0x44
-REC_LEN = 4 + ORDER_LEN
+import mh_order_stream as order_stream
+
+HEADER_LEN = order_stream.HEADER.size
+ORDER_LEN = order_stream.RECORD_BYTES
 
 
 class Order:
@@ -75,29 +73,32 @@ def resolve(p):
     return p
 
 
-def load(path):
-    # Coerce, so callers can pass a plain string. rig_batch.py imports this as a library and passed
-    # os.path-joined strings; failing on the type would be a pointless trap for every future caller.
-    path = Path(path)
-    blob = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
-    if len(blob) < HEADER_LEN:
-        sys.exit("%s is truncated (%d bytes)" % (path, len(blob)))
-    body = blob[HEADER_LEN:]
-    # A run killed mid-write can leave a partial trailing record; drop it rather than crashing, but
-    # say so -- a silently truncated stream would read as "the peers agree after step N".
-    whole, tail = divmod(len(body), REC_LEN)
-    if tail:
-        print("  note: %s has a %d-byte partial trailing record (dropped)" % (path.name, tail))
-    out = []
-    for i in range(whole):
-        off = i * REC_LEN
-        (step,) = struct.unpack_from("<i", body, off)
-        out.append(Order(step, body[off + 4 : off + 4 + ORDER_LEN]))
+class Orders(list):
+    """Records plus coverage: a zero-count sample is not a missing sample."""
+
+    def __init__(self):
+        super().__init__()
+        self.sample_steps = set()
+
+
+def load(path, phase=order_stream.ENTRY):
+    """Decode native records at one exact phase; preserve explicit empty steps."""
+    try:
+        samples = order_stream.load(path)
+    except (OSError, ValueError) as e:
+        sys.exit("%s: %s" % (path, e))
+    if phase not in (order_stream.HASH, order_stream.ENTRY):
+        raise ValueError("unknown order phase")
+    out = Orders()
+    for sample in samples:
+        if sample.phase == phase:
+            out.sample_steps.add(sample.step)
+            out.extend(Order(sample.step, raw) for raw in sample.records)
     return out
 
 
 def by_step(orders):
-    d = {}
+    d = {step: [] for step in getattr(orders, "sample_steps", ())}
     for o in orders:
         d.setdefault(o.step, []).append(o)
     return d
@@ -117,10 +118,12 @@ def main():
     ap.add_argument(
         "--max-report", type=int, default=5, help="how many differing steps to print in full"
     )
+    ap.add_argument("--phase", choices=("HASH", "ENTRY"), default="ENTRY")
     a = ap.parse_args()
 
     hp, cp = resolve(a.host), resolve(a.client)
-    h, c = load(hp), load(cp)
+    phase = order_stream.HASH if a.phase == "HASH" else order_stream.ENTRY
+    h, c = load(hp, phase), load(cp, phase)
     print("host   %s: %d records over %d steps" % (hp, len(h), len(by_step(h))))
     print("client %s: %d records over %d steps" % (cp, len(c), len(by_step(c))))
 

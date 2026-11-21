@@ -38,8 +38,10 @@ absence, and gim refs_complete.
 """
 
 import argparse
+import bisect
 import copy
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -759,13 +761,14 @@ def prove_hermetic(b):
                 f.append("P2: %s sites overlap at %#x" % (nm, y[0]))
     # P2 vs the v0.2.2 manifests
     v22 = _v022_extents()
+    end_prefix = list(itertools.accumulate((z for _, z, _ in v22), max))
     for nm, ss in (("reloc", b.reloc), ("limits", b.limits)):
         for s in ss:
             lo, hi = s["va"], s["va"] + len(s["exp"])
-            for a, z, who in v22:
-                if a < hi and lo < z:
-                    f.append("P2: %s site %#x overlaps %s at %#x" % (nm, lo, who, a))
-                    break
+            first = bisect.bisect_right(end_prefix, lo)
+            if first < len(v22) and v22[first][0] < hi:
+                a, _z, who = v22[first]
+                f.append("P2: %s site %#x overlaps %s at %#x" % (nm, lo, who, a))
     # P2b a cross-layer overlap is allowed only as the composed rewrite: expect == the relocated bytes
     rel = {s["va"]: s for s in b.reloc}
     for s in b.limits:
@@ -1255,13 +1258,14 @@ def selftest(exe):
     u4 = next(s for s in b.reloc if s["u4"] and len(s["exp"]) == 4)
     m = build(doc, {}, {u4["va"]: p32(u32(u4["new"]) + 0x20)})
     got = [s for s in m.limits if s["kind"] == "raise"]
+    m_bad = copy.deepcopy(m)
     ff = prove_hermetic(m)
     expect(
         "mutation 10: a planted U4 rewrite is carried by the limit layer over the RELOCATED bytes and passes P2b",
         len(got) == 1 and got[0]["exp"] == u4["new"] and not [x for x in ff if "P2b" in x],
         (ff[:2], len(got)),
     )
-    m = build(doc, {}, {u4["va"]: p32(u32(u4["new"]) + 0x20)})
+    m = m_bad
     for s in m.limits:
         if s["kind"] == "raise":
             s["exp"] = u4[

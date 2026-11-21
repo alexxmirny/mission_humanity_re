@@ -14,10 +14,10 @@
 ; resolves them with GetProcAddress against the handle it already has, so a run with no
 ; mh_harness.dll costs this list nothing.
 EXPORTS
-    ?arm_neuter@hook@mh@@YA_NW4point@12@@Z
     ?arm_observer@hook@mh@@YA_NW4point@12@PAXPAPAX@Z
     ?arm_replacement@hook@mh@@YA_NW4point@12@PBX@Z
     ?available@hook@mh@@YA_NW4point@12@@Z
+    ?decode_profile@strategic_bindings@mh@@YA_NPBEIAAUprofile@12@AAUerror@12@@Z
     ?en_build_ok@mh@@YA_NXZ
     ?entry_bytes_match@hook@mh@@YA_NW4point@12@@Z
     ?entry_claim_at@hook@mh@@YA_NHPAIPAPBDPA_N@Z
@@ -25,9 +25,12 @@ EXPORTS
     ?entry_claimant_of@hook@mh@@YAPBDI@Z
     ?import_scene@desync@mh@@YAHPBXI@Z
     ?loadgame_now@save@mh@@YAIPAD@Z
+    ?observe_dispatch@detail@selected_targets@ui@mh@@YAX_N@Z
     ?on_sim_step_hashed@desync@mh@@YAXPB_KH_K@Z
+    ?point_target@hook@mh@@YAIW4point@12@@Z
     ?promoted_owner_of@hook@mh@@YAPBDI@Z
     ?register_callback@hook@mh@@YA_NW4point@12@P6AXXZ@Z
+    ?reset_intents@detail@selected_targets@ui@mh@@YAXXZ
     ?savegame_now@save@mh@@YAIPAD@Z
     MH_Caps_CanonGather
     MH_Caps_CanonScatter
@@ -42,14 +45,20 @@ EXPORTS
     MH_Caps_Rec
     MH_Core_ArmPaths
     MH_Core_TrapsAtOpen
+    MH_LobbySpeed_ReplayEnter
     MH_Lockstep_HorizonHold
     MH_Lockstep_StepPin
     MH_Net_SnapshotPoll
     MH_Net_SnapshotSend
     MH_Net_SnapshotStatus
     MH_RunDir
+    MH_RunDirGeneration
+    MH_RunDir_SessionActive
+    MH_RunDir_SessionMatchId
     MH_Seam_LeaveForExit
     MH_Session_HarnessStop
+    MH_StrategicBindings_AdoptProfile
+    MH_StrategicBindings_Profile
     MH_Temporal_Event
     MH_UIDrive_ActiveScreen
     MH_UIDrive_DumpWidgets

@@ -3,6 +3,7 @@
 // (tmp/decomp_sim/llm_strat_unit_chase_check_004866fb.asm), not from the Ghidra .c draft.
 //
 #include "sim/sim_unit_chase_check.h"
+#include "sim/sim_order_tasks.h"
 
 #include "addr/mh_calls.gen.h"            // typed callables for the original functions we still call OUT to
 #include "ai/ai_state.h"                  // ai_say / trace_budget -- the shared trace sink, not AI state
@@ -40,6 +41,7 @@ namespace detail {
 
 int32_t unit_chase_check(const sim_view &v, sim_store &own, const unit_chase_check_calls &c) {
     const unit &u = *v.cur_unit;
+    if (!order_tasks_adapter::primary_access(v, own)) return 0;
 
     // ---- stage 1, 0x00486713-0x0048675d: if the target is a live UNIT (target_ref&0xa0), refresh
     // target_fine_x/y in place from the target's own current position. A direct write into the CURRENT
@@ -105,6 +107,7 @@ int32_t unit_chase_check(const sim_view &v, sim_store &own, const unit_chase_che
     } else {
         c.unit_set_state_order(0x13, 0x13);
     }
+    order_tasks_adapter::cleanup(own, order_tasks_adapter::capture(v, own), u);
     return 1;
 }
 

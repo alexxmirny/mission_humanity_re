@@ -1,3 +1,4 @@
+#include "seams/strategic_input_native.h"
 // seams/ui_bldg_rearm.cpp -- mods:D11: Shift+click keeps the just-placed building type armed. Mechanism,
 // the patch site and the contract are in include/mh_bldgrearm_export.h.
 #ifndef WIN32_LEAN_AND_MEAN
@@ -30,9 +31,7 @@ bool g_armed = false;
 volatile int32_t *placement_id() { return reinterpret_cast<volatile int32_t *>(mh::addr::_G_LLM_BUILD_PLACEMENT_ID); }
 
 bool shift_held() {
-    return ((*reinterpret_cast<const volatile uint8_t *>(mh::addr::_G_LLM_KEY_LSHIFT_HELD) |
-             *reinterpret_cast<const volatile uint8_t *>(mh::addr::_G_LLM_KEY_RSHIFT_HELD)) &
-            1) != 0;
+    return mh::seams::strategic_input_native::held(mh::strategic_bindings::shift_modifier);
 }
 
 // llm_ui_print_queue_text_id(text_id) (0x0049653d, __watcall: EAX = text id), bracketed by the floating

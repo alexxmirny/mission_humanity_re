@@ -56,6 +56,11 @@
 #include "state/region_runtime.h" // clear_region -- see empty_nav_pool() below
 #include "state/world_fixup.h"    // mp:X3a -- ARM F
 #include "state/world_snapshot.h"
+#include "state/region_view.h"
+#include "addr/mh_structs.gen.h"
+#include "../mh_nettest/storage_policy_fixture.h"
+#include "participant_boundary.h"
+#include "state/host_api.h"
 
 // ARM R (the RNG channels, tracker mp:R-rng-snapshot / refinement-plan X0) draws through the
 // TRANSLATED PRNG bodies rather than re-deriving the recurrence here, for the same reason
@@ -81,6 +86,26 @@ void ck(bool ok, const char *what) {
 using namespace mh::state;
 using namespace mh::state::world;
 
+struct import_boundary_witness {
+    mh::participant_boundary::authority authority;
+    uint64_t                            before_hash;
+    bool                                no_early_store = true;
+};
+import_boundary_witness *g_import_witness = nullptr;
+void                     invalidate_before_world_store() {
+    auto &w          = *g_import_witness;
+    w.no_early_store = w.no_early_store && canonical_hash() == w.before_hash;
+    w.authority.invalidate_world();
+}
+
+bool apply_retained_participant(const void *payload, uint32_t size) {
+    if (size != sizeof(int *)) return false;
+    int *applied;
+    std::memcpy(&applied, payload, size);
+    ++*applied;
+    return true;
+}
+
 // ---- the arena ---------------------------------------------------------------------------------
 //
 // Every carried region bound onto memory this process owns. Not a convenience: the stock bases are
@@ -88,12 +113,95 @@ using namespace mh::state::world;
 // measurement -- the loader and the CRT heap own that whole span before main runs). Binding is also
 // what the STANDALONE host does, so the fixture exercises the real path rather than a hosted
 // shortcut.
-struct arena {
-    uint8_t *mem = nullptr;
-    size_t   len = 0;
+// Read framing and the pure native codec before allocating or binding a destination.
+bool policy_shape_from_blob(const void *blob, size_t bytes,
+                            mh::storage_policy::dimensions &shape) {
+    if (!blob || bytes < sizeof(blob_header)) return false;
+    blob_header h;
+    std::memcpy(&h, blob, sizeof(h));
+    if (std::memcmp(h.base.magic, MAGIC, sizeof(h.base.magic)) != 0 ||
+        h.base.format != FORMAT || h.base.schema != schema_fingerprint() ||
+        h.base.block_count != static_cast<uint32_t>(WORLD_SNAPSHOT_BLOCK_COUNT) ||
+        h.base.payload_len > bytes - sizeof(h)) return false;
+    const auto                     *payload = static_cast<const uint8_t *>(blob) + sizeof(h);
+    size_t                          off     = 0;
+    uint32_t                        width = 0, height = 0;
+    bool                            have_width = false, have_height = false, have_policy = false;
+    mh::order_tasks::state          tasks;
+    mh::order_tasks::campaign_state campaign;
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        const auto &b = WORLD_SNAPSHOT_BLOCKS[i];
+        if (uint64_t(off) + 8u > h.base.payload_len) return false;
+        uint32_t rid = 0, len = 0;
+        std::memcpy(&rid, payload + off, sizeof(rid));
+        std::memcpy(&len, payload + off + 4u, sizeof(len));
+        if (rid != static_cast<uint32_t>(b.rid) ||
+            uint64_t(off) + 8u + len > h.base.payload_len) return false;
+        const uint8_t *src = payload + off + 8u;
+        if (REGIONS[b.rid].host_native) {
+            if (len < b.len) return false;
+            switch (b.rid) {
+                case RID_STORAGE_POLICY: {
+                    mh::storage_policy::state incoming;
+                    if (!incoming.bind(const_cast<uint8_t *>(src), len)) return false;
+                    shape       = incoming.shape();
+                    have_policy = true;
+                    break;
+                }
+                case RID_ORDER_TASKS:
+                    if (!tasks.bind(const_cast<uint8_t *>(src), len)) return false;
+                    break;
+                case RID_ORDER_CAMPAIGN:
+                    if (!campaign.bind(const_cast<uint8_t *>(src), len)) return false;
+                    break;
+                default: return false;
+            }
+        } else {
+            if (len != b.len) return false;
+            if (b.rid == RID_WIDTH) {
+                std::memcpy(&width, src, sizeof(width));
+                have_width = true;
+            } else if (b.rid == RID_HEIGHT) {
+                std::memcpy(&height, src, sizeof(height));
+                have_height = true;
+            }
+        }
+        off += 8u + len;
+    }
+    if (off != h.base.payload_len || !have_policy || !have_width || !have_height ||
+        !tasks.valid() || !campaign.valid()) return false;
+    const auto d   = tasks.shape();
+    const auto key = tasks.world();
+    return d.players == shape.players && d.units == shape.units && d.buildings == shape.buildings &&
+           d.width == shape.width && d.height == shape.height &&
+           (!shape.width || (shape.width == width && shape.height == height &&
+                             campaign.world_inc(key.planet) == key.incarnation));
+}
 
+struct arena {
+    uint8_t                       *mem = nullptr;
+    size_t                         len = 0;
+    mh::storage_policy::dimensions policy_shape{2, 3, 5, 0, 0};
+    uint8_t                       *policy     = nullptr;
+    uint32_t                       policy_len = 0;
+    uint8_t                       *tasks = nullptr, *campaign = nullptr;
+
+    uint32_t extent(int i) const {
+        const auto rid = WORLD_SNAPSHOT_BLOCKS[i].rid;
+        return REGIONS[rid].host_native ? mh::test::canonical_native_bytes(rid, policy_shape)
+                                        : WORLD_SNAPSHOT_BLOCKS[i].len;
+    }
+    void initialize_canonical() {
+        if (!mh::test::initialize_canonical_native(RID_STORAGE_POLICY, policy, policy_len, policy_shape) ||
+            !mh::test::initialize_canonical_native(RID_ORDER_TASKS, tasks,
+                                                   mh::test::canonical_native_bytes(RID_ORDER_TASKS, policy_shape), policy_shape) ||
+            !mh::test::initialize_canonical_native(RID_ORDER_CAMPAIGN, campaign,
+                                                   mh::test::canonical_native_bytes(RID_ORDER_CAMPAIGN, policy_shape), policy_shape)) std::abort();
+    }
     bool bind_blocks() {
-        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) len += WORLD_SNAPSHOT_BLOCKS[i].len;
+        policy_len = mh::storage_policy::state::required_bytes(policy_shape);
+        if (!policy_len) return false;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) len += extent(i);
         mem = static_cast<uint8_t *>(std::malloc(len));
         if (mem == nullptr) return false;
         std::memset(mem, 0, len);
@@ -104,17 +212,30 @@ struct arena {
         for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
             binds[i].region_id = static_cast<uint32_t>(WORLD_SNAPSHOT_BLOCKS[i].rid);
             binds[i].base      = mem + off;
-            binds[i].size      = WORLD_SNAPSHOT_BLOCKS[i].len;
+            binds[i].size      = extent(i);
             binds[i].count     = 0;
-            off += WORLD_SNAPSHOT_BLOCKS[i].len;
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_STORAGE_POLICY) policy = mem + off;
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_ORDER_TASKS) tasks = mem + off;
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_ORDER_CAMPAIGN) campaign = mem + off;
+            off += extent(i);
         }
+        initialize_canonical();
         const int rc = libmh_bind_regions(binds, WORLD_SNAPSHOT_BLOCK_COUNT);
         std::free(binds);
         return rc == WORLD_SNAPSHOT_BLOCK_COUNT;
     }
 
-    void fill(uint8_t v) { std::memset(mem, v, len); }
-    ~arena() { std::free(mem); }
+    void fill(uint8_t v) {
+        std::memset(mem, v, len);
+        initialize_canonical();
+    }
+    ~arena() {
+        if (mem) {
+            for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+                unrebase(WORLD_SNAPSHOT_BLOCKS[i].rid);
+        }
+        std::free(mem);
+    }
 };
 
 // Deterministic pseudo-content, so a synthesised "capture" has structure rather than a constant. A
@@ -148,9 +269,9 @@ bool slice_span(const uint8_t *blob, int h, size_t *off, uint32_t *len) {
         size_t   boff = 0;
         uint32_t blen = 0;
         if (!block_span(blob, i, &boff, &blen)) return false;
-        if (r.offset + r.len > blen) return false;
+        if (r.offset > blen || r.len > blen - r.offset) return false;
         *off = boff + r.offset;
-        *len = r.len;
+        *len = REGIONS[r.rid].host_native ? blen - r.offset : r.len;
         return true;
     }
     return false;
@@ -160,6 +281,61 @@ uint8_t *dup_blob(const uint8_t *blob, size_t n) {
     uint8_t *m = static_cast<uint8_t *>(std::malloc(n));
     std::memcpy(m, blob, n);
     return m;
+}
+
+// Unit incarnations have no incoming references in the codec. Keep active counters nonzero.
+// EMPTY32 has no mutable content; its header is covered by the malformed-payload refusal below.
+bool mutate_policy_counter(uint8_t *payload, uint32_t len) {
+    mh::storage_policy::state policy;
+    if (!policy.bind(payload, len)) return false;
+    const auto shape = policy.shape();
+    if (!shape.players || !shape.units) return false;
+    const uint32_t offset = mh::storage_policy::HEADER_BYTES +
+                            shape.players * shape.buildings * mh::storage_policy::BUILDING_BYTES +
+                            (shape.players * shape.units - 1u) * mh::storage_policy::UNIT_BYTES;
+    uint32_t counter = 0;
+    std::memcpy(&counter, payload + offset, sizeof(counter));
+    payload[offset] ^= counter == 0x5au ? 0xa5u : 0x5au;
+    return true;
+}
+
+bool immutable_native(region_id rid, const uint8_t *payload, uint32_t len) {
+    if (rid == RID_STORAGE_POLICY) return len == mh::storage_policy::HEADER_BYTES;
+    if (rid == RID_ORDER_TASKS) {
+        mh::order_tasks::state tasks;
+        return tasks.bind(const_cast<uint8_t *>(payload), len) && !tasks.shape().width;
+    }
+    return false;
+}
+bool mutate_native(region_id rid, uint8_t *payload, uint32_t len, const uint8_t *blob) {
+    if (rid == RID_STORAGE_POLICY) return mutate_policy_counter(payload, len);
+    if (rid == RID_ORDER_TASKS) {
+        mh::order_tasks::state tasks;
+        if (!tasks.bind(payload, len) || !tasks.shape().width) return false;
+        for (uint32_t p = 0; p < tasks.shape().players; ++p) {
+            const uint32_t before = tasks.command_high_water(p);
+            if (before != UINT32_MAX) return tasks.observe_command_sequence(p, before + 1u);
+        }
+        return false;
+    }
+    if (rid == RID_ORDER_CAMPAIGN) {
+        mh::order_tasks::campaign_state campaign;
+        if (!campaign.bind(payload, len)) return false;
+        // Mutate a different planet so the carried active QORD keeps its exact world key.
+        uint32_t current = UINT32_MAX;
+        for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+            if (WORLD_SNAPSHOT_BLOCKS[i].rid != RID_ORDER_TASKS) continue;
+            size_t                 route_off = 0;
+            uint32_t               route_len = 0;
+            mh::order_tasks::state tasks;
+            if (!block_span(blob, i, &route_off, &route_len) ||
+                !tasks.bind(const_cast<uint8_t *>(blob + route_off), route_len)) return false;
+            if (tasks.shape().width) current = tasks.world().planet;
+        }
+        uint32_t incarnation = 0;
+        return campaign.fresh_world(current == 0 ? 1u : 0u, incarnation);
+    }
+    return false;
 }
 
 // ---- ARM A: the done_when's negative arm --------------------------------------------------------
@@ -189,7 +365,7 @@ int arm_hash_slice_mutation(arena &a, const uint8_t *blob, size_t n, uint32_t ma
     // masked field at a fixed stride, and 24 evenly-spaced offsets plus the two ends cover both the
     // small scalars and the big arrays without walking 2.79 MB per slice.
     const int PROBES = 26;
-    int       caught = 0, blind = 0;
+    int       caught = 0, blind = 0, immutable = 0;
     for (int h = 0; h < HASH_REGION_COUNT; ++h) {
         size_t   off = 0;
         uint32_t len = 0;
@@ -199,11 +375,23 @@ int arm_hash_slice_mutation(arena &a, const uint8_t *blob, size_t n, uint32_t ma
                    h, HASH_REGIONS[h].name);
             continue;
         }
+        const bool native = REGIONS[HASH_REGIONS[h].rid].host_native;
+        if (native && immutable_native(HASH_REGIONS[h].rid, blob + off, len)) {
+            ++immutable;
+            continue;
+        }
         bool moved = false;
-        for (int k = 0; k < PROBES && !moved; ++k) {
+        for (int k = 0; k < (native ? 1 : PROBES) && !moved; ++k) {
             const uint32_t o   = (len <= 1u) ? 0u : (uint32_t)((uint64_t)len * k / PROBES);
             uint8_t       *mut = dup_blob(blob, n);
-            mut[off + o] ^= 0x5Au;
+            if (native) {
+                if (!mutate_native(HASH_REGIONS[h].rid, mut + off, len, blob)) {
+                    std::free(mut);
+                    break;
+                }
+            } else {
+                mut[off + o] ^= 0x5Au;
+            }
             a.fill(0xCD);
             if (import(mut, n) == WORLD_OK) {
                 uint64_t got = 0;
@@ -221,14 +409,15 @@ int arm_hash_slice_mutation(arena &a, const uint8_t *blob, size_t n, uint32_t ma
                    h, HASH_REGIONS[h].name, len);
         }
     }
-    printf("  arm A (hash-slice mutation): %d/%d slices move the imported lockstep hash\n", caught,
-           HASH_REGION_COUNT);
+    printf("  arm A (hash-slice mutation): %d mutable slices move the imported lockstep hash; "
+           "%d immutable native owner(s) use the refusal arm\n",
+           caught, immutable);
     return blind;
 }
 
 // ---- ARM B: per-block mutation against the blob's own canonical hash ----------------------------
 int arm_block_mutation(arena &a, const uint8_t *blob, size_t n, uint64_t want_content) {
-    int seen = 0, missed = 0;
+    int seen = 0, missed = 0, immutable = 0, dimension_refusals = 0;
     for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
         size_t   off = 0;
         uint32_t len = 0;
@@ -237,9 +426,36 @@ int arm_block_mutation(arena &a, const uint8_t *blob, size_t n, uint64_t want_co
             printf("  FAIL: block %d (%s) has no payload span\n", i, WORLD_SNAPSHOT_BLOCKS[i].name);
             continue;
         }
+        const bool native = REGIONS[WORLD_SNAPSHOT_BLOCKS[i].rid].host_native;
+        if (native && immutable_native(WORLD_SNAPSHOT_BLOCKS[i].rid, blob + off, len)) {
+            ++immutable;
+            continue;
+        }
         uint8_t *mut = dup_blob(blob, n);
-        mut[off + len / 2u] ^= 0x5Au;
+        if (native) {
+            if (!mutate_native(WORLD_SNAPSHOT_BLOCKS[i].rid, mut + off, len, blob)) {
+                ++missed;
+                std::free(mut);
+                continue;
+            }
+        } else {
+            mut[off + len / 2u] ^= 0x5Au;
+        }
         a.fill(0xCD);
+        const auto rid = WORLD_SNAPSHOT_BLOCKS[i].rid;
+        if (a.policy_shape.width && (rid == RID_WIDTH || rid == RID_HEIGHT)) {
+            uint8_t *witness = dup_blob(a.mem, a.len);
+            if (import(mut, n) != WORLD_OK && std::memcmp(a.mem, witness, a.len) == 0) {
+                ++dimension_refusals;
+            } else {
+                ++missed;
+                printf("  FAIL: block %d (%s) -- mismatched map dimensions did not refuse atomically\n",
+                       i, WORLD_SNAPSHOT_BLOCKS[i].name);
+            }
+            std::free(witness);
+            std::free(mut);
+            continue;
+        }
         if (import(mut, n) != WORLD_OK) {
             ++missed;
             printf("  FAIL: block %d (%s) -- the mutated blob would not import\n", i,
@@ -253,9 +469,83 @@ int arm_block_mutation(arena &a, const uint8_t *blob, size_t n, uint64_t want_co
         }
         std::free(mut);
     }
-    printf("  arm B (per-block mutation): %d/%d blocks inside the comparison\n", seen,
-           WORLD_SNAPSHOT_BLOCK_COUNT);
+    printf("  arm B (per-block mutation): %d mutable blocks inside the comparison; "
+           "%d dimension mismatches refused; %d immutable native owner(s) use the refusal arm\n",
+           seen, dimension_refusals, immutable);
     return missed;
+}
+
+void arm_policy_refusal(arena &a, const uint8_t *blob, size_t n) {
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        if (!REGIONS[WORLD_SNAPSHOT_BLOCKS[i].rid].host_native) continue;
+        size_t   off = 0;
+        uint32_t len = 0;
+        if (!block_span(blob, i, &off, &len)) {
+            ck(false, "native block has payload");
+            return;
+        }
+        a.fill(0xCD);
+        uint8_t *witness = dup_blob(a.mem, a.len);
+        uint8_t *mut     = dup_blob(blob, n);
+        mut[off] ^= 1u;
+        ck(import(mut, n) != WORLD_OK, "malformed native magic refuses import");
+        ck(std::memcmp(a.mem, witness, a.len) == 0,
+           "malformed native payload leaves the entire destination arena unchanged");
+        std::free(witness);
+        std::free(mut);
+    }
+}
+
+// Synthetic full-span proof: valid retired counters in BOTH record planes, not header damage.
+void arm_policy_content(arena &a, const uint8_t *blob, size_t n, uint32_t masks) {
+    int block = -1, slice = -1;
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i)
+        if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_STORAGE_POLICY) block = i;
+    for (int i = 0; i < HASH_REGION_COUNT; ++i)
+        if (HASH_REGIONS[i].rid == RID_STORAGE_POLICY) slice = i;
+    size_t   off = 0;
+    uint32_t len = 0;
+    if (block < 0 || slice < 0 || !block_span(blob, block, &off, &len)) {
+        ck(false, "native policy is carried and hashed");
+        return;
+    }
+    a.fill(0xCD);
+    if (import(blob, n) != WORLD_OK) {
+        ck(false, "native baseline imports");
+        return;
+    }
+    const uint64_t baseline_slice    = hash_slice(slice, true);
+    const uint64_t baseline_content  = canonical_hash();
+    uint64_t       baseline_combined = 0, baseline_state = 0;
+    lockstep_hash(masks, &baseline_combined, &baseline_state);
+    const uint32_t offsets[] = {
+        mh::storage_policy::HEADER_BYTES,
+        len - mh::storage_policy::UNIT_BYTES};
+    uint8_t *mut = dup_blob(blob, n);
+    for (const uint32_t offset : offsets) {
+        mut[off + offset] ^= 0x5au;
+        a.fill(0xCD);
+        const int rc = import(mut, n);
+        ck(rc == WORLD_OK, "valid retired counter beyond descriptor imports");
+        if (rc == WORLD_OK) {
+            uint64_t combined = 0, state = 0;
+            lockstep_hash(masks, &combined, &state);
+            ck(hash_slice(slice, true) != baseline_slice && combined != baseline_combined &&
+                   state != baseline_state && canonical_hash() != baseline_content,
+               "native record beyond byte 32 moves slice, both lockstep folds and content hash");
+            ck(std::memcmp(a.policy, mut + off, len) == 0,
+               "import copies the entire native extent, including the final unit record");
+        }
+        mut[off + offset] ^= 0x5au;
+        ck(import(mut, n) == WORLD_OK, "restored native counters import");
+        uint64_t combined = 0, state = 0;
+        lockstep_hash(masks, &combined, &state);
+        ck(hash_slice(slice, true) == baseline_slice && combined == baseline_combined &&
+               state == baseline_state && canonical_hash() == baseline_content,
+           "restoring native counters restores every hash");
+    }
+    std::free(mut);
+    arm_policy_refusal(a, blob, n);
 }
 
 // ---- ARM C: per-block CONTENT ------------------------------------------------------------------
@@ -355,7 +645,7 @@ bool fx_view_owned(region_id r) {
 int fx_pick(bool view, int avoid) {
     for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
         const auto &b = WORLD_SNAPSHOT_BLOCKS[i];
-        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || fx_has_hash_slice(b.rid)) continue;
+        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || is_pointer_free_region(b.rid) || fx_has_hash_slice(b.rid)) continue;
         if (fx_view_owned(b.rid) != view) continue;
         return i;
     }
@@ -366,7 +656,7 @@ int fx_pick(bool view, int avoid) {
 int fx_pick_sim_data(int avoid) {
     for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
         const auto &b = WORLD_SNAPSHOT_BLOCKS[i];
-        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || fx_has_hash_slice(b.rid)) continue;
+        if (i == avoid || b.len < 64u || is_zeroed_on_import(b.rid) || is_pointer_free_region(b.rid) || fx_has_hash_slice(b.rid)) continue;
         if (fx_sim_data(b.rid)) return i;
     }
     return -1;
@@ -475,6 +765,61 @@ int arm_fixup(arena &a, uint32_t masks) {
         return capture(blob, need, &got, p);
     };
 
+    // Packed scalar dwords must survive capture/import across different module bases.
+    int fx_block = -1, anim_block = -1;
+    for (int i = 0; i < WORLD_SNAPSHOT_BLOCK_COUNT; ++i) {
+        if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_STRAT_FX_ANIMS) fx_block = i;
+        if (WORLD_SNAPSHOT_BLOCKS[i].rid == RID_ANIM) anim_block = i;
+    }
+    ck(fx_block >= 0 && anim_block >= 0, "F0 scalar arrays are carried");
+    if (fx_block >= 0 && anim_block >= 0) {
+        static const uint8_t recorded_fx[] = {
+            0x9f,
+            0x0e,
+            0xdf,
+            0x0c,
+            0x01,
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+            0xb1,
+            0x81,
+            0x81,
+            0x94,
+            0xc6,
+            0x31,
+            0xcd,
+            0x40,
+            0x39,
+            0x08,
+            0x00,
+            0x00,
+        };
+        a.fill(0);
+        auto *fx = reinterpret_cast<uint8_t *>(live_base(RID_STRAT_FX_ANIMS));
+        std::memcpy(fx + 134 * sizeof(mh::game::mh_llm_strat_fx_anim), recorded_fx, sizeof recorded_fx);
+        fx[135 * sizeof(mh::game::mh_llm_strat_fx_anim)] = 0x79;
+        setw(RID_ANIM, 8, 0x79000008u);
+        m->clear();
+        const int mod = m->add_module("mh.dll", 0x78DB0000u, STAMP, 0x00400000u, true);
+        m->add_range(0x78DB0000u, 0x00400000u, AM_IMAGE, mod);
+        m->finish();
+        ck(do_capture(m) == WORLD_OK, "F0 scalar capture succeeds");
+        ck(fx_entry(blob, fx_block, 2832) == 0 && fx_entry(blob, anim_block, 8) == 0,
+           "F0 packed FX and Anim duration never acquire fixups");
+        a.fill(0xCD);
+        fx_resolver_ctx rc{0x712C0000u, STAMP, 0x00400000u, true};
+        module_resolver res{&fx_resolve, &rc};
+        ck(fixup_prepare(blob, got, *plan, &res) == WORLD_OK, "F0 scalar prepare succeeds");
+        ck(import(blob, got) == WORLD_OK, "F0 scalar import succeeds");
+        fixup_apply(*plan);
+        ck(std::memcmp(fx + 134 * sizeof(mh::game::mh_llm_strat_fx_anim), recorded_fx, sizeof recorded_fx) == 0,
+           "F0 full packed FX record survives unchanged");
+        ck(getw(RID_STRAT_FX_ANIMS, 134 * sizeof(mh::game::mh_llm_strat_fx_anim) + 17) == 2105 &&
+               getw(RID_ANIM, 8) == 0x79000008u,
+           "F0 frame and duration remain recorded scalars at a different module base");
+    }
     // ---- F1: REBASE -------------------------------------------------------------------------------
     {
         a.fill(0);
@@ -653,6 +998,34 @@ int arm_fixup(arena &a, uint32_t masks) {
             ck(prc == WORLD_ERR_FIXUP, what);
             ck(canonical_hash() == before, "  ... and the world is byte-identical (prepare wrote nothing)");
         };
+        // Every fixup kind is forbidden in the complete scalar record arrays.
+        for (const auto scalar : {RID_STRAT_FX_ANIMS, RID_ANIM}) {
+            const int block = scalar == RID_STRAT_FX_ANIMS ? fx_block : anim_block;
+            if (block < 0) continue;
+            for (uint8_t kind = FIXUP_REGION; kind <= FIXUP_PRESERVE; ++kind) {
+                std::memcpy(mut, blob, got);
+                fixup_trailer_header th;
+                std::memcpy(&th, mut + toff, sizeof th);
+                auto       *ep = mut + toff + sizeof th + th.module_count * sizeof(fixup_module);
+                fixup_entry e;
+                std::memcpy(&e, ep, sizeof e);
+                e.block  = uint16_t(block);
+                e.offset = scalar == RID_STRAT_FX_ANIMS ? 2832u : 8u;
+                e.kind   = kind;
+                if (kind == FIXUP_REGION) {
+                    e.module = 0;
+                    e.arg    = uint32_t(rpt);
+                    e.arg2   = 8;
+                } else if (kind == FIXUP_PRESERVE) {
+                    e.module = 0;
+                    e.arg    = 0;
+                    e.arg2   = 0;
+                }
+                std::memcpy(ep, &e, sizeof e);
+                fx_refresh_checksum(mut);
+                refused_and_untouched(mut, got, &res, "F5 scalar fixup refuses atomically for every kind");
+            }
+        }
 
         std::memcpy(mut, blob, got);
         mut[toff + sizeof(fixup_trailer_header) + 3u] ^= 0x01u; // a module/entry byte: the checksum
@@ -761,6 +1134,7 @@ int arm_fixup(arena &a, uint32_t masks) {
         // F5h: overflowing the entry cap on capture refuses with -24 (never a partial population).
         a.fill(0);
         for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+        a.initialize_canonical();
         empty_nav_pool();
         m->clear();
         m->add_range(0x10000u, 0x7FFE0000u, AM_PRIVATE);
@@ -1214,6 +1588,7 @@ int arm_rng_stream(arena &a, uint32_t masks) {
     int       bad    = 0;
 
     for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+    a.initialize_canonical();
     empty_nav_pool();
 
     arena_rng r;
@@ -1401,8 +1776,17 @@ static int run_blob_oracle(const char *path) {
     std::fseek(f, 0, SEEK_END);
     const long n = std::ftell(f);
     std::fseek(f, 0, SEEK_SET);
-    uint8_t     *blob = static_cast<uint8_t *>(std::malloc(static_cast<size_t>(n)));
-    const size_t rd   = std::fread(blob, 1, static_cast<size_t>(n), f);
+    if (n < static_cast<long>(sizeof(blob_header))) {
+        std::fclose(f);
+        printf("  FAIL: truncated world header in %s\n", path);
+        return 1;
+    }
+    uint8_t *blob = static_cast<uint8_t *>(std::malloc(static_cast<size_t>(n)));
+    if (!blob) {
+        std::fclose(f);
+        return 1;
+    }
+    const size_t rd = std::fread(blob, 1, static_cast<size_t>(n), f);
     std::fclose(f);
     if (rd != static_cast<size_t>(n)) {
         printf("  FAIL: short read of %s\n", path);
@@ -1462,6 +1846,11 @@ static int run_blob_oracle(const char *path) {
     ck(h.step == 1u, "the capture is the PRE-BODY state of the first sim step (step 0)");
 
     arena a;
+    if (!policy_shape_from_blob(blob, static_cast<size_t>(n), a.policy_shape)) {
+        printf("  FAIL: malformed ordered world payload or native policy in %s\n", path);
+        std::free(blob);
+        return 1;
+    }
     if (!a.bind_blocks()) {
         printf("  FAIL: could not bind the %d carried regions\n", WORLD_SNAPSHOT_BLOCK_COUNT);
         return 1;
@@ -1504,18 +1893,19 @@ static int run_blob_oracle(const char *path) {
     ck(state == h.lockstep_state, "... and its state-only sibling");
 
     if (arm_hash_slice_mutation(a, blob, static_cast<size_t>(n), h.mask_flags))
-        ck(false, "every hash slice is inside the imported comparison");
+        ck(false, "every mutable hash slice is inside the imported comparison");
     else
-        ck(true, "every hash slice is inside the imported comparison");
+        ck(true, "every mutable hash slice is inside the imported comparison");
 
     if (arm_block_mutation(a, blob, static_cast<size_t>(n), h.base.content_hash))
-        ck(false, "every block of the REAL blob is inside the content comparison");
+        ck(false, "every mutable block of the REAL blob is inside the content comparison");
     else
-        ck(true, "every block of the REAL blob is inside the content comparison");
+        ck(true, "every mutable block of the REAL blob is inside the content comparison");
 
     ck(arm_block_content(a, blob, static_cast<size_t>(n)) == 0,
        "every block's imported memory equals the blob payload byte-for-byte");
 
+    arm_policy_refusal(a, blob, static_cast<size_t>(n));
     std::free(blob);
     printf("=== worldtest --blob: %d checks, %d failures ===\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
@@ -1539,6 +1929,7 @@ int run_worldtest(int argc, char **argv) {
 
     // ---- 1. a synthetic "capture" ---------------------------------------------------------------
     for (size_t i = 0; i < a.len; ++i) a.mem[i] = pattern(i);
+    a.initialize_canonical();
 
     // THE NAV CARRIERS MUST BE EMPTY BEFORE A CAPTURE, and this arm is why the rule needs saying.
     // FORMAT 2's capture serializes the live map-region pool, which it can only reach by WALKING it
@@ -1687,13 +2078,31 @@ int run_worldtest(int argc, char **argv) {
 
         // AND THE REFUSALS MUST NOT HAVE WRITTEN ANYTHING.
         a.fill(0xCD);
-        const uint64_t poisoned = canonical_hash();
+        const uint64_t          poisoned = canonical_hash();
+        import_boundary_witness witness;
+        witness.authority.initialize([](void *) {
+            return mh::participant_boundary::view{100.0, 1.0, true, true};
+        },
+                                     nullptr);
+        witness.authority.new_match();
+        witness.before_hash = poisoned;
+        g_import_witness    = &witness;
         std::memcpy(mut, blob, got);
         std::memcpy(&bh, mut, sizeof(bh));
         bh.base.schema ^= 0x1u;
         std::memcpy(mut, &bh, sizeof(bh));
-        import(mut, got);
-        ck(canonical_hash() == poisoned, "a REFUSED import writes nothing at all");
+        ck(import(mut, got, invalidate_before_world_store) == WORLD_ERR_SCHEMA &&
+               witness.authority.can_apply(mh::participant_boundary::bits(100.0)) &&
+               canonical_hash() == poisoned,
+           "a rejected import preserves world bytes and the completed-body witness");
+        ck(import(blob, blob_size() - 1u, invalidate_before_world_store) == WORLD_ERR_TRUNCATED &&
+               witness.authority.can_apply(mh::participant_boundary::bits(100.0)) &&
+               canonical_hash() == poisoned,
+           "late framing refusal also preserves the completed-body witness");
+        ck(import(blob, got, invalidate_before_world_store) == WORLD_OK &&
+               witness.no_early_store && canonical_hash() == h.base.content_hash &&
+               !witness.authority.can_apply(mh::participant_boundary::bits(100.0)),
+           "valid publication invalidates the witness before the first world store");
 
         // The ordering latch: importing a world over a session that has already begun rewriting
         // boot-and-session regions is the same hazard LIB-BOOT's -4 exists for, and the two share
@@ -1702,17 +2111,67 @@ int run_worldtest(int argc, char **argv) {
         ck(import(blob, got) == WORLD_ERR_SESSION_BEGUN,
            "an import after a session has begun is refused");
         ::mh::state::boot::reset_session_latch_for_test();
+        a.fill(0xCD);
+        witness.before_hash = canonical_hash();
+        witness.authority.new_match();
+        ::mh::state::boot::note_session_begun();
+        ck(import_resync(blob, got, invalidate_before_world_store) == WORLD_OK &&
+               witness.no_early_store && canonical_hash() == h.base.content_hash &&
+               !witness.authority.can_apply(mh::participant_boundary::bits(100.0)),
+           "resync publication obeys the same pre-store fence through the session latch");
+        ::mh::state::boot::reset_session_latch_for_test();
+        g_import_witness = nullptr;
+
+        // Exercise the public import fence against the real initialized selftest HOST authority,
+        // not a second copy of the pending predicate. Accepted work must survive a refused import.
+        namespace pb        = mh::participant_boundary;
+        const auto boundary = mh::host().participant_body_boundary;
+        boundary(uint32_t(pb::operation::end_match), 0);
+        *ptr<double>(RID_STRAT_GAME_CLOCK)        = 99.0;
+        *ptr<double>(RID_STRAT_SIM_STEP_INTERVAL) = 1.0;
+        *ptr<uint8_t>(RID_GAME_SESSION_MODE)      = 3;
+        int         applied                       = 0;
+        int        *destination                   = &applied;
+        pb::request pending{};
+        pending.struct_size  = sizeof(pending);
+        pending.slot_index   = 0;
+        pending.horizon_bits = pb::bits(100.0);
+        pending.execute      = apply_retained_participant;
+        pending.payload      = &destination;
+        pending.payload_size = sizeof(destination);
+        ck(mh::host().participant_removal_admit(&pending, sizeof(pending)) == int32_t(pb::admission::queued),
+           "public host owns accepted participant work before import");
+        const uint64_t before_pending = canonical_hash();
+        ck(libmh_import_world(blob, got) == WORLD_ERR_NATIVE_STATE &&
+               canonical_hash() == before_pending && applied == 0 &&
+               boundary(uint32_t(pb::operation::pending), 0) != 0,
+           "public import refuses before stores and retains pending participant work");
+        const auto token                   = boundary(uint32_t(pb::operation::begin), 0);
+        *ptr<double>(RID_STRAT_GAME_CLOCK) = 100.0;
+        boundary(uint32_t(pb::operation::complete), token);
+        boundary(uint32_t(pb::operation::poll), 0);
+        ck(applied == 1 && boundary(uint32_t(pb::operation::pending), 0) == 0,
+           "refused-import participant work still applies once after its actual body");
+        const auto     active_body   = boundary(uint32_t(pb::operation::begin), 0);
+        const uint64_t before_active = canonical_hash();
+        ck(libmh_import_world(blob, got) == WORLD_ERR_NATIVE_STATE &&
+               canonical_hash() == before_active,
+           "public import cannot replace a physically active body even without pending work");
+        boundary(uint32_t(pb::operation::complete), active_body);
+        boundary(uint32_t(pb::operation::end_match), 0);
 
         std::free(mut);
         a.fill(0xCD);
         ck(import(blob, got) == WORLD_OK, "re-import the clean blob");
     }
 
+    arm_policy_content(a, blob, got, h.mask_flags);
+
     // ---- 5. the three arms ----------------------------------------------------------------------
     ck(arm_hash_slice_mutation(a, blob, got, h.mask_flags) == 0,
-       "every hash slice is inside the imported lockstep comparison");
+       "every mutable hash slice is inside the imported lockstep comparison");
     ck(arm_block_mutation(a, blob, got, h.base.content_hash) == 0,
-       "every block is inside the content comparison");
+       "every mutable block is inside the content comparison");
     ck(arm_block_content(a, blob, got) == 0,
        "every block's imported memory equals the blob payload byte-for-byte");
 

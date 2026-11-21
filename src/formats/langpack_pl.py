@@ -510,7 +510,7 @@ def build_pl(L, fnt, ext_src, en_src, out_dir, quiet=False, art_donors=None, lan
         for key, blob in art.items():
             _put(members, key, blob, report, "menu art")
     L.write_pack(members, out_dir)
-    L.write_pack_ini(out_dir, spec["codepage"])
+    L.write_pack_ini(out_dir, spec["codepage"], L.pack_spec(lang_id)[0])
     lines = [
         f"language pack built by {L.TOOL} + src/formats/langpack_pl.py (format {L.FORMAT_VERSION}); retail game data -- never commit",
         f"pl source: {os.path.basename(ext_src.path)} (Extermin + Extermex)  Extermin.rsr md5 {L.md5(ext_src._read('Extermin', '.rsr'))}",

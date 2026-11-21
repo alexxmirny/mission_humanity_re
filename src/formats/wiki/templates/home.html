@@ -1,0 +1,17 @@
+{% extends "_base.html" %}
+{% block body %}
+<h1>{{ S.site }}</h1>
+<p class="lead">{{ S.lead }}</p>
+<div class="cards">
+{%- for label, href, n in cards %}
+  <a class="card" href="{{ href }}"><b>{{ label }}</b><span class="dim">{{ n }}</span></a>
+{%- endfor %}
+</div>
+<h2>{{ S.techtree }}</h2>
+<ul class="plain">
+{%- for label, href in trees %}<li><a href="{{ href }}">{{ label }}</a></li>{% endfor %}
+</ul>
+<h2>{{ S.about }}</h2>
+<p>{{ S.about_text }}</p>
+{% if missing %}<p class="dim">{{ S.missing_note }} {{ missing|join(", ") }}</p>{% endif %}
+{% endblock %}

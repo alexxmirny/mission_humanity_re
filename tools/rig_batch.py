@@ -45,11 +45,13 @@ import subprocess
 import sys
 import time
 
+import tmp_runs
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
-import machine_config as machine  # noqa: E402  (needs the sys.path line above)
-import mp_order_diff  # noqa: E402  (needs the sys.path line above)
+import machine_config as machine
+import mp_order_diff
 
 DEFAULT_KEY = machine.SSH_KEY
 SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=no"]
@@ -209,12 +211,16 @@ def one_run(a, arm_name, net_extra, idx, directives=None):
     if ini_host:
         cmd += ["--extra-ini-host", ini_host]
 
+    scratch = os.path.join(d, "scratch")
+    os.makedirs(scratch, exist_ok=True)
+    env = tmp_runs.child_env()
+    env["MH_RIG_SCRATCH"] = scratch
     log_path = d + ".log"
     t0 = time.time()
     with open(log_path, "w", encoding="utf-8", errors="replace") as lf:
         try:
             rc = subprocess.run(
-                cmd, cwd=REPO, stdout=lf, stderr=subprocess.STDOUT, timeout=a.hard_timeout
+                cmd, cwd=REPO, stdout=lf, stderr=subprocess.STDOUT, timeout=a.hard_timeout, env=env
             ).returncode
         except subprocess.TimeoutExpired:
             # ui_test's own progress watchdog should fire long before this; reaching it means the
@@ -249,7 +255,7 @@ def one_run(a, arm_name, net_extra, idx, directives=None):
     # run's label and read as a data point. Two "different" runs with byte-identical logs is what caught
     # it. Here the guard is structural: if the source file has not changed since the last run archived
     # it, this run gets an explicit marker file instead of a copy.
-    host_dir = os.path.join(REPO, "tmp", "ui_test", "determinism", "host")
+    host_dir = os.path.join(scratch, "determinism", "host")
     for nm in ("mh_net.log", "mh_lockstep.log", "mh_frametime.log"):
         src = os.path.join(host_dir, nm)
         if not os.path.isfile(src):

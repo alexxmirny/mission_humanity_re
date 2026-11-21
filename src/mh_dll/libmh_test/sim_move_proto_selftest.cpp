@@ -239,7 +239,7 @@ struct fake_arrival {
     std::vector<uint8_t>  fogv      = std::vector<uint8_t>(65536, 0xff);
     std::vector<uint32_t> reg       = std::vector<uint32_t>(65536, 0);
     std::vector<uint32_t> field     = std::vector<uint32_t>(65536, 2); // reachable
-    mv::arr_unit          units[100];
+    mv::arr_unit          units[500];
     int                   reruns     = 0;
     uint32_t              rerun_mode = 0, rerun_target = 0;
     int                   logs_single = 0, logs_wave = 0;
@@ -311,6 +311,14 @@ void t4_arrival() {
         w.n = 257;
         mv::arrival_after_pathfind(w, 5, 1, 1);
         ck(w.reruns == 0, "T4: an oversize wave is untouched");
+        w.n                             = 1;
+        w.pass[fake_arrival::T(30, 30)] = 0;
+        w.units[7].order                = 16;
+        mv::arrival_after_pathfind(w, 5, 1, 1);
+        ck(w.gx == 30 && w.gy == 30, "T4 patrol: unowned native order16 keeps its goal");
+        w.units[7].owned_patrol = true;
+        mv::arrival_after_pathfind(w, 5, 1, 1);
+        ck(w.gx == 29 && w.gy == 30, "T4 patrol: owned ground patrol receives a reachable distinct goal");
     }
     // single wave, the route's goal is free: retail
     {
@@ -994,6 +1002,66 @@ void t4c_move_as_one() {
                 if (w2.tile_of_member(k) != fw::T((uint32_t)s3->want[10 + k].first, (uint32_t)s3->want[10 + k].second)) keep_ok = false;
             ck(keep_ok, "T4c queued: wave 2 keeps the tile wave 1 stamped for every member (no re-centring per wave)");
         }
+    }
+    // Uploaded rc21 planet6 cohort: real 36 slot/position pairs, including raised IDs.
+    // The live case covers its real terrain/AI; this isolates split-wave claim stability.
+    {
+        const uint16_t source[36][3] = {
+            {15, 115, 7}, {48, 118, 8}, {54, 113, 9}, {55, 114, 9}, {57, 115, 5}, {58, 115, 4}, {59, 112, 8}, {60, 111, 1}, {65, 116, 5}, {70, 112, 9}, {71, 114, 7}, {72, 114, 3}, {73, 115, 3}, {75, 117, 7}, {77, 114, 8}, {78, 117, 8}, {80, 113, 2}, {82, 116, 7}, {85, 116, 8}, {88, 114, 2}, {92, 112, 3}, {93, 115, 9}, {94, 112, 1}, {98, 113, 10}, {101, 117, 10}, {104, 113, 1}, {106, 112, 2}, {108, 115, 6}, {117, 117, 6}, {121, 113, 3}, {128, 115, 8}, {129, 114, 4}, {131, 114, 5}, {132, 114, 6}, {133, 113, 8}, {143, 113, 7}};
+        fw w;
+        w.limit = 500;
+        w.own_  = 0;
+        w.n     = 16;
+        w.gx = w.ax = 106;
+        w.gy = w.ay              = 255;
+        w.field[fw::T(106, 255)] = 1;
+        for (int m = 0; m < 36; ++m) {
+            auto &u                  = w.units[source[m][0]];
+            u.order                  = 16;
+            u.state                  = 10;
+            u.group                  = 32769;
+            u.owned_patrol           = true;
+            u.patrol_sequence        = 1;
+            u.goal_x                 = 106;
+            u.goal_y                 = 255;
+            u.x                      = uint8_t(source[m][1]);
+            u.y                      = uint8_t(source[m][2]);
+            u.path_slot              = 255;
+            w.handle[m]              = source[m][0];
+            w.col[m]                 = u.x;
+            w.row[m]                 = u.y;
+            w.tile[2 * m]            = u.x;
+            w.tile[2 * m + 1]        = u.y;
+            w.occ[fw::T(u.x, u.y)]   = source[m][0];
+            w.truep[fw::T(u.x, u.y)] = 0;
+        }
+        w.units[144]                 = w.units[143];
+        w.units[144].patrol_sequence = 9;
+        w.units[145]                 = w.units[143];
+        w.units[145].owned_patrol    = false;
+        bool     distinct            = mv::formation_after_pathfind(w, 32769, 1, 1, FC3_RULE);
+        uint32_t targets[36]{};
+        for (int m = 0; m < 36; ++m) {
+            const auto &u = w.units[source[m][0]];
+            targets[m]    = fw::T(u.goal_x, u.goal_y);
+            for (int j = 0; j < m; ++j) distinct = distinct && targets[m] != targets[j];
+        }
+        ck(distinct, "T4c patrol: captured36 receive unique cross-wave physical goals, including slots above99");
+        ck(w.units[144].goal_x == 106 && w.units[144].goal_y == 255 &&
+               w.units[145].goal_x == 106 && w.units[145].goal_y == 255,
+           "T4c patrol: unrelated sequence and unowned same-group units are not stamped");
+        for (int m = 0; m < 16; ++m) w.units[source[m][0]].state = 12;
+        for (int m = 0; m < 20; ++m) {
+            w.handle[m]       = source[m + 16][0];
+            w.col[m]          = uint8_t(source[m + 16][1]);
+            w.row[m]          = uint8_t(source[m + 16][2]);
+            w.tile[2 * m]     = w.col[m];
+            w.tile[2 * m + 1] = w.row[m];
+        }
+        w.n         = 20;
+        bool stable = mv::formation_after_pathfind(w, 32769, 1, 1, FC3_RULE);
+        for (int m = 0; m < 20; ++m) stable = stable && w.tile_of_member(m) == targets[m + 16];
+        ck(stable, "T4c patrol: later independent wave retains every earlier stamped goal");
     }
     // ---- a group across the map seam: positions are unwrapped around the first member -------------------------------------------------
     {

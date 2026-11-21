@@ -29,8 +29,8 @@
 //                                 tile off its legs anyway (the splice also shortens the blocked leg by one). Bounded without new
 //                                 state: a keep adds 0x40 to the retry byte (reset to 0 only by a step actually taken) and is refused
 //                                 once the byte is >= 0xc0, so at most 3 sidesteps without progress before the retail replan. Not
-//                                 applied to orders whose path end SETTLES instead of replanning (attack 0x1a/0x1b/0x1c, patrol
-//                                 0x10, squad merge 0x33) -- they keep the retail replan.
+//                                 applied to attacks (0x1a/0x1b/0x1c), unowned patrols (0x10), or squad merge (0x33).
+//                                 Owned ground patrols replan at off-goal path ends and may keep the bounded physical yield.
 //   move_repath_cooldown_ms (3d)  when this block sends the unit to replan (state 0xa, wait exhausted or detour forced), its
 //                                 activity_clock is advanced by ms/1000 s (x87 FLD/FADD/FSTP, the same idiom retail uses for its
 //                                 +0.05 and +2.0), so the marshal does not run for that long. 0 = retail.
@@ -53,7 +53,10 @@
 #include "seams/move_carrier.h" // mods:M1H: site states, requested values, stub hit counters
 #include "en_guard.h"           // EN-only build gate
 #include "caps/path_pool.h"     // PT-CAP9-U4: the relocated path pool
-#include "sim/move/blocked.h"   // mods:M1H lane C: the decision, shared with the libmh twin (sim_unit_state_move_walker.cpp)
+#include "caps/caps.h"
+#include "sim/move/blocked.h" // mods:M1H lane C: the decision, shared with the libmh twin (sim_unit_state_move_walker.cpp)
+#include "seams/order_tasks_hosted.h"
+#include <cstdio>
 
 #pragma comment(lib, "user32.lib") // wsprintfA
 
@@ -102,7 +105,47 @@ double     g_cap_two  = 2.0;        // the clock advance of a refused route (ret
 // is mh::sim::mvc::blocked_decide (sim/move/blocked.h), the same code the libmh twin runs.
 void      mv_blocker_info(uint32_t player, uint32_t x, uint32_t y, mh::sim::mvc::blocker_info *out); // move_proto_nudge.cpp
 uintptr_t mv_cap_refuse(uint32_t player, uint32_t idx, int cap_pct);                                 // move_proto_nudge.cpp
+bool      mv_patrol_yield(uint32_t player, mh::game::mh_map_object_unit &u, bool detour,
+                          const mh::sim::mvc::blocked_params &p, const mh::sim::mvc::blocker_info &bi);
 
+static void patrol_block_trace(const mh::game::mh_map_object_unit &u, uint32_t player,
+                               uint32_t nx, uint32_t ny, int detour, uint8_t retry_before,
+                               mh::sim::mvc::blocked_next decision) {
+    namespace H              = mh::order_tasks::hosted;
+    namespace P              = mh::order_tasks::host_protocol;
+    static uint32_t receipts = 0;
+    if (u.order != 16 || receipts >= 4096 || !H::diagnostics_enabled()) return;
+    const uint32_t         idx = *reinterpret_cast<const volatile uint16_t *>(0x00e58142u);
+    mh_order_tasks_request q{};
+    mh_order_tasks_result  r{};
+    q.operation = uint32_t(P::operation::ground_patrol_placement);
+    q.player    = player;
+    q.slot      = idx;
+    if (!H::invoke(&q, &r) || !r.values[0] || r.values[1] != uint32_t(u.move_group_id)) return;
+    if (!detour && retry_before && decision == mh::sim::mvc::blocked_next::wait) return;
+    mh::order_tasks::route_view route{};
+    if (!H::read_route(player, idx, route)) return;
+    mh::sim::mvc::blocker_info bi;
+    mv_blocker_info(player, nx, ny, &bi);
+    const auto    *blocker   = bi.idx ? mh::caps::rec<mh::game::mh_map_object_unit>(mh::caps::UNITS, player, bi.idx) : nullptr;
+    const uint32_t path_slot = mh::caps::path::unit_slot(reinterpret_cast<const uint8_t *>(&u));
+    const auto    *wp        = path_slot < mh::caps::path::slot_limit() && u.path_cursor >= 0 && u.path_cursor < 300
+                                   ? mh::caps::path::waypoint(player, path_slot, u.path_cursor)
+                                   : nullptr;
+    char           line[768];
+    std::snprintf(line, sizeof line,
+                  "; [patrol_block] player=%u slot=%u life=%u route=%u leg=%u attempt=%u seq=%u "
+                  "xy=%u,%u goal=%u,%u next=%u,%u blocker=%u blockerstate=%u blockerorder=%u "
+                  "detour=%d facing=%u heading=%u path=%u cursor=%d retry=%u->%u decision=%u activity=%.17g\n",
+                  player, idx, route.active.actor.incarnation, route.active.route, route.active.leg,
+                  route.active.attempt, r.values[2], u.x, u.y, u.goal_x, u.goal_y, nx, ny, bi.idx,
+                  blocker ? uint32_t(blocker->state) : UINT32_MAX,
+                  blocker ? uint32_t(blocker->order) : UINT32_MAX, detour, uint32_t(u.facing_target),
+                  wp ? uint32_t(wp[0]) : UINT32_MAX, path_slot, u.path_cursor, retry_before,
+                  u.path_blocked_retry_count, uint32_t(decision), u.activity_clock);
+    ++receipts;
+    seam_log(line);
+}
 static uintptr_t __cdecl bk_decide(int detour, uint32_t nx, uint32_t ny) {
     mh::sim::mvc::blocked_params p;
     p.reset_moving = g_bk_reset != 0;
@@ -113,13 +156,27 @@ static uintptr_t __cdecl bk_decide(int detour, uint32_t nx, uint32_t ny) {
     p.cd_s         = g_bk_cd_s;
     p.enter_queue  = g_eq_on != 0;
     if (p.active()) mv_hit(MVH_BLOCKED); // the decision path runs (a key of this site is non-retail)
-    mh::game::mh_map_object_unit *u   = *reinterpret_cast<mh::game::mh_map_object_unit **>(0x00e162e0u);
-    g_bk_cd_apply                     = (p.cd_on && !mh::sim::mvc::blocked_enter_exempt(p, *u)) ? 1 : 0; // mods:M1BE: an entering unit has no cooldown
-    const uint32_t             player = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u);
-    uint8_t                   *pbase  = mh::caps::path::waypoint(player, 0, 0); // this player's path slots (the relocated pool), 0x258 bytes each
+    mh::game::mh_map_object_unit *u = *reinterpret_cast<mh::game::mh_map_object_unit **>(0x00e162e0u);
+    g_bk_cd_apply                   = (p.cd_on && !mh::sim::mvc::blocked_enter_exempt(p, *u)) ? 1 : 0; // mods:M1BE: an entering unit has no cooldown
+    const uint32_t player           = *reinterpret_cast<const volatile uint16_t *>(0x00e58144u);
+    uint8_t       *pbase            = mh::caps::path::waypoint(player, 0, 0); // this player's path slots (the relocated pool), 0x258 bytes each
+    if (p.keep && u->order == 16 && (detour || u->path_blocked_retry_count >= p.wait_limit)) {
+        mh_order_tasks_request q{};
+        mh_order_tasks_result  r{};
+        q.operation    = uint32_t(mh::order_tasks::host_protocol::operation::ground_patrol_placement);
+        q.player       = player;
+        q.slot         = *reinterpret_cast<const volatile uint16_t *>(0x00e58142u);
+        p.owned_patrol = mh::order_tasks::hosted::invoke(&q, &r) && r.values[0] &&
+                         r.values[1] == uint32_t(u->move_group_id);
+    }
     mh::sim::mvc::blocker_info bi;
-    if (p.reset_moving) mv_blocker_info(player, nx, ny, &bi);
-    switch (mh::sim::mvc::blocked_decide(*u, detour != 0, p, [pbase](uint32_t slot, int entry) -> mh::game::mh_llm_strat_path_waypoint & { return *reinterpret_cast<mh::game::mh_llm_strat_path_waypoint *>(pbase + slot * 0x258u + static_cast<uint32_t>(entry) * 2u); }, bi)) {
+    if (p.reset_moving || p.owned_patrol) mv_blocker_info(player, nx, ny, &bi);
+    p.patrol_yielded = mv_patrol_yield(player, *u, detour != 0, p, bi);
+    if (p.patrol_yielded) detour = 2;
+    const uint8_t retry_before = u->path_blocked_retry_count;
+    const auto    decision     = mh::sim::mvc::blocked_decide(*u, detour != 0, p, [pbase](uint32_t slot, int entry) -> mh::game::mh_llm_strat_path_waypoint        &{ return *reinterpret_cast<mh::game::mh_llm_strat_path_waypoint *>(pbase + slot * 0x258u + static_cast<uint32_t>(entry) * 2u); }, bi);
+    patrol_block_trace(*u, player, nx, ny, detour, retry_before, decision);
+    switch (decision) {
         case mh::sim::mvc::blocked_next::wait: return TO_WAIT;
         case mh::sim::mvc::blocked_next::done: return TO_DONE;
         default: return TO_REPLAN;

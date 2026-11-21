@@ -1,6 +1,6 @@
 {
  "_what": "tooling TL-GATE8: the code that decides which BYTES reach the per-step state hash for an unchanged world, and the sha256 of each piece at the last HASH_INPUT_EPOCH decision. tools/lint_hash_epoch.py reds when a piece changes without a decision (bump, or --neutral). Spans are `// HASH-INPUT BEGIN/END <id>` markers in the source; `span: null` watches the whole file.",
- "epoch": 1,
+ "epoch": 2,
  "header": "src/mh_dll/libmh/state/region_view.h",
  "watched": [
   {
@@ -8,14 +8,14 @@
    "path": "src/mh_dll/libmh/state/region_view.h",
    "span": null,
    "reason": "the per-slice emit views (units/tile_objects/rng/soldiers/planets/order_queue masks and reorders), the emit_slice dispatch and hash_slice's mask arms -- and the epoch constant itself",
-   "sha256": "0e9d6b9dc9c2c046503acbdd82debbddb098aaf6eef66fdc87481096d181f955"
+   "sha256": "e2b95d3b2bf2a6e5ce27e9f7baff89abc80e7e7d2ea621de6e173ce96fe2269e"
   },
   {
    "id": "state_sink",
    "path": "src/mh_dll/libmh/state/state_sink.h",
    "span": null,
    "reason": "what bytes()/local()/masked() feed the VERDICT sink; local() semantics are invisible to HASH FINGERPRINT's raw-only vector",
-   "sha256": "199721904bfc811b1e6a076f26650b48bbe57338d3872e13859adba1eba58c79"
+   "sha256": "6ee34711748937bb7f87541b3d1d05cf4fe10b77440800c669912cf14fe96951"
   },
   {
    "id": "orders_emit_region",
@@ -43,7 +43,7 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_on_sim_step_prehash",
    "reason": "everything the harness runs on the step boundary before the hash, through the fold -- the G177 class (the 2026-09-11 order_queue tail-clear memset lived here)",
-   "sha256": "6e95d0ad0c61d19bf9b4cd38e3602439d0c8a40fb667127eec1b477bcacbdef5"
+   "sha256": "8f8a5bae13723f9cc4d91e63efa657370c0f52c359a90b029cd21fa1a525e4cf"
   },
   {
    "id": "harness_hash_kind_step",
@@ -57,14 +57,14 @@
    "path": "src/mh_dll/mh_harness/harness.cpp",
    "span": "harness_order_replay_inject",
    "reason": "the replay injector writes QUEUE + COUNT into hashed regions before the hash",
-   "sha256": "d6ae3d677045b5f7f6569036c8943c6a1ce5b34c126296250237ae020bcfd0fb"
+   "sha256": "23b59d949cd339e194cfd9ea0a868488d65c5e29b97778c006b02abd265184b2"
   },
   {
    "id": "libref_prehash_writes",
    "path": "src/mh_dll/libref_host/main.cpp",
    "span": "libref_prehash_writes",
    "reason": "the standalone host's pre-hash writes (tail-clear + injector), mirrored statement-for-statement from the harness",
-   "sha256": "9547afd8ed16ef11e8c1445799423a8ee546adbff3a1f79425e05a8724f0495c"
+   "sha256": "90fb51cabc49613d82aa7700f1b75b8e49808bfae573a9d7183fee6c04933b51"
   }
  ],
  "history": [
@@ -255,6 +255,73 @@
     "harness_order_replay_inject"
    ],
    "reason": "PT-CAP9-U5: the replay injector's queue bound follows the live capacity (order_qcap(): 300 vanilla, 4096 with the order layer ON) instead of the literal 300; the bytes fed to the hash for an unchanged world are identical"
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-11-05",
+   "changed": [
+    "region_view",
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "Native policy is appended under a new manifest fingerprint; all prior 63-region inputs and raw clock/order streams match across six 5000-step fixture recaptures and both human oracles. Region binding gains a native span, not changed stock bytes; seed scatter publishes the same canonical state and direct fixture gather observes an already-mutated world."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-11-05",
+   "changed": [
+    "state_sink"
+   ],
+   "reason": "Canonical wide hashing now uses unaligned-safe little-endian word loads and mathematically equivalent unsigned32 limb carry/prime multiplication. Every emitted byte, mask, seed, prime, split/tail/finish behavior and output bit is unchanged: actual322282377 old/new intermediate, final and guard-page calls pass plain and ASan; retained T13 pre-change alignment/tail goldens. See notes/2026-11-05.md."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-11-06",
+   "changed": [
+    "region_view"
+   ],
+   "reason": "Batch eight strategic tile records into the same 56 canonical bytes and share tactical packing; independent former-scalar byte streams and full carried hash states agree for both modes, all lengths 0..143 and all incoming carries under ASan/plain. Actual 5000-step replay passes; masks, order, extents, hash algorithm and epoch value remain unchanged."
+  },
+  {
+   "epoch": 1,
+   "kind": "neutral",
+   "date": "2026-11-06",
+   "changed": [
+    "state_sink"
+   ],
+   "reason": "Preserve every canonical byte and completed-call hash state while indexing immutable stock ownership and deferring disjoint bulk accumulator publication; independent frozen-old plain/ASan 322289321-call overlap/guard/carry proof, native state/tactical checks and actual 5000-step replay pass"
+  },
+  {
+   "epoch": 2,
+   "kind": "bump",
+   "date": "2026-11-08",
+   "changed": [
+    "region_view",
+    "harness_on_sim_step_prehash",
+    "harness_order_replay_inject",
+    "libref_prehash_writes"
+   ],
+   "reason": "Strategic order-chain epoch 2: canonical task/campaign state and faithful MHORv2 HASH/ENTRY replay inputs; six genuine 5000-step fixtures and whole tutorial/campaign human oracles refreshed on 2026-11-08; receipts in notes/2026-11-08.md."
+  },
+  {
+   "epoch": 2,
+   "kind": "neutral",
+   "date": "2026-11-10",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "Replay admission now validates all PERSIST bytes and retains the imported MHOV tails instead of destructively scattering twice; unchanged restored worlds keep the same regions, masks, lengths, epoch and hash algorithms. patrol_sample is a default-off read-only observer; FEIN is explicit frontend input, not a canonicalizer. Verified original 28-checkpoint round trip and current-image explicit world import all 80 states/clocks identical. QORD lifetime and move-history changes are gameplay metadata, adjudicated separately, not a hash-definition change."
+  },
+  {
+   "epoch": 2,
+   "kind": "neutral",
+   "date": "2026-11-12",
+   "changed": [
+    "harness_on_sim_step_prehash"
+   ],
+   "reason": "Observe-only minority cleanup certification adds a depth-counted RAII guard writing only private harness bookkeeping; the watched diff changes no world writes, hash inputs, region masks or hash order. RELEASE14 det, campaign/tutorial ABC and fixed-step oracles pass unchanged. Retain HASH_INPUT_EPOCH=2 and stamped artifacts."
   }
  ]
 }

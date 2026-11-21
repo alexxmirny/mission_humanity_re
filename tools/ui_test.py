@@ -50,6 +50,8 @@ import make_lane  # LANE_ROOT, for the 'lane=<name>' / 'solo=<name>' peer specs
 import mp_run  # reuse ssh/scp/ps/sh (the proven VM plumbing)
 import rig_phases  # tooling:TL-RIG-PHASES -- phase marks (no-op unless the parent armed it)
 import setup_dat  # edit a client's setup.dat server IP (point it at the host without typing)
+import tmp_runs
+import tool_paths
 import win_job  # TL-SUITE-TEARDOWN: kill-on-close job assignment, shared with desktop.py/test_ui.py
 from PIL import Image
 
@@ -850,10 +852,13 @@ def write_effective_config(out_path, ini_text, dll_dir=None, extra=None):
 
 
 def bmp_to_png(bmp, png):
-    Image.open(bmp).convert("RGB").save(png)
+    with Image.open(bmp) as source:
+        image = source.convert("RGB")
+    image.save(png, compress_level=1)
+    return image
 
 
-def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None, only=None):
+def diff_capture(actual_rgb, baseline_png, pixdelta, tol, ignore=None, only=None):
     """Return (passed, fraction_differing, note). A pixel 'differs' when its max-channel abs delta
     exceeds pixdelta; the capture PASSES when the differing fraction is <= tol. `ignore` is a list of
     [x, y, w, h] rectangles zeroed in BOTH images before diffing -- for machine-specific regions (e.g. the
@@ -865,12 +870,13 @@ def diff_capture(actual_png, baseline_png, pixdelta, tol, ignore=None, only=None
     luminance threshold (pixel is ink or not), so the comparison is colour-blind -- for text drawn
     in a colour the game picks per run (mp:F3b: a chat line is drawn in the SENDER's faction colour,
     cyan one run and red the next, while its glyph shapes are what the capture exists to gate).
-    Shape still counts: a substitute box in place of a glyph moves the ink and fails."""
+    Shape still counts: a substitute box in place of a glyph moves the ink and fails.
+    The caller owns the decoded RGB frame; comparisons never mutate it."""
     import numpy as np
 
     if not os.path.isfile(baseline_png):
         return False, 1.0, "no baseline"
-    a = Image.open(actual_png).convert("RGB")
+    a = actual_rgb
     b = Image.open(baseline_png).convert("RGB")
     if a.size != b.size:
         return False, 1.0, "size %s != baseline %s" % (a.size, b.size)
@@ -1003,21 +1009,19 @@ def _wait_for_prior_launch_exit(host_dir, budget=15.0):
     pid, started = rec.get("pid"), rec.get("started")
     if not pid:
         return
-    deadline = time.time() + budget
+    deadline = time.monotonic() + budget
     waited = False
-    while time.time() < deadline:
-        # _process_still_running, NOT _process_created_at: OpenProcess succeeding does not mean the
-        # process is still RUNNING -- retain_exit_handle() (this same file) deliberately keeps a
-        # handle open on every launched pid past its exit, which would otherwise make this loop spin
-        # its whole budget on an already-gone process. GetExitCodeProcess's STILL_ACTIVE is the real
-        # signal; the creation-time check stays as a defence against the pid having been RECYCLED onto
-        # an unrelated process in between (astronomically unlikely in this window, cheap to rule out).
+    while time.monotonic() < deadline:
+        # An openable process handle is not itself a liveness signal: retained exit
+        # handles keep the process object around after exit. The liveness helper tests
+        # the process object's signal state; a failed query is unknown, not exit.
+        # Creation time distinguishes a recycled PID from the prior lane process.
         running = _process_still_running(pid)
         if running is True and started is not None:
             now_started = _process_created_at(pid)
             if now_started is not None and abs(now_started - started) >= 2.0:
                 running = False  # a different process now holds this pid number -- ours is gone
-        if running is not True:
+        if running is False:
             if waited:
                 print(
                     "  [launch] the prior arm's process (pid %d) has exited -- redeploying mh.dll"
@@ -1026,10 +1030,9 @@ def _wait_for_prior_launch_exit(host_dir, budget=15.0):
             return
         waited = True
         time.sleep(0.25)
-    print(
-        "  [launch] WARN: pid %d (the prior arm in this lane) was still alive after %.0fs -- "
-        "redeploying mh.dll anyway (TL-RIG7 -- a redeploy PermissionError past this point is the "
-        "race, not a new bug)" % (pid, budget)
+    raise SystemExit(
+        "REFUSED: cannot establish that prior lane pid %d exited after %.0fs; "
+        "mh.dll was not redeployed" % (pid, budget)
     )
 
 
@@ -1228,9 +1231,9 @@ def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
     `pid` is optional because one caller cannot always learn it; without it the behaviour is exactly
     what it was, which is the right default for a guard that must never be the reason a run fails.
     """
-    deadline = time.time() + timeout
+    deadline = time.monotonic() + timeout
     run = None
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         if run is None:
             new = [
                 d
@@ -1264,7 +1267,7 @@ def wait_past_pack_load(host_dir, before, timeout=60, pid=None):
                 "releasing the boot lock now instead of waiting out the %ds budget. Read the lane's "
                 "mh_net.log for the `; EXIT` witness line; a clean exit here is usually a lane-number "
                 "collision (tools/lane_alloc.py) or a refused module."
-                % (os.path.basename(host_dir), timeout - (deadline - time.time()), timeout)
+                % (os.path.basename(host_dir), timeout - (deadline - time.monotonic()), timeout)
             )
             return False
         time.sleep(0.5)
@@ -1283,7 +1286,7 @@ def local_new_run(host_dir, before, deadline):
     rig_*.flag into for the whole scenario -- both of which the DLL deliberately keeps in the process
     directory -- so a session directory winning the mtime sort here would strand the runner on an
     empty log and every multi-peer scenario would time out rather than run."""
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         now = set(
             [_d for _d in glob.glob(os.path.join(host_dir, "logs", "*")) if os.path.isdir(_d)]
         )
@@ -1429,24 +1432,20 @@ def local_kill(pid=None):
     determinism runs there are several instances on this machine, and killing by image name would
     take down somebody else's run -- a cross-test failure that would look like a flaky test.
 
-    `Stop-Process -Force` returns as soon as PowerShell has ISSUED the kill, not once Windows has
-    actually torn the process down -- this is the same race TL-RIG7's _wait_for_prior_launch_exit
-    already had to work around for a REDEPLOY, generalised here for the caller that must not report
-    a verdict (or hand the lane back to share_lanes) while a peer might still be exiting. Waits a
-    bounded few seconds, then falls back to a direct TerminateProcess by pid (win_job's own
-    primitive) for anything Stop-Process missed.
+    Termination requests do not establish rundown. Use the native process primitive, then wait
+    for confirmed exit before returning a lane. Retain the two bounded attempts rather than
+    starting PowerShell for every local peer.
     """
     pids = [pid] if pid else list(_LOCAL_PIDS)
     if not pids:
         return
-    mp_run.ps(
-        "foreach ($p in %s) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }"
-        % ",".join(str(p) for p in pids)
-    )
+    for p in pids:
+        win_job.process_terminate(p)
     for p in pids:
         if not win_job.wait_gone(p, timeout=5):
             win_job.process_terminate(p)
-            win_job.wait_gone(p, timeout=5)
+            if not win_job.wait_gone(p, timeout=5):
+                raise RuntimeError("cannot establish that local peer pid %d exited" % p)
         if p in _LOCAL_PIDS:
             _LOCAL_PIDS.remove(p)
 
@@ -1979,6 +1978,8 @@ def _solo_lane_dir(name):
             stock_exe=True,
             satellite=[],
             omit_satellite=[],
+            maps_only=None,
+            mods_empty_maps=False,
             map_variant=None,  # make_lane._provision reads it (mp:X2a); a solo lane keeps stock Maps
             backend=None,  # PT-GFX5 / PT-INPUT1: None = the rig defaults (make_lane video/input_lines)
             input_backend=None,
@@ -2026,7 +2027,7 @@ _RUN_PID = {}
 # run token -> (lane directory, launch time). Kept so a peer that DIES can be told apart from a peer
 # that HANGS: see peer_liveness() -- the rig called both "STALLED" until 2026-08-01.
 _RUN_META = {}
-_crash_checked = {}  # run token -> the early liveness probe already fired (it is a PS round trip)
+_crash_checked = {}  # run token -> the early liveness/crash lookup already fired
 # run token -> (args, ip) for a peer on a VM. peer_liveness takes only the run token, and a VM
 # peer's two questions (is it alive, did it fault) both need ssh -- so the transport it needs is
 # remembered at launch rather than threaded through every caller.
@@ -2047,8 +2048,9 @@ def peer_launch(args, ip, script_src, tf, harness_steps=0, is_host=False, pdir=N
         # the process did would miss a crash during startup, which is exactly when a bad arm crashes.
         t0 = time.time() - 5
         pid = local_launch(d, script_src, os.path.basename(script_src), tf, harness_steps, is_host)
-        run = local_new_run(d, before, time.time() + min(args.timeout, 30))
+        run = local_new_run(d, before, time.monotonic() + min(args.timeout, 30))
         if run:
+            tmp_runs.register(run, role="source")
             _RUN_PID[run] = pid
             _RUN_META[run] = (d, t0)
             # effective_config.json (tooling:TL-SUITE-INIMERGE), next to this run's own logs. Read
@@ -2134,22 +2136,23 @@ def _wait_host_ready(args, host_ip, host):
     just uses the helper that already existed. Checked every ~10 s rather than every poll because
     peer_liveness costs a PowerShell round-trip.
     """
-    deadline, t0, last, last_live = time.time() + args.timeout, time.time(), 0.0, time.time()
-    while time.time() < deadline:
+    t0 = time.monotonic()
+    deadline, last, last_live = t0 + args.timeout, t0 - 20.0, t0
+    while time.monotonic() < deadline:
         if peer_ready(args, host_ip, args.port) or peer_status(args, host_ip, host["run"]):
             return True
-        if host_ip is None and time.time() - last_live >= 10:
-            last_live = time.time()
+        if host_ip is None and time.monotonic() - last_live >= 10:
+            last_live = time.monotonic()
             alive, lines = peer_liveness(host["run"])
             if alive is False:  # None means "cannot tell" -- never read that as dead
                 print(
                     "[host] the host PROCESS EXITED after %ds without ever listening on %d/%s -- "
                     "giving up now rather than waiting out the remaining %ds of --timeout."
                     % (
-                        int(time.time() - t0),
+                        int(time.monotonic() - t0),
                         args.port,
                         RUN_TRANSPORT,
-                        int(deadline - time.time()),
+                        int(deadline - time.monotonic()),
                     )
                 )
                 for ln in lines:
@@ -2162,8 +2165,8 @@ def _wait_host_ready(args, host_ip, host):
                 postmortem_archive(host["run"])
                 host["dead"] = True  # so the caller does not then blame the budget
                 return False
-        if time.time() - last >= 20:
-            last = time.time()
+        if time.monotonic() - last >= 20:
+            last = time.monotonic()
             print(
                 "[host] not listening on %d/%s yet (%ds elapsed, walking to its lobby) ..."
                 % (args.port, RUN_TRANSPORT, int(last - t0))
@@ -2240,6 +2243,12 @@ def remote_crash_lines(args, ip, since, limit=3):
         "wevtutil qe Application /c:%d /rd:true /f:text /q:*[System[(EventID=1000)]]" % (limit * 8),
         timeout=40,
     )
+    if getattr(ev, "returncode", None) != 0:
+        # These VMs disable WER files: an unavailable event query cannot prove no crash.
+        return [
+            "  [crash] Application event query unavailable on %s (exit %s)"
+            % (ip, getattr(ev, "returncode", "unknown"))
+        ]
     for r in crash_report.parse_appcrash_events(
         getattr(ev, "stdout", "") or "", since=since, app_path=args.vm_dir
     )[:limit]:
@@ -2446,11 +2455,11 @@ _shim_kill_on_close_job = win_job.assign_kill_on_close
 
 
 def _shim_pidfile_path(listen_port):
-    return os.path.join(REPO, "tmp", "shim", "net_shim_%d.pid" % listen_port)
+    return str(tool_paths.state_path("shim/net_shim_%d.pid" % listen_port, repo=REPO))
 
 
 def _shim_write_pidfile(listen_port, shim_pid):
-    os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
+    os.makedirs(os.path.dirname(_shim_pidfile_path(listen_port)), exist_ok=True)
     runner_pid = os.getpid()
     record = {
         "shim_pid": shim_pid,
@@ -2470,8 +2479,8 @@ def _shim_reap_if_orphaned(listen_port):
     """A bind() to our own shim's port just failed -- before refusing, check whether the holder is
     OUR OWN shim (identified by the pidfile shim_start wrote for this port) from a runner that is
     now DEAD. Returns True (and has already killed the stale shim) iff the caller should retry the
-    bind once; False means either there is no pidfile to go on, or the runner recorded in it is
-    still alive -- in both cases the holder is left untouched."""
+    bind once; False means no usable pidfile, a live runner, or unknown process identity/liveness.
+    In each case the holder is left untouched."""
     try:
         with open(_shim_pidfile_path(listen_port), "r", encoding="utf-8") as fh:
             rec = json.load(fh)
@@ -2485,14 +2494,14 @@ def _shim_reap_if_orphaned(listen_port):
     # offline verification (TL-RIG7's scratch repro) caught this turning "is it running" into "does
     # the object still exist", which is a different question and the wrong one here.
     running = _process_still_running(runner_pid)
+    if running is None:
+        return False  # access/query failure cannot establish the runner has exited
     if running is True:
         now_started = _process_created_at(runner_pid)
         recorded_started = rec.get("runner_started")
-        if (
-            now_started is not None
-            and recorded_started is not None
-            and abs(now_started - recorded_started) < 2.0
-        ):
+        if now_started is None or recorded_started is None:
+            return False  # cannot distinguish the original runner from a recycled PID
+        if abs(now_started - recorded_started) < 2.0:
             return False  # same process, still running: a LIVE runner's shim -- never touch it
     print(
         "[shim] port %d is held by an orphaned shim (pid %s) whose runner (pid %s) is no longer "
@@ -2553,9 +2562,9 @@ def shim_start(args):
                 % control_port
             )
             return None
-    os.makedirs(os.path.join(REPO, "tmp", "shim"), exist_ok=True)
+    os.makedirs(tmp_runs.current_output("shim"), exist_ok=True)
     # Per LISTEN port: two concurrent shims used to write (and delete) the same log file.
-    log = os.path.join(REPO, "tmp", "shim", "ui_test_shim_%d.log" % listen_port)
+    log = os.path.join(tmp_runs.current_output("shim"), "ui_test_shim_%d.log" % listen_port)
     if os.path.exists(log):
         os.remove(log)
     cmd = [
@@ -2710,21 +2719,12 @@ def _peer_by_role(peers, role):
 
 
 def _local_peer_file_texts(run, fname):
-    """The texts of `fname` in the peer's process dir and every LATER dir of the same logs/ folder
-    (dir names are UTC-timestamp-prefixed, so a stamp >= is 'created at or after'). SES8: compared
-    through _rundir.sort_key, because a raw string compare puts every older SES1 name AFTER a new
-    `YYYY-MM-DD...` one (`-` sorts before `0`)."""
+    """Read this process and its metadata-owned sessions, never another later launch."""
     if not run or not os.path.isdir(run):
         return []
-    logs = os.path.dirname(os.path.abspath(run).rstrip("\\/"))
-    base = os.path.basename(os.path.abspath(run).rstrip("\\/"))
     out = []
-    for d in sorted(
-        (n for n in os.listdir(logs) if os.path.isdir(os.path.join(logs, n))), key=_rundir.sort_key
-    ):
-        if _rundir.sort_key(d) < _rundir.sort_key(base):
-            continue
-        fp = os.path.join(logs, d, fname)
+    for d in _rundir.process_and_sessions(run):
+        fp = os.path.join(d, fname)
         if os.path.isfile(fp):
             try:
                 with open(fp, encoding="utf-8", errors="replace") as fh:
@@ -2779,12 +2779,26 @@ def pump_shim_triggers(proc, triggers, peers, t0):
             print(
                 "[shim] TRIGGER at +%.0fs: %r -> %s  (when %s)"
                 % (
-                    time.time() - t0,
+                    time.monotonic() - t0,
                     trg["cmd"],
                     reply,
                     "; ".join("%s:%s~/%s/" % (r, f, x.pattern) for r, f, x in trg["when"]),
                 )
             )
+
+
+def wait_shim_interval(seconds, proc, triggers, peers, t0):
+    """Keep observer cadence, but service opted-in control events before their native deadline."""
+    deadline = time.monotonic() + seconds
+    while any(t["fast"] and not t["fired"] for t in triggers):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.25, remaining))
+        pump_shim_triggers(proc, triggers, peers, t0)
+    remaining = deadline - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
 
 
 def shim_stop(proc):
@@ -2844,7 +2858,7 @@ def load_ignore(base_dir):
         return {}
 
 
-def structural_check(actual_png, ref_png, spec, pixdelta):
+def structural_check(actual_rgb, ref_png, spec, pixdelta):
     """mp:X3a. A frame that must be a REAL in-game strategic frame, judged by structure rather than by
     a committed baseline (the imported world's exact pixels are not what is being claimed -- only that
     the frame path drew a game from it). Returns (passed, note). Three clauses, ALL required:
@@ -2859,7 +2873,7 @@ def structural_check(actual_png, ref_png, spec, pixdelta):
     """
     import numpy as np
 
-    a = Image.open(actual_png).convert("RGB")
+    a = actual_rgb
     aa = np.asarray(a, dtype=np.int16)
     vx, vy, vw, vh = spec.get("view_rect", [0, 0, 864, 740])
     v = aa[vy : vy + vh, vx : vx + vw]
@@ -2905,71 +2919,92 @@ def structural_check(actual_png, ref_png, spec, pixdelta):
     return (not problems), note + ("; " + "; ".join(problems) if problems else "")
 
 
-def collect_and_check(label, png_dir, args):
-    """png_dir holds the pulled capture_<name>.png files. Diff each vs baselines/<label>/. Returns ok."""
+def collect_and_check(label, captures, args):
+    """Convert and judge one decoded frame at a time, retaining every PNG artifact."""
+    png_dir, bmps = captures
     base_dir = os.path.join(BASELINES, label)
-    caps = sorted(glob.glob(os.path.join(png_dir, "capture_*.png")))
-    if not caps:
+    sources = {
+        os.path.join(png_dir, os.path.splitext(os.path.basename(bmp))[0] + ".png"): bmp
+        for bmp in bmps
+    }
+    caps = sorted(set(sources) | set(glob.glob(os.path.join(png_dir, "capture_*.png"))))
+    ignore = load_ignore(base_dir)
+    structural = ignore.get("_structural") or {}
+    unjudged = ignore.get("_unjudged") or []
+    ok, produced, written = True, 0, 0
+    for c in caps:
+        image = None
+        if c in sources:
+            try:
+                image = bmp_to_png(sources[c], c)
+            except Exception as e:
+                print("  (skip unreadable %s: %s)" % (os.path.basename(sources[c]), e))
+        if image is None:
+            if not os.path.isfile(c):
+                continue
+            image = Image.open(c).convert("RGB")
+        with image:
+            produced += 1
+            name = os.path.basename(c)
+            if args.update_baselines:
+                os.makedirs(base_dir, exist_ok=True)
+                if name not in structural and name not in unjudged and "*" not in unjudged:
+                    shutil.copy(c, os.path.join(base_dir, name))
+                    written += 1
+                continue
+            if name in structural:
+                # mp:X3a: judged against this peer's own in-game HUD, not incidental world pixels.
+                spec = structural[name]
+                passed, note = structural_check(
+                    image, os.path.join(base_dir, spec.get("ref", "")), spec, args.pixdelta
+                )
+                print("  [%s] %-28s %s  (%s)" % (label, name, "PASS" if passed else "FAIL", note))
+                ok = ok and passed
+                continue
+            if name in unjudged or "*" in unjudged:
+                # Review captures are saved but never silently promoted to approved baselines.
+                tmp_runs.register(png_dir, role="evidence")
+                print("  [%s] %-28s UNJUDGED  (awaiting user review; no baseline)" % (label, name))
+                continue
+            rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
+            only = (ignore.get("_only") or {}).get(name)
+            cap_tol = (ignore.get("_tol") or {}).get(name, args.tol)
+            passed, frac, note = diff_capture(
+                image, os.path.join(base_dir, name), args.pixdelta, cap_tol, rects, only
+            )
+            tag = "PASS" if passed else "FAIL"
+            print(
+                "  [%s] %-28s %s  (%.3f%% diff%s)"
+                % (label, name, tag, frac * 100, "; " + note if note else "")
+            )
+            ok = ok and passed
+    if not produced:
         print("  [%s] NO CAPTURES produced" % label)
         return False
     if args.update_baselines:
-        os.makedirs(base_dir, exist_ok=True)
-        skip = set((load_ignore(base_dir).get("_structural") or {}).keys())  # never baselined
-        caps = [c for c in caps if os.path.basename(c) not in skip]
-        for c in caps:
-            shutil.copy(c, os.path.join(base_dir, os.path.basename(c)))
-        print(
-            "  [%s] wrote %d baselines -> %s" % (label, len(caps), os.path.relpath(base_dir, REPO))
-        )
-        return True
-    ignore = load_ignore(base_dir)
-    ok = True
-    structural = ignore.get("_structural") or {}
-    for c in caps:
-        name = os.path.basename(c)
-        if name in structural:
-            # mp:X3a: judged by structure against the peer's own in-game baseline, not diffed.
-            spec = structural[name]
-            passed, note = structural_check(
-                c, os.path.join(base_dir, spec.get("ref", "")), spec, args.pixdelta
-            )
-            print("  [%s] %-28s %s  (%s)" % (label, name, "PASS" if passed else "FAIL", note))
-            ok = ok and passed
-            continue
-        rects = list(ignore.get("*", [])) + list(ignore.get(name, []))
-        # `_only` (see diff_capture): {"capture_x.png": {"rect": [x, y, w, h], "mode": "ink"}}
-        only = (ignore.get("_only") or {}).get(name)
-        cap_tol = (ignore.get("_tol") or {}).get(name, args.tol)
-        passed, frac, note = diff_capture(
-            c, os.path.join(base_dir, name), args.pixdelta, cap_tol, rects, only
-        )
-        tag = "PASS" if passed else "FAIL"
-        print(
-            "  [%s] %-28s %s  (%.3f%% diff%s)"
-            % (label, name, tag, frac * 100, "; " + note if note else "")
-        )
-        ok = ok and passed
+        print("  [%s] wrote %d baselines -> %s" % (label, written, os.path.relpath(base_dir, REPO)))
     return ok
 
 
 def host_listening(port, transport="tcp"):
-    # The menu-path host opens its lobby port when it enters its lobby -- the "ready for clients" signal
-    # (used instead of script COMPLETE, since a host that waits for peers only COMPLETEs after they join).
-    # Which TABLE that shows up in is transport-specific (mp:T1): a tcp host is a LISTEN row in the TCP
-    # connection table, a udp host is a bound endpoint and has no state to be in at all. Asking the
-    # wrong table is indistinguishable from a host that never started -- see remote_listening.
-    q = (
-        "(Get-NetUDPEndpoint -LocalPort %d -ErrorAction SilentlyContinue | Measure-Object).Count"
-        % port
-        if transport == "udp"
-        else "(Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | "
-        "Measure-Object).Count" % port
+    # Observe native endpoint tables without starting PowerShell or connecting to the transport.
+    # Parse bytes: localized headings need not decode, and only the LOCAL endpoint may match.
+    r = subprocess.run(
+        ["netstat", "-an"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
     )
-    r = mp_run.ps(q)
-    try:
-        return int((r.stdout or "0").strip() or "0") > 0
-    except ValueError:
+    if r.returncode != 0:
         return False
+    protocol = b"UDP" if transport == "udp" else b"TCP"
+    wanted = str(port).encode("ascii")
+    for line in r.stdout.splitlines():
+        fields = line.split()
+        if len(fields) < 3 or fields[0].upper() != protocol:
+            continue
+        if b":" not in fields[1] or fields[1].rsplit(b":", 1)[1] != wanted:
+            continue
+        if transport == "udp" or (len(fields) >= 4 and fields[3].upper() == b"LISTENING"):
+            return True
+    return False
 
 
 def pull_local_captures(run_dir):
@@ -2982,20 +3017,16 @@ def pull_local_captures(run_dir):
     lane = os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(run_dir)))) or "local"
     png_dir = os.path.join(_scratch(), "host_%s_%s" % (lane, os.path.basename(run_dir)))
     os.makedirs(png_dir, exist_ok=True)
-    for bmp in glob.glob(os.path.join(run_dir, "capture_*.bmp")):
-        try:
-            bmp_to_png(
-                bmp, os.path.join(png_dir, os.path.splitext(os.path.basename(bmp))[0] + ".png")
-            )
-        except Exception as e:
-            print("  (skip unreadable %s: %s)" % (os.path.basename(bmp), e))
-    return png_dir
+    tmp_runs.register(png_dir)
+    return png_dir, glob.glob(os.path.join(run_dir, "capture_*.bmp"))
 
 
 def pull_remote_captures(args, ip, run):
     png_dir = os.path.join(_scratch(), "client_%s_%s" % (ip.replace(".", "_"), run))
     os.makedirs(png_dir, exist_ok=True)
+    tmp_runs.register(png_dir)
     listing = remote(args, ip, "dir /b %s\\logs\\%s\\capture_*.bmp 2>nul" % (args.vm_dir, run))
+    bmps = []
     for fn in listing.stdout.split():
         fn = fn.strip()
         if not fn.endswith(".bmp"):
@@ -3007,11 +3038,8 @@ def pull_remote_captures(args, ip, run):
             local_bmp,
         )
         if os.path.isfile(local_bmp):
-            try:
-                bmp_to_png(local_bmp, os.path.splitext(local_bmp)[0] + ".png")
-            except Exception as e:
-                print("  (skip unreadable %s: %s)" % (fn, e))
-    return png_dir
+            bmps.append(local_bmp)
+    return png_dir, bmps
 
 
 # ---- UI-path determinism (mp_analyze over harness logs from a real UI-driven run) ------------------
@@ -3163,12 +3191,9 @@ def peer_liveness(run):
         return remote_alive(rargs, rip), remote_crash_lines(rargs, rip, t0)
     alive = None
     if pid:
-        r = mp_run.ps(
-            "if (Get-Process -Id %d -ErrorAction SilentlyContinue) { 'Y' } else { 'N' }" % pid
-        )
-        txt = (getattr(r, "stdout", "") or "").strip()
-        if txt in ("Y", "N"):
-            alive = txt == "Y"
+        retained = _EXIT_HANDLE.get(int(pid))
+        if retained:
+            alive = _process_still_running(pid, handle=retained)
     lines = []
     try:
         import crash_report
@@ -3177,6 +3202,56 @@ def peer_liveness(run):
     except Exception as e:  # a diagnostic must never be the thing that fails the run
         lines = ["  [crash] crash_report unavailable: %s" % e]
     return alive, lines
+
+
+def peer_runtime_evidence(run):
+    """Owned liveness and fault evidence, captured BEFORE the runner's planned kill."""
+    alive, reports = peer_liveness(run)
+    evidence = dict(
+        schema=1,
+        process_dir=os.path.basename(run.rstrip("/\\")),
+        alive=alive,
+        crash_reports=reports,
+        markers_checked=False,
+        markers=[],
+    )
+    meta = _RUN_META.get(run)
+    if meta is None:
+        return evidence
+    lane, since = meta
+    try:
+        rem = _RUN_REMOTE.get(run)
+        if rem is None:
+            with os.scandir(os.path.join(lane, "logs")) as entries:
+                evidence["markers"] = [
+                    entry.name
+                    for entry in entries
+                    if entry.name.startswith("mh_crash_")
+                    and entry.name.endswith(".marker")
+                    and entry.is_file()
+                    and entry.stat().st_mtime >= since
+                ]
+            evidence["markers_checked"] = True
+        else:
+            rargs, rip = rem
+            folder = os.path.join(lane, "logs").replace("'", "''")
+            cutoff = int((since + 11644473600) * 10000000)
+            query = (
+                "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; "
+                "$cut=[DateTime]::FromFileTimeUtc(%d); "
+                "Get-ChildItem -LiteralPath '%s' -Filter 'mh_crash_*.marker' -File | "
+                "Where-Object { $_.LastWriteTimeUtc -ge $cut } | ForEach-Object { $_.Name }; "
+                "Write-Output '__MARKERS_CHECKED__'\"" % (cutoff, folder)
+            )
+            result = remote(rargs, rip, query, timeout=40)
+            lines = (result.stdout or "").splitlines()
+            evidence["markers_checked"] = result.returncode == 0 and "__MARKERS_CHECKED__" in lines
+            evidence["markers"] = [
+                line.strip() for line in lines if line.strip().endswith(".marker")
+            ]
+    except (OSError, ValueError) as exc:
+        evidence["marker_error"] = str(exc)
+    return evidence
 
 
 def exit_witness(run):
@@ -3217,7 +3292,7 @@ def exit_witness(run):
 
 
 def postmortem_archive(run):
-    """Copy a dead peer's text logs to tmp/ui_test/postmortem/ before make_lane can rmtree them.
+    """Copy a dead peer's text logs to owned output before make_lane can rmtree them.
 
     make_lane.py deletes the whole lane -- logs included -- on every provision, which is how three
     F5H gate crashes and one reproduction left zero evidence (2026-09-15). Archiving lives HERE, on
@@ -3229,15 +3304,13 @@ def postmortem_archive(run):
         return
     lane, _ = _RUN_META.get(run, (None, None))
     dst = os.path.join(
-        REPO,
-        "tmp",
-        "ui_test",
-        "postmortem",
+        tmp_runs.current_output("postmortem"),
         "%s__%s" % (os.path.basename(lane or "unknown"), os.path.basename(run)),
     )
     cap = 512 * 1024
     try:
         os.makedirs(dst, exist_ok=True)
+        tmp_runs.register(dst, role="evidence")
         for f in glob.glob(os.path.join(run, "*.log")) + glob.glob(os.path.join(run, "*.txt")):
             with open(f, "rb") as src:
                 src.seek(0, 2)
@@ -3311,6 +3384,26 @@ def peer_verdict(run, stalled_status):
         postmortem_archive(run)
         return stalled_status.replace("STALLED", "PROCESS-GONE", 1)
     return stalled_status
+
+
+def harness_bind_refusal(run):
+    """Actual required-instrument refusal, or None while module binding is pending."""
+    try:
+        with open(os.path.join(run, "mh_net.log"), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if "[modules] mh_harness:" not in line:
+                    continue
+                if "ABI MISMATCH" in line:
+                    return "HARNESS-ABI-MISMATCH: " + line.strip()
+                if "NOT BOUND" in line:
+                    return "HARNESS-NOT-BOUND: " + line.strip()
+                if "BOUND" in line and (
+                    "init returned 00000000" in line or "call-through WRONG" in line
+                ):
+                    return "HARNESS-INIT-FAILED: " + line.strip()
+    except FileNotFoundError:
+        pass
+    return None
 
 
 def peer_harness_steps(args, ip, run):
@@ -3425,15 +3518,26 @@ def pull_peer_logs(args, ip, run, dest):
     newest session's session.json comes along too, so the analyzer can pair these peers by match_id
     rather than by the operator having handed it the right two folders."""
     os.makedirs(dest, exist_ok=True)
+    process_names = mp_run.LOGNAMES + ["mh_uidrive.log"]
+    session_names = mp_run.LOGNAMES + ["mh_match_harness.log"]
+    process_leaf = os.path.basename(run.rstrip("/\\"))
+    # A re-pull is a replacement snapshot, not another append of the same match.
+    for name in process_names + ["mh_match_harness.log", "session.json"]:
+        old = os.path.join(dest, name)
+        if os.path.isfile(old):
+            os.remove(old)
     sessions = peer_session_dirs(args, ip, run)
     if ip is None:
-        for nm in mp_run.LOGNAMES + OPTIONAL_ARTIFACTS:
+        for nm in process_names + OPTIONAL_ARTIFACTS:
             src = os.path.join(run, nm)
             if os.path.isfile(src):
                 shutil.copy(src, os.path.join(dest, nm))
         parent = os.path.dirname(os.path.abspath(run))
         for sd in sessions:
-            for nm in mp_run.LOGNAMES:
+            meta = _rundir.read_session_json(os.path.join(parent, sd)) or {}
+            if meta.get("process_dir") != process_leaf:
+                continue
+            for nm in session_names:
                 src = os.path.join(parent, sd, nm)
                 if os.path.isfile(src):
                     with open(src, "rb") as fi, open(os.path.join(dest, nm), "ab") as fo:
@@ -3469,7 +3573,7 @@ def pull_peer_logs(args, ip, run, dest):
         # on every GREEN run, for files that arrived a few lines later out of the session folder. The
         # retry stays; the verdict on whether anything is missing is taken once, over the merge.
         fwd = args.vm_dir.replace("\\", "/")
-        for nm in mp_run.LOGNAMES:
+        for nm in process_names:
             src = "%s@%s:%s/logs/%s/%s" % (args.vm_user, ip, fwd, run, nm)
             out = os.path.join(dest, nm)
             for attempt in (1, 2):
@@ -3481,7 +3585,27 @@ def pull_peer_logs(args, ip, run, dest):
         # Pulled to a scratch name and concatenated rather than scp'd over the destination, so a
         # failed session pull cannot destroy the menu-phase half that already arrived.
         for sd in sessions:
-            for nm in mp_run.LOGNAMES:
+            meta_tmp = os.path.join(dest, "_ses_session.json")
+            if (
+                mp_run.scp(
+                    args.ssh_key,
+                    "%s@%s:%s/logs/%s/session.json" % (args.vm_user, ip, fwd, sd),
+                    meta_tmp,
+                    quiet=True,
+                ).returncode
+                != 0
+            ):
+                continue
+            try:
+                with open(meta_tmp, encoding="utf-8") as fh:
+                    meta = json.load(fh)
+            except (OSError, ValueError):
+                meta = None
+            if not isinstance(meta, dict) or meta.get("process_dir") != process_leaf:
+                os.remove(meta_tmp)
+                continue
+            os.replace(meta_tmp, os.path.join(dest, "session.json"))
+            for nm in session_names:
                 tmp = os.path.join(dest, "_ses_%s" % nm)
                 if mp_run.scp(
                     args.ssh_key,
@@ -3492,12 +3616,6 @@ def pull_peer_logs(args, ip, run, dest):
                     with open(tmp, "rb") as fi, open(os.path.join(dest, nm), "ab") as fo:
                         fo.write(fi.read())
                     os.remove(tmp)
-            mp_run.scp(
-                args.ssh_key,
-                "%s@%s:%s/logs/%s/session.json" % (args.vm_user, ip, fwd, sd),
-                os.path.join(dest, "session.json"),
-                quiet=True,
-            )
         # THE ONE VERDICT ON WHAT IS MISSING, taken over the merged result (see the note above the
         # process-directory pull). 2026-07-28's failure -- a 2.8 MB mh_harness.log present on the VM
         # and silently absent locally, leaving the pair with no host data -- is still named here; what
@@ -3552,8 +3670,8 @@ def det_await_close(args, peers, det_dir, exclude):
     def straggling(k):
         return got[k] is None and not mp_run.steps_done(os.path.join(det_dir, k))[1]
 
-    deadline = time.time() + CLOSE_WAIT_S
-    while any(straggling(k) for k in got) and time.time() < deadline:
+    deadline = time.monotonic() + CLOSE_WAIT_S
+    while any(straggling(k) for k in got) and time.monotonic() < deadline:
         time.sleep(1)
         for k, ip, run in want:
             if straggling(k):
@@ -3634,8 +3752,8 @@ def run_determinism(args):
         return 1
     peers.append(("host", host_ip, hrun))
     rig_phases.mark("host_launched")
-    ready_deadline = time.time() + min(max(args.timeout, 90), 90)
-    while time.time() < ready_deadline and not peer_ready(args, host_ip, args.port):
+    ready_deadline = time.monotonic() + min(max(args.timeout, 90), 90)
+    while time.monotonic() < ready_deadline and not peer_ready(args, host_ip, args.port):
         time.sleep(2)
     if not peer_ready(args, host_ip, args.port):
         print(
@@ -3669,15 +3787,17 @@ def run_determinism(args):
         peers.append(("client%d" % (ci + 1), cip, crun))
     rig_phases.mark("clients_launched")
 
-    # Wait for the HOST to log >= `steps` in-game steps, then stop everyone -- the peers run in lockstep so
-    # a host at N steps means every peer logged the same N. NOTE: the DLL defaults [harness] stop_step in the
-    # non-force-entry (UI) path (it does not self-stop / write the per-region breakdown), so we BOUND the run
-    # by polling to n>=steps rather than waiting for `done`. Overshooting N just compares MORE steps (a
-    # stronger check). Generous deadline: real UI entry (~30-60s) + the in-game steps.
-    start_wait = time.time()
+    # Observe the compared cohort, not an intentionally terminated/excluded host.
+    # A stream reaching `steps` is producer completion, not proof that all those
+    # hashes precede a real match end; the unchanged analyzers own that boundary.
+    start_wait = time.monotonic()
     deadline = start_wait + max(args.timeout, 120 + steps * 0.5)
+    watch_peers = [p for p in peers if p[0] not in (args.det_exclude or [])]
+    missing_required = [k for k, _ip, run in watch_peers if not run]
+    progress = {k: None for k, _ip, _run in watch_peers}
+    last_changes = {k: start_wait for k, _ip, _run in watch_peers}
     print(
-        "[det] running %d in-game steps (waiting for the host to finish; do not touch any window) ..."
+        "[det] running %d in-game steps (waiting for the compared cohort; do not touch any window) ..."
         % steps
     )
     # The determinism path drives the SAME match_launch scripts as the capture suite, so it needs the
@@ -3686,68 +3806,80 @@ def run_determinism(args):
     # for a signal nothing was delivering. Two loops, one mechanism; keep them in step.
     sig_peers = [{"key": k, "ip": ip, "run": run} for (k, ip, run) in peers if run]
     delivered = set()
-    # PROGRESS WATCHDOG (2026-07-29). `deadline` above is pure wall clock, and at 3000 steps it works
-    # out to ~53 minutes -- so a WEDGED run and a merely slow one look identical for most of an hour.
-    # A total-time bound cannot separate those two; a progress bound can, and the poll below already
-    # has the signal (the host's step count). Lowering the wall clock instead would just start killing
-    # healthy long runs. Two phases, because "no steps yet" is normal during UI entry:
-    #   n <= 0  -- the harness log is absent (-1) or has no step rows yet: still launching, allow
-    #              --launch-timeout (real UI entry is ~30-60 s, plus the peer rendezvous).
-    #   n  > 0  -- stepping: any pause longer than --stall-timeout is a stall. Safe against a legitimate
-    #              barrier park, which is bounded by rx_timeout_ms (10 s default) before the link drops.
-    last_n, last_change, stalled = None, time.time(), False
+    # Every required producer keeps its own progress watchdog. A moving peer
+    # cannot keep a wedged partner alive, and a completed peer is not stalled
+    # just because another producer still needs to finish.
+    stalled = False
     det_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
-    while time.time() < deadline:
-        time.sleep(8)
+    while time.monotonic() < deadline:
+        wait_shim_interval(8, shim, det_triggers, sig_peers, start_wait)
         if len(sig_peers) > 1:
             pump_signals(args, sig_peers, delivered)
         pump_shim_triggers(
             shim, det_triggers, sig_peers, start_wait
         )  # mp:U64: state-gated shim actions
-        n, done = peer_harness_steps(args, host_ip, hrun)
-        print("    host=%s%s" % (n, " DONE" if done else ""))
-        if n > 0:
+        observed = {
+            k: peer_harness_steps(args, ip, run) if run else (-1, False)
+            for k, ip, run in watch_peers
+        }
+        print(
+            "    cohort: "
+            + ", ".join(
+                "%s=%s%s" % (k, n, " DONE" if done else "") for k, (n, done) in observed.items()
+            )
+        )
+        if any(n > 0 for n, _done in observed.values()):
             rig_phases.mark("match_begin")
-        if done or n >= steps:
+        if all(done or n >= steps for n, done in observed.values()):
             break
-        if n != last_n:
-            last_n, last_change = n, time.time()
-            continue
-        quiet = time.time() - last_change
-        limit = args.launch_timeout if n <= 0 else args.stall_timeout
-        # DET-FLAKE (B): before spending the rest of the launch budget, ask the peers whether their
-        # SCRIPT already gave up. A run whose host aborted at step 15 is not slow, it is over --
-        # and the abort line names the step, which "step count stuck at 0" never could. Checked only
-        # while nothing has stepped yet (n <= 0), and only every other poll, to keep the scp cheap.
-        if n <= 0 and quiet >= 24:
+        now = time.monotonic()
+        for key, (n, _done) in observed.items():
+            if n != progress[key]:
+                progress[key], last_changes[key] = n, now
+        # Preserve the pre-entry script-abort check; no stalled producer gets
+        # a fresh timeout merely because a different member advanced.
+        if any(n <= 0 and now - last_changes[k] >= 24 for k, (n, _done) in observed.items()):
             aborted = [(k, peer_script_abort(args, ip, run)) for k, ip, run in peers if run]
             aborted = [(k, ln) for k, ln in aborted if ln]
             if aborted:
                 for k, ln in aborted:
                     print("[det] %s's SCRIPT ABORTED -- %s" % (k, ln))
-                print(
-                    "[det] the match never started, and the peer said so itself -- not waiting out "
-                    "the remaining %ds of the launch watchdog"
-                    % max(0, int(args.launch_timeout - quiet))
-                )
+                print("[det] the cohort never entered; its producer reported a script abort")
                 stalled = True
                 break
-        if stall_abort(n, quiet, args.launch_timeout, args.stall_timeout):
-            print(
-                "[det] STALL: host step count stuck at %s for %ds (%s limit %ds) -- aborting rather "
-                "than waiting out the %ds wall clock"
-                % (n, quiet, "launch" if n <= 0 else "stepping", limit, deadline - start_wait)
-            )
-            # Say WHY, when Windows recorded it. A local host that faulted looks identical to one
-            # that wedged, and only one of the two is worth re-running unchanged. (VM peers return
-            # nothing here -- their WER lives on the VM; see peer_liveness.)
-            for ln in peer_liveness(hrun)[1]:
-                print(ln)
+        blocked = []
+        for key, _ip, run in watch_peers:
+            n, done = observed[key]
+            quiet = now - last_changes[key]
+            if (
+                not done
+                and n < steps
+                and stall_abort(n, quiet, args.launch_timeout, args.stall_timeout)
+            ):
+                blocked.append((key, run, n, quiet))
+        if blocked:
+            for key, run, n, quiet in blocked:
+                limit = args.launch_timeout if n <= 0 else args.stall_timeout
+                print(
+                    "[det] STALL: %s step count stuck at %s for %ds (%s limit %ds) -- aborting rather "
+                    "than waiting out the %ds wall clock"
+                    % (
+                        key,
+                        n,
+                        quiet,
+                        "launch" if n <= 0 else "stepping",
+                        limit,
+                        deadline - start_wait,
+                    )
+                )
+                if run:
+                    for ln in peer_liveness(run)[1]:
+                        print(ln)
             stalled = True
             break
     else:
         print(
-            "[det] WARN: host did not reach %d steps before the deadline -- analyzing what exists"
+            "[det] WARN: compared cohort did not reach %d steps before the deadline -- analyzing what exists"
             % steps
         )
     if stalled:
@@ -3778,10 +3910,29 @@ def run_determinism(args):
     if not stalled:
         # TL-HARN-CLEANCLOSE: a straggling client's close lands a moment after the host's.
         det_await_close(args, peers, det_dir, args.det_exclude)
+    cleanup_seen = False
+    for key, _ip, run in peers:
+        mirror = os.path.join(det_dir, key, "mh_match_harness.log")
+        if run and os.path.isfile(mirror):
+            with open(mirror, encoding="utf-8", errors="replace") as fh:
+                cleanup_seen |= any(line.startswith("; FAILOVER-CLEANUP phase=") for line in fh)
+    if cleanup_seen:
+        for key, _ip, run in peers:
+            if run and key not in (args.det_exclude or []):
+                with open(
+                    os.path.join(det_dir, key, "peer_runtime.json"), "w", encoding="utf-8"
+                ) as fh:
+                    json.dump(peer_runtime_evidence(run), fh, indent=2)
     for key, ip, run in peers:
         peer_kill(args, ip, run)
     shim_stop(shim)
     rig_phases.mark("pull_end")
+    if missing_required:
+        print(
+            "[det] required cohort member(s) never launched: %s -- FAIL"
+            % ", ".join(missing_required)
+        )
+        return 1
     if len(dirs) < 2:
         print("[det] need >=2 peers with logs; got %d -- FAIL" % len(dirs))
         return 1
@@ -3923,6 +4074,81 @@ def ini_compose_selftest():
     except SystemExit:
         raised = True
     check("--extra-ini-host carrying [net] is REFUSED before it can shadow anything", raised)
+
+    # Real trigger parsing/log ownership/control transitions, with a virtual steady clock.
+    # A later process already says "failover over"; it must not heal our partition.
+    import tempfile
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory(prefix="mh_shim_cadence_") as td:
+        own = os.path.join(td, "2026-11-11T00-00-01Z_menu_solo")
+        foreign = os.path.join(td, "2026-11-11T00-00-02Z_menu_solo")
+        os.makedirs(own)
+        os.makedirs(foreign)
+        log = os.path.join(own, "mh_net.log")
+        with open(log, "w") as fh:
+            fh.write("CUT_READY\n")
+        with open(os.path.join(foreign, "mh_net.log"), "w") as fh:
+            fh.write("U63 failover over\n")
+        clock = [0.0]
+        cut_at = [None]
+        controls = []
+
+        def sleep(dt):
+            clock[0] += dt
+            if cut_at[0] is not None and clock[0] >= cut_at[0] + 2:
+                with open(log, "w") as fh:
+                    fh.write("CUT_READY\nU63 failover over\n")
+
+        def control(_proc, cmd):
+            controls.append((cmd, clock[0]))
+            if cmd == "blackhole on":
+                cut_at[0] = clock[0]
+            return "ok"
+
+        triggers = parse_shim_triggers(
+            [
+                json.dumps(
+                    {
+                        "cmd": "blackhole on",
+                        "fast": True,
+                        "when": [["c1", "mh_net.log", "CUT_READY"]],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "cmd": "blackhole off",
+                        "fast": True,
+                        "after_prev": True,
+                        "when": [["c1", "mh_net.log", "U63 failover over"]],
+                    }
+                ),
+            ]
+        )
+        with (
+            patch.object(time, "monotonic", lambda: clock[0]),
+            patch.object(time, "sleep", sleep),
+            patch(__name__ + ".shim_ctl", side_effect=control),
+        ):
+            wait_shim_interval(
+                8,
+                object(),
+                triggers,
+                [
+                    {"key": "host", "ip": None, "run": None},
+                    {"key": "client1", "ip": None, "run": own},
+                ],
+                0,
+            )
+        check(
+            "fast heal follows our real completion before10s, not a foreign process or8s poll",
+            len(controls) == 2
+            and controls[0][0] == "blackhole on"
+            and controls[1][0] == "blackhole off"
+            and controls[0][1] <= 0.25
+            and 2 <= controls[1][1] - controls[0][1] <= 2.25
+            and clock[0] == 8,
+        )
 
     ok = not fails
     print("ini_compose_selftest: %s" % ("PASS" if ok else ("FAIL: " + ", ".join(fails))))
@@ -4189,6 +4415,11 @@ def main():
         help="--determinism: pull this peer's logs (host, client1, ...) but leave it OUT of the "
         "all-pairs hash compare -- for a peer that leaves the match on purpose (mp:U19b's quitter), "
         "whose short hash log is not a vacuous run. Repeatable.",
+    )
+    ap.add_argument(
+        "--require-harness-binding",
+        action="store_true",
+        help="required diagnostic replay: fail immediately on the actual instrument bind refusal",
     )
     ap.add_argument(
         "--harness",
@@ -4666,7 +4897,7 @@ def main():
             )
         src = resolve(args.script)
         label = os.path.splitext(os.path.basename(src))[0]
-        deadline = time.time() + args.timeout
+        deadline = time.monotonic() + args.timeout
         pin_setup(args, None, name=args.host_name, game=args.game_name)  # deterministic identity
         # P0-SPDET: --harness arms the in-game state logger on a SINGLE-PEER run, which is what the
         # single-player oracle needs (two sequential runs of one peer, promoted vs unpromoted). It is
@@ -4681,20 +4912,26 @@ def main():
             # appears -- so a 400-step run died four seconds in, having logged nothing. Wait on the
             # SAME signal --determinism waits on (the logged step count) with the same stall
             # watchdog; a third wait loop is what run_determinism's own comment warns against.
-            last_n, last_change = None, time.time()
-            while time.time() < deadline:
-                time.sleep(4)
+            last_n, last_change = None, time.monotonic()
+            while time.monotonic() < deadline:
+                time.sleep(1)
+                if args.require_harness_binding:
+                    refusal = harness_bind_refusal(run)
+                    if refusal:
+                        print("  " + refusal)
+                        status = refusal.split(":", 1)[0]
+                        break
                 n, done = peer_harness_steps(args, None, run)
                 if done or n >= args.steps:
                     status = "HARNESS-DONE(%s steps)" % n
                     break
                 if n != last_n:
-                    last_n, last_change = n, time.time()
+                    last_n, last_change = n, time.monotonic()
                     continue
-                quiet = time.time() - last_change
+                quiet = time.monotonic() - last_change
                 # A DEAD peer is not worth waiting out the stall budget for. Checked at a quarter of
                 # it rather than every poll: the liveness probe is a PowerShell round trip, and this
-                # loop runs every 4 s for the whole run.
+                # loop runs every second for the whole run.
                 if quiet > max(15, args.stall_timeout / 4) and not _crash_checked.get(run):
                     _crash_checked[run] = True
                     alive, lines = peer_liveness(run)
@@ -4715,8 +4952,8 @@ def main():
             # not finish, which is a different failure from the harness not stepping.
             print("[host] script %s" % (local_script_status(run) or "(no marker)"))
         else:
-            while run and time.time() < deadline and not status:
-                time.sleep(2)
+            while run and time.monotonic() < deadline and not status:
+                time.sleep(0.25)
                 status = local_script_status(run)
             print("[host] script %s" % (status or "TIMED-OUT(no marker)"))
         local_kill()
@@ -4728,8 +4965,8 @@ def main():
             # it for reasons that have nothing to do with the sim.
             overall_ok = bool(status) and status.startswith("HARNESS-DONE")
         else:
-            png_dir = pull_local_captures(run)
-            overall_ok = collect_and_check(label, png_dir, args) and status == "COMPLETE"
+            captures = pull_local_captures(run)
+            overall_ok = collect_and_check(label, captures, args) and status == "COMPLETE"
     elif args.host:
         # ---- multi-peer. The host may be local OR a VM (`ip:script`). Launch the host, wait until it's
         #      LISTENING (ready for clients), point each client's setup.dat at the host + launch it, then
@@ -4796,7 +5033,7 @@ def main():
                 shim_stop(shim)
                 sys.exit(bad)
 
-        deadline = time.time() + args.timeout
+        deadline = time.monotonic() + args.timeout
         host = peers[0]
         print("[host %s] launching %s ..." % (host_ip or "local", os.path.basename(hsrc)))
         # pin the HOST identity (player name + created game name) so its lobby + the clients' browser rows
@@ -4894,9 +5131,9 @@ def main():
                     "[client %s] waiting for peer #%d (%s) to EXIT (process gone) before launching ..."
                     % (p["key"], wait_pidx, target["key"])
                 )
-                exit_deadline = time.time() + args.timeout
+                exit_deadline = time.monotonic() + args.timeout
                 exited = False
-                while time.time() < exit_deadline:
+                while time.monotonic() < exit_deadline:
                     pump_signals(args, [pp for pp in peers if pp.get("run")], delivered)
                     if args.client_sequence and wait_pidx >= 1:
                         # tooling:TL-SUITE-FOLD step 4: the predecessor is a SEQUENCE client. Its
@@ -4988,23 +5225,11 @@ def main():
         # unified wait: every peer to reach COMPLETE / TIMEOUT
         results = dict(seq_status)
         pending = {p["key"] for p in peers if p.get("run")} - set(seq_status)
-        last_live = time.time()
+        last_live = time.monotonic()
         shim_triggers = parse_shim_triggers(args.shim_trigger) if shim else []
-        trig_t0 = time.time()
-        while pending and time.time() < deadline:
-            # TL-P9W-TRIGGER cadence: a trigger marked `fast` must land within a fraction of a second
-            # of its evidence line, not up to a full 3 s poll later -- resync_receiver_deadline_proof
-            # cuts the link on the client's `barrier BEGIN`, and a retail barrier lasts only ~2 s, so a 3 s
-            # grid cut it AFTER the RESUME had already crossed (the barrier then ended normally and the
-            # receiver deadline had nothing to catch). Everything else keeps the 3 s cadence.
-            if any(t["fast"] and not t["fired"] for t in shim_triggers):
-                _slept = 0.0
-                while _slept < 3.0:
-                    time.sleep(0.25)
-                    _slept += 0.25
-                    pump_shim_triggers(shim, shim_triggers, peers, trig_t0)
-            else:
-                time.sleep(3)
+        trig_t0 = time.monotonic()
+        while pending and time.monotonic() < deadline:
+            wait_shim_interval(3, shim, shim_triggers, peers, trig_t0)
             if len(peers) > 1:
                 pump_signals(args, peers, delivered)
             for p in peers:
@@ -5020,9 +5245,9 @@ def main():
             # is spent proving something already known -- and it is spent producing a timeout
             # message, which is the one reading this failure must not be given. Checked on a slow
             # cadence because peer_liveness costs a PowerShell round-trip per peer.
-            if time.time() - last_live >= 10:
-                last_live = time.time()
-                for p in list(peers):
+            if time.monotonic() - last_live >= 10:
+                last_live = time.monotonic()
+                for p in peers:
                     # VM peers included: peer_liveness answers for them too now (image-name query
                     # + their own Application log, pulled back). Leaving them out was the whole of
                     # the "crash detection on VM peers" gap.
@@ -5051,7 +5276,23 @@ def main():
             if run:
                 report_dead_peer(k, run)
 
-        # collect + diff every peer, then kill it
+        # Freeze every terminal/expected-exit verdict BEFORE runner teardown: our
+        # own kill must never manufacture the self-driven-exit evidence.
+        for p in peers:
+            p["terminal_ok"] = bool(
+                results.get(p["key"]) == "COMPLETE"
+                or (
+                    p.get("expect_exit")
+                    and results.get(p["key"]) == "PROCESS-GONE"
+                    and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
+                )
+            )
+        # All peers are terminal now. Stop every owned game before offline pulls,
+        # BMP conversion and PNG comparison; otherwise they keep simulating while
+        # the runner checks screenshots, wasting CPU reserved for other work.
+        for p in peers:
+            peer_kill(args, p["ip"], p.get("run"))
+        # Collect every peer, including failed/timed-out ones.
         for p in peers:
             if p.get("run"):
                 # mp:L1f -- PULL THE LOGS TOO, when asked. Until this flag the log pull-back existed
@@ -5067,32 +5308,15 @@ def main():
                         "  [pull] %s logs -> %s"
                         % (p["key"], pull_peer_logs(args, p["ip"], p["run"], dest))
                     )
-                png = peer_captures(args, p["ip"], p["run"])
-                # mp:GS1(b) -- a peer named by --client-expect-exit is DESIGNED to end via a real
-                # process exit rather than its script's own COMPLETE marker (ExitProcess ends it
-                # first); accept that terminal state ONLY when exit_witness confirms it was
-                # SELF-DRIVEN (the D15 `; EXIT ...` line), so a crash or a harness kill still fails.
-                # bool(): a TIMED-OUT peer without expect_exit made this `True and None` -> None,
-                # and `overall_ok &= None` raised TypeError HERE -- before peer_kill ran for the
-                # remaining peers, so every timed-out --update-baselines run left its games alive
-                # holding their lane mutexes (mp:R2b, 2026-09-22).
-                status_ok = bool(
-                    results.get(p["key"]) == "COMPLETE"
-                    or (
-                        p.get("expect_exit")
-                        and results.get(p["key"]) == "PROCESS-GONE"
-                        and any("SELF-DRIVEN" in ln for ln in exit_witness(p["run"]))
-                    )
-                )
+                captures = peer_captures(args, p["ip"], p["run"])
                 _pargs = args
                 _ptol = args.client_cfg_map.get(peers.index(p), {}).get("tol")
                 if _ptol is not None:  # --client-cfg N:tol=X -- this client's own capture tolerance
                     _pargs = argparse.Namespace(**dict(vars(args), tol=float(_ptol)))
-                overall_ok &= collect_and_check(p["label"], png, _pargs) and status_ok
+                overall_ok &= collect_and_check(p["label"], captures, _pargs) and p["terminal_ok"]
             else:
                 print("  [%s] no run dir -- launch failed" % p["key"])
                 overall_ok = False
-            peer_kill(args, p["ip"], p.get("run"))
         shim_stop(shim)
     else:
         ap.error("give a single script, or --host [ip:]script with --client ip:script")
@@ -5102,4 +5326,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(tmp_runs.run_cli(main, "ui-test", human_flags=("--update-baselines",)))

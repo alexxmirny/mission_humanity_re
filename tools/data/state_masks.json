@@ -2,7 +2,7 @@
   "schema_version": 1,
   "hash_kind": 2,
   "generated_by": "net_selftest.exe inchashtest --dump-masks (mp:D42)",
-  "region_count": 63,
+  "region_count": 66,
   "regions": {
     "buildings": {"excluded": false, "len": 218400, "stride": 1, "keep": [255]},
     "productions": {"excluded": false, "len": 25920, "stride": 1, "keep": [255]},
@@ -66,6 +66,9 @@
     "game_time_delta": {"excluded": true, "len": 8, "stride": 1, "keep": [255]},
     "game_speed": {"excluded": true, "len": 8, "stride": 1, "keep": [255]},
     "player_resources": {"excluded": false, "len": 320, "stride": 1, "keep": [255]},
-    "progress": {"excluded": false, "len": 7200, "stride": 1, "keep": [255]}
+    "progress": {"excluded": false, "len": 7200, "stride": 1, "keep": [255]},
+    "storage_policy": {"excluded": false, "len": 32, "stride": 1, "keep": [255]},
+    "order_tasks": {"excluded": false, "len": 128, "stride": 1, "keep": [255]},
+    "order_campaign": {"excluded": false, "len": 160, "stride": 1, "keep": [255]}
   }
 }
