@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Download the Mission Humanity launcher and read game and launcher release notes, newest publication first.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Downloads & release notes — Mission Humanity</title>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="header wrap"><a class="brand" href="index.html" aria-label="Mission Humanity project home"><span class="mark" aria-hidden="true">MH</span><span>MISSION HUMANITY<span class="brand-sub">Community restoration project</span></span></a><nav aria-label="Main navigation"><a href="index.html">Project</a><a href="downloads.html" aria-current="page">Downloads</a><a href="wiki/index.html">Game wiki</a><a href="@@REPO@@">Source</a></nav></header>
+  <main id="main" class="wrap">
+    <section class="download-heading"><p class="eyebrow">RETURN TO THE FRONTIER</p><h1>Downloads</h1><p class="lead">One launcher. Your own copy of the game.</p><p>Place <code>mh_launcher.exe</code> beside <code>mh.exe</code> and run it. It installs and updates the project's DLLs. Do not run it as administrator; it asks when installation needs elevation.</p></section>
+    <section aria-labelledby="launcher-title"><h2 id="launcher-title">Latest published launcher</h2><p>The newest published <em>launcher</em> release by publication date, independent of game-only tags. It may be a prerelease; the stable channel is shown separately below.</p><div class="download-primary">@@LATEST_LAUNCHER@@</div></section>
+    <aside class="notice"><strong>Before you upgrade:</strong> back up saves and read the release notes. Windows only: 64-bit launcher, 32-bit game. No retail game data is included. Multiplayer peers need the same game release and identical ordered mod content.</aside>
+    <section class="section" aria-labelledby="channels-title"><p class="eyebrow">INDEPENDENT GAME + LAUNCHER UPDATES</p><h2 id="channels-title">What each channel offers</h2><p><strong>Stable</strong> is explicitly promoted by the maintainer. <strong>Latest</strong> follows release publication and may contain prereleases. A final-looking version or GitHub's “Latest” badge does not mean it has been promoted to stable.</p><div class="channels">@@CHANNELS@@</div><p class="small">Channel entries come from manifests verified at site generation, not a live browser update check. The launcher performs its own signature, freshness and compatibility checks. Downloading a launcher here does not silently change your selected game channel.</p></section>
+    <section class="section" aria-labelledby="help-title"><h2 id="help-title">Other ways in</h2><div class="resource-links"><a href="@@REPO@@/releases">All release assets / manual installation</a><a href="@@REPO@@/blob/main/INSTALL.md">Installation guide</a><a href="wiki/index.html">Game wiki — English / Русский</a><a href="@@REPO@@/blob/main/CHANGELOG.md">Curated source changelog</a></div><p class="small">If a download fails, use its GitHub release page. Offline, the notes on this page remain readable if you saved or cached it; downloading the launcher still requires a connection.</p></section>
+    <section id="changelog" class="section" aria-labelledby="changelog-title"><p class="eyebrow">FIELD LOG</p><h2 id="changelog-title">Release notes</h2><p>Game and launcher releases, newest <strong>publication date</strong> first (UTC). These are the original release notes as plain text, not executable HTML. Expand an entry to read it.</p><p class="snapshot">@@SNAPSHOT@@</p><div class="release-list">@@RELEASES@@</div></section>
+  </main>
+  <footer class="footer wrap"><p>Mission Humanity / Exterminacja is Techland's game. This independent community project is not affiliated with Techland.</p><div><a href="@@REPO@@">GitHub</a><a href="@@REPO@@/blob/main/LICENSE">Project license</a><a href="@@REPO@@/blob/main/THIRD_PARTY.md">Third-party notices</a><a href="#main">Back to top</a></div></footer>
+</body>
+</html>
