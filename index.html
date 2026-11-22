@@ -3,49 +3,134 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Mission Humanity / Exterminacja: restored multiplayer, modern controls and community modding tools. Bring your own copy of the original game.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#101714">
+  <meta name="description" content="An independent Mission Humanity restoration project: restored multiplayer, queued commands, clearer routes and launcher-managed mods. Your original game is required.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <title>Mission Humanity — multiplayer restored</title>
+  <title>Mission Humanity — Multiplayer restored</title>
   <link rel="stylesheet" href="site.css">
 </head>
 <body>
-  <a class="skip" href="#main">Skip to content</a>
-  <header class="header wrap">
-    <a class="brand" href="index.html" aria-label="Mission Humanity project home"><span class="mark" aria-hidden="true">MH</span><span>MISSION HUMANITY<span class="brand-sub">Community restoration project</span></span></a>
-    <nav aria-label="Main navigation"><a href="index.html" aria-current="page">Project</a><a href="downloads.html">Downloads</a><a href="wiki/index.html">Game wiki</a><a href="https://github.com/alexxmirny/mission_humanity_re">Source</a></nav>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="nav-wrap">
+      <a class="brand" href="index.html" aria-label="Mission Humanity home"><span class="brand-mark" aria-hidden="true">MH</span><span>MISSION <strong>HUMANITY</strong><small>EXTERMINACJA</small></span></a>
+      <nav aria-label="Main navigation">
+        <a href="wiki/index.html">Wiki</a>
+        <a href="https://github.com/alexxmirny/mission_humanity_re">Source</a>
+        <a class="nav-download" href="downloads.html">Downloads <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
   </header>
-  <main id="main" class="wrap">
+  <main id="main">
     <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> THE CLASSIC RTS, RESTORED</p>
+          <h1 id="hero-title">Mission Humanity.<br><em>Multiplayer restored.</em></h1>
+          <p class="hero-lead">Build a base. Queue your next advance. Bring friends back to the battlefield with restored multiplayer and more control over the original game.</p>
+          <a class="button" href="downloads.html"><span aria-hidden="true">↓</span> Get the launcher</a>
+          <p class="requirement">Windows x64 · Your own original game required<br>No retail game data included.</p>
+        </div>
+        <div class="hero-identity" aria-hidden="true"><img src="website-assets/wordmark.webp" alt="" width="215"><span>EXTERMINACJA</span></div>
+      </div>
+      <div class="hero-bottom"><span>PROJECT GAMEPLAY CAPTURE</span><a href="#features">EXPLORE THE FEATURES <span aria-hidden="true">↓</span></a></div>
+    </section>
+
+    <div class="release-strip">
       <div>
-        <p class="eyebrow">EXTERMINACJA / MISSION HUMANITY · 2001 RTS</p>
-        <h1 id="hero-title">An old frontier.<br><span>A new connection.</span></h1>
-        <p class="lead">Return to Mission Humanity with working multiplayer, improved controls and tools to make the game your own.</p>
-        <div class="actions"><a class="button" href="downloads.html">Get the launcher <span aria-hidden="true">↗</span></a><a class="button secondary" href="wiki/index.html">Explore the game wiki</a></div>
-        <p class="small">Windows · 64-bit launcher, 32-bit game · Your own game installation required</p>
+        <span class="release-label">RELEASED / 0.2.2</span>
+        <p>Queued orders. Patrols. Map previews. Ordered mods.</p>
+        <a href="downloads.html#changelog">Read the changes <span aria-hidden="true">↗</span></a>
       </div>
-      <aside class="signal" aria-label="Project at a glance">
-        <p class="eyebrow">MISSION STATUS</p><h2>Multiplayer<br>restored.</h2>
-        <dl><div><dt>Connection</dt><dd>UDP relay + direct</dd></div><div><dt>Players</dt><dd>Up to eight</dd></div><div><dt>Distribution</dt><dd>Launcher + DLLs</dd></div><div><dt>Game assets</dt><dd>Bring your own</dd></div></dl>
-        <p>No port forwarding for normal relay play. Direct-address hosting has different requirements.</p>
-      </aside>
-    </section>
-    <section class="section" aria-labelledby="features-title">
-      <div class="section-heading"><p class="eyebrow">THE ORIGINAL GAME, BETTER CONNECTED</p><h2 id="features-title">What the project adds</h2></div>
-      <div class="features">
-        <article class="card"><span class="number" aria-hidden="true">01 / NETWORK</span><h3>Play together</h3><p>Host or join from the in-game browser. An authenticated, encrypted UDP link starts through the relay and goes direct when the network permits.</p></article>
-        <article class="card"><span class="number" aria-hidden="true">02 / COMMAND</span><h3>Less friction. More strategy.</h3><p>Queue moves and attacks, set patrols and storage rallies, see selected routes, and remap strategic controls in the launcher.</p></article>
-        <article class="card"><span class="number" aria-hidden="true">03 / FIELD WORK</span><h3>Runtime improvements</h3><p>Improved movement and combat, independent interface scaling, map previews and optional raised limits. The launcher exposes the choices.</p></article>
-        <article class="card"><span class="number" aria-hidden="true">04 / WORKSHOP</span><h3>Make it your own</h3><p>Order loose-file mods, add skirmish maps, patch existing configuration records and use custom terrain. Multiplayer requires matching ordered mod content.</p></article>
+    </div>
+
+    <section class="feature-section" id="features" aria-labelledby="multiplayer-title">
+      <div class="section-heading">
+        <div><p class="eyebrow"><span aria-hidden="true"></span> RESTORED MULTIPLAYER</p><h2 id="multiplayer-title">Choose the field.<br>Gather your players.</h2></div>
+        <p>Play with up to eight players. The lobby brings map information and match settings together before launch. In 0.2.2, hosts can choose a fixed match speed from 100 to 200 percent.</p>
+      </div>
+      <figure class="wide-image">
+        <img src="website-assets/lobby.webp" alt="Mission Humanity multiplayer lobby with player slots and match setup" loading="lazy" decoding="async">
+        <figcaption><span>Actual lobby · project capture</span><span>01 / MATCH SETUP</span></figcaption>
+      </figure>
+      <p class="image-note">Use the same game release and ordered mod content on every peer. Mods are not transferred automatically; joining an already-started match is not supported.</p>
+
+      <div class="detail-row">
+        <div class="detail-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> QUEUES &amp; PATROLS</p>
+          <h2>Give the next order.<br>Keep the whole plan.</h2>
+          <p>Shift-right-click queues moves and attacks. Alt-right-click creates a repeating patrol; Shift+Alt-right-click extends it. Aircraft can patrol too.</p>
+          <p>Read selected routes at a glance: green for movement, red for attacks, blue for patrols and yellow for storage rallies. Hold Shift to reveal short routes.</p>
+          <p class="control-note">Special interactions now use Ctrl-right-click by default. Strategic bindings are remappable in the launcher.</p>
+          <span class="version">0.2.2 / STRATEGIC COMMANDS</span>
+        </div>
+        <figure class="detail-image">
+          <img src="website-assets/orders.webp" alt="Selected units with their green movement routes drawn across the battlefield" loading="lazy" decoding="async">
+          <figcaption>02 / ROUTE DISPLAY · PROJECT CAPTURE</figcaption>
+        </figure>
+      </div>
+
+      <div class="detail-row detail-row-reverse">
+        <div class="detail-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> BEFORE &amp; DURING THE MATCH</p>
+          <h2>Scout the map.<br>Set the rally.</h2>
+          <p>Inspect terrain, ore and landing positions before starting. The map picker and lobby offer Description, Preview and Settings views.</p>
+          <p>Give a storage building a rally destination. Enable its optional Auto dispatch to send newly produced units and units repaired to full health to that point.</p>
+          <p class="control-note">Auto starts off. Switching it on does not eject existing healthy occupants or start repairs. Shuttles do not have storage rallies or Auto.</p>
+          <span class="version">0.2.2 / MAP PREVIEW &amp; STORAGE</span>
+        </div>
+        <figure class="detail-image">
+          <img src="website-assets/map.webp" alt="In-game map preview showing terrain and pre-match map information" loading="lazy" decoding="async">
+          <figcaption>03 / MAP PREVIEW · PROJECT CAPTURE</figcaption>
+        </figure>
       </div>
     </section>
-    <section class="section getting-started" aria-labelledby="start-title">
-      <div><p class="eyebrow">BACK TO THE SURFACE</p><h2 id="start-title">Three steps to play</h2><p>No replacement game executable. The project's DLLs load alongside your installation.</p></div>
-      <ol class="steps"><li><strong>Bring the game.</strong> Use your own legally obtained Mission Humanity / Exterminacja installation.</li><li><strong>Add the launcher.</strong> Download <code>mh_launcher.exe</code>, place it beside <code>mh.exe</code> and run it.</li><li><strong>Press Play.</strong> Let the launcher install the runtime. For multiplayer, choose Network Game in the original game menu.</li></ol>
+
+    <section class="setup-section" aria-labelledby="setup-title">
+      <div class="setup-inner">
+        <div class="section-heading">
+          <div><p class="eyebrow"><span aria-hidden="true"></span> YOUR SETUP</p><h2 id="setup-title">Change how you command.</h2></div>
+          <p>Configure controls, interface scale and mod priority from the launcher.</p>
+        </div>
+        <div class="setup-grid">
+          <article>
+            <span class="setup-number" aria-hidden="true">01</span>
+            <h3>Remap strategic controls</h3>
+            <p>Edit actions, modifiers and world mouse roles in the launcher. Capture a binding, check conflicts or reset it. Changes apply at the next game start.</p>
+          </article>
+          <article>
+            <span class="setup-number" aria-hidden="true">02</span>
+            <h3>Scale the interface separately</h3>
+            <p>Choose interface size independently of rendering resolution, with automatic display scaling. A higher-resolution battlefield need not mean smaller controls.</p>
+          </article>
+          <article>
+            <span class="setup-number" aria-hidden="true">03</span>
+            <h3>Choose your mod order</h3>
+            <p>Enable loose-file mods and arrange their priority in the launcher; later, lower entries win. Supported content includes resource overrides, skirmish maps, patches to existing configuration records and custom terrain.</p>
+            <p>Apply changes and restart the game. Configuration patches do not add or remove unit or building record types.</p>
+          </article>
+        </div>
+        <p class="capture-note">Screenshots from project builds. Original game imagery © Techland.</p>
+      </div>
     </section>
-    <aside class="notice"><strong>A community project, not a standalone game.</strong> No retail executable, maps, art or audio are included. Back up saves before upgrading. Read the release notes for compatibility and known limits.</aside>
-    <section class="section resources" aria-labelledby="resources-title"><div><p class="eyebrow">REFERENCE MATERIAL</p><h2 id="resources-title">Know the world</h2><p>Units, buildings, research, planets and technology trees, generated from game data.</p></div><div class="resource-links"><a href="wiki/en/index.html">Game wiki — English <span aria-hidden="true">↗</span></a><a href="wiki/ru/index.html" lang="ru">Игровая вики — Русский <span aria-hidden="true">↗</span></a><a href="https://github.com/alexxmirny/mission_humanity_re/blob/main/INSTALL.md">Installation guide <span aria-hidden="true">↗</span></a><a href="https://github.com/alexxmirny/mission_humanity_re/blob/main/CHANGELOG.md">Source changelog <span aria-hidden="true">↗</span></a></div></section>
+
+    <section class="closing" aria-labelledby="install-title">
+      <div>
+        <p class="eyebrow"><span aria-hidden="true"></span> KEEP YOUR ORIGINAL. ADD THE RESTORATION.</p>
+        <h2 id="install-title">Your next mission starts here.</h2>
+        <p>Already own Mission Humanity? Get the launcher, installation instructions and dated release notes in one place. Back up your saves before updating.</p>
+        <a class="text-link" href="downloads.html">Installation &amp; downloads <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
   </main>
-  <footer class="footer wrap"><p>Mission Humanity / Exterminacja is Techland's game. This independent community project is not affiliated with Techland.</p><div><a href="https://github.com/alexxmirny/mission_humanity_re">GitHub</a><a href="https://github.com/alexxmirny/mission_humanity_re/blob/main/LICENSE">Project license</a><a href="https://github.com/alexxmirny/mission_humanity_re/blob/main/THIRD_PARTY.md">Third-party notices</a><a href="downloads.html#changelog">Release notes</a></div></footer>
+  <footer class="footer">
+    <div>
+      <span class="footer-brand">MISSION HUMANITY <b>/</b> EXTERMINACJA</span>
+      <p>Independent community restoration; not affiliated with or endorsed by Techland. Original game imagery © Techland. Project gameplay captures. Your own original game is required.</p>
+      <nav aria-label="Footer navigation"><a href="wiki/index.html">Project wiki</a><a href="https://github.com/alexxmirny/mission_humanity_re">Source</a></nav>
+      <small>Updated 22 November 2026</small>
+    </div>
+  </footer>
 </body>
 </html>
