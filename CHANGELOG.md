@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.2 — 2026-11-21
+## 0.2.2-rc4 — 2026-11-22
 
-Final feature release in the 0.2.2 line. Subsequent work on `release/v0.2.2` is hotfix-only; new features target a later release.
+Release candidate 4, reclassifying the briefly published 0.2.2 release. Same gameplay source, locally rebuilt with rc4 stamps; no CI or test gates rerun by explicit request. Game Stable returns to 0.2.1; Launcher 0.2.2 is unchanged. The `release/v0.2.2` line remains hotfix-only; new features target a later release.
 
 ### Since game 0.2.2-rc3
 
