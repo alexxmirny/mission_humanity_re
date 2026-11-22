@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate the three website-owned Pages files. No visitor-side API or JavaScript.
+"""Generate the website-owned Pages documents and credited image assets.
 
-Source: src/website/{index.html,downloads.html,site.css}; output: an explicit directory.
+Source: src/website/ templates/styles/images; output: an explicit directory.
 The existing Pages checkout is input only, including signed channel manifests.
 API failure or a bad existing signature is fatal, preserving the deployed snapshot.
 An absent channel or launcher asset instead renders an explicit unavailable state.
@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import gen_update_manifest as manifests
 
 SOURCE = Path(__file__).resolve().parent
+ASSETS = ("battle.webp", "orders.webp", "lobby.webp", "map.webp", "wordmark.webp")
 TAG = re.compile(r"^(launcher-)?v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 TOKEN = re.compile(r"@@([A-Z_]+)@@")
 
@@ -51,7 +52,7 @@ def release_url(repo_url, tag):
 def badge(release):
     if release["prerelease"]:
         return '<span class="badge prerelease">Prerelease</span>'
-    return '<span class="badge">Final release</span>'
+    return ""
 
 
 def load_releases(repo, fixture):
@@ -108,19 +109,14 @@ def latest_launcher(rows, repo_url):
     if len(assets) > 1:
         raise ValueError("launcher release has duplicate named assets")
     asset = assets[0] if assets else None
-    header = '<h3>Launcher %s %s</h3><p class="small">Published %s UTC</p>' % (
-        esc(version), badge(row), esc(row["published_at"].replace("T", " ").removesuffix("Z"))
-    )
-    notes = link(release_url(repo_url, tag), "Open launcher release", "button secondary")
+    header = '<p class="download-version">Launcher %s %s</p>' % (esc(version), badge(row))
+    notes = link(release_url(repo_url, tag), "Launcher release notes")
     if asset is None or asset.get("state") != "uploaded" or type(asset.get("size")) is not int or asset["size"] <= 0:
         return header + '<p>The latest launcher release has no ready download. An older file is not being presented as latest.</p>' + notes
     if asset.get("browser_download_url") != url:
         raise ValueError("launcher asset does not use this repository's release URL")
-    result = header + '<div class="actions">' + link(url, "Download mh_launcher.exe", "button") + notes + '</div>'
-    result += '<p class="small">Windows x64 · %s bytes</p>' % esc(asset["size"])
-    digest = asset.get("digest")
-    if isinstance(digest, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        result += '<p class="hash">GitHub asset SHA-256: %s</p>' % esc(digest[7:])
+    result = header + '<div class="actions">' + link(url, "Download Launcher", "button") + '</div>'
+    result += '<p class="small">' + notes + '</p>'
     return result
 
 
@@ -209,20 +205,22 @@ def main():
             for channel in ("stable", "latest") for kind in ("launcher", "game")
         ),
         "RELEASES": release_notes(rows, repo_url),
-        "SNAPSHOT": "Release/channel snapshot collected " + esc(now.strftime("%Y-%m-%d %H:%M:%S UTC"))
-        + ". This is a static snapshot, not a live update check; if it is old, consult "
-        + link(repo_url + "/releases", "GitHub releases") + ".",
+        "SNAPSHOT": "Updated " + esc(now.strftime("%d %B %Y")),
     }
     # Finish all parsing/validation/rendering before creating any output file.
     files = {
-        "index.html": render(SOURCE / "index.html", values),
-        "downloads.html": render(SOURCE / "downloads.html", values),
-        "site.css": (SOURCE / "site.css").read_text(encoding="utf-8"),
+        "index.html": render(SOURCE / "index.html", values).encode("utf-8"),
+        "downloads.html": render(SOURCE / "downloads.html", values).encode("utf-8"),
+        "site.css": (SOURCE / "site.css").read_text(encoding="utf-8").encode("utf-8"),
     }
+    for asset in ASSETS:
+        files["website-assets/" + asset] = (SOURCE / "website-assets" / asset).read_bytes()
     args.out.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
-        (args.out / name).write_text(content, encoding="utf-8", newline="\n")
-    print("Generated index.html, downloads.html and site.css; %d published releases" % len(rows))
+        target = args.out / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    print("Generated website documents and %d images; %d published releases" % (len(ASSETS), len(rows)))
 
 
 if __name__ == "__main__":

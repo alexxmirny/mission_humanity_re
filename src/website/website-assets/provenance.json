@@ -1,0 +1,67 @@
+[
+  {
+    "asset": "battle.webp",
+    "source": "tools/uiscripts/baselines/res_crop_1080/capture_res_crop_view.png",
+    "crop": [
+      0,
+      0,
+      1760,
+      1045
+    ],
+    "private_address_redacted": false,
+    "width": 1760,
+    "height": 1045,
+    "sha256": "456c2d2838832b41a402ca417965f95f211d71b839a731f5e64988ca38575da8",
+    "credit": "Mission Humanity gameplay/menu imagery, Techland; existing project captures; release binary version not certified by this asset inventory"
+  },
+  {
+    "asset": "orders.webp",
+    "source": "tools/uiscripts/baselines/target_line_controls/capture_target_controls_pending__b.png",
+    "crop": [
+      200,
+      60,
+      860,
+      730
+    ],
+    "private_address_redacted": false,
+    "width": 660,
+    "height": 670,
+    "sha256": "4553d1ac3fb5d8be9967f5781a074d26eb88e5ae2901412af0adcf721b1df33c",
+    "credit": "Mission Humanity gameplay/menu imagery, Techland; existing project captures; release binary version not certified by this asset inventory"
+  },
+  {
+    "asset": "lobby.webp",
+    "source": "tools/uiscripts/baselines/mp_host_lobby_seq/capture_lobby_team__t2_host_team.png",
+    "crop": null,
+    "private_address_redacted": true,
+    "width": 640,
+    "height": 480,
+    "sha256": "2c3bb9828e9213bcdb6d0fe9640efd25cd9816283e66ceed0d4bd61c6bb21d89",
+    "credit": "Mission Humanity gameplay/menu imagery, Techland; existing project captures; release binary version not certified by this asset inventory"
+  },
+  {
+    "asset": "map.webp",
+    "source": "tools/uiscripts/baselines/solo_walk/capture_menu_walk__w5_mappick.png",
+    "crop": null,
+    "private_address_redacted": true,
+    "width": 640,
+    "height": 480,
+    "sha256": "e74f8acc41460c5a1df4556e0d0e72613ab2fd220d8c2eb594ce4882bca8ac2d",
+    "credit": "Mission Humanity gameplay/menu imagery, Techland; existing project captures; release binary version not certified by this asset inventory"
+  },
+  {
+    "asset": "wordmark.webp",
+    "source": "tools/uiscripts/baselines/mp_host_rec/capture_m1_menu.png",
+    "crop": [
+      5,
+      5,
+      220,
+      85
+    ],
+    "private_address_redacted": false,
+    "width": 215,
+    "height": 80,
+    "sha256": "3a7bcb08847aa7fd775d6b7491f295c8ceb3869be7a5d26269e9ae505641a97f",
+    "credit": "Mission Humanity gameplay/menu imagery, Techland; existing project captures; release binary version not certified by this asset inventory"
+  }
+]

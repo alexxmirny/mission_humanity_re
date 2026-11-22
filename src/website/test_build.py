@@ -58,6 +58,10 @@ class WebsiteChecks(unittest.TestCase):
         html = build.latest_launcher([release("launcher-v1.0.1-rc1", "2026-11-21T12:00:00Z", 1, True)], URL)
         self.assertIn("Prerelease", html)
         self.assertNotIn("Final release", html)
+        ordinary = build.latest_launcher([release("launcher-v1.0.0", "2026-11-20T12:00:00Z", 2)], URL)
+        self.assertIn("Launcher 1.0.0", ordinary)
+        self.assertNotIn("Final release", ordinary)
+        self.assertNotIn("Prerelease", ordinary)
 
     def test_missing_launcher_has_no_invented_version_or_exe(self):
         html = build.latest_launcher([], URL)
