@@ -55,14 +55,14 @@
 
     <section id="changelog" class="dl-changelog" aria-labelledby="dl-changelog-title">
       <div class="dl-changelog-inner">
-        <div class="dl-changelog-heading"><p class="eyebrow"><span></span> FIELD NOTES</p><h2 id="dl-changelog-title">What's new</h2><p class="dl-snapshot">Updated 22 November 2026</p></div>
+        <div class="dl-changelog-heading"><p class="eyebrow"><span></span> FIELD NOTES</p><h2 id="dl-changelog-title">What's new</h2><p class="dl-snapshot">Updated 23 November 2026</p></div>
         <div class="dl-release-list"><details class="release" id="release-454618075" open><summary><span class="release-title">Game 0.2.2-rc4</span> <span class="badge prerelease">Prerelease</span><time class="release-date" datetime="2026-11-22T17:26:52Z">2026-11-22 17:26:52 UTC</time></summary><div class="release-body"><p><a href="https://github.com/alexxmirny/mission_humanity_re/releases/tag/v0.2.2-rc4">Original release and assets</a></p><pre>Mission Humanity 0.2.2-rc4 — release candidate 4
 
-This release candidate reclassifies the previous 0.2.2 release; it is not a final or stable release. It uses the same gameplay source, public commit `c6adf10e3a441b88734570e6dd528911c071e7f6`. The four shipping game DLLs were locally rebuilt and packaged with the 0.2.2-rc4 version stamp. At the maintainer&#x27;s explicit request, no continuous integration or test gates were rerun for this candidate; this is not a new test certification.
-
-Channel policy: game Latest offers 0.2.2-rc4 and game Stable uses 0.2.1. Launcher 0.2.2 and its update channels are unchanged. An installed game 0.2.2 sorts above 0.2.2-rc4, so an ordinary same-channel update check will not downgrade it automatically. To install rc4 deliberately, close the game and use **Diagnostics → Advanced → Install from a release zip → Choose zip... → Install** with the official rc4 ZIP. Back up saves first. Multiplayer players need the same release and ordered mod content.
-
 The `release/v0.2.2` line remains hotfix-only; new features target a later release.
+
+### Control change (**Important**)
+
+Shift-right-click now queues orders. Ctrl-right-click confirms special interactions such as landing/deployment, merging, storage entry and tactical entry. Unmodified double-right-click remains available. These are defaults; strategic bindings can be changed in the launcher.
 
 ### Since game 0.2.2-rc3
 
@@ -74,13 +74,7 @@ The `release/v0.2.2` line remains hotfix-only; new features target a later relea
 - Host-selected match speed: 100/125/150/175/200%, default 100%, fixed for that match.
 - Launcher-managed loose-file mods, ordered resource overrides, new skirmish maps, transactional patches to existing configuration records and custom terrain. Later/lower mods win. Multiplayer checks the complete ordered content; save mod-set differences warn and load unless required resources are missing.
 - Launcher-remappable strategic keys, modifiers and world mouse roles, with search, primary/alternate bindings, conflict feedback and resets. Corrected extended navigation-key handling in strategic dialogs.
-- Fixed early Start/map-header and initial map-download reset races. Improved resync recovery and completed-simulation-boundary handling of disconnected players and host-migration teardown.
-- Corrected loaded-save → New Campaign starting-planet selection to use the current boot configuration.
-- Corrected native video worker/resource lifetime and shared-read handling.
 
-### Control change
-
-Shift-right-click now queues orders. Ctrl-right-click confirms special interactions such as landing/deployment, merging, storage entry and tactical entry. Unmodified double-right-click remains available. These are defaults; strategic bindings can be changed in the launcher.
 
 ### Also new since stable 0.2.1
 
